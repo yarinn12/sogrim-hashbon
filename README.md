@@ -1,0 +1,3 @@
+# Sogrim Hashbon
+
+Initializing repository.
