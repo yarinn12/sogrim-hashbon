@@ -1,18 +1,59 @@
-<!doctype html>
-<html lang="he" dir="rtl">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>סוגרים חשבון</title>
-    <meta name="theme-color" content="#087b74" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="חשבון" />
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="./icon.svg" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <main id="app" class="app" aria-live="polite"></main>
-    <script type="module" src="./src/app.mjs"></script>
-  </body>
-</html>
+const CACHE_NAME = "settle-friends-v1";
+const CACHE_FILES = [
+  "/",
+  "/index.html",
+  "/styles.css",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/src/app.mjs",
+  "/src/domain/appActions.mjs",
+  "/src/domain/eventFilters.mjs",
+  "/src/domain/inviteLinks.mjs",
+  "/src/domain/launchReadiness.mjs",
+  "/src/domain/money.mjs",
+  "/src/domain/permissions.mjs",
+  "/src/domain/settlement.mjs",
+  "/src/domain/settlementSummary.mjs",
+  "/src/domain/stateBackup.mjs",
+  "/src/domain/validation.mjs",
+  "/src/data/cloudStore.mjs",
+  "/src/data/demoData.mjs",
+  "/src/data/localIdentity.mjs",
+  "/src/data/localStore.mjs"
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHE_FILES))
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)))
+      )
+  );
+  self.clients.claim();
+});
+
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+
+  if (event.request.method !== "GET" || url.pathname.startsWith("/api/")) {
+    return;
+  }
+
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
+});

@@ -1,11 +1,21 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-
-test("Supabase schema includes a beta snapshot table for early shared testing", async () => {
-  const schema = await readFile("supabase/schema.sql", "utf8");
-
-  assert.match(schema, /create table public\.app_snapshots/);
-  assert.match(schema, /id text primary key/);
-  assert.match(schema, /state jsonb not null/);
-});
+{
+  "name": "סוגרים חשבון",
+  "short_name": "חשבון",
+  "description": "ניהול הוצאות אירוע וסגירת חובות בין חברים.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "he",
+  "background_color": "#f3f6f7",
+  "theme_color": "#087b74",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
