@@ -4,9 +4,11 @@ import {
   applyLocalParticipantId,
   toSharedState
 } from "./localIdentity.mjs";
+import { normalizeProfileName } from "../domain/userProfile.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const LOCAL_PARTICIPANT_KEY = "settle-friends-current-participant";
+const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
   storage: { mode: "local" },
@@ -134,6 +136,30 @@ export async function resetSharedState() {
   } catch {
     return resetState();
   }
+}
+
+export function loadLocalProfile() {
+  const raw = window.localStorage.getItem(LOCAL_PROFILE_KEY);
+  if (!raw) return null;
+
+  try {
+    const profile = JSON.parse(raw);
+    const displayName = normalizeProfileName(profile.displayName);
+    if (!displayName || !profile.participantId) return null;
+    return { participantId: profile.participantId, displayName };
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalProfile(profile) {
+  const displayName = normalizeProfileName(profile.displayName);
+  if (!displayName || !profile.participantId) return null;
+
+  const nextProfile = { participantId: profile.participantId, displayName };
+  window.localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(nextProfile));
+  saveLocalParticipantId(nextProfile.participantId);
+  return nextProfile;
 }
 
 export function resetState() {
