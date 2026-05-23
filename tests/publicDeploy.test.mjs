@@ -40,7 +40,20 @@ test("Vercel config routes the public app through the Node handler", async () =>
   const config = JSON.parse(await readFile("vercel.json", "utf8"));
 
   assert.deepEqual(config.builds, [
-    { src: "server.mjs", use: "@vercel/node" }
+    {
+      src: "server.mjs",
+      use: "@vercel/node",
+      config: {
+        includeFiles: [
+          "index.html",
+          "styles.css",
+          "manifest.webmanifest",
+          "icon.svg",
+          "sw.js",
+          "src/**"
+        ]
+      }
+    }
   ]);
   assert.deepEqual(config.routes, [{ src: "/(.*)", dest: "/server.mjs" }]);
 });
