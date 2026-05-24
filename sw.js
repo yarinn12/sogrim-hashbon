@@ -25,6 +25,7 @@ const CACHE_FILES = [
   "/src/publicAdvancedWorkflowLayer.mjs",
   "/src/publicJoinEventLayer.mjs",
   "/src/publicInviteSnapshotLayer.mjs",
+  "/src/publicPersonalActionsLayer.mjs",
   "/src/publicEventWorkspaceLayer.mjs"
 ];
 
