@@ -91,7 +91,7 @@ function getScreenContext(screen) {
       helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
       actions: [
         { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "שתף קישור", action: "copy-invite" },
+        { label: "שתף קישור", action: "open-event-share" },
         { label: "סגור חשבון", action: "settle" }
       ]
     };
@@ -129,7 +129,8 @@ function enhanceEventScreen(screen) {
   screen.classList.add("product-event-screen");
 
   const summary = screen.querySelector(".summary-strip");
-  if (summary && !screen.querySelector(".product-event-command")) {
+  const hasNativeCommandGrid = screen.querySelector(".event-command-grid");
+  if (summary && !hasNativeCommandGrid && !screen.querySelector(".product-event-command")) {
     summary.insertAdjacentHTML(
       "afterend",
       `<section class="product-event-command" aria-label="מה עושים עכשיו">
@@ -140,7 +141,7 @@ function enhanceEventScreen(screen) {
         </div>
         <div class="product-command-actions">
           ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-          ${renderPublicAction({ label: "שתף קישור", action: "copy-invite" })}
+          ${renderPublicAction({ label: "שתף קישור", action: "open-event-share" })}
           ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
         </div>
       </section>`
@@ -152,7 +153,7 @@ function enhanceEventScreen(screen) {
       "beforeend",
       `<div class="product-sticky-actions" aria-label="פעולות מהירות">
         ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-        ${renderPublicAction({ label: "שתף קישור", action: "copy-invite" })}
+        ${renderPublicAction({ label: "שתף קישור", action: "open-event-share" })}
         ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
       </div>`
     );

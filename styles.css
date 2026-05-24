@@ -218,6 +218,46 @@ h3 {
   flex-wrap: wrap;
 }
 
+.event-command-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 18px;
+}
+
+.event-command-card {
+  min-height: 82px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 5px;
+  padding: 14px;
+  text-align: start;
+  white-space: normal;
+}
+
+.event-command-card strong {
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.event-command-card span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.primary-button.event-command-card span {
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.event-inline-panel[hidden],
+.invite-panel.event-inline-panel + .panel,
+.invite-panel.event-inline-panel + .panel + .section {
+  display: none;
+}
+
 .panel,
 .event-row,
 .expense-row,
@@ -595,7 +635,8 @@ h3 {
   align-items: center;
 }
 
-.expense-modal-backdrop {
+.expense-modal-backdrop,
+.event-modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 45;
@@ -606,14 +647,20 @@ h3 {
   backdrop-filter: blur(12px);
 }
 
-.expense-modal {
+.expense-modal,
+.event-modal {
   width: min(100%, 720px);
   max-height: min(92vh, 860px);
   overflow: auto;
   box-shadow: var(--shadow-lift);
 }
 
-.expense-modal-header {
+.event-modal {
+  width: min(100%, 660px);
+}
+
+.expense-modal-header,
+.event-modal-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
@@ -624,13 +671,47 @@ h3 {
 }
 
 .expense-modal-header h2,
-.expense-modal-header p {
+.expense-modal-header p,
+.event-modal-header h2,
+.event-modal-header p {
   margin-bottom: 6px;
 }
 
-.expense-modal-header .icon-button {
+.expense-modal-header .icon-button,
+.event-modal-header .icon-button {
   width: 42px;
   min-height: 42px;
+}
+
+.event-modal-body {
+  display: grid;
+  gap: 14px;
+}
+
+.event-window-section {
+  display: grid;
+  gap: 10px;
+}
+
+.event-settings-list {
+  display: grid;
+  gap: 10px;
+}
+
+.event-settings-list div {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(236, 247, 244, 0.58);
+}
+
+.event-settings-list span {
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .transfer-row {
@@ -815,6 +896,10 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .event-command-grid {
+    grid-template-columns: 1fr;
+  }
+
   .profile-summary {
     grid-template-columns: auto 1fr;
   }
@@ -852,22 +937,30 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .expense-modal-backdrop {
+  .expense-modal-backdrop,
+  .event-modal-backdrop {
     align-items: end;
     padding: 10px;
   }
 
-  .expense-modal {
+  .expense-modal,
+  .event-modal {
     max-height: 94vh;
   }
 
-  .expense-modal-header {
+  .expense-modal-header,
+  .event-modal-header {
     grid-template-columns: 1fr;
   }
 
-  .expense-modal-header .icon-button {
+  .expense-modal-header .icon-button,
+  .event-modal-header .icon-button {
     justify-self: end;
     grid-row: 1;
+  }
+
+  .event-settings-list div {
+    grid-template-columns: 1fr;
   }
 
   .expense-actions {

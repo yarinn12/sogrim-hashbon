@@ -46,3 +46,18 @@ test("expense payer amounts auto-fill the remaining total while staying editable
   assert.match(app, /syncExpensePayerAmountInputs/);
   assert.match(app, /addPayerToExpenseDraft/);
 });
+
+test("event screen moves secondary management into focused windows", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const styles = await readFile("styles.css", "utf8");
+
+  assert.match(app, /eventDialog/);
+  assert.match(app, /renderEventDialog/);
+  assert.match(app, /data-action="open-event-participants"/);
+  assert.match(app, /data-action="open-event-share"/);
+  assert.match(app, /data-action="open-event-settings"/);
+  assert.match(app, /data-action="close-event-dialog"/);
+  assert.match(app, /event-modal-backdrop/);
+  assert.match(styles, /\.event-command-grid/);
+  assert.match(styles, /\.event-modal-backdrop/);
+});

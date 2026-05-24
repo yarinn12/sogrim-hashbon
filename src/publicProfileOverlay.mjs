@@ -177,7 +177,7 @@ function getScreenContext(screen, profile) {
       helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
       actions: [
         { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "שתף קישור", action: "copy-invite" },
+        { label: "שתף קישור", action: "open-event-share" },
         { label: "סגור חשבון", action: "settle" }
       ]
     };
@@ -227,7 +227,8 @@ function enhanceEventScreen() {
   screen.classList.add("product-event-screen");
 
   const summary = screen.querySelector(".summary-strip");
-  if (summary && !screen.querySelector(".product-event-command")) {
+  const hasNativeCommandGrid = screen.querySelector(".event-command-grid");
+  if (summary && !hasNativeCommandGrid && !screen.querySelector(".product-event-command")) {
     const eventName = getScreenTitle(screen) || "האירוע הזה";
     summary.insertAdjacentHTML(
       "afterend",
@@ -239,7 +240,7 @@ function enhanceEventScreen() {
         </div>
         <div class="product-command-actions">
           <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-          <button class="secondary-button" type="button" data-public-click="copy-invite">שתף קישור</button>
+          <button class="secondary-button" type="button" data-public-click="open-event-share">שתף קישור</button>
           <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
         </div>
       </section>`
@@ -251,7 +252,7 @@ function enhanceEventScreen() {
       "beforeend",
       `<div class="product-sticky-actions" aria-label="פעולות מהירות">
         <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-        <button class="secondary-button" type="button" data-public-click="copy-invite">שתף קישור</button>
+        <button class="secondary-button" type="button" data-public-click="open-event-share">שתף קישור</button>
         <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
       </div>`
     );

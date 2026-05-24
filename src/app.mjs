@@ -60,6 +60,7 @@ let state = syncLocalProfile(loadState());
 let screen = { name: "home" };
 let newEventDraft = null;
 let expenseDraft = null;
+let eventDialog = null;
 let groupDraft = null;
 let editingGroupDraft = null;
 let notice = "";
@@ -520,7 +521,9 @@ function renderEvent(event) {
         <div class="summary-item"><span>עריכה</span><strong>${editStatus}</strong></div>
       </section>
 
-      <section class="panel permissions-panel">
+      ${renderEventCommandGrid(event)}
+
+      <section class="panel permissions-panel event-inline-panel" hidden>
         <div class="section-title-row">
           <div>
             <h2>הרשאות</h2>
@@ -532,7 +535,7 @@ function renderEvent(event) {
         </div>
       </section>
 
-      <section class="panel invite-panel">
+      <section class="panel invite-panel event-inline-panel" hidden>
         <h2>קישור הזמנה</h2>
         ${renderInviteStatus()}
         <div class="invite-link-row">
@@ -560,6 +563,7 @@ function renderEvent(event) {
       </section>
 
       ${expenseDraft?.eventId === event.id ? renderExpenseForm(event) : ""}
+      ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
 
       <section class="section">
         <h2>הוצאות</h2>
@@ -573,6 +577,140 @@ function renderEvent(event) {
       </section>
     </section>
   `;
+}
+
+function renderEventCommandGrid(event) {
+  const canEdit = canCurrentParticipantEdit(event);
+
+  return `
+    <section class="event-command-grid" aria-label="פעולות אירוע">
+      <button class="primary-button event-command-card" data-action="show-expense-form" data-event-id="${event.id}" ${!canEdit ? "disabled" : ""}>
+        <strong>הוסף הוצאה</strong>
+        <span>פותחים חלון, שומרים וחוזרים לכאן</span>
+      </button>
+      <button class="secondary-button event-command-card" data-action="open-event-participants" data-event-id="${event.id}">
+        <strong>משתתפים</strong>
+        <span>מי באירוע ומי אורח</span>
+      </button>
+      <button class="secondary-button event-command-card" data-action="open-event-share" data-event-id="${event.id}">
+        <strong>שיתוף</strong>
+        <span>קישור הצטרפות לאירוע</span>
+      </button>
+      <button class="secondary-button event-command-card" data-action="open-event-settings" data-event-id="${event.id}">
+        <strong>הגדרות</strong>
+        <span>הרשאות ונעילת עריכה</span>
+      </button>
+      <button class="secondary-button event-command-card" data-action="settle" data-event-id="${event.id}" ${event.expenses.length === 0 ? "disabled" : ""}>
+        <strong>סגור חשבון</strong>
+        <span>כמה להעביר ולמי</span>
+      </button>
+      <button class="secondary-button event-command-card" data-action="duplicate-event" data-event-id="${event.id}">
+        <strong>אירוע דומה</strong>
+        <span>מתחילים מהר מהמבנה הזה</span>
+      </button>
+    </section>
+  `;
+}
+
+function renderEventDialog(event) {
+  if (!eventDialog || eventDialog.eventId !== event.id) return "";
+
+  if (eventDialog.kind === "participants") return renderEventParticipantsDialog(event);
+  if (eventDialog.kind === "share") return renderEventShareDialog(event);
+  if (eventDialog.kind === "settings") return renderEventSettingsDialog(event);
+
+  return "";
+}
+
+function renderEventDialogShell({ eyebrow, title, description, body }) {
+  return `
+    <section class="event-modal-backdrop" aria-label="${escapeAttribute(title)}">
+      <section class="panel event-modal" role="dialog" aria-modal="true" aria-labelledby="event-modal-title">
+        <div class="event-modal-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(eyebrow)}</p>
+            <h2 id="event-modal-title">${escapeHtml(title)}</h2>
+            ${description ? `<p class="muted">${escapeHtml(description)}</p>` : ""}
+          </div>
+          <button class="icon-button" data-action="close-event-dialog" title="סגור">×</button>
+        </div>
+        <div class="event-modal-body">
+          ${body}
+        </div>
+      </section>
+    </section>
+  `;
+}
+
+function renderEventParticipantsDialog(event) {
+  const canEdit = canCurrentParticipantEdit(event);
+
+  return renderEventDialogShell({
+    eyebrow: "משתתפים",
+    title: "מי נמצא באירוע",
+    description: "מסמנים רק את מי שהיה חלק מהאירוע הזה.",
+    body: `
+      <section class="event-window-section">
+        ${renderParticipantChecks(event.participantIds, "event-participant", event)}
+      </section>
+      <div class="inline-actions section">
+        <input class="guest-input" data-action="event-guest-name" placeholder="שם אורח" ${!canEdit ? "disabled" : ""} />
+        <button class="secondary-button" data-action="event-add-guest" data-event-id="${event.id}" ${!canEdit ? "disabled" : ""}>הוסף אורח</button>
+      </div>
+    `
+  });
+}
+
+function renderEventShareDialog(event) {
+  const inviteUrl = buildEventInviteUrl(runtimeConfig.publicUrl || window.location.href, event.id);
+
+  return renderEventDialogShell({
+    eyebrow: "שיתוף",
+    title: "קישור הצטרפות",
+    description: "מי שמקבל את הקישור נכנס לאירוע הזה עם הפרופיל שלו.",
+    body: `
+      ${renderInviteStatus()}
+      <div class="invite-link-row">
+        <input readonly value="${escapeAttribute(inviteUrl)}" />
+        <button class="secondary-button" data-action="copy-invite" data-event-id="${event.id}">העתק</button>
+      </div>
+    `
+  });
+}
+
+function renderEventSettingsDialog(event) {
+  const canManage = canCurrentParticipantManage(event);
+  const adminNames =
+    eventAdminIds(state, event).map(participantName).join(", ") || "אין מנהל";
+  const editStatus = event.locked
+    ? "נעול"
+    : event.adminsCanEditOnly
+      ? "רק מנהלים"
+      : "כולם";
+
+  return renderEventDialogShell({
+    eyebrow: "הגדרות",
+    title: "ניהול האירוע",
+    description: "כאן מחליטים מי יכול לערוך ומתי סוגרים שינויים.",
+    body: `
+      <div class="event-settings-list">
+        <div>
+          <span>מנהל</span>
+          <strong>${escapeHtml(adminNames)}</strong>
+        </div>
+        <div>
+          <span>מצב עריכה</span>
+          <strong>${escapeHtml(editStatus)}</strong>
+        </div>
+      </div>
+      <div class="actions section">
+        <button class="secondary-button" data-action="toggle-admin-edit" data-event-id="${event.id}" ${!canManage || event.locked ? "disabled" : ""}>
+          ${event.adminsCanEditOnly ? "אפשר לכולם לערוך" : "רק מנהלים עורכים"}
+        </button>
+        <button class="secondary-button" data-action="toggle-lock" data-event-id="${event.id}" ${!canManage ? "disabled" : ""}>${event.locked ? "פתח עריכה" : "נעל עריכה"}</button>
+      </div>
+    `
+  });
 }
 
 function renderInviteStatus() {
@@ -797,6 +935,15 @@ function renderParticipantChecks(selectedIds, action, event = null) {
   `;
 }
 
+function openEventDialog(eventId, kind) {
+  const event = getEvent(eventId);
+  if (!event) return;
+
+  expenseDraft = null;
+  eventDialog = { eventId, kind };
+  render();
+}
+
 async function handleClick(event) {
   const target = event.target.closest("[data-action]");
   if (!target) return;
@@ -807,6 +954,7 @@ async function handleClick(event) {
     screen = { name: "home" };
     newEventDraft = null;
     expenseDraft = null;
+    eventDialog = null;
     groupDraft = null;
     editingGroupDraft = null;
     render();
@@ -828,6 +976,7 @@ async function handleClick(event) {
     screen = { name: "home" };
     newEventDraft = null;
     expenseDraft = null;
+    eventDialog = null;
     groupDraft = null;
     editingGroupDraft = null;
     render();
@@ -836,6 +985,7 @@ async function handleClick(event) {
   if (action === "new-event") {
     screen = { name: "new-event" };
     newEventDraft = null;
+    eventDialog = null;
     editingGroupDraft = null;
     render();
   }
@@ -843,6 +993,7 @@ async function handleClick(event) {
   if (action === "groups") {
     screen = { name: "groups" };
     groupDraft = null;
+    eventDialog = null;
     editingGroupDraft = null;
     render();
   }
@@ -850,6 +1001,7 @@ async function handleClick(event) {
   if (action === "open-event") {
     screen = { name: "event", eventId: target.dataset.eventId };
     expenseDraft = null;
+    eventDialog = null;
     editingGroupDraft = null;
     render();
   }
@@ -899,6 +1051,23 @@ async function handleClick(event) {
     addGuestToEvent(target.dataset.eventId);
   }
 
+  if (action === "open-event-participants") {
+    openEventDialog(target.dataset.eventId, "participants");
+  }
+
+  if (action === "open-event-share") {
+    openEventDialog(target.dataset.eventId, "share");
+  }
+
+  if (action === "open-event-settings") {
+    openEventDialog(target.dataset.eventId, "settings");
+  }
+
+  if (action === "close-event-dialog") {
+    eventDialog = null;
+    render();
+  }
+
   if (action === "copy-invite") {
     copyInviteLink(target.dataset.eventId);
   }
@@ -921,12 +1090,16 @@ async function handleClick(event) {
 
   if (action === "show-expense-form") {
     const event = getEvent(target.dataset.eventId);
-    if (event && canCurrentParticipantEdit(event)) startExpenseDraft(target.dataset.eventId);
+    if (event && canCurrentParticipantEdit(event)) {
+      eventDialog = null;
+      startExpenseDraft(target.dataset.eventId);
+    }
   }
 
   if (action === "edit-expense") {
     const event = getEvent(target.dataset.eventId);
     if (event && canCurrentParticipantEdit(event)) {
+      eventDialog = null;
       startExpenseDraft(target.dataset.eventId, target.dataset.expenseId);
     }
   }
@@ -956,6 +1129,7 @@ async function handleClick(event) {
   }
 
   if (action === "settle") {
+    eventDialog = null;
     prepareSettlement(target.dataset.eventId);
   }
 
@@ -969,6 +1143,7 @@ async function handleClick(event) {
 
   if (action === "back-to-event") {
     screen = { name: "event", eventId: target.dataset.eventId };
+    eventDialog = null;
     render();
   }
 
@@ -1218,7 +1393,9 @@ function dropParticipantFromDrafts(participantId) {
 }
 
 function addGuestToEvent(eventId) {
-  const input = app.querySelector('[data-action="event-guest-name"]');
+  const input =
+    app.querySelector('.event-modal [data-action="event-guest-name"]') ??
+    app.querySelector('[data-action="event-guest-name"]');
   const name = input?.value.trim();
   if (!name) return;
   const event = getEvent(eventId);

@@ -29,8 +29,14 @@ test("public overlay adds a mobile action bar for the next obvious step", async 
   assert.match(overlay, /product-sticky-actions/);
   assert.match(overlay, /goToNativeAction/);
   assert.match(overlay, /show-expense-form/);
-  assert.match(overlay, /copy-invite/);
+  assert.match(overlay, /open-event-share/);
   assert.match(overlay, /settle/);
+});
+
+test("public event overlay does not duplicate the native event command grid", async () => {
+  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+
+  assert.match(overlay, /event-command-grid/);
 });
 
 test("public clarity layer clears starter expense defaults and exposes saved name removal", async () => {
