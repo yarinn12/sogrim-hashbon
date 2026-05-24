@@ -24,7 +24,8 @@ const CACHE_FILES = [
   "/src/publicGoogleAuthLayer.mjs",
   "/src/publicAdvancedWorkflowLayer.mjs",
   "/src/publicJoinEventLayer.mjs",
-  "/src/publicInviteSnapshotLayer.mjs"
+  "/src/publicInviteSnapshotLayer.mjs",
+  "/src/publicEventWorkspaceLayer.mjs"
 ];
 
 self.addEventListener("install", (event) => {
