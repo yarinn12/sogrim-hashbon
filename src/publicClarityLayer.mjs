@@ -178,7 +178,7 @@ function normalizeUserInputPlaceholders(screen) {
   screen
     .querySelectorAll('[data-action="profile-name"], [name="displayName"]')
     .forEach((input) => {
-      input.setAttribute("placeholder", "השם שיופיע לחברים");
+      input.setAttribute("placeholder", "שם פרטי ושם משפחה");
     });
 }
 

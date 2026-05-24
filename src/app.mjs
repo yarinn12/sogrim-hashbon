@@ -42,6 +42,7 @@ import {
 } from "./data/localStore.mjs";
 import {
   ensureNamedParticipant,
+  isFullProfileName,
   normalizeProfileName
 } from "./domain/userProfile.mjs";
 import {
@@ -150,8 +151,8 @@ function renderProfileSetup() {
 
       <section class="panel profile-setup-panel">
         <label class="field">
-          <span>השם שלך</span>
-          <input data-action="profile-name" value="${escapeAttribute(profileNameDraft)}" placeholder="השם שיופיע לחברים" autocomplete="name" autofocus />
+          <span>שם פרטי ושם משפחה</span>
+          <input data-action="profile-name" value="${escapeAttribute(profileNameDraft)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" autofocus />
         </label>
         ${profileError ? `<p class="field-error">${escapeHtml(profileError)}</p>` : ""}
         <button class="primary-button" data-action="save-profile">המשך</button>
@@ -1314,8 +1315,8 @@ async function importStateBackup(file) {
 
 async function saveProfileFromDraft() {
   const displayName = normalizeProfileName(profileNameDraft);
-  if (!displayName) {
-    profileError = "צריך להזין שם כדי להמשיך.";
+  if (!isFullProfileName(displayName)) {
+    profileError = "צריך להזין שם פרטי ושם משפחה כדי להמשיך.";
     render();
     return;
   }

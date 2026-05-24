@@ -4,14 +4,18 @@ import { readFile } from "node:fs/promises";
 
 test("public app asks each visitor for their own saved name", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
   const localStore = await readFile("src/data/localStore.mjs", "utf8");
 
   assert.match(app, /renderProfileSetup/);
   assert.match(app, /data-action="profile-name"/);
   assert.match(app, /data-action="save-profile"/);
   assert.match(app, /data-action="edit-profile"/);
+  assert.match(app, /שם פרטי ושם משפחה/);
+  assert.match(overlay, /שם פרטי ושם משפחה/);
   assert.match(localStore, /LOCAL_PROFILE_KEY/);
   assert.match(localStore, /saveLocalProfile/);
+  assert.match(localStore, /isFullProfileName/);
 });
 
 test("public home screen does not expose local Wi-Fi or beta readiness panels", async () => {
@@ -42,9 +46,9 @@ test("public first run and expense forms do not invent sample people or amounts"
   const brandLayer = await readFile("src/publicBrandLayer.mjs", "utf8");
   const index = await readFile("index.html", "utf8");
 
-  assert.match(app, /placeholder="השם שיופיע לחברים"/);
-  assert.match(clarityLayer, /השם שיופיע לחברים/);
-  assert.match(nameCleanup, /השם שיופיע לחברים/);
+  assert.match(app, /placeholder="שם פרטי ושם משפחה"/);
+  assert.match(clarityLayer, /שם פרטי ושם משפחה/);
+  assert.match(nameCleanup, /שם פרטי ושם משפחה/);
   assert.match(nameCleanup, /clearStarterExpenseDefaults/);
   assert.match(nameCleanup, /product-saved-names-panel/);
   assert.match(index, /publicNameCleanup\.mjs/);

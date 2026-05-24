@@ -2,9 +2,13 @@ export function normalizeProfileName(value) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
 }
 
+export function isFullProfileName(value) {
+  return normalizeProfileName(value).split(" ").filter(Boolean).length >= 2;
+}
+
 export function ensureNamedParticipant(state, profile, eventId = "") {
   const displayName = normalizeProfileName(profile?.displayName);
-  if (!displayName) return state;
+  if (!isFullProfileName(displayName)) return state;
 
   const existingParticipant = state.participants.find(
     (participant) => sameName(participant.displayName, displayName)

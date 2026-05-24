@@ -7,6 +7,7 @@ import {
 import { parseInviteEventId } from "./domain/inviteLinks.mjs";
 import {
   ensureNamedParticipant,
+  isFullProfileName,
   normalizeProfileName
 } from "./domain/userProfile.mjs";
 
@@ -298,8 +299,8 @@ function renderProfileGate(defaultName = "") {
         <h2>איך קוראים לך?</h2>
         <p class="muted">נשמור את השם במכשיר הזה כדי שהמסך שלך יהיה אישי. בהמשך נחבר גם Google.</p>
         <label class="field">
-          <span>השם שלך</span>
-          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="השם שיופיע לחברים" autocomplete="name" autofocus />
+          <span>שם פרטי ושם משפחה</span>
+          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" autofocus />
         </label>
         <p class="field-error" data-public-profile-error hidden></p>
         <button class="primary-button" type="submit">התחל לסגור חשבון</button>
@@ -320,9 +321,9 @@ async function saveProfile(event) {
   const error = form.querySelector("[data-public-profile-error]");
   const displayName = normalizeProfileName(new FormData(form).get("displayName"));
 
-  if (!displayName) {
+  if (!isFullProfileName(displayName)) {
     error.hidden = false;
-    error.textContent = "צריך להזין שם כדי להמשיך.";
+    error.textContent = "צריך להזין שם פרטי ושם משפחה כדי להמשיך.";
     return;
   }
 

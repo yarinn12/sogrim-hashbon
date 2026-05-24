@@ -4,7 +4,10 @@ import {
   applyLocalParticipantId,
   toSharedState
 } from "./localIdentity.mjs";
-import { normalizeProfileName } from "../domain/userProfile.mjs";
+import {
+  isFullProfileName,
+  normalizeProfileName
+} from "../domain/userProfile.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const LOCAL_PARTICIPANT_KEY = "settle-friends-current-participant";
@@ -175,7 +178,7 @@ export function loadLocalProfile() {
   try {
     const profile = JSON.parse(raw);
     const displayName = normalizeProfileName(profile.displayName);
-    if (!displayName || !profile.participantId) return null;
+    if (!isFullProfileName(displayName) || !profile.participantId) return null;
     return { participantId: profile.participantId, displayName };
   } catch {
     return null;
@@ -184,7 +187,7 @@ export function loadLocalProfile() {
 
 export function saveLocalProfile(profile) {
   const displayName = normalizeProfileName(profile.displayName);
-  if (!displayName || !profile.participantId) return null;
+  if (!isFullProfileName(displayName) || !profile.participantId) return null;
 
   const nextProfile = { participantId: profile.participantId, displayName };
   window.localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(nextProfile));
