@@ -17,15 +17,17 @@ export function formatMoney(amount) {
 }
 
 export function splitEvenly(amount, participantIds) {
-  if (participantIds.length === 0) {
+  const uniqueParticipantIds = [...new Set(participantIds.filter(Boolean))];
+
+  if (uniqueParticipantIds.length === 0) {
     throw new Error("Cannot split an amount without participants.");
   }
 
-  const baseShare = Math.floor(amount / participantIds.length);
-  let remainder = amount - baseShare * participantIds.length;
+  const baseShare = Math.floor(amount / uniqueParticipantIds.length);
+  let remainder = amount - baseShare * uniqueParticipantIds.length;
   const shares = {};
 
-  for (const participantId of participantIds) {
+  for (const participantId of uniqueParticipantIds) {
     const extra = remainder > 0 ? 1 : 0;
     shares[participantId] = baseShare + extra;
     remainder -= extra;
