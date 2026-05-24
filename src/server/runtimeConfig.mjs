@@ -4,12 +4,16 @@ export function getRuntimeConfig(env = process.env, requestOrigin = "") {
   const publicUrl = normalizeUrl(env.APP_PUBLIC_URL || requestOrigin);
   const supabaseUrl = normalizeUrl(env.SUPABASE_URL ?? "");
   const supabaseAnonKey = env.SUPABASE_ANON_KEY ?? "";
+  const googleClientId = String(env.GOOGLE_CLIENT_ID ?? "").trim();
   const cloudStorageReady = Boolean(supabaseUrl && supabaseAnonKey);
   const publicUrlReady = isPublicHttpUrl(publicUrl);
-  const googleAuthReady = Boolean(env.GOOGLE_CLIENT_ID);
+  const googleAuthReady = Boolean(googleClientId);
 
   return {
     publicUrl,
+    auth: {
+      googleClientId
+    },
     storage: cloudStorageReady
       ? {
           mode: "supabase",
