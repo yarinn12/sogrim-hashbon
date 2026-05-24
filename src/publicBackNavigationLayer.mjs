@@ -18,6 +18,7 @@ function setupPublicBackNavigation() {
 
   window.addEventListener("popstate", handleBrowserBack);
   document.addEventListener("click", handlePublicBackClick);
+  document.addEventListener("click", handleNativeNavigationClick);
 }
 
 function scheduleSync() {
@@ -49,7 +50,11 @@ function installBackButton() {
 
   header
     .querySelectorAll(':scope > .icon-button[data-action="home"], :scope > .icon-button[data-action="back-to-event"]')
-    .forEach((button) => button.remove());
+    .forEach((button) => {
+      button.hidden = true;
+      button.setAttribute("aria-hidden", "true");
+      button.tabIndex = -1;
+    });
 
   let button = header.querySelector('[data-public-action="app-back"]');
   if (!button && !header.querySelector('[data-action="go-back"]')) {
@@ -111,6 +116,29 @@ function handlePublicBackClick(event) {
 
   event.preventDefault();
   goBack();
+}
+
+function handleNativeNavigationClick(event) {
+  const action = event.target.closest("[data-action]")?.dataset.action;
+  if (!isNavigationAction(action)) return;
+
+  setTimeout(syncBackNavigation, 0);
+  setTimeout(syncBackNavigation, 160);
+}
+
+function isNavigationAction(action) {
+  return [
+    "home",
+    "new-event",
+    "groups",
+    "open-event",
+    "back-to-event",
+    "settle",
+    "show-expense-form",
+    "edit-expense",
+    "cancel-expense",
+    "close-event-dialog"
+  ].includes(action);
 }
 
 function handleBrowserBack(event) {
