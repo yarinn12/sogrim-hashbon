@@ -5,6 +5,11 @@ import {
   formatEventReport,
   formatSettlementSummary
 } from "./domain/settlementSummary.mjs";
+import {
+  balancePayerAmounts,
+  createPayerDraft,
+  markPayerAmountEdited
+} from "./domain/expenseDraft.mjs";
 import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteUrl,
@@ -12,12 +17,12 @@ import {
 } from "./domain/inviteLinks.mjs";
 import {
   archiveGroup,
+  canRemoveParticipant,
   createGroup,
   duplicateEvent,
-  joinGuestToEvent,
+  removeParticipant,
   removeExpense,
   setEventAdminsCanEditOnly,
-  switchCurrentParticipant,
   updateGroup,
   updateTransferStatus,
   updateExpense
@@ -30,10 +35,15 @@ import {
   loadState,
   loadRuntimeConfig,
   loadSharedState,
+  loadLocalProfile,
   resetSharedState,
+  saveLocalProfile,
   saveSharedState
 } from "./data/localStore.mjs";
-import { getLaunchReadinessItems } from "./domain/launchReadiness.mjs";
+import {
+  ensureNamedParticipant,
+  normalizeProfileName
+} from "./domain/userProfile.mjs";
 import {
   canEditEvent,
   canManageEventSettings,
@@ -42,15 +52,16 @@ import {
 
 const app = document.querySelector("#app");
 
-let state = loadState();
+let localProfile = loadLocalProfile();
+let profileNameDraft = localProfile?.displayName ?? "";
+let profileError = "";
+let state = syncLocalProfile(loadState());
 let screen = { name: "home" };
 let newEventDraft = null;
 let expenseDraft = null;
 let groupDraft = null;
 let editingGroupDraft = null;
-let inviteGuestName = "";
 let notice = "";
-let networkInfo = { lanUrls: [] };
 let runtimeConfig = {
   publicUrl: "",
   storage: { mode: "local" },
@@ -68,8 +79,9 @@ app.addEventListener("input", handleInput);
 app.addEventListener("change", handleChange);
 
 render();
-loadSharedState().then((sharedState) => {
-  state = sharedState;
+loadSharedState().then(async (sharedState) => {
+  state = syncLocalProfile(sharedState);
+  if (localProfile) await saveSharedState(state);
   openInvitedEventFromUrl();
   render();
 });
@@ -77,10 +89,14 @@ loadRuntimeConfig().then((config) => {
   runtimeConfig = config;
   render();
 });
-loadNetworkInfo();
 registerServiceWorker();
 
 function render() {
+  if (!localProfile || screen.name === "profile") {
+    app.innerHTML = renderProfileSetup();
+    return;
+  }
+
   if (screen.name === "home") {
     app.innerHTML = renderHome();
     return;
@@ -113,6 +129,37 @@ function render() {
   }
 }
 
+function renderProfileSetup() {
+  const invitedEventId = parseInviteEventId(window.location.href);
+  const invitedEvent = invitedEventId ? getEvent(invitedEventId) : null;
+  const title = invitedEvent ? "קיבלת קישור לאירוע" : "איך קוראים לך?";
+  const helper = invitedEvent
+    ? `נכניס אותך אל "${invitedEvent.name}" עם השם שתבחר. בפעם הבאה נזכור אותך במכשיר הזה.`
+    : "נשמור את השם רק בדפדפן הזה, כדי שכל אחד יראה את האפליקציה בתור עצמו.";
+
+  return `
+    <section class="screen profile-setup-screen">
+      <header class="top">
+        <div class="brand">
+          <p class="eyebrow">סוגרים חשבון</p>
+          <h1>${title}</h1>
+          <p class="muted">${escapeHtml(helper)}</p>
+        </div>
+      </header>
+      ${renderNotice()}
+
+      <section class="panel profile-setup-panel">
+        <label class="field">
+          <span>השם שלך</span>
+          <input data-action="profile-name" value="${escapeAttribute(profileNameDraft)}" placeholder="השם שיופיע לחברים" autocomplete="name" autofocus />
+        </label>
+        ${profileError ? `<p class="field-error">${escapeHtml(profileError)}</p>` : ""}
+        <button class="primary-button" data-action="save-profile">המשך</button>
+      </section>
+    </section>
+  `;
+}
+
 function renderHome() {
   const sortedEvents = [...state.events].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const events = filterEvents(
@@ -129,7 +176,6 @@ function renderHome() {
           <h1>מי שילם, מי חייב, ולמי מעבירים</h1>
           <p class="muted">שלום ${escapeHtml(participantName(state.currentParticipantId))}</p>
         </div>
-        <button class="icon-button" data-action="reset" title="איפוס דמו">↺</button>
       </header>
       ${renderNotice()}
 
@@ -138,25 +184,7 @@ function renderHome() {
         <button class="secondary-button" data-action="groups">קבוצות</button>
       </div>
 
-      <section class="panel profile-panel">
-        <label class="field">
-          <span>מי אני עכשיו?</span>
-          <select data-action="current-participant">
-            ${state.participants
-              .map(
-                (participant) => `
-                  <option value="${participant.id}" ${participant.id === state.currentParticipantId ? "selected" : ""}>
-                    ${escapeHtml(participant.displayName)}
-                  </option>
-                `
-              )
-              .join("")}
-          </select>
-        </label>
-        <p class="muted">בשלב הזה זה מחליף משתמש לצורך בדיקות. בהמשך זה יוחלף בהתחברות Google.</p>
-      </section>
-      ${renderNetworkPanel()}
-      ${renderLaunchReadinessPanel()}
+      ${renderProfileSummary()}
       ${renderBackupPanel()}
 
       <section class="summary-strip">
@@ -190,62 +218,19 @@ function renderNotice() {
   return notice ? `<p class="notice">${escapeHtml(notice)}</p>` : "";
 }
 
-function renderNetworkPanel() {
-  if (!networkInfo.lanUrls?.length) return "";
-
+function renderProfileSummary() {
   return `
-    <section class="panel network-panel">
-      <h2>פתיחה בטלפון</h2>
-      <p class="muted">אם הטלפון על אותו Wi‑Fi, פתח בו את אחת הכתובות האלה:</p>
-      <div class="stack">
-        ${networkInfo.lanUrls
-          .map(
-            (url) => `
-              <div class="network-url-row">
-                <input readonly value="${escapeAttribute(url)}" />
-                <button class="secondary-button" data-action="copy-network-url" data-url="${escapeAttribute(url)}">העתק</button>
-              </div>
-            `
-          )
-          .join("")}
-      </div>
-    </section>
-  `;
-}
-
-function renderLaunchReadinessPanel() {
-  const items = getLaunchReadinessItems(runtimeConfig);
-  const ready = runtimeConfig.launch.shareLinksReady;
-
-  return `
-    <section class="panel launch-panel">
-      <div class="section-title-row">
+    <section class="panel profile-panel">
+      <div class="profile-summary">
+        ${renderAvatar(state.currentParticipantId)}
         <div>
-          <h2>${ready ? "מוכן לבטא עם חברים" : "הכנה לשליחה לחברים"}</h2>
-          <p class="muted">${ready ? "יש כתובת ציבורית ושמירה משותפת, אפשר להתחיל ניסוי אמיתי." : "האפליקציה עובדת כאן. כדי לשלוח קישור אמיתי צריך כתובת ציבורית ושמירה בענן."}</p>
+          <span>אתה נכנס בתור</span>
+          <strong>${escapeHtml(participantName(state.currentParticipantId))}</strong>
         </div>
-        <span class="status-chip ${ready ? "is-open" : "is-locked"}">${ready ? "בטא" : "מקומי"}</span>
-      </div>
-      <div class="readiness-grid">
-        ${items
-          .map(
-            (item) => `
-              <div class="readiness-item is-${item.status}">
-                <span>${escapeHtml(item.label)}</span>
-                <strong>${readinessLabel(item.status)}</strong>
-              </div>
-            `
-          )
-          .join("")}
+        <button class="secondary-button" data-action="edit-profile">החלף שם</button>
       </div>
     </section>
   `;
-}
-
-function readinessLabel(status) {
-  if (status === "ready") return "מוכן";
-  if (status === "optional") return "בהמשך";
-  return "חסר";
 }
 
 function renderBackupPanel() {
@@ -320,6 +305,8 @@ function renderGroups() {
           }
         </div>
       </section>
+
+      ${renderKnownParticipantsPanel()}
     </section>
   `;
 }
@@ -376,6 +363,49 @@ function renderGroupRow(group) {
         <button class="secondary-button" data-action="edit-group" data-group-id="${group.id}">עריכה</button>
         <button class="secondary-button danger-button" data-action="archive-group" data-group-id="${group.id}">ארכוב</button>
       </div>
+    </article>
+  `;
+}
+
+function renderKnownParticipantsPanel() {
+  return `
+    <section class="panel section known-participants-panel">
+      <div class="section-title-row">
+        <div>
+          <h2>שמות שנשמרו</h2>
+          <p class="muted">האפליקציה לא ממציאה אנשים. אלה רק שמות שהכנסת, ואפשר להסיר שם שלא מופיע בהוצאה קיימת.</p>
+        </div>
+      </div>
+      <div class="stack">
+        ${
+          state.participants.length
+            ? state.participants.map(renderKnownParticipantRow).join("")
+            : `<div class="empty-state">עדיין לא נשמרו שמות</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderKnownParticipantRow(participant) {
+  const isCurrent = participant.id === state.currentParticipantId;
+  const canRemove = canRemoveParticipant(state, participant.id);
+  const helper = isCurrent
+    ? "זה השם שלך במכשיר הזה"
+    : canRemove
+      ? "לא מופיע בהוצאות, אפשר להסיר"
+      : "מופיע בהוצאה קיימת";
+
+  return `
+    <article class="group-row known-participant-row">
+      <div class="known-participant-main">
+        ${renderAvatar(participant.id)}
+        <span>
+          <strong>${escapeHtml(participant.displayName)}</strong>
+          <small>${helper}</small>
+        </span>
+      </div>
+      <button class="secondary-button danger-button" data-action="remove-participant" data-participant-id="${participant.id}" ${canRemove ? "" : "disabled"}>הסר</button>
     </article>
   `;
 }
@@ -515,10 +545,6 @@ function renderEvent(event) {
           <input readonly value="${escapeAttribute(inviteUrl)}" />
           <button class="secondary-button" data-action="copy-invite" data-event-id="${event.id}">העתק</button>
         </div>
-        <div class="inline-actions section">
-          <input class="guest-input" data-action="invite-guest-name" placeholder="שם אורח להצטרפות" value="${escapeAttribute(inviteGuestName)}" ${!canEdit ? "disabled" : ""} />
-          <button class="primary-button" data-action="join-invite-guest" data-event-id="${event.id}" ${!canEdit ? "disabled" : ""}>הצטרף כאורח</button>
-        </div>
       </section>
 
       <section class="panel">
@@ -570,15 +596,24 @@ function renderExpenseForm(event) {
   const participants = eventParticipants(event);
 
   return `
-    <section class="panel section">
-      <h2>${expenseDraft.id ? "עריכת הוצאה" : "הוספת הוצאה"}</h2>
+    <section class="expense-modal-backdrop" aria-label="חלון הוצאה">
+      <section class="panel expense-modal" role="dialog" aria-modal="true" aria-labelledby="expense-modal-title">
+        <div class="expense-modal-header">
+          <div>
+            <p class="eyebrow">הוצאה באירוע</p>
+            <h2 id="expense-modal-title">${expenseDraft.id ? "עריכת הוצאה" : "הוספת הוצאה"}</h2>
+            <p class="muted">ממלאים את ההוצאה כאן, שומרים, וחוזרים ישר למסך האירוע.</p>
+          </div>
+          <button class="icon-button" data-action="cancel-expense" title="סגור">×</button>
+        </div>
+
       <label class="field">
-        <span>שם</span>
-        <input data-action="expense-name" value="${escapeAttribute(expenseDraft.name)}" />
+        <span>שם ההוצאה</span>
+        <input data-action="expense-name" value="${escapeAttribute(expenseDraft.name)}" placeholder="שם ההוצאה" />
       </label>
       <label class="field">
         <span>סכום כולל</span>
-        <input data-action="expense-total" inputmode="decimal" value="${escapeAttribute(expenseDraft.total)}" />
+        <input data-action="expense-total" inputmode="decimal" value="${escapeAttribute(expenseDraft.total)}" placeholder="0" />
       </label>
 
       <section class="section">
@@ -599,7 +634,7 @@ function renderExpenseForm(event) {
                       )
                       .join("")}
                   </select>
-                  <input data-action="expense-payer-amount" data-index="${index}" inputmode="decimal" value="${escapeAttribute(payer.amount)}" />
+                  <input data-action="expense-payer-amount" data-index="${index}" inputmode="decimal" value="${escapeAttribute(payer.amount)}" placeholder="כמה שילם" />
                   ${
                     expenseDraft.payers.length > 1
                       ? `<button class="secondary-button" data-action="remove-payer" data-index="${index}">הסר</button>`
@@ -624,6 +659,7 @@ function renderExpenseForm(event) {
         <button class="primary-button" data-action="save-expense" data-event-id="${event.id}">שמור הוצאה</button>
         <button class="secondary-button" data-action="cancel-expense">ביטול</button>
       </div>
+      </section>
     </section>
   `;
 }
@@ -782,6 +818,17 @@ async function handleClick(event) {
     render();
   }
 
+  if (action === "save-profile") {
+    await saveProfileFromDraft();
+  }
+
+  if (action === "edit-profile") {
+    screen = { name: "profile" };
+    profileNameDraft = localProfile?.displayName ?? participantName(state.currentParticipantId);
+    profileError = "";
+    render();
+  }
+
   if (action === "reset") {
     state = await resetSharedState();
     screen = { name: "home" };
@@ -846,6 +893,10 @@ async function handleClick(event) {
     archiveGroupInState(target.dataset.groupId);
   }
 
+  if (action === "remove-participant") {
+    removeParticipantFromState(target.dataset.participantId);
+  }
+
   if (action === "create-event") {
     createEventFromDraft();
   }
@@ -866,20 +917,12 @@ async function handleClick(event) {
     copyEventReport(target.dataset.eventId);
   }
 
-  if (action === "copy-network-url") {
-    copyText(target.dataset.url, "כתובת הטלפון הועתקה.");
-  }
-
   if (action === "export-state") {
     exportStateBackup();
   }
 
   if (action === "toggle-admin-edit") {
     toggleAdminEditMode(target.dataset.eventId);
-  }
-
-  if (action === "join-invite-guest") {
-    joinInviteGuest(target.dataset.eventId);
   }
 
   if (action === "show-expense-form") {
@@ -900,14 +943,13 @@ async function handleClick(event) {
   }
 
   if (action === "add-payer") {
-    const event = getEvent(expenseDraft.eventId);
-    const firstParticipantId = event?.participantIds[0] ?? state.currentParticipantId;
-    expenseDraft.payers.push({ participantId: firstParticipantId, amount: "0" });
+    addPayerToExpenseDraft();
     render();
   }
 
   if (action === "remove-payer") {
     expenseDraft.payers.splice(Number(target.dataset.index), 1);
+    rebalanceExpenseDraftPayers();
     render();
   }
 
@@ -949,21 +991,31 @@ function handleInput(event) {
   const target = event.target;
   const action = target.dataset.action;
 
+  if (action === "profile-name") {
+    profileNameDraft = target.value;
+    profileError = "";
+  }
   if (action === "new-event-name") newEventDraft.name = target.value;
   if (action === "new-event-guest-name") newEventDraft.guestName = target.value;
   if (action === "group-name") groupDraft.name = target.value;
   if (action === "group-member-name") groupDraft.newMemberName = target.value;
   if (action === "edit-group-name") editingGroupDraft.name = target.value;
   if (action === "edit-group-member-name") editingGroupDraft.newMemberName = target.value;
-  if (action === "invite-guest-name") inviteGuestName = target.value;
   if (action === "event-search") {
     eventSearch = target.value;
     render();
   }
   if (action === "expense-name") expenseDraft.name = target.value;
-  if (action === "expense-total") expenseDraft.total = target.value;
+  if (action === "expense-total") {
+    expenseDraft.total = target.value;
+    rebalanceExpenseDraftPayers();
+    syncExpensePayerAmountInputs();
+  }
   if (action === "expense-payer-amount") {
-    expenseDraft.payers[Number(target.dataset.index)].amount = target.value;
+    const index = Number(target.dataset.index);
+    expenseDraft.payers[index] = markPayerAmountEdited(expenseDraft.payers[index], target.value);
+    rebalanceExpenseDraftPayers();
+    syncExpensePayerAmountInputs(index);
   }
 }
 
@@ -975,13 +1027,6 @@ async function handleChange(event) {
     const group = state.groups.find((item) => item.id === target.value);
     newEventDraft.groupId = target.value;
     newEventDraft.participantIds = group?.memberIds ? [...group.memberIds] : [state.currentParticipantId];
-    render();
-  }
-
-  if (action === "current-participant") {
-    state = switchCurrentParticipant(state, target.value);
-    notice = `עכשיו אתה פועל בתור ${participantName(state.currentParticipantId)}.`;
-    persistState();
     render();
   }
 
@@ -1139,6 +1184,45 @@ function archiveGroupInState(groupId) {
   render();
 }
 
+function removeParticipantFromState(participantId) {
+  const participant = state.participants.find((item) => item.id === participantId);
+  if (!participant) return;
+
+  if (!canRemoveParticipant(state, participantId)) {
+    notice = participantId === state.currentParticipantId
+      ? "אי אפשר להסיר את השם שמחובר במכשיר הזה. אפשר להחליף שם מהמסך הראשי."
+      : "אי אפשר להסיר שם שכבר מופיע בהוצאות. קודם עורכים או מוחקים את ההוצאות שלו.";
+    render();
+    return;
+  }
+
+  state = removeParticipant(state, participantId);
+  dropParticipantFromDrafts(participantId);
+  notice = `${participant.displayName} הוסר מהשמות השמורים.`;
+  persistState();
+  render();
+}
+
+function dropParticipantFromDrafts(participantId) {
+  if (groupDraft) {
+    groupDraft.memberIds = groupDraft.memberIds.filter((id) => id !== participantId);
+  }
+
+  if (editingGroupDraft) {
+    editingGroupDraft.memberIds = editingGroupDraft.memberIds.filter((id) => id !== participantId);
+    editingGroupDraft.adminIds = editingGroupDraft.adminIds.filter((id) => id !== participantId);
+  }
+
+  if (newEventDraft) {
+    newEventDraft.participantIds = newEventDraft.participantIds.filter((id) => id !== participantId);
+  }
+
+  if (expenseDraft) {
+    expenseDraft.sharedByParticipantIds = expenseDraft.sharedByParticipantIds.filter((id) => id !== participantId);
+    expenseDraft.payers = expenseDraft.payers.filter((payer) => payer.participantId !== participantId);
+  }
+}
+
 function addGuestToEvent(eventId) {
   const input = app.querySelector('[data-action="event-guest-name"]');
   const name = input?.value.trim();
@@ -1235,29 +1319,40 @@ async function importStateBackup(file) {
   render();
 }
 
-function joinInviteGuest(eventId) {
-  const event = getEvent(eventId);
-  const name = inviteGuestName.trim();
-
-  if (!event || !canCurrentParticipantEdit(event)) {
-    notice = editBlockedMessage(event);
+async function saveProfileFromDraft() {
+  const displayName = normalizeProfileName(profileNameDraft);
+  if (!displayName) {
+    profileError = "צריך להזין שם כדי להמשיך.";
     render();
     return;
   }
 
-  if (!name) {
-    notice = "צריך להזין שם אורח.";
-    render();
-    return;
-  }
+  const invitedEventId = parseInviteEventId(window.location.href);
+  const nextState = ensureNamedParticipant(
+    state,
+    {
+      id: localProfile?.participantId ?? makeId("user"),
+      displayName
+    },
+    invitedEventId
+  );
+  const participant = nextState.participants.find(
+    (item) => item.id === nextState.currentParticipantId
+  );
 
-  state = joinGuestToEvent(state, eventId, {
-    id: makeId("guest"),
-    displayName: name
+  state = nextState;
+  localProfile = saveLocalProfile({
+    participantId: state.currentParticipantId,
+    displayName: participant?.displayName ?? displayName
   });
-  inviteGuestName = "";
-  notice = `${name} הצטרף כאורח לאירוע.`;
-  persistState();
+  profileNameDraft = localProfile.displayName;
+  profileError = "";
+  screen = invitedEventId && getEvent(invitedEventId)
+    ? { name: "event", eventId: invitedEventId }
+    : { name: "home" };
+  notice = `נכנסת בתור ${participantName(state.currentParticipantId)}.`;
+
+  await saveSharedState(state);
   render();
 }
 
@@ -1273,7 +1368,9 @@ function startExpenseDraft(eventId, expenseId = null) {
       total: formatMoney(existingExpense.total),
       payers: existingExpense.payers.map((payer) => ({
         participantId: payer.participantId,
-        amount: formatMoney(payer.amount)
+        amount: formatMoney(payer.amount),
+        amountTouched: true,
+        autoAmount: false
       })),
       sharedByParticipantIds: [...existingExpense.sharedByParticipantIds],
       createdByParticipantId: existingExpense.createdByParticipantId,
@@ -1285,13 +1382,53 @@ function startExpenseDraft(eventId, expenseId = null) {
 
   expenseDraft = {
     eventId,
-    name: "מונית",
-    total: "110",
-    payers: [{ participantId: state.currentParticipantId, amount: "110" }],
+    name: "",
+    total: "",
+    payers: [createPayerDraft(state.currentParticipantId)],
     sharedByParticipantIds: [...event.participantIds],
     error: ""
   };
   render();
+}
+
+function addPayerToExpenseDraft() {
+  if (!expenseDraft) return;
+
+  const event = getEvent(expenseDraft.eventId);
+  const participantId = nextExpensePayerId(event);
+  const nextIndex = expenseDraft.payers.length;
+  expenseDraft.payers.push(createPayerDraft(participantId));
+  rebalanceExpenseDraftPayers(nextIndex);
+}
+
+function nextExpensePayerId(event) {
+  const usedPayerIds = new Set(expenseDraft.payers.map((payer) => payer.participantId));
+  const participants = event ? eventParticipants(event) : state.participants;
+  const unusedParticipant = participants.find(
+    (participant) => !usedPayerIds.has(participant.id)
+  );
+
+  return unusedParticipant?.id ?? event?.participantIds[0] ?? state.currentParticipantId;
+}
+
+function rebalanceExpenseDraftPayers(preferredIndex = undefined) {
+  if (!expenseDraft) return;
+
+  expenseDraft.payers = balancePayerAmounts(
+    expenseDraft.total,
+    expenseDraft.payers,
+    preferredIndex
+  );
+}
+
+function syncExpensePayerAmountInputs(skipIndex = null) {
+  app.querySelectorAll('[data-action="expense-payer-amount"]').forEach((input) => {
+    const index = Number(input.dataset.index);
+    if (index === skipIndex || document.activeElement === input) return;
+
+    const amount = expenseDraft?.payers[index]?.amount ?? "";
+    if (input.value !== amount) input.value = amount;
+  });
 }
 
 function saveExpense(eventId) {
@@ -1486,6 +1623,30 @@ function mergePayers(payers) {
   return [...totals.entries()].map(([participantId, amount]) => ({ participantId, amount }));
 }
 
+function syncLocalProfile(nextState) {
+  if (!localProfile) return nextState;
+
+  const invitedEventId = parseInviteEventId(window.location.href);
+  const stateWithProfile = ensureNamedParticipant(
+    nextState,
+    {
+      id: localProfile.participantId,
+      displayName: localProfile.displayName
+    },
+    invitedEventId
+  );
+  const participant = stateWithProfile.participants.find(
+    (item) => item.id === stateWithProfile.currentParticipantId
+  );
+
+  localProfile = saveLocalProfile({
+    participantId: stateWithProfile.currentParticipantId,
+    displayName: participant?.displayName ?? localProfile.displayName
+  });
+  profileNameDraft = localProfile.displayName;
+  return stateWithProfile;
+}
+
 function openInvitedEventFromUrl() {
   const invitedEventId = parseInviteEventId(window.location.href);
   if (!invitedEventId) return;
@@ -1495,17 +1656,6 @@ function openInvitedEventFromUrl() {
     notice = "פתחת אירוע מקישור הזמנה.";
   } else {
     notice = "קישור ההזמנה לא נמצא במידע המקומי.";
-  }
-}
-
-async function loadNetworkInfo() {
-  try {
-    const response = await fetch("/api/network");
-    if (!response.ok) return;
-    networkInfo = await response.json();
-    render();
-  } catch {
-    networkInfo = { lanUrls: [] };
   }
 }
 

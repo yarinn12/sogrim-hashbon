@@ -459,6 +459,39 @@ h3 {
   margin-top: 16px;
 }
 
+.profile-summary {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.profile-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.profile-summary strong {
+  display: block;
+  margin-top: 2px;
+}
+
+.profile-setup-screen {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.profile-setup-panel {
+  margin-top: 18px;
+}
+
+.field-error {
+  color: #b42318;
+  font-weight: 700;
+  margin: -4px 0 14px;
+}
+
 .network-panel {
   margin-top: 16px;
 }
@@ -514,6 +547,17 @@ h3 {
   margin-top: 4px;
 }
 
+.known-participant-main {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.known-participant-main span {
+  min-width: 0;
+}
+
 .expense-actions {
   display: grid;
   gap: 8px;
@@ -549,6 +593,44 @@ h3 {
   grid-template-columns: 1fr 96px auto;
   gap: 8px;
   align-items: center;
+}
+
+.expense-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 4vw, 32px);
+  background: rgba(18, 29, 27, 0.48);
+  backdrop-filter: blur(12px);
+}
+
+.expense-modal {
+  width: min(100%, 720px);
+  max-height: min(92vh, 860px);
+  overflow: auto;
+  box-shadow: var(--shadow-lift);
+}
+
+.expense-modal-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.expense-modal-header h2,
+.expense-modal-header p {
+  margin-bottom: 6px;
+}
+
+.expense-modal-header .icon-button {
+  width: 42px;
+  min-height: 42px;
 }
 
 .transfer-row {
@@ -733,6 +815,14 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .profile-summary {
+    grid-template-columns: auto 1fr;
+  }
+
+  .profile-summary button {
+    grid-column: 1 / -1;
+  }
+
   .readiness-grid {
     grid-template-columns: 1fr;
   }
@@ -760,6 +850,24 @@ h3 {
   .payer-row,
   .expense-row {
     grid-template-columns: 1fr;
+  }
+
+  .expense-modal-backdrop {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .expense-modal {
+    max-height: 94vh;
+  }
+
+  .expense-modal-header {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-modal-header .icon-button {
+    justify-self: end;
+    grid-row: 1;
   }
 
   .expense-actions {

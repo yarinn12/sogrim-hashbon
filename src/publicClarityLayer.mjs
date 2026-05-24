@@ -1,5 +1,7 @@
 const app = document.querySelector("#app");
 const STYLE_ID = "public-clarity-layer-style";
+const STORAGE_KEY = "settle-friends-state";
+const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 
 injectClarityStyle();
 document.addEventListener("click", handlePublicClick);
@@ -18,11 +20,21 @@ function enhanceClarity() {
   const screen = document.querySelector(".screen");
   if (!screen) return;
 
+  normalizeUserInputPlaceholders(screen);
+  clearStarterExpenseDefaults(screen);
+  enhanceSavedNamesManagement(screen);
   enhanceNavigationClarity(screen);
   enhanceEventScreen(screen);
 }
 
 function handlePublicClick(event) {
+  const removeTarget = event.target.closest("[data-public-remove-participant]");
+  if (removeTarget) {
+    event.preventDefault();
+    removeSavedParticipant(removeTarget.dataset.publicRemoveParticipant);
+    return;
+  }
+
   const target = event.target.closest("[data-public-click]");
   if (!target) return;
 
@@ -160,6 +172,183 @@ function enhanceExpenseFormHint(screen) {
       <span>שם, סכום, מי שילם וכמה, ואז מי היה שותף. מי שלא שתה או לא נסע פשוט לא מסומן בתשלום הזה.</span>
     </div>`
   );
+}
+
+function normalizeUserInputPlaceholders(screen) {
+  screen
+    .querySelectorAll('[data-action="profile-name"], [name="displayName"]')
+    .forEach((input) => {
+      input.setAttribute("placeholder", "השם שיופיע לחברים");
+    });
+}
+
+function clearStarterExpenseDefaults(screen) {
+  const expenseName = screen.querySelector('[data-action="expense-name"]');
+  const expenseTotal = screen.querySelector('[data-action="expense-total"]');
+  const payerAmounts = screen.querySelectorAll('[data-action="expense-payer-amount"]');
+
+  resetInputValue(expenseName, "מונית");
+  resetInputValue(expenseTotal, "110");
+  payerAmounts.forEach((input) => resetInputValue(input, "110"));
+}
+
+function resetInputValue(input, starterValue) {
+  if (!input || input.dataset.publicDefaultCleared === "true") return;
+  if (input.value !== starterValue) return;
+
+  input.value = "";
+  input.dataset.publicDefaultCleared = "true";
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function enhanceSavedNamesManagement(screen) {
+  if (!screen.querySelector('[data-action="create-group"]')) return;
+  if (
+    screen.querySelector(".known-participants-panel") ||
+    screen.querySelector(".product-saved-names-panel")
+  ) {
+    return;
+  }
+
+  const state = readStoredState();
+  if (!state) return;
+  const participants = Array.isArray(state.participants) ? state.participants : [];
+
+  screen.insertAdjacentHTML(
+    "beforeend",
+    `<section class="panel section product-saved-names-panel">
+      <div class="section-title-row">
+        <div>
+          <h2>שמות שנשמרו</h2>
+          <p class="muted">האפליקציה לא ממציאה אנשים. כאן אפשר להסיר שם שהכנסת אם הוא לא מופיע בהוצאה קיימת.</p>
+        </div>
+      </div>
+      <div class="stack">
+        ${
+          participants.length
+            ? participants.map((participant) => renderSavedNameRow(state, participant)).join("")
+            : `<div class="empty-state">עדיין לא נשמרו שמות</div>`
+        }
+      </div>
+    </section>`
+  );
+}
+
+function renderSavedNameRow(state, participant) {
+  const profileParticipantId = readLocalProfile()?.participantId ?? "";
+  const isCurrent = participant.id === profileParticipantId;
+  const canRemove = !isCurrent && !participantHasMoneyHistory(state, participant.id);
+  const helper = isCurrent
+    ? "זה השם שלך במכשיר הזה"
+    : canRemove
+      ? "לא מופיע בהוצאות, אפשר להסיר"
+      : "מופיע בהוצאה קיימת";
+
+  return `
+    <article class="group-row product-saved-name-row">
+      <div class="product-saved-name-copy">
+        <span class="avatar">${escapeHtml(initials(participant.displayName))}</span>
+        <span>
+          <strong>${escapeHtml(participant.displayName)}</strong>
+          <small>${escapeHtml(helper)}</small>
+        </span>
+      </div>
+      <button class="secondary-button danger-button" type="button" data-public-remove-participant="${escapeAttribute(participant.id)}" ${canRemove ? "" : "disabled"}>הסר</button>
+    </article>
+  `;
+}
+
+function removeSavedParticipant(participantId) {
+  const state = readStoredState();
+  if (!state || !participantId) return;
+  const profileParticipantId = readLocalProfile()?.participantId ?? "";
+  if (participantId === profileParticipantId || participantHasMoneyHistory(state, participantId)) return;
+
+  const nextState = {
+    ...state,
+    participants: (state.participants ?? []).filter((participant) => participant.id !== participantId),
+    groups: (state.groups ?? []).map((group) => removeParticipantFromGroup(group, participantId)),
+    events: (state.events ?? []).map((event) => removeParticipantFromEvent(event, participantId))
+  };
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  window.location.reload();
+}
+
+function removeParticipantFromGroup(group, participantId) {
+  const memberIds = uniqueIds((group.memberIds ?? []).filter((id) => id !== participantId));
+  const adminIds = uniqueIds((group.adminIds ?? []).filter((id) => memberIds.includes(id)));
+
+  return {
+    ...group,
+    memberIds,
+    adminIds: adminIds.length ? adminIds : memberIds.slice(0, 1),
+    archived: memberIds.length ? group.archived : true
+  };
+}
+
+function removeParticipantFromEvent(event, participantId) {
+  const participantIds = uniqueIds((event.participantIds ?? []).filter((id) => id !== participantId));
+  const adminIds = uniqueIds((event.adminIds ?? []).filter((id) => participantIds.includes(id)));
+
+  return {
+    ...event,
+    participantIds,
+    adminIds: adminIds.length ? adminIds : participantIds.slice(0, 1),
+    transfers: []
+  };
+}
+
+function participantHasMoneyHistory(state, participantId) {
+  return (state.events ?? []).some((event) => {
+    const appearsInExpenses = (event.expenses ?? []).some(
+      (expense) =>
+        expense.createdByParticipantId === participantId ||
+        (expense.sharedByParticipantIds ?? []).includes(participantId) ||
+        (expense.payers ?? []).some((payer) => payer.participantId === participantId)
+    );
+
+    const appearsInTransfers = (event.transfers ?? []).some(
+      (transfer) =>
+        transfer.fromParticipantId === participantId ||
+        transfer.toParticipantId === participantId ||
+        transfer.markedPaidByParticipantId === participantId
+    );
+
+    return appearsInExpenses || appearsInTransfers;
+  });
+}
+
+function readStoredState() {
+  try {
+    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function readLocalProfile() {
+  try {
+    return JSON.parse(window.localStorage.getItem(LOCAL_PROFILE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function uniqueIds(ids) {
+  return [...new Set(ids.filter(Boolean))];
+}
+
+function initials(name) {
+  const letters = String(name)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => Array.from(word)[0])
+    .join("");
+
+  return letters || "?";
 }
 
 function renderPublicAction(action) {
@@ -319,6 +508,17 @@ function injectClarityStyle() {
       line-height: 1.55;
     }
 
+    .product-saved-name-copy {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .product-saved-name-copy span:last-child {
+      min-width: 0;
+    }
+
     @media (max-width: 760px) {
       .product-context-bar,
       .product-event-command {
@@ -356,4 +556,8 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value);
 }

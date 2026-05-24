@@ -33,6 +33,16 @@ test("public overlay adds a mobile action bar for the next obvious step", async 
   assert.match(overlay, /settle/);
 });
 
+test("public clarity layer clears starter expense defaults and exposes saved name removal", async () => {
+  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+
+  assert.match(overlay, /clearStarterExpenseDefaults/);
+  assert.match(overlay, /resetInputValue\(expenseName, "מונית"\)/);
+  assert.match(overlay, /resetInputValue\(expenseTotal, "110"\)/);
+  assert.match(overlay, /product-saved-names-panel/);
+  assert.match(overlay, /data-public-remove-participant/);
+});
+
 test("public clarity layer is loaded after the profile overlay", async () => {
   const index = await readFile("index.html", "utf8");
 

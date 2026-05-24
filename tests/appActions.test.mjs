@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 
 import {
   archiveGroup,
+  canRemoveParticipant,
   createGroup,
   duplicateEvent,
   joinGuestToEvent,
+  removeParticipant,
   removeExpense,
   updateTransferStatus,
   switchCurrentParticipant,
@@ -174,6 +176,40 @@ test("joinGuestToEvent adds a guest and makes them the current participant", () 
   assert.equal(state.currentParticipantId, "guest-1");
   assert.equal(state.events[0].participantIds.includes("guest-1"), true);
   assert.deepEqual(state.events[0].transfers, []);
+});
+
+test("removeParticipant deletes a saved name only when it is not used in money records", () => {
+  const state = {
+    ...baseState(),
+    participants: [
+      ...baseState().participants,
+      { id: "guest-unused", displayName: "Guest unused", kind: "guest" }
+    ],
+    groups: [
+      {
+        id: "group-1",
+        name: "Friends",
+        memberIds: ["owner", "guest-unused"],
+        adminIds: ["owner"],
+        archived: false
+      }
+    ],
+    events: [
+      {
+        ...baseState().events[0],
+        participantIds: ["owner", "dani", "avi", "guest-unused"]
+      }
+    ]
+  };
+
+  assert.equal(canRemoveParticipant(state, "guest-unused"), true);
+  assert.equal(canRemoveParticipant(state, "dani"), false);
+
+  const nextState = removeParticipant(state, "guest-unused");
+
+  assert.equal(nextState.participants.some((item) => item.id === "guest-unused"), false);
+  assert.deepEqual(nextState.groups[0].memberIds, ["owner"]);
+  assert.deepEqual(nextState.events[0].participantIds, ["owner", "dani", "avi"]);
 });
 
 test("switchCurrentParticipant changes identity only to a known participant", () => {

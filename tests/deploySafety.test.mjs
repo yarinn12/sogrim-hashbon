@@ -10,5 +10,6 @@ test("deployment ignores local secrets and local state files", async () => {
   assert.match(gitignore, /data\/app-state\.json/);
   assert.match(gitignore, /docs\/superpowers\//);
   assert.match(gitignore, /publish\//);
+  assert.match(gitignore, /upload-\*\//);
   assert.match(gitignore, /\*\.zip/);
 });

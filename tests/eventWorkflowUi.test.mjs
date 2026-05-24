@@ -25,3 +25,24 @@ test("home screen exposes event search", async () => {
   assert.match(app, /data-action="event-search"/);
   assert.match(app, /eventSearch = target\.value/);
 });
+
+test("expense entry opens in a focused dialog and returns to the event after saving", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const styles = await readFile("styles.css", "utf8");
+
+  assert.match(app, /expense-modal-backdrop/);
+  assert.match(app, /role="dialog"/);
+  assert.match(app, /aria-modal="true"/);
+  assert.match(app, /expenseDraft = null;\s+render\(\);/);
+  assert.match(styles, /\.expense-modal-backdrop/);
+  assert.match(styles, /\.expense-modal/);
+});
+
+test("expense payer amounts auto-fill the remaining total while staying editable", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /balancePayerAmounts/);
+  assert.match(app, /markPayerAmountEdited/);
+  assert.match(app, /syncExpensePayerAmountInputs/);
+  assert.match(app, /addPayerToExpenseDraft/);
+});

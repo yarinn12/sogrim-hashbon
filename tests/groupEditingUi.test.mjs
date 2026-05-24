@@ -13,3 +13,12 @@ test("groups screen exposes edit controls for permanent groups", async () => {
   assert.match(app, /renderParticipantChecks\(editingGroupDraft\.adminIds, "edit-group-admin"\)/);
   assert.match(app, /saveEditedGroup\(\)/);
 });
+
+test("groups screen exposes removal for saved participant names", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /renderKnownParticipantsPanel/);
+  assert.match(app, /data-action="remove-participant"/);
+  assert.match(app, /removeParticipantFromState\(target\.dataset\.participantId\)/);
+  assert.match(app, /canRemoveParticipant/);
+});

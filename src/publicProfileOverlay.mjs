@@ -14,6 +14,7 @@ const app = document.querySelector("#app");
 const STYLE_ID = "public-profile-overlay-style";
 
 injectStyle();
+document.addEventListener("click", handlePublicClick);
 setupPublicProfile();
 watchRenderedApp();
 
@@ -42,7 +43,25 @@ function cleanPublicUi() {
   document.querySelectorAll('[data-action="reset"]').forEach((item) => item.remove());
 
   enhanceProfilePanel(profile);
+  enhanceNavigationClarity(profile);
   enhanceHomeScreen(profile);
+  enhanceEventScreen(profile);
+}
+
+function handlePublicClick(event) {
+  const target = event.target.closest("[data-public-click]");
+  if (!target) return;
+
+  event.preventDefault();
+  goToNativeAction(target.dataset.publicClick);
+}
+
+function goToNativeAction(action) {
+  const target = document.querySelector(`[data-action="${action}"]:not([disabled])`);
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: "smooth", block: "center" });
+  target.click();
 }
 
 function enhanceProfilePanel(profile) {
@@ -100,6 +119,164 @@ function enhanceHomeScreen(profile) {
   }
 }
 
+function enhanceNavigationClarity(profile) {
+  const screen = document.querySelector(".screen");
+  if (!screen || screen.querySelector(".product-context-bar")) return;
+
+  const context = getScreenContext(screen, profile);
+  if (!context) return;
+
+  const top = screen.querySelector(".top");
+  const html = `
+    <nav class="product-context-bar" aria-label="איפה אני">
+      <div class="product-context-copy">
+        <span>איפה אני</span>
+        <strong>${escapeHtml(context.title)}</strong>
+        <small>${escapeHtml(context.helper)}</small>
+      </div>
+      <div class="product-context-actions" aria-label="מה עושים עכשיו">
+        <span>מה עושים עכשיו</span>
+        ${context.actions
+          .map(
+            (action) => `
+              <button class="${action.primary ? "primary-button" : "secondary-button"}" type="button" data-public-click="${action.action}">
+                ${escapeHtml(action.label)}
+              </button>
+            `
+          )
+          .join("")}
+      </div>
+    </nav>
+  `;
+
+  if (top) {
+    top.insertAdjacentHTML("afterend", html);
+    return;
+  }
+
+  screen.insertAdjacentHTML("afterbegin", html);
+}
+
+function getScreenContext(screen, profile) {
+  if (screen.querySelector('[data-action="new-event"]')) {
+    return {
+      title: profile?.displayName ? `בית של ${profile.displayName}` : "בית",
+      helper: "מכאן פותחים יציאה חדשה או נכנסים לאירוע קיים.",
+      actions: [
+        { label: "אירוע חדש", action: "new-event", primary: true },
+        { label: "קבוצות", action: "groups" }
+      ]
+    };
+  }
+
+  if (screen.querySelector('[data-action="show-expense-form"]')) {
+    const eventName = getScreenTitle(screen) || "אירוע";
+    return {
+      title: eventName,
+      helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
+      actions: [
+        { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
+        { label: "שתף קישור", action: "copy-invite" },
+        { label: "סגור חשבון", action: "settle" }
+      ]
+    };
+  }
+
+  if (screen.querySelector('[data-action="create-event"]')) {
+    return {
+      title: "אירוע חדש",
+      helper: "בוחרים שם, קבוצה ומשתתפים. מי שלא הגיע פשוט לא מסומן.",
+      actions: [
+        { label: "צור אירוע", action: "create-event", primary: true },
+        { label: "חזרה", action: "home" }
+      ]
+    };
+  }
+
+  if (screen.querySelector('[data-action="create-group"]')) {
+    return {
+      title: "קבוצות קבועות",
+      helper: "שומרים חברים קבועים כדי לפתוח יציאה שבועית מהר יותר.",
+      actions: [
+        { label: "שמור קבוצה", action: "create-group", primary: true },
+        { label: "חזרה", action: "home" }
+      ]
+    };
+  }
+
+  if (screen.querySelector('[data-action="copy-settlement"]')) {
+    return {
+      title: "סגירת חשבון",
+      helper: "כאן רואים מי מעביר למי, עם כמה שפחות העברות מיותרות.",
+      actions: [
+        { label: "העתק סיכום", action: "copy-settlement", primary: true },
+        { label: "דוח מלא", action: "copy-event-report" },
+        { label: "חזרה לאירוע", action: "back-to-event" }
+      ]
+    };
+  }
+
+  return null;
+}
+
+function enhanceEventScreen() {
+  const screen = document.querySelector(".screen");
+  if (!screen || !screen.querySelector('[data-action="show-expense-form"]')) return;
+
+  screen.classList.add("product-event-screen");
+
+  const summary = screen.querySelector(".summary-strip");
+  if (summary && !screen.querySelector(".product-event-command")) {
+    const eventName = getScreenTitle(screen) || "האירוע הזה";
+    summary.insertAdjacentHTML(
+      "afterend",
+      `<section class="product-event-command" aria-label="מה עושים עכשיו">
+        <div class="product-event-command-copy">
+          <span>מה עושים עכשיו</span>
+          <h2>כאן מכניסים הוצאות</h2>
+          <p>אתה בתוך ${escapeHtml(eventName)}. מוסיפים מי שילם, כמה כל אחד שילם, ומי באמת שותף לכל תשלום.</p>
+        </div>
+        <div class="product-command-actions">
+          <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
+          <button class="secondary-button" type="button" data-public-click="copy-invite">שתף קישור</button>
+          <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
+        </div>
+      </section>`
+    );
+  }
+
+  if (!screen.querySelector(".product-sticky-actions")) {
+    screen.insertAdjacentHTML(
+      "beforeend",
+      `<div class="product-sticky-actions" aria-label="פעולות מהירות">
+        <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
+        <button class="secondary-button" type="button" data-public-click="copy-invite">שתף קישור</button>
+        <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
+      </div>`
+    );
+  }
+
+  enhanceExpenseFormHint(screen);
+}
+
+function enhanceExpenseFormHint(screen) {
+  const expenseName = screen.querySelector('[data-action="expense-name"]');
+  const panel = expenseName?.closest(".panel");
+  if (!panel || panel.querySelector(".product-form-helper")) return;
+
+  panel.insertAdjacentHTML(
+    "afterbegin",
+    `<div class="product-form-helper">
+      <strong>ממלאים הוצאה אחת בכל פעם</strong>
+      <span>שם, סכום, מי שילם וכמה, ואז מי היה שותף. מי שלא שתה או לא נסע פשוט לא מסומן בתשלום הזה.</span>
+    </div>`
+  );
+}
+
+function getScreenTitle(screen) {
+  return screen.querySelector(".brand h1")?.textContent?.trim() ?? "";
+}
+
 function renderProfileGate(defaultName = "") {
   const shell = document.createElement("section");
   shell.className = "public-profile-gate";
@@ -122,7 +299,7 @@ function renderProfileGate(defaultName = "") {
         <p class="muted">נשמור את השם במכשיר הזה כדי שהמסך שלך יהיה אישי. בהמשך נחבר גם Google.</p>
         <label class="field">
           <span>השם שלך</span>
-          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="למשל דני" autocomplete="name" autofocus />
+          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="השם שיופיע לחברים" autocomplete="name" autofocus />
         </label>
         <p class="field-error" data-public-profile-error hidden></p>
         <button class="primary-button" type="submit">התחל לסגור חשבון</button>
@@ -286,6 +463,163 @@ function injectStyle() {
       padding: 10px 0 14px;
       background: linear-gradient(180deg, rgba(244, 246, 242, 0.94), rgba(244, 246, 242, 0));
       backdrop-filter: blur(10px);
+    }
+
+    .product-context-bar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      margin: 0 0 16px;
+      padding: 14px;
+      background: rgba(255, 253, 248, 0.94);
+      border: 1px solid rgba(23, 29, 26, 0.09);
+      border-radius: 8px;
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(14px);
+    }
+
+    .product-context-copy span,
+    .product-context-actions > span,
+    .product-event-command-copy span {
+      display: block;
+      color: var(--warm);
+      font-size: 0.8rem;
+      font-weight: 950;
+    }
+
+    .product-context-copy strong {
+      display: block;
+      margin-top: 3px;
+      font-size: clamp(18px, 2vw, 24px);
+      line-height: 1.15;
+    }
+
+    .product-context-copy small {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-weight: 750;
+      line-height: 1.5;
+    }
+
+    .product-context-actions,
+    .product-command-actions,
+    .product-sticky-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .product-context-actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      max-width: 520px;
+    }
+
+    .product-context-actions > span {
+      width: 100%;
+      text-align: end;
+      color: var(--accent);
+    }
+
+    .product-context-actions .primary-button,
+    .product-context-actions .secondary-button,
+    .product-command-actions .primary-button,
+    .product-command-actions .secondary-button {
+      min-height: 42px;
+      padding-inline: 14px;
+      white-space: nowrap;
+    }
+
+    .product-event-screen {
+      padding-bottom: 116px;
+    }
+
+    .product-event-command {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      margin: 16px 0;
+      padding: clamp(18px, 3vw, 26px);
+      color: white;
+      background:
+        linear-gradient(135deg, #171d1a 0%, #0d352f 56%, #8d3d2d 142%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      box-shadow: var(--shadow-lift);
+    }
+
+    .product-event-command-copy {
+      max-width: 720px;
+    }
+
+    .product-event-command-copy span {
+      color: #fff0bf;
+    }
+
+    .product-event-command h2 {
+      margin: 4px 0 8px;
+      font-size: clamp(26px, 4vw, 42px);
+      line-height: 1.08;
+    }
+
+    .product-event-command p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.82);
+      font-weight: 750;
+      line-height: 1.65;
+    }
+
+    .product-event-command .secondary-button {
+      color: #171d1a;
+      border-color: rgba(255, 255, 255, 0.28);
+    }
+
+    .product-sticky-actions {
+      position: fixed;
+      display: grid;
+      grid-template-columns: 1.12fr 1fr 1fr;
+      right: 50%;
+      bottom: 16px;
+      z-index: 30;
+      width: min(calc(100% - 24px), 720px);
+      transform: translateX(50%);
+      padding: 10px;
+      background: rgba(255, 253, 248, 0.94);
+      border: 1px solid rgba(23, 29, 26, 0.12);
+      border-radius: 8px;
+      box-shadow: 0 20px 48px rgba(23, 29, 26, 0.18);
+      backdrop-filter: blur(16px);
+    }
+
+    .product-sticky-actions button {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 44px;
+      padding-inline: 10px;
+    }
+
+    .product-form-helper {
+      display: grid;
+      gap: 5px;
+      margin: 0 0 16px;
+      padding: 14px;
+      color: #4b4030;
+      background: #fff8ea;
+      border: 1px solid #e5ded2;
+      border-radius: 8px;
+    }
+
+    .product-form-helper strong {
+      font-size: 1.04rem;
+    }
+
+    .product-form-helper span {
+      color: #6f6250;
+      font-weight: 750;
+      line-height: 1.55;
     }
 
     .product-v2 .primary-button,
@@ -561,6 +895,25 @@ function injectStyle() {
         grid-template-columns: 1fr;
       }
 
+      .product-context-bar,
+      .product-event-command {
+        grid-template-columns: 1fr;
+      }
+
+      .product-context-actions,
+      .product-command-actions {
+        justify-content: stretch;
+      }
+
+      .product-context-actions > span {
+        text-align: start;
+      }
+
+      .product-context-actions button,
+      .product-command-actions button {
+        flex: 1 1 0;
+      }
+
       .product-home-kicker ol,
       .product-v2 .summary-strip {
         grid-template-columns: 1fr;
@@ -590,6 +943,14 @@ function injectStyle() {
 
       .public-profile-proof {
         grid-template-columns: 1fr;
+      }
+
+      .product-sticky-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .product-sticky-actions button {
+        font-size: 0.92rem;
       }
     }
   `;

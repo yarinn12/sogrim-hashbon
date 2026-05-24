@@ -155,6 +155,24 @@ export function setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly) {
   };
 }
 
+export function canRemoveParticipant(state, participantId) {
+  if (!participantId || participantId === state.currentParticipantId) return false;
+  return !participantHasMoneyHistory(state, participantId);
+}
+
+export function removeParticipant(state, participantId) {
+  if (!canRemoveParticipant(state, participantId)) return state;
+
+  return {
+    ...state,
+    participants: state.participants.filter(
+      (participant) => participant.id !== participantId
+    ),
+    groups: state.groups.map((group) => removeParticipantFromGroup(group, participantId)),
+    events: state.events.map((event) => removeParticipantFromEvent(event, participantId))
+  };
+}
+
 export function joinGuestToEvent(state, eventId, guest) {
   const participant = {
     id: guest.id,
@@ -190,4 +208,52 @@ export function switchCurrentParticipant(state, participantId) {
 
 function uniqueIds(ids) {
   return [...new Set(ids.filter(Boolean))];
+}
+
+function participantHasMoneyHistory(state, participantId) {
+  return state.events.some((event) => {
+    const appearsInExpenses = event.expenses.some(
+      (expense) =>
+        expense.createdByParticipantId === participantId ||
+        expense.sharedByParticipantIds.includes(participantId) ||
+        expense.payers.some((payer) => payer.participantId === participantId)
+    );
+
+    const appearsInTransfers = event.transfers.some(
+      (transfer) =>
+        transfer.fromParticipantId === participantId ||
+        transfer.toParticipantId === participantId ||
+        transfer.markedPaidByParticipantId === participantId
+    );
+
+    return appearsInExpenses || appearsInTransfers;
+  });
+}
+
+function removeParticipantFromGroup(group, participantId) {
+  const memberIds = uniqueIds(group.memberIds.filter((id) => id !== participantId));
+  const adminIds = uniqueIds((group.adminIds ?? []).filter((id) => memberIds.includes(id)));
+
+  return {
+    ...group,
+    memberIds,
+    adminIds: adminIds.length ? adminIds : memberIds.slice(0, 1),
+    archived: memberIds.length ? group.archived : true
+  };
+}
+
+function removeParticipantFromEvent(event, participantId) {
+  const participantIds = uniqueIds(
+    event.participantIds.filter((id) => id !== participantId)
+  );
+  const adminIds = uniqueIds((event.adminIds ?? []).filter((id) =>
+    participantIds.includes(id)
+  ));
+
+  return {
+    ...event,
+    participantIds,
+    adminIds: adminIds.length ? adminIds : participantIds.slice(0, 1),
+    transfers: []
+  };
 }

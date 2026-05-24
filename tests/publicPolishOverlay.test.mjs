@@ -12,6 +12,18 @@ test("public overlay upgrades the app into a product-grade first run experience"
   assert.match(overlay, /cleanPublicUi/);
 });
 
+test("public brand layer gives the app name a visible logo lockup", async () => {
+  const brandLayer = await readFile("src/publicBrandLayer.mjs", "utf8");
+  const styles = await readFile("styles.css", "utf8");
+
+  assert.match(brandLayer, /סוגרים חשבון/);
+  assert.match(brandLayer, /התחשבנות חכמה לחברים/);
+  assert.match(brandLayer, /enhanceAppScreenBrand/);
+  assert.match(brandLayer, /enhanceProfileGateBrand/);
+  assert.match(brandLayer, /product-app-identity/);
+  assert.match(styles, /content: "₪"/);
+});
+
 test("public overlay removes internal launch panels and adds a polished home layer", async () => {
   const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
 

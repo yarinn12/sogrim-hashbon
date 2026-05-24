@@ -19,23 +19,40 @@ const LOCAL_RUNTIME_CONFIG = {
     shareLinksReady: false
   }
 };
+const LEGACY_STARTER_EVENT_ID = "event-demo";
+const LEGACY_STARTER_GROUP_ID = "thursday";
+const LEGACY_STARTER_PARTICIPANT_IDS = new Set(["yarin", "dani", "avi", "maor"]);
 
 let runtimeConfigPromise = null;
 
 export function loadState() {
   const raw = window.localStorage.getItem(STORAGE_KEY);
-  if (!raw) return applyLocalParticipantId(clone(demoState), loadLocalParticipantId());
+  const protectedParticipantId = loadProtectedParticipantId();
+  const localParticipantId = loadLocalParticipantId();
+  if (!raw) {
+    return applyLocalParticipantId(
+      cleanLegacyStarterData(clone(demoState), protectedParticipantId),
+      localParticipantId
+    );
+  }
 
   try {
-    return applyLocalParticipantId(JSON.parse(raw), loadLocalParticipantId());
+    return applyLocalParticipantId(
+      cleanLegacyStarterData(JSON.parse(raw), protectedParticipantId),
+      localParticipantId
+    );
   } catch {
-    return applyLocalParticipantId(clone(demoState), loadLocalParticipantId());
+    return applyLocalParticipantId(
+      cleanLegacyStarterData(clone(demoState), protectedParticipantId),
+      localParticipantId
+    );
   }
 }
 
 export function saveState(state) {
-  saveLocalParticipantId(state.currentParticipantId);
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(toSharedState(state)));
+  const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
+  saveLocalParticipantId(cleanState.currentParticipantId);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(toSharedState(cleanState)));
 }
 
 export async function loadRuntimeConfig() {
@@ -57,7 +74,10 @@ export async function loadSharedState() {
 
   if (runtimeConfig.storage?.mode === "supabase") {
     try {
-      const state = await loadCloudState(runtimeConfig, toSharedState(localState));
+      const state = cleanLegacyStarterData(
+        await loadCloudState(runtimeConfig, toSharedState(localState)),
+        loadProtectedParticipantId()
+      );
       const localStateWithIdentity = applyLocalParticipantId(
         state,
         loadLocalParticipantId()
@@ -72,7 +92,10 @@ export async function loadSharedState() {
   try {
     const response = await fetch("/api/state");
     if (!response.ok) throw new Error("Shared state unavailable");
-    const state = await response.json();
+    const state = cleanLegacyStarterData(
+      await response.json(),
+      loadProtectedParticipantId()
+    );
     const localStateWithIdentity = applyLocalParticipantId(
       state,
       loadLocalParticipantId()
@@ -85,8 +108,9 @@ export async function loadSharedState() {
 }
 
 export async function saveSharedState(state) {
-  saveState(state);
-  const sharedState = toSharedState(state);
+  const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
+  saveState(cleanState);
+  const sharedState = toSharedState(cleanState);
   const runtimeConfig = await loadRuntimeConfig();
 
   if (runtimeConfig.storage?.mode === "supabase") {
@@ -113,7 +137,10 @@ export async function resetSharedState() {
   const runtimeConfig = await loadRuntimeConfig();
 
   if (runtimeConfig.storage?.mode === "supabase") {
-    const state = applyLocalParticipantId(clone(demoState), loadLocalParticipantId());
+    const state = applyLocalParticipantId(
+      cleanLegacyStarterData(clone(demoState), loadProtectedParticipantId()),
+      loadLocalParticipantId()
+    );
     saveState(state);
     try {
       await saveCloudState(runtimeConfig, toSharedState(state));
@@ -126,7 +153,10 @@ export async function resetSharedState() {
   try {
     const response = await fetch("/api/reset", { method: "POST" });
     if (!response.ok) throw new Error("Reset failed");
-    const state = await response.json();
+    const state = cleanLegacyStarterData(
+      await response.json(),
+      loadProtectedParticipantId()
+    );
     const localStateWithIdentity = applyLocalParticipantId(
       state,
       loadLocalParticipantId()
@@ -163,13 +193,49 @@ export function saveLocalProfile(profile) {
 }
 
 export function resetState() {
-  const state = applyLocalParticipantId(clone(demoState), loadLocalParticipantId());
+  const state = applyLocalParticipantId(
+    cleanLegacyStarterData(clone(demoState), loadProtectedParticipantId()),
+    loadLocalParticipantId()
+  );
   saveState(state);
   return state;
 }
 
 export function clone(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+export function cleanLegacyStarterData(state, protectedParticipantId = "") {
+  if (!state || typeof state !== "object") return clone(demoState);
+
+  const groups = Array.isArray(state.groups)
+    ? state.groups.filter((group) => group.id !== LEGACY_STARTER_GROUP_ID)
+    : [];
+  const events = Array.isArray(state.events)
+    ? state.events.filter((event) => event.id !== LEGACY_STARTER_EVENT_ID)
+    : [];
+  const referencedParticipantIds = collectReferencedParticipantIds(groups, events);
+  const participants = Array.isArray(state.participants)
+    ? state.participants.filter(
+        (participant) =>
+          !LEGACY_STARTER_PARTICIPANT_IDS.has(participant.id) ||
+          participant.id === protectedParticipantId ||
+          referencedParticipantIds.has(participant.id)
+      )
+    : [];
+  const currentParticipantId = resolveCleanCurrentParticipantId(
+    state.currentParticipantId,
+    participants,
+    protectedParticipantId
+  );
+
+  return {
+    ...state,
+    currentParticipantId,
+    participants,
+    groups,
+    events
+  };
 }
 
 function loadLocalParticipantId() {
@@ -179,4 +245,63 @@ function loadLocalParticipantId() {
 function saveLocalParticipantId(participantId) {
   if (!participantId) return;
   window.localStorage.setItem(LOCAL_PARTICIPANT_KEY, participantId);
+}
+
+function loadProtectedParticipantId() {
+  return loadLocalProfile()?.participantId ?? "";
+}
+
+function collectReferencedParticipantIds(groups, events) {
+  const ids = new Set();
+
+  for (const group of groups) {
+    addIds(ids, group.memberIds);
+    addIds(ids, group.adminIds);
+  }
+
+  for (const event of events) {
+    addIds(ids, event.participantIds);
+    addIds(ids, event.adminIds);
+    if (event.createdByParticipantId) ids.add(event.createdByParticipantId);
+
+    for (const expense of event.expenses ?? []) {
+      if (expense.createdByParticipantId) ids.add(expense.createdByParticipantId);
+      addIds(ids, expense.sharedByParticipantIds);
+      addIds(ids, expense.payers?.map((payer) => payer.participantId));
+    }
+
+    for (const transfer of event.transfers ?? []) {
+      if (transfer.fromParticipantId) ids.add(transfer.fromParticipantId);
+      if (transfer.toParticipantId) ids.add(transfer.toParticipantId);
+      if (transfer.markedPaidByParticipantId) ids.add(transfer.markedPaidByParticipantId);
+    }
+  }
+
+  return ids;
+}
+
+function addIds(target, ids = []) {
+  for (const id of ids) {
+    if (id) target.add(id);
+  }
+}
+
+function resolveCleanCurrentParticipantId(
+  currentParticipantId,
+  participants,
+  protectedParticipantId
+) {
+  if (participants.some((participant) => participant.id === protectedParticipantId)) {
+    return protectedParticipantId;
+  }
+
+  if (
+    currentParticipantId &&
+    !LEGACY_STARTER_PARTICIPANT_IDS.has(currentParticipantId) &&
+    participants.some((participant) => participant.id === currentParticipantId)
+  ) {
+    return currentParticipantId;
+  }
+
+  return "";
 }
