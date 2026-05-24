@@ -132,6 +132,36 @@ export function updateTransferStatus(state, eventId, transferId, update) {
   };
 }
 
+export function closeEvent(state, eventId, closedAt) {
+  return {
+    ...state,
+    events: state.events.map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            locked: true,
+            closedAt: closedAt || new Date().toISOString()
+          }
+        : event
+    )
+  };
+}
+
+export function reopenEvent(state, eventId) {
+  return {
+    ...state,
+    events: state.events.map((event) => {
+      if (event.id !== eventId) return event;
+
+      const { closedAt, ...openEvent } = event;
+      return {
+        ...openEvent,
+        locked: false
+      };
+    })
+  };
+}
+
 function applyTransferStatus(transfer, update) {
   if (update.status === "paid") {
     return {
@@ -173,6 +203,28 @@ export function removeParticipant(state, participantId) {
   };
 }
 
+export function mergeParticipants(state, sourceParticipantId, targetParticipantId) {
+  if (!sourceParticipantId || !targetParticipantId || sourceParticipantId === targetParticipantId) {
+    return state;
+  }
+
+  const sourceExists = state.participants.some((participant) => participant.id === sourceParticipantId);
+  const targetExists = state.participants.some((participant) => participant.id === targetParticipantId);
+  if (!sourceExists || !targetExists) return state;
+
+  return {
+    ...state,
+    currentParticipantId: replaceId(state.currentParticipantId, sourceParticipantId, targetParticipantId),
+    participants: state.participants.filter((participant) => participant.id !== sourceParticipantId),
+    groups: state.groups.map((group) => ({
+      ...group,
+      memberIds: uniqueIds(group.memberIds.map((id) => replaceId(id, sourceParticipantId, targetParticipantId))),
+      adminIds: uniqueIds((group.adminIds ?? []).map((id) => replaceId(id, sourceParticipantId, targetParticipantId)))
+    })),
+    events: state.events.map((event) => mergeParticipantIntoEvent(event, sourceParticipantId, targetParticipantId))
+  };
+}
+
 export function joinGuestToEvent(state, eventId, guest) {
   const participant = {
     id: guest.id,
@@ -208,6 +260,48 @@ export function switchCurrentParticipant(state, participantId) {
 
 function uniqueIds(ids) {
   return [...new Set(ids.filter(Boolean))];
+}
+
+function mergeParticipantIntoEvent(event, sourceParticipantId, targetParticipantId) {
+  return {
+    ...event,
+    participantIds: uniqueIds(event.participantIds.map((id) => replaceId(id, sourceParticipantId, targetParticipantId))),
+    adminIds: uniqueIds((event.adminIds ?? []).map((id) => replaceId(id, sourceParticipantId, targetParticipantId))),
+    createdByParticipantId: replaceId(event.createdByParticipantId, sourceParticipantId, targetParticipantId),
+    expenses: event.expenses.map((expense) => ({
+      ...expense,
+      createdByParticipantId: replaceId(expense.createdByParticipantId, sourceParticipantId, targetParticipantId),
+      sharedByParticipantIds: uniqueIds(
+        expense.sharedByParticipantIds.map((id) => replaceId(id, sourceParticipantId, targetParticipantId))
+      ),
+      payers: mergeExpensePayers(
+        expense.payers.map((payer) => ({
+          ...payer,
+          participantId: replaceId(payer.participantId, sourceParticipantId, targetParticipantId)
+        }))
+      )
+    })),
+    transfers: event.transfers
+      .map((transfer) => ({
+        ...transfer,
+        fromParticipantId: replaceId(transfer.fromParticipantId, sourceParticipantId, targetParticipantId),
+        toParticipantId: replaceId(transfer.toParticipantId, sourceParticipantId, targetParticipantId),
+        markedPaidByParticipantId: replaceId(transfer.markedPaidByParticipantId, sourceParticipantId, targetParticipantId)
+      }))
+      .filter((transfer) => transfer.fromParticipantId !== transfer.toParticipantId)
+  };
+}
+
+function mergeExpensePayers(payers) {
+  const totals = new Map();
+  for (const payer of payers) {
+    totals.set(payer.participantId, (totals.get(payer.participantId) ?? 0) + payer.amount);
+  }
+  return [...totals.entries()].map(([participantId, amount]) => ({ participantId, amount }));
+}
+
+function replaceId(value, sourceParticipantId, targetParticipantId) {
+  return value === sourceParticipantId ? targetParticipantId : value;
 }
 
 function participantHasMoneyHistory(state, participantId) {
