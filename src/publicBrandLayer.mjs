@@ -27,7 +27,6 @@ function enhanceAppScreenBrand() {
   const html = `
     <header class="product-app-identity" aria-label="${APP_NAME}">
       ${renderBrandLockup("product-app-lockup")}
-      <span class="product-app-badge">בטא ציבורית</span>
     </header>
   `;
 
