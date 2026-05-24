@@ -10,17 +10,16 @@ export function ensureNamedParticipant(state, profile, eventId = "") {
   const displayName = normalizeProfileName(profile?.displayName);
   if (!isFullProfileName(displayName)) return state;
 
-  const existingParticipant = state.participants.find(
-    (participant) => sameName(participant.displayName, displayName)
-  );
-  const participant = existingParticipant ?? {
+  const existingParticipant = findExistingParticipant(state, profile, displayName);
+  const participant = existingParticipant ? mergeParticipantProfile(existingParticipant, profile, displayName) : {
     id: profile.id,
     displayName,
-    kind: "user"
+    kind: "user",
+    ...authFields(profile)
   };
 
   const participants = existingParticipant
-    ? state.participants
+    ? state.participants.map((item) => (item.id === participant.id ? participant : item))
     : [...state.participants, participant];
   const events = eventId
     ? state.events.map((event) =>
@@ -41,4 +40,40 @@ export function ensureNamedParticipant(state, profile, eventId = "") {
 function sameName(left, right) {
   return normalizeProfileName(left).toLocaleLowerCase() ===
     normalizeProfileName(right).toLocaleLowerCase();
+}
+
+function findExistingParticipant(state, profile, displayName) {
+  return (
+    state.participants.find((participant) => participant.id === profile?.id) ??
+    state.participants.find((participant) => sameAuth(participant, profile)) ??
+    state.participants.find((participant) => sameName(participant.displayName, displayName))
+  );
+}
+
+function mergeParticipantProfile(participant, profile, displayName) {
+  return {
+    ...participant,
+    displayName,
+    kind: participant.kind ?? "user",
+    ...authFields(profile)
+  };
+}
+
+function sameAuth(participant, profile) {
+  return (
+    profile?.authProvider === "google" &&
+    participant.authProvider === "google" &&
+    Boolean(profile.authSubject) &&
+    participant.authSubject === profile.authSubject
+  );
+}
+
+function authFields(profile) {
+  if (profile?.authProvider !== "google" || !profile.authSubject) return {};
+
+  return {
+    authProvider: "google",
+    authSubject: String(profile.authSubject),
+    email: String(profile.email ?? "").trim().toLowerCase()
+  };
 }
