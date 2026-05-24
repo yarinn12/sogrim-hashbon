@@ -17,6 +17,7 @@ function setupPublicBackNavigation() {
   }
 
   window.addEventListener("popstate", handleBrowserBack);
+  document.addEventListener("click", handleNativeBackClick, true);
   document.addEventListener("click", handlePublicBackClick);
   document.addEventListener("click", handleNativeNavigationClick);
 }
@@ -118,6 +119,15 @@ function handlePublicBackClick(event) {
   goBack();
 }
 
+function handleNativeBackClick(event) {
+  const button = event.target.closest('[data-action="go-back"]');
+  if (!button || button.disabled) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  goBackWithoutHistoryRoundTrip();
+}
+
 function handleNativeNavigationClick(event) {
   const action = event.target.closest("[data-action]")?.dataset.action;
   if (!isNavigationAction(action)) return;
@@ -162,6 +172,27 @@ function goBack() {
   }
 
   if (closeOpenWindow()) {
+    replaceAfterFallback();
+    return;
+  }
+
+  if (!isHomeScreen()) {
+    goHome();
+    replaceAfterFallback();
+  }
+}
+
+function goBackWithoutHistoryRoundTrip() {
+  const key = currentScreenKey();
+
+  if (closeOpenWindow()) {
+    replaceAfterFallback();
+    return;
+  }
+
+  if (key.startsWith("settlement:")) {
+    const eventId = key.split(":")[1];
+    clickAction("back-to-event", { eventId });
     replaceAfterFallback();
     return;
   }
@@ -251,13 +282,46 @@ function goHome() {
     return;
   }
 
-  if (!isHomeScreen()) clickAction("new-event");
-  const fallbackHomeButton = document.querySelector('[data-action="home"]');
-  fallbackHomeButton?.click();
+  if (!isHomeScreen()) clickSyntheticAction("home");
 }
 
-function clickAction(action) {
-  document.querySelector(`[data-action="${action}"]`)?.click();
+function clickAction(action, dataset = {}) {
+  const target = findAction(action, dataset);
+  if (target) {
+    target.click();
+    return true;
+  }
+
+  return clickSyntheticAction(action, dataset);
+}
+
+function findAction(action, dataset = {}) {
+  const selector = [`[data-action="${action}"]`]
+    .concat(
+      Object.entries(dataset).map(([key, value]) => {
+        const dataName = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        return `[data-${dataName}="${cssEscape(value)}"]`;
+      })
+    )
+    .join("");
+  return document.querySelector(selector);
+}
+
+function clickSyntheticAction(action, dataset = {}) {
+  const app = document.querySelector("#app");
+  if (!app) return false;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.hidden = true;
+  button.dataset.action = action;
+  Object.entries(dataset).forEach(([key, value]) => {
+    button.dataset[key] = value;
+  });
+  app.append(button);
+  button.click();
+  button.remove();
+  return true;
 }
 
 function replaceAfterFallback() {
