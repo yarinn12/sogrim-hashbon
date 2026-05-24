@@ -13,7 +13,10 @@ test("public join layer adds existing event entry points", async () => {
   assert.match(layer, /data-public-open-join-panel/);
   assert.match(layer, /data-public-join-existing-event/);
   assert.match(layer, /data-public-join-event-link/);
+  assert.match(layer, /placeholder = EVENT_NAME_PLACEHOLDER/);
   assert.doesNotMatch(layer, /data-public-click=\\"join-existing-event\\"/);
+  assert.doesNotMatch(layer, /replaceChildren/);
+  assert.match(layer, /setTextIfChanged/);
   assert.match(layer, /parseInviteEventId/);
   assert.match(layer, /loadSharedState/);
   assert.match(layer, /ensureNamedParticipant/);
