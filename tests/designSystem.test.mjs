@@ -34,3 +34,12 @@ test("transfer rows render participant avatars and a visual direction", async ()
   assert.match(app, /class="transfer-arrow"/);
   assert.match(app, /renderAvatar\(transfer\.toParticipantId\)/);
 });
+
+test("event workspace has elevated action and modal styling", async () => {
+  const css = await readFile("styles.css", "utf8");
+
+  assert.match(css, /\.event-command-card::before/);
+  assert.match(css, /\.event-command-card:hover::before/);
+  assert.match(css, /\.summary-item::after/);
+  assert.match(css, /\.event-modal::before/);
+});

@@ -405,8 +405,22 @@ function injectStyle() {
 
     .product-v2 body {
       background:
-        linear-gradient(180deg, #edf4f0 0, #f7f4ea 330px, #f4f6f2 680px),
-        linear-gradient(110deg, rgba(10, 125, 111, 0.12), rgba(199, 86, 61, 0.06) 48%, rgba(165, 117, 33, 0.1));
+        linear-gradient(180deg, #eef5f1 0, #f8f1e6 340px, #f4f6f2 700px),
+        repeating-linear-gradient(90deg, rgba(23, 29, 26, 0.025) 0 1px, transparent 1px 96px),
+        linear-gradient(110deg, rgba(10, 125, 111, 0.14), rgba(199, 86, 61, 0.07) 48%, rgba(165, 117, 33, 0.11));
+      background-attachment: fixed;
+    }
+
+    .product-v2 .product-app-identity {
+      position: sticky;
+      top: 10px;
+      z-index: 20;
+      border-color: rgba(23, 29, 26, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(255, 253, 248, 0.88));
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.7) inset,
+        0 18px 48px rgba(23, 29, 26, 0.12);
     }
 
     .product-v2 .screen {
@@ -415,6 +429,8 @@ function injectStyle() {
     }
 
     .product-v2 .top {
+      position: relative;
+      isolation: isolate;
       align-items: stretch;
       margin: 0 0 18px;
       padding: clamp(18px, 4vw, 30px);
@@ -426,6 +442,43 @@ function injectStyle() {
       border-radius: 8px;
       box-shadow: var(--shadow-lift);
       overflow: hidden;
+    }
+
+    .product-v2 .top::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 18px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.14), transparent 42%);
+      opacity: 0.56;
+      pointer-events: none;
+    }
+
+    .product-v2 .top::after {
+      content: "";
+      position: absolute;
+      inset-inline: 24px;
+      bottom: 0;
+      height: 4px;
+      background: linear-gradient(90deg, #fff0bf, rgba(255, 255, 255, 0.1), #ffdfd5);
+      opacity: 0.72;
+    }
+
+    .product-v2 .top > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .product-v2 .top .icon-button {
+      align-self: flex-start;
+      width: 54px;
+      height: 54px;
+      min-height: 54px;
+      background: rgba(255, 253, 248, 0.94);
+      color: #0d352f;
+      border-color: rgba(255, 255, 255, 0.36);
+      box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16);
     }
 
     .product-v2 .top .muted,
@@ -737,6 +790,68 @@ function injectStyle() {
       background: #fffdf8;
     }
 
+    .product-v2 .event-command-grid {
+      gap: 12px;
+      margin: 18px 0 20px;
+    }
+
+    .product-v2 .event-command-card {
+      min-height: 112px;
+      align-content: end;
+      padding: 18px;
+      border: 1px solid rgba(23, 29, 26, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(250, 246, 235, 0.92));
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.8) inset,
+        0 16px 36px rgba(23, 29, 26, 0.1);
+    }
+
+    .product-v2 .primary-button.event-command-card {
+      background:
+        linear-gradient(145deg, #0a7d6f, #07574e 58%, #0d352f);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.24) inset,
+        0 18px 38px rgba(10, 125, 111, 0.28);
+    }
+
+    .product-v2 .event-command-card::before {
+      inset-inline-start: 0;
+      top: 18px;
+      bottom: 18px;
+      width: 5px;
+      background: linear-gradient(180deg, #0a7d6f, #fff0bf, #c7563d);
+      opacity: 0.9;
+    }
+
+    .product-v2 .event-command-card strong {
+      font-size: 1.08rem;
+    }
+
+    .product-v2 .event-command-card span {
+      color: #6a756f;
+      font-weight: 800;
+    }
+
+    .product-v2 .primary-button.event-command-card span {
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .product-v2 .event-modal,
+    .product-v2 .expense-modal {
+      border-color: rgba(23, 29, 26, 0.1);
+      background:
+        linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(255, 251, 241, 0.94));
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 34px 90px rgba(23, 29, 26, 0.24);
+    }
+
+    .product-v2 .event-modal-header,
+    .product-v2 .expense-modal-header {
+      border-bottom-color: rgba(23, 29, 26, 0.1);
+    }
+
     .product-v2 .empty-state {
       min-height: 150px;
       display: grid;
@@ -897,6 +1012,10 @@ function injectStyle() {
         grid-template-columns: 1fr;
       }
 
+      .product-v2 .event-command-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .product-context-bar,
       .product-event-command {
         grid-template-columns: 1fr;
@@ -948,6 +1067,10 @@ function injectStyle() {
       }
 
       .product-sticky-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .product-v2 .event-command-grid {
         grid-template-columns: 1fr;
       }
 

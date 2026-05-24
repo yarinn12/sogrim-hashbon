@@ -226,6 +226,9 @@ h3 {
 }
 
 .event-command-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 82px;
   display: grid;
   align-content: center;
@@ -234,6 +237,31 @@ h3 {
   padding: 14px;
   text-align: start;
   white-space: normal;
+}
+
+.event-command-card::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 4px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent), var(--gold));
+  opacity: 0.72;
+  transition:
+    top 160ms ease,
+    bottom 160ms ease,
+    opacity 160ms ease;
+}
+
+.primary-button.event-command-card::before {
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.event-command-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .event-command-card strong {
@@ -374,10 +402,23 @@ h3 {
 }
 
 .summary-item {
+  position: relative;
+  overflow: hidden;
   display: grid;
   gap: 4px;
   padding-inline-start: 10px;
   border-inline-start: 3px solid var(--accent-soft);
+}
+
+.summary-item::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 10px;
+  inset-inline-end: 10px;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+  opacity: 0.42;
 }
 
 .summary-item span {
@@ -656,7 +697,20 @@ h3 {
 }
 
 .event-modal {
+  position: relative;
+  isolation: isolate;
   width: min(100%, 660px);
+}
+
+.event-modal::before {
+  content: "";
+  position: absolute;
+  inset-inline: 18px;
+  top: 0;
+  height: 4px;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(90deg, var(--accent), var(--gold), var(--warm));
+  opacity: 0.9;
 }
 
 .expense-modal-header,
@@ -868,6 +922,12 @@ h3 {
   .participant-pill:hover {
     transform: translateY(-1px);
     border-color: var(--line-strong);
+  }
+
+  .event-command-card:hover::before {
+    top: 8px;
+    bottom: 8px;
+    opacity: 1;
   }
 }
 

@@ -33,3 +33,14 @@ test("public overlay removes internal launch panels and adds a polished home lay
   assert.match(overlay, /\.network-panel, \.launch-panel, \.backup-panel/);
   assert.match(overlay, /data-action="reset"/);
 });
+
+test("public product layer adds premium depth to the active app shell", async () => {
+  const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
+
+  assert.match(overlay, /\.product-v2 \.product-app-identity/);
+  assert.match(overlay, /\.product-v2 \.top::before/);
+  assert.match(overlay, /\.product-v2 \.top \.icon-button/);
+  assert.match(overlay, /\.product-v2 \.event-command-grid/);
+  assert.match(overlay, /\.product-v2 \.event-command-card::before/);
+  assert.match(overlay, /\.product-v2 \.event-modal/);
+});
