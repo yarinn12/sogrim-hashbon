@@ -111,9 +111,17 @@ function requestOrigin(request, port) {
   const forwardedProto = String(request.headers["x-forwarded-proto"] ?? "")
     .split(",")[0]
     .trim();
-  const protocol = forwardedProto || (host.startsWith("localhost") ? "http" : "https");
+  const protocol = forwardedProto || (isLocalHost(host) ? "http" : "https");
 
   return `${protocol}://${host}`;
+}
+
+function isLocalHost(host) {
+  const hostname = host.startsWith("[")
+    ? host.slice(1, host.indexOf("]"))
+    : host.split(":")[0];
+
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 }
 
 function sendJson(response, statusCode, payload) {

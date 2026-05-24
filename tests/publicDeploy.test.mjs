@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 
+import { createAppHandler } from "../server.mjs";
 import { getRuntimeConfig } from "../src/server/runtimeConfig.mjs";
 
 test("runtime config can infer a public URL from the deployment request origin", () => {
@@ -25,6 +27,27 @@ test("runtime config still prefers an explicit APP_PUBLIC_URL", () => {
   );
 
   assert.equal(config.publicUrl, "https://settle.example.com");
+});
+
+test("local 127.0.0.1 requests keep http invite origins", async () => {
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/config`);
+    const config = await response.json();
+
+    assert.equal(config.publicUrl, `http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 });
 
 test("server can run as both a local server and a Vercel handler", async () => {
