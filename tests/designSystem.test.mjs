@@ -16,6 +16,17 @@ test("stylesheet includes premium interaction and motion foundations", async () 
   assert.match(css, /\.transfer-people/);
 });
 
+test("public app uses a dedicated Hebrew UI font stack", async () => {
+  const html = await readFile("index.html", "utf8");
+  const css = await readFile("styles.css", "utf8");
+
+  assert.match(html, /fonts\.googleapis\.com/);
+  assert.match(html, /family=Assistant/);
+  assert.match(html, /display=swap/);
+  assert.match(css, /--font-ui:\s*"Assistant",\s*"Noto Sans Hebrew"/);
+  assert.match(css, /font-family:\s*var\(--font-ui\)/);
+});
+
 test("event rows render polished metadata and status chips", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

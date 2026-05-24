@@ -21,6 +21,7 @@
   --shadow: 0 18px 46px rgba(18, 29, 27, 0.1);
   --shadow-lift: 0 22px 54px rgba(18, 29, 27, 0.16);
   --shadow-soft: 0 10px 26px rgba(18, 29, 27, 0.08);
+  --font-ui: "Assistant", "Noto Sans Hebrew", "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -34,9 +35,10 @@ body {
     linear-gradient(120deg, rgba(5, 92, 86, 0.08), transparent 42%),
     var(--bg);
   color: var(--text);
-  font-family: "Segoe UI", Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
+  line-height: 1.5;
 }
 
 button,
