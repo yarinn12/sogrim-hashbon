@@ -25,6 +25,16 @@ test("public home screen does not expose local Wi-Fi or beta readiness panels", 
   assert.doesNotMatch(app, /data-action="current-participant"/);
 });
 
+test("public home screen focuses on actions instead of account counters", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const homeMatch = app.match(/function renderHome\(\) \{[\s\S]*?\nfunction renderNotice/);
+
+  assert.ok(homeMatch);
+  assert.doesNotMatch(homeMatch[0], /summary-strip/);
+  assert.doesNotMatch(homeMatch[0], /summary-item/);
+  assert.doesNotMatch(homeMatch[0], /activeEvents/);
+});
+
 test("public first run and expense forms do not invent sample people or amounts", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const clarityLayer = await readFile("src/publicClarityLayer.mjs", "utf8");

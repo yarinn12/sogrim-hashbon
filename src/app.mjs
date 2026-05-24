@@ -166,7 +166,6 @@ function renderHome() {
     sortedEvents,
     eventSearch
   );
-  const activeEvents = sortedEvents.filter((event) => !event.locked).length;
 
   return `
     <section class="screen">
@@ -186,12 +185,6 @@ function renderHome() {
 
       ${renderProfileSummary()}
       ${renderBackupPanel()}
-
-      <section class="summary-strip">
-        <div class="summary-item"><span>אירועים פתוחים</span><strong>${activeEvents}</strong></div>
-        <div class="summary-item"><span>קבוצות</span><strong>${state.groups.filter((group) => !group.archived).length}</strong></div>
-        <div class="summary-item"><span>חברים ואורחים</span><strong>${state.participants.length}</strong></div>
-      </section>
 
       <section class="panel search-panel">
         <label class="field compact-field">
