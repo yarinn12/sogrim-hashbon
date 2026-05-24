@@ -53,7 +53,6 @@ function rememberRequestedEventMode(event) {
   const modeSwitch = target.dataset.publicModeSwitch;
   if (modeSwitch) {
     event.preventDefault();
-    event.stopImmediatePropagation();
     setRequestedEventMode(modeSwitch);
     enhanceJoinEventFlow();
     return;
@@ -62,7 +61,7 @@ function rememberRequestedEventMode(event) {
   const publicClick = target.dataset.publicClick;
   if (publicClick === "join-existing-event") {
     event.preventDefault();
-    event.stopImmediatePropagation();
+    event.stopPropagation();
     setRequestedEventMode(MODE_JOIN);
     enhanceJoinEventFlow();
     focusJoinEventPanel();
@@ -71,7 +70,7 @@ function rememberRequestedEventMode(event) {
 
   if (publicClick === "create-event" && requestedEventMode === MODE_JOIN) {
     event.preventDefault();
-    event.stopImmediatePropagation();
+    event.stopPropagation();
     setRequestedEventMode(MODE_CREATE);
     enhanceJoinEventFlow();
     return;
