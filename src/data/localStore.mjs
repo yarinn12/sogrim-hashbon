@@ -14,6 +14,7 @@ const LOCAL_PARTICIPANT_KEY = "settle-friends-current-participant";
 const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
+  auth: { googleClientId: "" },
   storage: { mode: "local" },
   launch: {
     publicUrlReady: false,
@@ -179,7 +180,11 @@ export function loadLocalProfile() {
     const profile = JSON.parse(raw);
     const displayName = normalizeProfileName(profile.displayName);
     if (!isFullProfileName(displayName) || !profile.participantId) return null;
-    return { participantId: profile.participantId, displayName };
+    return {
+      participantId: profile.participantId,
+      displayName,
+      ...profileAuthFields(profile)
+    };
   } catch {
     return null;
   }
@@ -189,7 +194,11 @@ export function saveLocalProfile(profile) {
   const displayName = normalizeProfileName(profile.displayName);
   if (!isFullProfileName(displayName) || !profile.participantId) return null;
 
-  const nextProfile = { participantId: profile.participantId, displayName };
+  const nextProfile = {
+    participantId: profile.participantId,
+    displayName,
+    ...profileAuthFields(profile)
+  };
   window.localStorage.setItem(LOCAL_PROFILE_KEY, JSON.stringify(nextProfile));
   saveLocalParticipantId(nextProfile.participantId);
   return nextProfile;
@@ -248,6 +257,16 @@ function loadLocalParticipantId() {
 function saveLocalParticipantId(participantId) {
   if (!participantId) return;
   window.localStorage.setItem(LOCAL_PARTICIPANT_KEY, participantId);
+}
+
+function profileAuthFields(profile) {
+  if (profile?.authProvider !== "google" || !profile.authSubject) return {};
+
+  return {
+    authProvider: "google",
+    authSubject: String(profile.authSubject),
+    email: String(profile.email ?? "").trim().toLowerCase()
+  };
 }
 
 function loadProtectedParticipantId() {
