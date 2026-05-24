@@ -21,7 +21,8 @@ const CACHE_FILES = [
   "/src/data/demoData.mjs",
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
-  "/src/publicGoogleAuthLayer.mjs"
+  "/src/publicGoogleAuthLayer.mjs",
+  "/src/publicAdvancedWorkflowLayer.mjs"
 ];
 
 self.addEventListener("install", (event) => {
