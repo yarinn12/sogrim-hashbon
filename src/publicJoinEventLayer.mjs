@@ -13,6 +13,8 @@ import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 
 const app = document.querySelector("#app");
 const STYLE_ID = "public-join-event-layer-style";
+const EVENT_NAME_PLACEHOLDER = "אוכל / מונית / קניות...";
+const DEFAULT_EVENT_NAMES = new Set(["אירוע חדש", "יציאה חדשה"]);
 
 injectJoinEventStyle();
 document.addEventListener("click", handleJoinEventClick);
@@ -34,6 +36,7 @@ function enhanceJoinEventFlow() {
   enhanceHomeActions(screen);
   enhanceNewEventScreen(screen);
   reduceNewEventChromeRepetition(screen);
+  enhanceNewEventNameInput(screen);
 }
 
 function enhanceHomeActions(screen) {
@@ -57,8 +60,8 @@ function enhanceHomeActions(screen) {
 function enhanceNewEventScreen(screen) {
   if (!screen.querySelector('[data-action="create-event"]')) return;
 
-  screen.querySelector(".brand .eyebrow")?.replaceChildren("אירועים");
-  screen.querySelector(".brand h1")?.replaceChildren("פותחים או מצטרפים לחשבון");
+  setTextIfChanged(screen.querySelector(".brand .eyebrow"), "אירועים");
+  setTextIfChanged(screen.querySelector(".brand h1"), "פותחים או מצטרפים לחשבון");
 
   const nativeJoinPanel = screen.querySelector(".join-event-panel");
   if (nativeJoinPanel) {
@@ -82,13 +85,11 @@ function reduceNewEventChromeRepetition(screen) {
 
   const title = contextBar.querySelector(".product-context-copy strong");
   if (title?.textContent.trim() === "אירוע חדש") {
-    title.textContent = "יצירה או הצטרפות";
+    setTextIfChanged(title, "יצירה או הצטרפות");
   }
 
   const helper = contextBar.querySelector(".product-context-copy small");
-  if (helper) {
-    helper.textContent = "אפשר לפתוח אירוע חדש או להדביק קישור שקיבלת מחבר.";
-  }
+  setTextIfChanged(helper, "אפשר לפתוח אירוע חדש או להדביק קישור שקיבלת מחבר.");
 
   const actions = contextBar.querySelector(".product-context-actions");
   if (actions && !actions.querySelector("[data-public-open-join-panel]")) {
@@ -99,6 +100,25 @@ function reduceNewEventChromeRepetition(screen) {
     button.textContent = "הצטרף";
     actions.insertBefore(button, actions.lastElementChild);
   }
+}
+
+function enhanceNewEventNameInput(screen) {
+  const input = screen.querySelector('[data-action="new-event-name"]');
+  if (!input) return;
+
+  if (input.placeholder !== EVENT_NAME_PLACEHOLDER) {
+    input.placeholder = EVENT_NAME_PLACEHOLDER;
+  }
+
+  if (DEFAULT_EVENT_NAMES.has(input.value.trim())) {
+    input.value = "";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function setTextIfChanged(node, text) {
+  if (!node || node.textContent === text) return;
+  node.textContent = text;
 }
 
 function markCreatePanel(screen) {
