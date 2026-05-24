@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-v1";
+const CACHE_NAME = "settle-friends-v2";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -8,6 +8,7 @@ const CACHE_FILES = [
   "/src/app.mjs",
   "/src/domain/appActions.mjs",
   "/src/domain/eventFilters.mjs",
+  "/src/domain/googleAuth.mjs",
   "/src/domain/inviteLinks.mjs",
   "/src/domain/launchReadiness.mjs",
   "/src/domain/money.mjs",
@@ -19,7 +20,8 @@ const CACHE_FILES = [
   "/src/data/cloudStore.mjs",
   "/src/data/demoData.mjs",
   "/src/data/localIdentity.mjs",
-  "/src/data/localStore.mjs"
+  "/src/data/localStore.mjs",
+  "/src/publicGoogleAuthLayer.mjs"
 ];
 
 self.addEventListener("install", (event) => {
