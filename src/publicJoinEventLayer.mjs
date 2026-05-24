@@ -15,8 +15,14 @@ const app = document.querySelector("#app");
 const STYLE_ID = "public-join-event-layer-style";
 const EVENT_NAME_PLACEHOLDER = "אוכל / מונית / קניות...";
 const DEFAULT_EVENT_NAMES = new Set(["אירוע חדש", "יציאה חדשה"]);
+const MODE_CREATE = "create";
+const MODE_JOIN = "join";
+const MODE_STORAGE_KEY = "sogrimNewEventMode";
+
+let requestedEventMode = readRequestedEventMode();
 
 injectJoinEventStyle();
+document.addEventListener("click", rememberRequestedEventMode, true);
 document.addEventListener("click", handleJoinEventClick);
 watchApp();
 enhanceJoinEventFlow();
@@ -37,6 +43,45 @@ function enhanceJoinEventFlow() {
   enhanceNewEventScreen(screen);
   reduceNewEventChromeRepetition(screen);
   enhanceNewEventNameInput(screen);
+  applyNewEventMode(screen);
+}
+
+function rememberRequestedEventMode(event) {
+  const target = event.target.closest("[data-action], [data-public-click], [data-public-open-join-event], [data-public-mode-switch]");
+  if (!target) return;
+
+  const modeSwitch = target.dataset.publicModeSwitch;
+  if (modeSwitch) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setRequestedEventMode(modeSwitch);
+    enhanceJoinEventFlow();
+    return;
+  }
+
+  const publicClick = target.dataset.publicClick;
+  if (publicClick === "join-existing-event") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setRequestedEventMode(MODE_JOIN);
+    enhanceJoinEventFlow();
+    focusJoinEventPanel();
+    return;
+  }
+
+  if (publicClick === "create-event" && requestedEventMode === MODE_JOIN) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    setRequestedEventMode(MODE_CREATE);
+    enhanceJoinEventFlow();
+    return;
+  }
+
+  const action = target.dataset.action ?? publicClick;
+  if (action === "new-event") setRequestedEventMode(MODE_CREATE);
+  if (action === "join-event-screen" || target.dataset.publicOpenJoinEvent) {
+    setRequestedEventMode(MODE_JOIN);
+  }
 }
 
 function enhanceHomeActions(screen) {
@@ -84,15 +129,13 @@ function reduceNewEventChromeRepetition(screen) {
   if (!contextBar) return;
 
   const title = contextBar.querySelector(".product-context-copy strong");
-  if (title?.textContent.trim() === "אירוע חדש") {
-    setTextIfChanged(title, "יצירה או הצטרפות");
-  }
+  if (title?.textContent.trim() === "אירוע חדש") setTextIfChanged(title, "יצירה או הצטרפות");
 
   const helper = contextBar.querySelector(".product-context-copy small");
   setTextIfChanged(helper, "אפשר לפתוח אירוע חדש או להדביק קישור שקיבלת מחבר.");
 
   const actions = contextBar.querySelector(".product-context-actions");
-  if (actions && !actions.querySelector("[data-public-open-join-panel]")) {
+  if (actions && !actions.querySelector('[data-public-open-join-panel], [data-public-mode-switch="join"], [data-public-submit-join], [data-public-click="join-existing-event"]')) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "secondary-button";
@@ -116,9 +159,96 @@ function enhanceNewEventNameInput(screen) {
   }
 }
 
+function applyNewEventMode(screen) {
+  if (!screen.querySelector('[data-action="create-event"]')) return;
+
+  const mode = requestedEventMode === MODE_JOIN ? MODE_JOIN : MODE_CREATE;
+  const joinPanel = screen.querySelector(".join-event-panel");
+  const createPanel = screen.querySelector(".create-event-panel");
+
+  if (joinPanel) joinPanel.hidden = mode !== MODE_JOIN;
+  if (createPanel) createPanel.hidden = mode !== MODE_CREATE;
+
+  const title = mode === MODE_JOIN ? "הצטרפות לאירוע" : "אירוע חדש";
+  const helper = mode === MODE_JOIN
+    ? "מדביקים קישור שקיבלת מחבר ונכנסים ישר לאירוע."
+    : "מגדירים שם, קבוצה ומשתתפים ואז מתחילים להכניס הוצאות.";
+
+  setTextIfChanged(screen.querySelector(".brand h1"), title);
+  updateContextForMode(screen, mode, title, helper);
+}
+
+function updateContextForMode(screen, mode, title, helper) {
+  const contextBar = screen.querySelector(".product-context-bar");
+  if (!contextBar) return;
+
+  setTextIfChanged(contextBar.querySelector(".product-context-copy strong"), title);
+  setTextIfChanged(contextBar.querySelector(".product-context-copy small"), helper);
+
+  const createButton = contextBar.querySelector('[data-public-click="create-event"], [data-public-mode-switch="create"]');
+  const joinButton = contextBar.querySelector('[data-public-click="join-existing-event"], [data-public-open-join-panel], [data-public-mode-switch="join"], [data-public-submit-join]');
+
+  if (mode === MODE_JOIN) {
+    convertButton(createButton, {
+      label: "פתח אירוע חדש",
+      modeSwitch: MODE_CREATE,
+      primary: false
+    });
+    convertButton(joinButton, {
+      label: "הצטרף לאירוע",
+      submitJoin: true,
+      primary: true
+    });
+    return;
+  }
+
+  convertButton(createButton, {
+    label: "צור אירוע",
+    publicClick: "create-event",
+    primary: true
+  });
+  convertButton(joinButton, {
+    label: "הצטרפות לאירוע",
+    modeSwitch: MODE_JOIN,
+    primary: false
+  });
+}
+
+function convertButton(button, options) {
+  if (!button) return;
+
+  setTextIfChanged(button, options.label);
+  button.classList.toggle("primary-button", Boolean(options.primary));
+  button.classList.toggle("secondary-button", !options.primary);
+
+  delete button.dataset.publicClick;
+  delete button.dataset.publicOpenJoinPanel;
+  delete button.dataset.publicModeSwitch;
+  delete button.dataset.publicSubmitJoin;
+
+  if (options.publicClick) button.dataset.publicClick = options.publicClick;
+  if (options.modeSwitch) button.dataset.publicModeSwitch = options.modeSwitch;
+  if (options.submitJoin) button.dataset.publicSubmitJoin = "true";
+}
+
 function setTextIfChanged(node, text) {
   if (!node || node.textContent === text) return;
   node.textContent = text;
+}
+
+function readRequestedEventMode() {
+  try {
+    return sessionStorage.getItem(MODE_STORAGE_KEY) === MODE_JOIN ? MODE_JOIN : MODE_CREATE;
+  } catch {
+    return MODE_CREATE;
+  }
+}
+
+function setRequestedEventMode(mode) {
+  requestedEventMode = mode === MODE_JOIN ? MODE_JOIN : MODE_CREATE;
+  try {
+    sessionStorage.setItem(MODE_STORAGE_KEY, requestedEventMode);
+  } catch {}
 }
 
 function markCreatePanel(screen) {
@@ -153,6 +283,7 @@ function handleJoinEventClick(event) {
   const openJoinTarget = event.target.closest("[data-public-open-join-event]");
   if (openJoinTarget) {
     event.preventDefault();
+    setRequestedEventMode(MODE_JOIN);
     openJoinEventScreen();
     return;
   }
@@ -160,7 +291,16 @@ function handleJoinEventClick(event) {
   const openJoinPanelTarget = event.target.closest("[data-public-open-join-panel]");
   if (openJoinPanelTarget) {
     event.preventDefault();
+    setRequestedEventMode(MODE_JOIN);
+    enhanceJoinEventFlow();
     focusJoinEventPanel();
+    return;
+  }
+
+  const submitJoinTarget = event.target.closest("[data-public-submit-join]");
+  if (submitJoinTarget) {
+    event.preventDefault();
+    joinExistingEventFromPublicPanel();
     return;
   }
 
@@ -172,6 +312,7 @@ function handleJoinEventClick(event) {
 }
 
 function openJoinEventScreen() {
+  setRequestedEventMode(MODE_JOIN);
   const nativeJoinButton = document.querySelector('[data-action="join-event-screen"]:not([disabled])');
   if (nativeJoinButton) {
     nativeJoinButton.click();
