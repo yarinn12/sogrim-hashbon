@@ -91,11 +91,11 @@ function reduceNewEventChromeRepetition(screen) {
   }
 
   const actions = contextBar.querySelector(".product-context-actions");
-  if (actions && !actions.querySelector('[data-public-click="join-existing-event"], [data-public-open-join-event]')) {
+  if (actions && !actions.querySelector("[data-public-open-join-panel]")) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "secondary-button";
-    button.dataset.publicClick = "join-existing-event";
+    button.dataset.publicOpenJoinPanel = "true";
     button.textContent = "הצטרף";
     actions.insertBefore(button, actions.lastElementChild);
   }
@@ -137,6 +137,13 @@ function handleJoinEventClick(event) {
     return;
   }
 
+  const openJoinPanelTarget = event.target.closest("[data-public-open-join-panel]");
+  if (openJoinPanelTarget) {
+    event.preventDefault();
+    focusJoinEventPanel();
+    return;
+  }
+
   const joinTarget = event.target.closest("[data-public-join-existing-event]");
   if (joinTarget) {
     event.preventDefault();
@@ -152,6 +159,12 @@ function openJoinEventScreen() {
   }
 
   document.querySelector('[data-action="new-event"]:not([disabled])')?.click();
+}
+
+function focusJoinEventPanel() {
+  const input = document.querySelector("[data-public-join-event-link], [data-action=\"join-event-link\"]");
+  input?.scrollIntoView({ behavior: "smooth", block: "center" });
+  input?.focus();
 }
 
 async function joinExistingEventFromPublicPanel() {
