@@ -24,3 +24,12 @@ test("public back navigation layer adds app back and browser back behavior", asy
   assert.match(layer, /restoreScreen\(event\.state\.key\)/);
   assert.match(layer, /closeOpenWindow/);
 });
+
+test("public back navigation intercepts native app back before it can hang", async () => {
+  const layer = await readFile("src/publicBackNavigationLayer.mjs", "utf8");
+
+  assert.match(layer, /document\.addEventListener\("click", handleNativeBackClick, true\)/);
+  assert.match(layer, /event\.stopImmediatePropagation\(\)/);
+  assert.match(layer, /goBackWithoutHistoryRoundTrip/);
+  assert.match(layer, /clickSyntheticAction\("home"\)/);
+});
