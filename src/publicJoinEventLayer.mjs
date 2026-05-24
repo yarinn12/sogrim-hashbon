@@ -20,6 +20,7 @@ const MODE_JOIN = "join";
 const MODE_STORAGE_KEY = "sogrimNewEventMode";
 
 let requestedEventMode = readRequestedEventMode();
+let joinEnhancementScheduled = false;
 
 injectJoinEventStyle();
 document.addEventListener("click", rememberRequestedEventMode, true);
@@ -29,9 +30,18 @@ enhanceJoinEventFlow();
 
 function watchApp() {
   if (!app) return;
-  new MutationObserver(() => enhanceJoinEventFlow()).observe(app, {
+  new MutationObserver(scheduleJoinEventEnhancement).observe(app, {
     childList: true,
     subtree: true
+  });
+}
+
+function scheduleJoinEventEnhancement() {
+  if (joinEnhancementScheduled) return;
+  joinEnhancementScheduled = true;
+  requestAnimationFrame(() => {
+    joinEnhancementScheduled = false;
+    enhanceJoinEventFlow();
   });
 }
 
