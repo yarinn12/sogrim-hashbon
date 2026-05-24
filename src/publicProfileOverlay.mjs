@@ -177,7 +177,6 @@ function getScreenContext(screen, profile) {
       helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
       actions: [
         { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "שתף קישור", action: "open-event-share" },
         { label: "סגור חשבון", action: "settle" }
       ]
     };
@@ -240,7 +239,6 @@ function enhanceEventScreen() {
         </div>
         <div class="product-command-actions">
           <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-          <button class="secondary-button" type="button" data-public-click="open-event-share">שתף קישור</button>
           <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
         </div>
       </section>`
@@ -252,7 +250,6 @@ function enhanceEventScreen() {
       "beforeend",
       `<div class="product-sticky-actions" aria-label="פעולות מהירות">
         <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-        <button class="secondary-button" type="button" data-public-click="open-event-share">שתף קישור</button>
         <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
       </div>`
     );
@@ -635,7 +632,7 @@ function injectStyle() {
     .product-sticky-actions {
       position: fixed;
       display: grid;
-      grid-template-columns: 1.12fr 1fr 1fr;
+      grid-template-columns: 1.12fr 1fr;
       right: 50%;
       bottom: 16px;
       z-index: 30;

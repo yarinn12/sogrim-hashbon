@@ -91,7 +91,6 @@ function getScreenContext(screen) {
       helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
       actions: [
         { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "שתף קישור", action: "open-event-share" },
         { label: "סגור חשבון", action: "settle" }
       ]
     };
@@ -141,7 +140,6 @@ function enhanceEventScreen(screen) {
         </div>
         <div class="product-command-actions">
           ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-          ${renderPublicAction({ label: "שתף קישור", action: "open-event-share" })}
           ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
         </div>
       </section>`
@@ -153,7 +151,6 @@ function enhanceEventScreen(screen) {
       "beforeend",
       `<div class="product-sticky-actions" aria-label="פעולות מהירות">
         ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-        ${renderPublicAction({ label: "שתף קישור", action: "open-event-share" })}
         ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
       </div>`
     );
@@ -475,7 +472,7 @@ function injectClarityStyle() {
       z-index: 30;
       width: min(calc(100% - 24px), 720px);
       display: grid;
-      grid-template-columns: 1.12fr 1fr 1fr;
+      grid-template-columns: 1.12fr 1fr;
       gap: 8px;
       padding: 10px;
       transform: translateX(50%);
