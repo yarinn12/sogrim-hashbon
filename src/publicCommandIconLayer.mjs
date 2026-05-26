@@ -212,7 +212,7 @@ function injectCommandIconStyles() {
       box-shadow: 0 10px 22px rgba(7, 87, 78, 0.12);
     }
 
-    .hero-actions button[data-action],
+    .hero-actions button,
     .personal-next-step button[data-action],
     .event-workspace-tab[data-action],
     .settlement-hero-actions button[data-action] {
