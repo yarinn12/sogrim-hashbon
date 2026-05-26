@@ -103,9 +103,13 @@ function simplifyEmptyHome() {
   const dashboard = screen.querySelector(".personal-dashboard");
   const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");
   const eventSection = screen.querySelector(".event-list")?.closest(".section");
+  const advancedEventFilter = screen.querySelector(".advanced-event-filter");
+  const groupsAction = screen.querySelector('.hero-actions [data-action="groups"]');
 
   setHidden(dashboard, shouldSimplify);
   setHidden(personalActions, shouldSimplify);
+  setHidden(advancedEventFilter, shouldSimplify);
+  setHidden(groupsAction, shouldSimplify);
   if (eventSection) eventSection.classList.toggle("home-empty-events", shouldSimplify);
 
   screen.querySelectorAll('[data-action="event-status-filter"]').forEach((button) => {
