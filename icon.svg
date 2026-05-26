@@ -1,7 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="סוגרים חשבון">
-  <rect width="512" height="512" rx="96" fill="#087b74"/>
-  <circle cx="256" cy="256" r="172" fill="#f3f6f7"/>
-  <path d="M156 256c0-55 45-100 100-100s100 45 100 100-45 100-100 100-100-45-100-100Z" fill="#dff3ef"/>
-  <path d="M164 258h184M164 314h128M220 202h128" stroke="#087b74" stroke-width="34" stroke-linecap="round"/>
-  <path d="M156 256c0-55 45-100 100-100 30 0 57 13 75 34" fill="none" stroke="#cf5d3f" stroke-width="26" stroke-linecap="round"/>
+  <defs>
+    <linearGradient id="bg" x1="86" y1="58" x2="430" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b3b35"/>
+      <stop offset="0.56" stop-color="#087b74"/>
+      <stop offset="1" stop-color="#0f9488"/>
+    </linearGradient>
+    <linearGradient id="card" x1="154" y1="112" x2="362" y2="400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <circle cx="404" cy="104" r="44" fill="#ffe0a3"/>
+  <circle cx="404" cy="104" r="22" fill="#cf6a45"/>
+  <rect x="128" y="92" width="256" height="328" rx="78" fill="url(#card)" stroke="#e8fffb" stroke-opacity="0.34" stroke-width="14"/>
+  <path d="M184 218h126c34 0 62 27 62 61s-28 61-62 61H203" fill="none" stroke="#f8fffd" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m231 169-47 49 47 49" fill="none" stroke="#f8fffd" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m196 331 49 49 104-132" fill="none" stroke="#ffe0a3" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
