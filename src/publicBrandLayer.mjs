@@ -1,6 +1,6 @@
 const STYLE_ID = "public-brand-layer-style";
-const APP_NAME = "סוגרים חשבון";
-const APP_TAGLINE = "התחשבנות חכמה לחברים";
+const APP_NAME = "\u05e1\u05d5\u05d2\u05e8\u05d9\u05dd \u05d7\u05e9\u05d1\u05d5\u05df";
+const APP_TAGLINE = "\u05d7\u05d5\u05d1\u05d5\u05ea \u05d1\u05d9\u05df \u05d7\u05d1\u05e8\u05d9\u05dd, \u05d1\u05dc\u05d9 \u05db\u05d0\u05d1 \u05e8\u05d0\u05e9";
 
 injectBrandStyle();
 enhanceBranding();
@@ -18,6 +18,7 @@ function watchBranding() {
 function enhanceBranding() {
   enhanceAppScreenBrand();
   enhanceProfileGateBrand();
+  simplifyEmptyHome();
 }
 
 function enhanceAppScreenBrand() {
@@ -54,7 +55,7 @@ function enhanceProfileGateBrand() {
 function renderBrandLockup(extraClass = "") {
   return `
     <div class="product-brand-lockup ${extraClass}">
-      <span class="product-brand-mark" aria-hidden="true"><span>₪</span></span>
+      ${renderBrandMark()}
       <span class="product-brand-copy">
         <strong>${APP_NAME}</strong>
         <small>${APP_TAGLINE}</small>
@@ -63,8 +64,49 @@ function renderBrandLockup(extraClass = "") {
   `;
 }
 
+function renderBrandMark() {
+  return `
+    <span class="product-brand-mark" aria-hidden="true">
+      <svg class="product-brand-symbol" viewBox="0 0 64 64" focusable="false">
+        <rect class="brand-symbol-panel" x="12" y="10" width="40" height="44" rx="14" />
+        <path class="brand-symbol-flow" d="M22 25h18.5c4.1 0 7.5 3.3 7.5 7.4s-3.4 7.4-7.5 7.4H25" />
+        <path class="brand-symbol-return" d="M29 19 22 25l7 6" />
+        <path class="brand-symbol-check" d="m24 39 6 6 13-16" />
+        <circle class="brand-symbol-dot" cx="47" cy="18" r="4" />
+      </svg>
+    </span>
+  `;
+}
+
 function hasDirectChild(parent, className) {
   return Array.from(parent.children).some((child) => child.classList.contains(className));
+}
+
+function simplifyEmptyHome() {
+  const screen = document.querySelector("#app .screen");
+  if (!screen || !screen.querySelector('[data-action="new-event"]')) return;
+
+  const hasEventRows = Boolean(screen.querySelector(".event-row"));
+  const shouldSimplify = !hasEventRows;
+  const dashboard = screen.querySelector(".personal-dashboard");
+  const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");
+  const eventSection = screen.querySelector(".event-list")?.closest(".section");
+
+  if (dashboard) dashboard.hidden = shouldSimplify;
+  if (personalActions) personalActions.hidden = shouldSimplify;
+  if (eventSection) eventSection.classList.toggle("home-empty-events", shouldSimplify);
+
+  screen.querySelectorAll('[data-action="event-status-filter"]').forEach((button) => {
+    button.hidden = shouldSimplify;
+  });
+
+  if (!shouldSimplify || !eventSection) return;
+
+  const eventCopy = eventSection.querySelector(".section-title-row .muted");
+  if (eventCopy) eventCopy.textContent = "\u05e4\u05ea\u05d7 \u05d0\u05d9\u05e8\u05d5\u05e2 \u05d0\u05d5 \u05d4\u05e6\u05d8\u05e8\u05e3 \u05dc\u05e7\u05d9\u05e9\u05d5\u05e8 \u05e9\u05e7\u05d9\u05d1\u05dc\u05ea.";
+
+  const emptyState = eventSection.querySelector(".empty-state");
+  if (emptyState) emptyState.textContent = "\u05d0\u05d9\u05df \u05d0\u05d9\u05e8\u05d5\u05e2\u05d9\u05dd \u05e9\u05dc\u05da \u05e2\u05d3\u05d9\u05d9\u05df";
 }
 
 function injectBrandStyle() {
@@ -94,34 +136,55 @@ function injectBrandStyle() {
       overflow: hidden;
       border-radius: 8px;
       background:
-        radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.36), transparent 34%),
-        linear-gradient(145deg, #087b74 0%, #07574e 55%, #cf5d3f 132%);
+        radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.28), transparent 36%),
+        linear-gradient(145deg, #082f2b 0%, #087b74 56%, #0d9488 132%);
       color: #fffdf8;
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.28),
-        0 16px 30px rgba(8, 123, 116, 0.28);
+        0 16px 30px rgba(8, 123, 116, 0.22);
       font-size: 30px;
       font-weight: 950;
       line-height: 1;
     }
 
     .product-brand-mark::after {
-      content: "";
-      position: absolute;
-      inset-inline-end: -2px;
-      bottom: -2px;
-      width: 21px;
-      height: 21px;
-      border: 3px solid #fffdf8;
-      border-radius: 50%;
-      background: #fff0bf;
-      box-shadow: 0 5px 12px rgba(18, 29, 27, 0.18);
+      content: none;
     }
 
-    .product-brand-mark span {
+    .product-brand-symbol {
       position: relative;
       z-index: 1;
-      transform: translateY(-1px);
+      width: 34px;
+      height: 34px;
+      display: block;
+      overflow: visible;
+    }
+
+    .brand-symbol-panel {
+      fill: rgba(255, 255, 255, 0.13);
+      stroke: rgba(255, 255, 255, 0.26);
+      stroke-width: 1.5;
+    }
+
+    .brand-symbol-flow,
+    .brand-symbol-return,
+    .brand-symbol-check {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 4.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .brand-symbol-return,
+    .brand-symbol-check {
+      stroke-width: 4.8;
+    }
+
+    .brand-symbol-dot {
+      fill: #ffe0a3;
+      stroke: rgba(255, 255, 255, 0.72);
+      stroke-width: 1.4;
     }
 
     .product-brand-copy {
@@ -184,16 +247,26 @@ function injectBrandStyle() {
       height: 64px;
       background:
         radial-gradient(circle at 28% 24%, rgba(255, 255, 255, 0.42), transparent 34%),
-        linear-gradient(145deg, #fffdf8 0%, #dff3ef 62%, #fff0bf 132%);
+        linear-gradient(145deg, #fffdf8 0%, #dff3ef 58%, #d9f2ed 132%);
       color: #07574e;
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.68),
         0 18px 36px rgba(0, 0, 0, 0.18);
     }
 
-    .product-gate-brand .product-brand-mark::after {
-      background: #cf5d3f;
-      border-color: #fffdf8;
+    .product-gate-brand .product-brand-symbol {
+      width: 40px;
+      height: 40px;
+    }
+
+    .product-gate-brand .brand-symbol-panel {
+      fill: rgba(8, 123, 116, 0.08);
+      stroke: rgba(8, 123, 116, 0.18);
+    }
+
+    .product-gate-brand .brand-symbol-dot {
+      fill: #cf5d3f;
+      stroke: #fffdf8;
     }
 
     .product-gate-brand .product-brand-copy strong {
@@ -229,6 +302,42 @@ function injectBrandStyle() {
         width: 56px;
         height: 56px;
       }
+    }
+
+    html.product-v1,
+    html.product-v1-live {
+      --brand-mark-bg:
+        radial-gradient(circle at 26% 20%, rgba(255, 255, 255, 0.24), transparent 34%),
+        linear-gradient(145deg, #092f2b 0%, #087b74 58%, #0e9388 132%);
+    }
+
+    html.product-v1 .product-app-identity .product-brand-mark,
+    html.product-v1-live .product-app-identity .product-brand-mark,
+    html.product-v1 .public-profile-hero .product-brand-mark,
+    html.product-v1-live .public-profile-hero .product-brand-mark {
+      background: var(--brand-mark-bg) !important;
+      color: #fffdf8 !important;
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.24),
+        0 12px 26px rgba(8, 123, 116, 0.18) !important;
+    }
+
+    html.product-v1 .product-brand-mark::after,
+    html.product-v1-live .product-brand-mark::after {
+      content: none !important;
+      display: none !important;
+    }
+
+    html.product-v1 .screen[data-product-screen="home"] .app-back-button,
+    html.product-v1-live .screen[data-product-screen="home"] .app-back-button,
+    html.product-v1 .screen[data-product-screen="home"] .product-home-button,
+    html.product-v1-live .screen[data-product-screen="home"] .product-home-button {
+      display: none !important;
+    }
+
+    html.product-v1 .screen[data-product-screen="home"] > .top .brand,
+    html.product-v1-live .screen[data-product-screen="home"] > .top .brand {
+      grid-column: 1 / -1 !important;
     }
   `;
   document.head.append(style);
