@@ -4,12 +4,30 @@
   "description": "ניהול הוצאות אירוע וסגירת חובות בין חברים.",
   "start_url": "./",
   "scope": "./",
+  "id": "./",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "dir": "rtl",
   "lang": "he",
   "background_color": "#f3f6f7",
   "theme_color": "#087b74",
   "orientation": "portrait",
+  "categories": ["finance", "productivity", "utilities"],
+  "shortcuts": [
+    {
+      "name": "אירוע חדש",
+      "short_name": "אירוע",
+      "description": "פתיחת אירוע חדש לחברים.",
+      "url": "./?action=new-event",
+      "icons": [
+        {
+          "src": "./icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
   "icons": [
     {
       "src": "./icon.svg",
