@@ -8,6 +8,12 @@ import {
   isFullProfileName,
   normalizeProfileName
 } from "../domain/userProfile.mjs";
+import {
+  applyClientSpaceToConfig,
+  peekClientSpaceId,
+  parseInviteSpaceId,
+  resolveClientSpaceId
+} from "../domain/cloudSpace.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const LOCAL_PARTICIPANT_KEY = "settle-friends-current-participant";
@@ -30,7 +36,7 @@ const LEGACY_STARTER_PARTICIPANT_IDS = new Set(["yarin", "dani", "avi", "maor"])
 let runtimeConfigPromise = null;
 
 export function loadState() {
-  const raw = window.localStorage.getItem(STORAGE_KEY);
+  const raw = readSharedStateRaw();
   const protectedParticipantId = loadProtectedParticipantId();
   const localParticipantId = loadLocalParticipantId();
   if (!raw) {
@@ -56,7 +62,7 @@ export function loadState() {
 export function saveState(state) {
   const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
   saveLocalParticipantId(cleanState.currentParticipantId);
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(toSharedState(cleanState)));
+  window.localStorage.setItem(stateStorageKey(), JSON.stringify(toSharedState(cleanState)));
 }
 
 export async function loadRuntimeConfig() {
@@ -73,8 +79,8 @@ export async function loadRuntimeConfig() {
 }
 
 export async function loadSharedState() {
+  const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   const localState = loadState();
-  const runtimeConfig = await loadRuntimeConfig();
 
   if (runtimeConfig.storage?.mode === "supabase") {
     try {
@@ -113,9 +119,9 @@ export async function loadSharedState() {
 
 export async function saveSharedState(state) {
   const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
+  const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   saveState(cleanState);
   const sharedState = toSharedState(cleanState);
-  const runtimeConfig = await loadRuntimeConfig();
 
   if (runtimeConfig.storage?.mode === "supabase") {
     try {
@@ -123,6 +129,10 @@ export async function saveSharedState(state) {
     } catch {
       // Local fallback is already saved.
     }
+    return;
+  }
+
+  if (runtimeConfig.launch?.publicUrlReady) {
     return;
   }
 
@@ -138,7 +148,7 @@ export async function saveSharedState(state) {
 }
 
 export async function resetSharedState() {
-  const runtimeConfig = await loadRuntimeConfig();
+  const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
 
   if (runtimeConfig.storage?.mode === "supabase") {
     const state = applyLocalParticipantId(
@@ -213,6 +223,18 @@ export function resetState() {
   return state;
 }
 
+export function getActiveCloudSpaceId(config = LOCAL_RUNTIME_CONFIG) {
+  if (config?.storage?.mode !== "supabase") {
+    return peekClientSpaceId(window.location.href, window.localStorage) ?? "";
+  }
+
+  return resolveClientSpaceId({
+    currentUrl: window.location.href,
+    configuredSpaceId: config.storage.spaceId,
+    storage: window.localStorage
+  });
+}
+
 export function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -252,6 +274,26 @@ export function cleanLegacyStarterData(state, protectedParticipantId = "") {
 
 function loadLocalParticipantId() {
   return window.localStorage.getItem(LOCAL_PARTICIPANT_KEY);
+}
+
+function stateStorageKey() {
+  const spaceId = peekClientSpaceId(window.location.href, window.localStorage);
+  return spaceId ? `${STORAGE_KEY}:${spaceId}` : STORAGE_KEY;
+}
+
+function readSharedStateRaw() {
+  const key = stateStorageKey();
+  const raw = window.localStorage.getItem(key);
+  if (raw || key === STORAGE_KEY || parseInviteSpaceId(window.location.href)) {
+    return raw;
+  }
+
+  return window.localStorage.getItem(STORAGE_KEY);
+}
+
+function activateClientSpace(config) {
+  if (config?.storage?.mode !== "supabase") return config;
+  return applyClientSpaceToConfig(config, getActiveCloudSpaceId(config));
 }
 
 function saveLocalParticipantId(participantId) {
