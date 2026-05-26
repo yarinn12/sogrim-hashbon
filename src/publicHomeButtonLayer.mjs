@@ -45,7 +45,13 @@ function createHomeButton() {
   button.setAttribute("aria-label", "\u05de\u05e1\u05da \u05e8\u05d0\u05e9\u05d9");
   button.title = "\u05de\u05e1\u05da \u05e8\u05d0\u05e9\u05d9";
   button.innerHTML = `
-    <span class="product-home-button-icon" aria-hidden="true"></span>
+    <span class="product-home-button-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M4.5 11.5 12 5l7.5 6.5" />
+        <path d="M6.5 10.5v8h11v-8" />
+        <path d="M10 18.5v-4h4v4" />
+      </svg>
+    </span>
     <span>\u05e8\u05d0\u05e9\u05d9</span>
   `;
   return button;
@@ -114,36 +120,21 @@ function injectHomeButtonStyles() {
     }
 
     .product-home-button-icon {
-      position: relative;
-      width: 18px;
-      height: 16px;
-      display: inline-block;
+      width: 20px;
+      height: 20px;
+      display: inline-grid;
+      place-items: center;
       flex: 0 0 auto;
     }
 
-    .product-home-button-icon::before {
-      content: "";
-      position: absolute;
-      inset-inline-start: 1px;
-      top: 4px;
-      width: 16px;
-      height: 12px;
-      border: 2px solid currentColor;
-      border-top: 0;
-      border-radius: 0 0 4px 4px;
-    }
-
-    .product-home-button-icon::after {
-      content: "";
-      position: absolute;
-      inset-inline-start: 4px;
-      top: 0;
-      width: 10px;
-      height: 10px;
-      border-inline-start: 2px solid currentColor;
-      border-top: 2px solid currentColor;
-      transform: rotate(45deg);
-      border-radius: 2px 0 0 0;
+    .product-home-button-icon svg {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .screen .top > .product-home-button {
