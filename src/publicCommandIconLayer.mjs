@@ -81,6 +81,7 @@ const COMMAND_ICONS = {
 
 const BUTTON_ICON_SELECTOR = [
   ".hero-actions button[data-action]",
+  ".hero-actions button",
   ".personal-next-step button[data-action]",
   ".event-workspace-tab[data-action]",
   ".event-modal-header button[data-action]",
@@ -136,7 +137,7 @@ function enhanceActionButtons() {
   document.querySelectorAll(BUTTON_ICON_SELECTOR).forEach((button) => {
     if (button.classList.contains("event-command-card")) return;
 
-    const action = button.getAttribute("data-action");
+    const action = getButtonAction(button);
     const icon = COMMAND_ICONS[action];
     if (!icon || button.querySelector(".button-action-icon")) return;
 
@@ -146,6 +147,17 @@ function enhanceActionButtons() {
     iconElement.innerHTML = icon;
     button.prepend(iconElement);
   });
+}
+
+function getButtonAction(button) {
+  const action = button.getAttribute("data-action");
+  if (action) return action;
+
+  const label = button.textContent?.trim().replace(/\s+/g, " ") ?? "";
+  if (label === "\u05d4\u05e6\u05d8\u05e8\u05e4\u05d5\u05ea \u05dc\u05d0\u05d9\u05e8\u05d5\u05e2") return "join-event-screen";
+  if (label === "\u05d0\u05d9\u05e8\u05d5\u05e2 \u05d7\u05d3\u05e9") return "new-event";
+  if (label === "\u05e7\u05d1\u05d5\u05e6\u05d5\u05ea") return "groups";
+  return "";
 }
 
 function hideDuplicateEventCard() {
