@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-v2";
+const CACHE_NAME = "settle-friends-live-v4";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -26,7 +26,9 @@ const CACHE_FILES = [
   "/src/publicJoinEventLayer.mjs",
   "/src/publicInviteSnapshotLayer.mjs",
   "/src/publicPersonalActionsLayer.mjs",
-  "/src/publicEventWorkspaceLayer.mjs"
+  "/src/publicEventWorkspaceLayer.mjs",
+  "/src/publicEventLifecycleLayer.mjs",
+  "/src/publicVisualRefreshLayer.mjs"
 ];
 
 self.addEventListener("install", (event) => {
