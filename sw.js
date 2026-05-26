@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v16";
+const CACHE_NAME = "settle-friends-live-v17";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -24,6 +24,7 @@ const CACHE_FILES = [
   "/src/domain/stateBackup.mjs",
   "/src/domain/userProfile.mjs",
   "/src/domain/validation.mjs",
+  "/src/publicInviteFetchGuardLayer.mjs",
   "/src/publicProfileOverlay.mjs",
   "/src/publicInviteJoinFixLayer.mjs",
   "/src/publicGoogleAuthLayer.mjs",
