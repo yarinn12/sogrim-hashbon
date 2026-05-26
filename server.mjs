@@ -21,6 +21,11 @@ const contentTypes = {
   ".webmanifest": "application/manifest+json; charset=utf-8",
   ".json": "application/json; charset=utf-8"
 };
+const staticAliases = {
+  "/privacy": "/privacy.html",
+  "/support": "/support.html",
+  "/terms": "/terms.html"
+};
 
 export function createAppHandler({
   root = defaultRoot,
@@ -73,7 +78,9 @@ export function createAppHandler({
       return;
     }
 
-    const requestedPath = url.pathname === "/" ? "/index.html" : url.pathname;
+    const requestedPath = url.pathname === "/"
+      ? "/index.html"
+      : staticAliases[url.pathname] ?? url.pathname;
     const safePath = normalize(requestedPath).replace(/^(\.\.[/\\])+/, "");
     const filePath = join(resolvedRoot, safePath);
 
