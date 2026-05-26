@@ -24,7 +24,8 @@ const contentTypes = {
 const staticAliases = {
   "/privacy": "/privacy.html",
   "/support": "/support.html",
-  "/terms": "/terms.html"
+  "/terms": "/terms.html",
+  "/account-deletion": "/account-deletion.html"
 };
 
 export function createAppHandler({
