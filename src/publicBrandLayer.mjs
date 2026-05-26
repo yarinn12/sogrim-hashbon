@@ -6,12 +6,24 @@ injectBrandStyle();
 enhanceBranding();
 watchBranding();
 
+let scheduledBranding = false;
+
 function watchBranding() {
   if (!document.body) return;
 
-  new MutationObserver(() => enhanceBranding()).observe(document.body, {
+  new MutationObserver(scheduleBranding).observe(document.body, {
     childList: true,
     subtree: true
+  });
+}
+
+function scheduleBranding() {
+  if (scheduledBranding) return;
+  scheduledBranding = true;
+
+  requestAnimationFrame(() => {
+    scheduledBranding = false;
+    enhanceBranding();
   });
 }
 
@@ -92,21 +104,31 @@ function simplifyEmptyHome() {
   const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");
   const eventSection = screen.querySelector(".event-list")?.closest(".section");
 
-  if (dashboard) dashboard.hidden = shouldSimplify;
-  if (personalActions) personalActions.hidden = shouldSimplify;
+  setHidden(dashboard, shouldSimplify);
+  setHidden(personalActions, shouldSimplify);
   if (eventSection) eventSection.classList.toggle("home-empty-events", shouldSimplify);
 
   screen.querySelectorAll('[data-action="event-status-filter"]').forEach((button) => {
-    button.hidden = shouldSimplify;
+    setHidden(button, shouldSimplify);
   });
 
   if (!shouldSimplify || !eventSection) return;
 
   const eventCopy = eventSection.querySelector(".section-title-row .muted");
-  if (eventCopy) eventCopy.textContent = "\u05e4\u05ea\u05d7 \u05d0\u05d9\u05e8\u05d5\u05e2 \u05d0\u05d5 \u05d4\u05e6\u05d8\u05e8\u05e3 \u05dc\u05e7\u05d9\u05e9\u05d5\u05e8 \u05e9\u05e7\u05d9\u05d1\u05dc\u05ea.";
+  setTextIfChanged(eventCopy, "\u05e4\u05ea\u05d7 \u05d0\u05d9\u05e8\u05d5\u05e2 \u05d0\u05d5 \u05d4\u05e6\u05d8\u05e8\u05e3 \u05dc\u05e7\u05d9\u05e9\u05d5\u05e8 \u05e9\u05e7\u05d9\u05d1\u05dc\u05ea.");
 
   const emptyState = eventSection.querySelector(".empty-state");
-  if (emptyState) emptyState.textContent = "\u05d0\u05d9\u05df \u05d0\u05d9\u05e8\u05d5\u05e2\u05d9\u05dd \u05e9\u05dc\u05da \u05e2\u05d3\u05d9\u05d9\u05df";
+  setTextIfChanged(emptyState, "\u05d0\u05d9\u05df \u05d0\u05d9\u05e8\u05d5\u05e2\u05d9\u05dd \u05e9\u05dc\u05da \u05e2\u05d3\u05d9\u05d9\u05df");
+}
+
+function setHidden(node, value) {
+  if (!node || node.hidden === value) return;
+  node.hidden = value;
+}
+
+function setTextIfChanged(node, text) {
+  if (!node || node.textContent === text) return;
+  node.textContent = text;
 }
 
 function injectBrandStyle() {
