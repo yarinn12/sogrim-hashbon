@@ -13,6 +13,7 @@
           "privacy.html",
           "support.html",
           "terms.html",
+          "account-deletion.html",
           "sw.js",
           "src/**"
         ]
