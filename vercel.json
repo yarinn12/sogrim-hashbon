@@ -10,6 +10,9 @@
           "styles.css",
           "manifest.webmanifest",
           "icon.svg",
+          "privacy.html",
+          "support.html",
+          "terms.html",
           "sw.js",
           "src/**"
         ]
