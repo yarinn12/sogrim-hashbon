@@ -104,12 +104,18 @@ function simplifyEmptyHome() {
   const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");
   const eventSection = screen.querySelector(".event-list")?.closest(".section");
   const advancedEventFilter = screen.querySelector(".advanced-event-filter");
+  const contextBar = screen.querySelector(".product-context-bar");
+  const profilePanel = screen.querySelector(".profile-panel");
+  const quickGuide = screen.querySelector(".product-home-kicker");
   const groupsAction = screen.querySelector('.hero-actions [data-action="groups"]');
 
   setHidden(dashboard, shouldSimplify);
   setHidden(personalActions, shouldSimplify);
-  setHidden(advancedEventFilter, shouldSimplify);
-  setHidden(groupsAction, shouldSimplify);
+  setSuppressed(advancedEventFilter, shouldSimplify);
+  setSuppressed(contextBar, shouldSimplify);
+  setSuppressed(profilePanel, shouldSimplify);
+  setSuppressed(quickGuide, shouldSimplify);
+  setSuppressed(groupsAction, shouldSimplify);
   if (eventSection) eventSection.classList.toggle("home-empty-events", shouldSimplify);
 
   screen.querySelectorAll('[data-action="event-status-filter"]').forEach((button) => {
@@ -123,11 +129,27 @@ function simplifyEmptyHome() {
 
   const emptyState = eventSection.querySelector(".empty-state");
   setTextIfChanged(emptyState, "\u05d0\u05d9\u05df \u05d0\u05d9\u05e8\u05d5\u05e2\u05d9\u05dd \u05e9\u05dc\u05da \u05e2\u05d3\u05d9\u05d9\u05df");
+
+  eventSection.querySelectorAll(".empty-state").forEach((node, index) => {
+    setSuppressed(node, index > 0);
+  });
 }
 
 function setHidden(node, value) {
   if (!node || node.hidden === value) return;
   node.hidden = value;
+}
+
+function setSuppressed(node, value) {
+  if (!node) return;
+  setHidden(node, value);
+
+  if (value) {
+    node.style.setProperty("display", "none", "important");
+    return;
+  }
+
+  node.style.removeProperty("display");
 }
 
 function setTextIfChanged(node, text) {
