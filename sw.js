@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v6";
+const CACHE_NAME = "settle-friends-live-v7";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -6,8 +6,13 @@ const CACHE_FILES = [
   "/manifest.webmanifest",
   "/icon.svg",
   "/src/app.mjs",
+  "/src/data/cloudStore.mjs",
+  "/src/data/demoData.mjs",
+  "/src/data/localIdentity.mjs",
+  "/src/data/localStore.mjs",
   "/src/domain/appActions.mjs",
   "/src/domain/eventFilters.mjs",
+  "/src/domain/expenseDraft.mjs",
   "/src/domain/googleAuth.mjs",
   "/src/domain/inviteLinks.mjs",
   "/src/domain/launchReadiness.mjs",
@@ -16,19 +21,27 @@ const CACHE_FILES = [
   "/src/domain/settlement.mjs",
   "/src/domain/settlementSummary.mjs",
   "/src/domain/stateBackup.mjs",
+  "/src/domain/userProfile.mjs",
   "/src/domain/validation.mjs",
-  "/src/data/cloudStore.mjs",
-  "/src/data/demoData.mjs",
-  "/src/data/localIdentity.mjs",
-  "/src/data/localStore.mjs",
+  "/src/publicProfileOverlay.mjs",
   "/src/publicGoogleAuthLayer.mjs",
+  "/src/publicClarityLayer.mjs",
+  "/src/publicNameCleanup.mjs",
+  "/src/publicBrandLayer.mjs",
+  "/src/publicPersonalMemoryLayer.mjs",
+  "/src/publicPersonalActionsLayer.mjs",
+  "/src/publicBackNavigationLayer.mjs",
+  "/src/publicHomeButtonLayer.mjs",
+  "/src/publicCommandIconLayer.mjs",
+  "/src/publicExpenseGuestLayer.mjs",
+  "/src/publicVisualRefreshLayer.mjs",
+  "/src/publicMutationThrottleLayer.mjs",
   "/src/publicAdvancedWorkflowLayer.mjs",
+  "/src/publicCopyCleanupLayer.mjs",
   "/src/publicJoinEventLayer.mjs",
   "/src/publicInviteSnapshotLayer.mjs",
-  "/src/publicPersonalActionsLayer.mjs",
   "/src/publicEventWorkspaceLayer.mjs",
-  "/src/publicEventLifecycleLayer.mjs",
-  "/src/publicVisualRefreshLayer.mjs"
+  "/src/publicEventLifecycleLayer.mjs"
 ];
 
 self.addEventListener("install", (event) => {
