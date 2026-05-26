@@ -1,10 +1,13 @@
-const CACHE_NAME = "settle-friends-live-v17";
+const CACHE_NAME = "settle-friends-live-v18";
 const CACHE_FILES = [
   "/",
   "/index.html",
   "/styles.css",
   "/manifest.webmanifest",
   "/icon.svg",
+  "/privacy.html",
+  "/support.html",
+  "/terms.html",
   "/src/app.mjs",
   "/src/data/cloudStore.mjs",
   "/src/data/demoData.mjs",
