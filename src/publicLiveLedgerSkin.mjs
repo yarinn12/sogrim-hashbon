@@ -1,416 +1,442 @@
 const STYLE_ID = "sogrim-live-ledger-skin";
+const RETIRED_STYLE_IDS = [
+  "public-visual-refresh-layer-style",
+  "public-premium-visual-layer-style",
+  "public-fintech-design-layer-style"
+];
+const RETIRED_ROOT_CLASSES = [
+  "visual-refresh-v3",
+  "visual-refresh-v6",
+  "premium-visual-v1",
+  "fintech-design-v1",
+  "fintech-design-v2",
+  "sogrim-live-ledger",
+  "live-ledger-force-v2"
+];
+const CLUTTER_SELECTORS = [
+  ".product-context-bar",
+  ".product-home-kicker",
+  ".product-event-command",
+  ".product-sticky-actions",
+  ".product-hero-note"
+];
 
-installLiveLedgerSkin();
-markActiveScreen();
-
-const appRoot = document.querySelector("#app");
-if (appRoot) {
-  new MutationObserver(markActiveScreen).observe(appRoot, { childList: true, subtree: true });
-}
-
-function installLiveLedgerSkin() {
-  document.documentElement.classList.add("sogrim-live-ledger", "live-ledger-force-v2");
-
-  document.getElementById(STYLE_ID)?.remove();
-  const style = document.createElement("style");
-  style.id = STYLE_ID;
-  style.append(document.createTextNode(LIVE_LEDGER_CSS));
-  document.head.append(style);
-}
-
-function markActiveScreen() {
-  const screen = document.querySelector("#app .screen");
-  if (!screen) return;
-
-  screen.classList.add("live-ledger-screen");
-  screen.classList.toggle("live-ledger-home", Boolean(screen.querySelector('[data-action="new-event"]')));
-  screen.classList.toggle("live-ledger-event", Boolean(screen.querySelector('[data-action="show-expense-form"]')));
-  screen.classList.toggle("live-ledger-settlement", Boolean(screen.querySelector('[data-action="copy-settlement"]')));
-  screen.classList.toggle("live-ledger-groups", Boolean(screen.querySelector('[data-action="create-group"]')));
-}
-
-const LIVE_LEDGER_CSS = `
-  html.live-ledger-force-v2 {
-    --ledger-bg: #f1f4f0;
-    --ledger-ink: #111513;
-    --ledger-muted: #65716b;
-    --ledger-faint: #8b9691;
-    --ledger-surface: #fffefa;
-    --ledger-soft: #f7faf7;
-    --ledger-line: rgba(17, 21, 19, 0.1);
-    --ledger-line-strong: rgba(17, 21, 19, 0.18);
-    --ledger-primary: #087b74;
-    --ledger-primary-dark: #044b46;
-    --ledger-accent: #224f6e;
-    --ledger-gold: #bd8b32;
-    --ledger-danger: #b42318;
-    --ledger-radius: 8px;
-    --ledger-shadow-low: 0 8px 22px rgba(17, 21, 19, 0.055);
-    --ledger-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 18px 44px rgba(17, 21, 19, 0.09);
-    --ledger-shadow-high: 0 1px 0 rgba(255, 255, 255, 0.2) inset, 0 32px 82px rgba(17, 21, 19, 0.22);
-    background: var(--ledger-bg) !important;
+const PRODUCT_V1_CSS = `
+  html.product-v1-live {
+    --p1-bg: #f7f8f5;
+    --p1-surface: #ffffff;
+    --p1-ink: #111513;
+    --p1-muted: #68726d;
+    --p1-line: rgba(17, 21, 19, 0.1);
+    --p1-line-strong: rgba(17, 21, 19, 0.18);
+    --p1-primary: #08786f;
+    --p1-primary-strong: #04564f;
+    --p1-primary-soft: #e3f3ef;
+    --p1-warm: #c56a45;
+    --p1-warm-soft: #fff1e8;
+    --p1-sky: #2e6f95;
+    --p1-radius: 8px;
+    --p1-shadow-low: 0 8px 24px rgba(17, 21, 19, 0.06);
+    --p1-shadow-card: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 14px 38px rgba(17, 21, 19, 0.08);
+    --p1-shadow-high: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 28px 76px rgba(17, 21, 19, 0.16);
+    --p1-motion: 180ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  html.live-ledger-force-v2 body {
+  html.product-v1-live body {
     min-height: 100vh !important;
     background:
-      linear-gradient(180deg, #fbfcf8 0%, var(--ledger-bg) 44%, #f6f3ea 100%),
-      linear-gradient(118deg, rgba(8, 123, 116, 0.07) 0 30%, transparent 58%) !important;
-    color: var(--ledger-ink) !important;
+      linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 248, 245, 0.98) 38%, #f7f8f5 100%),
+      radial-gradient(circle at 88% 8%, rgba(8, 120, 111, 0.12), transparent 30%),
+      radial-gradient(circle at 12% 16%, rgba(46, 111, 149, 0.1), transparent 24%),
+      linear-gradient(135deg, rgba(197, 106, 69, 0.08), transparent 45%) !important;
+    color: var(--p1-ink) !important;
     font-family: Assistant, Heebo, "Noto Sans Hebrew", system-ui, sans-serif !important;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
 
-  html.live-ledger-force-v2 .app::before,
-  html.live-ledger-force-v2 .app::after,
-  html.live-ledger-force-v2 .product-v2 .top::before,
-  html.live-ledger-force-v2 .product-v2 .top::after,
-  html.live-ledger-force-v2 .screen > .top::before {
+  html.product-v1-live .app::before,
+  html.product-v1-live .screen > .top::before,
+  html.product-v1-live .screen > .top::after,
+  html.product-v1-live .brand::before,
+  html.product-v1-live .brand::after,
+  html.product-v1-live .primary-button::after,
+  html.product-v1-live .event-command-card::before,
+  html.product-v1-live .summary-item::after {
+    content: none !important;
     display: none !important;
   }
 
-  html.live-ledger-force-v2 .screen,
-  html.live-ledger-force-v2 .live-ledger-screen,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen,
-  html.live-ledger-force-v2.visual-refresh-v6 .command-center-screen {
-    width: min(100%, 1160px) !important;
-    padding: clamp(12px, 2vw, 22px) !important;
-    gap: 14px !important;
-    animation: none !important;
+  html.product-v1-live .screen {
+    width: min(100%, 1120px) !important;
+    display: grid !important;
+    gap: 16px !important;
+    padding: clamp(14px, 3vw, 28px) !important;
+    animation: product-v1-live-enter 360ms cubic-bezier(0.22, 1, 0.36, 1) both !important;
   }
 
-  html.live-ledger-force-v2 .product-app-identity {
+  html.product-v1-live .product-app-identity {
     position: sticky !important;
     top: 10px !important;
-    z-index: 60 !important;
+    z-index: 40 !important;
     min-height: 60px !important;
-    margin: 0 0 12px !important;
-    padding: 8px 10px !important;
-    border: 1px solid rgba(255, 255, 255, 0.16) !important;
-    border-radius: var(--ledger-radius) !important;
-    background: linear-gradient(135deg, #101513 0%, #073e39 64%, #224f6e 140%) !important;
-    box-shadow: var(--ledger-shadow-high) !important;
+    margin: 0 0 4px !important;
+    padding: 10px 12px !important;
+    border: 1px solid var(--p1-line) !important;
+    border-radius: var(--p1-radius) !important;
+    background: rgba(255, 255, 255, 0.88) !important;
+    box-shadow: var(--p1-shadow-low) !important;
     backdrop-filter: blur(18px) !important;
   }
 
-  html.live-ledger-force-v2 .product-brand-copy strong,
-  html.live-ledger-force-v2 .product-brand-copy small {
-    color: #fffefa !important;
+  html.product-v1-live .product-brand-lockup { gap: 10px !important; }
+
+  html.product-v1-live .product-brand-mark {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: var(--p1-radius) !important;
+    background: linear-gradient(145deg, var(--p1-primary), var(--p1-primary-strong)) !important;
+    color: #fff !important;
+    box-shadow: 0 10px 22px rgba(8, 120, 111, 0.18) !important;
+    font-size: 23px !important;
   }
 
-  html.live-ledger-force-v2 .product-brand-copy small {
-    opacity: 0.72 !important;
+  html.product-v1-live .product-brand-mark::after {
+    width: 15px !important;
+    height: 15px !important;
+    border-width: 2px !important;
+    background: #ffe7a8 !important;
   }
 
-  html.live-ledger-force-v2 .product-brand-mark {
-    width: 46px !important;
-    height: 46px !important;
-    border-radius: var(--ledger-radius) !important;
-    background: #fffefa !important;
-    color: var(--ledger-primary-dark) !important;
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22) !important;
+  html.product-v1-live .product-brand-copy strong {
+    color: var(--p1-ink) !important;
+    font-size: clamp(22px, 2.6vw, 30px) !important;
+    font-weight: 900 !important;
+    letter-spacing: 0 !important;
   }
 
-  html.live-ledger-force-v2 .product-home-button,
-  html.live-ledger-force-v2 .screen > .top .icon-button {
-    min-width: 48px !important;
-    min-height: 44px !important;
-    border-radius: var(--ledger-radius) !important;
-    background: rgba(255, 254, 250, 0.94) !important;
-    color: var(--ledger-primary-dark) !important;
-    border: 1px solid rgba(255, 255, 255, 0.72) !important;
-    box-shadow: 0 12px 26px rgba(17, 21, 19, 0.12) !important;
+  html.product-v1-live .product-brand-copy small {
+    color: var(--p1-muted) !important;
+    font-size: 0.82rem !important;
+    font-weight: 750 !important;
   }
 
-  html.live-ledger-force-v2 .screen > .top,
-  html.live-ledger-force-v2 .product-v2 .top,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top,
-  html.live-ledger-force-v2.visual-refresh-v6 .product-v2 .top {
-    min-height: 116px !important;
+  html.product-v1-live .screen > .top {
+    min-height: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    align-items: center !important;
-    gap: 18px !important;
-    margin: 0 0 14px !important;
-    padding: clamp(18px, 2.8vw, 28px) !important;
-    overflow: hidden !important;
-    color: var(--ledger-ink) !important;
-    border: 1px solid var(--ledger-line) !important;
-    border-radius: var(--ledger-radius) !important;
-    background:
-      linear-gradient(135deg, rgba(255, 254, 250, 0.98), rgba(247, 250, 247, 0.92)),
-      var(--ledger-surface) !important;
-    box-shadow: var(--ledger-shadow) !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 14px !important;
+    align-items: start !important;
+    margin: 0 !important;
+    padding: clamp(16px, 2.4vw, 22px) !important;
+    color: var(--p1-ink) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,253,250,0.94)), var(--p1-surface) !important;
+    border: 1px solid var(--p1-line) !important;
+    border-radius: var(--p1-radius) !important;
+    box-shadow: var(--p1-shadow-card) !important;
+    overflow: visible !important;
   }
 
-  html.live-ledger-force-v2 .screen > .top::after,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top::after {
-    content: "" !important;
-    display: block !important;
-    position: absolute !important;
-    inset-inline: 18px !important;
-    bottom: 0 !important;
-    height: 4px !important;
-    border-radius: 999px 999px 0 0 !important;
-    background: linear-gradient(90deg, var(--ledger-primary), var(--ledger-accent), var(--ledger-gold)) !important;
-    opacity: 1 !important;
-  }
+  html.product-v1-live .screen > .top .app-back-button { grid-column: 1 !important; grid-row: 1 !important; }
+  html.product-v1-live .screen > .top .brand { grid-column: 2 !important; width: 100% !important; max-width: 780px !important; padding: 0 !important; }
 
-  html.live-ledger-force-v2 .screen > .top .brand,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top .brand {
-    width: min(100%, 820px) !important;
-    max-width: 820px !important;
-    padding-inline-start: 0 !important;
-  }
-
-  html.live-ledger-force-v2 .screen > .top .brand::before,
-  html.live-ledger-force-v2 .screen > .top .brand::after,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top .brand::before,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top .brand::after {
-    display: none !important;
-  }
-
-  html.live-ledger-force-v2 h1,
-  html.live-ledger-force-v2 .brand h1,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top h1,
-  html.live-ledger-force-v2.visual-refresh-v6 .product-v2 .top h1 {
-    max-width: 760px !important;
-    margin: 0 0 8px !important;
-    color: var(--ledger-ink) !important;
-    font-size: clamp(2rem, 3.6vw, 3.15rem) !important;
-    line-height: 1.02 !important;
-    font-weight: 950 !important;
+  html.product-v1-live .brand h1,
+  html.product-v1-live h1 {
+    max-width: 100% !important;
+    margin: 0 !important;
+    color: var(--p1-ink) !important;
+    font-size: clamp(29px, 4vw, 46px) !important;
+    font-weight: 900 !important;
+    line-height: 1.05 !important;
     letter-spacing: 0 !important;
     text-shadow: none !important;
   }
 
-  html.live-ledger-force-v2 .eyebrow,
-  html.live-ledger-force-v2 .screen > .top .eyebrow,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top .eyebrow {
-    margin: 0 0 5px !important;
-    color: var(--ledger-primary) !important;
-    font-size: 0.82rem !important;
+  html.product-v1-live .eyebrow,
+  html.product-v1-live .screen > .top .eyebrow {
+    margin: 0 0 8px !important;
+    color: var(--p1-primary) !important;
+    font-size: 0.78rem !important;
     font-weight: 900 !important;
   }
 
-  html.live-ledger-force-v2 .muted,
-  html.live-ledger-force-v2 small,
-  html.live-ledger-force-v2 .screen > .top .muted,
-  html.live-ledger-force-v2 .product-hero-note,
-  html.live-ledger-force-v2.visual-refresh-v6 .screen > .top .muted {
-    color: var(--ledger-muted) !important;
-    font-weight: 750 !important;
+  html.product-v1-live .muted,
+  html.product-v1-live .screen > .top .muted,
+  html.product-v1-live small {
+    color: var(--p1-muted) !important;
+    font-weight: 650 !important;
     line-height: 1.55 !important;
   }
 
-  html.live-ledger-force-v2 .live-ledger-home .product-context-bar,
-  html.live-ledger-force-v2 .live-ledger-home .product-home-kicker,
-  html.live-ledger-force-v2 .command-center-home .product-context-bar,
-  html.live-ledger-force-v2 .command-center-home .product-home-kicker {
-    display: none !important;
-  }
-
-  html.live-ledger-force-v2 .hero-actions,
-  html.live-ledger-force-v2.visual-refresh-v6 .hero-actions,
-  html.live-ledger-force-v2.visual-refresh-v6 .command-action-grid {
+  html.product-v1-live .hero-actions {
     display: grid !important;
-    grid-template-columns: 1.35fr 1fr 1fr !important;
-    gap: 12px !important;
-    margin: 0 0 14px !important;
+    grid-template-columns: minmax(180px, 1.15fr) repeat(2, minmax(150px, 1fr)) !important;
+    gap: 10px !important;
+    margin: 0 !important;
     padding: 0 !important;
     background: transparent !important;
     backdrop-filter: none !important;
   }
 
-  html.live-ledger-force-v2 .hero-actions > button,
-  html.live-ledger-force-v2.visual-refresh-v6 .hero-actions > button {
-    min-height: 72px !important;
-    justify-content: flex-start !important;
-    padding: 15px 16px !important;
-    text-align: start !important;
-    white-space: normal !important;
-  }
-
-  html.live-ledger-force-v2 .primary-button,
-  html.live-ledger-force-v2 .secondary-button,
-  html.live-ledger-force-v2 .icon-button,
-  html.live-ledger-force-v2 .event-workspace-tab,
-  html.live-ledger-force-v2 .file-button {
-    min-height: 44px !important;
-    border-radius: var(--ledger-radius) !important;
-    font-weight: 900 !important;
+  html.product-v1-live .primary-button,
+  html.product-v1-live .secondary-button,
+  html.product-v1-live .icon-button,
+  html.product-v1-live .event-workspace-tab {
+    min-height: 46px !important;
+    border-radius: var(--p1-radius) !important;
+    font-weight: 850 !important;
     letter-spacing: 0 !important;
-    transition: transform 150ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease !important;
+    transition: transform var(--p1-motion), box-shadow var(--p1-motion), border-color var(--p1-motion), background var(--p1-motion) !important;
   }
 
-  html.live-ledger-force-v2 .primary-button {
-    border: 1px solid rgba(255, 255, 255, 0.16) !important;
-    background: linear-gradient(135deg, var(--ledger-primary) 0%, var(--ledger-primary-dark) 70%, #111513 138%) !important;
-    color: #fffefa !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18) inset, 0 16px 34px rgba(8, 123, 116, 0.22) !important;
+  html.product-v1-live .primary-button {
+    background: linear-gradient(135deg, var(--p1-primary), var(--p1-primary-strong)) !important;
+    color: #fff !important;
+    box-shadow: 0 10px 24px rgba(8, 120, 111, 0.18) !important;
   }
 
-  html.live-ledger-force-v2 .secondary-button,
-  html.live-ledger-force-v2 .icon-button,
-  html.live-ledger-force-v2 .file-button {
-    border: 1px solid var(--ledger-line) !important;
-    background: linear-gradient(180deg, #ffffff, #f8faf7) !important;
-    color: var(--ledger-ink) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.88) inset, var(--ledger-shadow-low) !important;
-  }
-
-  html.live-ledger-force-v2 .panel,
-  html.live-ledger-force-v2 .event-row,
-  html.live-ledger-force-v2 .expense-row,
-  html.live-ledger-force-v2 .group-row,
-  html.live-ledger-force-v2 .transfer-row,
-  html.live-ledger-force-v2 .balance-row,
-  html.live-ledger-force-v2 .summary-item,
-  html.live-ledger-force-v2 .personal-action-card,
-  html.live-ledger-force-v2 .public-personal-action-card,
-  html.live-ledger-force-v2 .event-command-card,
-  html.live-ledger-force-v2 .empty-state {
-    border: 1px solid var(--ledger-line) !important;
-    border-radius: var(--ledger-radius) !important;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(250, 251, 247, 0.94)) !important;
-    color: var(--ledger-ink) !important;
-    box-shadow: var(--ledger-shadow) !important;
-  }
-
-  html.live-ledger-force-v2 .panel {
-    padding: clamp(15px, 2vw, 22px) !important;
-  }
-
-  html.live-ledger-force-v2 .summary-strip,
-  html.live-ledger-force-v2 .personal-summary-strip,
-  html.live-ledger-force-v2.visual-refresh-v6 .summary-strip {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 10px !important;
-    padding: 0 !important;
-    border: 0 !important;
-    background: transparent !important;
+  html.product-v1-live .secondary-button,
+  html.product-v1-live .icon-button,
+  html.product-v1-live .event-workspace-tab {
+    background: rgba(255,255,255,0.92) !important;
+    border-color: var(--p1-line) !important;
+    color: var(--p1-ink) !important;
     box-shadow: none !important;
   }
 
-  html.live-ledger-force-v2 .summary-item {
-    min-height: 86px !important;
-    padding: 14px 15px !important;
-    overflow: hidden !important;
+  html.product-v1-live .icon-button { width: 46px !important; min-width: 46px !important; padding: 0 !important; }
+
+  html.product-v1-live .panel,
+  html.product-v1-live .event-row,
+  html.product-v1-live .expense-row,
+  html.product-v1-live .group-row,
+  html.product-v1-live .transfer-row,
+  html.product-v1-live .balance-row,
+  html.product-v1-live .summary-strip,
+  html.product-v1-live .event-insight-panel,
+  html.product-v1-live .event-command-card,
+  html.product-v1-live .empty-state {
+    border: 1px solid var(--p1-line) !important;
+    border-radius: var(--p1-radius) !important;
+    background: rgba(255,255,255,0.93) !important;
+    color: var(--p1-ink) !important;
+    box-shadow: var(--p1-shadow-card) !important;
   }
 
-  html.live-ledger-force-v2 .event-command-grid {
+  html.product-v1-live .profile-panel,
+  html.product-v1-live .backup-panel,
+  html.product-v1-live .network-panel,
+  html.product-v1-live .launch-panel,
+  html.product-v1-live .search-panel,
+  html.product-v1-live .product-context-bar,
+  html.product-v1-live .product-home-kicker,
+  html.product-v1-live .product-event-command,
+  html.product-v1-live .product-sticky-actions,
+  html.product-v1-live .product-hero-note { display: none !important; }
+
+  html.product-v1-live .personal-dashboard {
     display: grid !important;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)) !important;
-    gap: 11px !important;
-    margin: 14px 0 18px !important;
+    gap: 14px !important;
+    padding: clamp(16px, 2.8vw, 24px) !important;
+    background: linear-gradient(135deg, rgba(8,120,111,0.08), transparent 44%), rgba(255,255,255,0.94) !important;
   }
 
-  html.live-ledger-force-v2 .event-command-card {
-    min-height: 104px !important;
-    align-content: end !important;
-    text-align: start !important;
+  html.product-v1-live .personal-summary-strip,
+  html.product-v1-live .summary-strip {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    padding: 10px !important;
+    background: rgba(255,255,255,0.72) !important;
   }
 
-  html.live-ledger-force-v2 .event-row,
-  html.live-ledger-force-v2 .expense-row,
-  html.live-ledger-force-v2 .transfer-row,
-  html.live-ledger-force-v2 .group-row,
-  html.live-ledger-force-v2 .balance-row {
-    min-height: 74px !important;
-    padding: 14px 16px !important;
+  html.product-v1-live .summary-item {
+    min-height: 82px !important;
+    display: grid !important;
+    align-content: center !important;
+    gap: 6px !important;
+    padding: 14px !important;
+    border: 1px solid rgba(17,21,19,0.08) !important;
+    border-radius: var(--p1-radius) !important;
+    background: linear-gradient(180deg,#fff,#fbfcfa) !important;
   }
 
-  html.live-ledger-force-v2 .amount,
-  html.live-ledger-force-v2 .summary-item strong,
-  html.live-ledger-force-v2 .event-row-main strong,
-  html.live-ledger-force-v2 .expense-row strong,
-  html.live-ledger-force-v2 .transfer-row strong,
-  html.live-ledger-force-v2 .group-row strong {
-    color: var(--ledger-ink) !important;
-    font-weight: 950 !important;
-    font-variant-numeric: tabular-nums !important;
-  }
+  html.product-v1-live .summary-item span { color: var(--p1-muted) !important; font-size: 0.82rem !important; font-weight: 750 !important; }
+  html.product-v1-live .summary-item strong,
+  html.product-v1-live .amount { color: var(--p1-ink) !important; font-variant-numeric: tabular-nums !important; }
 
-  html.live-ledger-force-v2 .event-workspace-nav {
+  html.product-v1-live .event-row,
+  html.product-v1-live .expense-row,
+  html.product-v1-live .transfer-row,
+  html.product-v1-live .group-row { min-height: 78px !important; padding: 14px !important; }
+
+  html.product-v1-live .event-workspace-nav {
+    position: sticky !important;
     top: 76px !important;
-    gap: 5px !important;
-    padding: 5px !important;
-    margin: 8px 0 14px !important;
-    border: 1px solid var(--ledger-line) !important;
-    border-radius: var(--ledger-radius) !important;
-    background: rgba(255, 254, 250, 0.88) !important;
-    box-shadow: var(--ledger-shadow-low) !important;
+    z-index: 14 !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0,1fr)) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+    border: 1px solid var(--p1-line) !important;
+    border-radius: var(--p1-radius) !important;
+    background: rgba(255,255,255,0.9) !important;
+    box-shadow: var(--p1-shadow-low) !important;
     backdrop-filter: blur(16px) !important;
   }
 
-  html.live-ledger-force-v2 .event-workspace-tab.is-active,
-  html.live-ledger-force-v2 .event-workspace-tab[aria-current="page"] {
-    background: rgba(8, 123, 116, 0.12) !important;
-    color: var(--ledger-primary-dark) !important;
-  }
+  html.product-v1-live .event-workspace-tab.is-active,
+  html.product-v1-live .event-workspace-tab[aria-current="page"] { background: var(--p1-ink) !important; color: #fff !important; border-color: var(--p1-ink) !important; }
 
-  html.live-ledger-force-v2 input,
-  html.live-ledger-force-v2 select,
-  html.live-ledger-force-v2 textarea {
-    min-height: 46px !important;
-    border: 1px solid var(--ledger-line-strong) !important;
-    border-radius: var(--ledger-radius) !important;
+  html.product-v1-live .event-insight-panel { grid-template-columns: minmax(0,1fr) minmax(320px,0.8fr) !important; gap: 16px !important; padding: clamp(16px,2.8vw,24px) !important; }
+  html.product-v1-live .event-insight-main h2,
+  html.product-v1-live .settlement-hero h2 { font-size: clamp(25px,3.4vw,40px) !important; line-height: 1.08 !important; }
+  html.product-v1-live .event-insight-metrics { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 8px !important; }
+  html.product-v1-live .event-insight-metrics div { min-height: 78px !important; border-radius: var(--p1-radius) !important; background: #f8faf8 !important; }
+
+  html.product-v1-live .event-command-grid { grid-template-columns: repeat(auto-fit,minmax(180px,1fr)) !important; gap: 10px !important; }
+  html.product-v1-live .event-command-card { min-height: 122px !important; align-items: start !important; padding: 16px !important; text-align: start !important; }
+  html.product-v1-live .event-command-card.primary-button { color: #fff !important; border-color: transparent !important; background: linear-gradient(135deg, var(--p1-primary), #064a44) !important; }
+
+  html.product-v1-live input,
+  html.product-v1-live select,
+  html.product-v1-live textarea,
+  html.product-v1-live .guest-input {
+    min-height: 48px !important;
+    border-radius: var(--p1-radius) !important;
+    border-color: var(--p1-line) !important;
     background: #fff !important;
-    color: var(--ledger-ink) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset, 0 8px 18px rgba(17, 21, 19, 0.04) !important;
+    box-shadow: inset 0 1px 0 rgba(17,21,19,0.03) !important;
   }
 
-  html.live-ledger-force-v2 .expense-modal,
-  html.live-ledger-force-v2 .event-modal {
-    width: min(100%, 720px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.76) !important;
-    border-radius: var(--ledger-radius) !important;
-    background: linear-gradient(180deg, #fff, #f8faf6) !important;
-    box-shadow: var(--ledger-shadow-high) !important;
-  }
+  html.product-v1-live .participant-grid { grid-template-columns: repeat(auto-fit,minmax(170px,1fr)) !important; gap: 8px !important; }
+  html.product-v1-live .participant-pill { min-height: 58px !important; border-radius: var(--p1-radius) !important; background: #fff !important; }
+  html.product-v1-live .participant-pill:has(input:checked) { border-color: rgba(8,120,111,0.36) !important; background: var(--p1-primary-soft) !important; box-shadow: 0 0 0 3px rgba(8,120,111,0.08) !important; }
+
+  html.product-v1-live .expense-modal-backdrop,
+  html.product-v1-live .event-modal-backdrop { background: rgba(17,21,19,0.36) !important; backdrop-filter: blur(12px) !important; }
+  html.product-v1-live .expense-modal,
+  html.product-v1-live .event-modal { width: min(100%,800px) !important; max-height: min(92vh,940px) !important; border: 1px solid rgba(255,255,255,0.72) !important; background: rgba(255,255,255,0.98) !important; box-shadow: var(--p1-shadow-high) !important; }
+  html.product-v1-live .expense-guest-box { border-radius: var(--p1-radius) !important; background: var(--p1-warm-soft) !important; border-color: rgba(197,106,69,0.22) !important; }
+
+  html.product-v1-live .settlement-hero { grid-template-columns: minmax(0,1fr) minmax(250px,0.58fr) !important; padding: clamp(18px,3vw,28px) !important; background: linear-gradient(135deg, rgba(17,21,19,0.98), rgba(8,86,79,0.96)) !important; color: #fff !important; box-shadow: var(--p1-shadow-high) !important; }
+  html.product-v1-live .settlement-hero .muted,
+  html.product-v1-live .settlement-hero .amount { color: rgba(255,255,255,0.82) !important; }
+
+  html.product-v1-live .public-profile-gate { display: grid !important; place-items: center !important; min-height: 100vh !important; padding: clamp(16px,4vw,42px) !important; background: radial-gradient(circle at 80% 18%, rgba(8,120,111,0.16), transparent 30%), linear-gradient(180deg,#f9fbf8,#eef3ef) !important; }
+  html.product-v1-live .public-profile-modal { width: min(100%,760px) !important; min-height: 0 !important; display: grid !important; grid-template-columns: 1fr !important; border: 1px solid var(--p1-line) !important; border-radius: var(--p1-radius) !important; background: rgba(255,255,255,0.94) !important; box-shadow: var(--p1-shadow-high) !important; }
+  html.product-v1-live .public-profile-hero { min-height: 0 !important; padding: 18px 20px !important; color: var(--p1-ink) !important; background: linear-gradient(135deg, rgba(8,120,111,0.1), transparent 60%), #fff !important; }
+  html.product-v1-live .public-profile-hero h1,
+  html.product-v1-live .public-profile-hero p,
+  html.product-v1-live .public-profile-proof { display: none !important; }
+  html.product-v1-live .product-gate-brand { margin: 0 !important; }
+  html.product-v1-live .product-gate-brand .product-brand-copy strong { color: var(--p1-ink) !important; font-size: clamp(24px,4vw,34px) !important; }
+  html.product-v1-live .product-gate-brand .product-brand-copy small { color: var(--p1-muted) !important; }
+  html.product-v1-live .public-profile-form { padding: clamp(22px,4vw,42px) !important; background: #fff !important; }
+  html.product-v1-live .public-profile-form h2 { font-size: clamp(34px,5vw,54px) !important; line-height: 1 !important; }
 
   @media (hover: hover) {
-    html.live-ledger-force-v2 .primary-button:hover:not(:disabled),
-    html.live-ledger-force-v2 .secondary-button:hover:not(:disabled),
-    html.live-ledger-force-v2 .event-row:hover,
-    html.live-ledger-force-v2 .expense-row:hover,
-    html.live-ledger-force-v2 .transfer-row:hover,
-    html.live-ledger-force-v2 .event-command-card:hover,
-    html.live-ledger-force-v2 .summary-item:hover {
+    html.product-v1-live .primary-button:hover:not(:disabled),
+    html.product-v1-live .secondary-button:hover:not(:disabled),
+    html.product-v1-live .event-row:hover,
+    html.product-v1-live .expense-row:hover,
+    html.product-v1-live .transfer-row:hover,
+    html.product-v1-live .event-command-card:hover:not(:disabled) {
       transform: translateY(-2px) !important;
-      border-color: rgba(8, 123, 116, 0.22) !important;
-      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.94) inset, 0 24px 58px rgba(17, 21, 19, 0.14) !important;
+      box-shadow: var(--p1-shadow-card) !important;
+      border-color: var(--p1-line-strong) !important;
     }
   }
 
   @media (max-width: 760px) {
-    html.live-ledger-force-v2 .product-app-identity {
-      position: relative !important;
-      top: auto !important;
-    }
+    html.product-v1-live .screen { gap: 12px !important; padding: 12px !important; }
+    html.product-v1-live .product-app-identity { position: static !important; }
+    html.product-v1-live .screen > .top { grid-template-columns: 1fr !important; }
+    html.product-v1-live .screen > .top .brand,
+    html.product-v1-live .screen > .top .app-back-button { grid-column: 1 !important; }
+    html.product-v1-live .hero-actions,
+    html.product-v1-live .personal-summary-strip,
+    html.product-v1-live .summary-strip,
+    html.product-v1-live .event-insight-panel,
+    html.product-v1-live .settlement-hero { grid-template-columns: 1fr !important; }
+    html.product-v1-live .event-workspace-nav { top: 0 !important; grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+    html.product-v1-live .event-insight-metrics { grid-template-columns: 1fr !important; }
+  }
 
-    html.live-ledger-force-v2 .screen > .top,
-    html.live-ledger-force-v2.visual-refresh-v6 .screen > .top {
-      grid-template-columns: 1fr !important;
-      min-height: 0 !important;
-      padding: 16px !important;
-    }
+  @media (max-width: 460px) {
+    html.product-v1-live .brand h1,
+    html.product-v1-live h1 { font-size: 30px !important; }
+    html.product-v1-live .event-command-grid,
+    html.product-v1-live .participant-grid { grid-template-columns: 1fr !important; }
+    html.product-v1-live .expense-row,
+    html.product-v1-live .transfer-row,
+    html.product-v1-live .payer-row { grid-template-columns: 1fr !important; }
+  }
 
-    html.live-ledger-force-v2 h1,
-    html.live-ledger-force-v2.visual-refresh-v6 .screen > .top h1 {
-      font-size: clamp(1.72rem, 8vw, 2.24rem) !important;
-    }
+  @media (prefers-reduced-motion: reduce) {
+    html.product-v1-live *,
+    html.product-v1-live *::before,
+    html.product-v1-live *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; scroll-behavior: auto !important; }
+  }
 
-    html.live-ledger-force-v2 .hero-actions,
-    html.live-ledger-force-v2 .summary-strip,
-    html.live-ledger-force-v2 .personal-summary-strip {
-      grid-template-columns: 1fr !important;
-    }
-
-    html.live-ledger-force-v2 .hero-actions > button {
-      min-height: 66px !important;
-    }
+  @keyframes product-v1-live-enter {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 `;
+
+installProductV1Live();
+watchProductV1Live();
+
+function installProductV1Live() {
+  document.documentElement.classList.remove(...RETIRED_ROOT_CLASSES);
+  document.documentElement.classList.add("product-v1-live");
+  removeRetiredStyles();
+  injectStyles();
+  enhanceProductV1Live();
+}
+
+function watchProductV1Live() {
+  const appRoot = document.querySelector("#app");
+  if (!appRoot) return;
+  new MutationObserver(() => requestAnimationFrame(enhanceProductV1Live)).observe(appRoot, {
+    childList: true,
+    subtree: true
+  });
+}
+
+function removeRetiredStyles() {
+  for (const id of RETIRED_STYLE_IDS) document.getElementById(id)?.remove();
+  document.documentElement.classList.remove(...RETIRED_ROOT_CLASSES);
+}
+
+function injectStyles() {
+  document.getElementById(STYLE_ID)?.remove();
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.append(document.createTextNode(PRODUCT_V1_CSS));
+  document.head.append(style);
+}
+
+function enhanceProductV1Live() {
+  removeRetiredStyles();
+  document.documentElement.classList.add("product-v1-live");
+  for (const selector of CLUTTER_SELECTORS) {
+    document.querySelectorAll(selector).forEach((element) => element.remove());
+  }
+
+  const screen = document.querySelector("#app .screen");
+  if (!screen) return;
+  screen.dataset.productScreen = detectScreenKind(screen);
+}
+
+function detectScreenKind(screen) {
+  if (screen.matches(".profile-setup-screen") || screen.querySelector('[data-action="save-profile"]')) return "profile";
+  if (screen.querySelector('[data-action="create-event"]')) return "new-event";
+  if (screen.querySelector('[data-action="join-existing-event"]')) return "join-event";
+  if (screen.querySelector('[data-action="create-group"]')) return "groups";
+  if (screen.querySelector('[data-action="copy-settlement"]')) return "settlement";
+  if (screen.querySelector(".event-workspace-nav, .event-command-grid, .event-insight-panel")) return "event";
+  if (screen.querySelector('[data-action="new-event"]')) return "home";
+  return "general";
+}
