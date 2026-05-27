@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v21";
+const CACHE_NAME = "settle-friends-live-v22";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -41,6 +41,7 @@ const CACHE_FILES = [
   "/src/publicEventLifecycleLayer.mjs",
   "/src/publicEventWorkspaceLayer.mjs",
   "/src/publicExpenseGuestLayer.mjs",
+  "/src/publicExpensePayerSummaryLayer.mjs",
   "/src/publicFintechDesignLayer.mjs",
   "/src/publicFramerMotionLayer.mjs",
   "/src/publicGoogleAuthLayer.mjs",
@@ -51,13 +52,14 @@ const CACHE_FILES = [
   "/src/publicInviteQrLayer.mjs",
   "/src/publicInviteSnapshotLayer.mjs",
   "/src/publicJoinEventLayer.mjs",
-  "/src/publicMobileModalLayer.mjs",
   "/src/publicMutationThrottleLayer.mjs",
   "/src/publicNameCleanup.mjs",
+  "/src/publicMobileModalLayer.mjs",
   "/src/publicPersonalActionsLayer.mjs",
   "/src/publicPersonalMemoryLayer.mjs",
   "/src/publicPremiumVisualLayer.mjs",
   "/src/publicProductV1Layer.mjs",
+  "/src/publicProfileMemoryGuardLayer.mjs",
   "/src/publicProfileOverlay.mjs",
   "/src/publicVisualRefreshLayer.mjs"
 ];
