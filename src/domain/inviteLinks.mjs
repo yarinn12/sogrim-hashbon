@@ -1,10 +1,15 @@
 const INVITE_SNAPSHOT_PARAM = "invite";
+const INVITE_SPACE_PARAM = "space";
 
-export function buildEventInviteUrl(currentUrl, eventId, inviteSnapshot = null) {
+export function buildEventInviteUrl(currentUrl, eventId, inviteSnapshot = null, options = {}) {
   const url = new URL(currentUrl);
   url.search = "";
   url.hash = "";
   url.searchParams.set("event", eventId);
+
+  if (options.spaceId) {
+    url.searchParams.set(INVITE_SPACE_PARAM, String(options.spaceId));
+  }
 
   const normalizedSnapshot = normalizeInviteSnapshot(inviteSnapshot);
   if (normalizedSnapshot) {
@@ -69,9 +74,31 @@ export function mergeInviteSnapshotIntoState(state, inviteSnapshot) {
       ...snapshot.groups.filter((group) => !existingGroupIds.has(group.id))
     ],
     events: eventExists
-      ? state.events
+      ? state.events.map((event) =>
+          event.id === snapshot.event.id ? mergeInviteEvent(event, snapshot.event) : event
+        )
       : [snapshot.event, ...(state.events ?? [])]
   };
+}
+
+function mergeInviteEvent(existingEvent, snapshotEvent) {
+  return {
+    ...existingEvent,
+    groupId: existingEvent.groupId || snapshotEvent.groupId,
+    createdByParticipantId: existingEvent.createdByParticipantId || snapshotEvent.createdByParticipantId,
+    participantIds: uniqueIds([...(existingEvent.participantIds ?? []), ...snapshotEvent.participantIds]),
+    adminIds: uniqueIds([...(existingEvent.adminIds ?? []), ...snapshotEvent.adminIds]),
+    expenses: mergeById(existingEvent.expenses, snapshotEvent.expenses),
+    transfers: mergeById(existingEvent.transfers, snapshotEvent.transfers)
+  };
+}
+
+function mergeById(existingItems = [], snapshotItems = []) {
+  const existingIds = new Set(existingItems.map((item) => item.id).filter(Boolean));
+  return [
+    ...existingItems,
+    ...snapshotItems.filter((item) => !existingIds.has(item.id))
+  ];
 }
 
 function normalizeInviteSnapshot(snapshot) {
