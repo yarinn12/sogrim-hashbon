@@ -12,6 +12,7 @@ import {
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
+import { parseInviteSpaceId } from "./domain/cloudSpace.mjs";
 import {
   ensureNamedParticipant,
   isFullProfileName,
@@ -105,7 +106,8 @@ async function joinInviteWithName(displayName, errorNode) {
   window.location.href = buildEventInviteUrl(
     window.location.href,
     context.eventId,
-    context.snapshot
+    context.snapshot,
+    { spaceId: context.spaceId }
   );
 }
 
@@ -113,7 +115,11 @@ function inviteContext() {
   const eventId = parseInviteEventId(window.location.href);
   const snapshot = parseInviteSnapshot(window.location.href);
   if (!eventId || !snapshot) return null;
-  return { eventId, snapshot };
+  return {
+    eventId,
+    snapshot,
+    spaceId: parseInviteSpaceId(window.location.href) ?? undefined
+  };
 }
 
 function showNameError(errorNode) {
