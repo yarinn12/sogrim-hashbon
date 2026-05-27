@@ -4,7 +4,11 @@ import {
   saveLocalProfile,
   saveSharedState
 } from "./data/localStore.mjs";
-import { parseInviteEventId } from "./domain/inviteLinks.mjs";
+import {
+  mergeInviteSnapshotIntoState,
+  parseInviteEventId,
+  parseInviteSnapshot
+} from "./domain/inviteLinks.mjs";
 import { profileFromGoogleCredential } from "./domain/googleAuth.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 
@@ -93,8 +97,10 @@ async function handleGoogleCredential(response) {
     if (!googleProfile) throw new Error("Google profile needs a full name");
 
     const invitedEventId = parseInviteEventId(window.location.href);
+    const inviteSnapshot = parseInviteSnapshot(window.location.href);
+    const sharedState = mergeInviteSnapshotIntoState(await loadSharedState(), inviteSnapshot);
     const nextState = ensureNamedParticipant(
-      await loadSharedState(),
+      sharedState,
       {
         id: googleProfile.participantId,
         displayName: googleProfile.displayName,
