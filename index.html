@@ -8,15 +8,21 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="חשבון" />
     <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" as="style" />
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+    </noscript>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main id="app" class="app" aria-live="polite"></main>
     <script type="module" src="./src/publicInviteFetchGuardLayer.mjs"></script>
+    <script type="module" src="./src/publicProfileMemoryGuardLayer.mjs"></script>
     <script type="module" src="./src/app.mjs"></script>
     <script type="module" src="./src/publicProfileOverlay.mjs"></script>
     <script type="module" src="./src/publicInviteJoinFixLayer.mjs"></script>
@@ -32,16 +38,20 @@
     <script type="module" src="./src/publicCommandIconLayer.mjs"></script>
     <script type="module" src="./src/publicExpenseGuestLayer.mjs"></script>
     <script type="module" src="./src/publicInlinePayerLayer.mjs"></script>
+    <script type="module" src="./src/publicExpensePayerSummaryLayer.mjs"></script>
     <script type="module" src="./src/publicVisualRefreshLayer.mjs"></script>
+    <script type="module" src="./src/publicPremiumVisualLayer.mjs"></script>
+    <script type="module" src="./src/publicFintechDesignLayer.mjs"></script>
+    <script type="module" src="./src/publicFramerMotionLayer.mjs"></script>
     <script type="module" src="./src/publicMutationThrottleLayer.mjs"></script>
     <script type="module" src="./src/publicAdvancedWorkflowLayer.mjs"></script>
     <script type="module" src="./src/publicCopyCleanupLayer.mjs"></script>
     <script type="module" src="./src/publicJoinEventLayer.mjs"></script>
     <script type="module" src="./src/publicInviteSnapshotLayer.mjs"></script>
+    <script type="module" src="./src/publicInviteQrLayer.mjs"></script>
     <script type="module" src="./src/publicEventWorkspaceLayer.mjs"></script>
     <script type="module" src="./src/publicEventLifecycleLayer.mjs"></script>
-    <script type="module" src="./src/publicLiveLedgerSkin.mjs?v=force2"></script>
-    <script type="module" src="./src/publicA11yFixLayer.mjs?v=force2"></script>
+    <script type="module" src="./src/publicProductV1Layer.mjs"></script>
     <script type="module" src="./src/publicMobileModalLayer.mjs"></script>
   </body>
 </html>
