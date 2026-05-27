@@ -91,9 +91,7 @@ export function createAppHandler({
       return;
     }
 
-    response.writeHead(200, {
-      "content-type": contentTypes[extname(filePath)] ?? "application/octet-stream"
-    });
+    response.writeHead(200, responseHeadersFor(filePath, requestedPath));
     createReadStream(filePath).pipe(response);
   };
 }
@@ -135,6 +133,29 @@ function isLocalHost(host) {
 function sendJson(response, statusCode, payload) {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(payload));
+}
+
+function responseHeadersFor(filePath, requestedPath) {
+  const extension = extname(filePath);
+  const headers = {
+    "content-type": contentTypes[extension] ?? "application/octet-stream"
+  };
+
+  if (shouldBypassBrowserCache(requestedPath, extension)) {
+    headers["cache-control"] = "no-store, max-age=0";
+  }
+
+  return headers;
+}
+
+function shouldBypassBrowserCache(requestedPath, extension) {
+  return (
+    requestedPath === "/index.html" ||
+    requestedPath === "/sw.js" ||
+    extension === ".mjs" ||
+    extension === ".js" ||
+    extension === ".css"
+  );
 }
 
 async function readJsonBody(request) {
