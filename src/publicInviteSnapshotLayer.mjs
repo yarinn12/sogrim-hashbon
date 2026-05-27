@@ -1,5 +1,7 @@
 import {
   loadLocalProfile,
+  loadRuntimeConfig,
+  getActiveCloudSpaceId,
   loadState,
   saveSharedState,
   saveState
@@ -11,11 +13,17 @@ import {
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
+import { parseInviteSpaceId } from "./domain/cloudSpace.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 
 let inviteSnapshotScheduled = false;
+let runtimeConfig = null;
 
 importIncomingInviteSnapshot();
+loadRuntimeConfig().then((config) => {
+  runtimeConfig = config;
+  scheduleInviteSnapshotEnhancement();
+});
 document.addEventListener("click", handleInviteCopyClick, true);
 document.addEventListener("click", handleInviteSnapshotJoinClick, true);
 new MutationObserver(scheduleInviteSnapshotEnhancement).observe(document.body, {
@@ -125,7 +133,12 @@ function handleInviteSnapshotJoinClick(event) {
 
   saveState(state);
   saveSharedState(state);
-  window.location.href = buildEventInviteUrl(window.location.href, eventId, inviteSnapshot);
+  window.location.href = buildEventInviteUrl(
+    window.location.href,
+    eventId,
+    inviteSnapshot,
+    { spaceId: parseInviteSpaceId(link) ?? getActiveCloudSpaceId(runtimeConfig ?? undefined) }
+  );
 }
 
 function findJoinLink() {
@@ -141,7 +154,8 @@ function smartInviteUrl(eventId) {
   return buildEventInviteUrl(
     window.location.href,
     eventId,
-    buildEventInviteSnapshot(state, eventId)
+    buildEventInviteSnapshot(state, eventId),
+    { spaceId: getActiveCloudSpaceId(runtimeConfig ?? undefined) }
   );
 }
 
