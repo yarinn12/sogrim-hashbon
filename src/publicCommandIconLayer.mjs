@@ -3,16 +3,16 @@ const STYLE_ID = "public-command-icon-layer-style";
 const COMMAND_ICONS = {
   "new-event": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M7 4.5h10A2.5 2.5 0 0 1 19.5 7v10a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 17V7A2.5 2.5 0 0 1 7 4.5Z" />
-      <path d="M12 8v8" />
-      <path d="M8 12h8" />
+      <rect x="5" y="5" width="14" height="14" rx="3" />
+      <path d="M12 8.5v7" />
+      <path d="M8.5 12h7" />
     </svg>
   `,
   "create-event": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M7 4.5h10A2.5 2.5 0 0 1 19.5 7v10a2.5 2.5 0 0 1-2.5 2.5H7A2.5 2.5 0 0 1 4.5 17V7A2.5 2.5 0 0 1 7 4.5Z" />
-      <path d="M12 8v8" />
-      <path d="M8 12h8" />
+      <rect x="5" y="5" width="14" height="14" rx="3" />
+      <path d="M12 8.5v7" />
+      <path d="M8.5 12h7" />
     </svg>
   `,
   "join-event-screen": `
@@ -31,50 +31,54 @@ const COMMAND_ICONS = {
   `,
   groups: `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M8.5 12.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z" />
-      <path d="M3.8 19.2v-1.1c0-2.1 1.9-3.8 4.7-3.8s4.7 1.7 4.7 3.8v1.1" />
-      <path d="M16.8 11.7a2.8 2.8 0 1 0 0-5.6" />
-      <path d="M15.4 14.5c2.8.2 4.8 1.7 4.8 3.7v1" />
+      <circle cx="9" cy="8" r="3" />
+      <path d="M4.5 19v-1.1c0-2.2 1.9-4 4.5-4s4.5 1.8 4.5 4V19" />
+      <path d="M16.5 11.2a2.7 2.7 0 1 0 0-5.4" />
+      <path d="M15.4 14.2c2.4.4 4.1 1.8 4.1 3.7V19" />
     </svg>
   `,
   "show-expense-form": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M7 4.5h10v15l-2.5-1.4L12 19.5l-2.5-1.4L7 19.5v-15Z" />
-      <path d="M10 8.5h4" />
-      <path d="M10 12h4" />
-      <path d="M10 15.5h2.8" />
+      <path d="M8 4.5h8A2.5 2.5 0 0 1 18.5 7v13l-2.7-1.5L13.2 20 12 19.3 10.8 20l-2.6-1.5L5.5 20V7A2.5 2.5 0 0 1 8 4.5Z" />
+      <path d="M9.5 9h5" />
+      <path d="M9.5 13h5" />
+      <path d="M9.5 17h3" />
     </svg>
   `,
   "open-event-participants": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M16 20v-1.6c0-1.8-1.5-3.4-3.4-3.4H7.4C5.5 15 4 16.6 4 18.4V20" />
-      <path d="M10 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-      <path d="M20 20v-1.5c0-1.5-.9-2.8-2.2-3.4" />
-      <path d="M15.7 5.2a3 3 0 0 1 0 5.6" />
+      <circle cx="9" cy="8" r="3" />
+      <path d="M4.5 19v-1.1c0-2.2 1.9-4 4.5-4s4.5 1.8 4.5 4V19" />
+      <path d="M16.5 11.2a2.7 2.7 0 1 0 0-5.4" />
+      <path d="M15.4 14.2c2.4.4 4.1 1.8 4.1 3.7V19" />
     </svg>
   `,
   "open-event-share": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M18 8a3 3 0 1 0-2.8-4" />
-      <path d="M6 15a3 3 0 1 0 2.8 4" />
-      <path d="M8.7 9.1 15.3 6" />
-      <path d="M8.7 14.9 15.3 18" />
-      <path d="M6 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-      <path d="M18 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+      <circle cx="6.5" cy="12" r="3" />
+      <circle cx="17.5" cy="6.5" r="3" />
+      <circle cx="17.5" cy="17.5" r="3" />
+      <path d="m9.2 10.7 5.6-2.8" />
+      <path d="m9.2 13.3 5.6 2.8" />
     </svg>
   `,
   "open-event-settings": `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-1.9-.1l-1 .6a1.7 1.7 0 0 0-.8 1.6v.3h-3.8v-.3a1.7 1.7 0 0 0-.8-1.6l-1-.6a1.7 1.7 0 0 0-1.9.1l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15v-1.1a1.7 1.7 0 0 0-1.1-1.5l-.2-.1 2-3.4.2.1a1.7 1.7 0 0 0 1.9.1l1-.6a1.7 1.7 0 0 0 .8-1.6v-.3h3.8v.3a1.7 1.7 0 0 0 .8 1.6l1 .6a1.7 1.7 0 0 0 1.9-.1l.2-.1 2 3.4-.2.1a1.7 1.7 0 0 0-1.1 1.5V15Z" />
+      <path d="M4 7h16" />
+      <circle cx="9" cy="7" r="2" />
+      <path d="M4 12h16" />
+      <circle cx="15" cy="12" r="2" />
+      <path d="M4 17h16" />
+      <circle cx="11" cy="17" r="2" />
     </svg>
   `,
   settle: `
     <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M5 12h9.5" />
-      <path d="m11 8 4 4-4 4" />
-      <path d="M17 6.5c1.6 1.2 2.5 3.1 2.5 5.5 0 4.1-3.4 7.5-7.5 7.5-2.2 0-4.2-1-5.5-2.5" />
-      <path d="M7 17.5 6.5 14 10 14.5" />
+      <path d="M5 7h14" />
+      <path d="M8 7 5.5 13h5L8 7Z" />
+      <path d="M16 7 13.5 13h5L16 7Z" />
+      <path d="M12 4.5v14" />
+      <path d="M8.5 19.5h7" />
     </svg>
   `
 };
@@ -121,9 +125,15 @@ function enhanceCommandCards() {
   document.querySelectorAll(".event-command-card").forEach((card) => {
     const action = card.getAttribute("data-action");
     const icon = COMMAND_ICONS[action];
-    if (!icon || card.querySelector(".command-card-icon")) return;
+    if (!icon) return;
 
     ensureCommandCopy(card);
+
+    const existingIcon = card.querySelector(".command-card-icon");
+    if (existingIcon) {
+      existingIcon.innerHTML = icon;
+      return;
+    }
 
     const iconElement = document.createElement("span");
     iconElement.className = "command-card-icon";
@@ -139,7 +149,13 @@ function enhanceActionButtons() {
 
     const action = getButtonAction(button);
     const icon = COMMAND_ICONS[action];
-    if (!icon || button.querySelector(".button-action-icon")) return;
+    if (!icon) return;
+
+    const existingIcon = button.querySelector(".button-action-icon");
+    if (existingIcon) {
+      existingIcon.innerHTML = icon;
+      return;
+    }
 
     const iconElement = document.createElement("span");
     iconElement.className = "button-action-icon";
@@ -154,9 +170,9 @@ function getButtonAction(button) {
   if (action) return action;
 
   const label = button.textContent?.trim().replace(/\s+/g, " ") ?? "";
-  if (label === "\u05d4\u05e6\u05d8\u05e8\u05e4\u05d5\u05ea \u05dc\u05d0\u05d9\u05e8\u05d5\u05e2") return "join-event-screen";
-  if (label === "\u05d0\u05d9\u05e8\u05d5\u05e2 \u05d7\u05d3\u05e9") return "new-event";
-  if (label === "\u05e7\u05d1\u05d5\u05e6\u05d5\u05ea") return "groups";
+  if (label === "הצטרפות לאירוע") return "join-event-screen";
+  if (label === "אירוע חדש") return "new-event";
+  if (label === "קבוצות") return "groups";
   return "";
 }
 
@@ -201,15 +217,17 @@ function injectCommandIconStyles() {
     .event-command-card .command-card-icon {
       position: relative;
       z-index: 1;
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       display: inline-grid;
       place-items: center;
       border: 1px solid rgba(8, 123, 116, 0.18);
-      border-radius: 8px;
-      background: linear-gradient(145deg, rgba(8, 123, 116, 0.14), rgba(248, 224, 143, 0.24));
+      border-radius: 10px;
+      background:
+        radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.82), transparent 34%),
+        linear-gradient(145deg, rgba(8, 123, 116, 0.14), rgba(248, 224, 143, 0.22));
       color: var(--accent-strong, #07574e);
-      box-shadow: 0 10px 22px rgba(7, 87, 78, 0.12);
+      box-shadow: 0 12px 24px rgba(7, 87, 78, 0.1);
     }
 
     .hero-actions button,
@@ -244,7 +262,7 @@ function injectCommandIconStyles() {
       height: 22px;
       fill: none;
       stroke: currentColor;
-      stroke-width: 1.9;
+      stroke-width: 1.85;
       stroke-linecap: round;
       stroke-linejoin: round;
     }
@@ -275,7 +293,7 @@ function injectCommandIconStyles() {
     html.product-v1-live .button-action-icon svg,
     html.product-v1 .command-card-icon svg,
     html.product-v1-live .command-card-icon svg {
-      stroke-width: 2.05 !important;
+      stroke-width: 1.9 !important;
     }
 
     @media (max-width: 560px) {
