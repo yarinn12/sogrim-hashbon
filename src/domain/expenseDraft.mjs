@@ -63,6 +63,22 @@ export function canAutoFillPayer(payer) {
   return Boolean(payer) && (payer.amountTouched !== true || payer.autoAmount === true);
 }
 
+export function summarizePayerDraft(totalInput, payers) {
+  const total = readDraftAmount(totalInput);
+  const paid = Array.isArray(payers)
+    ? payers.reduce((sum, payer) => sum + readDraftAmount(payer.amount), 0)
+    : 0;
+  const difference = total - paid;
+
+  return {
+    total,
+    paid,
+    remaining: Math.max(difference, 0),
+    overpaid: Math.max(-difference, 0),
+    balanced: total > 0 && difference === 0
+  };
+}
+
 export function formatDraftAmount(amount) {
   if (!Number.isFinite(amount) || amount <= 0) return "";
   return formatMoney(amount).replace(/\.00$/, "");
