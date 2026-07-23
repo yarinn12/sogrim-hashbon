@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">סוגרים חשבון</string>
+    <string name="title_activity_main">סוגרים חשבון</string>
+    <string name="package_name">com.sogrimhashbon.app</string>
+    <string name="custom_url_scheme">com.sogrimhashbon.app</string>
+</resources>

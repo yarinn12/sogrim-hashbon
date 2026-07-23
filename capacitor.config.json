@@ -1,0 +1,15 @@
+{
+  "appId": "com.sogrimhashbon.app",
+  "appName": "סוגרים חשבון",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "automatic",
+    "preferredContentMode": "mobile"
+  }
+}

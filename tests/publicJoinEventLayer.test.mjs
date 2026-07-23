@@ -1,0 +1,48 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+test("public join layer adds existing event entry points", async () => {
+  const index = await readFile("index.html", "utf8");
+  const sw = await readFile("sw.js", "utf8");
+  const layer = await readFile("src/publicJoinEventLayer.mjs", "utf8");
+
+  assert.match(index, /publicJoinEventLayer\.mjs/);
+  assert.match(sw, /publicJoinEventLayer\.mjs/);
+  assert.match(layer, /data-public-open-join-event/);
+  assert.match(layer, /data-public-open-join-panel/);
+  assert.match(layer, /data-public-join-existing-event/);
+  assert.match(layer, /data-public-join-event-link/);
+  assert.match(layer, /name="joinEventLink"/);
+  assert.match(layer, /type="url"/);
+  assert.match(layer, /inputmode="url"/);
+  assert.match(layer, /placeholder="https:\/\/sogrim-hashbon\.vercel\.app\/\?event=…"/);
+  assert.match(layer, /rememberRequestedEventMode/);
+  assert.match(layer, /applyNewEventMode/);
+  assert.match(layer, /scheduleJoinEventEnhancement/);
+  assert.match(layer, /requestAnimationFrame/);
+  assert.match(layer, /querySelector\("\[data-public-open-join-event\]"\)\?\.remove\(\)/);
+  assert.match(layer, /hasNativeJoinAction/);
+  assert.match(layer, /querySelector\('\[data-action="join-event-screen"\]'\)/);
+  assert.match(layer, /joinPanel\.hidden = mode !== MODE_JOIN/);
+  assert.match(layer, /createPanel\.hidden = mode !== MODE_CREATE/);
+  assert.match(layer, /data-public-mode-switch/);
+  assert.match(layer, /placeholder = EVENT_NAME_PLACEHOLDER/);
+  assert.doesNotMatch(layer, /stopImmediatePropagation/);
+  assert.doesNotMatch(layer, /data-public-click=\\"join-existing-event\\"/);
+  assert.doesNotMatch(layer, /replaceChildren/);
+  assert.match(layer, /setTextIfChanged/);
+  assert.match(layer, /parseInviteEventId/);
+  assert.match(layer, /parseInviteSnapshot/);
+  assert.match(layer, /parseInviteSpaceId/);
+  assert.match(layer, /parseInviteSpaceKey/);
+  assert.match(layer, /readSharedEventState/);
+  assert.match(layer, /mergeSharedEventIntoState/);
+  assert.doesNotMatch(layer, /CLIENT_SPACE_STORAGE_KEY/);
+  assert.doesNotMatch(layer, /CLIENT_SPACE_KEY_STORAGE_PREFIX/);
+  assert.doesNotMatch(layer, /rememberInviteCloudSpace/);
+  assert.match(layer, /mergeInviteSnapshotIntoState/);
+  assert.match(layer, /loadSharedState/);
+  assert.match(layer, /ensureNamedParticipant/);
+  assert.match(layer, /\.join-event-panel/);
+});

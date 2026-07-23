@@ -1,0 +1,118 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
+
+import { createAppHandler } from "../server.mjs";
+
+test("public store readiness pages exist with stable URLs", async () => {
+  const [privacy, support, terms, deletion, server] = await Promise.all([
+    readFile("privacy.html", "utf8"),
+    readFile("support.html", "utf8"),
+    readFile("terms.html", "utf8"),
+    readFile("account-deletion.html", "utf8"),
+    readFile("server.mjs", "utf8")
+  ]);
+
+  assert.match(privacy, /מדיניות פרטיות/);
+  assert.match(privacy, /Google/);
+  assert.match(support, /תמיכה/);
+  assert.match(support, /קישור הצטרפות/);
+  assert.match(terms, /תנאי שימוש/);
+  assert.match(terms, /קישורי הצטרפות/);
+  assert.match(deletion, /מחיקת חשבון/);
+  assert.match(deletion, /Google/);
+  assert.match(server, /staticAliases/);
+  assert.match(server, /"\/android": "\/downloads\/sogrim-hashbon-android-1\.1\.apk"/);
+  assert.match(server, /"\/privacy": "\/privacy\.html"/);
+  assert.match(server, /"\/support": "\/support\.html"/);
+  assert.match(server, /"\/terms": "\/terms\.html"/);
+  assert.match(server, /"\/account-deletion": "\/account-deletion\.html"/);
+  assert.match(server, /"\/delete-account": "\/account-deletion\.html"/);
+});
+
+test("server offers the signed Android trial as an APK download", async () => {
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/android`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/vnd.android.package-archive");
+    assert.match(response.headers.get("content-disposition") ?? "", /attachment/);
+    assert.ok((await response.arrayBuffer()).byteLength > 1_000_000);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("server serves clean public policy URLs for app stores", async () => {
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    for (const path of [
+      "/privacy",
+      "/support",
+      "/terms",
+      "/account-deletion",
+      "/delete-account"
+    ]) {
+      const response = await fetch(`http://127.0.0.1:${port}${path}`);
+      const body = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-type"), /text\/html/);
+      assert.match(body, /סוגרים חשבון/);
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("store submission documents capture remaining Google and store work", async () => {
+  const [readiness, listing] = await Promise.all([
+    readFile("docs/app-store-readiness-he.md", "utf8"),
+    readFile("docs/store-listing-he.md", "utf8")
+  ]);
+
+  assert.match(readiness, /GOOGLE_CLIENT_ID/);
+  assert.match(readiness, /שמירת ענן/);
+  assert.match(readiness, /Apple/);
+  assert.match(readiness, /Google Play/);
+  assert.match(listing, /התחשבנות חכמה בין חברים/);
+  assert.match(listing, /https:\/\/sogrim-hashbon\.vercel\.app\/privacy/);
+  assert.match(listing, /https:\/\/sogrim-hashbon\.vercel\.app\/support/);
+});
+
+test("verified app links and store submission declarations are prepared", async () => {
+  const [vercel, server, packageJson, dataSafety, appPrivacy] = await Promise.all([
+    readFile("vercel.json", "utf8"),
+    readFile("server.mjs", "utf8"),
+    readFile("package.json", "utf8").then(JSON.parse),
+    readFile("docs/store-submission/google-play-data-safety-he.md", "utf8"),
+    readFile("docs/store-submission/apple-app-privacy-he.md", "utf8")
+  ]);
+
+  assert.match(vercel, /\.well-known\/\*\*/);
+  assert.match(server, /apple-app-site-association/);
+  assert.match(packageJson.scripts["native:ios:association"], /setup-apple-association/);
+  assert.match(packageJson.scripts["qa:store"], /verify-store-readiness/);
+  assert.match(dataSafety, /Other financial info|מידע פיננסי אחר/);
+  assert.match(dataSafety, /account-deletion/);
+  assert.match(appPrivacy, /NSPrivacyCollectedDataTypeOtherFinancialInfo/);
+  assert.match(appPrivacy, /לא נעשה שימוש במידע למעקב/);
+});

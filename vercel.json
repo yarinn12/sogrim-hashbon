@@ -1,0 +1,42 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.mjs",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": [
+          "index.html",
+          "styles.css",
+          "manifest.webmanifest",
+          "brand-mark.png",
+          "brand-mark-v3.png",
+          "icon.svg",
+          "icon-192.png",
+          "icon-512.png",
+          "icon-maskable-512.png",
+          "apple-touch-icon.png",
+          "sogrim-logo-lockup.png",
+          "sogrim-share-logo.png",
+          "sogrim-home-hero.png",
+          "assets/sogrim-logo-intro.mp4",
+          "assets/sogrim-logo-intro-poster.jpg",
+          "privacy.html",
+          "support.html",
+          "terms.html",
+          "account-deletion.html",
+          "downloads/**",
+          ".well-known/**",
+          "sw.js",
+          "src/**"
+        ]
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/server.mjs"
+    }
+  ]
+}

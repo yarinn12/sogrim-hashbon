@@ -1,0 +1,40 @@
+{
+  "name": "settle-friends",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "qa": "node scripts/run-tests.mjs",
+    "qa:memory": "node scripts/verify-account-memory.mjs",
+    "db:apply": "node scripts/apply-supabase-schema.mjs",
+    "native:prepare": "node scripts/build-native-web.mjs && cap sync && node scripts/finalize-native-projects.mjs",
+    "native:android": "npm run native:prepare && cap open android",
+    "native:android:key": "node scripts/setup-android-upload-key.mjs",
+    "native:android:apk": "npm run native:prepare && node scripts/build-android-apk.mjs",
+    "native:android:release": "npm run native:prepare && node scripts/build-android-release.mjs",
+    "native:ios": "npm run native:prepare && cap open ios",
+    "native:ios:association": "node scripts/setup-apple-association.mjs",
+    "qa:store": "node scripts/verify-store-readiness.mjs",
+    "store:review-account": "node scripts/setup-store-review-account.mjs"
+  },
+  "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/share": "^8.0.1",
+    "framer-motion": "^12.40.0",
+    "google-auth-library": "^10.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
+    "postgres": "^3.4.9"
+  }
+}
