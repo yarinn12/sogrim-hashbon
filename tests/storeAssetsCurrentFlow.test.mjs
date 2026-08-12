@@ -20,6 +20,12 @@ test("store artwork and reviewer guidance follow the current product flow", asyn
   assert.ok(!reviewNotes.includes("\u05de\u05e1\u05e2\u05d3\u05d4"));
   assert.match(assetReadme, /google-screenshot-02-expense\.png/);
   assert.match(assetReadme, /apple-screenshot-02-expense-1320x2868\.png/);
-  assert.match(androidBuild, /versionCode\s+67/);
-  assert.match(androidBuild, /versionName\s+"3\.44"/);
+
+  const versionCode = androidBuild.match(/versionCode\s+(\d+)/)?.[1];
+  const versionName = androidBuild.match(/versionName\s+"([^"]+)"/)?.[1];
+  assert.ok(versionCode, "Android versionCode must be configured");
+  assert.ok(versionName, "Android versionName must be configured");
+
+  const releaseNotes = await readFile(`docs/releases/${versionName}-he.md`, "utf8");
+  assert.match(releaseNotes, new RegExp(`\\(${versionCode}\\)`));
 });
