@@ -30,7 +30,8 @@
 - [ ] לאמת ב-Play Console שה-Data Safety, Ads declaration, Content rating, App access ומדינות ההפצה תואמים לגרסה שתוגש.
 - [ ] להריץ Pre-launch report על ה-AAB הסופי ולסגור כל Crash/ANR/חסימת מסלול.
 - [x] `npm run qa:android-native` עבר על אמולטור Android 16 / API 36: ללא קריסה, גלישה אופקית, פקדים ללא שם או יעדי לחיצה קטנים מ-44px.
-- [ ] להשלים את אותה בדיקה על AAB/Release במכשיר אמיתי. מסך ה-QA נעשה אינטראקטיבי באמולטור אחרי `3.77s` מול יעד מוצר של `3s`, ולכן זמן העלייה נשאר אזהרת ביצועים לפני Production.
+- [x] APK חתום במצב Release הותקן ונפתח באמולטור Android 16: גרסה `3.44 (67)`, עלייה קרה חוזרת ב-`1.917s`, מסך הכניסה הוצג במלואו ולא נרשמה `FATAL EXCEPTION`.
+- [ ] להשלים Smoke Test זהה על Release במכשיר Android פיזי לפני Production.
 
 ## iOS - מוכן בקוד
 
