@@ -3,8 +3,11 @@
 ## Verified today
 
 - 1,029 unit and integration tests pass.
-- 24 mobile journeys pass on Android, iPhone WebKit, enlarged iPhone text and 200% reflow.
+- All 24 mobile journeys pass on Android, iPhone WebKit, enlarged iPhone text and 200% reflow. A repeated 48-test stability run also passes without intermittent failures.
 - A complete native Android 16 journey passes from first event creation through expense entry, participants, sharing, settings, settlement, notifications, profile, friends and cleanup.
+- Native Android enlarged-text checks pass at a 1.5 system font scale with no clipped text, horizontal overflow or undersized controls.
+- Ten cold-start samples all reach an interactive screen. Median startup is 1.75 seconds, P75 is 1.79 seconds and the slowest sample is 2.65 seconds, within the 3-second product target.
+- The Android journey now enforces at least 12px between the final settlement content and the fixed navigation. The measured clearance is 98px on the Android 16 QA device.
 - Full-screen participant routes now expose a visible, tested back control instead of trapping the user without the product header or bottom navigation.
 - Live account memory, two-account event sync, invitation joining, friendship, notifications and feedback privacy checks pass against Supabase.
 - Data calculations complete for 5,000 expenses, and a 1,000-expense event opens and settles in the UI benchmark.

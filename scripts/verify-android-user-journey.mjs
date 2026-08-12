@@ -220,12 +220,6 @@ async function openAndInspectOverlay(page, action, label) {
     );
     check("share: secure invitation link is ready", shareReady);
   }
-  if (label === "settlement-bottom") {
-    check(
-      `${label}: final content clears the bottom navigation`,
-      Number.isFinite(state.bottomContentClearance) && state.bottomContentClearance >= 12
-    );
-  }
   await inspect(page, label);
   await androidBack();
   await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
@@ -360,6 +354,12 @@ async function inspect(page, label) {
       inviteUrl?.protocol === "https:" &&
         !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(inviteUrl.hostname) &&
         inviteUrl.pathname.startsWith("/i/")
+    );
+  }
+  if (label === "settlement-bottom") {
+    check(
+      `${label}: final content clears the bottom navigation`,
+      Number.isFinite(state.bottomContentClearance) && state.bottomContentClearance >= 12
     );
   }
   const usesStandaloneModalChrome = state.overlayVisible && state.overlayDismissVisible;

@@ -45,10 +45,19 @@ test("Android QA keeps a failed smoke result instead of aborting the benchmark",
 
 test("Android journey verifies settlement content above the fixed navigation", async () => {
   const journey = await readFile("scripts/verify-android-user-journey.mjs", "utf8");
+  const inspectBody = journey.slice(
+    journey.indexOf("async function inspect(page, label)"),
+    journey.indexOf("function inspectionExpression()")
+  );
+  const overlayBody = journey.slice(
+    journey.indexOf("async function openAndInspectOverlay(page, action, label)"),
+    journey.indexOf("async function createAcceptanceFixture(page)")
+  );
 
   assert.match(journey, /await scrollPageToBottom\(page\);[\s\S]*?inspect\(page, "settlement-bottom"\)/);
   assert.match(journey, /const bottomContentClearance = bottomNav && settlementTail/);
-  assert.match(journey, /state\.bottomContentClearance >= 12/);
+  assert.match(inspectBody, /label === "settlement-bottom"[\s\S]*?state\.bottomContentClearance >= 12/);
+  assert.doesNotMatch(overlayBody, /state\.bottomContentClearance/);
   assert.match(journey, /createAcceptanceFixture\(page\)/);
   assert.match(journey, /QA acceptance event/);
   assert.match(journey, /QA Ride/);
