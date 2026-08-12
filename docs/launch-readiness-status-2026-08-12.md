@@ -9,7 +9,7 @@
 - Live account memory, two-account event sync, invitation joining, friendship, notifications and feedback privacy checks pass against Supabase.
 - Data calculations complete for 5,000 expenses, and a 1,000-expense event opens and settles in the UI benchmark.
 - Android release `3.45` (`versionCode 68`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `9B8410D5C0B8BB3F6E08682FA1411E6ECC4A05454E4298ED74E89EAA1714611C`.
-- Google Play Console confirms that the previous release, `3.44` (`versionCode 67`), was rolled out to 100% of the selected closed-test audience on 2026-08-12. Release 68 still needs to be uploaded to that track.
+- Google Play Console accepted release `3.45` (`versionCode 68`) for the Alpha closed-test track at a 100% rollout on 2026-08-13. Its current console status is `under review`; release `3.44` (`versionCode 67`) remains the latest available tester build until Google completes that review.
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
 - The backup server image is published to GitHub Container Registry on every push to `main`.
@@ -20,7 +20,7 @@
 2. The public app shell and private invite shell are still origin-backed. Eight production boundaries pass, while the strict CDN gate intentionally fails these two boundaries.
 3. A second server host is not active. The container image is ready, but failover is not real until another provider runs it with production secrets.
 4. Public links still use the provider-owned `sogrim-hashbon.vercel.app` host. A stable custom domain should be purchased from an independent registrar and placed in front of both hosts.
-5. Upload release 68 to the closed-test track and complete one real-device smoke pass before promoting it beyond the current testing audience.
+5. After Google approves release 68, install the Play-delivered build on a real Android device and complete one smoke pass before promoting it beyond the current testing audience.
 6. Apple submission remains blocked by Apple Developer enrollment, Sign in with Apple, the Apple Team ID association and a signed Xcode 26+ archive from macOS.
 
 ## Release rule
