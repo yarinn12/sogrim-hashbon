@@ -35,7 +35,8 @@ server-*.log
 /*.jpeg
 *.avi
 *.zip
-downloads/*.aab
+/downloads/*
+!/downloads/sogrim-hashbon-android-1.2.apk
 *.png
 !brand-mark.png
 !brand-mark-v3.png

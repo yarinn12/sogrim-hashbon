@@ -4,10 +4,7 @@
   "builds": [
     {
       "src": "server.mjs",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["index.html"]
-      }
+      "use": "@vercel/node"
     },
     { "src": "*.html", "use": "@vercel/static" },
     { "src": "*.css", "use": "@vercel/static" },
@@ -39,8 +36,8 @@
       "continue": true
     },
     { "src": "/api/(.*)", "dest": "/server.mjs" },
-    { "src": "/i/(.*)", "dest": "/server.mjs" },
-    { "src": "/r/(.*)", "dest": "/server.mjs" },
+    { "src": "/i/(.*)", "dest": "/index.html" },
+    { "src": "/r/(.*)", "dest": "/index.html" },
     { "src": "/auth/callback", "dest": "/index.html" },
     { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/support", "dest": "/support.html" },

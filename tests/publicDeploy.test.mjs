@@ -189,14 +189,14 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
   const nodeBuild = config.builds.find((entry) => entry.src === "server.mjs");
   assert.deepEqual(nodeBuild, {
     src: "server.mjs",
-    use: "@vercel/node",
-    config: { includeFiles: ["index.html"] }
+    use: "@vercel/node"
   });
   for (const source of ["*.html", "*.css", "*.png", "assets/**", "src/data/**", "src/domain/**"]) {
     assert.ok(config.builds.some((entry) => entry.src === source && entry.use === "@vercel/static"));
   }
   assert.ok(config.routes.some((route) => route.src === "/api/(.*)" && route.dest === "/server.mjs"));
-  assert.ok(config.routes.some((route) => route.src === "/i/(.*)" && route.dest === "/server.mjs"));
+  assert.ok(config.routes.some((route) => route.src === "/i/(.*)" && route.dest === "/index.html"));
+  assert.ok(config.routes.some((route) => route.src === "/r/(.*)" && route.dest === "/index.html"));
   assert.ok(config.routes.some((route) => route.handle === "filesystem"));
   assert.ok(config.routes.some((route) => route.src === "/(.*)" && route.dest === "/index.html"));
   assert.equal(config.routes[0].continue, true);
@@ -217,4 +217,9 @@ test("deployment includes only the required public PNG assets", async () => {
   assert.match(vercelIgnore, /^!sogrim-share-logo\.png$/m);
   assert.match(vercelIgnore, /^!sogrim-home-hero\.png$/m);
   assert.match(vercelIgnore, /^!assets\/sign-in-with-apple-iw\.png$/m);
+  assert.match(vercelIgnore, /^\/downloads\/\*$/m);
+  assert.match(
+    vercelIgnore,
+    /^!\/downloads\/sogrim-hashbon-android-1\.2\.apk$/m
+  );
 });
