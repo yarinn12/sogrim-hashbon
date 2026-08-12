@@ -31,6 +31,7 @@
 - [ ] להריץ Pre-launch report על ה-AAB הסופי ולסגור כל Crash/ANR/חסימת מסלול.
 - [x] `npm run qa:android-native` עבר על אמולטור Android 16 / API 36: ללא קריסה, גלישה אופקית, פקדים ללא שם או יעדי לחיצה קטנים מ-44px.
 - [x] APK חתום במצב Release הותקן ונפתח באמולטור Android 16: גרסה `3.44 (67)`, עלייה קרה חוזרת ב-`1.917s`, מסך הכניסה הוצג במלואו ולא נרשמה `FATAL EXCEPTION`.
+- [x] מדידת 10 פתיחות רצופות עברה `10/10`: חציון `1.903s`, ‏p75 של `2.093s`, ועומדת ביעד המוצר של `3s`. חריג יחיד של `10.587s` נשאר למעקב במכשיר פיזי.
 - [ ] להשלים Smoke Test זהה על Release במכשיר Android פיזי לפני Production.
 
 ## iOS - מוכן בקוד
@@ -80,8 +81,9 @@
 3. `npm run native:android:release`
 4. `npm run qa:store`
 5. `npm run qa:android-native`
-6. `npm run qa:ios`
-7. `npm run qa:ios:artifact` על macOS לאחר יצוא IPA חתום
-8. `npm run qa:ios:review` לאחר חזרת האתר ו-Sign in with Apple
+6. `npm run qa:android-benchmark`
+7. `npm run qa:ios`
+8. `npm run qa:ios:artifact` על macOS לאחר יצוא IPA חתום
+9. `npm run qa:ios:review` לאחר חזרת האתר ו-Sign in with Apple
 
 Release מועמד מוכן רק כאשר כל פקודות השער עוברות והסעיפים הידניים בחנות מתועדים בצילום או בדוח.

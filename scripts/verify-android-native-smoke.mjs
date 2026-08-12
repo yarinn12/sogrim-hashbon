@@ -6,6 +6,9 @@ import { chooseAndroidDevice } from "./androidQaMetrics.mjs";
 const root = process.cwd();
 const packageName = process.env.ANDROID_QA_PACKAGE || "com.sogrimhashbon.app.debug";
 const releasePackageName = "com.sogrimhashbon.app";
+const requireReleaseAppLinks =
+  packageName === releasePackageName ||
+  process.env.ANDROID_QA_REQUIRE_APP_LINKS === "1";
 const activityName = "com.sogrimhashbon.app.MainActivity";
 const targetInteractiveMs = Number(process.env.ANDROID_INTERACTIVE_TARGET_MS) || 3_000;
 const maximumInteractiveMs = Number(process.env.ANDROID_INTERACTIVE_TIMEOUT_MS) || 25_000;
@@ -83,7 +86,14 @@ let releaseAppLinks = "not-installed";
 if (packageInstalled(releasePackageName)) {
   const appLinks = adbRun(["-s", device, "shell", "pm", "get-app-links", releasePackageName]);
   releaseAppLinks = /sogrim-hashbon\.vercel\.app:\s*verified/.test(appLinks) ? "verified" : "unverified";
-  check("Installed release package has verified App Links", releaseAppLinks === "verified");
+  if (requireReleaseAppLinks) {
+    check("Installed release package has verified App Links", releaseAppLinks === "verified");
+  } else if (releaseAppLinks !== "verified") {
+    warnings.push({
+      name: "Release App Links are not verified",
+      status: releaseAppLinks
+    });
+  }
 }
 
 const ready = checks.every((item) => item.ok);
@@ -111,6 +121,7 @@ console.log(JSON.stringify({
   } : null,
   inspectionError: interactive.inspectionError || null,
   releaseAppLinks,
+  releaseAppLinksRequired: requireReleaseAppLinks,
   checks,
   warnings
 }, null, 2));

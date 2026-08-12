@@ -71,6 +71,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeSmoke, /versionCode/);
   assert.match(nativeSmoke, /FATAL EXCEPTION/);
   assert.match(nativeSmoke, /pm", "get-app-links/);
+  assert.match(nativeSmoke, /ANDROID_QA_REQUIRE_APP_LINKS/);
+  assert.match(nativeSmoke, /releaseAppLinksRequired/);
   assert.match(nativeBenchmark, /ANDROID_BENCHMARK_RUNS/);
   assert.match(nativeBenchmark, /com\.sogrimhashbon\.app\.benchmark/);
   assert.match(androidQaMetrics, /p75/);
