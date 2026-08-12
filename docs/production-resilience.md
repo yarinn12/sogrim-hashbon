@@ -53,3 +53,11 @@ The container requires the same production values used by the current server. At
 Push delivery additionally requires the Firebase project and service-account values. Billing verification remains disabled until its Google Play values are intentionally enabled.
 
 Never copy `.env.local` into an image or commit production secrets. The Docker image contains application files and production dependencies only.
+
+## Prepared backup artifact
+
+Every push to `main` builds and publishes the provider-portable server image to:
+
+`ghcr.io/yarinn12/sogrim-hashbon-server:latest`
+
+An immutable tag matching the Git commit SHA is published alongside `latest`. The image is only a deployable artifact; production failover is complete only after a second host is connected to it, its secrets are configured, and the stable public domain passes `npm run qa:production:strict` against that host.
