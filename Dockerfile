@@ -14,7 +14,6 @@ COPY --from=dependencies /app/node_modules ./node_modules
 COPY package.json package-lock.json server.mjs ./
 COPY src ./src
 COPY assets ./assets
-COPY downloads ./downloads
 COPY .well-known ./.well-known
 COPY index.html privacy.html support.html terms.html accessibility.html account-deletion.html ./
 COPY styles.css legal.css legal.mjs manifest.webmanifest sw.js ./
