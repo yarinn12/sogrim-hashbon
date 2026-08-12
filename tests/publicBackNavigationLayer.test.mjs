@@ -2,34 +2,34 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("public back navigation layer is loaded after personal memory", async () => {
-  const index = await readFile("index.html", "utf8");
+test("core app owns the single browser back implementation", async () => {
+  const [index, app] = await Promise.all([
+    readFile("index.html", "utf8"),
+    readFile("src/app.mjs", "utf8")
+  ]);
 
-  assert.match(index, /publicBackNavigationLayer\.mjs/);
-  assert.match(
-    index,
-    /publicPersonalMemoryLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicBackNavigationLayer\.mjs"><\/script>/
+  assert.doesNotMatch(index, /publicBackNavigationLayer\.mjs/);
+  assert.match(app, /window\.addEventListener\("popstate", handleBrowserHistoryBack\)/);
+  assert.match(app, /function goBackInApp/);
+  assert.match(app, /window\.history\.pushState/);
+  assert.match(app, /restoreHistoryView/);
+});
+
+test("core back history preserves focused windows and drafts", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const goBack = app.slice(
+    app.indexOf("function goBackInApp()"),
+    app.indexOf("function renderHistoryFallback(rewindSteps = 1)")
   );
-});
+  const fallback = app.slice(
+    app.indexOf("function renderHistoryFallback(rewindSteps = 1)"),
+    app.indexOf("function handleInput(event)")
+  );
 
-test("public back navigation layer adds app back and browser back behavior", async () => {
-  const layer = await readFile("src/publicBackNavigationLayer.mjs", "utf8");
-
-  assert.match(layer, /HISTORY_STATE_KEY/);
-  assert.match(layer, /data-public-action="app-back"/);
-  assert.match(layer, /aria-label", "חזור"/);
-  assert.match(layer, /window\.addEventListener\("popstate", handleBrowserBack\)/);
-  assert.match(layer, /window\.history\.pushState/);
-  assert.match(layer, /window\.history\.replaceState/);
-  assert.match(layer, /restoreScreen\(event\.state\.key\)/);
-  assert.match(layer, /closeOpenWindow/);
-});
-
-test("public back navigation intercepts native app back before it can hang", async () => {
-  const layer = await readFile("src/publicBackNavigationLayer.mjs", "utf8");
-
-  assert.match(layer, /document\.addEventListener\("click", handleNativeBackClick, true\)/);
-  assert.match(layer, /event\.stopImmediatePropagation\(\)/);
-  assert.match(layer, /goBackWithoutHistoryRoundTrip/);
-  assert.match(layer, /clickSyntheticAction\("home"\)/);
+  assert.match(app, /expenseDraft: cloneNavigationValue\(expenseDraft\)/);
+  assert.match(app, /eventDialog: cloneNavigationValue\(eventDialog\)/);
+  assert.match(app, /if \(action === "go-back"\) \{\s*goBackInApp\(\);/);
+  assert.doesNotMatch(goBack, /history\.back\(\)/);
+  assert.match(fallback, /window\.history\.back\(\)/);
+  assert.match(fallback, /window\.history\.go\(-historyDistance\)/);
 });

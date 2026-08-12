@@ -1,0 +1,43 @@
+export async function sendPaymentReminder(
+  config,
+  { eventId, transferId },
+  fetchImpl = fetch
+) {
+  const account = config?.storage?.account;
+  const normalizedEventId = String(eventId ?? "").trim();
+  const normalizedTransferId = String(transferId ?? "").trim();
+  if (
+    !config?.launch?.pushDeliveryReady ||
+    !account?.userId ||
+    !account?.accessToken ||
+    !normalizedEventId ||
+    !normalizedTransferId
+  ) {
+    return { ok: false, reason: "unavailable" };
+  }
+
+  const response = await fetchImpl(
+    `${config?.apiBaseUrl ?? ""}/api/notifications/payment-reminder`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${account.accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        eventId: normalizedEventId,
+        transferId: normalizedTransferId
+      })
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (response.ok) return payload;
+
+  const error = new Error(
+    payload?.error || "Payment reminder could not be sent"
+  );
+  error.code = payload?.code || "REMINDER_FAILED";
+  error.retryAt = payload?.retryAt || "";
+  error.retryable = Boolean(payload?.retryable);
+  throw error;
+}

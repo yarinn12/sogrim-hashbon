@@ -1,5 +1,13 @@
-const STORAGE_KEY = "settle-friends-state";
-const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
+import {
+  loadLocalProfile,
+  loadState,
+  saveSharedState
+} from "./data/localStore.mjs";
+import {
+  canRemoveParticipant,
+  removeParticipant
+} from "./domain/appActions.mjs";
+
 const STYLE_ID = "public-name-cleanup-style";
 const LEGACY_STARTER_EVENT_ID = "event-demo";
 const LEGACY_STARTER_GROUP_ID = "thursday";
@@ -19,13 +27,11 @@ function watchApp() {
 }
 
 function applyPublicNameCleanup() {
-  cleanLegacyStoredState();
   normalizeNamePlaceholders(document);
 
   const screen = document.querySelector(".screen");
   if (!screen) return;
 
-  clearStarterExpenseDefaults(screen);
   addSavedNamesPanel(screen);
 }
 
@@ -37,25 +43,8 @@ function normalizeNamePlaceholders(screen) {
     });
 }
 
-function clearStarterExpenseDefaults(screen) {
-  resetInputValue(screen.querySelector('[data-action="expense-name"]'), "מונית");
-  resetInputValue(screen.querySelector('[data-action="expense-total"]'), "110");
-  screen
-    .querySelectorAll('[data-action="expense-payer-amount"]')
-    .forEach((input) => resetInputValue(input, "110"));
-}
-
-function resetInputValue(input, starterValue) {
-  if (!input || input.dataset.nameCleanupCleared === "true") return;
-  if (input.value !== starterValue) return;
-
-  input.value = "";
-  input.dataset.nameCleanupCleared = "true";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
 function addSavedNamesPanel(screen) {
-  if (!screen.querySelector('[data-action="create-group"]')) return;
+  if (screen.dataset.screenKind !== "people") return;
   if (
     screen.querySelector(".known-participants-panel") ||
     screen.querySelector(".product-saved-names-panel")
@@ -73,7 +62,7 @@ function addSavedNamesPanel(screen) {
       <div class="section-title-row">
         <div>
           <h2>שמות שנשמרו</h2>
-          <p class="muted">האפליקציה לא ממציאה אנשים. כאן אפשר להסיר שם שהכנסת אם הוא לא מופיע בהוצאה קיימת.</p>
+          <p class="muted">כאן מנהלים שמות ששמרת. אפשר להסיר שם שלא מופיע בהוצאות קיימות.</p>
         </div>
       </div>
       <div class="stack">
@@ -96,7 +85,7 @@ function addSavedNamesPanel(screen) {
 function renderSavedNameRow(state, participant) {
   const profileParticipantId = readLocalProfile()?.participantId ?? "";
   const isCurrent = participant.id === profileParticipantId;
-  const canRemove = !isCurrent && !participantHasMoneyHistory(state, participant.id);
+  const canRemove = !isCurrent && canRemoveParticipant(state, participant.id);
   const helper = isCurrent
     ? "זה השם שלך במכשיר הזה"
     : canRemove
@@ -117,32 +106,14 @@ function renderSavedNameRow(state, participant) {
   `;
 }
 
-function removeSavedParticipant(participantId) {
+async function removeSavedParticipant(participantId) {
   const state = readStoredState();
   if (!state || !participantId) return;
-  const profileParticipantId = readLocalProfile()?.participantId ?? "";
-  if (participantId === profileParticipantId || participantHasMoneyHistory(state, participantId)) return;
+  if (!canRemoveParticipant(state, participantId)) return;
 
-  const nextState = {
-    ...state,
-    participants: (state.participants ?? []).filter((participant) => participant.id !== participantId),
-    groups: (state.groups ?? []).map((group) => removeParticipantFromGroup(group, participantId)),
-    events: (state.events ?? []).map((event) => removeParticipantFromEvent(event, participantId))
-  };
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  const nextState = removeParticipant(state, participantId);
+  await saveSharedState(nextState);
   window.location.reload();
-}
-
-function cleanLegacyStoredState() {
-  const state = readStoredState();
-  if (!state) return;
-
-  const profileParticipantId = readLocalProfile()?.participantId ?? "";
-  const nextState = removeLegacyStarterData(state, profileParticipantId);
-  if (JSON.stringify(nextState) === JSON.stringify(state)) return;
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
 }
 
 function removeLegacyStarterData(state, protectedParticipantId = "") {
@@ -249,6 +220,12 @@ function collectReferencedParticipantIds(state) {
       addId(ids, transfer.toParticipantId);
       addId(ids, transfer.markedPaidByParticipantId);
     });
+    (event.activityLog ?? []).forEach((activity) => {
+      addId(ids, activity.actorParticipantId);
+      addId(ids, activity.subjectParticipantId);
+      addId(ids, activity.fromParticipantId);
+      addId(ids, activity.toParticipantId);
+    });
   });
 
   return ids;
@@ -303,19 +280,11 @@ function participantHasMoneyHistory(state, participantId) {
 }
 
 function readStoredState() {
-  try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
-  } catch {
-    return null;
-  }
+  return loadState();
 }
 
 function readLocalProfile() {
-  try {
-    return JSON.parse(window.localStorage.getItem(LOCAL_PROFILE_KEY) || "null");
-  } catch {
-    return null;
-  }
+  return loadLocalProfile();
 }
 
 function uniqueIds(ids) {

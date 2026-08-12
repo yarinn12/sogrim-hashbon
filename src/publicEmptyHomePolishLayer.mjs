@@ -29,7 +29,7 @@ function scheduleEmptyHomePolish() {
 function syncEmptyHomePolish() {
   document.querySelectorAll("#app .screen").forEach((screen) => {
     const isHome = Boolean(screen.querySelector('[data-action="new-event"]'));
-    const hasEvents = Boolean(screen.querySelector(".event-row"));
+    const hasEvents = Boolean(screen.querySelector(".event-row, .recent-event-shortcut"));
     screen.classList.toggle("product-empty-home", isHome && !hasEvents);
   });
 }
@@ -111,7 +111,7 @@ function injectEmptyHomePolish() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #087b74, #f2cf8f, #cf6a45);
+      background: linear-gradient(90deg, #2bb8c2, #71d9de, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -124,7 +124,7 @@ function injectEmptyHomePolish() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #ffe0a3 !important;
+      color: #71d9de !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }

@@ -1,0 +1,2981 @@
+import { iconSvg } from "./uiIcons.mjs";
+
+import {
+  ACCOUNT_OAUTH_FLOW_QUERY_PARAM,
+  ACCOUNT_RETURN_URL_STORAGE_KEY,
+  ACCOUNT_SESSION_SYNC_STORAGE_KEY,
+  accountAuthErrorMessage,
+  appleOAuthUrl,
+  authCallbackType,
+  accountProfileFromUser,
+  clearAccountOAuthFlow,
+  clearAccountSession,
+  clearAccountWorkspace,
+  createAccountOAuthFlowId,
+  createOAuthPkce,
+  deleteAccount,
+  ensureAccountWorkspace,
+  exchangeOAuthCode,
+  googleOAuthUrl,
+  loadAccountOAuthFlow,
+  loadAccountUser,
+  loadStoredAccountSession,
+  parseAccountSessionSync,
+  publishAccountSessionSync,
+  refreshAccountSession,
+  requestPasswordReset,
+  saveAccountOAuthFlow,
+  saveAccountSession,
+  sessionFromOAuthHash,
+  signInWithPassword,
+  signOutAccount,
+  signUpWithPassword,
+  updateAccountPassword,
+  updateAccountUser
+} from "./data/accountAuth.mjs";
+import {
+  clearLocalAccountData,
+  getActiveCloudSpaceId,
+  loadLocalProfile,
+  loadRuntimeConfig,
+  loadSharedStateForStartup,
+  retryRuntimeConfig,
+  runtimeConfigUsesFallback,
+  saveLocalProfile,
+  saveSharedState
+} from "./data/localStore.mjs";
+import { hasSharedStateChanged } from "./data/localIdentity.mjs";
+import {
+  clearPendingInviteUrl,
+  pendingInviteUrl,
+  rememberPendingInviteUrl
+} from "./data/pendingInvite.mjs";
+import {
+  mergeInviteSnapshotIntoState,
+  parseInviteEventId,
+  parseInviteSnapshot
+} from "./domain/inviteLinks.mjs";
+import {
+  isEventInviteError,
+  resolveEventInviteCredentials
+} from "./data/eventInvites.mjs";
+import {
+  attachSharedEventCredentials,
+  mergeSharedEventIntoState,
+  readSharedEventState
+} from "./data/sharedEventStore.mjs";
+import { submitAppFeedback } from "./data/appFeedback.mjs";
+import { markStartupMilestone } from "./data/startupMetrics.mjs";
+import { emitOperationFailure } from "./data/productMetrics.mjs";
+import {
+  ensureNamedParticipant,
+  isFullProfileName,
+  normalizeProfileName
+} from "./domain/userProfile.mjs";
+
+const GATE_ID = "public-account-auth-gate";
+const STYLE_ID = "public-account-auth-style";
+const AUTH_CHANGED_MARKER = "settle-friends-account-ready";
+const ACCOUNT_DELETED_MARKER = "settle-friends-account-deleted";
+const ACCOUNT_NOTICE_MARKER = "settle-friends-account-notice";
+const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
+const APP_NOTICE_EVENT = "settle-friends:notice";
+const ACCOUNT_SETUP_TIMEOUT_MS = 12_000;
+const ACCOUNT_DELETE_HISTORY_KEY = "settleFriendsAccountDelete";
+const ACCOUNT_FEEDBACK_HISTORY_KEY = "settleFriendsAccountFeedback";
+const NATIVE_BACK_EVENT = "settle-friends:native-back";
+const ACCOUNT_REFRESH_MARGIN_SECONDS = 5 * 60;
+const ACCOUNT_REFRESH_RETRY_MS = 60_000;
+const ACCOUNT_CONFIG_RETRY_MS = 5_000;
+const OAUTH_PKCE_VERIFIER_KEY = "settle-friends-oauth-pkce-verifier";
+
+let runtimeConfig = null;
+let accountSession = null;
+let googleEnabled = false;
+let appleEnabled = false;
+let authBusy = false;
+let accountDeleteBusy = false;
+let emailAuthExpanded = false;
+let accountDeleteReturnFocus = null;
+let accountDeleteHistoryActive = false;
+let accountDeleteHistoryClosing = false;
+let accountFeedbackBusy = false;
+let accountFeedbackReturnFocus = null;
+let accountFeedbackHistoryActive = false;
+let accountFeedbackHistoryClosing = false;
+let accountRefreshTimer = null;
+let accountRefreshPromise = null;
+let accountRefreshGeneration = 0;
+let accountConfigRetryTimer = null;
+let accountConfigRetryPromise = null;
+let accountSyncReloadScheduled = false;
+
+globalThis.SogrimAccountProfile = Object.freeze({
+  updateDisplayName: updateSignedInAccountDisplayName
+});
+globalThis.SogrimAccountSession = Object.freeze({
+  refresh: refreshActiveAccountSession
+});
+
+rememberPendingInviteUrl();
+injectStyle();
+document.documentElement.classList.add("account-auth-locked");
+lockAccountGate();
+const accountSetupTimeoutId = window.setTimeout(
+  handleAccountSetupTimeout,
+  ACCOUNT_SETUP_TIMEOUT_MS
+);
+setupAccountAuth()
+  .catch(handleAccountSetupFailure)
+  .finally(() => window.clearTimeout(accountSetupTimeoutId));
+document.addEventListener("click", handleAccountClick);
+document.addEventListener("change", handleAccountChange);
+document.addEventListener("keydown", handleAccountGateKeydown);
+document.addEventListener("keydown", handleAccountDeletionKeydown);
+document.addEventListener("keydown", handleAccountFeedbackKeydown);
+window.addEventListener("popstate", handleAccountDeletionHistoryBack, true);
+window.addEventListener("popstate", handleAccountFeedbackHistoryBack, true);
+window.addEventListener(NATIVE_BACK_EVENT, handleAccountGateNativeBack, true);
+window.addEventListener(NATIVE_BACK_EVENT, handleAccountDeletionNativeBack, true);
+window.addEventListener(NATIVE_BACK_EVENT, handleAccountFeedbackNativeBack, true);
+window.addEventListener("online", refreshAccountSessionIfNeeded);
+window.addEventListener("storage", handleAccountSessionStorageSync);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshAccountSessionIfNeeded();
+});
+
+function handleAccountSetupFailure() {
+  emitOperationFailure("auth", { screen: "auth" });
+  if (runtimeConfig?.storage?.mode === "supabase") {
+    clearAccountSession();
+    accountSession = null;
+    renderAccountGate({
+      error: "לא הצלחנו להתחבר לשירות החשבון כרגע. כדאי לבדוק את החיבור ולנסות שוב."
+    });
+    return;
+  }
+  unlockAccountGate();
+}
+
+function handleAccountSetupTimeout() {
+  if (!document.documentElement.classList.contains("account-auth-pending")) return;
+  renderAccountRecoveryGate();
+}
+
+async function setupAccountAuth({ retryConfig = false } = {}) {
+  runtimeConfig = await (retryConfig ? retryRuntimeConfig() : loadRuntimeConfig());
+  if (runtimeConfigUsesFallback() && !isLocalDevelopmentOrigin()) {
+    renderAccountRecoveryGate();
+    return;
+  }
+  if (runtimeConfig.storage?.mode !== "supabase") {
+    unlockAccountGate();
+    return;
+  }
+
+  const callbackType = authCallbackType(window.location.hash);
+  let callbackSession = sessionFromOAuthHash(window.location.hash);
+  let sessionBeforeCallback = null;
+  const callbackParams = new URLSearchParams(window.location.search);
+  const callbackCode = callbackParams.get("code");
+  const callbackFlowId = callbackParams.get(ACCOUNT_OAUTH_FLOW_QUERY_PARAM) ?? "";
+  const callbackFlow = loadAccountOAuthFlow(callbackFlowId);
+  if (!callbackSession && callbackCode) {
+    const verifier = callbackFlow?.verifier ||
+      (callbackFlowId ? "" : oauthPkceVerifier());
+    if (verifier) {
+      callbackSession = await exchangeOAuthCode(
+        runtimeConfig,
+        callbackCode,
+        verifier
+      );
+      if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
+      clearOAuthPkceVerifier();
+    }
+  }
+  if (callbackSession) {
+    sessionBeforeCallback = loadStoredAccountSession();
+    accountSession = callbackSession;
+    cleanAuthHash(callbackFlow);
+  } else {
+    accountSession = loadStoredAccountSession();
+  }
+
+  if (accountSession) {
+    try {
+      accountSession = await restoreAccountSession(accountSession, {
+        previousSession: sessionBeforeCallback
+      });
+      scheduleAccountSessionRefresh();
+      if (callbackType === "recovery") {
+        renderPasswordResetGate();
+        return;
+      }
+      await connectAccountToApp(accountSession, {
+        forceReload: Boolean(callbackSession)
+      });
+      watchAccountControls();
+      enhanceAccountControls();
+      return;
+    } catch (error) {
+      if (
+        accountSession?.user &&
+        String(error?.message ?? "").includes("full name")
+      ) {
+        renderAccountNameCompletionGate({
+          displayName:
+            accountProfileFromUser(accountSession.user)?.displayName ?? ""
+        });
+        return;
+      }
+      if (accountSession?.user && isEventInviteError(error)) {
+        rememberAccountNotice(error?.message);
+        discardFailedInviteContext();
+        await connectAccountToApp(accountSession, {
+          forceReload: Boolean(callbackSession),
+          ignoreInvite: true
+        });
+        watchAccountControls();
+        enhanceAccountControls();
+        return;
+      }
+      if (canResumeOffline(accountSession, error)) {
+        await connectAccountToApp(accountSession);
+        watchAccountControls();
+        enhanceAccountControls();
+        return;
+      }
+      if (
+        callbackSession &&
+        !accountSession?.user &&
+        isTransientAccountError(error)
+      ) {
+        saveAccountSession(accountSession);
+        renderAccountRecoveryGate();
+        return;
+      }
+      const invalidSession = accountSession;
+      const invalidSpaceId = getActiveCloudSpaceId(runtimeConfig);
+      const invalidUser = invalidSession?.user ?? sessionBeforeCallback?.user;
+      const invalidUserId = String(invalidUser?.id ?? "").trim();
+      clearAccountSession();
+      clearLocalAccountData(invalidSpaceId, invalidUserId);
+      clearAccountWorkspace(invalidUser);
+      accountSession = null;
+    }
+  }
+
+  removeSessionValue(AUTH_CHANGED_MARKER);
+  const accountDeleted = sessionValue(ACCOUNT_DELETED_MARKER) === "1";
+  removeSessionValue(ACCOUNT_DELETED_MARKER);
+  googleEnabled = Boolean(
+    runtimeConfig.auth?.googleClientId ||
+    runtimeConfig.launch?.googleAuthReady
+  );
+  appleEnabled = false;
+  emailAuthExpanded = !googleEnabled && !appleEnabled;
+  renderAccountGate({
+    message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : ""
+  });
+  refreshProviderOptions().catch(() => {});
+}
+
+function isLocalDevelopmentOrigin() {
+  return (
+    window.location.protocol === "http:" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  );
+}
+
+async function restoreAccountSession(session, { previousSession = null } = {}) {
+  let nextSession = session;
+  if (isExpiring(session)) {
+    nextSession = await refreshAccountSession(runtimeConfig, session);
+  }
+  if (!nextSession?.user) {
+    const user = await loadAccountUser(runtimeConfig, nextSession);
+    nextSession = { ...nextSession, user };
+  }
+  clearPreviousAccountAfterSwitch(previousSession, nextSession);
+  nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession);
+  return saveAccountSession(nextSession);
+}
+
+function clearPreviousAccountAfterSwitch(previousSession, nextSession) {
+  const previousUserId = String(previousSession?.user?.id ?? "").trim();
+  const nextUserId = String(nextSession?.user?.id ?? "").trim();
+  if (!previousUserId || !nextUserId || previousUserId === nextUserId) {
+    return false;
+  }
+
+  clearLocalAccountData(
+    getActiveCloudSpaceId(runtimeConfig),
+    previousUserId
+  );
+  clearAccountWorkspace(previousSession.user);
+  return true;
+}
+
+async function connectAccountToApp(
+  session,
+  { forceReload = false, ignoreInvite = false } = {}
+) {
+  runtimeConfig = await loadRuntimeConfig();
+  const accountProfile = accountProfileFromUser(session.user);
+  const previousProfile = loadLocalProfile();
+  const displayName = normalizeProfileName(accountProfile?.displayName);
+  if (!accountProfile || !isFullProfileName(displayName)) {
+    throw new Error("Account profile needs a full name");
+  }
+
+  const inviteUrl = ignoreInvite ? "" : pendingInviteUrl(window.location.href);
+  const invitedEventId = parseInviteEventId(inviteUrl);
+  const inviteSnapshot = parseInviteSnapshot(inviteUrl);
+  const startupState = await loadSharedStateForStartup({ maxWaitMs: 0 });
+  let sharedState = mergeInviteSnapshotIntoState(
+    startupState.state,
+    inviteSnapshot
+  );
+  const inviteCredentials = invitedEventId
+    ? await resolveEventInviteCredentials(runtimeConfig, inviteUrl)
+    : null;
+  if (invitedEventId && inviteCredentials) {
+    sharedState = attachSharedEventCredentials(
+      sharedState,
+      invitedEventId,
+      inviteCredentials
+    );
+    try {
+      const remoteEvent = await readSharedEventState(
+        runtimeConfig,
+        inviteCredentials,
+        invitedEventId
+      );
+      if (remoteEvent) {
+        sharedState = mergeSharedEventIntoState(
+          sharedState,
+          remoteEvent,
+          inviteCredentials
+        );
+      }
+    } catch {
+      // A copied invite still carries a safe event preview for temporary network failures.
+    }
+  }
+  const nextState = ensureNamedParticipant(
+    sharedState,
+    {
+      id: accountProfile.participantId,
+      displayName,
+      authProvider: accountProfile.authProvider,
+      authSubject: accountProfile.authSubject,
+      email: accountProfile.email
+    },
+    invitedEventId,
+    { reactivateInactive: false }
+  );
+  const participant = nextState.participants.find(
+    (item) => item.id === nextState.currentParticipantId
+  );
+
+  saveLocalProfile({
+    participantId: nextState.currentParticipantId,
+    displayName: participant?.displayName ?? displayName,
+    authProvider: accountProfile.authProvider,
+    authSubject: accountProfile.authSubject,
+    email: accountProfile.email
+  });
+  const accountStateChanged = hasSharedStateChanged(
+    startupState.state,
+    nextState
+  );
+  const saveRequest = accountStateChanged
+    ? saveSharedState(nextState)
+    : Promise.resolve({ ok: true, mode: "unchanged" });
+  const invitedEventWasDeleted = nextState.deletedEvents?.some(
+    (item) => item.id === invitedEventId
+  );
+  if (
+    !invitedEventId ||
+    invitedEventWasDeleted ||
+    nextState.events.some((event) => event.id === invitedEventId)
+  ) {
+    clearPendingInviteUrl();
+  }
+  const profileChanged =
+    previousProfile?.authSubject !== accountProfile.authSubject ||
+    previousProfile?.authProvider !== accountProfile.authProvider;
+  if (forceReload || profileChanged) {
+    await saveRequest;
+    publishAccountSessionSync(accountSession);
+    setSessionValue(AUTH_CHANGED_MARKER, "1");
+    setSessionValue(SKIP_NEXT_SPLASH_MARKER, "1");
+    window.location.reload();
+    return;
+  }
+
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector(".public-profile-gate")?.remove();
+  document.documentElement.classList.remove("account-auth-locked");
+  document.querySelector("#app")?.removeAttribute("inert");
+  markAccountAuthReady();
+  publishAccountSessionSync(accountSession);
+  deliverPendingAccountNotice();
+  saveRequest.catch(() => {});
+}
+
+function discardFailedInviteContext() {
+  clearPendingInviteUrl();
+  try {
+    const url = new URL(window.location.href);
+    url.pathname = "/";
+    url.hash = "";
+    for (const key of ["event", "space", "key", "invite", "t"]) {
+      url.searchParams.delete(key);
+    }
+    window.history.replaceState(window.history.state, "", url);
+  } catch {
+    // Clearing the remembered invite is enough when the address is unavailable.
+  }
+}
+
+function rememberAccountNotice(message) {
+  const normalized = String(message ?? "").trim();
+  if (normalized) setSessionValue(ACCOUNT_NOTICE_MARKER, normalized);
+}
+
+function deliverPendingAccountNotice() {
+  const message = String(sessionValue(ACCOUNT_NOTICE_MARKER) ?? "").trim();
+  if (!message) return;
+  removeSessionValue(ACCOUNT_NOTICE_MARKER);
+  window.setTimeout(() => {
+    document.dispatchEvent(
+      new CustomEvent(APP_NOTICE_EVENT, { detail: { message } })
+    );
+  }, 0);
+}
+
+function handleAccountSessionStorageSync(event) {
+  if (
+    event.key !== ACCOUNT_SESSION_SYNC_STORAGE_KEY ||
+    (event.storageArea && event.storageArea !== window.localStorage)
+  ) {
+    return;
+  }
+
+  const change = parseAccountSessionSync(event.newValue);
+  if (!change || accountSyncReloadScheduled) return;
+
+  const storedSession = loadStoredAccountSession();
+  const currentUserId = String(accountSession?.user?.id ?? "").trim();
+  const storedUserId = String(storedSession?.user?.id ?? "").trim();
+  if (change.reason === "signed-in" && change.userId !== storedUserId) return;
+
+  if (currentUserId && currentUserId === storedUserId) {
+    accountSession = storedSession;
+    scheduleAccountSessionRefresh();
+    return;
+  }
+
+  accountSyncReloadScheduled = true;
+  accountRefreshGeneration += 1;
+  accountSession = null;
+  authBusy = true;
+  window.clearTimeout(accountRefreshTimer);
+  document.documentElement.classList.add("account-auth-locked");
+  lockAccountGate();
+  removeSessionValue(AUTH_CHANGED_MARKER);
+  setSessionValue(SKIP_NEXT_SPLASH_MARKER, "1");
+  window.setTimeout(() => window.location.reload(), 0);
+}
+
+async function updateSignedInAccountDisplayName(value) {
+  const displayName = normalizeProfileName(value);
+  if (
+    !isFullProfileName(displayName) ||
+    !accountSession?.user ||
+    runtimeConfig?.storage?.mode !== "supabase"
+  ) {
+    return false;
+  }
+
+  const currentMetadata = accountSession.user.user_metadata ?? {};
+  accountSession = saveAccountSession(
+    await updateAccountUser(runtimeConfig, accountSession, {
+      ...currentMetadata,
+      full_name: displayName,
+      name: displayName,
+      display_name: displayName
+    })
+  );
+  scheduleAccountSessionRefresh();
+  return true;
+}
+
+function lockAccountGate() {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+}
+
+function unlockAccountGate() {
+  document.getElementById(GATE_ID)?.remove();
+  document.documentElement.classList.remove("account-auth-locked");
+  document.querySelector("#app")?.removeAttribute("inert");
+  markAccountAuthReady();
+}
+
+function renderAccountGate({
+  mode = "login",
+  message = "",
+  error = "",
+  values = {}
+} = {}) {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+
+  const previousProfile = loadLocalProfile();
+  const inviteContext = accountInviteContext();
+  const inviteMarkup = accountInviteMarkup(inviteContext);
+  const heading = inviteContext
+    ? `מצטרפים ל־${escapeHtml(inviteContext.eventName)}`
+    : mode === "signup"
+      ? "יוצרים חשבון"
+      : "טוב שחזרת";
+  const headingDescription = inviteContext
+    ? "נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת."
+    : mode === "signup"
+      ? "שם מלא ומייל מספיקים כדי לשמור את ההיסטוריה שלך."
+      : "נכנסים וממשיכים בדיוק מהמקום שבו עצרת.";
+  const providerAvailable = googleEnabled || appleEnabled;
+  const showEmailAuth =
+    emailAuthExpanded ||
+    !providerAvailable ||
+    mode === "signup" ||
+    Boolean(message) ||
+    Boolean(error);
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate font-hebrew";
+  gate.setAttribute("role", "main");
+  gate.innerHTML = `
+    <div class="account-auth-shell">
+      <section class="account-auth-brand">
+        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <div>
+          <p class="eyebrow">סוגרים חשבון</p>
+          <h1>החשבון נשאר איתך</h1>
+          <p>האירועים, ההוצאות והחברים נשמרים בענן ומחכים לך בכל מכשיר.</p>
+        </div>
+        <ul>
+          <li>היסטוריה אישית שנשמרת בענן</li>
+          <li>כניסה מאובטחת ושמירת מידע בענן</li>
+          <li>קישורי הצטרפות ממשיכים לעבוד כרגיל</li>
+        </ul>
+      </section>
+
+      <section class="account-auth-form-panel">
+        ${inviteMarkup}
+        <div class="account-auth-heading">
+          <h2>${heading}</h2>
+          <p>${headingDescription}</p>
+        </div>
+
+        <div class="account-google-slot" data-google-auth-slot>
+          ${providerOptionsMarkup()}
+        </div>
+
+        ${
+          providerAvailable && mode === "login"
+            ? `<button
+                class="account-email-toggle"
+                type="button"
+                data-account-action="toggle-email"
+                aria-expanded="${showEmailAuth}"
+                aria-controls="account-email-auth"
+              >${showEmailAuth ? "חזרה לאפשרויות הכניסה" : "כניסה עם אימייל"}</button>`
+            : ""
+        }
+
+        <div id="account-email-auth" class="account-email-auth" ${showEmailAuth ? "" : "hidden"}>
+          <div class="account-auth-tabs" role="group" aria-label="כניסה או הרשמה">
+            <button type="button" data-account-mode="login" aria-pressed="${mode === "login"}" class="${mode === "login" ? "is-active" : ""}">התחברות</button>
+            <button type="button" data-account-mode="signup" aria-pressed="${mode === "signup"}" class="${mode === "signup" ? "is-active" : ""}">הרשמה</button>
+          </div>
+
+          <form class="account-auth-form" data-account-form data-mode="${mode}" novalidate>
+            ${
+              mode === "signup"
+                ? `<label>
+                    <span>שם פרטי ושם משפחה</span>
+                    <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? previousProfile?.displayName ?? "")}" required />
+                  </label>`
+                : ""
+            }
+            <label>
+              <span>אימייל</span>
+              <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" required />
+            </label>
+            <label>
+              <span>סיסמה</span>
+              <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" required />
+            </label>
+            ${
+              mode === "login"
+                ? `<button class="account-forgot-button" type="button" data-account-action="forgot-password">שכחתי סיסמה</button>`
+                : ""
+            }
+            ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
+            ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+            <button class="primary-button account-auth-submit" type="submit">
+              ${
+                inviteContext
+                  ? mode === "signup"
+                    ? "צור חשבון והצטרף"
+                    : "התחבר והצטרף"
+                  : mode === "signup"
+                    ? "צור חשבון"
+                    : "התחבר"
+              }
+            </button>
+          </form>
+        </div>
+        <p class="account-auth-legal">בהמשך השימוש אתה מאשר את <a href="./terms.html">תנאי השימוש</a> ואת <a href="./privacy.html">מדיניות הפרטיות</a>.</p>
+        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  `;
+  document.body.append(gate);
+  gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
+  markAccountAuthReady();
+  if (showEmailAuth) focusAccountInput(gate);
+}
+
+function renderAccountRecoveryGate() {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate";
+  gate.setAttribute("role", "main");
+  gate.innerHTML = `
+    <div class="account-auth-shell account-auth-shell-compact">
+      <section class="account-auth-brand">
+        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <div>
+          <p class="eyebrow">סוגרים חשבון</p>
+          <h1>המידע שלך נשאר מוגן</h1>
+          <p>לא נציג את האירועים לפני שהחיבור לחשבון הושלם.</p>
+        </div>
+      </section>
+      <section class="account-auth-form-panel">
+        <div class="account-auth-heading">
+          <h2>החיבור מתעכב</h2>
+          <p>כדאי לבדוק את החיבור לאינטרנט ולנסות שוב.</p>
+        </div>
+        <button class="primary-button account-auth-submit" type="button" data-account-retry>
+          נסה שוב
+        </button>
+      </section>
+    </div>
+  `;
+  document.body.append(gate);
+  gate.querySelector("[data-account-retry]")?.addEventListener("click", retryAccountSetup);
+  scheduleAccountSetupRetry();
+  markAccountAuthReady();
+}
+
+function scheduleAccountSetupRetry() {
+  window.clearTimeout(accountConfigRetryTimer);
+  if (navigator.onLine === false) return;
+  accountConfigRetryTimer = window.setTimeout(
+    retryAccountSetup,
+    ACCOUNT_CONFIG_RETRY_MS
+  );
+}
+
+function retryAccountSetup() {
+  if (accountConfigRetryPromise) return accountConfigRetryPromise;
+  window.clearTimeout(accountConfigRetryTimer);
+  const gate = document.getElementById(GATE_ID);
+  const retryButton = gate?.querySelector("[data-account-retry]");
+  retryButton?.setAttribute("aria-busy", "true");
+  if (retryButton) retryButton.disabled = true;
+
+  accountConfigRetryPromise = setupAccountAuth({ retryConfig: true })
+    .catch(() => {
+      renderAccountRecoveryGate();
+    })
+    .finally(() => {
+      accountConfigRetryPromise = null;
+      if (!document.querySelector("[data-account-retry]")) {
+        window.clearTimeout(accountConfigRetryTimer);
+      }
+    });
+  return accountConfigRetryPromise;
+}
+
+function renderAccountNameCompletionGate({ displayName = "", error = "" } = {}) {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate font-hebrew";
+  gate.setAttribute("role", "main");
+  gate.innerHTML = `
+    <div class="account-auth-shell account-auth-shell-compact">
+      <section class="account-auth-brand">
+        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <div>
+          <p class="eyebrow">סוגרים חשבון</p>
+          <h1>עוד פרט קטן</h1>
+          <p>שם מלא עוזר לחברים לזהות אותך ומונע בלבול בין אנשים עם אותו שם.</p>
+        </div>
+      </section>
+      <section class="account-auth-form-panel">
+        <div class="account-auth-heading">
+          <h2>איך לקרוא לך?</h2>
+          <p>מזינים שם פרטי ושם משפחה וממשיכים לחשבון.</p>
+        </div>
+        <form class="account-auth-form" data-account-form data-mode="complete-profile" novalidate>
+          <label>
+            <span>שם פרטי ושם משפחה</span>
+            <input name="displayName" autocomplete="name" value="${escapeAttribute(displayName)}" />
+          </label>
+          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+          <button class="primary-button account-auth-submit" type="submit">שמור והמשך</button>
+        </form>
+        <button class="account-forgot-button" type="button" data-account-action="signout">כניסה עם חשבון אחר</button>
+        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  `;
+  document.body.append(gate);
+  gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
+  markAccountAuthReady();
+  focusAccountInput(gate);
+}
+
+async function handleAccountSubmit(event) {
+  event.preventDefault();
+  if (authBusy) return;
+
+  const form = event.currentTarget;
+  const mode = form.dataset.mode ?? "login";
+  const values = new FormData(form);
+  const email = String(values.get("email") ?? "").trim().toLowerCase();
+  const password = String(values.get("password") ?? "");
+  const validationError = accountFormValidationError(form, {
+    mode,
+    email,
+    password,
+    displayName: String(values.get("displayName") ?? ""),
+    passwordConfirmation: String(values.get("passwordConfirmation") ?? "")
+  });
+  if (validationError) {
+    const displayName = String(values.get("displayName") ?? "");
+    if (mode === "complete-profile") {
+      renderAccountNameCompletionGate({
+        displayName,
+        error: validationError.message
+      });
+    } else if (mode === "reset-password") {
+      renderPasswordResetGate(validationError.message);
+    } else {
+      renderAccountGate({
+        mode,
+        values: { email, displayName },
+        error: validationError.message
+      });
+    }
+    focusAccountInput(document.getElementById(GATE_ID), {
+      includeMobile: true,
+      fieldName: validationError.fieldName
+    });
+    return;
+  }
+
+  setAuthBusy(true);
+  try {
+    if (mode === "reset-password") {
+      const confirmation = String(values.get("passwordConfirmation") ?? "");
+      if (password.length < 8 || password !== confirmation) {
+        throw new Error("password confirmation");
+      }
+      accountSession = saveAccountSession(
+        await updateAccountPassword(runtimeConfig, accountSession, password)
+      );
+    } else if (mode === "complete-profile") {
+      const displayName = normalizeProfileName(values.get("displayName"));
+      accountSession = saveAccountSession(
+        await updateAccountUser(runtimeConfig, accountSession, {
+          full_name: displayName,
+          name: displayName,
+          display_name: displayName
+        })
+      );
+    } else if (mode === "signup") {
+      const displayName = normalizeProfileName(values.get("displayName"));
+      if (!isFullProfileName(displayName)) {
+        throw new Error("full name required");
+      }
+      rememberAccountReturnUrl();
+      const result = await signUpWithPassword(runtimeConfig, {
+        email,
+        password,
+        displayName,
+        redirectTo: authRedirectUrl()
+      });
+      if (!result.session) {
+        renderAccountGate({
+          mode: "login",
+          message: "שלחנו אליך קישור לאישור המייל. אחרי האישור אפשר להתחבר.",
+          values: { email }
+        });
+        return;
+      }
+      accountSession = saveAccountSession(result.session);
+    } else {
+      accountSession = saveAccountSession(
+        await signInWithPassword(runtimeConfig, { email, password })
+      );
+    }
+
+    accountSession = await restoreAccountSession(accountSession);
+    scheduleAccountSessionRefresh();
+    await connectAccountToApp(accountSession, { forceReload: true });
+  } catch (error) {
+    emitOperationFailure("auth", { screen: "auth" });
+    const fullNameError = String(error?.message ?? "").includes("full name");
+    const confirmationError = String(error?.message ?? "").includes("password confirmation");
+    if (mode === "reset-password") {
+      renderPasswordResetGate(
+        confirmationError
+          ? "הסיסמאות אינן זהות או קצרות מדי."
+          : accountAuthErrorMessage(error)
+      );
+      return;
+    }
+    if (mode === "complete-profile") {
+      renderAccountNameCompletionGate({
+        displayName: String(values.get("displayName") ?? ""),
+        error: fullNameError
+          ? "צריך להזין שם פרטי ושם משפחה."
+          : accountAuthErrorMessage(error)
+      });
+      focusAccountInput(document.getElementById(GATE_ID), {
+        includeMobile: true,
+        fieldName: "displayName"
+      });
+      return;
+    }
+    renderAccountGate({
+      mode,
+      values: {
+        email,
+        displayName: String(values.get("displayName") ?? "")
+      },
+      error: fullNameError
+        ? "צריך להזין שם פרטי ושם משפחה."
+        : confirmationError
+          ? "הסיסמאות אינן זהות או קצרות מדי."
+        : accountAuthErrorMessage(error, mode)
+    });
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function accountFormValidationError(
+  form,
+  { mode, email, password, displayName, passwordConfirmation }
+) {
+  if (mode === "login" || mode === "signup") {
+    if (!email) {
+      return { fieldName: "email", message: "צריך להזין כתובת אימייל." };
+    }
+    if (form.querySelector('input[name="email"]')?.validity?.typeMismatch) {
+      return { fieldName: "email", message: "כתובת האימייל אינה תקינה." };
+    }
+  }
+
+  if (
+    (mode === "signup" || mode === "complete-profile") &&
+    !isFullProfileName(normalizeProfileName(displayName))
+  ) {
+    return {
+      fieldName: "displayName",
+      message: "צריך להזין שם פרטי ושם משפחה."
+    };
+  }
+
+  if (mode !== "complete-profile" && password.length < 8) {
+    return {
+      fieldName: "password",
+      message: "הסיסמה צריכה להכיל לפחות 8 תווים."
+    };
+  }
+
+  if (mode === "reset-password" && password !== passwordConfirmation) {
+    return {
+      fieldName: "passwordConfirmation",
+      message: "הסיסמאות אינן זהות."
+    };
+  }
+
+  return null;
+}
+
+async function handleAccountClick(event) {
+  const legalLink = event.target.closest('.account-data-link[href$=".html"]');
+  if (legalLink) rememberProfileRouteBeforeLegalNavigation();
+
+  const modeButton = event.target.closest("[data-account-mode]");
+  if (modeButton) {
+    emailAuthExpanded = true;
+    renderAccountGate({
+      mode: modeButton.dataset.accountMode,
+      values: {
+        email: document.querySelector('[data-account-form] input[name="email"]')?.value ?? "",
+        displayName: document.querySelector('[data-account-form] input[name="displayName"]')?.value ?? ""
+      }
+    });
+    return;
+  }
+
+  const action = event.target.closest("[data-account-action]")?.dataset.accountAction;
+  if (action === "toggle-email") {
+    const currentForm = document.querySelector("[data-account-form]");
+    const mode = currentForm?.dataset.mode ?? "login";
+    const values = {
+      email: currentForm?.querySelector('input[name="email"]')?.value ?? "",
+      displayName: currentForm?.querySelector('input[name="displayName"]')?.value ?? ""
+    };
+    emailAuthExpanded = !emailAuthExpanded;
+    renderAccountGate({ mode, values });
+    if (emailAuthExpanded) {
+      focusAccountInput(document.getElementById(GATE_ID), {
+        includeMobile: true
+      });
+    }
+    return;
+  }
+
+  if (action === "google") {
+    if (authBusy) return;
+    setAuthBusy(true);
+    try {
+      await openOAuthUrl(
+        await secureOAuthUrl(googleOAuthUrl)
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+    return;
+  }
+
+  if (action === "apple") {
+    if (authBusy) return;
+    setAuthBusy(true);
+    try {
+      await openOAuthUrl(
+        await secureOAuthUrl(appleOAuthUrl)
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+    return;
+  }
+
+  if (action === "forgot-password") {
+    const email = String(
+      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
+    ).trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      renderAccountGate({
+        mode: "login",
+        error: "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
+        values: { email }
+      });
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      rememberAccountReturnUrl();
+      await requestPasswordReset(runtimeConfig, email, authRedirectUrl());
+      renderAccountGate({
+        mode: "login",
+        message: "שלחנו קישור לאיפוס הסיסמה. כדאי לבדוק גם בתיקיית הספאם.",
+        values: { email }
+      });
+    } catch (error) {
+      emitOperationFailure("auth", { screen: "auth" });
+      renderAccountGate({
+        mode: "login",
+        error: accountAuthErrorMessage(error),
+        values: { email }
+      });
+    } finally {
+      setAuthBusy(false);
+    }
+    return;
+  }
+
+  if (action === "signout") {
+    const button = event.target.closest("[data-account-action]");
+    if (!button || authBusy) return;
+    const accountSpaceId = getActiveCloudSpaceId(runtimeConfig);
+    const sessionToSignOut = accountSession;
+    const accountUserId = String(sessionToSignOut?.user?.id ?? "").trim();
+    accountRefreshGeneration += 1;
+    accountSession = null;
+    authBusy = true;
+    button.disabled = true;
+    button.textContent = "מתנתק…";
+    clearTimeout(accountRefreshTimer);
+    try {
+      await settleWithin(
+        globalThis.SogrimNotifications?.prepareSignOut?.(),
+        1_500
+      );
+    } catch {}
+    try {
+      await settleWithin(
+        signOutAccount(runtimeConfig, sessionToSignOut),
+        4_000
+      );
+    } catch {}
+    clearLocalAccountData(accountSpaceId, accountUserId);
+    publishAccountSessionSync(null, { reason: "signed-out" });
+    removeSessionValue(AUTH_CHANGED_MARKER);
+    window.location.reload();
+    return;
+  }
+
+  if (action === "ad-privacy") {
+    rememberProfileRouteBeforeLegalNavigation();
+    const button = event.target.closest("[data-account-action]");
+    if (button) button.disabled = true;
+    try {
+      const opened = await globalThis.SogrimAds?.showPrivacyOptions?.();
+      if (!opened) window.location.assign("./privacy.html");
+    } catch {
+      window.location.assign("./privacy.html");
+    } finally {
+      if (button?.isConnected) button.disabled = false;
+    }
+    return;
+  }
+
+  if (action === "feedback-open") {
+    renderAccountFeedbackDialog();
+    return;
+  }
+
+  if (action === "feedback-cancel" || action === "feedback-done") {
+    if (accountFeedbackBusy) return;
+    closeAccountFeedbackDialog();
+    return;
+  }
+
+  if (action === "delete-account-open") {
+    renderAccountDeletionDialog();
+    return;
+  }
+
+  if (action === "delete-account-cancel") {
+    if (accountDeleteBusy) return;
+    closeAccountDeletionDialog();
+    return;
+  }
+
+  if (action === "delete-account-confirm") {
+    const confirmation = document.querySelector("[data-account-delete-confirmation]");
+    if (!confirmation?.checked || authBusy) return;
+    const button = event.target.closest("[data-account-action]");
+    setAccountDeletionBusy(true);
+    try {
+      await deleteAccount(runtimeConfig, accountSession);
+      clearLocalAccountData();
+      clearAccountSession();
+      publishAccountSessionSync(null, { reason: "deleted" });
+      removeSessionValue(AUTH_CHANGED_MARKER);
+      setSessionValue(ACCOUNT_DELETED_MARKER, "1");
+      window.location.replace("/");
+    } catch {
+      const error = document.querySelector("[data-account-delete-error]");
+      if (error) {
+        error.hidden = false;
+        error.textContent = "לא הצלחנו להשלים את המחיקה כרגע. אפשר לנסות שוב או לפנות לתמיכה.";
+      }
+      if (button) button.disabled = false;
+      setAccountDeletionBusy(false);
+    }
+  }
+}
+
+function handleAccountGateKeydown(event) {
+  if (event.key !== "Escape" || event.defaultPrevented) return;
+  if (!collapseAccountEmailAuth()) return;
+  event.preventDefault();
+}
+
+function handleAccountGateNativeBack(event) {
+  if (event.defaultPrevented || !collapseAccountEmailAuth()) return;
+  event.preventDefault();
+}
+
+function collapseAccountEmailAuth() {
+  if (
+    !document.getElementById(GATE_ID) ||
+    !emailAuthExpanded ||
+    (!googleEnabled && !appleEnabled) ||
+    authBusy
+  ) {
+    return false;
+  }
+
+  const currentForm = document.querySelector("[data-account-form]");
+  const values = {
+    email: currentForm?.querySelector('input[name="email"]')?.value ?? "",
+    displayName:
+      currentForm?.querySelector('input[name="displayName"]')?.value ?? ""
+  };
+  emailAuthExpanded = false;
+  renderAccountGate({ mode: "login", values });
+  document
+    .querySelector('[data-account-action="toggle-email"]')
+    ?.focus({ preventScroll: true });
+  return true;
+}
+
+function handleAccountChange(event) {
+  if (!event.target.matches("[data-account-delete-confirmation]")) return;
+  const button = document.querySelector('[data-account-action="delete-account-confirm"]');
+  if (button) button.disabled = !event.target.checked;
+}
+
+function enhanceAccountControls() {
+  if (!accountSession?.user) return;
+  const host =
+    document.querySelector(".profile-summary") ??
+    document.querySelector(".public-profile-card") ??
+    document.querySelector(".profile-setup-panel");
+  if (!host || host.querySelector("[data-account-controls]")) return;
+
+  const email = String(accountSession.user.email ?? "").trim();
+  const adPrivacyControl =
+    globalThis.Capacitor?.getPlatform?.() === "android"
+      ? `<button class="account-data-link" type="button" data-account-action="ad-privacy">העדפות פרסום</button>`
+      : "";
+  host.insertAdjacentHTML(
+    "beforeend",
+    `<div class="account-profile-controls" data-account-controls>
+      <span>${escapeHtml(email)}</span>
+      <button class="account-feedback-entry" type="button" data-account-action="feedback-open">
+        <span class="account-feedback-entry-icon" aria-hidden="true">
+          ${iconSvg("message")}
+        </span>
+        <span class="account-feedback-entry-copy">
+          <strong>משוב לבודקים</strong>
+          <small>תקלה, משהו שלא היה ברור או רעיון לשיפור</small>
+        </span>
+        <span class="account-feedback-entry-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </button>
+      <nav class="account-data-links" aria-label="מידע על החשבון">
+        <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
+        <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
+        <a href="./accessibility.html" class="account-data-link">נגישות</a>
+        <a href="./support.html" class="account-data-link">תמיכה</a>
+        ${adPrivacyControl}
+      </nav>
+      <div class="account-profile-actions">
+        <button class="secondary-button" type="button" data-account-action="signout">התנתק</button>
+      </div>
+      <div class="account-danger-zone">
+        <span class="account-danger-copy">
+          <strong>מחיקת חשבון</strong>
+          <small>החשבון והמידע האישי יימחקו לצמיתות.</small>
+        </span>
+        <button class="secondary-button account-delete-button" type="button" data-account-action="delete-account-open">מחק חשבון</button>
+      </div>
+    </div>`
+  );
+}
+
+function renderAccountFeedbackDialog() {
+  closeAccountFeedbackDialog({ fromHistory: true, restoreFocus: false });
+  accountFeedbackReturnFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  const dialog = document.createElement("section");
+  dialog.className = "account-feedback-backdrop";
+  dialog.dataset.accountFeedbackDialog = "true";
+  dialog.innerHTML = `
+    <div class="account-feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="account-feedback-title" aria-describedby="account-feedback-description" tabindex="-1">
+      <header class="account-feedback-header">
+        <div>
+          <p class="eyebrow">עוזרים לנו להשתפר</p>
+          <h2 id="account-feedback-title">מה תרצה לספר לנו?</h2>
+          <p id="account-feedback-description">בחר נושא וכתוב בקצרה מה קרה. פרטי הגרסה יצורפו אוטומטית.</p>
+        </div>
+        <button class="account-feedback-close modal-close-button" type="button" data-account-action="feedback-cancel" aria-label="סגירת המשוב"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
+      </header>
+      <form class="account-feedback-form" data-account-feedback-form novalidate>
+        <fieldset class="account-feedback-categories">
+          <legend>נושא המשוב</legend>
+          <label>
+            <input type="radio" name="category" value="bug" checked />
+            <span>תקלה</span>
+          </label>
+          <label>
+            <input type="radio" name="category" value="clarity" />
+            <span>לא היה ברור</span>
+          </label>
+          <label>
+            <input type="radio" name="category" value="idea" />
+            <span>רעיון</span>
+          </label>
+        </fieldset>
+        <label class="account-feedback-message">
+          <span>מה קרה?</span>
+          <textarea
+            name="message"
+            rows="6"
+            minlength="10"
+            maxlength="1200"
+            autocomplete="off"
+            placeholder="לדוגמה: לחצתי על הוספת הוצאה ולא היה לי ברור מה השלב הבא…"
+            required
+          ></textarea>
+          <small>אין צורך לצרף שמות, מספרי טלפון או מידע כספי.</small>
+        </label>
+        <p class="account-feedback-error" role="alert" data-account-feedback-error hidden></p>
+        <div class="account-feedback-actions">
+          <button class="secondary-button" type="button" data-account-action="feedback-cancel">ביטול</button>
+          <button class="primary-button" type="submit">שלח משוב</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.append(dialog);
+  document.querySelector("#app")?.setAttribute("inert", "");
+  document.documentElement.classList.add("account-feedback-open");
+  pushAccountFeedbackHistoryState();
+  dialog
+    .querySelector("[data-account-feedback-form]")
+    ?.addEventListener("submit", handleAccountFeedbackSubmit);
+  dialog.querySelector("textarea")?.focus({ preventScroll: true });
+}
+
+async function handleAccountFeedbackSubmit(event) {
+  event.preventDefault();
+  if (accountFeedbackBusy) return;
+
+  const form = event.currentTarget;
+  const values = new FormData(form);
+  const error = form.querySelector("[data-account-feedback-error]");
+  if (error) {
+    error.hidden = true;
+    error.textContent = "";
+  }
+  const message = String(values.get("message") ?? "").trim();
+  if (message.length < 10) {
+    if (error) {
+      error.hidden = false;
+      error.textContent = "כדאי לכתוב לפחות 10 תווים כדי שנוכל להבין מה קרה.";
+    }
+    form.querySelector('textarea[name="message"]')?.focus({ preventScroll: true });
+    return;
+  }
+  setAccountFeedbackBusy(true);
+
+  try {
+    await submitAppFeedback(runtimeConfig, {
+      category: values.get("category"),
+      message,
+      context: await accountFeedbackContext()
+    });
+    renderAccountFeedbackSuccess();
+  } catch {
+    if (error) {
+      error.hidden = false;
+      error.textContent =
+        "לא הצלחנו לשלוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
+    }
+    setAccountFeedbackBusy(false);
+  }
+}
+
+async function accountFeedbackContext() {
+  let nativeInfo = {};
+  try {
+    nativeInfo = (await globalThis.SogrimNative?.app?.getInfo?.()) ?? {};
+  } catch {}
+  const platform =
+    nativeInfo.platform ||
+    globalThis.Capacitor?.getPlatform?.() ||
+    "web";
+  return {
+    appVersion: nativeInfo.version || "web",
+    buildNumber: nativeInfo.build || "",
+    platform,
+    locale: navigator.language || document.documentElement.lang || "",
+    screen:
+      document.querySelector("#app .screen")?.dataset.screenKind ||
+      "profile",
+    viewport: `${window.innerWidth}x${window.innerHeight}`
+  };
+}
+
+function renderAccountFeedbackSuccess() {
+  const dialog = document.querySelector(".account-feedback-dialog");
+  if (!dialog) return;
+  accountFeedbackBusy = false;
+  document.documentElement.classList.remove("account-feedback-busy");
+  dialog.innerHTML = `
+    <div class="account-feedback-success" role="status">
+      <span aria-hidden="true">✓</span>
+      <p class="eyebrow">המשוב נשלח</p>
+      <h2>תודה שעזרת לנו להשתפר</h2>
+      <p>קיבלנו את ההודעה יחד עם פרטי הגרסה. אין צורך לשלוח אותה שוב.</p>
+      <button class="primary-button" type="button" data-account-action="feedback-done">סיום</button>
+    </div>`;
+  dialog
+    .querySelector('[data-account-action="feedback-done"]')
+    ?.focus({ preventScroll: true });
+}
+
+function closeAccountFeedbackDialog({
+  fromHistory = false,
+  restoreFocus = true
+} = {}) {
+  const dialog = document.querySelector("[data-account-feedback-dialog]");
+  if (!dialog) return;
+  if (
+    !fromHistory &&
+    accountFeedbackHistoryActive &&
+    window.history?.back
+  ) {
+    if (accountFeedbackHistoryClosing) return;
+    accountFeedbackHistoryClosing = true;
+    window.history.back();
+    return;
+  }
+
+  accountFeedbackBusy = false;
+  accountFeedbackHistoryActive = false;
+  accountFeedbackHistoryClosing = false;
+  dialog.remove();
+  document.querySelector("#app")?.removeAttribute("inert");
+  document.documentElement.classList.remove(
+    "account-feedback-open",
+    "account-feedback-busy"
+  );
+  const returnTarget = accountFeedbackReturnFocus;
+  accountFeedbackReturnFocus = null;
+  if (restoreFocus) {
+    requestAnimationFrame(() => {
+      if (returnTarget?.isConnected) {
+        returnTarget.focus({ preventScroll: true });
+      }
+    });
+  }
+}
+
+function pushAccountFeedbackHistoryState() {
+  if (!window.history?.pushState) return;
+  try {
+    window.history.pushState(
+      {
+        ...(window.history.state ?? {}),
+        [ACCOUNT_FEEDBACK_HISTORY_KEY]: true
+      },
+      "",
+      window.location.href
+    );
+    accountFeedbackHistoryActive = true;
+  } catch {
+    accountFeedbackHistoryActive = false;
+  }
+}
+
+function handleAccountFeedbackHistoryBack(event) {
+  if (!accountFeedbackHistoryActive) return;
+  event.stopImmediatePropagation();
+  closeAccountFeedbackDialog({ fromHistory: true });
+}
+
+function handleAccountFeedbackNativeBack(event) {
+  if (!document.querySelector("[data-account-feedback-dialog]")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  closeAccountFeedbackDialog();
+}
+
+function handleAccountFeedbackKeydown(event) {
+  const dialog = document.querySelector(
+    '.account-feedback-dialog[role="dialog"]'
+  );
+  if (!dialog) return;
+
+  if (event.key === "Escape" && !accountFeedbackBusy) {
+    event.preventDefault();
+    closeAccountFeedbackDialog();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  trapAccountDialogFocus(event, dialog);
+}
+
+function trapAccountDialogFocus(event, dialog) {
+  const focusable = [...dialog.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  )].filter((element) => element.offsetParent !== null);
+  if (!focusable.length) {
+    event.preventDefault();
+    dialog.focus({ preventScroll: true });
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
+function setAccountFeedbackBusy(value) {
+  accountFeedbackBusy = value;
+  document.documentElement.classList.toggle("account-feedback-busy", value);
+  document
+    .querySelectorAll(
+      "[data-account-feedback-dialog] button, [data-account-feedback-dialog] input, [data-account-feedback-dialog] textarea"
+    )
+    .forEach((element) => {
+      element.disabled = value;
+    });
+}
+
+function renderAccountDeletionDialog() {
+  closeAccountDeletionDialog({ fromHistory: true, restoreFocus: false });
+  accountDeleteReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  const dialog = document.createElement("section");
+  dialog.className = "account-delete-backdrop";
+  dialog.dataset.accountDeleteDialog = "true";
+  dialog.innerHTML = `
+    <div class="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="account-delete-title" aria-describedby="account-delete-description" tabindex="-1">
+      <p class="eyebrow">חשבון ופרטיות</p>
+      <h2 id="account-delete-title">למחוק את החשבון?</h2>
+      <p id="account-delete-description">החשבון, סביבת הענן והמידע האישי יימחקו לצמיתות. ברישומי הוצאות משותפים השם שלך יוחלף ב"משתמש שנמחק", כדי לא לפגוע בחישובים של חברים אחרים.</p>
+      <label class="account-delete-confirmation">
+        <input type="checkbox" name="deleteAccountConfirmation" data-account-delete-confirmation />
+        <span>אני מבין שהפעולה קבועה ואי אפשר לבטל אותה.</span>
+      </label>
+      <p class="account-delete-error" role="alert" data-account-delete-error hidden></p>
+      <div class="account-delete-actions">
+        <button class="secondary-button" type="button" data-account-action="delete-account-cancel">חזרה</button>
+        <button class="primary-button account-delete-confirm" type="button" data-account-action="delete-account-confirm" disabled>מחק את החשבון</button>
+      </div>
+    </div>`;
+  document.body.append(dialog);
+  document.querySelector("#app")?.setAttribute("inert", "");
+  document.documentElement.classList.add("account-delete-open");
+  pushAccountDeletionHistoryState();
+  dialog.querySelector("[data-account-delete-confirmation]")?.focus();
+}
+
+function closeAccountDeletionDialog({
+  fromHistory = false,
+  restoreFocus = true
+} = {}) {
+  const dialog = document.querySelector("[data-account-delete-dialog]");
+  if (!dialog) return;
+  if (
+    !fromHistory &&
+    accountDeleteHistoryActive &&
+    window.history?.back
+  ) {
+    if (accountDeleteHistoryClosing) return;
+    accountDeleteHistoryClosing = true;
+    window.history.back();
+    return;
+  }
+
+  accountDeleteHistoryActive = false;
+  accountDeleteHistoryClosing = false;
+  dialog.remove();
+  document.querySelector("#app")?.removeAttribute("inert");
+  document.documentElement.classList.remove("account-delete-open", "account-delete-busy");
+  const returnTarget = accountDeleteReturnFocus;
+  accountDeleteReturnFocus = null;
+  if (restoreFocus) {
+    requestAnimationFrame(() => {
+      if (returnTarget?.isConnected) returnTarget.focus({ preventScroll: true });
+    });
+  }
+}
+
+function pushAccountDeletionHistoryState() {
+  if (!window.history?.pushState) return;
+  try {
+    window.history.pushState(
+      {
+        ...(window.history.state ?? {}),
+        [ACCOUNT_DELETE_HISTORY_KEY]: true
+      },
+      "",
+      window.location.href
+    );
+    accountDeleteHistoryActive = true;
+  } catch {
+    accountDeleteHistoryActive = false;
+  }
+}
+
+function handleAccountDeletionHistoryBack(event) {
+  if (!accountDeleteHistoryActive) return;
+  event.stopImmediatePropagation();
+  closeAccountDeletionDialog({ fromHistory: true });
+}
+
+function handleAccountDeletionNativeBack(event) {
+  if (!document.querySelector("[data-account-delete-dialog]")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  closeAccountDeletionDialog();
+}
+
+function handleAccountDeletionKeydown(event) {
+  const dialog = document.querySelector('.account-delete-dialog[role="dialog"]');
+  if (!dialog) return;
+
+  if (event.key === "Escape" && !accountDeleteBusy) {
+    event.preventDefault();
+    closeAccountDeletionDialog();
+    return;
+  }
+
+  if (event.key !== "Tab") return;
+  const focusable = [...dialog.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+  )].filter((element) => element.offsetParent !== null);
+  if (!focusable.length) {
+    event.preventDefault();
+    dialog.focus({ preventScroll: true });
+    return;
+  }
+
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
+function setAccountDeletionBusy(value) {
+  accountDeleteBusy = value;
+  document.documentElement.classList.toggle("account-delete-busy", value);
+  document.querySelectorAll("[data-account-delete-dialog] button, [data-account-delete-dialog] input")
+    .forEach((element) => {
+      element.disabled = value || (
+        element.matches('[data-account-action="delete-account-confirm"]') &&
+        !document.querySelector("[data-account-delete-confirmation]")?.checked
+      );
+    });
+}
+
+function renderPasswordResetGate(error = "") {
+  document.querySelector(".public-profile-gate")?.remove();
+  document.getElementById(GATE_ID)?.remove();
+  document.querySelector("#app")?.setAttribute("inert", "");
+
+  const gate = document.createElement("section");
+  gate.id = GATE_ID;
+  gate.className = "account-auth-gate";
+  gate.setAttribute("role", "main");
+  gate.innerHTML = `
+    <div class="account-auth-shell account-auth-shell-compact">
+      <section class="account-auth-brand">
+        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <div>
+          <p class="eyebrow">סוגרים חשבון</p>
+          <h1>בוחרים סיסמה חדשה</h1>
+          <p>אחרי השמירה נחזיר אותך ישר לחשבון שלך.</p>
+        </div>
+      </section>
+      <section class="account-auth-form-panel">
+        <div class="account-auth-heading">
+          <h2>איפוס סיסמה</h2>
+          <p>הסיסמה החדשה צריכה להכיל לפחות 8 תווים.</p>
+        </div>
+        <form class="account-auth-form" data-account-form data-mode="reset-password" novalidate>
+          <label>
+            <span>סיסמה חדשה</span>
+            <input name="password" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          <label>
+            <span>אימות סיסמה</span>
+            <input name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" required />
+          </label>
+          ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+          <button class="primary-button account-auth-submit" type="submit">שמור סיסמה</button>
+        </form>
+        <p class="visually-hidden" data-account-auth-status role="status" aria-live="polite"></p>
+      </section>
+    </div>
+  `;
+  document.body.append(gate);
+  gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
+  markAccountAuthReady();
+  focusAccountInput(gate);
+}
+
+function markAccountAuthReady() {
+  markStartupMilestone("auth-ready");
+  document.documentElement.classList.remove("account-auth-pending");
+  document.dispatchEvent(new Event("account-auth-ready"));
+}
+
+function watchAccountControls() {
+  const app = document.querySelector("#app");
+  if (!app) return;
+  const observer = new MutationObserver(() => enhanceAccountControls());
+  observer.observe(app, { childList: true, subtree: true });
+}
+
+async function providerEnabled(provider) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(`${runtimeConfig.storage.url}/auth/v1/settings`, {
+      headers: { apikey: runtimeConfig.storage.anonKey },
+      signal: controller.signal
+    });
+    if (!response.ok) return false;
+    const settings = await response.json();
+    return Boolean(settings.external?.[provider]);
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function refreshProviderOptions() {
+  const [googleAvailable, appleAvailable] = await Promise.all([
+    providerEnabled("google"),
+    providerEnabled("apple")
+  ]);
+  const nextGoogleEnabled = googleEnabled || googleAvailable;
+  if (
+    nextGoogleEnabled === googleEnabled &&
+    appleAvailable === appleEnabled
+  ) {
+    return;
+  }
+  googleEnabled = nextGoogleEnabled;
+  appleEnabled = appleAvailable;
+  enableProviderOptions();
+}
+
+function enableProviderOptions() {
+  const slot = document.querySelector("[data-google-auth-slot]");
+  if (!slot) return;
+  slot.innerHTML = providerOptionsMarkup();
+}
+
+function providerOptionsMarkup() {
+  const buttons = [
+    googleEnabled
+      ? `<button class="account-google-button" type="button" data-account-action="google">
+          ${googleIcon()}
+          <span>המשך עם Google</span>
+        </button>`
+      : "",
+    appleEnabled
+      ? `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
+          <img class="account-apple-button-art" src="./assets/sign-in-with-apple-iw.png" alt="" width="375" height="56" />
+        </button>`
+      : ""
+  ].filter(Boolean).join("");
+  return buttons;
+}
+
+function canResumeOffline(session, error) {
+  return Boolean(session?.user && isTransientAccountError(error));
+}
+
+function isTransientAccountError(error) {
+  const status = Number(error?.status);
+  return !status || status >= 500;
+}
+
+function rememberAccountReturnUrl() {
+  localStorage.setItem(
+    ACCOUNT_RETURN_URL_STORAGE_KEY,
+    accountReturnPath()
+  );
+}
+
+function accountReturnPath() {
+  const inviteUrl = pendingInviteUrl(window.location.href);
+  const returnUrl = new URL(inviteUrl || window.location.href, window.location.origin);
+  for (const key of [
+    "code",
+    "error",
+    "error_code",
+    "error_description",
+    ACCOUNT_OAUTH_FLOW_QUERY_PARAM
+  ]) {
+    returnUrl.searchParams.delete(key);
+  }
+  return `${returnUrl.pathname}${returnUrl.search}`;
+}
+
+function accountInviteContext() {
+  const inviteUrl = pendingInviteUrl(window.location.href);
+  const eventId = parseInviteEventId(inviteUrl);
+  if (!eventId) return null;
+
+  const event = parseInviteSnapshot(inviteUrl)?.event;
+  return {
+    eventId,
+    eventName: event?.name?.trim() || "האירוע שקיבלת",
+    participantCount: event?.participantIds?.length ?? 0
+  };
+}
+
+function accountInviteMarkup(context = accountInviteContext()) {
+  if (!context) return "";
+
+  const eventName = escapeHtml(context.eventName);
+  const participantCount = context.participantCount;
+  const detail = participantCount
+    ? `${participantCount} משתתפים כבר באירוע`
+    : "אחרי הכניסה נחבר אותך ישר לאירוע";
+  return `<section class="account-invite-preview" aria-label="הזמנה לאירוע">
+    <span>קיבלת הזמנה</span>
+    <strong>${eventName}</strong>
+    <p>${escapeHtml(detail)}</p>
+  </section>`;
+}
+
+function focusAccountInput(
+  gate,
+  { includeMobile = false, fieldName = "" } = {}
+) {
+  const isDesktop = window.matchMedia?.("(min-width: 761px)").matches;
+  if (!gate || (!isDesktop && !includeMobile)) return;
+
+  const safeFieldName = /^[a-zA-Z][\w-]*$/.test(fieldName)
+    ? fieldName
+    : "";
+  const input =
+    (safeFieldName
+      ? gate.querySelector(`input[name="${safeFieldName}"]`)
+      : null) ??
+    gate.querySelector('input[name="email"], input');
+  if (!input) return;
+
+  requestAnimationFrame(() => {
+    input.focus();
+    const feedback = gate.querySelector("#account-auth-feedback");
+    if (feedback) input.setAttribute("aria-describedby", feedback.id);
+    if (!isDesktop) {
+      input.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+  });
+}
+
+function authRedirectUrl(flowId = "") {
+  const baseUrl = globalThis.SogrimNative?.authCallbackUrl ||
+    `${window.location.origin}${window.location.pathname}`;
+  if (!flowId) return baseUrl;
+  const redirectUrl = new URL(baseUrl, window.location.origin);
+  redirectUrl.searchParams.set(ACCOUNT_OAUTH_FLOW_QUERY_PARAM, flowId);
+  return redirectUrl.toString();
+}
+
+async function secureOAuthUrl(urlBuilder) {
+  const pkce = await createOAuthPkce();
+  const flowId = createAccountOAuthFlowId();
+  const flow = saveAccountOAuthFlow({
+    id: flowId,
+    verifier: pkce.verifier,
+    returnPath: accountReturnPath()
+  });
+  if (!flow) throw new Error("Secure OAuth is unavailable");
+  return urlBuilder(runtimeConfig, authRedirectUrl(flowId), {
+    codeChallenge: pkce.challenge
+  });
+}
+
+async function openOAuthUrl(url) {
+  if (await globalThis.SogrimNative?.openAuth?.(url)) return;
+  location.assign(url);
+}
+
+async function settleWithin(task, timeoutMs) {
+  if (!task?.then) return task;
+  let timeoutId = 0;
+  try {
+    return await Promise.race([
+      task,
+      new Promise((_, reject) => {
+        timeoutId = window.setTimeout(
+          () => reject(new Error("Timed out")),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+function cleanAuthHash(oauthFlow = null) {
+  const returnPath = oauthFlow?.returnPath ||
+    localStorage.getItem(ACCOUNT_RETURN_URL_STORAGE_KEY);
+  localStorage.removeItem(ACCOUNT_RETURN_URL_STORAGE_KEY);
+  const fallbackUrl = new URL(location.href);
+  for (const key of [
+    "code",
+    "error",
+    "error_code",
+    "error_description",
+    ACCOUNT_OAUTH_FLOW_QUERY_PARAM
+  ]) {
+    fallbackUrl.searchParams.delete(key);
+  }
+  history.replaceState(
+    history.state,
+    "",
+    returnPath || `${fallbackUrl.pathname}${fallbackUrl.search}`
+  );
+}
+
+function isExpiring(session) {
+  return !session.expires_at || session.expires_at <= Math.floor(Date.now() / 1000) + 60;
+}
+
+function scheduleAccountSessionRefresh(delayOverride = null) {
+  clearTimeout(accountRefreshTimer);
+  if (!accountSession?.refresh_token || !runtimeConfig) return;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const refreshAtSeconds =
+    Number(accountSession.expires_at ?? 0) - ACCOUNT_REFRESH_MARGIN_SECONDS;
+  const delay = delayOverride ?? Math.max(
+    1_000,
+    (refreshAtSeconds - nowSeconds) * 1_000
+  );
+  accountRefreshTimer = window.setTimeout(
+    refreshActiveAccountSession,
+    delay
+  );
+}
+
+function refreshAccountSessionIfNeeded() {
+  if (
+    accountSession?.expires_at >
+    Math.floor(Date.now() / 1000) + ACCOUNT_REFRESH_MARGIN_SECONDS
+  ) {
+    scheduleAccountSessionRefresh();
+    return;
+  }
+  refreshActiveAccountSession();
+}
+
+function refreshActiveAccountSession() {
+  if (accountRefreshPromise) return accountRefreshPromise;
+  if (!accountSession?.refresh_token || !runtimeConfig) {
+    return Promise.resolve(null);
+  }
+
+  const previousSession = accountSession;
+  const requestGeneration = accountRefreshGeneration;
+  accountRefreshPromise = refreshAccountSession(runtimeConfig, previousSession)
+    .then((refreshedSession) => {
+      if (!refreshedSession) throw new Error("Account refresh failed");
+      if (
+        requestGeneration !== accountRefreshGeneration ||
+        accountSession !== previousSession
+      ) {
+        return null;
+      }
+      accountSession = saveAccountSession({
+        ...refreshedSession,
+        user: refreshedSession.user ?? previousSession.user
+      });
+      publishAccountSessionSync(accountSession);
+      scheduleAccountSessionRefresh();
+      return accountSession;
+    })
+    .catch(() => {
+      if (
+        requestGeneration === accountRefreshGeneration &&
+        accountSession === previousSession
+      ) {
+        scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
+      }
+      return null;
+    })
+    .finally(() => {
+      accountRefreshPromise = null;
+    });
+  return accountRefreshPromise;
+}
+
+function setAuthBusy(value) {
+  authBusy = value;
+  document.documentElement.classList.toggle("account-auth-busy", value);
+  const gate = document.getElementById(GATE_ID);
+  gate?.setAttribute("aria-busy", String(value));
+  const status = gate?.querySelector("[data-account-auth-status]");
+  if (status) status.textContent = value ? "מתחברים לחשבון…" : "";
+  document.querySelectorAll("#public-account-auth-gate button, #public-account-auth-gate input")
+    .forEach((element) => {
+      element.disabled = value;
+    });
+}
+
+function rememberProfileRouteBeforeLegalNavigation() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set("action", "profile");
+    window.history.replaceState(window.history.state, "", url);
+  } catch {}
+}
+
+function sessionValue(key) {
+  try {
+    return window.sessionStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function setSessionValue(key, value) {
+  try {
+    window.sessionStorage?.setItem(key, value);
+  } catch {}
+}
+
+function removeSessionValue(key) {
+  try {
+    window.sessionStorage?.removeItem(key);
+  } catch {}
+}
+
+function oauthPkceVerifier() {
+  try {
+    return window.localStorage?.getItem(OAUTH_PKCE_VERIFIER_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function saveOAuthPkceVerifier(verifier) {
+  try {
+    window.localStorage?.setItem(OAUTH_PKCE_VERIFIER_KEY, verifier);
+  } catch {}
+}
+
+function clearOAuthPkceVerifier() {
+  try {
+    window.localStorage?.removeItem(OAUTH_PKCE_VERIFIER_KEY);
+  } catch {}
+}
+
+function googleIcon() {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.19-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z"/>
+    <path fill="#34A853" d="M12 22c2.7 0 4.98-.9 6.63-2.36l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z"/>
+    <path fill="#FBBC05" d="M6.39 13.93A6.02 6.02 0 0 1 6.08 12c0-.67.12-1.32.31-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.55l3.35-2.62Z"/>
+    <path fill="#EA4335" d="M12 5.94c1.47 0 2.78.5 3.82 1.49l2.87-2.87A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z"/>
+  </svg>`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function injectStyle() {
+  if (document.getElementById(STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = STYLE_ID;
+  style.textContent = `
+    .account-auth-gate {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      overflow: auto;
+      color: #17201d;
+      background: #f4f7f5;
+    }
+
+    html.account-auth-locked .skip-link {
+      display: none;
+    }
+
+    html.account-auth-locked #app {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    .account-auth-shell {
+      width: min(100%, 940px);
+      min-height: 590px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 0.88fr);
+      overflow: hidden;
+      border: 1px solid #dbe4df;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 28px 80px rgba(17, 43, 36, 0.16);
+    }
+
+    .account-auth-brand {
+      display: grid;
+      align-content: space-between;
+      gap: 28px;
+      padding: 44px;
+      color: #ffffff;
+      background: #0b3b38;
+    }
+
+    .account-auth-mark {
+      width: 50px;
+      height: 50px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 8px;
+      color: #dff4f5;
+      background: rgba(255,255,255,.1);
+      font-size: 24px;
+      font-weight: 900;
+    }
+
+    #public-account-auth-gate .account-auth-brand h1 {
+      max-width: 13ch;
+      margin: 8px 0 14px;
+      color: #ffffff !important;
+      font-size: clamp(32px, 5vw, 50px);
+      line-height: 1.1;
+    }
+
+    #public-account-auth-gate .account-auth-brand .eyebrow {
+      color: #71d9de !important;
+    }
+
+    #public-account-auth-gate .account-auth-brand p {
+      margin: 0;
+      color: rgba(255,255,255,.82) !important;
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .account-auth-brand ul {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      color: rgba(255,255,255,.88);
+      font-weight: 650;
+    }
+
+    .account-auth-brand li::before {
+      content: "✓";
+      margin-inline-end: 9px;
+      color: #71d9de;
+    }
+
+    .account-auth-form-panel {
+      display: grid;
+      align-content: center;
+      gap: 20px;
+      padding: 40px;
+    }
+
+    .account-invite-preview {
+      display: grid;
+      gap: 5px;
+      padding: 14px 16px;
+      border: 1px solid rgba(7, 95, 89, .18);
+      border-radius: 8px;
+      background: #edf7f4;
+    }
+
+    .account-invite-preview span {
+      color: #08766c;
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .account-invite-preview strong {
+      color: #14201d;
+      font-size: 18px;
+    }
+
+    .account-invite-preview p {
+      margin: 0;
+      color: #65736e;
+      font-size: 14px;
+    }
+
+    .account-auth-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid #dce5e0;
+      border-radius: 8px;
+      background: #f4f7f5;
+    }
+
+    .account-auth-tabs button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 6px;
+      color: #63716b;
+      background: transparent;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .account-auth-tabs button.is-active {
+      color: #075e55;
+      background: #ffffff;
+      box-shadow: 0 2px 9px rgba(19, 56, 46, .1);
+    }
+
+    .account-auth-heading h2 {
+      margin: 0 0 6px;
+      font-size: 28px;
+      line-height: 1.2;
+      text-wrap: balance;
+      overflow-wrap: anywhere;
+    }
+
+    .account-auth-heading p,
+    .account-auth-legal {
+      margin: 0;
+      color: #68766f;
+      line-height: 1.5;
+    }
+
+    .account-auth-legal a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      color: #08766c;
+      font-weight: 750;
+    }
+
+    .account-google-slot:empty {
+      display: none;
+    }
+
+    .account-google-slot:not(:empty) {
+      display: grid;
+      gap: 20px;
+    }
+
+    .account-google-button {
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border: 1px solid #cfdbd5;
+      border-radius: 8px;
+      color: #17201d;
+      background: #ffffff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    .account-google-button:hover {
+      border-color: #aebfb7;
+      box-shadow: 0 6px 16px rgba(20, 59, 49, .08);
+      transform: translateY(-1px);
+    }
+
+    .account-google-button svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .account-apple-button {
+      border-color: #171b19;
+      color: #ffffff;
+      background: #171b19;
+    }
+
+    .account-apple-button:hover {
+      border-color: #000000;
+      background: #000000;
+    }
+
+    .account-auth-divider {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      color: #78867f;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .account-auth-divider::before,
+    .account-auth-divider::after {
+      content: "";
+      height: 1px;
+      background: #e0e7e3;
+    }
+
+    .account-auth-form {
+      display: grid;
+      gap: 14px;
+    }
+
+    .account-auth-form label {
+      display: grid;
+      gap: 7px;
+      font-weight: 750;
+    }
+
+    .account-auth-form input {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 13px;
+      border: 1px solid #cfdbd5;
+      border-radius: 8px;
+      color: #17201d;
+      background: #ffffff;
+      font: inherit;
+      font-size: 16px;
+      outline: none;
+    }
+
+    .account-auth-form input:focus-visible {
+      border-color: #087c78;
+      box-shadow: 0 0 0 1px #087c78;
+      outline: 3px solid #087c78;
+      outline-offset: 2px;
+    }
+
+    #public-account-auth-gate button:focus-visible,
+    #public-account-auth-gate a:focus-visible {
+      outline: 3px solid #087c78;
+      outline-offset: 3px;
+    }
+
+    .account-auth-submit {
+      width: 100%;
+      min-height: 50px;
+      margin-top: 4px;
+    }
+
+    .account-forgot-button {
+      justify-self: start;
+      min-height: 44px;
+      padding: 0;
+      border: 0;
+      color: #08766c;
+      background: transparent;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .account-auth-message,
+    .account-auth-error {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .account-auth-message {
+      color: #075e55;
+      background: #e7f5f1;
+    }
+
+    .account-auth-error {
+      color: #9a3f2c;
+      background: #fff0ec;
+    }
+
+    .account-auth-legal {
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .account-auth-busy .account-auth-shell {
+      opacity: .72;
+      pointer-events: none;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .account-google-button {
+        transition: none;
+      }
+    }
+
+    .account-profile-controls {
+      min-width: 0;
+      display: grid;
+      align-items: start;
+      gap: 10px;
+      width: 100%;
+      margin-inline-start: auto;
+    }
+
+    .account-profile-controls > span {
+      max-width: 220px;
+      overflow: hidden;
+      color: #6a7771;
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .account-profile-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .account-feedback-entry {
+      width: 100%;
+      min-height: 76px;
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr) 20px;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border: 1px solid rgba(12, 91, 79, .14);
+      border-radius: 8px;
+      color: #163a34;
+      text-align: start;
+      background: rgba(237, 247, 244, .72);
+      box-shadow: 0 8px 24px rgba(13, 73, 63, .06);
+      cursor: pointer;
+      transition:
+        border-color .2s ease,
+        background-color .2s ease,
+        transform .2s ease;
+    }
+
+    .account-feedback-entry:hover,
+    .account-feedback-entry:focus-visible {
+      border-color: rgba(8, 123, 116, .34);
+      background: #edf8f5;
+      transform: translateY(-1px);
+    }
+
+    .account-feedback-entry-icon {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #087b74;
+      background: #ffffff;
+      box-shadow: 0 5px 16px rgba(8, 123, 116, .12);
+    }
+
+    .account-feedback-entry-icon svg {
+      width: 23px;
+      height: 23px;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+
+    .account-feedback-entry-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .account-feedback-entry-copy strong {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .account-feedback-entry-copy small {
+      color: #677872;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .account-feedback-entry-chevron {
+      color: #78918a;
+      font-size: 27px;
+      line-height: 1;
+    }
+
+    .account-feedback-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1110;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(18, 29, 27, .52);
+      backdrop-filter: blur(8px);
+    }
+
+    html.account-feedback-open,
+    html.account-feedback-open body {
+      overflow: hidden;
+    }
+
+    .account-feedback-dialog {
+      width: min(560px, 100%);
+      max-height: min(760px, calc(100dvh - 40px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding: 26px;
+      border: 1px solid rgba(23, 32, 29, .12);
+      border-radius: 12px;
+      color: #17201d;
+      background: #ffffff;
+      box-shadow: 0 24px 64px rgba(18, 29, 27, .22);
+    }
+
+    .account-feedback-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      align-items: start;
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .account-feedback-header h2,
+    .account-feedback-success h2 {
+      margin: 3px 0 7px;
+      font-size: 26px;
+      line-height: 1.18;
+    }
+
+    .account-feedback-header p,
+    .account-feedback-success p {
+      margin: 0;
+      color: #66746f;
+      line-height: 1.55;
+    }
+
+    .account-feedback-close {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid rgba(23, 32, 29, .12);
+      border-radius: 50%;
+      color: #33413c;
+      font-size: 26px;
+      line-height: 1;
+      background: #f5f8f7;
+      cursor: pointer;
+    }
+
+    .account-feedback-form {
+      display: grid;
+      gap: 20px;
+    }
+
+    .account-feedback-categories {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .account-feedback-categories legend {
+      margin-bottom: 9px;
+      color: #52625c;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .account-feedback-categories label {
+      position: relative;
+      min-width: 0;
+    }
+
+    .account-feedback-categories input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .account-feedback-categories span {
+      min-height: 46px;
+      display: grid;
+      place-items: center;
+      padding: 8px;
+      border: 1px solid rgba(25, 49, 44, .14);
+      border-radius: 8px;
+      color: #53635d;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+      background: #f8faf9;
+      cursor: pointer;
+    }
+
+    .account-feedback-categories input:checked + span {
+      border-color: #087b74;
+      color: #075f59;
+      background: #e6f4f1;
+      box-shadow: inset 0 0 0 1px rgba(8, 123, 116, .16);
+    }
+
+    .account-feedback-categories input:focus-visible + span {
+      outline: 3px solid rgba(38, 184, 173, .3);
+      outline-offset: 2px;
+    }
+
+    .account-feedback-message {
+      display: grid;
+      gap: 8px;
+      color: #3f4d48;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .account-feedback-message textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      padding: 14px 15px;
+      border: 1px solid rgba(25, 49, 44, .18);
+      border-radius: 8px;
+      color: #18231f;
+      font: inherit;
+      font-weight: 500;
+      line-height: 1.55;
+      background: #fbfcfc;
+    }
+
+    .account-feedback-message textarea:focus {
+      border-color: #1c958d;
+      outline: 3px solid rgba(38, 184, 173, .22);
+    }
+
+    .account-feedback-message small {
+      color: #7a8782;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .account-feedback-error {
+      margin: 0;
+      padding: 10px 12px;
+      border-radius: 6px;
+      color: #963b31;
+      font-size: 13px;
+      font-weight: 700;
+      background: #fff0ec;
+    }
+
+    .account-feedback-actions {
+      display: grid;
+      grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+      gap: 10px;
+    }
+
+    .account-feedback-actions button {
+      width: 100%;
+    }
+
+    html.account-feedback-busy .account-feedback-dialog {
+      cursor: wait;
+    }
+
+    .account-feedback-success {
+      min-height: 350px;
+      display: grid;
+      align-content: center;
+      justify-items: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .account-feedback-success > span {
+      width: 62px;
+      height: 62px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #ffffff;
+      font-size: 30px;
+      background: #087b74;
+      box-shadow: 0 12px 30px rgba(8, 123, 116, .24);
+    }
+
+    .account-feedback-success .primary-button {
+      min-width: 180px;
+      margin-top: 12px;
+    }
+
+    .account-danger-zone {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 14px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(16, 35, 33, .12);
+    }
+
+    .account-danger-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .account-danger-copy strong {
+      color: #394842;
+      font-size: 13px;
+    }
+
+    .account-danger-copy small {
+      color: #77837e;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .account-data-links {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .account-data-link {
+      min-width: 44px;
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #52605a;
+      font-size: 13px;
+      font-weight: 750;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    button.account-data-link {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .account-delete-button {
+      color: #a33d32;
+      border-color: rgba(163, 61, 50, .28);
+    }
+
+    .account-delete-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1100;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(18, 29, 27, .52);
+      backdrop-filter: blur(8px);
+    }
+
+    html.account-delete-open,
+    html.account-delete-open body {
+      overflow: hidden;
+    }
+
+    .account-delete-dialog {
+      width: min(480px, 100%);
+      padding: 28px;
+      border: 1px solid rgba(23, 32, 29, .12);
+      border-radius: 12px;
+      color: #17201d;
+      background: #ffffff;
+      box-shadow: 0 24px 64px rgba(18, 29, 27, .22);
+    }
+
+    .account-delete-dialog h2 {
+      margin: 4px 0 10px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    .account-delete-dialog > p:not(.eyebrow) {
+      margin: 0;
+      color: #5f6c66;
+      line-height: 1.65;
+    }
+
+    .account-delete-confirmation {
+      min-height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 22px 0 0;
+      padding: 14px;
+      border: 1px solid #e2e7e4;
+      border-radius: 8px;
+      background: #f8faf9;
+      cursor: pointer;
+    }
+
+    .account-delete-confirmation input {
+      width: 20px;
+      height: 20px;
+      flex: 0 0 auto;
+      accent-color: #a33d32;
+    }
+
+    .account-delete-confirmation span {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .account-delete-error {
+      margin-top: 14px !important;
+      color: #a33d32 !important;
+      font-weight: 750;
+    }
+
+    .account-delete-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .account-delete-confirm {
+      background: #a33d32;
+      border-color: #a33d32;
+    }
+
+    .account-delete-confirm:hover:not(:disabled) {
+      background: #873229;
+      border-color: #873229;
+    }
+
+    .account-delete-busy .account-delete-dialog {
+      opacity: .72;
+      pointer-events: none;
+    }
+
+    @media (max-width: 760px) {
+      .account-auth-gate {
+        place-items: stretch;
+        padding: 0;
+        scroll-padding-block-end: calc(120px + env(safe-area-inset-bottom));
+        background: #ffffff;
+      }
+
+      .account-auth-shell {
+        width: 100%;
+        min-height: 100dvh;
+        grid-template-columns: 1fr;
+        overflow: visible;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      .account-auth-brand {
+        min-height: 230px;
+        align-content: start;
+        gap: 18px;
+        padding-top: calc(24px + env(safe-area-inset-top));
+        padding-bottom: 26px;
+        padding-left: max(24px, env(safe-area-inset-left));
+        padding-right: max(24px, env(safe-area-inset-right));
+      }
+
+      .account-auth-brand h1 {
+        max-width: 16ch;
+        margin-block: 4px 10px;
+        font-size: 32px;
+      }
+
+      .account-auth-brand ul {
+        display: none;
+      }
+
+      .account-auth-form-panel {
+        align-content: start;
+        padding-top: 24px;
+        padding-bottom: calc(28px + env(safe-area-inset-bottom));
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
+      }
+
+      .account-email-auth {
+        scroll-margin-block: 18px calc(120px + env(safe-area-inset-bottom));
+      }
+
+      .account-auth-heading h2 {
+        font-size: clamp(1.45rem, 7vw, 1.7rem);
+      }
+
+      .account-profile-controls {
+        width: 100%;
+        align-items: flex-start;
+        margin: 10px 0 0;
+      }
+
+      .account-data-links {
+        width: 100%;
+        gap: 12px;
+        padding-top: 4px;
+        border-top: 1px solid rgba(16, 35, 33, .1);
+      }
+
+      .account-profile-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .account-profile-actions .secondary-button {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .account-profile-actions .account-install-button {
+        grid-column: 1 / -1;
+      }
+
+      .account-feedback-backdrop {
+        display: block;
+        padding: 0;
+        background: #ffffff;
+        backdrop-filter: none;
+      }
+
+      .account-feedback-dialog {
+        width: 100%;
+        max-height: 100dvh;
+        min-height: 100dvh;
+        padding:
+          calc(22px + env(safe-area-inset-top))
+          max(18px, env(safe-area-inset-right))
+          calc(24px + env(safe-area-inset-bottom))
+          max(18px, env(safe-area-inset-left));
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        scroll-padding-block-end: calc(80px + env(safe-area-inset-bottom));
+      }
+
+      .account-feedback-header h2,
+      .account-feedback-success h2 {
+        font-size: 24px;
+      }
+
+      .account-feedback-categories {
+        grid-template-columns: 1fr;
+      }
+
+      .account-feedback-categories span {
+        justify-items: start;
+        padding-inline: 14px;
+      }
+
+      .account-feedback-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .account-feedback-actions .primary-button {
+        grid-row: 1;
+      }
+
+      .account-danger-zone {
+        width: 100%;
+        align-items: stretch;
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .account-danger-zone .account-delete-button {
+        width: 100%;
+      }
+
+      .account-delete-backdrop {
+        align-items: end;
+        padding: 0;
+      }
+
+      .account-delete-dialog {
+        width: 100%;
+        max-height: 100dvh;
+        overflow: auto;
+        padding:
+          24px
+          max(20px, env(safe-area-inset-right))
+          calc(20px + env(safe-area-inset-bottom))
+          max(20px, env(safe-area-inset-left));
+        border-radius: 12px 12px 0 0;
+      }
+
+      .account-delete-actions {
+        position: sticky;
+        bottom: 0;
+        padding-top: 14px;
+        background: #ffffff;
+      }
+    }
+  `;
+  document.head.append(style);
+}

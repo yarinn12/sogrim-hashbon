@@ -1,12 +1,34 @@
+import { loadLocalProfile } from "./data/localStore.mjs";
+import {
+  avatarPresetForParticipant,
+  avatarPresetSource
+} from "./domain/avatarPresets.mjs";
+import { iconSvg } from "./uiIcons.mjs";
+
 const STYLE_ID = "public-brand-layer-style";
 const APP_NAME = "סוגרים חשבון";
 const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
+const PRIMARY_NAV_SCREENS = new Set([
+  "home",
+  "profile",
+  "notifications",
+  "groups",
+  "event",
+  "settlement"
+]);
+
+let scheduledBranding = false;
+let preferredHomeDestination = "home";
 
 injectBrandStyle();
 enhanceBranding();
 watchBranding();
-
-let scheduledBranding = false;
+document.addEventListener("click", handlePrimaryNavigationIntent, true);
+document.addEventListener("settle-friends:screen-rendered", enhanceBranding);
+document.addEventListener(
+  "settle-friends:notification-inbox-updated",
+  scheduleBranding
+);
 
 function watchBranding() {
   if (!document.body) return;
@@ -30,27 +52,124 @@ function scheduleBranding() {
 function enhanceBranding() {
   enhanceAppScreenBrand();
   enhanceProfileGateBrand();
+  enhanceScreenHeroArtwork();
+  syncHeaderNavState();
   simplifyEmptyHome();
 }
 
 function enhanceAppScreenBrand() {
   const screen = document.querySelector("#app .screen");
-  if (!screen || hasDirectChild(screen, "product-app-identity")) return;
+  if (!screen) return;
+  const kind = detectBrandScreenKind(screen);
+  const existingIdentity = screen.querySelector(":scope > .product-app-identity");
+  if (existingIdentity) {
+    syncHeaderIdentity(screen, existingIdentity, kind);
+    return;
+  }
 
   const html = `
-    <header class="product-app-identity" aria-label="${APP_NAME}">
+    <header class="product-app-identity">
       ${renderBrandLockup("product-app-lockup")}
-      ${renderHeaderNav()}
+      ${PRIMARY_NAV_SCREENS.has(kind) ? renderHeaderNav() : ""}
     </header>
   `;
 
   const top = screen.querySelector(".top");
   if (top) {
     top.insertAdjacentHTML("beforebegin", html);
+    syncHeaderIdentity(
+      screen,
+      screen.querySelector(":scope > .product-app-identity"),
+      kind
+    );
     return;
   }
 
   screen.insertAdjacentHTML("afterbegin", html);
+  syncHeaderIdentity(
+    screen,
+    screen.querySelector(":scope > .product-app-identity"),
+    kind
+  );
+}
+
+function syncHeaderIdentity(screen, identity, kind) {
+  if (!identity) return;
+
+  const isHome = kind === "home";
+  const profileIdentity = resolveHeaderProfileIdentity(screen);
+  identity.classList.toggle("is-home-context", isHome);
+  syncHeaderProfileAvatar(identity, profileIdentity.avatarSource);
+
+  const subtitle = identity.querySelector(".product-brand-copy small");
+  if (!subtitle) return;
+
+  const firstName = profileIdentity.displayName
+    .split(/\s+/)
+    .filter(Boolean)[0];
+  const greeting = firstName ? `היי, ${firstName}` : APP_TAGLINE;
+  if (subtitle.textContent !== greeting) {
+    subtitle.textContent = greeting;
+  }
+}
+
+function resolveHeaderProfileIdentity(screen) {
+  const profile = loadLocalProfile();
+  const participantId = String(profile?.participantId ?? "").trim();
+  const displayName = String(profile?.displayName ?? "").trim();
+  if (!participantId || !displayName) {
+    return { displayName: "", avatarSource: "" };
+  }
+
+  const avatarParticipant = {
+    id: participantId,
+    displayName,
+    avatarPreset: profile?.avatarPreset
+  };
+  return {
+    displayName,
+    avatarSource:
+      screen.dataset.profileAvatarSrc?.trim() ||
+      avatarPresetSource(
+        avatarPresetForParticipant(avatarParticipant, participantId || displayName)
+      )
+  };
+}
+
+function syncHeaderProfileAvatar(identity, avatarSource) {
+  const existingAvatar = identity.querySelector(".product-header-profile-avatar");
+  const lockup = identity.querySelector(".product-app-lockup");
+  const brandCopy = lockup?.querySelector(".product-brand-copy");
+  if (!avatarSource || !lockup || !brandCopy) {
+    existingAvatar?.remove();
+    return;
+  }
+
+  let avatar = existingAvatar;
+  if (avatar && avatar.tagName !== "BUTTON") {
+    const interactiveAvatar = document.createElement("button");
+    avatar.replaceWith(interactiveAvatar);
+    avatar = interactiveAvatar;
+  }
+  if (!avatar) {
+    avatar = document.createElement("button");
+    avatar.className = "product-header-profile-avatar";
+    brandCopy.insertAdjacentElement("beforebegin", avatar);
+  }
+  avatar.type = "button";
+  avatar.className = "product-header-profile-avatar";
+  avatar.dataset.action = "edit-profile";
+  avatar.setAttribute("aria-label", "פתיחת הפרופיל");
+  avatar.setAttribute("title", "פרופיל");
+  if (!avatar.querySelector("img")) {
+    avatar.innerHTML =
+      '<img alt="" width="96" height="96" loading="eager" decoding="async" />';
+  }
+
+  const image = avatar.querySelector("img");
+  if (image && image.getAttribute("src") !== avatarSource) {
+    image.setAttribute("src", avatarSource);
+  }
 }
 
 function enhanceProfileGateBrand() {
@@ -79,33 +198,147 @@ function renderBrandLockup(extraClass = "") {
 
 function renderHeaderNav() {
   return `
-    <nav class="product-app-nav" aria-label="main">
-      <button class="product-nav-button" data-action="edit-profile" type="button">
-        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/><path d="M4.8 20a7.2 7.2 0 0 1 14.4 0"/></svg>
+    <nav class="product-app-nav" aria-label="&#1504;&#1497;&#1493;&#1493;&#1496; &#1512;&#1488;&#1513;&#1497;">
+      <button class="product-nav-button" data-action="home" data-nav-destination="home" type="button">
+        ${iconSvg("home")}
+        <span>&#1489;&#1497;&#1514;</span>
+      </button>
+      <button class="product-nav-button" data-action="home" data-nav-destination="events" type="button">
+        ${iconSvg("calendar")}
+        <span>&#1488;&#1497;&#1512;&#1493;&#1506;&#1497;&#1501;</span>
+      </button>
+      <button class="product-nav-button" data-action="open-notifications" data-nav-destination="notifications" type="button" aria-label="&#1492;&#1514;&#1512;&#1488;&#1493;&#1514;">
+        ${iconSvg("bell")}
+        <span>&#1492;&#1514;&#1512;&#1488;&#1493;&#1514;</span>
+        <span class="product-nav-badge" hidden aria-hidden="true"></span>
+      </button>
+      <button class="product-nav-button" data-action="edit-profile" data-nav-destination="profile" type="button">
+        ${iconSvg("user")}
         <span>&#1508;&#1512;&#1493;&#1508;&#1497;&#1500;</span>
-      </button>
-      <button class="product-nav-button" data-action="join-event-screen" type="button">
-        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14"/><path d="M5 12h14"/><path d="M4.8 5.8h4.4v4.4H4.8z"/><path d="M14.8 13.8h4.4v4.4h-4.4z"/></svg>
-        <span>&#1492;&#1510;&#1496;&#1512;&#1508;&#1493;&#1514;</span>
-      </button>
-      <button class="product-nav-button" data-action="groups" type="button">
-        <svg viewBox="0 0 24 24" focusable="false"><path d="M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/><path d="M16.5 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M3.5 20a4.8 4.8 0 0 1 9 0"/><path d="M13.5 18.5a4 4 0 0 1 7 0"/></svg>
-        <span>&#1511;&#1489;&#1493;&#1510;&#1493;&#1514;</span>
       </button>
     </nav>
   `;
 }
 
+function syncHeaderNavState() {
+  const screen = document.querySelector("#app .screen");
+  const identity = screen?.querySelector(":scope > .product-app-identity");
+  if (!screen || !identity) return;
+
+  const kind = detectBrandScreenKind(screen);
+  const showPrimaryNav = PRIMARY_NAV_SCREENS.has(kind);
+  let nav = identity.querySelector(":scope > .product-app-nav");
+  if (!showPrimaryNav) {
+    nav?.remove();
+    return;
+  }
+  if (!nav) {
+    identity.insertAdjacentHTML("beforeend", renderHeaderNav());
+    nav = identity.querySelector(":scope > .product-app-nav");
+  }
+  if (!nav) return;
+
+  const eventDestinations = new Set(["event", "settlement", "join-event"]);
+  const activeDestination =
+    kind === "notifications"
+      ? "notifications"
+      : ["profile", "groups"].includes(kind)
+      ? "profile"
+      : kind === "home"
+        ? preferredHomeDestination
+        : eventDestinations.has(kind)
+          ? "events"
+          : "";
+
+  syncNotificationNavBadge(nav);
+  setPrimaryNavigationActiveDestination(nav, activeDestination);
+}
+
+function syncNotificationNavBadge(nav) {
+  const button = nav?.querySelector('[data-nav-destination="notifications"]');
+  const badge = button?.querySelector(".product-nav-badge");
+  if (!button || !badge) return;
+
+  const rawUnread = Number.parseInt(
+    document.querySelector("#app")?.dataset.notificationUnreadCount ?? "0",
+    10
+  );
+  const unread = Number.isFinite(rawUnread) ? Math.max(0, rawUnread) : 0;
+  badge.hidden = unread === 0;
+  badge.textContent = unread > 9 ? "9+" : String(unread);
+  button.setAttribute(
+    "aria-label",
+    unread
+      ? `\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea, ${unread} \u05d7\u05d3\u05e9\u05d5\u05ea`
+      : "\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea"
+  );
+}
+
+function setPrimaryNavigationActiveDestination(nav, activeDestination) {
+  if (!nav) return;
+
+  nav.querySelectorAll(".product-nav-button").forEach((button) => {
+    const isActive = button.dataset.navDestination === activeDestination;
+    button.classList.toggle("is-active", isActive);
+    if (isActive) {
+      button.setAttribute("aria-current", "page");
+    } else {
+      button.removeAttribute("aria-current");
+    }
+  });
+}
+
+function handlePrimaryNavigationIntent(event) {
+  const button = event.target.closest(".product-nav-button[data-nav-destination]");
+  if (!button) return;
+
+  const destination = button.dataset.navDestination;
+  setPrimaryNavigationActiveDestination(
+    button.closest(".product-app-nav"),
+    destination
+  );
+  if (destination === "home") {
+    preferredHomeDestination = "home";
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        behavior: prefersReducedMotion() ? "auto" : "smooth"
+      });
+    });
+    return;
+  }
+
+  if (destination === "events") {
+    preferredHomeDestination = "events";
+    requestAnimationFrame(focusHomeEvents);
+  }
+}
+
+function focusHomeEvents() {
+  const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
+  const section =
+    screen?.querySelector(".event-list")?.closest(".section") ??
+    screen?.querySelector(".home-empty-events");
+  if (!section) return;
+
+  const heading = section.querySelector("h2");
+  if (heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+  section.scrollIntoView({
+    block: "start",
+    behavior: prefersReducedMotion() ? "auto" : "smooth"
+  });
+  heading?.focus({ preventScroll: true });
+  syncHeaderNavState();
+}
+
+function prefersReducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+}
+
 function renderBrandMark() {
   return `
     <span class="product-brand-mark" aria-hidden="true">
-      <svg class="product-brand-symbol" viewBox="0 0 64 64" focusable="false">
-        <rect class="brand-symbol-panel" x="12" y="10" width="40" height="44" rx="14" />
-        <path class="brand-symbol-flow" d="M22 25h18.5c4.1 0 7.5 3.3 7.5 7.4s-3.4 7.4-7.5 7.4H25" />
-        <path class="brand-symbol-return" d="M29 19 22 25l7 6" />
-        <path class="brand-symbol-check" d="m24 39 6 6 13-16" />
-        <circle class="brand-symbol-dot" cx="47" cy="18" r="4" />
-      </svg>
+      <img class="product-brand-image" src="./icon-192.png" alt="" width="192" height="192" />
     </span>
   `;
 }
@@ -114,12 +347,47 @@ function hasDirectChild(parent, className) {
   return Array.from(parent.children).some((child) => child.classList.contains(className));
 }
 
+function enhanceScreenHeroArtwork() {
+  const screen = document.querySelector("#app .screen");
+  const top = screen?.querySelector(":scope > .top");
+  if (!screen || !top || screen.matches(".profile-setup-screen")) return;
+
+  const kind = detectBrandScreenKind(screen);
+  const existing = top.querySelector(".product-hero-artwork");
+  if (existing?.dataset.kind === kind) return;
+
+  existing?.remove();
+  top.insertAdjacentHTML("beforeend", renderHeroArtwork(kind));
+}
+
+function detectBrandScreenKind(screen) {
+  const explicitKind = screen.dataset.screenKind;
+  if (["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"].includes(explicitKind)) {
+    return explicitKind;
+  }
+  if (["group-create", "group-edit", "people"].includes(explicitKind)) {
+    return "group-workflow";
+  }
+
+  if (screen.matches(".profile-setup-screen") || screen.querySelector('[data-action="save-profile"]')) return "profile";
+  if (screen.matches('[data-screen-kind="new-event"]') || screen.querySelector('[data-action="create-event"]')) return "new-event";
+  if (screen.querySelector('[data-action="join-existing-event"]')) return "join-event";
+  if (screen.querySelector('[data-action="create-group"]')) return "groups";
+  if (screen.querySelector('[data-action="copy-settlement"]')) return "settlement";
+  if (screen.querySelector(".event-workspace-nav, .event-command-grid, .event-insight-panel")) return "event";
+  if (screen.querySelector('[data-action="new-event"]')) return "home";
+  return "general";
+}
+
 function simplifyEmptyHome() {
   const screen = document.querySelector("#app .screen");
   if (!screen || !screen.querySelector('[data-action="new-event"]')) return;
 
   const hasEventRows = Boolean(screen.querySelector(".event-row"));
-  const shouldSimplify = !hasEventRows;
+  const hasRecentEvent = Boolean(screen.querySelector(".recent-event-shortcut"));
+  const hasStoredEvents = [...screen.querySelectorAll('[data-action="event-status-filter"] strong')]
+    .some((count) => Number.parseInt(count.textContent?.trim() || "0", 10) > 0);
+  const shouldSimplify = !hasEventRows && !hasRecentEvent && !hasStoredEvents;
   const dashboard = screen.querySelector(".personal-dashboard");
   const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");
   const eventSection =
@@ -129,10 +397,8 @@ function simplifyEmptyHome() {
   const contextBar = screen.querySelector(".product-context-bar");
   const profilePanel = screen.querySelector(".profile-panel");
   const quickGuide = screen.querySelector(".product-home-kicker");
-  const groupsAction = screen.querySelector('.hero-actions [data-action="groups"]');
-
   screen.classList.toggle("product-empty-home", shouldSimplify);
-  syncHomeHeroArtwork(screen, shouldSimplify);
+  enhanceScreenHeroArtwork();
   if (!shouldSimplify) syncEmptyEventIllustration(eventSection, false);
   setHidden(dashboard, shouldSimplify);
   setHidden(personalActions, shouldSimplify);
@@ -140,7 +406,6 @@ function simplifyEmptyHome() {
   setSuppressed(contextBar, shouldSimplify);
   setSuppressed(profilePanel, shouldSimplify);
   setSuppressed(quickGuide, shouldSimplify);
-  setSuppressed(groupsAction, shouldSimplify);
   if (eventSection) eventSection.classList.toggle("home-empty-events", shouldSimplify);
 
   screen.querySelectorAll('[data-action="event-status-filter"]').forEach((button) => {
@@ -150,10 +415,11 @@ function simplifyEmptyHome() {
   if (!shouldSimplify || !eventSection) return;
 
   const eventCopy = eventSection.querySelector(".section-title-row .muted");
-  setTextIfChanged(eventCopy, "פתח אירוע או הצטרף לקישור שקיבלת.");
+  setTextIfChanged(eventCopy, "פתח אירוע חדש. הזמנה שקיבלת נפתחת ישירות מהקישור.");
 
   const emptyState = eventSection.querySelector(".empty-state");
-  setTextIfChanged(emptyState, "אין אירועים שלך עדיין");
+  const emptyLabel = emptyState?.querySelector("strong") ?? emptyState;
+  setTextIfChanged(emptyLabel, "אין אירועים שלך עדיין");
   syncEmptyEventIllustration(eventSection, true);
 
   eventSection.querySelectorAll(".empty-state").forEach((node, index) => {
@@ -161,24 +427,10 @@ function simplifyEmptyHome() {
   });
 }
 
-function syncHomeHeroArtwork(screen, shouldShow) {
-  const top = screen.querySelector(":scope > .top");
-  const existing = top?.querySelector(".product-home-artwork");
-
-  if (!top) return;
-
-  if (!shouldShow) {
-    existing?.remove();
-    return;
-  }
-
-  if (existing) return;
-  top.insertAdjacentHTML("beforeend", renderHomeArtwork());
-}
-
 function syncEmptyEventIllustration(eventSection, shouldShow) {
   const emptyState = eventSection?.querySelector(".empty-state");
   const existing = emptyState?.querySelector(".product-empty-icon");
+  const productImage = emptyState?.querySelector("img");
 
   if (!emptyState) return;
 
@@ -187,22 +439,48 @@ function syncEmptyEventIllustration(eventSection, shouldShow) {
     return;
   }
 
+  if (productImage) {
+    existing?.remove();
+    return;
+  }
+
   if (existing) return;
   emptyState.insertAdjacentHTML("afterbegin", renderEmptyEventArtwork());
 }
 
+function renderHeroArtwork(kind) {
+  const className = kind === "home"
+    ? "product-hero-artwork product-home-artwork"
+    : `product-hero-artwork product-hero-artwork-${kind}`;
+
+  return `
+    <aside class="${className}" data-kind="${kind}" aria-hidden="true">
+      ${renderHeroArtworkSvg(kind)}
+    </aside>
+  `;
+}
+
+function renderHeroArtworkSvg(kind) {
+  if (kind === "home") return renderHomeArtwork();
+  if (kind === "new-event") return renderCalendarArtwork();
+  if (kind === "join-event") return renderJoinArtwork();
+  if (kind === "groups") return renderGroupsArtwork();
+  if (kind === "settlement") return renderSettlementArtwork();
+  if (kind === "event") return renderReceiptArtwork();
+  return renderGeneralArtwork();
+}
+
 function renderHomeArtwork() {
   return `
-    <aside class="product-home-artwork" aria-hidden="true">
       <svg viewBox="0 0 260 220" focusable="false">
         <defs>
           <linearGradient id="home-art-green" x1="0" x2="1" y1="0" y2="1">
             <stop offset="0" stop-color="#0f8b7e" />
             <stop offset="1" stop-color="#06413d" />
           </linearGradient>
-          <linearGradient id="home-art-gold" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stop-color="#ffe7a8" />
-            <stop offset="1" stop-color="#c58a28" />
+          <linearGradient id="home-art-aqua" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#a8ecee" />
+            <stop offset="1" stop-color="#2bb8c2" />
           </linearGradient>
         </defs>
         <path class="home-art-loop" d="M34 98c30-48 74-48 96 0 22 48 66 48 96 0" />
@@ -214,7 +492,86 @@ function renderHomeArtwork() {
         <path class="home-art-shekel" d="M159 110v44m0-32h18c10 0 15 5 15 14v18m-33-18h-13" />
         <path class="home-art-hand" d="M91 151c28 21 54 25 86 8 13-7 22-7 29-1" />
       </svg>
-    </aside>
+  `;
+}
+
+function renderCalendarArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <rect class="art-card art-card-main" x="54" y="44" width="142" height="126" rx="20" />
+      <path class="art-line" d="M54 78h142M86 34v28M164 34v28" />
+      <path class="art-line art-line-soft" d="M84 104h28M136 104h28M84 132h28M136 132h28" />
+      <circle class="art-coin" cx="188" cy="144" r="38" />
+      <path class="art-shekel" d="M178 122v42m0-30h17c9 0 14 5 14 13v17m-31-17h-12" />
+      <circle class="art-dot art-dot-one" cx="54" cy="36" r="8" />
+      <circle class="art-dot art-dot-two" cx="212" cy="74" r="6" />
+    </svg>
+  `;
+}
+
+function renderJoinArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <rect class="art-card art-card-main" x="62" y="38" width="136" height="144" rx="22" />
+      <rect class="art-qr" x="88" y="64" width="22" height="22" rx="4" />
+      <rect class="art-qr" x="150" y="64" width="22" height="22" rx="4" />
+      <rect class="art-qr" x="88" y="126" width="22" height="22" rx="4" />
+      <path class="art-line" d="M124 70h12M124 84h30M96 102h32M146 102h24M124 132h20M158 132h12M124 148h46" />
+      <path class="art-arrow" d="M44 112h48m-16-17 17 17-17 17" />
+      <circle class="art-coin" cx="190" cy="154" r="30" />
+      <path class="art-check" d="m178 154 9 9 18-22" />
+    </svg>
+  `;
+}
+
+function renderGroupsArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <circle class="art-person art-person-main" cx="132" cy="82" r="30" />
+      <circle class="art-person" cx="78" cy="98" r="24" />
+      <circle class="art-person" cx="186" cy="98" r="24" />
+      <path class="art-body art-body-main" d="M78 178c12-44 30-66 54-66s42 22 54 66" />
+      <path class="art-body" d="M34 174c10-34 24-52 44-52 15 0 27 10 36 30" />
+      <path class="art-body" d="M146 152c9-20 22-30 40-30 20 0 34 18 44 52" />
+      <path class="art-loop" d="M48 54c28-24 54-24 78 0 24 24 50 24 78 0" />
+      <circle class="art-coin" cx="204" cy="60" r="20" />
+    </svg>
+  `;
+}
+
+function renderReceiptArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <path class="art-receipt" d="M76 32h108a16 16 0 0 1 16 16v136l-18-10-18 10-18-10-18 10-18-10-18 10-18-10V48a16 16 0 0 1 16-16Z" />
+      <path class="art-line" d="M104 72h66M104 102h52M104 132h72" />
+      <circle class="art-coin" cx="76" cy="150" r="34" />
+      <path class="art-shekel" d="M67 130v36m0-26h15c8 0 12 4 12 12v14m-27-14H56" />
+      <path class="art-check" d="m156 156 12 12 28-36" />
+    </svg>
+  `;
+}
+
+function renderSettlementArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <circle class="art-coin art-coin-large" cx="130" cy="108" r="50" />
+      <path class="art-shekel art-shekel-large" d="M118 78v62m0-42h26c14 0 21 7 21 20v22m-47-22H98" />
+      <path class="art-arrow" d="M34 78h58m-18-18 18 18-18 18" />
+      <path class="art-arrow art-arrow-reverse" d="M226 142h-58m18-18-18 18 18 18" />
+      <rect class="art-card" x="40" y="128" width="62" height="42" rx="14" />
+      <rect class="art-card" x="158" y="50" width="62" height="42" rx="14" />
+      <path class="art-check" d="m110 166 12 12 28-38" />
+    </svg>
+  `;
+}
+
+function renderGeneralArtwork() {
+  return `
+    <svg viewBox="0 0 260 220" focusable="false">
+      <rect class="art-card art-card-main" x="56" y="50" width="148" height="112" rx="24" />
+      <path class="art-line" d="M84 86h92M84 116h64M84 146h84" />
+      <circle class="art-coin" cx="188" cy="148" r="34" />
+    </svg>
   `;
 }
 
@@ -271,12 +628,55 @@ function injectBrandStyle() {
       min-width: 0;
     }
 
+    .product-header-profile-avatar {
+      width: 44px;
+      min-width: 44px;
+      height: 44px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      overflow: hidden;
+      border: 2px solid rgba(255, 255, 255, 0.96);
+      border-radius: 50%;
+      background: #e8f2ef;
+      box-shadow: 0 7px 18px rgba(11, 74, 56, 0.16);
+      cursor: pointer;
+      transition:
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        box-shadow 180ms ease;
+    }
+
+    .product-header-profile-avatar > img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    .product-header-profile-avatar:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 9px 20px rgba(11, 74, 56, 0.2);
+    }
+
+    .product-header-profile-avatar:active {
+      transform: translateY(0) scale(0.96);
+    }
+
+    .product-header-profile-avatar:focus-visible {
+      outline: 3px solid rgba(33, 170, 166, 0.32);
+      outline-offset: 3px;
+    }
+
     .product-app-nav {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       margin-inline-start: auto;
       min-width: 0;
+    }
+
+    .product-app-nav[hidden] {
+      display: none !important;
     }
 
     .product-nav-button {
@@ -316,6 +716,13 @@ function injectBrandStyle() {
       box-shadow: 0 12px 28px rgba(18, 29, 27, 0.09);
     }
 
+    .product-nav-button.is-active {
+      border-color: rgba(8, 123, 116, 0.28);
+      background: #e5f4f1;
+      color: #07574e;
+      box-shadow: inset 0 0 0 1px rgba(8, 123, 116, 0.08);
+    }
+
     .product-brand-mark {
       position: relative;
       width: 54px;
@@ -350,31 +757,38 @@ function injectBrandStyle() {
       overflow: visible;
     }
 
-    .brand-symbol-panel {
-      fill: rgba(255, 255, 255, 0.13);
-      stroke: rgba(255, 255, 255, 0.26);
-      stroke-width: 1.5;
-    }
-
-    .brand-symbol-flow,
-    .brand-symbol-return,
-    .brand-symbol-check {
+    .brand-symbol-loop,
+    .brand-symbol-bridge,
+    .brand-symbol-shekel {
       fill: none;
       stroke: currentColor;
-      stroke-width: 4.4;
+      stroke-width: 5.4;
       stroke-linecap: round;
       stroke-linejoin: round;
     }
 
-    .brand-symbol-return,
-    .brand-symbol-check {
-      stroke-width: 4.8;
+    .brand-symbol-loop-a {
+      opacity: 0.94;
     }
 
-    .brand-symbol-dot {
-      fill: #ffe0a3;
+    .brand-symbol-loop-b {
+      opacity: 0.56;
+    }
+
+    .brand-symbol-coin {
+      fill: #a8ecee;
       stroke: rgba(255, 255, 255, 0.72);
-      stroke-width: 1.4;
+      stroke-width: 2.3;
+    }
+
+    .brand-symbol-shekel {
+      stroke: #07574e;
+      stroke-width: 2.8;
+    }
+
+    .brand-symbol-bridge {
+      stroke: #71d9de;
+      stroke-width: 4.4;
     }
 
     .product-brand-copy {
@@ -412,7 +826,7 @@ function injectBrandStyle() {
       backdrop-filter: blur(14px);
     }
 
-    .product-home-artwork {
+    .product-hero-artwork {
       position: absolute;
       inset-inline-start: clamp(14px, 3vw, 38px);
       bottom: -18px;
@@ -423,22 +837,112 @@ function injectBrandStyle() {
       filter: drop-shadow(0 26px 44px rgba(0, 0, 0, 0.22));
     }
 
-    .product-home-artwork svg {
+    .product-hero-artwork svg {
       width: 100%;
       height: auto;
       display: block;
       overflow: visible;
     }
 
+    .product-hero-artwork:not(.product-home-artwork) {
+      width: min(24vw, 220px);
+      min-width: 150px;
+      opacity: 0.82;
+    }
+
+    .art-card,
+    .art-card-main,
+    .art-receipt {
+      fill: rgba(255, 255, 255, 0.13);
+      stroke: rgba(255, 255, 255, 0.34);
+      stroke-width: 3;
+    }
+
+    .art-line,
+    .art-arrow,
+    .art-check,
+    .art-shekel,
+    .art-loop {
+      fill: none;
+      stroke: rgba(255, 253, 248, 0.9);
+      stroke-width: 8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .art-line-soft {
+      stroke-width: 6;
+      opacity: 0.72;
+    }
+
+    .art-arrow {
+      stroke: rgba(255, 224, 163, 0.88);
+    }
+
+    .art-arrow-reverse {
+      opacity: 0.82;
+    }
+
+    .art-coin {
+      fill: #f2c888;
+      stroke: rgba(255, 255, 255, 0.72);
+      stroke-width: 4;
+    }
+
+    .art-coin-large {
+      stroke-width: 5;
+    }
+
+    .art-shekel,
+    .art-shekel-large {
+      stroke: #07574e;
+    }
+
+    .art-check {
+      stroke: #bdecee;
+    }
+
+    .art-qr {
+      fill: rgba(255, 253, 248, 0.84);
+    }
+
+    .art-person {
+      fill: #f2c888;
+      stroke: rgba(255, 255, 255, 0.56);
+      stroke-width: 3;
+    }
+
+    .art-person-main {
+      fill: #bdecee;
+    }
+
+    .art-body {
+      fill: #087b74;
+      stroke: rgba(255, 255, 255, 0.24);
+      stroke-width: 3;
+    }
+
+    .art-body-main {
+      opacity: 0.98;
+    }
+
+    .art-dot {
+      fill: #71d9de;
+    }
+
+    .art-dot-two {
+      fill: #f0a078;
+    }
+
     .home-art-loop {
       fill: none;
-      stroke: rgba(255, 224, 163, 0.8);
+      stroke: rgba(113, 217, 222, 0.82);
       stroke-width: 10;
       stroke-linecap: round;
     }
 
     .home-art-orbit {
-      fill: #ffe0a3;
+      fill: #71d9de;
     }
 
     .home-art-face {
@@ -464,7 +968,7 @@ function injectBrandStyle() {
     }
 
     .home-art-coin {
-      fill: url(#home-art-gold);
+      fill: url(#home-art-aqua);
       stroke: rgba(255, 255, 255, 0.72);
       stroke-width: 5;
     }
@@ -696,7 +1200,7 @@ function injectBrandStyle() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #087b74, #f2cf8f, #cf6a45);
+      background: linear-gradient(90deg, #2bb8c2, #71d9de, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -711,7 +1215,7 @@ function injectBrandStyle() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #ffe0a3 !important;
+      color: #71d9de !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }
@@ -806,7 +1310,7 @@ function injectBrandStyle() {
         padding-inline: 8px;
       }
 
-      .product-home-artwork {
+      .product-hero-artwork {
         width: 156px;
         min-width: 0;
         bottom: -10px;

@@ -1,5 +1,7 @@
+import { peekClientSpaceId } from "./domain/cloudSpace.mjs";
+import { loadLocalProfile } from "./data/localStore.mjs";
+
 const STORAGE_KEY = "settle-friends-state";
-const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 const HOME_EVENT_SEARCH_THRESHOLD = 4;
 
 setupPersonalMemoryLayer();
@@ -17,7 +19,7 @@ function setupPersonalMemoryLayer() {
 }
 
 function applyPersonalMemoryScope() {
-  const profile = readLocalProfile();
+  const profile = loadLocalProfile();
   const state = readSharedState();
   const participantId = profile?.participantId ?? "";
   if (!participantId || !state) return;
@@ -123,16 +125,23 @@ function groupBelongsToParticipant(group, participantId) {
 
 function readSharedState() {
   try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
+    const key = stateStorageKey();
+    const raw = window.localStorage.getItem(key);
+    if (raw || key === STORAGE_KEY) {
+      return parseStoredState(raw);
+    }
+
+    return parseStoredState(window.localStorage.getItem(STORAGE_KEY));
   } catch {
     return null;
   }
 }
 
-function readLocalProfile() {
-  try {
-    return JSON.parse(window.localStorage.getItem(LOCAL_PROFILE_KEY) || "null");
-  } catch {
-    return null;
-  }
+function stateStorageKey() {
+  const spaceId = peekClientSpaceId(window.location.href, window.localStorage);
+  return spaceId ? `${STORAGE_KEY}:${spaceId}` : STORAGE_KEY;
+}
+
+function parseStoredState(raw) {
+  return JSON.parse(raw || "null");
 }

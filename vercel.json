@@ -1,29 +1,55 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "builds": [
     {
       "src": "server.mjs",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": [
-          "index.html",
-          "styles.css",
-          "manifest.webmanifest",
-          "icon.svg",
-          "privacy.html",
-          "support.html",
-          "terms.html",
-          "account-deletion.html",
-          "sw.js",
-          "src/**"
-        ]
+        "includeFiles": ["index.html"]
       }
-    }
+    },
+    { "src": "*.html", "use": "@vercel/static" },
+    { "src": "*.css", "use": "@vercel/static" },
+    { "src": "*.mjs", "use": "@vercel/static" },
+    { "src": "*.webmanifest", "use": "@vercel/static" },
+    { "src": "*.svg", "use": "@vercel/static" },
+    { "src": "*.png", "use": "@vercel/static" },
+    { "src": "sw.js", "use": "@vercel/static" },
+    { "src": "assets/**", "use": "@vercel/static" },
+    { "src": "downloads/**", "use": "@vercel/static" },
+    { "src": ".well-known/**", "use": "@vercel/static" },
+    { "src": "src/*.mjs", "use": "@vercel/static" },
+    { "src": "src/app/**", "use": "@vercel/static" },
+    { "src": "src/data/**", "use": "@vercel/static" },
+    { "src": "src/domain/**", "use": "@vercel/static" },
+    { "src": "src/vendor/**", "use": "@vercel/static" }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/server.mjs"
-    }
+      "headers": {
+        "X-Content-Type-Options": "nosniff",
+        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+        "Referrer-Policy": "no-referrer",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "Cross-Origin-Opener-Policy": "same-origin-allow-popups",
+        "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com; connect-src 'self' https://*.supabase.co https://accounts.google.com; frame-src https://accounts.google.com https://*.supabase.co; manifest-src 'self'; worker-src 'self'"
+      },
+      "continue": true
+    },
+    { "src": "/api/(.*)", "dest": "/server.mjs" },
+    { "src": "/i/(.*)", "dest": "/server.mjs" },
+    { "src": "/r/(.*)", "dest": "/server.mjs" },
+    { "src": "/auth/callback", "dest": "/index.html" },
+    { "src": "/privacy", "dest": "/privacy.html" },
+    { "src": "/support", "dest": "/support.html" },
+    { "src": "/terms", "dest": "/terms.html" },
+    { "src": "/accessibility", "dest": "/accessibility.html" },
+    { "src": "/account-deletion", "dest": "/account-deletion.html" },
+    { "src": "/delete-account", "dest": "/account-deletion.html" },
+    { "src": "/android", "dest": "/downloads/sogrim-hashbon-android-1.2.apk" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }

@@ -2,7 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { formatMoney, parseMoneyInput, splitEvenly } from "../src/domain/money.mjs";
-import { calculateSettlement } from "../src/domain/settlement.mjs";
+import {
+  buildParticipantSettlementBreakdown,
+  calculateSettlement,
+  pendingBalanceForParticipant,
+  reconcileSettlementTransfers
+} from "../src/domain/settlement.mjs";
 import { validateExpense } from "../src/domain/validation.mjs";
 
 const participants = [
@@ -23,11 +28,31 @@ test("money helpers parse, format, and split without losing agorot", () => {
   });
 });
 
+test("money helpers reject unsafe or fractional internal agora values", () => {
+  assert.throws(() => parseMoneyInput("90071992547409.93"), /גדול מדי/);
+  assert.throws(() => formatMoney(100.5), /safe integer agorot/);
+});
+
 test("splitEvenly ignores duplicate participants so every agora is assigned once", () => {
   assert.deepEqual(splitEvenly(10000, ["dani", "dani", "avi"]), {
     dani: 5000,
     avi: 5000
   });
+});
+
+test("splitEvenly preserves every agora across a broad range of totals and group sizes", () => {
+  for (let participantCount = 1; participantCount <= 25; participantCount += 1) {
+    const participantIds = Array.from(
+      { length: participantCount },
+      (_, index) => `person-${index + 1}`
+    );
+    for (const amount of [1, 2, 3, 7, 99, 100, 101, 9999, 10000, 10001, 999999]) {
+      const shares = Object.values(splitEvenly(amount, participantIds));
+      assert.equal(shares.reduce((sum, share) => sum + share, 0), amount);
+      assert.equal(shares.every((share) => Number.isSafeInteger(share) && share >= 0), true);
+      assert.ok(Math.max(...shares) - Math.min(...shares) <= 1);
+    }
+  }
 });
 
 test("settlement stays balanced when imported expense data has duplicate participants", () => {
@@ -104,6 +129,329 @@ test("settlement only sends money from net debtors to net creditors", () => {
       status: "pending"
     }
   ]);
+});
+
+test("settlement uses the true minimum transfer count for ordinary groups", () => {
+  const people = ["p0", "p1", "p2", "p3", "p4"].map((id) => ({
+    id,
+    displayName: id
+  }));
+  const expenses = [
+    {
+      id: "e1",
+      total: 1930,
+      payers: [{ participantId: "p0", amount: 1930 }],
+      sharedByParticipantIds: ["p1"]
+    },
+    {
+      id: "e2",
+      total: 575,
+      payers: [{ participantId: "p0", amount: 575 }],
+      sharedByParticipantIds: ["p3"]
+    },
+    {
+      id: "e3",
+      total: 1761,
+      payers: [{ participantId: "p2", amount: 1761 }],
+      sharedByParticipantIds: ["p3"]
+    },
+    {
+      id: "e4",
+      total: 2505,
+      payers: [{ participantId: "p2", amount: 2505 }],
+      sharedByParticipantIds: ["p4"]
+    }
+  ];
+
+  const result = calculateSettlement(people, expenses);
+
+  assert.equal(result.transfers.length, 3);
+  assert.deepEqual(
+    result.transfers
+      .map(({ fromParticipantId, toParticipantId, amount }) => ({
+        fromParticipantId,
+        toParticipantId,
+        amount
+      }))
+      .sort((first, second) =>
+        first.fromParticipantId.localeCompare(second.fromParticipantId)
+      ),
+    [
+      { fromParticipantId: "p1", toParticipantId: "p2", amount: 1930 },
+      { fromParticipantId: "p3", toParticipantId: "p2", amount: 2336 },
+      { fromParticipantId: "p4", toParticipantId: "p0", amount: 2505 }
+    ]
+  );
+});
+
+test("settlement collapses a payment chain into one direct transfer", () => {
+  const people = ["a", "b", "c"].map((id) => ({
+    id,
+    displayName: id
+  }));
+  const result = calculateSettlement(people, [
+    {
+      id: "a-paid-for-b",
+      total: 1000,
+      payers: [{ participantId: "a", amount: 1000 }],
+      sharedByParticipantIds: ["b"]
+    },
+    {
+      id: "b-paid-for-c",
+      total: 1000,
+      payers: [{ participantId: "b", amount: 1000 }],
+      sharedByParticipantIds: ["c"]
+    }
+  ]);
+
+  assert.deepEqual(result.transfers, [
+    {
+      id: "transfer-c-a-1000",
+      fromParticipantId: "c",
+      toParticipantId: "a",
+      amount: 1000,
+      status: "pending"
+    }
+  ]);
+});
+
+test("settlement cancels a closed payment cycle without transfers", () => {
+  const people = ["a", "b", "c"].map((id) => ({
+    id,
+    displayName: id
+  }));
+  const result = calculateSettlement(people, [
+    {
+      id: "a-paid-for-b",
+      total: 1000,
+      payers: [{ participantId: "a", amount: 1000 }],
+      sharedByParticipantIds: ["b"]
+    },
+    {
+      id: "b-paid-for-c",
+      total: 1000,
+      payers: [{ participantId: "b", amount: 1000 }],
+      sharedByParticipantIds: ["c"]
+    },
+    {
+      id: "c-paid-for-a",
+      total: 1000,
+      payers: [{ participantId: "c", amount: 1000 }],
+      sharedByParticipantIds: ["a"]
+    }
+  ]);
+
+  assert.deepEqual(result.balances, { a: 0, b: 0, c: 0 });
+  assert.deepEqual(result.transfers, []);
+});
+
+test("personal pending balance ignores transfers already marked as paid", () => {
+  const transfers = [
+    {
+      fromParticipantId: "yarin",
+      toParticipantId: "dani",
+      amount: 2750,
+      status: "paid"
+    },
+    {
+      fromParticipantId: "yarin",
+      toParticipantId: "avi",
+      amount: 500,
+      status: "pending"
+    },
+    {
+      fromParticipantId: "maor",
+      toParticipantId: "yarin",
+      amount: 200,
+      status: "pending"
+    }
+  ];
+
+  assert.equal(pendingBalanceForParticipant(transfers, "yarin"), -300);
+  assert.equal(pendingBalanceForParticipant(transfers, "dani"), 0);
+  assert.equal(pendingBalanceForParticipant(transfers, "avi"), 500);
+  assert.equal(pendingBalanceForParticipant(transfers, "maor"), -200);
+});
+
+test("participant settlement breakdown uses the exact settlement shares", () => {
+  const expenses = [
+    {
+      id: "taxi",
+      name: "מונית",
+      total: 11000,
+      payers: [
+        { participantId: "dani", amount: 5000 },
+        { participantId: "avi", amount: 6000 }
+      ],
+      sharedByParticipantIds: ["dani", "avi", "yarin", "maor"]
+    },
+    {
+      id: "food",
+      name: "אוכל",
+      total: 8000,
+      payers: [{ participantId: "dani", amount: 8000 }],
+      sharedByParticipantIds: ["dani", "yarin"]
+    }
+  ];
+
+  const breakdown = buildParticipantSettlementBreakdown(participants, expenses, "yarin");
+
+  assert.deepEqual(breakdown, {
+    participantId: "yarin",
+    paidTotal: 0,
+    shareTotal: 6750,
+    balance: -6750,
+    expenseShares: [
+      {
+        expenseId: "taxi",
+        name: "מונית",
+        total: 11000,
+        participantPaid: 0,
+        participantShare: 2750,
+        participantCount: 4
+      },
+      {
+        expenseId: "food",
+        name: "אוכל",
+        total: 8000,
+        participantPaid: 0,
+        participantShare: 4000,
+        participantCount: 2
+      }
+    ],
+    issues: []
+  });
+});
+
+test("participant settlement breakdown preserves the rounding agora used by transfers", () => {
+  const roundingParticipants = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" },
+    { id: "c", displayName: "ג" }
+  ];
+  const expenses = [
+    {
+      id: "rounding",
+      name: "חלוקה לא עגולה",
+      total: 10000,
+      payers: [{ participantId: "c", amount: 10000 }],
+      sharedByParticipantIds: ["a", "b", "c"]
+    }
+  ];
+
+  const settlement = calculateSettlement(roundingParticipants, expenses);
+  const breakdown = buildParticipantSettlementBreakdown(
+    roundingParticipants,
+    expenses,
+    "a"
+  );
+
+  assert.equal(breakdown.shareTotal, 3334);
+  assert.equal(breakdown.balance, -3334);
+  assert.equal(breakdown.expenseShares[0].participantShare, 3334);
+  assert.equal(
+    settlement.transfers.find((transfer) => transfer.fromParticipantId === "a")?.amount,
+    3334
+  );
+});
+
+test("optional friendly rounding keeps exact balances but creates whole-unit transfers", () => {
+  const people = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" }
+  ];
+  const expenses = [
+    {
+      id: "awkward-total",
+      name: "חלוקה עם אגורות",
+      total: 13768,
+      payers: [{ participantId: "b", amount: 13768 }],
+      sharedByParticipantIds: ["a", "b"]
+    }
+  ];
+
+  const exact = calculateSettlement(people, expenses);
+  const rounded = calculateSettlement(people, expenses, {
+    roundTransfers: true
+  });
+
+  assert.deepEqual(rounded.balances, exact.balances);
+  assert.equal(exact.transfers[0].amount, 6884);
+  assert.equal(rounded.transfers[0].amount, 6900);
+  assert.equal(rounded.transfers[0].amount % 100, 0);
+});
+
+test("friendly rounding balances several people without creating or losing money", () => {
+  const people = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" },
+    { id: "c", displayName: "ג" }
+  ];
+  const rounded = calculateSettlement(
+    people,
+    [
+      {
+        id: "thirds",
+        name: "שלישים",
+        total: 10000,
+        payers: [{ participantId: "c", amount: 10000 }],
+        sharedByParticipantIds: ["a", "b", "c"]
+      }
+    ],
+    { roundTransfers: true }
+  );
+  const transferredByParticipant = Object.fromEntries(
+    people.map((participant) => [participant.id, 0])
+  );
+
+  for (const transfer of rounded.transfers) {
+    assert.equal(transfer.amount % 100, 0);
+    transferredByParticipant[transfer.fromParticipantId] -= transfer.amount;
+    transferredByParticipant[transfer.toParticipantId] += transfer.amount;
+  }
+
+  assert.equal(Object.values(transferredByParticipant).reduce((sum, amount) => sum + amount, 0), 0);
+  for (const participant of people) {
+    assert.ok(
+      Math.abs(
+        transferredByParticipant[participant.id] - rounded.balances[participant.id]
+      ) < 100
+    );
+  }
+});
+
+test("friendly rounding preserves paid history and rounds only the remaining balance", () => {
+  const people = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" }
+  ];
+  const expenses = [
+    {
+      id: "awkward-total",
+      name: "חלוקה עם אגורות",
+      total: 13768,
+      payers: [{ participantId: "b", amount: 13768 }],
+      sharedByParticipantIds: ["a", "b"]
+    }
+  ];
+  const result = reconcileSettlementTransfers(
+    people,
+    expenses,
+    [
+      {
+        id: "paid-rounded-transfer",
+        fromParticipantId: "a",
+        toParticipantId: "b",
+        amount: 6900,
+        status: "paid"
+      }
+    ],
+    { roundTransfers: true }
+  );
+
+  assert.equal(result.transfers.length, 1);
+  assert.equal(result.transfers[0].id, "paid-rounded-transfer");
+  assert.equal(result.transfers[0].status, "paid");
 });
 
 test("expense shares can exclude people from specific expenses", () => {
@@ -183,6 +531,225 @@ test("settlement transfers exactly clear every balance in a mixed event", () => 
     yarin: 0,
     maor: 0
   });
+});
+
+test("paid transfer history survives later expenses and only the remainder stays open", () => {
+  const people = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" }
+  ];
+  const firstExpense = {
+    id: "first",
+    name: "ראשונה",
+    total: 4000,
+    payers: [{ participantId: "a", amount: 4000 }],
+    sharedByParticipantIds: ["a", "b"]
+  };
+  const paidTransfer = {
+    ...calculateSettlement(people, [firstExpense]).transfers[0],
+    status: "paid",
+    markedPaidAt: "2026-07-24T12:00:00.000Z"
+  };
+  const secondExpense = {
+    id: "second",
+    name: "שנייה",
+    total: 2000,
+    payers: [{ participantId: "a", amount: 2000 }],
+    sharedByParticipantIds: ["a", "b"]
+  };
+
+  const result = reconcileSettlementTransfers(
+    people,
+    [firstExpense, secondExpense],
+    [paidTransfer]
+  );
+
+  assert.equal(result.transfers.length, 2);
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    [
+      {
+        fromParticipantId: "b",
+        toParticipantId: "a",
+        amount: 2000,
+        status: "paid"
+      },
+      {
+        fromParticipantId: "b",
+        toParticipantId: "a",
+        amount: 1000,
+        status: "pending"
+      }
+    ]
+  );
+  assert.equal(new Set(result.transfers.map((transfer) => transfer.id)).size, 2);
+});
+
+test("editing below an already paid amount creates a balancing reverse transfer", () => {
+  const people = [
+    { id: "a", displayName: "א" },
+    { id: "b", displayName: "ב" }
+  ];
+  const paidTransfer = {
+    id: "transfer-b-a-2000",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 2000,
+    status: "paid"
+  };
+  const smallerExpense = {
+    id: "smaller",
+    name: "מתוקנת",
+    total: 2000,
+    payers: [{ participantId: "a", amount: 2000 }],
+    sharedByParticipantIds: ["a", "b"]
+  };
+
+  const result = reconcileSettlementTransfers(
+    people,
+    [smallerExpense],
+    [paidTransfer]
+  );
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    [
+      {
+        fromParticipantId: "b",
+        toParticipantId: "a",
+        amount: 2000,
+        status: "paid"
+      },
+      {
+        fromParticipantId: "a",
+        toParticipantId: "b",
+        amount: 1000,
+        status: "pending"
+      }
+    ]
+  );
+
+  const repeated = reconcileSettlementTransfers(
+    people,
+    [smallerExpense],
+    result.transfers
+  );
+  assert.deepEqual(repeated.transfers, result.transfers);
+});
+
+test("duplicate paid history is applied only once", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" }
+  ];
+  const expense = {
+    id: "expense",
+    total: 1000,
+    payers: [{ participantId: "a", amount: 1000 }],
+    sharedByParticipantIds: ["a", "b"]
+  };
+  const paid = {
+    id: "payment-1",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 500,
+    status: "paid",
+    markedPaidAt: "2026-07-24T12:00:00.000Z"
+  };
+
+  const result = reconcileSettlementTransfers(
+    people,
+    [expense],
+    [paid, { ...paid }]
+  );
+
+  assert.equal(result.transfers.length, 1);
+  assert.equal(result.transfers[0].status, "paid");
+});
+
+test("settlement skips expenses that cannot be split instead of crashing", () => {
+  const result = calculateSettlement(participants.slice(0, 2), [
+    {
+      id: "broken-expense",
+      name: "הוצאה לא שלמה",
+      total: 5000,
+      payers: [{ participantId: "dani", amount: 5000 }],
+      sharedByParticipantIds: [],
+      createdByParticipantId: "dani",
+      updatedAt: "2026-05-23T00:00:00.000Z"
+    }
+  ]);
+
+  assert.deepEqual(result.balances, {
+    dani: 0,
+    avi: 0
+  });
+  assert.deepEqual(result.transfers, []);
+  assert.deepEqual(result.issues, [
+    {
+      expenseId: "broken-expense",
+      reason: "missing-shared-participants"
+    }
+  ]);
+});
+
+test("invalid settlement data never erases existing transfer history", () => {
+  const previousTransfers = [
+    {
+      id: "paid-history",
+      fromParticipantId: "avi",
+      toParticipantId: "dani",
+      amount: 2500,
+      status: "paid",
+      markedPaidAt: "2026-07-25T10:00:00.000Z"
+    }
+  ];
+  const result = reconcileSettlementTransfers(
+    participants.slice(0, 2),
+    [
+      {
+        id: "broken-expense",
+        total: 5000,
+        payers: [{ participantId: "dani", amount: 5000 }],
+        sharedByParticipantIds: ["missing-person"]
+      }
+    ],
+    previousTransfers
+  );
+
+  assert.equal(result.issues.length, 1);
+  assert.deepEqual(result.transfers, previousTransfers);
+  assert.notStrictEqual(result.transfers[0], previousTransfers[0]);
+});
+
+test("settlement rejects duplicate payer ids in imported data", () => {
+  const result = calculateSettlement(participants.slice(0, 2), [
+    {
+      id: "duplicate-payers",
+      name: "הוצאה פגומה",
+      total: 10000,
+      payers: [
+        { participantId: "dani", amount: 4000 },
+        { participantId: "dani", amount: 6000 }
+      ],
+      sharedByParticipantIds: ["dani", "avi"]
+    }
+  ]);
+
+  assert.deepEqual(result.issues, [
+    { expenseId: "duplicate-payers", reason: "duplicate-payers" }
+  ]);
+  assert.deepEqual(result.transfers, []);
 });
 
 test("expense validation catches invalid payer totals", () => {

@@ -1,3 +1,8 @@
+import {
+  validateSharedStateFinancials,
+  validateSharedStateIdentifiers
+} from "./sharedStateMerge.mjs";
+
 export const BACKUP_VERSION = 1;
 
 export function serializeStateBackup(state, exportedAt = new Date().toISOString()) {
@@ -37,5 +42,13 @@ function validateStateShape(state) {
 
   if (!Array.isArray(state.events)) {
     throw new Error("Backup file is missing events");
+  }
+
+  const errors = [
+    ...validateSharedStateIdentifiers(state),
+    ...validateSharedStateFinancials(state)
+  ];
+  if (errors.length) {
+    throw new Error(`Backup file contains invalid data: ${errors.join(" ")}`);
   }
 }

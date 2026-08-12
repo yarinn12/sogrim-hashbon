@@ -18,6 +18,10 @@ export function toSharedState(state) {
   };
 }
 
+export function hasSharedStateChanged(previousState, nextState) {
+  return JSON.stringify(toSharedState(previousState)) !== JSON.stringify(toSharedState(nextState));
+}
+
 function participantExists(state, participantId) {
   return Boolean(
     participantId &&

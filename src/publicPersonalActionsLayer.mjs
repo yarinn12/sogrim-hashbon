@@ -1,6 +1,9 @@
 import { loadState } from "./data/localStore.mjs";
-import { calculateSettlement } from "./domain/settlement.mjs";
-import { formatMoney } from "./domain/money.mjs";
+import {
+  calculateSettlement,
+  usesRoundedSettlementTransfers
+} from "./domain/settlement.mjs";
+import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
 
 const STYLE_ID = "public-personal-actions-layer-style";
 
@@ -34,31 +37,7 @@ function enhanceHomeActions() {
   if (!screen) return;
 
   screen.querySelector(".search-panel")?.remove();
-  if (screen.querySelector(".public-personal-actions, .personal-actions-section")) return;
-
-  const eventSection = screen.querySelector(".event-list")?.closest(".section");
-  if (!eventSection) return;
-
-  const actions = collectPersonalActions(loadState());
-  const section = document.createElement("section");
-  section.className = "section public-personal-actions";
-  section.innerHTML = `
-    <div class="section-title-row">
-      <div>
-        <h2>מה עכשיו?</h2>
-        <p class="muted">העברות פתוחות שקשורות אליך.</p>
-      </div>
-    </div>
-    <div class="public-personal-action-list">
-      ${
-        actions.length
-          ? actions.slice(0, 4).map(renderActionCard).join("")
-          : `<div class="empty-state">אין כרגע העברות פתוחות שקשורות אליך</div>`
-      }
-    </div>
-  `;
-
-  eventSection.before(section);
+  screen.querySelectorAll(".public-personal-actions").forEach((section) => section.remove());
 }
 
 function collectPersonalActions(state) {
@@ -71,7 +50,9 @@ function collectPersonalActions(state) {
       const participants = (state.participants ?? []).filter((participant) =>
         event.participantIds?.includes(participant.id)
       );
-      const calculated = calculateSettlement(participants, event.expenses ?? []);
+      const calculated = calculateSettlement(participants, event.expenses ?? [], {
+        roundTransfers: usesRoundedSettlementTransfers(event)
+      });
       const transfers = event.transfers?.length ? event.transfers : calculated.transfers;
 
       return transfers
@@ -93,7 +74,7 @@ function collectPersonalActions(state) {
     })
     .sort((a, b) => {
       if (a.direction !== b.direction) return a.direction === "pay" ? -1 : 1;
-      return b.transfer.amount - a.transfer.amount;
+      return Date.parse(b.event.createdAt ?? 0) - Date.parse(a.event.createdAt ?? 0);
     });
 }
 
@@ -101,7 +82,7 @@ function renderActionCard(action) {
   const title =
     action.direction === "pay"
       ? `להעביר ל${participantName(action.otherParticipantId)}`
-      : `${participantName(action.otherParticipantId)} אמור להעביר אליך`;
+      : `צפויה אליך העברה מאת ${participantName(action.otherParticipantId)}`;
   const helper =
     action.direction === "pay"
       ? `מתוך האירוע "${action.event.name}"`
@@ -113,7 +94,7 @@ function renderActionCard(action) {
         <strong>${escapeHtml(title)}</strong>
         <small>${escapeHtml(helper)}</small>
       </span>
-      <span class="amount">₪${formatMoney(action.transfer.amount)}</span>
+      <span class="amount"><span class="font-num">${formatCurrency(action.transfer.amount, normalizeCurrency(action.event.currency))}</span></span>
     </button>
   `;
 }
@@ -121,7 +102,14 @@ function renderActionCard(action) {
 function enhanceInviteSharing() {
   document.querySelectorAll('[data-action="copy-invite"][data-event-id]').forEach((copyButton) => {
     const row = copyButton.closest(".invite-link-row");
-    if (!row || row.querySelector("[data-public-share-invite]")) return;
+    if (!row) return;
+
+    const nativeShareButton = row.querySelector('[data-action="share-invite-whatsapp"]');
+    if (nativeShareButton) {
+      row.querySelector("[data-public-share-invite]")?.remove();
+      return;
+    }
+    if (row.querySelector("[data-public-share-invite]")) return;
 
     const button = document.createElement("button");
     button.type = "button";

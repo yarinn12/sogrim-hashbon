@@ -8,8 +8,10 @@ test("starter state opens without invented people, groups, or events", () => {
   assert.deepEqual(demoState, {
     currentParticipantId: "",
     participants: [],
+    friendContacts: [],
     groups: [],
-    events: []
+    events: [],
+    deletedEvents: []
   });
 });
 

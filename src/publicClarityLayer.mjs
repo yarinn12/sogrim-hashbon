@@ -1,7 +1,15 @@
+import {
+  loadLocalProfile,
+  loadState,
+  saveSharedState
+} from "./data/localStore.mjs";
+import {
+  canRemoveParticipant,
+  removeParticipant
+} from "./domain/appActions.mjs";
+
 const app = document.querySelector("#app");
 const STYLE_ID = "public-clarity-layer-style";
-const STORAGE_KEY = "settle-friends-state";
-const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 
 injectClarityStyle();
 document.addEventListener("click", handlePublicClick);
@@ -21,7 +29,6 @@ function enhanceClarity() {
   if (!screen) return;
 
   normalizeUserInputPlaceholders(screen);
-  clearStarterExpenseDefaults(screen);
   enhanceSavedNamesManagement(screen);
   enhanceNavigationClarity(screen);
   enhanceEventScreen(screen);
@@ -51,6 +58,7 @@ function goToNativeAction(action) {
 }
 
 function enhanceNavigationClarity(screen) {
+  if (document.documentElement.classList.contains("product-v1")) return;
   if (screen.querySelector(".product-context-bar")) return;
 
   const context = getScreenContext(screen);
@@ -74,32 +82,10 @@ function enhanceNavigationClarity(screen) {
 }
 
 function getScreenContext(screen) {
-  if (screen.querySelector('[data-action="new-event"]')) {
-    return {
-      title: "בית",
-      helper: "מכאן פותחים יציאה חדשה או נכנסים לאירוע קיים.",
-      actions: [
-        { label: "אירוע חדש", action: "new-event", primary: true },
-        { label: "קבוצות", action: "groups" }
-      ]
-    };
-  }
-
-  if (screen.querySelector('[data-action="show-expense-form"]')) {
-    return {
-      title: getScreenTitle(screen) || "אירוע",
-      helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
-      actions: [
-        { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "סגור חשבון", action: "settle" }
-      ]
-    };
-  }
-
   if (screen.querySelector('[data-action="create-event"]')) {
     return {
       title: "אירוע חדש",
-      helper: "בוחרים שם, קבוצה ומשתתפים. מי שלא הגיע פשוט לא מסומן.",
+      helper: "מגדירים את פרטי האירוע ומתחילים להוסיף הוצאות.",
       actions: [
         { label: "צור אירוע", action: "create-event", primary: true },
         { label: "חזרה", action: "home" }
@@ -126,36 +112,6 @@ function enhanceEventScreen(screen) {
   if (!screen.querySelector('[data-action="show-expense-form"]')) return;
 
   screen.classList.add("product-event-screen");
-
-  const summary = screen.querySelector(".summary-strip");
-  const hasNativeCommandGrid = screen.querySelector(".event-command-grid");
-  if (summary && !hasNativeCommandGrid && !screen.querySelector(".product-event-command")) {
-    summary.insertAdjacentHTML(
-      "afterend",
-      `<section class="product-event-command" aria-label="מה עושים עכשיו">
-        <div class="product-event-command-copy">
-          <span>מה עושים עכשיו</span>
-          <h2>כאן מכניסים הוצאות</h2>
-          <p>מוסיפים מי שילם, כמה כל אחד שילם, ומי באמת שותף לכל תשלום.</p>
-        </div>
-        <div class="product-command-actions">
-          ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-          ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
-        </div>
-      </section>`
-    );
-  }
-
-  if (!screen.querySelector(".product-sticky-actions")) {
-    screen.insertAdjacentHTML(
-      "beforeend",
-      `<div class="product-sticky-actions" aria-label="פעולות מהירות">
-        ${renderPublicAction({ label: "הוסף הוצאה", action: "show-expense-form", primary: true })}
-        ${renderPublicAction({ label: "סגור חשבון", action: "settle" })}
-      </div>`
-    );
-  }
-
   enhanceExpenseFormHint(screen);
 }
 
@@ -180,27 +136,8 @@ function normalizeUserInputPlaceholders(screen) {
     });
 }
 
-function clearStarterExpenseDefaults(screen) {
-  const expenseName = screen.querySelector('[data-action="expense-name"]');
-  const expenseTotal = screen.querySelector('[data-action="expense-total"]');
-  const payerAmounts = screen.querySelectorAll('[data-action="expense-payer-amount"]');
-
-  resetInputValue(expenseName, "מונית");
-  resetInputValue(expenseTotal, "110");
-  payerAmounts.forEach((input) => resetInputValue(input, "110"));
-}
-
-function resetInputValue(input, starterValue) {
-  if (!input || input.dataset.publicDefaultCleared === "true") return;
-  if (input.value !== starterValue) return;
-
-  input.value = "";
-  input.dataset.publicDefaultCleared = "true";
-  input.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
 function enhanceSavedNamesManagement(screen) {
-  if (!screen.querySelector('[data-action="create-group"]')) return;
+  if (screen.dataset.screenKind !== "people") return;
   if (
     screen.querySelector(".known-participants-panel") ||
     screen.querySelector(".product-saved-names-panel")
@@ -218,7 +155,7 @@ function enhanceSavedNamesManagement(screen) {
       <div class="section-title-row">
         <div>
           <h2>שמות שנשמרו</h2>
-          <p class="muted">האפליקציה לא ממציאה אנשים. כאן אפשר להסיר שם שהכנסת אם הוא לא מופיע בהוצאה קיימת.</p>
+          <p class="muted">כאן מנהלים שמות ששמרת. אפשר להסיר שם שלא מופיע בהוצאות קיימות.</p>
         </div>
       </div>
       <div class="stack">
@@ -235,7 +172,7 @@ function enhanceSavedNamesManagement(screen) {
 function renderSavedNameRow(state, participant) {
   const profileParticipantId = readLocalProfile()?.participantId ?? "";
   const isCurrent = participant.id === profileParticipantId;
-  const canRemove = !isCurrent && !participantHasMoneyHistory(state, participant.id);
+  const canRemove = !isCurrent && canRemoveParticipant(state, participant.id);
   const helper = isCurrent
     ? "זה השם שלך במכשיר הזה"
     : canRemove
@@ -256,20 +193,13 @@ function renderSavedNameRow(state, participant) {
   `;
 }
 
-function removeSavedParticipant(participantId) {
+async function removeSavedParticipant(participantId) {
   const state = readStoredState();
   if (!state || !participantId) return;
-  const profileParticipantId = readLocalProfile()?.participantId ?? "";
-  if (participantId === profileParticipantId || participantHasMoneyHistory(state, participantId)) return;
+  if (!canRemoveParticipant(state, participantId)) return;
 
-  const nextState = {
-    ...state,
-    participants: (state.participants ?? []).filter((participant) => participant.id !== participantId),
-    groups: (state.groups ?? []).map((group) => removeParticipantFromGroup(group, participantId)),
-    events: (state.events ?? []).map((event) => removeParticipantFromEvent(event, participantId))
-  };
-
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  const nextState = removeParticipant(state, participantId);
+  await saveSharedState(nextState);
   window.location.reload();
 }
 
@@ -318,19 +248,11 @@ function participantHasMoneyHistory(state, participantId) {
 }
 
 function readStoredState() {
-  try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "null");
-  } catch {
-    return null;
-  }
+  return loadState();
 }
 
 function readLocalProfile() {
-  try {
-    return JSON.parse(window.localStorage.getItem(LOCAL_PROFILE_KEY) || "null");
-  } catch {
-    return null;
-  }
+  return loadLocalProfile();
 }
 
 function uniqueIds(ids) {
@@ -432,7 +354,7 @@ function injectClarityStyle() {
     }
 
     .product-event-screen {
-      padding-bottom: 116px;
+      padding-bottom: 0;
     }
 
     .product-event-command {

@@ -9,7 +9,7 @@ import {
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
-import { profileFromGoogleCredential } from "./domain/googleAuth.mjs";
+import { clearPendingInviteUrl, pendingInviteUrl } from "./data/pendingInvite.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
@@ -93,11 +93,12 @@ async function handleGoogleCredential(response) {
 
   try {
     setGoogleBusy(true);
-    const googleProfile = profileFromGoogleCredential(response?.credential);
+    const googleProfile = await verifyGoogleCredential(response?.credential);
     if (!googleProfile) throw new Error("Google profile needs a full name");
 
-    const invitedEventId = parseInviteEventId(window.location.href);
-    const inviteSnapshot = parseInviteSnapshot(window.location.href);
+    const inviteUrl = pendingInviteUrl(window.location.href);
+    const invitedEventId = parseInviteEventId(inviteUrl);
+    const inviteSnapshot = parseInviteSnapshot(inviteUrl);
     const sharedState = mergeInviteSnapshotIntoState(await loadSharedState(), inviteSnapshot);
     const nextState = ensureNamedParticipant(
       sharedState,
@@ -108,7 +109,8 @@ async function handleGoogleCredential(response) {
         authSubject: googleProfile.authSubject,
         email: googleProfile.email
       },
-      invitedEventId
+      invitedEventId,
+      { reactivateInactive: false }
     );
     const participant = nextState.participants.find(
       (item) => item.id === nextState.currentParticipantId
@@ -122,6 +124,9 @@ async function handleGoogleCredential(response) {
       email: googleProfile.email
     });
     await saveSharedState(nextState);
+    if (!invitedEventId || nextState.events.some((event) => event.id === invitedEventId)) {
+      clearPendingInviteUrl();
+    }
     window.location.reload();
   } catch {
     if (error) {
@@ -131,6 +136,17 @@ async function handleGoogleCredential(response) {
   } finally {
     setGoogleBusy(false);
   }
+}
+
+async function verifyGoogleCredential(credential) {
+  const response = await fetch("/api/auth/google", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ credential })
+  });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return payload?.profile ?? null;
 }
 
 function loadGoogleScript() {

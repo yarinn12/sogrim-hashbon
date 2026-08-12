@@ -43,3 +43,34 @@ test("parseStateBackup rejects invalid backup files", () => {
   assert.throws(() => parseStateBackup(JSON.stringify({ participants: [], events: [] })), /missing groups/);
   assert.throws(() => parseStateBackup(JSON.stringify({ participants: [], groups: [] })), /missing events/);
 });
+
+test("parseStateBackup rejects unsafe financial records", () => {
+  const state = sampleState();
+  state.participants.push({ id: "friend", displayName: "Friend" });
+  state.events.push({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    expenses: [
+      {
+        id: "expense-1",
+        total: 1234,
+        payers: [{ participantId: "owner", amount: 1200 }],
+        sharedByParticipantIds: ["owner", "missing"]
+      }
+    ],
+    transfers: [
+      {
+        id: "transfer-1",
+        fromParticipantId: "friend",
+        toParticipantId: "missing",
+        amount: -50,
+        status: "unknown"
+      }
+    ]
+  });
+
+  assert.throws(
+    () => parseStateBackup(JSON.stringify(state)),
+    /contains invalid data/
+  );
+});

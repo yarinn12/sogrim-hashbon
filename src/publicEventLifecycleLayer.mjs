@@ -1,4 +1,4 @@
-import { loadState, saveSharedState } from "./data/localStore.mjs";
+import { loadState } from "./data/localStore.mjs";
 
 const STYLE_ID = "sogrim-event-lifecycle-style";
 const ACTIONS_CLASS = "event-lifecycle-actions";
@@ -9,7 +9,6 @@ installEventLifecycleLayer();
 
 function installEventLifecycleLayer() {
   injectStyles();
-  document.addEventListener("click", handleLifecycleClick, true);
   new MutationObserver(scheduleEnhancement).observe(document.body, {
     childList: true,
     subtree: true
@@ -54,86 +53,14 @@ function enhanceSettingsDialogs() {
           <p class="muted">עזיבה אפשרית רק כשאין הוצאות או העברות על שמך. מחיקה זמינה למנהל בלבד.</p>
         </div>
         <div class="actions">
-          <button class="secondary-button danger-button" data-lifecycle-action="leave-event" data-event-id="${escapeAttribute(eventId)}" ${canLeave ? "" : "disabled"}>עזוב אירוע</button>
-          <button class="secondary-button danger-button" data-lifecycle-action="delete-event" data-event-id="${escapeAttribute(eventId)}" ${canDelete ? "" : "disabled"}>מחק אירוע</button>
+          <button class="secondary-button danger-button" data-action="leave-event" data-event-id="${escapeAttribute(eventId)}" ${canLeave ? "" : "disabled"}>עזוב אירוע</button>
+          <button class="secondary-button danger-button" data-action="delete-event" data-event-id="${escapeAttribute(eventId)}" ${canDelete ? "" : "disabled"}>מחק אירוע</button>
         </div>
       `;
 
       const actions = settingsButton.closest(".actions");
       actions?.after(zone) ?? dialog.append(zone);
     });
-}
-
-async function handleLifecycleClick(event) {
-  const target = event.target.closest("[data-lifecycle-action]");
-  if (!target) return;
-
-  event.preventDefault();
-  event.stopImmediatePropagation();
-  if (target.disabled) return;
-
-  const eventId = target.dataset.eventId;
-  const state = loadState();
-  const currentEvent = state.events.find((item) => item.id === eventId);
-  if (!currentEvent) return;
-
-  if (target.dataset.lifecycleAction === "leave-event") {
-    await leaveCurrentEvent(state, currentEvent);
-    return;
-  }
-
-  if (target.dataset.lifecycleAction === "delete-event") {
-    await deleteCurrentEvent(state, currentEvent);
-  }
-}
-
-async function leaveCurrentEvent(state, event) {
-  const participantId = state.currentParticipantId;
-  if (!canLeaveEvent(state, event, participantId)) {
-    window.alert("אי אפשר לעזוב אירוע שיש בו הוצאות או העברות על שמך, או כשאתה המנהל היחיד.");
-    return;
-  }
-
-  if (!window.confirm("לעזוב את האירוע הזה? הוא יוסר מהמסך שלך.")) return;
-
-  const nextState = {
-    ...state,
-    events: state.events.map((item) =>
-      item.id === event.id
-        ? {
-            ...item,
-            participantIds: uniqueIds(item.participantIds.filter((id) => id !== participantId)),
-            adminIds: uniqueIds((item.adminIds ?? []).filter((id) => id !== participantId)),
-            transfers: []
-          }
-        : item
-    )
-  };
-
-  await saveAndReload(nextState);
-}
-
-async function deleteCurrentEvent(state, event) {
-  if (!canManageEvent(state, event, state.currentParticipantId)) {
-    window.alert("רק מנהל יכול למחוק אירוע.");
-    return;
-  }
-
-  if (!window.confirm(`למחוק את "${event.name}"? אי אפשר לשחזר את האירוע אחרי המחיקה.`)) return;
-
-  await saveAndReload({
-    ...state,
-    events: state.events.filter((item) => item.id !== event.id)
-  });
-}
-
-async function saveAndReload(state) {
-  await saveSharedState(state);
-  const url = new URL(window.location.href);
-  url.searchParams.delete("event");
-  url.searchParams.delete("join");
-  window.history.replaceState({}, "", url.toString());
-  window.location.reload();
 }
 
 function canLeaveEvent(state, event, participantId) {
@@ -173,7 +100,9 @@ function eventManagerIds(state, event) {
   const group = state.groups?.find((item) => item.id === event.groupId);
   if (group?.adminIds?.length) return uniqueIds(group.adminIds);
   if (event.adminIds?.length) return uniqueIds(event.adminIds);
-  return event.createdByParticipantId ? [event.createdByParticipantId] : event.participantIds?.slice(0, 1) ?? [];
+  return event.createdByParticipantId
+    ? [event.createdByParticipantId]
+    : event.participantIds?.slice(0, 1) ?? [];
 }
 
 function uniqueIds(ids) {

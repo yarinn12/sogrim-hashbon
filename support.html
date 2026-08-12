@@ -6,50 +6,53 @@
     <title>תמיכה | סוגרים חשבון</title>
     <meta name="theme-color" content="#087b74" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <style>
-      body { margin: 0; font-family: Heebo, "Noto Sans Hebrew", Arial, sans-serif; background: #f5f7f3; color: #171d1a; }
-      main { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 40px 0 64px; }
-      header, section { margin: 0 0 16px; padding: clamp(20px, 4vw, 32px); border: 1px solid rgba(23,29,26,.1); border-radius: 10px; background: rgba(255,253,248,.94); box-shadow: 0 18px 46px rgba(23,29,26,.08); }
-      h1, h2 { margin: 0 0 12px; line-height: 1.12; }
-      h1 { font-size: clamp(32px, 6vw, 52px); }
-      p, li { color: #52605a; font-weight: 650; line-height: 1.7; }
-      a { color: #087b74; font-weight: 850; }
-      .brand { display: inline-flex; gap: 10px; align-items: center; margin-bottom: 18px; color: #087b74; font-weight: 900; }
-      .mark { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: 8px; background: #087b74; color: white; }
-    </style>
+    <link rel="stylesheet" href="./legal.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <a class="brand" href="./"><span class="mark">ס</span><span>סוגרים חשבון</span></a>
+    <div class="legal-shell">
+      <nav class="legal-nav"><div class="legal-nav-inner"><a class="legal-brand" href="./"><img src="./icon-192.png" alt="" width="36" height="36" /><span>סוגרים חשבון</span></a><a class="legal-back" href="./">חזרה לאפליקציה</a></div></nav>
+      <main class="legal-main">
+      <header class="legal-header">
+        <p class="legal-kicker">עזרה ושירות</p>
         <h1>תמיכה</h1>
-        <p>כאן אפשר לקבל עזרה בשימוש באפליקציה, בקישורי הצטרפות, בשחזור גישה ובבקשות הקשורות לחשבון.</p>
+        <p>עודכן לאחרונה: 10 באוגוסט 2026. כאן אפשר לקבל עזרה בשימוש באפליקציה, בקישורי הצטרפות, בשחזור גישה ובבקשות הקשורות לחשבון.</p>
       </header>
-      <section>
+      <section class="legal-section">
         <h2>איך מתחילים</h2>
         <ul>
-          <li>נכנסים עם שם מלא או עם Google כאשר החיבור פעיל.</li>
+          <li>נרשמים עם שם מלא, אימייל וסיסמה, או נכנסים עם Google או Apple.</li>
           <li>פותחים אירוע חדש או מצטרפים דרך קישור/QR.</li>
           <li>מוסיפים הוצאות ומסמנים מי שילם ומי השתתף בכל הוצאה.</li>
           <li>בסיום מקבלים סיכום ברור של מי מעביר למי.</li>
         </ul>
       </section>
-      <section>
+      <section class="legal-section">
         <h2>בעיות נפוצות</h2>
         <ul>
           <li>אם קישור הצטרפות לא עובד, בקשו מהמנהל לשלוח קישור חדש מתוך האירוע.</li>
           <li>אם אדם חסר בהוצאה, אפשר להוסיף אורח מתוך חלון ההוצאה.</li>
-          <li>אם נתונים לא מופיעים במכשיר אחר, התחברות Google ושמירת ענן נדרשות כדי לסנכרן היסטוריה בין מכשירים.</li>
+          <li>אם נתונים לא מופיעים במכשיר אחר, ודאו שנכנסתם באותו חשבון ובדקו את חיבור האינטרנט.</li>
+          <li>אם האפליקציה נשארת במצב טעינה, סגרו ופתחו אותה מחדש. הנתונים שכבר נשמרו בחשבון ייטענו שוב.</li>
         </ul>
       </section>
-      <section>
+      <section class="legal-section">
         <h2>יצירת קשר</h2>
-        <p>לתמיכה, שאלות פרטיות, דיווח על תקלה או בקשת מחיקת חשבון: <a href="mailto:yarinn12@gmail.com">yarinn12@gmail.com</a>.</p>
+        <p>לתמיכה, שאלות פרטיות או דיווח על תקלה: <a href="mailto:yarinn12@gmail.com">yarinn12@gmail.com</a>. מומלץ לצרף את סוג המכשיר, תיאור קצר של הפעולה וצילום מסך שאינו כולל מידע רגיש.</p>
       </section>
-      <section>
+      <section class="legal-section">
+        <h2>דיווח על משתמש או תוכן</h2>
+        <p>אפשר לדווח ישירות מתוך פרטי משתמש מחובר באירוע, תחת ״בטיחות ופרטיות״. לדיווח שאי אפשר לשלוח מתוך האפליקציה, שלחו הודעה לכתובת <a href="mailto:yarinn12@gmail.com?subject=דיווח%20על%20שימוש%20לרעה%20-%20סוגרים%20חשבון">yarinn12@gmail.com</a>. ציינו את שם המשתמש או האירוע ואת הסיבה לדיווח, בלי לצרף מידע כספי שאינו נחוץ. דיווחים ייבדקו ונוכל להגביל חשבון או להסיר תוכן שמפר את תנאי השימוש.</p>
+      </section>
+      <section class="legal-section">
         <h2>קישורים</h2>
-        <p><a href="./privacy">מדיניות פרטיות</a> · <a href="./terms">תנאי שימוש</a> · <a href="./account-deletion">מחיקת חשבון</a> · <a href="./">חזרה לאפליקציה</a></p>
+        <p class="legal-links"><a href="./privacy.html">מדיניות פרטיות</a><a href="./terms.html">תנאי שימוש</a><a href="./accessibility.html">הצהרת נגישות</a><a href="./account-deletion.html">מחיקת חשבון</a><a href="./">חזרה לאפליקציה</a></p>
       </section>
-    </main>
+      <section class="legal-section">
+        <h2>שליחת משוב מתוך האפליקציה</h2>
+        <p>במסך הפרופיל אפשר לבחור „משוב לבודקים” ולשלוח תקלה, שאלה או רעיון בלי לצאת מהאפליקציה. פרטי הגרסה והמכשיר מצורפים אוטומטית, אך פרטי אירועים וסכומים אינם מצורפים.</p>
+      </section>
+      </main>
+    </div>
+    <script type="module" src="./legal.mjs"></script>
   </body>
 </html>

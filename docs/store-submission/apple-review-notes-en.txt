@@ -1,0 +1,12 @@
+Sogrim Hashbon is a Hebrew group-expense calculator for friends. It does not hold funds, connect to bank accounts, or process money transfers.
+
+Review flow:
+1. Sign in with the review account supplied in App Review Information.
+2. Tap "אירוע חדש" and choose "יציאה רגילה".
+3. Add participants and create an expense.
+4. Select who paid and who participated in that expense.
+5. Open "סיכום" to see the optimized settlement transfers.
+6. Open the sharing screen to inspect the invitation link and QR code.
+7. Account deletion is available under Profile > "מחיקת חשבון".
+
+The first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release. Sign in with Apple is available alongside Google and email authentication.

@@ -1,3 +1,5 @@
+import { iconSvg } from "./uiIcons.mjs";
+
 const HISTORY_STATE_KEY = "settleFriendsPublicBack";
 
 let historyDepth = 0;
@@ -65,7 +67,7 @@ function installBackButton() {
     button.dataset.publicAction = "app-back";
     button.setAttribute("aria-label", "חזור");
     button.title = "חזור";
-    button.textContent = "‹";
+    button.innerHTML = `<span class="app-back-button-glyph" aria-hidden="true">${iconSvg("chevron-left")}</span>`;
     header.prepend(button);
   }
 
@@ -122,6 +124,7 @@ function handlePublicBackClick(event) {
 function handleNativeBackClick(event) {
   const button = event.target.closest('[data-action="go-back"]');
   if (!button || button.disabled) return;
+  if (button.closest('[data-event-creation-step]')) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
@@ -341,6 +344,11 @@ function hasOpenWindow() {
 }
 
 function currentScreenKey() {
+  const explicitScreen = document.querySelector("#app .screen")?.dataset.screenKind;
+  if (["group-create", "group-edit", "people"].includes(explicitScreen)) {
+    return explicitScreen;
+  }
+
   const settlementReport = document.querySelector('[data-action="copy-settlement"][data-event-id]');
   if (settlementReport) return `settlement:${settlementReport.dataset.eventId}`;
 
@@ -353,7 +361,7 @@ function currentScreenKey() {
   const eventAction = document.querySelector('[data-action="show-expense-form"][data-event-id]');
   if (eventAction) return `event:${eventAction.dataset.eventId}`;
 
-  if (document.querySelector('[data-action="create-event"]')) return "new-event";
+  if (document.querySelector('[data-screen-kind="new-event"], [data-action="create-event"]')) return "new-event";
   if (document.querySelector('[data-action="create-group"]')) return "groups";
   if (document.querySelector('[data-action="save-profile"]')) return "profile";
   if (document.querySelector('[data-action="new-event"]')) return "home";

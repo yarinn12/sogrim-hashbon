@@ -1,18 +1,26 @@
-import {
-  getActiveCloudSpaceId,
-  loadState
-} from "./data/localStore.mjs";
+import { loadRuntimeConfig, loadState } from "./data/localStore.mjs";
+import { eventOpenInviteToken } from "./data/eventInvites.mjs";
 import {
   buildEventInviteSnapshot,
   buildEventInviteUrl
 } from "./domain/inviteLinks.mjs";
-import { createQrSvg } from "./domain/qrCode.mjs";
+import { normalizeReferralCode } from "./domain/referralCodes.mjs";
+import { compactQrInviteUrl, createQrSvg } from "./domain/qrCode.mjs";
 
 const STYLE_ID = "public-invite-qr-layer-style";
 
 let inviteQrScheduled = false;
+let runtimeConfig = null;
 
 injectInviteQrStyles();
+loadRuntimeConfig().then((config) => {
+  runtimeConfig = config;
+  scheduleInviteQrEnhancement();
+});
+document.addEventListener(
+  "settle-friends:entitlements-changed",
+  scheduleInviteQrEnhancement
+);
 new MutationObserver(scheduleInviteQrEnhancement).observe(document.body, {
   childList: true,
   subtree: true
@@ -31,7 +39,9 @@ function scheduleInviteQrEnhancement() {
 
 function enhanceInviteQrCodes() {
   document
-    .querySelectorAll('[data-action="copy-invite"][data-event-id]')
+    .querySelectorAll(
+      '[data-action="copy-invite"][data-open-link="true"][data-event-id]'
+    )
     .forEach((button) => renderInviteQr(button));
 }
 
@@ -43,19 +53,21 @@ function renderInviteQr(copyButton) {
 
   const input = row.querySelector("input");
   const inviteUrl = input?.value?.trim() || smartInviteUrl(eventId);
+  if (!inviteUrl || copyButton.disabled) return;
+  const qrUrl = compactQrInviteUrl(inviteUrl);
   if (input && input.value !== inviteUrl) input.value = inviteUrl;
 
   const existing = [...host.querySelectorAll("[data-public-invite-qr]")]
     .find((node) => node.dataset.eventId === eventId);
 
-  if (existing?.dataset.inviteUrl === inviteUrl) return;
+  if (existing?.dataset.inviteUrl === qrUrl) return;
 
   const qr = existing ?? document.createElement("section");
   qr.className = "public-invite-qr";
   qr.dataset.publicInviteQr = "true";
   qr.dataset.eventId = eventId;
-  qr.dataset.inviteUrl = inviteUrl;
-  qr.innerHTML = renderInviteQrContent(inviteUrl);
+  qr.dataset.inviteUrl = qrUrl;
+  qr.innerHTML = renderInviteQrContent(qrUrl);
 
   if (!existing) row.after(qr);
 }
@@ -83,11 +95,24 @@ function renderInviteQrContent(inviteUrl) {
 
 function smartInviteUrl(eventId) {
   const state = loadState();
+  const event = state.events?.find((item) => item.id === eventId);
+  const cloudInvite = runtimeConfig?.storage?.mode === "supabase";
+  const inviteToken = cloudInvite
+    ? eventOpenInviteToken(event)
+    : null;
+  const referralCode = normalizeReferralCode(
+    globalThis.SogrimMonetization?.status?.referralCode
+  );
   return buildEventInviteUrl(
-    window.location.href,
+    runtimeConfig?.publicUrl || window.location.href,
     eventId,
-    buildEventInviteSnapshot(state, eventId),
-    { spaceId: getActiveCloudSpaceId() }
+    cloudInvite ? null : buildEventInviteSnapshot(state, eventId),
+    inviteToken
+      ? {
+          inviteToken,
+          referralCode
+        }
+      : { referralCode }
   );
 }
 
@@ -113,8 +138,8 @@ function injectInviteQrStyles() {
     }
 
     .public-invite-qr-code {
-      width: 132px;
-      height: 132px;
+      width: 184px;
+      height: 184px;
       display: grid;
       place-items: center;
       padding: 8px;

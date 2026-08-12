@@ -10,3 +10,14 @@ test("settlement screen exposes a copy summary action", async () => {
   assert.match(app, /copySettlementSummary\(target\.dataset\.eventId\)/);
 });
 
+test("settlement sharing keeps the established WhatsApp summary contract", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const share = app.slice(
+    app.indexOf("function shareSettlementOnWhatsApp"),
+    app.indexOf("async function copyText")
+  );
+
+  assert.match(share, /formatSettlementSummary/);
+  assert.match(share, /eventName: event\.name/);
+  assert.match(share, /https:\/\/wa\.me\/\?text=\$\{encodeURIComponent\(summary\)\}/);
+});

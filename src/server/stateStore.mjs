@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { demoState } from "../data/demoData.mjs";
+import { assertValidSharedStatePayload } from "./stateValidation.mjs";
 
 export function createStateStore(filePath) {
   return {
@@ -17,6 +18,7 @@ export function createStateStore(filePath) {
     },
 
     async save(state) {
+      assertValidSharedStatePayload(state);
       await mkdir(dirname(filePath), { recursive: true });
       await writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
     }

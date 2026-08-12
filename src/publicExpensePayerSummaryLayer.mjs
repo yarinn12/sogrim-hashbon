@@ -1,4 +1,5 @@
-import { formatMoney, parseMoneyInput } from "./domain/money.mjs";
+import { parseMoneyInput } from "./domain/money.mjs";
+import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
 
 const STYLE_ID = "public-expense-payer-summary-style";
 
@@ -25,7 +26,11 @@ function enhanceExpensePayerSummary() {
   const payerInputs = [...modal.querySelectorAll('[data-action="expense-payer-amount"]')];
   if (!payerList || !totalInput || payerInputs.length === 0) return;
 
-  const summary = summarizePayers(totalInput.value, payerInputs.map((input) => input.value));
+  const summary = summarizePayers(
+    totalInput.value,
+    payerInputs.map((input) => input.value),
+    modal.dataset.currency
+  );
   let summaryNode = modal.querySelector(".expense-payer-summary");
   if (!summaryNode) {
     summaryNode = document.createElement("p");
@@ -34,19 +39,21 @@ function enhanceExpensePayerSummary() {
   }
 
   if (summary.total <= 0) {
-    summaryNode.hidden = true;
+    if (!summaryNode.hidden) summaryNode.hidden = true;
     return;
   }
 
-  summaryNode.hidden = false;
-  summaryNode.className = `expense-payer-summary ${summary.className}`;
-  summaryNode.textContent = summary.text;
+  if (summaryNode.hidden) summaryNode.hidden = false;
+  const nextClassName = `expense-payer-summary ${summary.className}`;
+  if (summaryNode.className !== nextClassName) summaryNode.className = nextClassName;
+  if (summaryNode.textContent !== summary.text) summaryNode.textContent = summary.text;
 }
 
-function summarizePayers(totalInput, payerAmounts) {
+function summarizePayers(totalInput, payerAmounts, currency) {
   const total = readMoney(totalInput);
   const paid = payerAmounts.reduce((sum, amount) => sum + readMoney(amount), 0);
   const difference = total - paid;
+  const eventCurrency = normalizeCurrency(currency);
 
   if (total > 0 && difference === 0) {
     return {
@@ -60,14 +67,14 @@ function summarizePayers(totalInput, payerAmounts) {
     return {
       total,
       className: "is-warning",
-      text: `נשאר לשייך ₪${formatMoney(difference)} למי ששילם.`
+      text: `נשאר לשייך ${formatCurrency(difference, eventCurrency)} למי ששילם.`
     };
   }
 
   return {
     total,
     className: "is-error",
-    text: `סכומי המשלמים גבוהים ב-₪${formatMoney(Math.abs(difference))} מהסכום הכולל.`
+    text: `סכומי המשלמים גבוהים ב-${formatCurrency(Math.abs(difference), eventCurrency)} מהסכום הכולל.`
   };
 }
 

@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">סוגרים חשבון</string>
+    <string name="title_activity_main">סוגרים חשבון</string>
+    <string name="package_name">com.sogrimhashbon.app</string>
+    <string name="custom_url_scheme">com.sogrimhashbon.app</string>
+    <string name="default_notification_channel_id">event-updates</string>
+    <!-- Production app ID. Ad serving is controlled remotely by runtime configuration. -->
+    <string name="admob_app_id">ca-app-pub-8171715888836308~8289796352</string>
+</resources>

@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.sogrimhashbon.app",
+      "sha256_cert_fingerprints": [
+        "D9:BE:BE:AD:A7:44:79:42:97:C6:F3:22:41:4E:EC:5F:53:16:70:57:F6:50:71:1D:ED:A8:B2:AA:69:C6:74:1B",
+        "A1:15:60:D1:B8:0F:75:A7:0E:71:84:04:01:58:17:51:78:5F:03:E3:B6:77:FA:7E:F6:99:EA:8C:D9:58:5A:D4"
+      ]
+    }
+  }
+]

@@ -1,5 +1,6 @@
 import {
   loadLocalProfile,
+  loadRuntimeConfig,
   loadSharedState,
   loadState,
   saveLocalProfile,
@@ -12,12 +13,20 @@ import {
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
-import { parseInviteSpaceId } from "./domain/cloudSpace.mjs";
+import { parseInviteSpaceId, parseInviteSpaceKey } from "./domain/cloudSpace.mjs";
+import {
+  mergeSharedEventIntoState,
+  readSharedEventState
+} from "./data/sharedEventStore.mjs";
+import { pendingInviteUrl } from "./data/pendingInvite.mjs";
 import {
   ensureNamedParticipant,
   isFullProfileName,
   normalizeProfileName
 } from "./domain/userProfile.mjs";
+import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
+
+let inviteProfileJoinBusy = false;
 
 document.addEventListener("submit", handlePublicProfileSubmit, true);
 document.addEventListener("click", handleNativeProfileSave, true);
@@ -38,14 +47,15 @@ function bootIncomingInvite() {
         id: profile.participantId,
         displayName: profile.displayName
       },
-      context.eventId
+      context.eventId,
+      { reactivateInactive: false }
     );
   }
 
   saveState(nextState);
 
   if (profile) {
-    saveSharedState(nextState).finally(() => reloadOnce(context.eventId));
+    reloadOnce(context.eventId);
   }
 }
 
@@ -65,60 +75,120 @@ function handleNativeProfileSave(event) {
   const button = event.target?.closest?.('[data-action="save-profile"]');
   if (!button || !inviteContext()) return;
 
+  const input = document.querySelector('[data-action="profile-name"]');
+  const displayName = normalizeProfileName(input?.value);
+  if (!isFullProfileName(displayName)) return;
+
   event.preventDefault();
   event.stopImmediatePropagation();
-
-  const input = document.querySelector('[data-action="profile-name"]');
   const errorNode = input?.closest(".field")?.querySelector(".field-error") ?? null;
-  joinInviteWithName(normalizeProfileName(input?.value), errorNode);
+  joinInviteWithName(displayName, errorNode);
 }
 
 async function joinInviteWithName(displayName, errorNode) {
   const context = inviteContext();
-  if (!context) return;
+  if (!context || inviteProfileJoinBusy) return;
 
   if (!isFullProfileName(displayName)) {
     showNameError(errorNode);
     return;
   }
 
-  const previousProfile = loadLocalProfile();
-  const sharedState = mergeInviteSnapshotIntoState(await loadSharedState(), context.snapshot);
-  const nextState = ensureNamedParticipant(
-    sharedState,
-    {
-      id: previousProfile?.participantId ?? makeUserId(),
-      displayName
-    },
-    context.eventId
-  );
-  const participant = nextState.participants.find(
-    (item) => item.id === nextState.currentParticipantId
-  );
+  inviteProfileJoinBusy = true;
+  setInviteProfileJoinBusy(true);
+  let shouldReleaseBusy = true;
+  try {
+    const previousProfile = loadLocalProfile();
+    let sharedState = mergeInviteSnapshotIntoState(await loadSharedState(), context.snapshot);
+    if (context.spaceId && context.spaceKey) {
+      try {
+        const remoteEvent = await readSharedEventState(
+          await loadRuntimeConfig(),
+          { id: context.spaceId, key: context.spaceKey },
+          context.eventId
+        );
+        if (remoteEvent) {
+          sharedState = mergeSharedEventIntoState(
+            sharedState,
+            remoteEvent,
+            { id: context.spaceId, key: context.spaceKey }
+          );
+        }
+      } catch {
+        // Continue with the safe preview if cloud sync is unavailable.
+      }
+    }
+    const participantId =
+      previousProfile?.participantId ?? makeUserId();
+    const wasAlreadyParticipant = sharedState.events
+      ?.find((event) => event.id === context.eventId)
+      ?.participantIds?.includes(participantId);
+    const nextState = ensureNamedParticipant(
+      sharedState,
+      {
+        id: participantId,
+        displayName
+      },
+      context.eventId,
+      { reactivateInactive: false }
+    );
+    const participant = nextState.participants.find(
+      (item) => item.id === nextState.currentParticipantId
+    );
 
-  saveLocalProfile({
-    participantId: nextState.currentParticipantId,
-    displayName: participant?.displayName ?? displayName
-  });
-  saveState(nextState);
-  await saveSharedState(nextState);
-  markImported(context.eventId);
-  window.location.href = buildEventInviteUrl(
-    window.location.href,
-    context.eventId,
-    context.snapshot,
-    { spaceId: context.spaceId }
-  );
+    saveLocalProfile({
+      participantId: nextState.currentParticipantId,
+      displayName: participant?.displayName ?? displayName
+    });
+    saveState(nextState);
+    const saveResult = await saveSharedState(nextState);
+    if (!wasAlreadyParticipant && participant) {
+      notifyJoinedEvent(saveResult, context.eventId, participant.id);
+    }
+    markImported(context.eventId);
+    window.location.replace(buildEventInviteUrl(window.location.href, context.eventId));
+    shouldReleaseBusy = false;
+  } finally {
+    if (shouldReleaseBusy) {
+      inviteProfileJoinBusy = false;
+      setInviteProfileJoinBusy(false);
+    }
+  }
+}
+
+function notifyJoinedEvent(saveResult, eventId, participantId) {
+  if (!saveResult?.ok || saveResult.mode !== "cloud") return;
+  loadRuntimeConfig()
+    .then((config) =>
+      sendEventActivityNotification(config, {
+        eventId,
+        activityId: participantId,
+        kind: "participant-joined"
+      })
+    )
+    .catch(() => {});
+}
+
+function setInviteProfileJoinBusy(value) {
+  document
+    .querySelectorAll(
+      '[data-public-profile-form] button, [data-action="save-profile"]'
+    )
+    .forEach((button) => {
+      button.disabled = value;
+    });
 }
 
 function inviteContext() {
-  const eventId = parseInviteEventId(window.location.href);
-  const snapshot = parseInviteSnapshot(window.location.href);
-  if (!eventId || !snapshot) return null;
+  const inviteUrl = pendingInviteUrl(window.location.href);
+  const eventId = parseInviteEventId(inviteUrl);
+  const snapshot = parseInviteSnapshot(inviteUrl);
+  if (!eventId || !snapshot || snapshot.event.id !== eventId) return null;
   return {
     eventId,
     snapshot,
-    spaceId: parseInviteSpaceId(window.location.href) ?? undefined
+    spaceId: parseInviteSpaceId(inviteUrl) ?? undefined,
+    spaceKey: parseInviteSpaceKey(inviteUrl) ?? undefined
   };
 }
 
@@ -126,6 +196,10 @@ function showNameError(errorNode) {
   if (!errorNode) return;
   errorNode.hidden = false;
   errorNode.textContent = "צריך להזין שם פרטי ושם משפחה כדי להצטרף.";
+  const input =
+    errorNode.closest("form")?.querySelector('input[name="displayName"]') ??
+    document.querySelector('[data-action="profile-name"]');
+  input?.focus({ preventScroll: true });
 }
 
 function reloadOnce(eventId) {

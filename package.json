@@ -4,9 +4,61 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "qa": "node scripts/run-tests.mjs",
+    "qa:coverage": "node scripts/run-tests.mjs --coverage",
+    "qa:mobile": "playwright test",
+    "qa:memory": "node scripts/verify-account-memory.mjs",
+    "qa:two-account-live": "node scripts/verify-two-account-event-live.mjs",
+    "qa:friends-live": "node scripts/verify-friend-network-live.mjs",
+    "qa:notifications-live": "node scripts/verify-notification-inbox-live.mjs",
+    "qa:feedback-live": "node scripts/verify-app-feedback-live.mjs",
+    "metrics:report": "node scripts/report-product-metrics.mjs",
+    "db:apply": "node scripts/apply-supabase-schema.mjs",
+    "native:prepare": "node scripts/build-native-web.mjs && cap sync && node scripts/finalize-native-projects.mjs",
+    "native:android": "npm run native:prepare && cap open android",
+    "native:android:key": "node scripts/setup-android-upload-key.mjs",
+    "native:android:apk": "npm run native:prepare && node scripts/build-android-apk.mjs",
+    "native:android:release": "npm run native:prepare && node scripts/build-android-release.mjs",
+    "native:ios": "npm run native:prepare && cap open ios",
+    "native:ios:association": "node scripts/setup-apple-association.mjs",
+    "native:ios:apple-secret": "node scripts/generate-apple-client-secret.mjs",
+    "native:ios:flatten-icon": "node scripts/prepare-ios-icon.mjs",
+    "native:ios:csr": "powershell -ExecutionPolicy Bypass -File scripts/new-apple-distribution-csr.ps1",
+    "native:ios:prepare-release": "npm run native:ios:flatten-icon && npm run native:prepare && node scripts/prepare-ios-release.mjs",
+    "qa:ios": "node scripts/verify-ios-submission.mjs",
+    "qa:ios:review": "node scripts/verify-ios-review-live.mjs",
+    "qa:android-native": "node scripts/verify-android-native-smoke.mjs",
+    "qa:android-journey": "node scripts/verify-android-user-journey.mjs",
+    "qa:android-font-scale": "node scripts/verify-android-font-scale.mjs",
+    "qa:android-benchmark": "node scripts/benchmark-android-startup.mjs",
+    "qa:scale": "node scripts/benchmark-data-scale.mjs",
+    "qa:store": "node scripts/verify-store-readiness.mjs",
+    "store:assets": "node scripts/generate-store-screenshots.mjs",
+    "store:review-account": "node scripts/setup-store-review-account.mjs"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/push-notifications": "^8.0.0",
+    "@capacitor/share": "^8.0.1",
+    "framer-motion": "^12.40.0",
+    "google-auth-library": "^10.9.0"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/cli": "^8.4.2",
+    "@capacitor/ios": "^8.4.2",
+    "@playwright/test": "^1.62.1",
+    "esbuild": "^0.28.1",
+    "lightningcss": "^1.29.2",
+    "postgres": "^3.4.9"
   }
 }

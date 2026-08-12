@@ -6,7 +6,10 @@ import {
   canManageEventSettings,
   eventAdminIds
 } from "../src/domain/permissions.mjs";
-import { setEventAdminsCanEditOnly } from "../src/domain/appActions.mjs";
+import {
+  setEventAdminsCanEditOnly,
+  setEventParticipantAdmin
+} from "../src/domain/appActions.mjs";
 
 function baseState() {
   return {
@@ -75,6 +78,18 @@ test("everyone can edit unrestricted events unless the event is locked", () => {
   assert.equal(canEditEvent(state, { ...event, locked: true }, "yarin"), false);
 });
 
+test("a participant removed from active membership cannot edit or manage the event", () => {
+  const state = baseState();
+  const event = {
+    ...state.events[0],
+    adminsCanEditOnly: false,
+    inactiveParticipantIds: ["yarin"]
+  };
+
+  assert.equal(canManageEventSettings(state, event, "yarin"), false);
+  assert.equal(canEditEvent(state, event, "yarin"), false);
+});
+
 test("standalone events use their own admin ids", () => {
   const state = baseState();
   const event = {
@@ -111,4 +126,48 @@ test("setEventAdminsCanEditOnly updates only the selected event", () => {
 
   assert.equal(nextState.events[0].adminsCanEditOnly, false);
   assert.equal(nextState.events[1].adminsCanEditOnly, false);
+});
+
+test("event participant admin changes override inherited group managers", () => {
+  const state = baseState();
+  const promoted = setEventParticipantAdmin(
+    state,
+    "event-1",
+    "dani",
+    true,
+    "2026-08-11T10:00:00.000Z"
+  );
+
+  assert.deepEqual(promoted.events[0].adminIds, ["yarin", "dani"]);
+  assert.equal(promoted.events[0].adminIdsScopedToEvent, true);
+  assert.equal(
+    promoted.events[0].adminIdsUpdatedAt,
+    "2026-08-11T10:00:00.000Z"
+  );
+  assert.deepEqual(eventAdminIds(promoted, promoted.events[0]), ["yarin", "dani"]);
+
+  const demoted = setEventParticipantAdmin(
+    promoted,
+    "event-1",
+    "yarin",
+    false,
+    "2026-08-11T10:01:00.000Z"
+  );
+  assert.deepEqual(eventAdminIds(demoted, demoted.events[0]), ["dani"]);
+  assert.equal(canManageEventSettings(demoted, demoted.events[0], "yarin"), false);
+  assert.equal(canManageEventSettings(demoted, demoted.events[0], "dani"), true);
+});
+
+test("an event always keeps at least one manager", () => {
+  const state = baseState();
+  const unchanged = setEventParticipantAdmin(
+    state,
+    "event-1",
+    "yarin",
+    false,
+    "2026-08-11T10:00:00.000Z"
+  );
+
+  assert.equal(unchanged, state);
+  assert.deepEqual(eventAdminIds(unchanged, unchanged.events[0]), ["yarin"]);
 });

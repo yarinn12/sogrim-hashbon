@@ -1,5 +1,6 @@
 import {
   loadLocalProfile,
+  loadRuntimeConfig,
   loadSharedState,
   loadState,
   saveSharedState,
@@ -7,13 +8,21 @@ import {
 } from "./data/localStore.mjs";
 import {
   buildEventInviteUrl,
+  mergeInviteSnapshotIntoState,
+  parseInviteSnapshot,
   parseInviteEventId
 } from "./domain/inviteLinks.mjs";
+import { resolveEventInviteCredentials } from "./data/eventInvites.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
+import {
+  attachSharedEventCredentials,
+  mergeSharedEventIntoState,
+  readSharedEventState
+} from "./data/sharedEventStore.mjs";
 
 const app = document.querySelector("#app");
 const STYLE_ID = "public-join-event-layer-style";
-const EVENT_NAME_PLACEHOLDER = "אוכל / מונית / קניות...";
+const EVENT_NAME_PLACEHOLDER = "אוכל / מונית / קניות…";
 const DEFAULT_EVENT_NAMES = new Set(["אירוע חדש", "יציאה חדשה"]);
 const MODE_CREATE = "create";
 const MODE_JOIN = "join";
@@ -50,10 +59,7 @@ function enhanceJoinEventFlow() {
   if (!screen) return;
 
   enhanceHomeActions(screen);
-  enhanceNewEventScreen(screen);
-  reduceNewEventChromeRepetition(screen);
   enhanceNewEventNameInput(screen);
-  applyNewEventMode(screen);
 }
 
 function rememberRequestedEventMode(event) {
@@ -97,14 +103,7 @@ function enhanceHomeActions(screen) {
   if (!screen.querySelector('[data-action="new-event"]')) return;
 
   const heroActions = screen.querySelector(".hero-actions");
-  if (heroActions && !heroActions.querySelector('[data-action="join-event-screen"], [data-public-open-join-event]')) {
-    const joinButton = document.createElement("button");
-    joinButton.type = "button";
-    joinButton.className = "secondary-button";
-    joinButton.dataset.publicOpenJoinEvent = "true";
-    joinButton.textContent = "הצטרפות לאירוע";
-    heroActions.insertBefore(joinButton, heroActions.querySelector('[data-action="groups"]'));
-  }
+  heroActions?.querySelector("[data-public-open-join-event]")?.remove();
 
   screen
     .querySelectorAll('.personal-next-step [data-action="new-event"]')
@@ -113,9 +112,6 @@ function enhanceHomeActions(screen) {
 
 function enhanceNewEventScreen(screen) {
   if (!screen.querySelector('[data-action="create-event"]')) return;
-
-  setTextIfChanged(screen.querySelector(".brand .eyebrow"), "אירועים");
-  setTextIfChanged(screen.querySelector(".brand h1"), "פותחים או מצטרפים לחשבון");
 
   const nativeJoinPanel = screen.querySelector(".join-event-panel");
   if (nativeJoinPanel) {
@@ -158,7 +154,7 @@ function enhanceNewEventNameInput(screen) {
   const input = screen.querySelector('[data-action="new-event-name"]');
   if (!input) return;
 
-  if (input.placeholder !== EVENT_NAME_PLACEHOLDER) {
+  if (!input.placeholder) {
     input.placeholder = EVENT_NAME_PLACEHOLDER;
   }
 
@@ -178,7 +174,8 @@ function applyNewEventMode(screen) {
   if (joinPanel) joinPanel.hidden = mode !== MODE_JOIN;
   if (createPanel) createPanel.hidden = mode !== MODE_CREATE;
 
-  const title = mode === MODE_JOIN ? "הצטרפות לאירוע" : "אירוע חדש";
+  const nativeCreateTitle = screen.querySelector(".brand h1")?.textContent.trim() || "אירוע חדש";
+  const title = mode === MODE_JOIN ? "הצטרפות לאירוע" : nativeCreateTitle;
   const helper = mode === MODE_JOIN
     ? "מדביקים קישור שקיבלת מחבר ונכנסים ישר לאירוע."
     : "מגדירים שם, קבוצה ומשתתפים ואז מתחילים להכניס הוצאות.";
@@ -278,7 +275,16 @@ function renderJoinPanel() {
       </div>
       <label class="field">
         <span>קישור הצטרפות</span>
-        <input data-public-join-event-link placeholder="https://sogrim-hashbon.vercel.app/?event=..." />
+        <input
+          data-public-join-event-link
+          name="joinEventLink"
+          type="url"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          dir="ltr"
+          placeholder="https://sogrim-hashbon.vercel.app/i/…"
+        />
       </label>
       <p class="field-error" data-public-join-event-error hidden></p>
       <div class="actions section">
@@ -309,15 +315,22 @@ function handleJoinEventClick(event) {
   const submitJoinTarget = event.target.closest("[data-public-submit-join]");
   if (submitJoinTarget) {
     event.preventDefault();
-    joinExistingEventFromPublicPanel();
+    joinExistingEventFromPublicPanel().catch(showUnexpectedJoinError);
     return;
   }
 
   const joinTarget = event.target.closest("[data-public-join-existing-event]");
   if (joinTarget) {
     event.preventDefault();
-    joinExistingEventFromPublicPanel();
+    joinExistingEventFromPublicPanel().catch(showUnexpectedJoinError);
   }
+}
+
+function showUnexpectedJoinError() {
+  setJoinError(
+    document.querySelector("[data-public-join-event-error]"),
+    "לא הצלחנו לפתוח את הקישור כרגע. כדאי לבדוק שהוא הועתק במלואו ולנסות שוב."
+  );
 }
 
 function openJoinEventScreen() {
@@ -354,10 +367,33 @@ async function joinExistingEventFromPublicPanel() {
     return;
   }
 
-  let state = loadState();
+  const inviteSnapshot = parseInviteSnapshot(link);
+  const joinRuntimeConfig = await loadRuntimeConfig();
+  const inviteCredentials = await resolveEventInviteCredentials(
+    joinRuntimeConfig,
+    link
+  );
+  let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
+  if (inviteCredentials?.id && inviteCredentials?.key) {
+    state = attachSharedEventCredentials(state, eventId, inviteCredentials);
+    try {
+      const sharedEventState = await readSharedEventState(
+        joinRuntimeConfig,
+        inviteCredentials,
+        eventId
+      );
+      if (sharedEventState) {
+        state = mergeSharedEventIntoState(state, sharedEventState, inviteCredentials);
+      }
+    } catch {
+      // Continue with the safe preview if the shared event is temporarily offline.
+    }
+  }
+  saveState(state);
   let targetEvent = findEvent(state, eventId);
   if (!targetEvent) {
-    state = await loadSharedState();
+    state = mergeInviteSnapshotIntoState(await loadSharedState(), inviteSnapshot);
+    saveState(state);
     targetEvent = findEvent(state, eventId);
   }
 
@@ -375,7 +411,8 @@ async function joinExistingEventFromPublicPanel() {
         id: profile.participantId,
         displayName: profile.displayName
       },
-      eventId
+      eventId,
+      { reactivateInactive: false }
     );
     saveState(state);
     await saveSharedState(state);

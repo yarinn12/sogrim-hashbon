@@ -1,0 +1,146 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+test("the app shows one branded splash only while the first real screen loads", async () => {
+  const [index, app, styles, splashLayer, accountAuthLayer, introVideo] =
+    await Promise.all([
+    readFile("index.html", "utf8"),
+    readFile("src/app.mjs", "utf8"),
+    readFile("styles.css", "utf8"),
+    readFile("src/publicAppSplashLayer.mjs", "utf8"),
+    readFile("src/publicAccountAuthLayer.mjs", "utf8"),
+    readFile("assets/sogrim-logo-intro.mp4")
+    ]);
+
+  assert.match(index, /<html[^>]*class="account-auth-pending"/);
+  assert.match(index, /class="app app-boot font-hebrew"/);
+  assert.match(index, /aria-busy="true"/);
+  assert.match(index, /class="boot-shell"/);
+  assert.match(index, /id="app-splash"/);
+  assert.match(index, /assets\/sogrim-logo-intro\.mp4/);
+  assert.match(index, /assets\/sogrim-logo-intro-poster\.jpg/);
+  assert.match(index, /assets\/sogrim-logo-intro-hold\.jpg/);
+  assert.match(index, /loop[\s\S]*?muted[\s\S]*?playsinline/);
+  assert.doesNotMatch(index, /autoplay/);
+  assert.match(index, /publicAppSplashLayer\.mjs[\s\S]*?src\/app\.mjs/);
+  assert.match(app, /app\.classList\.remove\("app-boot"\)/);
+  assert.match(app, /app\.removeAttribute\("aria-busy"\)/);
+  assert.match(splashLayer, /prefers-reduced-motion: reduce/);
+  assert.doesNotMatch(splashLayer, /startFirstLoopTimer|mediaFinished|sourceDurationMs/);
+  assert.match(splashLayer, /VIDEO_LOAD_TIMEOUT_MS = 6000/);
+  assert.match(splashLayer, /VIDEO_PROGRESS_TIMEOUT_MS = 4500/);
+  assert.match(splashLayer, /VIDEO_STALL_TIMEOUT_MS = 2400/);
+  assert.match(splashLayer, /VIDEO_WATCHDOG_INTERVAL_MS = 800/);
+  assert.match(splashLayer, /APP_READY_VIDEO_GRACE_MS = 200/);
+  assert.match(splashLayer, /MIN_VISIBLE_VIDEO_MS = 300/);
+  assert.match(splashLayer, /MAX_SPLASH_WAIT_MS = 5500/);
+  assert.match(splashLayer, /MAX_SPLASH_RENDER_RETRY_MS = 750/);
+  assert.match(splashLayer, /SPLASH_EXIT_MS = 100/);
+  assert.doesNotMatch(splashLayer, /Capacitor\?\.Plugins\?\.SplashScreen/);
+  assert.match(splashLayer, /settle-friends-skip-next-splash/);
+  assert.match(splashLayer, /consumeSplashBypass/);
+  assert.match(splashLayer, /const showPosterOnly = consumeSplashBypass\(\)/);
+  assert.match(splashLayer, /installSplash\(\{ showPosterOnly \}\)/);
+  assert.doesNotMatch(
+    splashLayer,
+    /if \(consumeSplashBypass\(\)\) \{\s*splash\?\.remove/
+  );
+  assert.match(splashLayer, /video\.addEventListener\("loadeddata", handleVideoReady/);
+  assert.match(splashLayer, /video\.muted = true/);
+  assert.match(splashLayer, /video\.defaultMuted = true/);
+  assert.match(splashLayer, /video\.playsInline = true/);
+  assert.match(splashLayer, /video\.autoplay = false/);
+  assert.match(splashLayer, /video\.loop = true/);
+  assert.match(splashLayer, /window\.clearTimeout\(loadTimeoutId\)/);
+  assert.match(
+    splashLayer,
+    /progressTimeoutId = window\.setTimeout\(useFallback, VIDEO_PROGRESS_TIMEOUT_MS\)/
+  );
+  assert.match(splashLayer, /video\.addEventListener\("playing", handleVideoPlaying\)/);
+  assert.match(splashLayer, /video\.addEventListener\("timeupdate", handleVideoProgress\)/);
+  assert.match(
+    splashLayer,
+    /function revealPresentedFrame\(\)[\s\S]*?requestVideoFrameCallback[\s\S]*?revealVideo/
+  );
+  assert.match(splashLayer, /function revealVideo\(\)[\s\S]*?splash\.classList\.add\("is-video-ready"\)/);
+  assert.match(splashLayer, /window\.clearTimeout\(progressTimeoutId\)/);
+  assert.doesNotMatch(splashLayer, /video\.addEventListener\("ended"/);
+  assert.doesNotMatch(splashLayer, /video\.currentTime = 0/);
+  assert.match(splashLayer, /function requestPlayback\(\{ fallbackOnFailure = false \} = \{\}\)/);
+  assert.match(splashLayer, /dismissed \|\| fallbackMode \|\| playbackPending/);
+  assert.match(splashLayer, /playbackPending = true/);
+  assert.match(splashLayer, /\.finally\(\(\) => \{\s*playbackPending = false/);
+  assert.match(splashLayer, /requestPlayback\(\{ fallbackOnFailure: true \}\)/);
+  assert.doesNotMatch(splashLayer, /video\.play\(\)\?\.catch\(useFallback\)/);
+  assert.doesNotMatch(splashLayer, /holdFinalFrame|is-video-complete/);
+  assert.match(splashLayer, /applicationIsReady/);
+  assert.match(splashLayer, /#public-account-auth-gate/);
+  assert.match(
+    splashLayer,
+    /!accountAuthPending && \(accountGateRendered \|\| appRendered\)/
+  );
+  assert.match(
+    splashLayer,
+    /if \(dismissed \|\| !applicationIsReady\(\)\) return;[\s\S]*?if \(fallbackMode\) \{[\s\S]*?dismiss\(\)/
+  );
+  assert.match(splashLayer, /account-auth-pending/);
+  assert.match(splashLayer, /account-auth-ready/);
+  assert.match(
+    splashLayer,
+    /appReadyGraceId = window\.setTimeout\(useFallback, APP_READY_VIDEO_GRACE_MS\)/
+  );
+  assert.match(splashLayer, /MIN_VISIBLE_VIDEO_MS - \(Date\.now\(\) - videoStartedAt\)/);
+  assert.match(
+    splashLayer,
+    /function dismissAfterMaximumWait\(\)[\s\S]*?app\.classList\.contains\("app-boot"\)[\s\S]*?dismiss\(\)/
+  );
+  assert.match(
+    splashLayer,
+    /maximumWaitId = window\.setTimeout\([\s\S]*?dismissAfterMaximumWait,[\s\S]*?MAX_SPLASH_WAIT_MS/
+  );
+  assert.match(
+    splashLayer,
+    /Date\.now\(\) - lastProgressAt > VIDEO_STALL_TIMEOUT_MS[\s\S]*?useFallback\(\)/
+  );
+  assert.match(splashLayer, /visibilitychange/);
+  assert.doesNotMatch(splashLayer, /account-auth-gate\.account-auth-boot/);
+  assert.match(splashLayer, /window\.sessionStorage\.removeItem\(SKIP_NEXT_SPLASH_MARKER\)/);
+  assert.match(
+    accountAuthLayer,
+    /setSessionValue\(SKIP_NEXT_SPLASH_MARKER, "1"\)[\s\S]*?window\.location\.reload\(\);\s*return;/
+  );
+  assert.match(accountAuthLayer, /function markAccountAuthReady\(\)/);
+  assert.match(accountAuthLayer, /lockAccountGate\(\)/);
+  assert.match(accountAuthLayer, /ACCOUNT_SETUP_TIMEOUT_MS = 12_000/);
+  assert.match(accountAuthLayer, /function renderAccountRecoveryGate\(\)/);
+  assert.match(accountAuthLayer, /data-account-retry/);
+  assert.doesNotMatch(accountAuthLayer, /renderAccountBootGate|account-auth-boot/);
+  assert.match(accountAuthLayer, /classList\.remove\("account-auth-pending"\)/);
+  assert.match(accountAuthLayer, /new Event\("account-auth-ready"\)/);
+  assert.doesNotMatch(splashLayer, /hasSeenSplash|rememberSplash/);
+  assert.equal(introVideo.toString("ascii", 4, 8), "ftyp");
+  assert.ok(introVideo.length > 1_000_000 && introVideo.length < 5_000_000);
+  assert.match(styles, /\.app-splash \{/);
+  assert.doesNotMatch(styles, /html\.native-app \.app-splash::before/);
+  assert.equal(splashLayer.match(/setNativeSystemBarStyle\(true\)/g)?.length, 2);
+  assert.doesNotMatch(splashLayer, /setNativeSystemBarStyle\(false\)/);
+  assert.match(styles, /html\.app-splash-active body \{[\s\S]*?background: #d9d5cf/);
+  assert.match(styles, /\.app-splash-frame \{[\s\S]*?background: #d9d5cf/);
+  assert.match(styles, /\.app-splash-frame::after \{[\s\S]*?inset 0 0 20px 10px #d9d5cf/);
+  assert.match(styles, /\.app-splash-video,[\s\S]*?\.app-splash-hold[\s\S]*?background: #d9d5cf/);
+  assert.match(styles, /\.app-splash-video \{\s*opacity: 0;/);
+  assert.match(styles, /\.app-splash-video \{[\s\S]*?transition: opacity 80ms linear/);
+  assert.match(styles, /\.app-splash\.is-video-ready \.app-splash-video/);
+  assert.doesNotMatch(styles, /\.app-splash\.is-video-complete/);
+  assert.match(styles, /\.app-splash\.is-leaving/);
+  assert.match(
+    styles,
+    /\.app-splash\.is-leaving \{[\s\S]*?opacity: 0;[\s\S]*?visibility: visible;[\s\S]*?transition: opacity 80ms ease-out;/
+  );
+  assert.match(splashLayer, /video\.readyState >= 2/);
+  assert.match(splashLayer, /splash\.setAttribute\("inert", ""\)/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /\.boot-hero/);
+  assert.match(styles, /@keyframes boot-pulse/);
+});

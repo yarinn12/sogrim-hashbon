@@ -1,20 +1,35 @@
-import { calculateSettlement } from "./domain/settlement.mjs";
+import {
+  calculateSettlement,
+  usesRoundedSettlementTransfers
+} from "./domain/settlement.mjs";
 import { formatSettlementSummary } from "./domain/settlementSummary.mjs";
+import { mergeParticipants as mergeParticipantIdentities } from "./domain/appActions.mjs";
+import {
+  loadState as loadStoredState,
+  saveSharedState
+} from "./data/localStore.mjs";
 
-const STORAGE_KEY = "settle-friends-state";
-const LOCAL_PARTICIPANT_KEY = "settle-friends-current-participant";
 const app = document.querySelector("#app");
-let eventFilter = "open";
+let advancedWorkflowsScheduled = false;
 
 if (app) {
   installAdvancedStyles();
   document.addEventListener("click", handleAdvancedClick, true);
   document.addEventListener("change", handleAdvancedChange, true);
-  new MutationObserver(enhanceAdvancedWorkflows).observe(app, {
+  new MutationObserver(scheduleAdvancedWorkflows).observe(app, {
     childList: true,
     subtree: true
   });
-  requestAnimationFrame(enhanceAdvancedWorkflows);
+  scheduleAdvancedWorkflows();
+}
+
+function scheduleAdvancedWorkflows() {
+  if (advancedWorkflowsScheduled) return;
+  advancedWorkflowsScheduled = true;
+  requestAnimationFrame(() => {
+    advancedWorkflowsScheduled = false;
+    enhanceAdvancedWorkflows();
+  });
 }
 
 function enhanceAdvancedWorkflows() {
@@ -25,74 +40,9 @@ function enhanceAdvancedWorkflows() {
 }
 
 function enhanceHome() {
-  if (app.querySelector('[data-action="event-status-filter"]')) return;
-  const eventList = app.querySelector(".event-list");
-  if (!eventList || app.querySelector(".advanced-event-filter")) return;
-
-  const state = loadState();
-  const eventSection = eventList.closest(".section") ?? eventList.parentElement;
-  const dashboard = renderNextOpenEvent(state);
-  const filter = document.createElement("section");
-  filter.className = "panel advanced-workflow-panel advanced-event-filter";
-  filter.innerHTML = `
-    <div class="advanced-panel-title">
-      <h2>אירועים</h2>
-      <p>אפשר להתמקד במה שעדיין פתוח ולחזור לסגורים כשצריך.</p>
-    </div>
-    <div class="segmented-control advanced-segments" role="tablist" aria-label="סינון אירועים">
-      ${renderFilterButton("open", "פתוחים")}
-      ${renderFilterButton("closed", "סגורים")}
-      ${renderFilterButton("all", "הכל")}
-    </div>
-  `;
-
-  if (dashboard && eventSection) eventSection.before(dashboard);
-  eventSection?.before(filter);
-  applyEventFilter();
-}
-
-function renderNextOpenEvent(state) {
-  const currentParticipantId = currentParticipant(state);
-  const nextEvent = [...(state.events ?? [])]
-    .filter((event) => !isClosed(event))
-    .filter((event) => !currentParticipantId || event.participantIds?.includes(currentParticipantId))
-    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
-
-  if (!nextEvent) return null;
-
-  const section = document.createElement("section");
-  section.className = "panel advanced-workflow-panel advanced-next-event";
-  section.innerHTML = `
-    <div class="advanced-panel-title">
-      <span class="advanced-kicker">פתוח עכשיו</span>
-      <h2>${escapeHtml(nextEvent.name)}</h2>
-      <p>${nextEvent.expenses?.length ?? 0} הוצאות מחכות לסגירה.</p>
-    </div>
-    <button class="primary-button" data-action="open-event" data-event-id="${escapeAttribute(nextEvent.id)}">פתח</button>
-  `;
-  return section;
-}
-
-function renderFilterButton(value, label) {
-  const selected = eventFilter === value ? "true" : "false";
-  return `<button type="button" class="secondary-button" data-advanced-filter="${value}" aria-selected="${selected}">${label}</button>`;
-}
-
-function applyEventFilter() {
-  const state = loadState();
-  const eventsById = new Map((state.events ?? []).map((event) => [event.id, event]));
-
-  app.querySelectorAll("[data-advanced-filter]").forEach((button) => {
-    button.setAttribute("aria-selected", String(button.dataset.advancedFilter === eventFilter));
-  });
-
-  app.querySelectorAll(".event-row[data-event-id]").forEach((row) => {
-    const event = eventsById.get(row.dataset.eventId);
-    const closed = isClosed(event);
-    const hidden =
-      (eventFilter === "open" && closed) ||
-      (eventFilter === "closed" && !closed);
-    row.hidden = hidden;
+  app.querySelectorAll(".advanced-next-event, .advanced-event-filter").forEach((element) => element.remove());
+  app.querySelectorAll(".event-row[hidden]").forEach((row) => {
+    row.hidden = false;
   });
 }
 
@@ -177,14 +127,6 @@ function renderParticipantOptions(state, selectedId) {
 }
 
 function handleAdvancedClick(event) {
-  const filterButton = event.target.closest("[data-advanced-filter]");
-  if (filterButton) {
-    event.preventDefault();
-    eventFilter = filterButton.dataset.advancedFilter;
-    applyEventFilter();
-    return;
-  }
-
   const templateButton = event.target.closest("[data-advanced-template]");
   if (templateButton) {
     event.preventDefault();
@@ -239,26 +181,40 @@ function shareEventOnWhatsApp(eventId) {
   if (!event) return;
 
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? []);
+  const settlement = calculateSettlement(participants, event.expenses ?? [], {
+    roundTransfers: usesRoundedSettlementTransfers(event)
+  });
   const summary = formatSettlementSummary({
     eventName: event.name,
     participants,
-    transfers: event.transfers?.length ? event.transfers : settlement.transfers
+    transfers: event.transfers?.length ? event.transfers : settlement.transfers,
+    currency: event.currency,
+    participantAliases: event.participantAliases
   });
   window.open(`https://wa.me/?text=${encodeURIComponent(summary)}`, "_blank", "noopener");
 }
 
 async function setEventClosed(eventId, closed) {
   const state = loadState();
+  const statusUpdatedAt = new Date().toISOString();
   const nextState = {
     ...state,
     events: (state.events ?? []).map((event) => {
       if (event.id !== eventId) return event;
       if (closed) {
-        return { ...event, locked: true, closedAt: new Date().toISOString() };
+        return {
+          ...event,
+          locked: true,
+          closedAt: statusUpdatedAt,
+          statusUpdatedAt
+        };
       }
-      const { closedAt, ...openEvent } = event;
-      return { ...openEvent, locked: false };
+      return {
+        ...event,
+        locked: false,
+        closedAt: null,
+        statusUpdatedAt
+      };
     })
   };
 
@@ -272,75 +228,16 @@ async function mergeSelectedParticipants() {
   const targetId = panel?.querySelector("[data-advanced-merge-target]")?.value;
   if (!sourceId || !targetId || sourceId === targetId) return;
 
-  await saveState(mergeParticipants(loadState(), sourceId, targetId));
+  await saveState(mergeParticipantIdentities(loadState(), sourceId, targetId));
   window.location.reload();
 }
 
-function mergeParticipants(state, sourceId, targetId) {
-  return {
-    ...state,
-    currentParticipantId: replaceId(state.currentParticipantId, sourceId, targetId),
-    participants: (state.participants ?? []).filter((participant) => participant.id !== sourceId),
-    groups: (state.groups ?? []).map((group) => ({
-      ...group,
-      memberIds: uniqueIds((group.memberIds ?? []).map((id) => replaceId(id, sourceId, targetId))),
-      adminIds: uniqueIds((group.adminIds ?? []).map((id) => replaceId(id, sourceId, targetId)))
-    })),
-    events: (state.events ?? []).map((event) => ({
-      ...event,
-      participantIds: uniqueIds((event.participantIds ?? []).map((id) => replaceId(id, sourceId, targetId))),
-      adminIds: uniqueIds((event.adminIds ?? []).map((id) => replaceId(id, sourceId, targetId))),
-      createdByParticipantId: replaceId(event.createdByParticipantId, sourceId, targetId),
-      expenses: (event.expenses ?? []).map((expense) => ({
-        ...expense,
-        createdByParticipantId: replaceId(expense.createdByParticipantId, sourceId, targetId),
-        sharedByParticipantIds: uniqueIds((expense.sharedByParticipantIds ?? []).map((id) => replaceId(id, sourceId, targetId))),
-        payers: mergePayers((expense.payers ?? []).map((payer) => ({
-          ...payer,
-          participantId: replaceId(payer.participantId, sourceId, targetId)
-        })))
-      })),
-      transfers: (event.transfers ?? [])
-        .map((transfer) => ({
-          ...transfer,
-          fromParticipantId: replaceId(transfer.fromParticipantId, sourceId, targetId),
-          toParticipantId: replaceId(transfer.toParticipantId, sourceId, targetId),
-          markedPaidByParticipantId: replaceId(transfer.markedPaidByParticipantId, sourceId, targetId)
-        }))
-        .filter((transfer) => transfer.fromParticipantId !== transfer.toParticipantId)
-    }))
-  };
-}
-
 function loadState() {
-  try {
-    const state = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
-    return {
-      participants: [],
-      groups: [],
-      events: [],
-      ...state
-    };
-  } catch {
-    return { participants: [], groups: [], events: [] };
-  }
+  return loadStoredState();
 }
 
 async function saveState(state) {
-  const sharedState = {
-    ...state,
-    currentParticipantId: state.participants?.[0]?.id ?? state.currentParticipantId ?? ""
-  };
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sharedState));
-  try {
-    await fetch("/api/state", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(sharedState)
-    });
-  } catch {
-    // The local copy is already saved.
-  }
+  return saveSharedState(state);
 }
 
 function findEvent(state, eventId) {
@@ -352,31 +249,8 @@ function eventParticipants(state, event) {
   return (state.participants ?? []).filter((participant) => ids.has(participant.id));
 }
 
-function currentParticipant(state) {
-  const localId = window.localStorage.getItem(LOCAL_PARTICIPANT_KEY);
-  return state.participants?.some((participant) => participant.id === localId)
-    ? localId
-    : state.currentParticipantId;
-}
-
 function isClosed(event) {
   return Boolean(event?.locked || event?.closedAt);
-}
-
-function replaceId(value, sourceId, targetId) {
-  return value === sourceId ? targetId : value;
-}
-
-function uniqueIds(ids) {
-  return [...new Set((ids ?? []).filter(Boolean))];
-}
-
-function mergePayers(payers) {
-  const totals = new Map();
-  for (const payer of payers) {
-    totals.set(payer.participantId, (totals.get(payer.participantId) ?? 0) + payer.amount);
-  }
-  return [...totals.entries()].map(([participantId, amount]) => ({ participantId, amount }));
 }
 
 function installAdvancedStyles() {

@@ -1,52 +1,114 @@
-const CACHE_NAME = "settle-friends-live-v27";
+const CACHE_NAME = "settle-friends-live-v280";
 const CACHE_FILES = [
   "/",
   "/index.html",
   "/styles.css",
+  "/legal.css",
+  "/legal.mjs",
   "/manifest.webmanifest",
+  "/brand-mark.png",
+  "/brand-mark-v3.png",
   "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/apple-touch-icon.png",
+  "/sogrim-logo-lockup.png",
+  "/sogrim-share-logo.png",
+  "/sogrim-home-hero.png",
+  "/assets/sogrim-logo-intro.mp4",
+  "/assets/sogrim-logo-intro-poster.jpg",
+  "/assets/sogrim-logo-intro-hold.jpg",
+  "/assets/sign-in-with-apple-iw.png",
+  "/assets/avatars/avatar-1.png",
+  "/assets/avatars/avatar-2.png",
+  "/assets/avatars/avatar-3.png",
+  "/assets/avatars/avatar-4.png",
+  "/assets/avatars/avatar-5.png",
+  "/assets/avatars/avatar-6.png",
   "/privacy.html",
   "/support.html",
   "/terms.html",
+  "/accessibility.html",
   "/account-deletion.html",
   "/src/app.mjs",
+  "/src/publicAppSplashLayer.mjs",
   "/src/data/cloudStore.mjs",
+  "/src/data/cloudConflictRetry.mjs",
+  "/src/data/accountAuth.mjs",
+  "/src/data/fetchTimeout.mjs",
+  "/src/data/appFeedback.mjs",
+  "/src/data/pendingInvite.mjs",
   "/src/data/demoData.mjs",
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
+  "/src/data/eventActivityNotifications.mjs",
+  "/src/data/eventInvites.mjs",
+  "/src/data/notificationInbox.mjs",
+  "/src/data/paymentReminders.mjs",
+  "/src/data/productMetrics.mjs",
+  "/src/data/startupMetrics.mjs",
+  "/src/data/startupScheduler.mjs",
+  "/src/data/pushDevices.mjs",
+  "/src/data/referralStore.mjs",
+  "/src/data/premiumBillingStore.mjs",
+  "/src/data/friendsStore.mjs",
+  "/src/data/sharedEventStore.mjs",
   "/src/domain/appActions.mjs",
+  "/src/domain/avatarPresets.mjs",
   "/src/domain/cloudSpace.mjs",
+  "/src/domain/compactInvite.mjs",
+  "/src/domain/currencies.mjs",
+  "/src/domain/dateLabels.mjs",
   "/src/domain/eventFilters.mjs",
   "/src/domain/eventInsights.mjs",
+  "/src/domain/eventActivityLog.mjs",
+  "/src/domain/eventMembership.mjs",
+  "/src/domain/eventTypes.mjs",
   "/src/domain/expenseDraft.mjs",
+  "/src/domain/expenseDraftMemory.mjs",
+  "/src/domain/friendContacts.mjs",
+  "/src/domain/groupIdentity.mjs",
+  "/src/domain/quickExpenses.mjs",
   "/src/domain/googleAuth.mjs",
   "/src/domain/inviteLinks.mjs",
+  "/src/domain/referralCodes.mjs",
   "/src/domain/launchReadiness.mjs",
   "/src/domain/money.mjs",
+  "/src/domain/nativeDeepLinks.mjs",
+  "/src/domain/notificationTargets.mjs",
+  "/src/domain/entitlements.mjs",
   "/src/domain/permissions.mjs",
   "/src/domain/personalMemory.mjs",
+  "/src/domain/participantIdentity.mjs",
+  "/src/domain/participantRelationshipInsights.mjs",
+  "/src/domain/productMetrics.mjs",
   "/src/domain/qrCode.mjs",
   "/src/domain/settlement.mjs",
   "/src/domain/settlementSummary.mjs",
+  "/src/domain/sharedStateMerge.mjs",
   "/src/domain/stateBackup.mjs",
   "/src/domain/userProfile.mjs",
+  "/src/domain/usernames.mjs",
   "/src/domain/validation.mjs",
   "/src/publicAdvancedWorkflowLayer.mjs",
-  "/src/publicBackNavigationLayer.mjs",
   "/src/publicBrandLayer.mjs",
   "/src/publicClarityLayer.mjs",
   "/src/publicCommandIconLayer.mjs",
   "/src/publicCopyCleanupLayer.mjs",
+  "/src/publicDesignV2Layer.mjs",
   "/src/publicEmptyHomePolishLayer.mjs",
   "/src/publicEventLifecycleLayer.mjs",
   "/src/publicEventWorkspaceLayer.mjs",
   "/src/publicExpenseGuestLayer.mjs",
-  "/src/publicExpensePayerSummaryLayer.mjs",
   "/src/publicFintechDesignLayer.mjs",
+  "/src/publicFontLoader.mjs",
   "/src/publicFramerMotionLayer.mjs",
+  "/src/vendor/framer-motion-dom.js",
   "/src/publicGoogleAuthLayer.mjs",
   "/src/publicHomeButtonLayer.mjs",
   "/src/publicInlinePayerLayer.mjs",
+  "/src/publicInstallAppLayer.mjs",
   "/src/publicInviteFetchGuardLayer.mjs",
   "/src/publicInviteJoinFixLayer.mjs",
   "/src/publicInviteQrLayer.mjs",
@@ -55,48 +117,111 @@ const CACHE_FILES = [
   "/src/publicMutationThrottleLayer.mjs",
   "/src/publicNameCleanup.mjs",
   "/src/publicMobileModalLayer.mjs",
+  "/src/publicNativeBridgeLayer.mjs",
+  "/src/publicProductMetricsLayer.mjs",
+  "/src/publicReferralRewardsLayer.mjs",
+  "/src/publicPremiumBillingLayer.mjs",
+  "/src/publicAdLayer.mjs",
+  "/src/publicNotificationLayer.mjs",
   "/src/publicPersonalActionsLayer.mjs",
   "/src/publicPersonalMemoryLayer.mjs",
   "/src/publicPremiumVisualLayer.mjs",
   "/src/publicProductV1Layer.mjs",
+  "/src/publicSyncStatusLayer.mjs",
+  "/src/publicStudioDesignLayer.mjs",
+  "/src/publicCircleDesignLayer.mjs",
+  "/src/publicLedgerWorkspaceLayer.mjs",
+  "/src/publicChoicePickerLayer.mjs",
+  "/src/publicDesignCoherenceLayer.mjs",
+  "/src/publicDynamicTypeLayer.mjs",
   "/src/publicProfileContextLayer.mjs",
   "/src/publicProfileMemoryGuardLayer.mjs",
   "/src/publicProfileOverlay.mjs",
-  "/src/publicVisualRefreshLayer.mjs"
+  "/src/publicAccountAuthLayer.mjs",
+  "/src/publicVisualRefreshLayer.mjs",
+  "/src/uiIcons.mjs"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CACHE_FILES))
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(CACHE_FILES))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((names) =>
-        Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)))
-      )
+    Promise.all([
+      caches
+        .keys()
+        .then((names) =>
+          Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)))
+        ),
+      self.clients.claim()
+    ])
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
+  const sameOrigin = url.origin === self.location.origin;
 
-  if (event.request.method !== "GET" || url.pathname.startsWith("/api/")) {
+  if (
+    event.request.method !== "GET" ||
+    !sameOrigin ||
+    url.pathname.startsWith("/api/")
+  ) {
+    return;
+  }
+
+  if (isPrivateInviteUrl(url)) {
+    event.respondWith(fetchPrivateInvite(event.request));
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+    (async () => {
+      try {
+        const response = await fetch(event.request);
+        if (
+          response.status === 200 &&
+          !event.request.headers.has("range")
+        ) {
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(event.request, response.clone());
+          } catch {
+            // A full cache or a transient write failure must not hide a valid response.
+          }
+        }
         return response;
-      })
-      .catch(() => caches.match(event.request))
+      } catch {
+        return (
+          (await caches.match(event.request)) ??
+          (event.request.mode === "navigate" ? await caches.match("/index.html") : null) ??
+          (await caches.match(url.pathname)) ??
+          Response.error()
+        );
+      }
+    })()
   );
 });
+
+function isPrivateInviteUrl(url) {
+  return (
+    url.searchParams.has("t") ||
+    url.searchParams.has("key") ||
+    url.searchParams.has("invite") ||
+    /^\/i\/[^/]+\/[^/]+\/[^/]+\/?$/.test(url.pathname)
+  );
+}
+
+async function fetchPrivateInvite(request) {
+  try {
+    return await fetch(request, { cache: "no-store" });
+  } catch {
+    return (await caches.match("/index.html")) ?? Response.error();
+  }
+}

@@ -5,10 +5,17 @@ export function parseMoneyInput(value) {
   }
 
   const [whole, fraction = ""] = normalized.split(".");
-  return Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  const amount = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  if (!Number.isSafeInteger(amount)) {
+    throw new Error("הסכום גדול מדי.");
+  }
+  return amount;
 }
 
 export function formatMoney(amount) {
+  if (!Number.isSafeInteger(amount)) {
+    throw new TypeError("Money amounts must be safe integer agorot.");
+  }
   const sign = amount < 0 ? "-" : "";
   const absolute = Math.abs(amount);
   const whole = Math.floor(absolute / 100);

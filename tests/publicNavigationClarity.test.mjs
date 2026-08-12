@@ -20,23 +20,50 @@ test("public overlay explains where the visitor is and exposes primary actions",
   assert.match(overlay, /data-public-click/);
 });
 
-test("public event screen makes expense entry and settlement obvious", async () => {
-  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+test("public home screen does not render the large context bar", async () => {
+  const clarity = await readFile("src/publicClarityLayer.mjs", "utf8");
+  const profile = await readFile("src/publicProfileOverlay.mjs", "utf8");
 
-  assert.match(overlay, /enhanceEventScreen/);
-  assert.match(overlay, /product-event-command/);
-  assert.match(overlay, /כאן מכניסים הוצאות/);
-  assert.match(overlay, /הוסף הוצאה/);
-  assert.match(overlay, /סגור חשבון/);
+  for (const source of [clarity, profile]) {
+    const homeContext = sourceBetween(
+      source,
+      "function getScreenContext",
+      'if (screen.querySelector(\'[data-action="create-event"]\'))'
+    );
+
+    assert.doesNotMatch(homeContext, /data-action="new-event"/);
+    assert.doesNotMatch(homeContext, /׳‘׳™׳×/);
+  }
 });
 
-test("public overlay adds a mobile action bar for the next obvious step", async () => {
-  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+test("public event screen preserves the focused native event navigation", async () => {
+  const [overlay, app] = await Promise.all([
+    readFile("src/publicClarityLayer.mjs", "utf8"),
+    readFile("src/app.mjs", "utf8")
+  ]);
+  const enhancement = sourceBetween(
+    overlay,
+    "function enhanceEventScreen",
+    "function enhanceExpenseFormHint"
+  );
 
-  assert.match(overlay, /product-sticky-actions/);
+  assert.match(enhancement, /product-event-screen/);
+  assert.doesNotMatch(enhancement, /product-event-command|product-sticky-actions/);
+  assert.match(app, /event-header-actions/);
+  assert.match(app, /data-action="show-expense-form"/);
+  assert.match(app, /renderEventWorkspaceNav\(event, "expenses"\)/);
+});
+
+test("public overlay leaves event actions to the native event workspace", async () => {
+  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+  const enhancement = sourceBetween(
+    overlay,
+    "function enhanceEventScreen",
+    "function enhanceExpenseFormHint"
+  );
+
   assert.match(overlay, /goToNativeAction/);
-  assert.match(overlay, /show-expense-form/);
-  assert.match(overlay, /settle/);
+  assert.doesNotMatch(enhancement, /product-sticky-actions|data-public-click/);
 });
 
 test("public event chrome avoids repeating the share link action", async () => {
@@ -47,30 +74,47 @@ test("public event chrome avoids repeating the share link action", async () => {
   assert.match(app, /data-action="open-event-share"/);
 
   for (const source of [clarity, profile]) {
-    const eventContext = sourceBetween(
-      source,
-      'if (screen.querySelector(\'[data-action="show-expense-form"]\'))',
-      'if (screen.querySelector(\'[data-action="create-event"]\'))'
-    );
+    const context = sourceBetween(source, "function getScreenContext", "function enhanceEventScreen");
     const eventOverlay = sourceBetween(source, "function enhanceEventScreen", "function enhanceExpenseFormHint");
 
-    assert.doesNotMatch(eventContext, /open-event-share/);
+    assert.doesNotMatch(context, /data-action="show-expense-form"|open-event-share/);
     assert.doesNotMatch(eventOverlay, /open-event-share/);
   }
 });
 
-test("public event overlay does not duplicate the native event command grid", async () => {
-  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+test("public new event chrome frames creation and joining without repeating the title", async () => {
+  const clarity = await readFile("src/publicClarityLayer.mjs", "utf8");
+  const profile = await readFile("src/publicProfileOverlay.mjs", "utf8");
 
-  assert.match(overlay, /event-command-grid/);
+  for (const source of [clarity, profile]) {
+    const newEventContext = sourceBetween(
+      source,
+      'if (screen.querySelector(\'[data-action="create-event"]\'))',
+      'if (screen.querySelector(\'[data-action="copy-settlement"]\'))'
+    );
+
+    assert.match(newEventContext, /title: "אירוע חדש"/);
+    assert.doesNotMatch(newEventContext, /יצירה או הצטרפות|join-existing-event/);
+  }
 });
 
-test("public clarity layer clears starter expense defaults and exposes saved name removal", async () => {
+test("public event overlay does not add a second event action surface", async () => {
+  const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
+  const enhancement = sourceBetween(
+    overlay,
+    "function enhanceEventScreen",
+    "function enhanceExpenseFormHint"
+  );
+
+  assert.doesNotMatch(enhancement, /event-command-grid|product-event-command|product-sticky-actions/);
+});
+
+test("public clarity layer exposes saved name removal without rewriting expense drafts", async () => {
   const overlay = await readFile("src/publicClarityLayer.mjs", "utf8");
 
-  assert.match(overlay, /clearStarterExpenseDefaults/);
-  assert.match(overlay, /resetInputValue\(expenseName, "מונית"\)/);
-  assert.match(overlay, /resetInputValue\(expenseTotal, "110"\)/);
+  assert.doesNotMatch(overlay, /clearStarterExpenseDefaults/);
+  assert.doesNotMatch(overlay, /nameCleanupCleared/);
+  assert.doesNotMatch(overlay, /publicDefaultCleared/);
   assert.match(overlay, /product-saved-names-panel/);
   assert.match(overlay, /data-public-remove-participant/);
 });

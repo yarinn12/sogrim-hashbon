@@ -64,18 +64,25 @@ export function canAutoFillPayer(payer) {
 }
 
 export function summarizePayerDraft(totalInput, payers) {
-  const total = readDraftAmount(totalInput);
-  const paid = Array.isArray(payers)
-    ? payers.reduce((sum, payer) => sum + readDraftAmount(payer.amount), 0)
-    : 0;
+  const totalResult = readDraftAmountResult(totalInput);
+  const payerResults = Array.isArray(payers)
+    ? payers.map((payer) => readDraftAmountResult(payer.amount))
+    : [];
+  const total = totalResult.amount;
+  const paid = payerResults.reduce((sum, result) => sum + result.amount, 0);
   const difference = total - paid;
+  const valid =
+    totalResult.valid &&
+    payerResults.length > 0 &&
+    payerResults.every((result) => result.valid);
 
   return {
     total,
     paid,
     remaining: Math.max(difference, 0),
     overpaid: Math.max(-difference, 0),
-    balanced: total > 0 && difference === 0
+    balanced: valid && total > 0 && difference === 0,
+    valid
   };
 }
 
@@ -85,9 +92,13 @@ export function formatDraftAmount(amount) {
 }
 
 function readDraftAmount(value) {
+  return readDraftAmountResult(value).amount;
+}
+
+function readDraftAmountResult(value) {
   try {
-    return parseMoneyInput(value);
+    return { amount: parseMoneyInput(value), valid: true };
   } catch {
-    return 0;
+    return { amount: 0, valid: false };
   }
 }

@@ -1,7 +1,6 @@
 import {
   loadLocalProfile,
   loadRuntimeConfig,
-  getActiveCloudSpaceId,
   loadState,
   saveSharedState,
   saveState
@@ -13,29 +12,71 @@ import {
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
-import { parseInviteSpaceId } from "./domain/cloudSpace.mjs";
+import { parseCompactInviteUrl } from "./domain/compactInvite.mjs";
+import { normalizeReferralCode } from "./domain/referralCodes.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
+import { isActiveEventParticipant } from "./domain/eventMembership.mjs";
+import {
+  attachSharedEventCredentials,
+  mergeSharedEventIntoState,
+  readSharedEventState
+} from "./data/sharedEventStore.mjs";
+import {
+  eventOpenInviteToken,
+  resolveEventInviteCredentials
+} from "./data/eventInvites.mjs";
+import {
+  pendingInviteUrl,
+  rememberPendingInviteUrl
+} from "./data/pendingInvite.mjs";
+import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
 
 let inviteSnapshotScheduled = false;
 let runtimeConfig = null;
+let inviteJoinBusy = false;
+let pendingInviteReconnectRequest = null;
 
-importIncomingInviteSnapshot();
-loadRuntimeConfig().then((config) => {
-  runtimeConfig = config;
-  scheduleInviteSnapshotEnhancement();
+rememberPendingInviteUrl();
+startInviteImportAfterAccountReady();
+window.addEventListener("online", () => {
+  recoverPendingInviteAfterReconnect().catch(() => {});
 });
 document.addEventListener("click", handleInviteCopyClick, true);
 document.addEventListener("click", handleInviteSnapshotJoinClick, true);
+document.addEventListener(
+  "settle-friends:entitlements-changed",
+  scheduleInviteSnapshotEnhancement
+);
 new MutationObserver(scheduleInviteSnapshotEnhancement).observe(document.body, {
   childList: true,
   subtree: true
 });
 scheduleInviteSnapshotEnhancement();
 
+function startInviteImportAfterAccountReady() {
+  if (!document.documentElement.classList.contains("account-auth-pending")) {
+    initializeInviteImport();
+    return;
+  }
+
+  document.addEventListener("account-auth-ready", initializeInviteImport, {
+    once: true
+  });
+}
+
+async function initializeInviteImport() {
+  importIncomingInviteSnapshot();
+  const config = await loadRuntimeConfig();
+  runtimeConfig = config;
+  const imported = await importIncomingSharedEvent(config);
+  if (imported) cleanInviteAddress();
+  scheduleInviteSnapshotEnhancement();
+}
+
 function importIncomingInviteSnapshot() {
   const inviteSnapshot = parseInviteSnapshot(window.location.href);
   const eventId = parseInviteEventId(window.location.href);
-  if (!inviteSnapshot || !eventId) return;
+  if (!inviteSnapshot || !eventId || inviteSnapshot.event.id !== eventId) return;
 
   let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
   const profile = loadLocalProfile();
@@ -47,22 +88,22 @@ function importIncomingInviteSnapshot() {
         id: profile.participantId,
         displayName: profile.displayName
       },
-      eventId
+      eventId,
+      { reactivateInactive: false }
     );
   }
 
   saveState(state);
-  saveSharedState(state);
   reloadOnceForImportedInvite(eventId);
 }
 
 function reloadOnceForImportedInvite(eventId) {
   const marker = `sogrimInviteImported:${eventId}`;
   try {
-    if (sessionStorage.getItem(marker)) return;
+    if (sessionStorage.getItem(marker) === "1") return;
     sessionStorage.setItem(marker, "1");
   } catch {
-    return;
+    // The invite URL was already cleaned, so one reload cannot loop.
   }
 
   window.location.reload();
@@ -79,21 +120,58 @@ function scheduleInviteSnapshotEnhancement() {
 }
 
 function enhanceInviteLinks() {
-  document
-    .querySelectorAll('[data-action="copy-invite"][data-event-id]')
-    .forEach((button) => {
-      const inviteUrl = smartInviteUrl(button.dataset.eventId);
-      const input = button.closest(".invite-link-row")?.querySelector("input");
-      if (input && input.value !== inviteUrl) input.value = inviteUrl;
+  const buttons = document.querySelectorAll(
+    '[data-action="copy-invite"][data-open-link="true"][data-event-id]'
+  );
+  if (buttons.length && !runtimeConfig) ensureRuntimeConfigForInvites();
+
+  buttons.forEach((button) => {
+    const input = button.closest(".invite-link-row")?.querySelector("input");
+    if (input?.dataset.shareReady !== "true") return;
+    const inviteUrl = smartInviteUrl(button.dataset.eventId);
+    if (input && input.value !== inviteUrl) input.value = inviteUrl;
+  });
+}
+
+let runtimeConfigRequest = null;
+
+function ensureRuntimeConfigForInvites() {
+  if (runtimeConfigRequest) return runtimeConfigRequest;
+
+  runtimeConfigRequest = loadRuntimeConfig()
+    .then((config) => {
+      runtimeConfig = config;
+      scheduleInviteSnapshotEnhancement();
+      return config;
+    })
+    .catch(() => null)
+    .finally(() => {
+      runtimeConfigRequest = null;
     });
+
+  return runtimeConfigRequest;
 }
 
 function handleInviteCopyClick(event) {
-  const button = event.target.closest('[data-action="copy-invite"][data-event-id]');
+  const button = event.target.closest(
+    '[data-action="copy-invite"][data-open-link="true"][data-event-id]'
+  );
   if (!button) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
+
+  copyResolvedInviteUrl(button);
+}
+
+async function copyResolvedInviteUrl(button) {
+  if (!runtimeConfig) {
+    try {
+      runtimeConfig = await loadRuntimeConfig();
+    } catch {
+      // The snapshot link stays usable when the runtime config is unavailable.
+    }
+  }
 
   const inviteUrl = smartInviteUrl(button.dataset.eventId);
   copyText(inviteUrl);
@@ -103,7 +181,7 @@ function handleInviteCopyClick(event) {
   }, 1400);
 }
 
-function handleInviteSnapshotJoinClick(event) {
+async function handleInviteSnapshotJoinClick(event) {
   const button = event.target.closest(
     '[data-action="join-existing-event"], [data-public-join-existing-event], [data-public-submit-join]'
   );
@@ -112,33 +190,178 @@ function handleInviteSnapshotJoinClick(event) {
   const link = findJoinLink();
   const inviteSnapshot = parseInviteSnapshot(link);
   const eventId = parseInviteEventId(link);
-  if (!inviteSnapshot || !eventId) return;
+  if (!inviteSnapshot || !eventId || inviteSnapshot.event.id !== eventId) return;
 
   event.preventDefault();
   event.stopImmediatePropagation();
+  if (inviteJoinBusy) return;
+  inviteJoinBusy = true;
+  button.disabled = true;
 
-  let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
-  const profile = loadLocalProfile();
-  if (profile) {
-    state = ensureNamedParticipant(
-      state,
-      {
-        ...profile,
-        id: profile.participantId,
-        displayName: profile.displayName
-      },
-      eventId
+  try {
+    let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
+    const joinRuntimeConfig = await loadRuntimeConfig();
+    runtimeConfig = joinRuntimeConfig;
+    const credentials = await resolveEventInviteCredentials(
+      joinRuntimeConfig,
+      link
     );
+    if (credentials) {
+      state = attachSharedEventCredentials(state, eventId, credentials);
+      try {
+        const sharedEventState = await readSharedEventState(
+          joinRuntimeConfig,
+          credentials,
+          eventId
+        );
+        if (sharedEventState) {
+          state = mergeSharedEventIntoState(state, sharedEventState, credentials);
+        }
+      } catch {
+        // The safe preview remains available when cloud sync is temporarily unavailable.
+      }
+    }
+    const profile = loadLocalProfile();
+    const wasAlreadyParticipant = profile
+      ? isActiveEventParticipant(
+          state.events?.find((event) => event.id === eventId),
+          profile.participantId
+        )
+      : true;
+    if (profile) {
+      state = ensureNamedParticipant(
+        state,
+        {
+          ...profile,
+          id: profile.participantId,
+          displayName: profile.displayName
+        },
+        eventId,
+        { reactivateInactive: false }
+      );
+    }
+
+    saveState(state);
+    const saveResult = await saveSharedState(state);
+    if (profile && !wasAlreadyParticipant) {
+      notifyJoinedEvent(saveResult, eventId, profile.participantId);
+    }
+    window.location.replace(buildEventInviteUrl(window.location.href, eventId));
+  } finally {
+    inviteJoinBusy = false;
+    if (button.isConnected) button.disabled = false;
+  }
+}
+
+function recoverPendingInviteAfterReconnect() {
+  if (pendingInviteReconnectRequest) return pendingInviteReconnectRequest;
+
+  const rememberedInviteUrl = pendingInviteUrl(window.location.href);
+  const eventId = parseInviteEventId(rememberedInviteUrl);
+  if (!eventId) return Promise.resolve();
+
+  pendingInviteReconnectRequest = loadRuntimeConfig()
+    .then(async (config) => {
+      runtimeConfig = config;
+      const imported = await importIncomingSharedEvent(config, rememberedInviteUrl);
+      if (imported) cleanInviteAddress();
+      return imported;
+    })
+    .finally(() => {
+      pendingInviteReconnectRequest = null;
+    });
+
+  return pendingInviteReconnectRequest;
+}
+
+async function importIncomingSharedEvent(
+  config,
+  inviteUrl = pendingInviteUrl(window.location.href)
+) {
+  const url = new URL(inviteUrl, window.location.origin);
+  const eventId = parseInviteEventId(url);
+  let credentials = null;
+  try {
+    credentials = await resolveEventInviteCredentials(config, url);
+  } catch {
+    return false;
+  }
+  if (!eventId || !credentials) return false;
+
+  try {
+    const sharedEventState = await readSharedEventState(config, credentials, eventId);
+    if (!sharedEventState) return false;
+    let state = mergeSharedEventIntoState(loadState(), sharedEventState, credentials);
+    const profile = loadLocalProfile();
+    const wasAlreadyParticipant = profile
+      ? isActiveEventParticipant(
+          state.events?.find((event) => event.id === eventId),
+          profile.participantId
+        )
+      : true;
+    if (profile) {
+      state = ensureNamedParticipant(
+        state,
+        { ...profile, id: profile.participantId, displayName: profile.displayName },
+        eventId,
+        { reactivateInactive: false }
+      );
+    }
+    saveState(state);
+    const saveResult = await saveSharedState(state);
+    if (profile && !wasAlreadyParticipant) {
+      notifyJoinedEvent(saveResult, eventId, profile.participantId, config);
+    }
+    return true;
+  } catch {
+    // The URL preview remains usable when the event cloud is temporarily unavailable.
+    return false;
+  }
+}
+
+function notifyJoinedEvent(
+  saveResult,
+  eventId,
+  participantId,
+  config = runtimeConfig
+) {
+  if (!saveResult?.ok || saveResult.mode !== "cloud") return;
+  const configRequest = config
+    ? Promise.resolve(config)
+    : loadRuntimeConfig();
+  configRequest
+    .then((resolvedConfig) =>
+      sendEventActivityNotification(resolvedConfig, {
+        eventId,
+        activityId: participantId,
+        kind: "participant-joined"
+      })
+    )
+    .catch(() => {});
+}
+
+function cleanInviteAddress() {
+  const url = new URL(window.location.href);
+  const compactInvite = parseCompactInviteUrl(url);
+  if (compactInvite) {
+    url.pathname = "/";
+    url.search = "";
+    url.searchParams.set("event", compactInvite.eventId);
+    window.history.replaceState(window.history.state, "", url);
+    return;
   }
 
-  saveState(state);
-  saveSharedState(state);
-  window.location.href = buildEventInviteUrl(
-    window.location.href,
-    eventId,
-    inviteSnapshot,
-    { spaceId: parseInviteSpaceId(link) ?? getActiveCloudSpaceId(runtimeConfig ?? undefined) }
-  );
+  if (
+    !url.searchParams.has("key") &&
+    !url.searchParams.has("invite") &&
+    !url.searchParams.has("t")
+  ) return;
+
+  url.searchParams.delete("space");
+  url.searchParams.delete("key");
+  url.searchParams.delete("invite");
+  url.searchParams.delete("t");
+  window.history.replaceState(window.history.state, "", url);
 }
 
 function findJoinLink() {
@@ -151,11 +374,24 @@ function findJoinLink() {
 
 function smartInviteUrl(eventId) {
   const state = loadState();
+  const event = state.events?.find((item) => item.id === eventId);
+  const cloudInvite = runtimeConfig?.storage?.mode === "supabase";
+  const inviteToken = cloudInvite
+    ? eventOpenInviteToken(event)
+    : null;
+  const referralCode = normalizeReferralCode(
+    globalThis.SogrimMonetization?.status?.referralCode
+  );
   return buildEventInviteUrl(
-    window.location.href,
+    runtimeConfig?.publicUrl || window.location.href,
     eventId,
-    buildEventInviteSnapshot(state, eventId),
-    { spaceId: getActiveCloudSpaceId(runtimeConfig ?? undefined) }
+    cloudInvite ? null : buildEventInviteSnapshot(state, eventId),
+    inviteToken
+      ? {
+          inviteToken,
+          referralCode
+        }
+      : { referralCode }
   );
 }
 

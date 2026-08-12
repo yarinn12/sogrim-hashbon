@@ -1,95 +1,50 @@
+import { iconSvg } from "./uiIcons.mjs";
+
 const STYLE_ID = "public-command-icon-layer-style";
 
-const COMMAND_ICONS = {
-  "new-event": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <rect x="5" y="5" width="14" height="14" rx="3" />
-      <path d="M12 8.5v7" />
-      <path d="M8.5 12h7" />
-    </svg>
-  `,
-  "create-event": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <rect x="5" y="5" width="14" height="14" rx="3" />
-      <path d="M12 8.5v7" />
-      <path d="M8.5 12h7" />
-    </svg>
-  `,
-  "join-event-screen": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M5 12h10" />
-      <path d="m11 8 4 4-4 4" />
-      <path d="M16 5h2.2A1.8 1.8 0 0 1 20 6.8v10.4a1.8 1.8 0 0 1-1.8 1.8H16" />
-    </svg>
-  `,
-  "join-existing-event": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M5 12h10" />
-      <path d="m11 8 4 4-4 4" />
-      <path d="M16 5h2.2A1.8 1.8 0 0 1 20 6.8v10.4a1.8 1.8 0 0 1-1.8 1.8H16" />
-    </svg>
-  `,
-  groups: `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <circle cx="9" cy="8" r="3" />
-      <path d="M4.5 19v-1.1c0-2.2 1.9-4 4.5-4s4.5 1.8 4.5 4V19" />
-      <path d="M16.5 11.2a2.7 2.7 0 1 0 0-5.4" />
-      <path d="M15.4 14.2c2.4.4 4.1 1.8 4.1 3.7V19" />
-    </svg>
-  `,
-  "show-expense-form": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M8 4.5h8A2.5 2.5 0 0 1 18.5 7v13l-2.7-1.5L13.2 20 12 19.3 10.8 20l-2.6-1.5L5.5 20V7A2.5 2.5 0 0 1 8 4.5Z" />
-      <path d="M9.5 9h5" />
-      <path d="M9.5 13h5" />
-      <path d="M9.5 17h3" />
-    </svg>
-  `,
-  "open-event-participants": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <circle cx="9" cy="8" r="3" />
-      <path d="M4.5 19v-1.1c0-2.2 1.9-4 4.5-4s4.5 1.8 4.5 4V19" />
-      <path d="M16.5 11.2a2.7 2.7 0 1 0 0-5.4" />
-      <path d="M15.4 14.2c2.4.4 4.1 1.8 4.1 3.7V19" />
-    </svg>
-  `,
-  "open-event-share": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <circle cx="6.5" cy="12" r="3" />
-      <circle cx="17.5" cy="6.5" r="3" />
-      <circle cx="17.5" cy="17.5" r="3" />
-      <path d="m9.2 10.7 5.6-2.8" />
-      <path d="m9.2 13.3 5.6 2.8" />
-    </svg>
-  `,
-  "open-event-settings": `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M4 7h16" />
-      <circle cx="9" cy="7" r="2" />
-      <path d="M4 12h16" />
-      <circle cx="15" cy="12" r="2" />
-      <path d="M4 17h16" />
-      <circle cx="11" cy="17" r="2" />
-    </svg>
-  `,
-  settle: `
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path d="M5 7h14" />
-      <path d="M8 7 5.5 13h5L8 7Z" />
-      <path d="M16 7 13.5 13h5L16 7Z" />
-      <path d="M12 4.5v14" />
-      <path d="M8.5 19.5h7" />
-    </svg>
-  `
+const ACTION_ICON_NAMES = {
+  "new-event": "plus-square",
+  "create-event": "plus-square",
+  "join-event-screen": "log-in",
+  "join-existing-event": "log-in",
+  groups: "users",
+  "new-group": "user-plus",
+  "manage-people": "users-list",
+  "show-expense-form": "receipt",
+  "open-event-participants": "users",
+  "open-event-share": "share",
+  "open-event-settings": "sliders",
+  settle: "transfers",
+  "send-payment-reminder": "bell",
+  "archive-group": "archive",
+  "delete-event": "trash",
+  "delete-expense": "trash",
+  "leave-event": "log-out",
+  "remove-event-participant": "user-minus",
+  "remove-network-friend": "user-minus",
+  "remove-offline-friend": "user-minus",
+  "remove-participant": "user-minus",
+  "delete-account-open": "trash"
 };
+
+const COMMAND_ICONS = Object.fromEntries(
+  Object.entries(ACTION_ICON_NAMES).map(([action, iconName]) => [action, iconSvg(iconName)])
+);
 
 const BUTTON_ICON_SELECTOR = [
   ".hero-actions button[data-action]",
   ".hero-actions button",
+  ".home-event-tools button[data-action]",
+  ".groups-overview-actions button[data-action]",
+  ".people-management-entry[data-action]",
   ".personal-next-step button[data-action]",
   ".event-workspace-tab[data-action]",
   ".event-modal-header button[data-action]",
-  ".settlement-hero-actions button[data-action]"
+  ".settlement-hero-actions button[data-action]",
+  ".transfer-reminder-button[data-action]",
+  ".danger-button[data-action]",
+  ".friend-remove-button[data-action]",
+  ".account-delete-button[data-account-action]"
 ].join(",");
 
 let scheduled = false;
@@ -151,6 +106,13 @@ function enhanceActionButtons() {
     const icon = COMMAND_ICONS[action];
     if (!icon) return;
 
+    const existingCommandIcon = button.querySelector(".command-card-icon");
+    if (existingCommandIcon) {
+      existingCommandIcon.innerHTML = icon;
+      button.querySelector(".button-action-icon")?.remove();
+      return;
+    }
+
     const existingIcon = button.querySelector(".button-action-icon");
     if (existingIcon) {
       existingIcon.innerHTML = icon;
@@ -166,13 +128,15 @@ function enhanceActionButtons() {
 }
 
 function getButtonAction(button) {
-  const action = button.getAttribute("data-action");
+  const action =
+    button.getAttribute("data-action") ||
+    button.getAttribute("data-account-action");
   if (action) return action;
 
   const label = button.textContent?.trim().replace(/\s+/g, " ") ?? "";
   if (label === "הצטרפות לאירוע") return "join-event-screen";
   if (label === "אירוע חדש") return "new-event";
-  if (label === "קבוצות") return "groups";
+  if (label === "קבוצות" || label === "חברים") return "groups";
   return "";
 }
 
@@ -231,6 +195,7 @@ function injectCommandIconStyles() {
     }
 
     .hero-actions button,
+    .home-event-tools button[data-action],
     .personal-next-step button[data-action],
     .event-workspace-tab[data-action],
     .settlement-hero-actions button[data-action] {

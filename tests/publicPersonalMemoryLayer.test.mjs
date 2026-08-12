@@ -8,15 +8,18 @@ test("public personal memory layer is loaded after the product overlays", async 
   assert.match(index, /publicPersonalMemoryLayer\.mjs/);
   assert.match(
     index,
-    /publicBrandLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicPersonalMemoryLayer\.mjs"><\/script>/
+    /publicBrandLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicEmptyHomePolishLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicPersonalMemoryLayer\.mjs"><\/script>/
   );
 });
 
 test("public personal memory layer scopes visible events and groups to the saved profile", async () => {
   const layer = await readFile("src/publicPersonalMemoryLayer.mjs", "utf8");
 
-  assert.match(layer, /LOCAL_PROFILE_KEY/);
+  assert.match(layer, /loadLocalProfile/);
   assert.match(layer, /STORAGE_KEY/);
+  assert.match(layer, /peekClientSpaceId/);
+  assert.match(layer, /stateStorageKey/);
+  assert.match(layer, /\$\{STORAGE_KEY\}:\$\{spaceId\}/);
   assert.match(layer, /eventBelongsToParticipant/);
   assert.match(layer, /groupBelongsToParticipant/);
   assert.match(layer, /data-action="open-event"/);

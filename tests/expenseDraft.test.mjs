@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import {
   balancePayerAmounts,
   createPayerDraft,
-  markPayerAmountEdited
+  markPayerAmountEdited,
+  summarizePayerDraft
 } from "../src/domain/expenseDraft.mjs";
 
 test("single payer is filled from the total automatically", () => {
@@ -29,4 +30,54 @@ test("manual payer amounts are not overwritten by auto balancing", () => {
   ]);
 
   assert.deepEqual(payers.map((payer) => payer.amount), ["50", "60"]);
+});
+
+test("payer draft summary shows remaining and overpaid amounts", () => {
+  assert.deepEqual(
+    summarizePayerDraft("120", [
+      markPayerAmountEdited(createPayerDraft("dan"), "50"),
+      markPayerAmountEdited(createPayerDraft("avi"), "60")
+    ]),
+    {
+      total: 12000,
+      paid: 11000,
+      remaining: 1000,
+      overpaid: 0,
+      balanced: false,
+      valid: true
+    }
+  );
+
+  assert.deepEqual(
+    summarizePayerDraft("120", [
+      markPayerAmountEdited(createPayerDraft("dan"), "70"),
+      markPayerAmountEdited(createPayerDraft("avi"), "60")
+    ]),
+    {
+      total: 12000,
+      paid: 13000,
+      remaining: 0,
+      overpaid: 1000,
+      balanced: false,
+      valid: true
+    }
+  );
+
+  assert.equal(
+    summarizePayerDraft("120", [
+      markPayerAmountEdited(createPayerDraft("dan"), "50"),
+      markPayerAmountEdited(createPayerDraft("avi"), "70")
+    ]).balanced,
+    true
+  );
+});
+
+test("payer draft never reports balanced while a payer amount is invalid", () => {
+  const summary = summarizePayerDraft("120", [
+    markPayerAmountEdited(createPayerDraft("dan"), "abc"),
+    markPayerAmountEdited(createPayerDraft("avi"), "120")
+  ]);
+
+  assert.equal(summary.valid, false);
+  assert.equal(summary.balanced, false);
 });

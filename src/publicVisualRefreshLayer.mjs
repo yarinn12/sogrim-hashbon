@@ -1,5 +1,5 @@
 const VISUAL_REFRESH_STYLE_ID = "public-visual-refresh-layer-style";
-const LEGACY_ROOT_CLASSES = ["visual-refresh-v6"];
+const LEGACY_ROOT_CLASSES = ["visual-refresh-v6", "visual-refresh-v3"];
 const LEGACY_SCREEN_CLASSES = [
   "command-center-screen",
   "command-center-home",

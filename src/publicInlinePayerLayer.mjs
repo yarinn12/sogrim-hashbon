@@ -61,7 +61,7 @@ function openInlinePayerAdd(select) {
   const panel = document.createElement("div");
   panel.className = "payer-inline-add";
   panel.innerHTML = `
-    <input class="guest-input" data-action="expense-inline-payer-name" placeholder="שם משלם חדש" />
+    <input class="guest-input" data-action="expense-inline-payer-name" aria-label="שם משלם חדש" placeholder="שם משלם חדש" />
     <button class="secondary-button" type="button" data-action="expense-inline-add-payer">הוסף</button>
   `;
 

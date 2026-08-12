@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1024px; height: 500px; margin: 0; overflow: hidden; }
+      body {
+        font-family: Arial, sans-serif;
+        color: #f8fffd;
+        background:
+          linear-gradient(115deg, rgba(255,255,255,.045) 1px, transparent 1px) 0 0 / 44px 44px,
+          linear-gradient(130deg, #073b37 0%, #086c64 58%, #0b8f82 100%);
+      }
+      .canvas {
+        position: relative;
+        display: grid;
+        grid-template-columns: 46% 54%;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        padding: 48px 60px;
+      }
+      .copy { position: relative; z-index: 2; text-align: right; }
+      .brand { display: flex; align-items: center; gap: 22px; }
+      .brand img {
+        width: 112px;
+        height: 112px;
+        border-radius: 24px;
+        box-shadow: 0 24px 54px rgba(0, 24, 22, .34);
+      }
+      h1 { margin: 0; font-size: 58px; line-height: 1; letter-spacing: 0; }
+      p { max-width: 410px; margin: 25px 0 0; color: #d7efeb; font-size: 26px; line-height: 1.45; }
+.accent { width: 88px; height: 6px; margin-top: 30px; border-radius: 3px; background: #42c7cb; }
+      .screens { position: relative; width: 100%; height: 100%; direction: ltr; }
+      .screen {
+        position: absolute;
+        overflow: hidden;
+        width: 254px;
+        height: 430px;
+        border: 8px solid rgba(248,255,253,.92);
+        border-radius: 28px;
+        background: #f4f8f7;
+        box-shadow: 0 32px 65px rgba(0, 26, 23, .38);
+      }
+      .screen img { width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+      .screen.primary { left: 86px; top: 14px; transform: rotate(-4deg); z-index: 2; }
+      .screen.secondary { left: 270px; top: 44px; transform: rotate(6deg); opacity: .96; }
+      .coin {
+        position: absolute;
+        left: 22px;
+        bottom: 34px;
+        width: 66px;
+        height: 66px;
+      border: 12px solid #bdecee;
+        border-radius: 50%;
+        background: #d8663d;
+        box-shadow: 0 15px 30px rgba(0, 30, 27, .28);
+        z-index: 3;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="canvas">
+      <section class="copy">
+        <div class="brand">
+          <img src="../../ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" alt="">
+          <h1>סוגרים חשבון</h1>
+        </div>
+        <p>יודעים מי שילם, מי חייב ולמי מעבירים.</p>
+        <div class="accent"></div>
+      </section>
+      <section class="screens" aria-hidden="true">
+        <div class="screen primary"><img src="ios-event-workspace.png" alt=""></div>
+        <div class="screen secondary"><img src="ui-expense-amount-current.png" alt=""></div>
+        <div class="coin"></div>
+      </section>
+    </main>
+  </body>
+</html>

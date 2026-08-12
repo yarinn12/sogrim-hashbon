@@ -3,6 +3,7 @@ import {
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
 import { loadLocalProfile, loadSharedState } from "./data/localStore.mjs";
+import { pendingInviteUrl } from "./data/pendingInvite.mjs";
 
 const STYLE_ID = "public-profile-context-layer-style";
 
@@ -52,10 +53,11 @@ function enhanceProfileMemoryStatus() {
 }
 
 async function getInvitedEvent() {
-  const snapshot = parseInviteSnapshot(window.location.href);
+  const inviteUrl = pendingInviteUrl(window.location.href);
+  const snapshot = parseInviteSnapshot(inviteUrl);
   if (snapshot?.event) return snapshot.event;
 
-  const invitedEventId = parseInviteEventId(window.location.href);
+  const invitedEventId = parseInviteEventId(inviteUrl);
   if (!invitedEventId) return null;
 
   const sharedState = await loadSharedState();
@@ -66,6 +68,12 @@ function profileMemoryLabel() {
   const profile = loadLocalProfile();
   if (profile?.authProvider === "google") {
     return "מחובר עם Google";
+  }
+  if (profile?.authProvider === "apple") {
+    return "מחובר עם Apple";
+  }
+  if (profile?.authProvider === "email") {
+    return "מחובר לחשבון האישי";
   }
 
   return "נשמר עבורך במכשיר הזה";

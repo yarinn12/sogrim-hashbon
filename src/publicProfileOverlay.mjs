@@ -2,9 +2,14 @@ import {
   loadLocalProfile,
   loadSharedState,
   saveLocalProfile,
-  saveSharedState
+  saveSharedState,
+  saveState
 } from "./data/localStore.mjs";
-import { parseInviteEventId } from "./domain/inviteLinks.mjs";
+import {
+  mergeInviteSnapshotIntoState,
+  parseInviteEventId,
+  parseInviteSnapshot
+} from "./domain/inviteLinks.mjs";
 import {
   ensureNamedParticipant,
   isFullProfileName,
@@ -38,13 +43,27 @@ function watchRenderedApp() {
 
 function cleanPublicUi() {
   const profile = loadLocalProfile();
+  const productV1Active = document.documentElement.classList.contains("product-v1");
+  const accountAuthLocked =
+    document.documentElement.classList.contains("account-auth-locked") ||
+    Boolean(document.getElementById("public-account-auth-gate"));
+  const externalDialogOpen = Boolean(
+    document.querySelector(
+      "[data-account-delete-dialog], [data-account-feedback-dialog], #public-referral-rewards-dialog, .install-app-backdrop, .app-choice-picker-backdrop"
+    )
+  );
 
-  document.documentElement.classList.add("product-v2");
-  document.querySelectorAll(".network-panel, .launch-panel, .backup-panel").forEach((item) => item.remove());
+  if (app && !accountAuthLocked && !externalDialogOpen) app.inert = false;
+  if (productV1Active) {
+    document.documentElement.classList.remove("product-v2");
+  } else {
+    document.documentElement.classList.add("product-v2");
+  }
+  document.querySelectorAll(".network-panel, .launch-panel").forEach((item) => item.remove());
   document.querySelectorAll('[data-action="reset"]').forEach((item) => item.remove());
 
   enhanceProfilePanel(profile);
-  enhanceNavigationClarity(profile);
+  if (!productV1Active) enhanceNavigationClarity(profile);
   enhanceHomeScreen(profile);
   enhanceEventScreen(profile);
 }
@@ -97,12 +116,13 @@ function enhanceHomeScreen(profile) {
   if (brand && !brand.querySelector(".product-hero-note")) {
     brand.insertAdjacentHTML(
       "beforeend",
-      `<div class="product-hero-note">${greeting}. פתח אירוע, הוסף הוצאות, וקבל העברות מינימליות בלי כאב ראש.</div>`
+      `<div class="product-hero-note">פתח אירוע, הוסף הוצאות, וקבל העברות מינימליות בלי כאב ראש.</div>`
     );
   }
 
   const actions = screen.querySelector(".hero-actions");
-  if (actions && !screen.querySelector(".product-home-kicker")) {
+  const productV1Active = document.documentElement.classList.contains("product-v1");
+  if (!productV1Active && actions && !screen.querySelector(".product-home-kicker")) {
     actions.insertAdjacentHTML(
       "afterend",
       `<section class="product-home-kicker" aria-label="פעולה חכמה">
@@ -159,33 +179,10 @@ function enhanceNavigationClarity(profile) {
 }
 
 function getScreenContext(screen, profile) {
-  if (screen.querySelector('[data-action="new-event"]')) {
-    return {
-      title: profile?.displayName ? `בית של ${profile.displayName}` : "בית",
-      helper: "מכאן פותחים יציאה חדשה או נכנסים לאירוע קיים.",
-      actions: [
-        { label: "אירוע חדש", action: "new-event", primary: true },
-        { label: "קבוצות", action: "groups" }
-      ]
-    };
-  }
-
-  if (screen.querySelector('[data-action="show-expense-form"]')) {
-    const eventName = getScreenTitle(screen) || "אירוע";
-    return {
-      title: eventName,
-      helper: "זה מסך האירוע. כאן מוסיפים תשלומים, משתתפים וקישור לחברים.",
-      actions: [
-        { label: "הוסף הוצאה", action: "show-expense-form", primary: true },
-        { label: "סגור חשבון", action: "settle" }
-      ]
-    };
-  }
-
   if (screen.querySelector('[data-action="create-event"]')) {
     return {
       title: "אירוע חדש",
-      helper: "בוחרים שם, קבוצה ומשתתפים. מי שלא הגיע פשוט לא מסומן.",
+      helper: "מגדירים את פרטי האירוע ומתחילים להוסיף הוצאות.",
       actions: [
         { label: "צור אירוע", action: "create-event", primary: true },
         { label: "חזרה", action: "home" }
@@ -224,37 +221,6 @@ function enhanceEventScreen() {
   if (!screen || !screen.querySelector('[data-action="show-expense-form"]')) return;
 
   screen.classList.add("product-event-screen");
-
-  const summary = screen.querySelector(".summary-strip");
-  const hasNativeCommandGrid = screen.querySelector(".event-command-grid");
-  if (summary && !hasNativeCommandGrid && !screen.querySelector(".product-event-command")) {
-    const eventName = getScreenTitle(screen) || "האירוע הזה";
-    summary.insertAdjacentHTML(
-      "afterend",
-      `<section class="product-event-command" aria-label="מה עושים עכשיו">
-        <div class="product-event-command-copy">
-          <span>מה עושים עכשיו</span>
-          <h2>כאן מכניסים הוצאות</h2>
-          <p>אתה בתוך ${escapeHtml(eventName)}. מוסיפים מי שילם, כמה כל אחד שילם, ומי באמת שותף לכל תשלום.</p>
-        </div>
-        <div class="product-command-actions">
-          <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-          <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
-        </div>
-      </section>`
-    );
-  }
-
-  if (!screen.querySelector(".product-sticky-actions")) {
-    screen.insertAdjacentHTML(
-      "beforeend",
-      `<div class="product-sticky-actions" aria-label="פעולות מהירות">
-        <button class="primary-button" type="button" data-public-click="show-expense-form">הוסף הוצאה</button>
-        <button class="secondary-button" type="button" data-public-click="settle">סגור חשבון</button>
-      </div>`
-    );
-  }
-
   enhanceExpenseFormHint(screen);
 }
 
@@ -277,6 +243,8 @@ function getScreenTitle(screen) {
 }
 
 function renderProfileGate(defaultName = "") {
+  if (app) app.inert = true;
+
   const shell = document.createElement("section");
   shell.className = "public-profile-gate";
   shell.innerHTML = `
@@ -295,21 +263,23 @@ function renderProfileGate(defaultName = "") {
       <section class="public-profile-form">
         <p class="eyebrow">כניסה מהירה</p>
         <h2>איך קוראים לך?</h2>
-        <p class="muted">נשמור את השם במכשיר הזה כדי שהמסך שלך יהיה אישי. בהמשך נחבר גם Google.</p>
+        <p class="muted">נשמור את השם במכשיר הזה כדי שהמסך שלך יהיה אישי.</p>
         <label class="field">
           <span>שם פרטי ושם משפחה</span>
-          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" autofocus />
+          <input name="displayName" value="${escapeAttribute(defaultName)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" />
         </label>
         <p class="field-error" data-public-profile-error hidden></p>
         <button class="primary-button" type="submit">התחל לסגור חשבון</button>
-        <p class="public-profile-privacy">אין הרשמה כבדה כרגע. רק שם מקומי כדי שכל חבר יקבל מסך משלו.</p>
+        <p class="public-profile-privacy">כל חבר נכנס בשם שלו ומקבל מסך אישי.</p>
       </section>
     </form>
   `;
 
   document.querySelector(".public-profile-gate")?.remove();
   document.body.append(shell);
-  shell.querySelector("input")?.focus();
+  if (window.matchMedia?.("(min-width: 761px)")?.matches) {
+    shell.querySelector("input")?.focus();
+  }
   shell.querySelector("form")?.addEventListener("submit", saveProfile);
 }
 
@@ -327,8 +297,9 @@ async function saveProfile(event) {
 
   const invitedEventId = parseInviteEventId(window.location.href);
   const previous = loadLocalProfile();
+  const sharedState = mergeCurrentInviteSnapshot(await loadSharedState());
   const nextState = ensureNamedParticipant(
-    await loadSharedState(),
+    sharedState,
     {
       id: previous?.participantId ?? makeUserId(),
       displayName
@@ -351,7 +322,7 @@ async function syncInvitedEvent(profile) {
   const invitedEventId = parseInviteEventId(window.location.href);
   if (!invitedEventId) return;
 
-  const state = await loadSharedState();
+  const state = mergeCurrentInviteSnapshot(await loadSharedState());
   const event = state.events.find((item) => item.id === invitedEventId);
   if (!event || event.participantIds.includes(profile.participantId)) return;
 
@@ -370,6 +341,15 @@ async function syncInvitedEvent(profile) {
   });
   await saveSharedState(nextState);
   window.location.reload();
+}
+
+function mergeCurrentInviteSnapshot(state) {
+  const inviteSnapshot = parseInviteSnapshot(window.location.href);
+  if (!inviteSnapshot) return state;
+
+  const nextState = mergeInviteSnapshotIntoState(state, inviteSnapshot);
+  saveState(nextState);
+  return nextState;
 }
 
 function injectStyle() {
@@ -585,7 +565,7 @@ function injectStyle() {
     }
 
     .product-event-screen {
-      padding-bottom: 116px;
+      padding-bottom: 0;
     }
 
     .product-event-command {
@@ -794,7 +774,8 @@ function injectStyle() {
 
     .product-v2 .event-command-card {
       min-height: 112px;
-      align-content: end;
+      align-items: center;
+      align-content: center;
       padding: 18px;
       border: 1px solid rgba(23, 29, 26, 0.1);
       background:
@@ -825,12 +806,12 @@ function injectStyle() {
       font-size: 1.08rem;
     }
 
-    .product-v2 .event-command-card span {
+    .product-v2 .event-command-card .event-command-copy > span {
       color: #6a756f;
       font-weight: 800;
     }
 
-    .product-v2 .primary-button.event-command-card span {
+    .product-v2 .primary-button.event-command-card .event-command-copy > span {
       color: rgba(255, 255, 255, 0.82);
     }
 
@@ -866,6 +847,7 @@ function injectStyle() {
       z-index: 50;
       display: grid;
       place-items: center;
+      overflow-y: auto;
       padding: 18px;
       background:
         linear-gradient(180deg, rgba(239, 245, 241, 0.96), rgba(248, 244, 234, 0.96)),
@@ -874,10 +856,12 @@ function injectStyle() {
     }
 
     .public-profile-modal {
+      position: relative;
       width: min(100%, 920px);
       display: grid;
       grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
       overflow: hidden;
+      pointer-events: none;
       background: #fffdf8;
       border: 1px solid #dce4dc;
       border-radius: 8px;
@@ -893,6 +877,7 @@ function injectStyle() {
       display: grid;
       align-content: space-between;
       min-height: 520px;
+      pointer-events: none;
       color: white;
       background:
         linear-gradient(150deg, rgba(9, 49, 44, 0.98), rgba(10, 125, 111, 0.94) 64%, rgba(199, 86, 61, 0.78)),
@@ -940,8 +925,15 @@ function injectStyle() {
     }
 
     .public-profile-form {
+      position: relative;
+      z-index: 2;
       display: grid;
       align-content: center;
+    }
+
+    .public-profile-form,
+    .public-profile-form * {
+      pointer-events: auto;
     }
 
     .public-profile-form h2 {
@@ -1043,10 +1035,16 @@ function injectStyle() {
 
       .public-profile-modal {
         grid-template-columns: 1fr;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
       }
 
       .public-profile-hero {
-        min-height: 320px;
+        min-height: 220px;
+      }
+
+      .public-profile-proof {
+        display: none;
       }
     }
 

@@ -1,6 +1,10 @@
 import { loadState } from "./data/localStore.mjs";
-import { calculateSettlement } from "./domain/settlement.mjs";
-import { formatMoney } from "./domain/money.mjs";
+import {
+  calculateSettlement,
+  reconcileSettlementTransfers,
+  usesRoundedSettlementTransfers
+} from "./domain/settlement.mjs";
+import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
 
 const app = document.querySelector("#app");
 let eventWorkspaceScheduled = false;
@@ -21,7 +25,6 @@ function scheduleEventWorkspaceEnhancement() {
   requestAnimationFrame(() => {
     eventWorkspaceScheduled = false;
     enhanceEventWorkspace();
-    enhanceSettingsDialog();
     enhanceSettlementWorkspace();
   });
 }
@@ -39,22 +42,6 @@ function enhanceEventWorkspace() {
 
   summary.after(renderWorkspaceNav(event), renderInsightPanel(state, event));
   hideRepeatedEventControls();
-}
-
-function enhanceSettingsDialog() {
-  const modal = app.querySelector(".event-modal");
-  const eventId = currentEventId();
-  if (!modal || !eventId || modal.querySelector('[data-action="duplicate-event"]')) return;
-
-  const actionRow = modal.querySelector(".event-modal-body .actions");
-  if (!actionRow) return;
-
-  const duplicateButton = document.createElement("button");
-  duplicateButton.className = "secondary-button";
-  duplicateButton.dataset.action = "duplicate-event";
-  duplicateButton.dataset.eventId = eventId;
-  duplicateButton.textContent = "צור אירוע דומה";
-  actionRow.append(duplicateButton);
 }
 
 function enhanceSettlementWorkspace() {
@@ -77,22 +64,28 @@ function renderWorkspaceNav(event) {
   nav.setAttribute("aria-label", "ניווט באירוע");
   nav.innerHTML = `
     <a class="event-workspace-tab is-active" href="#event-expenses">הוצאות</a>
-    <button class="event-workspace-tab" data-action="open-event-participants" data-event-id="${escapeAttribute(event.id)}">משתתפים</button>
-    <button class="event-workspace-tab" data-action="settle" data-event-id="${escapeAttribute(event.id)}" ${event.expenses?.length ? "" : "disabled"}>סיכום</button>
-    <button class="event-workspace-tab" data-action="open-event-settings" data-event-id="${escapeAttribute(event.id)}">הגדרות</button>
+    <button class="event-workspace-tab" data-action="settle" data-event-id="${escapeAttribute(event.id)}">סיכום</button>
   `;
   return nav;
 }
 
 function renderInsightPanel(state, event) {
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? []);
-  const transfers = event.transfers?.length ? event.transfers : settlement.transfers;
+  const settlement = calculateSettlement(participants, event.expenses ?? [], {
+    roundTransfers: usesRoundedSettlementTransfers(event)
+  });
+  const transfers = reconcileSettlementTransfers(
+    participants,
+    event.expenses ?? [],
+    event.transfers ?? [],
+    { roundTransfers: usesRoundedSettlementTransfers(event) }
+  ).transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const totalExpenses = (event.expenses ?? []).reduce((sum, expense) => sum + expense.total, 0);
   const issueCount = settlement.issues?.length ?? 0;
   const status = eventStatus(event, settlement, pendingTransfers);
   const message = statusMessage(status);
+  const currency = normalizeCurrency(event.currency);
 
   const panel = document.createElement("section");
   panel.className = "panel event-insight-panel";
@@ -108,8 +101,8 @@ function renderInsightPanel(state, event) {
     <div class="event-insight-metrics" aria-label="מצב האירוע">
       <div><span>הוצאות</span><strong>${event.expenses?.length ?? 0}</strong></div>
       <div><span>משתתפים</span><strong>${participants.length}</strong></div>
-      <div><span>סך האירוע</span><strong class="amount">₪${formatMoney(totalExpenses)}</strong></div>
-      <div><span>פתוח להעברה</span><strong class="amount">₪${formatMoney(sumPending(pendingTransfers))}</strong></div>
+      <div><span>סך האירוע</span><strong class="amount"><span class="font-num">${formatCurrency(totalExpenses, currency)}</span></strong></div>
+      <div><span>פתוח להעברה</span><strong class="amount"><span class="font-num">${formatCurrency(sumPending(pendingTransfers), currency)}</span></strong></div>
     </div>
   `;
   return panel;
@@ -117,10 +110,18 @@ function renderInsightPanel(state, event) {
 
 function renderSettlementHero(state, event) {
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? []);
-  const transfers = event.transfers?.length ? event.transfers : settlement.transfers;
+  const settlement = calculateSettlement(participants, event.expenses ?? [], {
+    roundTransfers: usesRoundedSettlementTransfers(event)
+  });
+  const transfers = reconcileSettlementTransfers(
+    participants,
+    event.expenses ?? [],
+    event.transfers ?? [],
+    { roundTransfers: usesRoundedSettlementTransfers(event) }
+  ).transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const pendingTotal = sumPending(pendingTransfers);
+  const currency = normalizeCurrency(event.currency);
   const title = pendingTransfers.length
     ? `${pendingTransfers.length} העברות נשארו פתוחות`
     : "הכל מאוזן";
@@ -132,7 +133,7 @@ function renderSettlementHero(state, event) {
       <span class="status-chip ${pendingTransfers.length ? "is-locked" : "is-open"}">${isEventClosed(event) ? "אירוע סגור" : "לפני סגירה"}</span>
       <h2>${escapeHtml(title)}</h2>
       <p class="muted">${pendingTransfers.length ? "זה הסיכום שכדאי לשלוח לחברים. אחרי שמישהו מעביר, מסמנים כשולם." : "אין כרגע העברות פתוחות בין המשתתפים."}</p>
-      <strong class="settlement-hero-amount amount">₪${formatMoney(pendingTotal)}</strong>
+        <strong class="settlement-hero-amount amount"><span class="font-num">${formatCurrency(pendingTotal, currency)}</span></strong>
     </div>
     <div class="settlement-hero-actions">
       <button class="secondary-button" data-action="copy-settlement" data-event-id="${escapeAttribute(event.id)}">העתק סיכום</button>
@@ -154,10 +155,6 @@ function hideRepeatedEventControls() {
   );
   if (participantPanel) participantPanel.hidden = true;
 
-  const duplicateButton = app.querySelector('section.screen > section [data-action="duplicate-event"]');
-  const repeatedActions = duplicateButton?.closest(".section");
-  if (repeatedActions) repeatedActions.hidden = true;
-
   const expenseSection = [...app.querySelectorAll("section.section")].find((section) =>
     section.querySelector("h2")?.textContent?.includes("הוצאות")
   );
@@ -166,8 +163,8 @@ function hideRepeatedEventControls() {
 
 function currentEventId() {
   return (
+    app.querySelector('.screen[data-event-id]')?.dataset.eventId ||
     app.querySelector('[data-action="show-expense-form"][data-event-id]')?.dataset.eventId ||
-    app.querySelector('[data-action="settle"][data-event-id]')?.dataset.eventId ||
     app.querySelector('[data-action="open-event-participants"][data-event-id]')?.dataset.eventId ||
     app.querySelector('[data-action="copy-settlement"][data-event-id]')?.dataset.eventId ||
     ""
@@ -237,7 +234,7 @@ function installEventWorkspaceStyles() {
       top: 10px;
       z-index: 10;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 6px;
       margin: 14px 0 12px;
       padding: 6px;
@@ -317,7 +314,7 @@ function installEventWorkspaceStyles() {
       color: var(--accent-strong);
       line-height: 1;
     }
-    @media (max-width: 440px) {
+    @media (max-width: 760px) {
       .event-workspace-nav {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         top: 6px;

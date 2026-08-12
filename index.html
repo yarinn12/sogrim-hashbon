@@ -1,50 +1,131 @@
 <!doctype html>
-<html lang="he" dir="rtl">
+<html lang="he" dir="rtl" class="account-auth-pending">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="/" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>סוגרים חשבון</title>
-    <meta name="theme-color" content="#087b74" />
+    <meta name="description" content="מחלקים הוצאות בין חברים, רואים מי חייב למי וסוגרים את החשבון בפחות העברות." />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="he_IL" />
+    <meta property="og:site_name" content="סוגרים חשבון" />
+    <meta property="og:title" content="סוגרים חשבון" />
+    <meta property="og:description" content="מחלקים הוצאות בין חברים, בלי חשבונות מסובכים." />
+    <meta property="og:url" content="https://sogrim-hashbon.vercel.app/" />
+    <meta property="og:image" content="https://sogrim-hashbon.vercel.app/sogrim-share-logo.png" />
+    <meta property="og:image:secure_url" content="https://sogrim-hashbon.vercel.app/sogrim-share-logo.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="לוגו סוגרים חשבון" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="סוגרים חשבון" />
+    <meta name="twitter:description" content="מחלקים הוצאות בין חברים, בלי חשבונות מסובכים." />
+    <meta name="twitter:image" content="https://sogrim-hashbon.vercel.app/sogrim-share-logo.png" />
+    <meta name="theme-color" content="#10312b" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="חשבון" />
+    <meta name="apple-mobile-web-app-title" content="סוגרים חשבון" />
     <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./icon.svg" />
+    <link rel="icon" href="./icon-192.png" type="image/png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" as="style" />
-    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" as="style" />
+    <link id="app-font-stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet" media="print" />
     <noscript>
-      <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800;900&amp;family=Noto+Sans+Hebrew:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet" />
     </noscript>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
-    <main id="app" class="app" aria-live="polite"></main>
+  <body class="font-hebrew">
+    <a class="skip-link" href="#app">&#1491;&#1500;&#1490; &#1500;&#1514;&#1493;&#1499;&#1503; &#1492;&#1512;&#1488;&#1513;&#1497;</a>
+    <div
+      id="app-splash"
+      class="app-splash"
+      role="status"
+      aria-label="&#1492;&#1488;&#1508;&#1500;&#1497;&#1511;&#1510;&#1497;&#1492; &#1504;&#1496;&#1506;&#1504;&#1514;"
+    >
+      <div class="app-splash-frame" aria-hidden="true">
+        <img
+          class="app-splash-poster"
+          src="./assets/sogrim-logo-intro-poster.jpg"
+          alt=""
+          width="1280"
+          height="720"
+        />
+        <img
+          class="app-splash-hold"
+          src="./assets/sogrim-logo-intro-hold.jpg"
+          alt=""
+          width="1280"
+          height="720"
+        />
+        <video
+          class="app-splash-video"
+          src="./assets/sogrim-logo-intro.mp4"
+          poster="./assets/sogrim-logo-intro-poster.jpg"
+          loop
+          muted
+          playsinline
+          preload="auto"
+          width="1280"
+          height="720"
+        ></video>
+      </div>
+      <span class="visually-hidden">&#1496;&#1493;&#1506;&#1503; &#1488;&#1514; &#1505;&#1493;&#1490;&#1512;&#1497;&#1501; &#1495;&#1513;&#1489;&#1493;&#1503;</span>
+    </div>
+    <main id="app" class="app app-boot font-hebrew" tabindex="-1" aria-busy="true">
+      <section class="boot-shell" aria-label="האפליקציה נטענת">
+        <span class="visually-hidden">טוען את סוגרים חשבון</span>
+        <div class="boot-topbar" aria-hidden="true">
+          <span class="boot-logo"></span>
+          <span class="boot-line boot-line-brand"></span>
+          <span class="boot-avatar"></span>
+        </div>
+        <div class="boot-hero" aria-hidden="true">
+          <span class="boot-line boot-line-title"></span>
+          <span class="boot-line boot-line-copy"></span>
+          <span class="boot-button"></span>
+        </div>
+        <div class="boot-actions" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+        <div class="boot-panel" aria-hidden="true">
+          <span class="boot-line boot-line-panel-title"></span>
+          <span class="boot-line boot-line-panel-copy"></span>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./src/publicFontLoader.mjs"></script>
+    <script type="module" src="./src/publicAppSplashLayer.mjs"></script>
+    <script type="module" src="./src/publicMutationThrottleLayer.mjs"></script>
+    <script defer src="./src/vendor/framer-motion-dom.js"></script>
+    <script type="module" src="./src/publicNativeBridgeLayer.mjs"></script>
+    <script type="module" src="./src/publicProductMetricsLayer.mjs"></script>
     <script type="module" src="./src/publicInviteFetchGuardLayer.mjs"></script>
     <script type="module" src="./src/publicProfileMemoryGuardLayer.mjs"></script>
-    <script type="module" src="./src/app.mjs"></script>
     <script type="module" src="./src/publicProfileOverlay.mjs"></script>
+    <script type="module" src="./src/publicAccountAuthLayer.mjs"></script>
+    <script type="module" src="./src/app.mjs"></script>
+    <script type="module" src="./src/publicReferralRewardsLayer.mjs"></script>
+    <script type="module" src="./src/publicPremiumBillingLayer.mjs"></script>
+    <script type="module" src="./src/publicAdLayer.mjs"></script>
+    <script type="module" src="./src/publicNotificationLayer.mjs"></script>
     <script type="module" src="./src/publicProfileContextLayer.mjs"></script>
     <script type="module" src="./src/publicInviteJoinFixLayer.mjs"></script>
-    <script type="module" src="./src/publicGoogleAuthLayer.mjs"></script>
     <script type="module" src="./src/publicClarityLayer.mjs"></script>
     <script type="module" src="./src/publicNameCleanup.mjs"></script>
     <script type="module" src="./src/publicBrandLayer.mjs"></script>
     <script type="module" src="./src/publicEmptyHomePolishLayer.mjs"></script>
     <script type="module" src="./src/publicPersonalMemoryLayer.mjs"></script>
+    <script type="module" src="./src/publicInstallAppLayer.mjs"></script>
     <script type="module" src="./src/publicPersonalActionsLayer.mjs"></script>
-    <script type="module" src="./src/publicBackNavigationLayer.mjs"></script>
     <script type="module" src="./src/publicHomeButtonLayer.mjs"></script>
     <script type="module" src="./src/publicCommandIconLayer.mjs"></script>
     <script type="module" src="./src/publicExpenseGuestLayer.mjs"></script>
     <script type="module" src="./src/publicInlinePayerLayer.mjs"></script>
-    <script type="module" src="./src/publicExpensePayerSummaryLayer.mjs"></script>
     <script type="module" src="./src/publicVisualRefreshLayer.mjs"></script>
     <script type="module" src="./src/publicPremiumVisualLayer.mjs"></script>
     <script type="module" src="./src/publicFintechDesignLayer.mjs"></script>
-    <script type="module" src="./src/publicFramerMotionLayer.mjs"></script>
-    <script type="module" src="./src/publicMutationThrottleLayer.mjs"></script>
     <script type="module" src="./src/publicAdvancedWorkflowLayer.mjs"></script>
     <script type="module" src="./src/publicCopyCleanupLayer.mjs"></script>
     <script type="module" src="./src/publicJoinEventLayer.mjs"></script>
@@ -53,6 +134,15 @@
     <script type="module" src="./src/publicEventWorkspaceLayer.mjs"></script>
     <script type="module" src="./src/publicEventLifecycleLayer.mjs"></script>
     <script type="module" src="./src/publicProductV1Layer.mjs"></script>
+    <script type="module" src="./src/publicSyncStatusLayer.mjs"></script>
+    <script type="module" src="./src/publicDesignV2Layer.mjs"></script>
     <script type="module" src="./src/publicMobileModalLayer.mjs"></script>
+    <script type="module" src="./src/publicStudioDesignLayer.mjs"></script>
+    <script type="module" src="./src/publicCircleDesignLayer.mjs"></script>
+    <script type="module" src="./src/publicLedgerWorkspaceLayer.mjs"></script>
+    <script type="module" src="./src/publicFramerMotionLayer.mjs"></script>
+    <script type="module" src="./src/publicChoicePickerLayer.mjs"></script>
+    <script type="module" src="./src/publicDesignCoherenceLayer.mjs"></script>
+    <script type="module" src="./src/publicDynamicTypeLayer.mjs"></script>
   </body>
 </html>

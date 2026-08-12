@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("deployment ignores local secrets and local state files", async () => {
-  const gitignore = await readFile(".gitignore", "utf8");
+  const [gitignore, vercelignore] = await Promise.all([
+    readFile(".gitignore", "utf8"),
+    readFile(".vercelignore", "utf8")
+  ]);
 
   assert.match(gitignore, /\.env/);
   assert.match(gitignore, /\.vercel\//);
@@ -11,5 +14,12 @@ test("deployment ignores local secrets and local state files", async () => {
   assert.match(gitignore, /docs\/superpowers\//);
   assert.match(gitignore, /publish\//);
   assert.match(gitignore, /upload-\*\//);
+  assert.match(gitignore, /deploy-\*\//);
+  assert.match(gitignore, /\.qa-\*\//);
+  assert.match(gitignore, /\.ux-\*\//);
   assert.match(gitignore, /\*\.zip/);
+  assert.match(vercelignore, /\.qa-\*/);
+  assert.match(vercelignore, /\.ux-\*/);
+  assert.match(vercelignore, /^tests$/m);
+  assert.match(vercelignore, /^artifacts$/m);
 });

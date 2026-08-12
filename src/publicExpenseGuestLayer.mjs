@@ -51,7 +51,7 @@ function enhanceExpenseDialog() {
       <span>מוסיפים אורח בלי לצאת מההוצאה. הוא יופיע מיד ברשימות כאן.</span>
     </div>
     <div class="inline-actions expense-guest-actions">
-      <input class="guest-input" data-action="event-guest-name" placeholder="שם אורח" />
+      <input class="guest-input" data-action="event-guest-name" aria-label="שם אורח" placeholder="שם אורח" />
       <button class="secondary-button" data-action="event-add-guest" data-event-id="${eventId}">הוסף אורח להוצאה</button>
     </div>
   `;
