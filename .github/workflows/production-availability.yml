@@ -26,10 +26,10 @@ jobs:
         with:
           node-version: 20
 
-      - name: Verify production
+      - name: Verify production and CDN delivery
         id: verify
         continue-on-error: true
-        run: node scripts/verify-production-availability.mjs | tee production-availability.log
+        run: node scripts/verify-production-availability.mjs --strict | tee production-availability.log
         env:
           PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
 

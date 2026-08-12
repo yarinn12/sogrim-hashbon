@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { join } from "node:path";
 
 import { createAppHandler } from "../server.mjs";
 
@@ -63,7 +65,7 @@ test("legal links and native back navigation resolve inside the static native bu
   assert.match(legalScript, /window\.location\.assign\(APP_URL\)/);
 });
 
-test("server offers the signed Android trial as an APK download", async () => {
+test("server serves the optional signed Android trial only when it is bundled", async () => {
   const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -73,6 +75,13 @@ test("server offers the signed Android trial as an APK download", async () => {
   try {
     const { port } = server.address();
     const response = await fetch(`http://127.0.0.1:${port}/android`);
+    if (response.status === 404) {
+      assert.equal(
+        existsSync(join(process.cwd(), "downloads", "sogrim-hashbon-android-1.2.apk")),
+        false
+      );
+      return;
+    }
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("content-type"), "application/vnd.android.package-archive");
     assert.match(response.headers.get("content-disposition") ?? "", /attachment/);

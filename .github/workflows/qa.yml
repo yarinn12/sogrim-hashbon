@@ -42,3 +42,37 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  backup-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build provider-portable container
+        run: docker build --tag sogrim-hashbon-backup:ci .
+
+      - name: Start backup runtime
+        run: |
+          docker run --detach --rm \
+            --name sogrim-hashbon-backup \
+            --publish 4173:4173 \
+            sogrim-hashbon-backup:ci
+
+      - name: Verify backup health
+        run: |
+          for attempt in {1..20}; do
+            if curl --fail --silent --show-error http://127.0.0.1:4173/api/health > backup-health.json; then
+              cat backup-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs sogrim-hashbon-backup
+          exit 1
+
+      - name: Show backup logs on failure
+        if: failure()
+        run: docker logs sogrim-hashbon-backup || true
