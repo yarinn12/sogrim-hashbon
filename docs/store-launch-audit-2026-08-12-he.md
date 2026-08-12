@@ -68,8 +68,8 @@
 - `scripts/verify-ios-artifact.mjs` רץ על macOS לאחר יצוא ה-IPA ומאמת חתימה, Bundle ID, גרסה, Build, Provisioning Profile, Associated Domains ו-Sign in with Apple לפני העלאה ל-TestFlight.
 - `.github/workflows/ios-testflight.yml` משתמש בגרסאות הפעולות העדכניות שהוגדרו (`download-provisioning-profiles@v6`, `import-codesign-certs@v7`, `upload-testflight-build@v5`) ושומר גם דוח ראיות חתום.
 - `npm run qa:store` מחזיר כעת `localReady: true`, אך `liveReady: false` ו-`submissionReady: false` בגלל האתר וקונסולות החנויות.
-- [x] לריפו יש `HEAD` תקין: `960a170ba4b8fdceacdb9a151801cea1b23e19c2`.
-- [ ] ליצור commit נקי ותג גרסה לפני Release. טביעת המקור מאפשרת לזהות בדיוק את הקבצים שמהם נבנה ה-AAB, אך שחזור מלא עדיין דורש commit ותג ללא שינויים פתוחים.
+- [x] מועמד ההשקה מקובע ב-commit `a422770` בענף `codex/launch-readiness` ודחוף ל-GitHub, ללא שינויים מקומיים פתוחים.
+- [ ] ליצור תג גרסה לפני Production. טביעת המקור מאפשרת לזהות בדיוק את הקבצים שמהם נבנה ה-AAB, וה-commit הנקי מאפשר שחזור מלא של המקור.
 - [ ] לשמור מחוץ לריפו גיבוי מוצפן של Android upload key, תעודת Apple ומפתחות App Store Connect.
 
 ## פקודות שער
