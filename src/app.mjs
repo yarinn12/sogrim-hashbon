@@ -6492,7 +6492,8 @@ function expenseDetailsSummaryValues(event, participants) {
       ? `כולם משתתפים (${participants.length})`
       : `${selectedParticipantCount} מתוך ${participants.length} משתתפים`;
   const occurredOn = expenseDraft.occurredOn || todayInputValue();
-  const dateLabel = occurredOn === todayInputValue() ? "היום" : formatExpenseDetailsDate(occurredOn);
+  const formattedDate = formatExpenseDetailsDate(occurredOn);
+  const dateLabel = occurredOn === todayInputValue() ? `היום · ${formattedDate}` : formattedDate;
 
   return {
     payer,
@@ -6510,8 +6511,7 @@ function hasPositiveExpenseTotal(value) {
 }
 
 function formatExpenseDetailsDate(value) {
-  const [year, month, day] = String(value).split("-");
-  return year && month && day ? `${day}.${month}.${year}` : String(value);
+  return formatExpenseDay(value);
 }
 
 function renderExpenseModeSwitch(event) {
@@ -7288,14 +7288,21 @@ function renderExpenseRow(event, expense) {
           <span>שותפים</span>
           <span class="expense-participants-count">${sharedParticipantIds.length}</span>
         </summary>
-        <div class="expense-participants-list" role="list" aria-label="שותפים בהוצאה ${escapeAttribute(expense.name)}">
-          ${sharedParticipantIds
-            .map((participantId) => renderExpenseParticipant(event, participantId))
-            .join("")}
-        </div>
+        <div class="expense-participants-list" role="list" aria-label="שותפים בהוצאה ${escapeAttribute(expense.name)}"></div>
       </details>
     </article>
   `;
+}
+
+function hydrateExpenseParticipants(details, event, expense) {
+  if (details.dataset.participantsHydrated === "true") return;
+  const list = details.querySelector(".expense-participants-list");
+  if (!list) return;
+
+  list.innerHTML = [...new Set(expense.sharedByParticipantIds)]
+    .map((participantId) => renderExpenseParticipant(event, participantId))
+    .join("");
+  details.dataset.participantsHydrated = "true";
 }
 
 function renderExpenseParticipant(event, participantId) {
@@ -9412,11 +9419,16 @@ async function handleClick(event) {
   }
 
   if (action === "toggle-expense-participants") {
-    const details = target
-      .closest(".expense-row")
-      ?.querySelector(".expense-participants-details");
+    const row = target.closest(".expense-row");
+    const details = row?.querySelector(".expense-participants-details");
     if (!(details instanceof HTMLDetailsElement)) return;
 
+    if (!details.open) {
+      const eventId = target.closest('[data-screen-kind="event"]')?.dataset.eventId;
+      const event = getEvent(eventId);
+      const expense = event?.expenses.find((item) => item.id === row?.dataset.expenseId);
+      if (event && expense) hydrateExpenseParticipants(details, event, expense);
+    }
     details.open = !details.open;
     target.setAttribute("aria-expanded", String(details.open));
     return;

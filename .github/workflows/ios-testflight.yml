@@ -81,7 +81,7 @@ jobs:
           p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
       - name: Download App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v4
+        uses: apple-actions/download-provisioning-profiles@v6
         with:
           bundle-id: com.sogrimhashbon.app
           profile-type: IOS_APP_STORE
@@ -120,8 +120,11 @@ jobs:
           test -n "$ipa_path"
           cp "$ipa_path" build/ios/SogrimHashbon.ipa
 
+      - name: Verify signed iOS artifact
+        run: npm run qa:ios:artifact
+
       - name: Upload app to TestFlight
-        uses: apple-actions/upload-testflight-build@v4
+        uses: apple-actions/upload-testflight-build@v5
         with:
           app-path: build/ios/SogrimHashbon.ipa
           app-type: ios
@@ -140,6 +143,7 @@ jobs:
           name: sogrim-hashbon-ios-${{ inputs.version }}-${{ inputs.build }}
           path: |
             build/ios/SogrimHashbon.ipa
+            build/ios/release-manifest.json
             build/ios/*.log
           if-no-files-found: warn
           retention-days: 7

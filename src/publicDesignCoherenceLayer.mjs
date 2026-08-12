@@ -1419,6 +1419,16 @@ const CSS = `
 
   html.design-coherence-v1 body #app
     .event-share-modal
+    > .event-modal-body {
+    display: grid !important;
+    grid-auto-flow: row !important;
+    grid-auto-rows: max-content !important;
+    align-content: start !important;
+    gap: 16px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
     .event-share-choice {
     min-height: 92px !important;
     grid-template-columns: minmax(0, 1fr) auto !important;
@@ -1531,13 +1541,21 @@ const CSS = `
     html.design-coherence-v1 body #app
       .event-share-modal
       .event-share-choice {
+      min-height: 0 !important;
       grid-template-columns: minmax(0, 1fr) !important;
+      grid-template-rows: repeat(2, max-content) !important;
+      align-items: stretch !important;
+      align-content: start !important;
     }
 
     html.design-coherence-v1 body #app
       .event-share-modal
       .event-share-choice
       > button {
+      position: relative !important;
+      inset: auto !important;
+      grid-column: 1 !important;
+      grid-row: 2 !important;
       width: 100% !important;
     }
   }

@@ -242,7 +242,7 @@ function syncHeaderNavState() {
   const activeDestination =
     kind === "notifications"
       ? "notifications"
-      : ["profile", "groups"].includes(kind)
+      : kind === "profile"
       ? "profile"
       : kind === "home"
         ? preferredHomeDestination

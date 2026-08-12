@@ -26,6 +26,8 @@ try {
       to_regclass('public.app_snapshots') is not null as table_ready,
       to_regclass('private.signup_workspace_claims') is not null
         as signup_claims_ready,
+      to_regclass('private.shared_snapshot_members') is not null
+        as shared_members_ready,
       (
         select relation.relrowsecurity and relation.relforcerowsecurity
         from pg_catalog.pg_class as relation
@@ -59,8 +61,39 @@ try {
           and policy.tablename = 'app_snapshots'
           and policy.policyname = 'app_snapshots_update'
           and pg_catalog.lower(policy.qual) like '%owner_user_id is null%'
+          and pg_catalog.lower(policy.qual) like '%can_write_shared_snapshot%'
+          and pg_catalog.lower(policy.qual) like '%can_bootstrap_shared_snapshot%'
           and pg_catalog.lower(policy.with_check) like '%owner_user_id is null%'
+          and pg_catalog.lower(policy.with_check) like '%can_write_shared_snapshot%'
+          and pg_catalog.lower(policy.with_check) like '%can_bootstrap_shared_snapshot%'
       ) as shared_snapshot_policy_ready,
+      to_regprocedure('public.can_bootstrap_shared_snapshot(text)') is not null
+        and not pg_catalog.has_function_privilege(
+          'anon', 'public.can_bootstrap_shared_snapshot(text)', 'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'authenticated', 'public.can_bootstrap_shared_snapshot(text)', 'execute'
+        ) as shared_bootstrap_ready,
+      to_regprocedure('public.join_shared_event(text)') is not null
+        and not pg_catalog.has_function_privilege(
+          'anon', 'public.join_shared_event(text)', 'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'authenticated', 'public.join_shared_event(text)', 'execute'
+        ) as shared_join_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_trigger as trigger
+        where trigger.tgname = 'guard_shared_snapshot_update'
+          and trigger.tgrelid = 'public.app_snapshots'::regclass
+          and not trigger.tgisinternal
+      ) and exists (
+        select 1
+        from pg_catalog.pg_trigger as trigger
+        where trigger.tgname = 'sync_shared_snapshot_members'
+          and trigger.tgrelid = 'public.app_snapshots'::regclass
+          and not trigger.tgisinternal
+      ) as shared_membership_triggers_ready,
       to_regprocedure('public.delete_account_data(uuid)') is not null as deletion_ready,
       exists (
         select 1
@@ -513,11 +546,15 @@ try {
   if (
     !result?.table_ready ||
     !result?.signup_claims_ready ||
+    !result?.shared_members_ready ||
     !result?.signup_claims_rls_ready ||
     !result?.signup_claims_private ||
     !result?.signup_claim_trigger_ready ||
     !result?.signup_claim_function_private ||
     !result?.shared_snapshot_policy_ready ||
+    !result?.shared_bootstrap_ready ||
+    !result?.shared_join_ready ||
+    !result?.shared_membership_triggers_ready ||
     !result?.deletion_ready ||
     !result?.deletion_trigger_ready ||
     !result?.profiles_ready ||

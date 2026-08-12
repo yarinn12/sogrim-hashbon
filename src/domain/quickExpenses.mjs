@@ -159,7 +159,8 @@ export function formatExpenseDay(date, locale = "he-IL") {
   return new Intl.DateTimeFormat(locale, {
     weekday: "long",
     day: "numeric",
-    month: "long"
+    month: "long",
+    year: "numeric"
   }).format(parsed);
 }
 

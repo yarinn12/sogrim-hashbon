@@ -114,6 +114,19 @@ test("saveCloudState upserts the latest app snapshot", async () => {
   assert.equal(requests[0].options.headers.prefer, "resolution=merge-duplicates,return=representation");
 });
 
+test("new shared snapshots carry an explicit server-enforced kind", async () => {
+  const config = createConfig("shared-event-new");
+  config.storage.snapshotKind = "shared_event";
+  let request;
+
+  await saveCloudState(config, state, async (_url, options) => {
+    request = options;
+    return jsonResponse([{ updated_at: "2026-07-17T10:00:00.000Z" }]);
+  });
+
+  assert.equal(JSON.parse(request.body).snapshot_kind, "shared_event");
+});
+
 test("account ownership is only assigned when a snapshot is first inserted", async () => {
   const accountConfig = createConfig("account-owned");
   accountConfig.storage.account = {

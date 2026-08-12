@@ -29,3 +29,18 @@ test("large-text home keeps dedicated clearance above fixed navigation", () => {
     /#app[\s\S]*?\.screen\[data-screen-kind="home"\] \{[\s\S]*?padding-bottom: calc\(176px \+ env\(safe-area-inset-bottom\)\) !important;/
   );
 });
+
+test("mobile share choices remain separate when text grows", () => {
+  assert.match(
+    coherenceLayer,
+    /\.event-share-modal[\s\S]*?> \.event-modal-body \{[\s\S]*?display: grid !important;[\s\S]*?grid-auto-rows: max-content !important;[\s\S]*?gap: 16px !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.event-share-modal[\s\S]*?\.event-share-choice \{[\s\S]*?grid-template-rows: repeat\(2, max-content\) !important;[\s\S]*?align-content: start !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.event-share-choice[\s\S]*?> button \{[\s\S]*?position: relative !important;[\s\S]*?grid-row: 2 !important;/
+  );
+});

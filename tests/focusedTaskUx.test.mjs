@@ -13,7 +13,7 @@ test("primary navigation remains available in event, settlement, and notificatio
   assert.match(brand, /const PRIMARY_NAV_SCREENS = new Set\(\[[\s\S]*?"notifications"/);
   assert.match(
     brand,
-    /kind === "notifications"[\s\S]*?\? "notifications"[\s\S]*?\["profile", "groups"\]\.includes\(kind\)[\s\S]*?\? "profile"/
+    /kind === "notifications"[\s\S]*?\? "notifications"[\s\S]*?kind === "profile"[\s\S]*?\? "profile"/
   );
   assert.match(styles, /\.product-app-nav \{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important/);
   assert.match(brand, /function syncNotificationNavBadge\(nav\)/);

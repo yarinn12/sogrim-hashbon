@@ -19,3 +19,25 @@ test("expense collections expose list semantics and an accessible heading", asyn
   assert.match(app, /expense-day-group[^>]*role="list"/);
   assert.match(app, /data-expense-id="\$\{escapeAttribute\(expense\.id\)\}" role="listitem"/);
 });
+
+test("large event rows defer participant DOM until the row is expanded", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const expenseRow = app.slice(
+    app.indexOf("function renderExpenseRow(event, expense)"),
+    app.indexOf("function hydrateExpenseParticipants(details, event, expense)")
+  );
+  const hydration = app.slice(
+    app.indexOf("function hydrateExpenseParticipants(details, event, expense)"),
+    app.indexOf("function renderExpenseParticipant(event, participantId)")
+  );
+  const toggleHandler = app.slice(
+    app.indexOf('if (action === "toggle-expense-participants")'),
+    app.indexOf('if (action === "expense-step-next")')
+  );
+
+  assert.match(expenseRow, /class="expense-participants-list"[\s\S]*?><\/div>/);
+  assert.doesNotMatch(expenseRow, /renderExpenseParticipant\(/);
+  assert.match(hydration, /details\.dataset\.participantsHydrated === "true"/);
+  assert.match(hydration, /renderExpenseParticipant\(event, participantId\)/);
+  assert.match(toggleHandler, /if \(!details\.open\)[\s\S]*?hydrateExpenseParticipants/);
+});

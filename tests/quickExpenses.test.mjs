@@ -58,7 +58,8 @@ test("trip expenses are grouped by newest day", () => {
 
   assert.deepEqual(groups.map((group) => group.date), ["2026-07-17", "2026-07-15"]);
   assert.equal(groups[1].expenses.length, 2);
-  assert.match(formatExpenseDay("2026-07-17"), /17/);
+  assert.match(formatExpenseDay("2026-07-17"), /יום שישי/);
+  assert.match(formatExpenseDay("2026-07-17"), /17 ביולי 2026/);
 });
 
 test("restaurant calculator shows what each person should pay before anyone pays", () => {

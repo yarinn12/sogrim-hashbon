@@ -7,13 +7,14 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 test("iOS release automation is safe, manual and TestFlight-ready", async () => {
-  const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes] = await Promise.all([
+  const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
     readFile("scripts/prepare-ios-release.mjs", "utf8"),
     readFile("scripts/verify-ios-workflow-env.mjs", "utf8"),
     readFile("scripts/prepare-ios-icon.mjs", "utf8"),
     readFile("scripts/verify-ios-submission.mjs", "utf8"),
+    readFile("scripts/verify-ios-artifact.mjs", "utf8"),
     readFile("scripts/verify-ios-review-live.mjs", "utf8"),
     readFile("scripts/setup-apple-association.mjs", "utf8"),
     readFile("scripts/generate-apple-client-secret.mjs", "utf8"),
@@ -35,6 +36,7 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(packageJson.scripts["native:ios:flatten-icon"], /prepare-ios-icon\.mjs/);
   assert.doesNotMatch(packageJson.scripts["native:ios:flatten-icon"], /powershell/i);
   assert.match(packageJson.scripts["qa:ios"], /verify-ios-submission/);
+  assert.match(packageJson.scripts["qa:ios:artifact"], /verify-ios-artifact/);
   assert.match(packageJson.scripts["qa:ios:review"], /verify-ios-review-live/);
   assert.match(packageJson.scripts["native:ios:apple-secret"], /generate-apple-client-secret/);
   assert.match(packageJson.scripts["native:ios:csr"], /new-apple-distribution-csr/);
@@ -56,8 +58,10 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
     "Xcode must be selected before native release checks"
   );
   assert.match(workflow, /import-codesign-certs@v7/);
-  assert.match(workflow, /download-provisioning-profiles@v4/);
-  assert.match(workflow, /upload-testflight-build@v4/);
+  assert.match(workflow, /download-provisioning-profiles@v6/);
+  assert.match(workflow, /upload-testflight-build@v5/);
+  assert.match(workflow, /Verify signed iOS artifact/);
+  assert.match(workflow, /build\/ios\/release-manifest\.json/);
   assert.match(workflow, /app-type: ios/);
   assert.match(workflow, /backend: appstore-api/);
   assert.doesNotMatch(workflow, /backend: AppStoreAPI/);
@@ -69,8 +73,15 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(iconScript, /1024x1024/);
   assert.match(iconScript, /source\[25\] !== 2/);
   assert.match(script, /APPLE_TEAM_ID/);
+  assert.match(script, /app-store-metadata-he\.json/);
   assert.match(submissionCheck, /Sign in with Apple uses accessible approved artwork/);
+  assert.match(submissionCheck, /Apple Team ID is configured in both app build configurations/);
+  assert.match(submissionCheck, /Apple Universal Links association matches Team ID/);
   assert.match(submissionCheck, /sign-in-with-apple-iw\.png/);
+  assert.match(artifactCheck, /codesign/);
+  assert.match(artifactCheck, /embedded\.mobileprovision/);
+  assert.match(artifactCheck, /applinks:sogrim-hashbon\.vercel\.app/);
+  assert.match(artifactCheck, /release-manifest\.json/);
   assert.match(liveReview, /external\?\.apple === true/);
   assert.match(liveReview, /apple-app-site-association/);
   assert.match(liveReview, /Private App Review account signs in successfully/);

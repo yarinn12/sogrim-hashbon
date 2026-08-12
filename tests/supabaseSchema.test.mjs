@@ -20,14 +20,14 @@ test("Supabase schema secures shared snapshots with explicit grants and RLS", as
   assert.match(schema, /owner_user_id = \(select auth\.uid\(\)\)/);
   assert.match(schema, /create or replace function private\.claim_signup_workspace/);
   assert.match(schema, /after insert on auth\.users/);
-  assert.match(
-    schema,
-    /using \(\s*owner_user_id is null\s*and access_key_hash = \(select public\.request_space_key_hash\(\)\)\s*\)/
+  const sharedUpdatePolicy = schema.slice(
+    schema.indexOf("create policy app_snapshots_update"),
+    schema.indexOf("drop policy if exists app_snapshots_owner_select")
   );
-  assert.match(
-    schema,
-    /with check \(\s*access_key_hash = \(select public\.request_space_key_hash\(\)\)\s*and owner_user_id is null\s*\)/
-  );
+  assert.match(sharedUpdatePolicy, /using \(\s*owner_user_id is null/);
+  assert.match(sharedUpdatePolicy, /snapshot_kind = 'workspace'[\s\S]*access_key_hash = \(select public\.request_space_key_hash\(\)\)/);
+  assert.match(sharedUpdatePolicy, /snapshot_kind = 'shared_event'[\s\S]*select public\.can_write_shared_snapshot\(id\)/);
+  assert.match(sharedUpdatePolicy, /with check \(\s*owner_user_id is null/);
   assert.match(schema, /create or replace function public\.delete_account_data/);
   assert.match(schema, /create or replace function public\.delete_account_data\(\s*p_user_id uuid\s*\)/);
   assert.doesNotMatch(schema, /account_snapshot\.access_key_hash = p_space_key_hash/);
@@ -230,4 +230,16 @@ test("schema deployment verifies every friendship table and RPC", async () => {
   );
   assert.match(deployScript, /safety_client_mutation_locked/);
   assert.match(deployScript, /safety_function_access_ready/);
+});
+
+test("schema deployment verifies workspace claim and pair-lock hardening", async () => {
+  const deployScript = await readFile("scripts/apply-supabase-schema.mjs", "utf8");
+
+  assert.match(deployScript, /to_regclass\('private\.signup_workspace_claims'\)/);
+  assert.match(deployScript, /signup_claims_rls_ready/);
+  assert.match(deployScript, /signup_claims_private/);
+  assert.match(deployScript, /signup_claim_trigger_ready/);
+  assert.match(deployScript, /signup_claim_function_private/);
+  assert.match(deployScript, /shared_snapshot_policy_ready/);
+  assert.match(deployScript, /friendship_pair_lock_ready/);
 });

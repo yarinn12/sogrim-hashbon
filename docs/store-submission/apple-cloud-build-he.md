@@ -46,7 +46,8 @@ powershell -ExecutionPolicy Bypass -File scripts/export-apple-distribution-p12.p
 4. מגדיר את Team ID, הגרסה ומספר הבילד.
 5. מתקין תעודת חתימה ו-Provisioning Profile.
 6. בונה Archive באמצעות Xcode 26.6 ו-iOS 26.5 SDK.
-7. מייצא IPA ומעלה אותו ל-TestFlight.
-8. שומר את ה-IPA ואת לוגי הבנייה כ-Artifact פרטי של GitHub למשך שבעה ימים, גם אם שלב מאוחר נכשל.
+7. מייצא IPA ומאמת לפני ההעלאה את החתימה, ה-Provisioning Profile, ה-Team ID, ה-Bundle ID, הגרסה, ה-Build, Universal Links ו-Sign in with Apple.
+8. מעלה את ה-IPA המאומת ל-TestFlight.
+9. שומר את ה-IPA, דוח הראיות ולוגי הבנייה כ-Artifact פרטי של GitHub למשך שבעה ימים, גם אם שלב מאוחר נכשל.
 
 כל הרצה שהגיעה ל-Complete ב-App Store Connect חייבת לקבל מספר Build חדש בהרצה הבאה.

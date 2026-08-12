@@ -132,12 +132,14 @@ test("store submission documents capture remaining Google and store work", async
 });
 
 test("verified app links and store submission declarations are prepared", async () => {
-  const [vercel, server, packageJson, dataSafety, appPrivacy] = await Promise.all([
+  const [vercel, server, packageJson, dataSafety, appPrivacy, releaseBuilder, readinessCheck] = await Promise.all([
     readFile("vercel.json", "utf8"),
     readFile("server.mjs", "utf8"),
     readFile("package.json", "utf8").then(JSON.parse),
     readFile("docs/store-submission/google-play-data-safety-he.md", "utf8"),
-    readFile("docs/store-submission/apple-app-privacy-he.md", "utf8")
+    readFile("docs/store-submission/apple-app-privacy-he.md", "utf8"),
+    readFile("scripts/build-android-release.mjs", "utf8"),
+    readFile("scripts/verify-store-readiness.mjs", "utf8")
   ]);
 
   assert.match(vercel, /\.well-known\/\*\*/);
@@ -149,4 +151,15 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(dataSafety, /אסימון התראות של Android/);
   assert.match(appPrivacy, /NSPrivacyCollectedDataTypeOtherFinancialInfo/);
   assert.match(appPrivacy, /לא נעשה שימוש במידע למעקב/);
+  assert.match(releaseBuilder, /rmSync\(bundle, \{ force: true \}\)/);
+  assert.match(releaseBuilder, /release-manifest\.json/);
+  assert.match(releaseBuilder, /android-upload-certificate-sha256\.txt/);
+  assert.match(releaseBuilder, /fingerprintAndroidReleaseSource/);
+  assert.match(releaseBuilder, /Android merged release manifest/);
+  assert.match(releaseBuilder, /Another Android release build is already running/);
+  assert.match(releaseBuilder, /"clean", "bundleRelease", "lintRelease", "--no-daemon"/);
+  assert.match(readinessCheck, /Android AAB matches current version, hash, signing certificate and source/);
+  assert.match(readinessCheck, /localReady, liveReady, submissionReady/);
+  assert.match(readinessCheck, /AbortSignal\.timeout\(10_000\)/);
+  assert.doesNotMatch(readinessCheck, /Android release is prepared as 3\.44/);
 });

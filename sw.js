@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v280";
+const CACHE_NAME = "settle-friends-live-v281";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -142,11 +142,19 @@ const CACHE_FILES = [
   "/src/uiIcons.mjs"
 ];
 
+const LAZY_MEDIA_FILES = new Set([
+  "/sogrim-home-hero.png",
+  "/assets/sogrim-logo-intro.mp4",
+  "/assets/sogrim-logo-intro-poster.jpg",
+  "/assets/sogrim-logo-intro-hold.jpg"
+]);
+const PRECACHE_FILES = CACHE_FILES.filter((path) => !LAZY_MEDIA_FILES.has(path));
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(CACHE_FILES))
+      .then((cache) => cache.addAll(PRECACHE_FILES))
       .then(() => self.skipWaiting())
   );
 });
@@ -181,6 +189,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (LAZY_MEDIA_FILES.has(url.pathname)) {
+    event.respondWith(fetchCachedMedia(event.request));
+    return;
+  }
+
   event.respondWith(
     (async () => {
       try {
@@ -208,6 +221,26 @@ self.addEventListener("fetch", (event) => {
     })()
   );
 });
+
+async function fetchCachedMedia(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+
+  try {
+    const response = await fetch(request);
+    if (response.status === 200 && !request.headers.has("range")) {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+      } catch {
+        // A cache write failure must not block the media response.
+      }
+    }
+    return response;
+  } catch {
+    return Response.error();
+  }
+}
 
 function isPrivateInviteUrl(url) {
   return (

@@ -76,7 +76,14 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
         ...(!isUpdate && isAccountOwnedSpace(config)
           ? { owner_user_id: config.storage.account.userId }
           : {}),
-        ...(isUpdate ? {} : { access_key_hash: await hashSpaceKey(config.storage.spaceKey) })
+        ...(isUpdate
+          ? {}
+          : {
+              access_key_hash: await hashSpaceKey(config.storage.spaceKey),
+              ...(config.storage.snapshotKind
+                ? { snapshot_kind: config.storage.snapshotKind }
+                : {})
+            })
       })
     }
   );

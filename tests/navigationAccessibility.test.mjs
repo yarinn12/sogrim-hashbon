@@ -91,6 +91,18 @@ test("event navigation exposes its current section and explicit button types", a
   assert.match(app, /window\.setTimeout\(restorePendingDialogReturnFocus, 120\)/);
 });
 
+test("friends hub does not claim the profile destination as the current page", async () => {
+  const brand = await readFile("src/publicBrandLayer.mjs", "utf8");
+  const start = brand.indexOf("function syncHeaderNavState()");
+  const end = brand.indexOf("function syncNotificationNavBadge", start);
+  const navigationState = brand.slice(start, end);
+
+  assert.ok(start >= 0);
+  assert.ok(end > start);
+  assert.match(navigationState, /kind === "profile"\s*\? "profile"/);
+  assert.doesNotMatch(navigationState, /\["profile", "groups"\]\.includes\(kind\)/);
+});
+
 test("mobile navigation stays visible and uses store-ready touch targets", async () => {
   const styles = await readFile("src/publicStudioDesignLayer.mjs", "utf8");
 

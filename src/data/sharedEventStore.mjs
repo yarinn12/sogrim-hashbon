@@ -10,6 +10,7 @@ import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
 import { normalizeAvatarPreset } from "../domain/avatarPresets.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
+import { fetchWithTimeout } from "./fetchTimeout.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
 export const EVENT_SPACE_KEY_FIELD = "sharedSpaceKey";
@@ -154,12 +155,18 @@ export async function saveSharedEventState(
   if (!config || !payload) return state;
 
   const remote = await readCloudState(config, fetchImpl);
+  if (remote) {
+    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  }
   const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
   const saved = await saveCloudStateWithConflictRetry({
     state: mergedPayload,
     loadLatest: () => readCloudState(config, fetchImpl),
     save: (candidate) => saveCloudState(config, candidate, fetchImpl)
   });
+  if (!remote) {
+    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  }
 
   return mergeSharedEventIntoState(state, saved.state, credentials);
 }
@@ -255,12 +262,64 @@ export async function saveSharedEventDeletion(
     ]
   };
   const remote = await readCloudState(config, fetchImpl);
+  if (remote) {
+    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  }
   const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
   await saveCloudStateWithConflictRetry({
     state: mergedPayload,
     loadLatest: () => readCloudState(config, fetchImpl),
     save: (candidate) => saveCloudState(config, candidate, fetchImpl)
   });
+
+  return true;
+}
+
+export async function ensureSharedEventMembership(
+  runtimeConfig,
+  credentials,
+  fetchImpl = fetch
+) {
+  const storage = runtimeConfig?.storage;
+  const id = normalizeSpaceId(credentials?.id);
+  const key = normalizeSpaceKey(credentials?.key);
+  const accessToken = storage?.account?.accessToken;
+  if (storage?.mode !== "supabase" || !id || !key) return false;
+  if (!accessToken || !storage?.account?.userId) {
+    const error = new Error("A signed-in account is required to update a shared event");
+    error.code = "SHARED_EVENT_ACCOUNT_REQUIRED";
+    error.status = 401;
+    throw error;
+  }
+
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    `${storage.url}/rest/v1/rpc/join_shared_event`,
+    {
+      method: "POST",
+      headers: {
+        apikey: storage.anonKey,
+        authorization: `Bearer ${accessToken}`,
+        "x-space-key": key,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ p_snapshot_id: id })
+    }
+  );
+
+  if (!response.ok) {
+    const error = new Error(
+      response.status === 401 || response.status === 403
+        ? "Shared event membership is no longer active"
+        : "Shared event membership could not be verified"
+    );
+    error.code =
+      response.status === 401 || response.status === 403
+        ? "SHARED_EVENT_MEMBERSHIP_REVOKED"
+        : "SHARED_EVENT_MEMBERSHIP_FAILED";
+    error.status = Number(response.status ?? 0) || 0;
+    throw error;
+  }
 
   return true;
 }
@@ -393,7 +452,14 @@ function eventCloudConfig(runtimeConfig, credentials) {
   const id = normalizeSpaceId(credentials?.id);
   const key = normalizeSpaceKey(credentials?.key);
   if (!id || !key) return null;
-  return applyClientSpaceToConfig(runtimeConfig, id, key);
+  const config = applyClientSpaceToConfig(runtimeConfig, id, key);
+  return {
+    ...config,
+    storage: {
+      ...config.storage,
+      snapshotKind: "shared_event"
+    }
+  };
 }
 
 function sanitizeParticipant(participant) {

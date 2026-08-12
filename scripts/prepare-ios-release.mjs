@@ -2,9 +2,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const root = process.cwd();
+const metadata = JSON.parse(
+  await readFile(join(root, "docs", "store-submission", "app-store-metadata-he.json"), "utf8")
+);
 const teamId = String(process.env.APPLE_TEAM_ID ?? "").trim().toUpperCase();
-const version = String(process.env.IOS_VERSION ?? "3.38").trim();
-const build = String(process.env.IOS_BUILD ?? "61").trim();
+const version = String(process.env.IOS_VERSION ?? metadata.version.number).trim();
+const build = String(process.env.IOS_BUILD ?? metadata.version.build).trim();
 
 if (!/^[A-Z0-9]{10}$/.test(teamId)) {
   throw new Error("Set APPLE_TEAM_ID to the 10-character Apple Developer Team ID.");

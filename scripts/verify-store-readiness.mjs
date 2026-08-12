@@ -1,10 +1,15 @@
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mjs";
+
 const root = process.cwd();
-const checks = [];
-const external = [];
+const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-hashbon.vercel.app").replace(/\/+$/, "");
+const localChecks = [];
+const liveChecks = [];
+const manualChecks = [];
 const playSigningFingerprint = (
   await readFile(join(root, "docs", "store-submission", "android-play-signing-certificate-sha256.txt"), "utf8")
 ).trim();
@@ -12,9 +17,10 @@ const playSigningFingerprint = (
 await checkFile("Android release signing", "android/keystore.properties");
 await checkFile("Android upload key", "android/app/sogrim-upload-key.jks");
 await checkFile("Android App Bundle", "android/app/build/outputs/bundle/release/app-release.aab");
+await checkFile("Android release evidence", "android/app/build/outputs/bundle/release/release-manifest.json");
 await checkFile("Android App Links", ".well-known/assetlinks.json");
 const localAssetLinks = JSON.parse(await readFile(join(root, ".well-known", "assetlinks.json"), "utf8"));
-checks.push({
+localChecks.push({
   name: "Android App Links include Play signing key",
   ok: localAssetLinks.some(
     (statement) =>
@@ -49,13 +55,13 @@ const [storeScreenshotHtml, storeScreenshotModule, reviewNotes, androidBuild] = 
   readFile(join(root, "docs", "store-submission", "review-notes-he.md"), "utf8"),
   readFile(join(root, "android", "app", "build.gradle"), "utf8")
 ]);
-checks.push({
+localChecks.push({
   name: "Store screenshot source uses a CSP-safe external module",
   ok:
     /<script type="module" src="\.\/store-screenshot-source\.mjs"><\/script>/.test(storeScreenshotHtml) &&
     (storeScreenshotHtml.match(/<script/g) || []).length === 1
 });
-checks.push({
+localChecks.push({
   name: "Store screenshots match current event, expense and invite flows",
   ok:
     /ui-event-type-current\.png/.test(storeScreenshotModule) &&
@@ -63,34 +69,40 @@ checks.push({
     /ui-invite-current\.png/.test(storeScreenshotModule) &&
     !/restaurant/i.test(storeScreenshotModule)
 });
-checks.push({
+localChecks.push({
   name: "Store review route matches currently exposed event types",
   ok:
     reviewNotes.includes("יציאה רגילה") &&
     reviewNotes.includes("טיול או חופשה") &&
     !reviewNotes.includes("מסעדה")
 });
-checks.push({
-    name: "Android release is prepared as 3.44 (67)",
-    ok: /versionCode\s+67/.test(androidBuild) && /versionName\s+"3\.44"/.test(androidBuild)
+const androidVersionCode = Number.parseInt(androidBuild.match(/versionCode\s+(\d+)/)?.[1] ?? "", 10);
+const androidVersionName = androidBuild.match(/versionName\s+"([^"]+)"/)?.[1] ?? "";
+localChecks.push({
+  name: "Android release version is valid",
+  ok: Number.isSafeInteger(androidVersionCode) && androidVersionCode > 0 && Boolean(androidVersionName)
 });
+await checkAndroidReleaseEvidence({ androidVersionCode, androidVersionName });
 
 const androidVariables = await readFile(join(root, "android", "variables.gradle"), "utf8");
-checks.push({ name: "Android target API 36", ok: /targetSdkVersion\s*=\s*36/.test(androidVariables) });
+localChecks.push({ name: "Android target API 36", ok: /targetSdkVersion\s*=\s*36/.test(androidVariables) });
 
 const iosProject = await readFile(join(root, "ios", "App", "App.xcodeproj", "project.pbxproj"), "utf8");
-checks.push({ name: "iOS privacy manifest bundled", ok: /PrivacyInfo\.xcprivacy in Resources/.test(iosProject) });
-checks.push({ name: "Stable bundle ID", ok: /PRODUCT_BUNDLE_IDENTIFIER = com\.sogrimhashbon\.app/.test(iosProject) });
-checks.push({
-  name: "iOS release is prepared as 3.38 (61)",
+localChecks.push({ name: "iOS privacy manifest bundled", ok: /PrivacyInfo\.xcprivacy in Resources/.test(iosProject) });
+localChecks.push({ name: "Stable bundle ID", ok: /PRODUCT_BUNDLE_IDENTIFIER = com\.sogrimhashbon\.app/.test(iosProject) });
+const iosMetadata = JSON.parse(
+  await readFile(join(root, "docs", "store-submission", "app-store-metadata-he.json"), "utf8")
+);
+localChecks.push({
+  name: "iOS release matches App Store metadata",
   ok:
-    /MARKETING_VERSION = 3\.38/.test(iosProject) &&
-    /CURRENT_PROJECT_VERSION = 61/.test(iosProject)
+    iosProject.includes(`MARKETING_VERSION = ${iosMetadata.version.number};`) &&
+    iosProject.includes(`CURRENT_PROJECT_VERSION = ${iosMetadata.version.build};`)
 });
 
 const packageSwift = await readFile(join(root, "ios", "App", "CapApp-SPM", "Package.swift"), "utf8");
-checks.push({ name: "macOS-compatible Swift package paths", ok: !/path: "[^"\n]*\\/.test(packageSwift) });
-checks.push({
+localChecks.push({ name: "macOS-compatible Swift package paths", ok: !/path: "[^"\n]*\\/.test(packageSwift) });
+localChecks.push({
   name: "iOS excludes Android-only ads and push delivery",
   ok:
     !/CapacitorCommunityAdmob/.test(packageSwift) &&
@@ -104,33 +116,42 @@ const [mainActivity, nativeBridge] = await Promise.all([
   ),
   readFile(join(root, "src", "publicNativeBridgeLayer.mjs"), "utf8")
 ]);
-checks.push({
+localChecks.push({
   name: "Android push crash guard",
   ok:
     /registerPlugin\(SogrimCapabilitiesPlugin\.class\)/.test(mainActivity) &&
     /resolveAndroidPushAvailability/.test(nativeBridge)
 });
-external.push({
+manualChecks.push({
   name: "Android Firebase push configured",
   ok: await hasAndroidFirebaseConfiguration()
 });
 
 for (const path of ["privacy", "support", "terms", "account-deletion"]) {
   try {
-    const response = await fetch(`https://sogrim-hashbon.vercel.app/${path}`);
-    checks.push({ name: `Public ${path} page`, ok: response.ok });
+    const response = await fetchWithTimeout(`${publicOrigin}/${path}`, { redirect: "manual" });
+    liveChecks.push({
+      name: `Public ${path} page`,
+      ok: Boolean(
+        response.ok &&
+        response.status === 200 &&
+        response.headers.get("content-type")?.includes("text/html")
+      )
+    });
   } catch {
-    checks.push({ name: `Public ${path} page`, ok: false });
+    liveChecks.push({ name: `Public ${path} page`, ok: false });
   }
 }
 
 try {
-  const response = await fetch("https://sogrim-hashbon.vercel.app/.well-known/assetlinks.json");
+  const response = await fetchWithTimeout(`${publicOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
   const statements = await response.json();
-  checks.push({
+  liveChecks.push({
     name: "Live Android App Links association",
     ok:
       response.ok &&
+      response.status === 200 &&
+      Boolean(response.headers.get("content-type")?.includes("application/json")) &&
       statements.some(
         (statement) =>
           statement.target?.package_name === "com.sogrimhashbon.app" &&
@@ -138,42 +159,49 @@ try {
       )
   });
 } catch {
-  checks.push({ name: "Live Android App Links association", ok: false });
+  liveChecks.push({ name: "Live Android App Links association", ok: false });
 }
 
 try {
-  const configResponse = await fetch("https://sogrim-hashbon.vercel.app/api/config");
+  const configResponse = await fetchWithTimeout(`${publicOrigin}/api/config`, { redirect: "manual" });
   const config = await configResponse.json();
-  const settingsResponse = await fetch(`${config.storage.url}/auth/v1/settings`, {
+  const settingsResponse = await fetchWithTimeout(`${config.storage.url}/auth/v1/settings`, {
     headers: { apikey: config.storage.anonKey }
   });
   const settings = await settingsResponse.json();
-  checks.push({ name: "Google sign-in enabled", ok: Boolean(settings.external?.google) });
-  external.push({ name: "Sign in with Apple enabled in Supabase", ok: Boolean(settings.external?.apple) });
+  liveChecks.push({
+    name: "Google sign-in enabled",
+    ok: configResponse.ok && settingsResponse.ok && Boolean(settings.external?.google)
+  });
+  liveChecks.push({
+    name: "Sign in with Apple enabled",
+    ok: configResponse.ok && settingsResponse.ok && Boolean(settings.external?.apple)
+  });
 } catch {
-  checks.push({ name: "Live authentication configuration", ok: false });
-  external.push({ name: "Sign in with Apple enabled in Supabase", ok: false });
+  liveChecks.push({ name: "Live authentication configuration", ok: false });
 }
 
-external.push({
+manualChecks.push({
   name: "Apple Team ID association file",
   ok: existsSync(join(root, ".well-known", "apple-app-site-association"))
 });
-external.push({ name: "App Store build made with Xcode 26+ on macOS", ok: false });
-external.push({ name: "Developer accounts, identity and store forms completed", ok: false });
+manualChecks.push({ name: "App Store build made with Xcode 26+ on macOS", ok: false });
+manualChecks.push({ name: "Developer accounts, identity and store forms completed", ok: false });
 
-const localReady = checks.every((check) => check.ok);
-console.log(JSON.stringify({ localReady, checks, external }, null, 2));
-if (!localReady) process.exitCode = 1;
+const localReady = localChecks.every((check) => check.ok);
+const liveReady = liveChecks.every((check) => check.ok);
+const submissionReady = localReady && liveReady && manualChecks.every((check) => check.ok);
+console.log(JSON.stringify({ localReady, liveReady, submissionReady, localChecks, liveChecks, manualChecks }, null, 2));
+if (!localReady || !liveReady) process.exitCode = 1;
 
 async function checkFile(name, relativePath) {
-  checks.push({ name, ok: existsSync(join(root, ...relativePath.split("/"))) });
+  localChecks.push({ name, ok: existsSync(join(root, ...relativePath.split("/"))) });
 }
 
 async function checkPng(name, relativePath, expectedWidth, expectedHeight, maxBytes = null, requireRgb = false) {
   const path = join(root, ...relativePath.split("/"));
   if (!existsSync(path)) {
-    checks.push({ name, ok: false });
+    localChecks.push({ name, ok: false });
     return;
   }
   const [buffer, file] = await Promise.all([readFile(path), stat(path)]);
@@ -181,7 +209,7 @@ async function checkPng(name, relativePath, expectedWidth, expectedHeight, maxBy
   const width = isPng ? buffer.readUInt32BE(16) : 0;
   const height = isPng ? buffer.readUInt32BE(20) : 0;
   const colorType = isPng ? buffer[25] : -1;
-  checks.push({
+  localChecks.push({
     name,
     ok: isPng
       && width === expectedWidth
@@ -189,6 +217,48 @@ async function checkPng(name, relativePath, expectedWidth, expectedHeight, maxBy
       && (!maxBytes || file.size <= maxBytes)
       && (!requireRgb || colorType === 2)
   });
+}
+
+async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionName }) {
+  const bundlePath = join(root, "android", "app", "build", "outputs", "bundle", "release", "app-release.aab");
+  const evidencePath = join(root, "android", "app", "build", "outputs", "bundle", "release", "release-manifest.json");
+  if (!existsSync(bundlePath) || !existsSync(evidencePath)) {
+    localChecks.push({ name: "Android AAB matches current version, hash, signing certificate and source", ok: false });
+    return;
+  }
+
+  try {
+    const [bundleBytes, bundleFile, evidenceText, expectedUploadSha256, source] = await Promise.all([
+      readFile(bundlePath),
+      stat(bundlePath),
+      readFile(evidencePath, "utf8"),
+      readFile(join(root, "docs", "store-submission", "android-upload-certificate-sha256.txt"), "utf8"),
+      fingerprintAndroidReleaseSource(root)
+    ]);
+    const evidence = JSON.parse(evidenceText);
+    const digest = createHash("sha256").update(bundleBytes).digest("hex").toUpperCase();
+    localChecks.push({
+      name: "Android AAB matches current version, hash, signing certificate and source",
+      ok:
+        evidence.applicationId === "com.sogrimhashbon.app" &&
+        evidence.versionCode === androidVersionCode &&
+        evidence.versionName === androidVersionName &&
+        evidence.bytes === bundleFile.size &&
+        evidence.sha256 === digest &&
+        evidence.signingSha256 === expectedUploadSha256.trim().toUpperCase() &&
+        evidence.sourceSha256 === source.sha256 &&
+        evidence.sourceFileCount === source.fileCount &&
+        evidence.minSdkVersion === 24 &&
+        evidence.targetSdkVersion === 36
+    });
+  } catch {
+    localChecks.push({ name: "Android AAB matches current version, hash, signing certificate and source", ok: false });
+  }
+}
+
+async function fetchWithTimeout(url, options = {}) {
+  const signal = AbortSignal.timeout(10_000);
+  return fetch(url, { ...options, signal });
 }
 
 async function hasAndroidFirebaseConfiguration() {

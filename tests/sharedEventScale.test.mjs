@@ -22,8 +22,13 @@ test("a regular save syncs only the shared event that changed", () => {
 test("selected shared-event sync does not request unchanged event snapshots", async () => {
   const state = stateWithSharedEvents(40);
   const requestedKeys = [];
-  const fetchImpl = async (_url, options) => {
+  const membershipRequests = [];
+  const fetchImpl = async (url, options) => {
     const key = options.headers["x-space-key"];
+    if (url.includes("/rest/v1/rpc/join_shared_event")) {
+      membershipRequests.push(JSON.parse(options.body));
+      return jsonResponse({ status: "active" });
+    }
     requestedKeys.push(key);
     const index = Number(key.match(/(\d+)$/)?.[1] ?? 1);
     const event = state.events[index - 1];
@@ -53,7 +58,11 @@ test("selected shared-event sync does not request unchanged event snapshots", as
         mode: "supabase",
         url: "https://project.supabase.co",
         table: "app_snapshots",
-        anonKey: "anon"
+        anonKey: "anon",
+        account: {
+          userId: "00000000-0000-4000-8000-000000000001",
+          accessToken: "account-token"
+        }
       }
     },
     state,
@@ -66,6 +75,7 @@ test("selected shared-event sync does not request unchanged event snapshots", as
     new Set(requestedKeys),
     new Set(["event-share-key-00000000000000017"])
   );
+  assert.deepEqual(membershipRequests, [{ p_snapshot_id: "event-space-17" }]);
 });
 
 test("a large account refresh caps simultaneous shared-event reads", async () => {
@@ -138,5 +148,15 @@ function stateWithSharedEvents(count) {
     })),
     deletedEvents: [],
     deletedParticipants: []
+  };
+}
+
+function jsonResponse(payload, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() {
+      return payload;
+    }
   };
 }

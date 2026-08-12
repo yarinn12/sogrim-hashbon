@@ -169,6 +169,7 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeEnabled();
   await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeEnabled();
   await expect(shareDialog.locator('[data-share-ready="true"]')).toHaveCount(1);
+  await assertShareChoicesDoNotOverlap(shareDialog);
   await assertNoHorizontalOverflow(page, "invite dialog");
   await assertCriticalSemantics(page, "invite dialog");
   await captureConsistencySurface(page, "17-event-invite");
@@ -176,6 +177,43 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(shareDialog).toBeHidden();
   await expect(shareButton).toBeFocused();
 });
+
+test("friends hub exposes tabs without reporting profile as the current page", async ({ page }) => {
+  await page.locator('.product-nav-button[data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.locator('[data-action="groups"][data-tab="people"]').click();
+
+  const friendsHub = page.locator('[data-screen-kind="groups"].friends-hub-screen');
+  await expect(friendsHub).toBeVisible();
+  await expect(friendsHub.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
+  await expect(friendsHub.locator('#friends-tab-people')).toHaveAttribute("aria-selected", "true");
+  await expect(friendsHub.locator('.product-nav-button[aria-current="page"]')).toHaveCount(0);
+});
+
+async function assertShareChoicesDoNotOverlap(shareDialog) {
+  const layout = await shareDialog.evaluate((dialog) => {
+    const privateChoice = dialog.querySelector(".event-share-choice");
+    const privateButton = privateChoice?.querySelector(":scope > button");
+    const openChoice = dialog.querySelector(".event-share-open");
+    if (!privateChoice || !privateButton || !openChoice) return null;
+
+    const privateRect = privateChoice.getBoundingClientRect();
+    const buttonRect = privateButton.getBoundingClientRect();
+    const openRect = openChoice.getBoundingClientRect();
+    return {
+      privateTop: privateRect.top,
+      privateBottom: privateRect.bottom,
+      buttonTop: buttonRect.top,
+      buttonBottom: buttonRect.bottom,
+      openTop: openRect.top
+    };
+  });
+
+  expect(layout, "the share dialog choices must render").not.toBeNull();
+  expect(layout.buttonTop, "the friend picker must start inside its card").toBeGreaterThanOrEqual(layout.privateTop - 1);
+  expect(layout.buttonBottom, "the friend picker must stay inside its card").toBeLessThanOrEqual(layout.privateBottom + 1);
+  expect(layout.openTop, "the WhatsApp section must start after the private choice").toBeGreaterThanOrEqual(layout.privateBottom - 1);
+}
 
 async function captureConsistencySurface(page, name) {
   if (process.env.CAPTURE_COHERENCE_ALL !== "1") return;

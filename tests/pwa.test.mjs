@@ -106,6 +106,19 @@ test("service worker precaches the app shell", async () => {
   assert.match(sw, /event\.request\.mode === "navigate"/);
 });
 
+test("service worker loads heavy brand media on demand and reuses it", async () => {
+  const sw = await readFile("sw.js", "utf8");
+
+  assert.match(sw, /const LAZY_MEDIA_FILES = new Set/);
+  assert.match(sw, /"\/assets\/sogrim-logo-intro\.mp4"/);
+  assert.match(sw, /"\/sogrim-home-hero\.png"/);
+  assert.match(sw, /const PRECACHE_FILES = CACHE_FILES\.filter/);
+  assert.match(sw, /cache\.addAll\(PRECACHE_FILES\)/);
+  assert.match(sw, /if \(LAZY_MEDIA_FILES\.has\(url\.pathname\)\)/);
+  assert.match(sw, /const cached = await caches\.match\(request\)/);
+  assert.match(sw, /if \(cached\) return cached/);
+});
+
 test("service worker precaches every browser module used by the public app", async () => {
   const html = await readFile("index.html", "utf8");
   const sw = await readFile("sw.js", "utf8");
