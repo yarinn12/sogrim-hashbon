@@ -3897,6 +3897,8 @@ function renderEventParticipantsDialog(event) {
     backdropClass: "event-participant-route-backdrop",
     modalClass: "event-participant-route-modal event-participant-roster-modal",
     routeMode: true,
+    backAction: "event-participants-back",
+    backLabel: "חזרה לאירוע",
     showClose: false,
     body: `
       ${
@@ -3960,6 +3962,8 @@ function renderEventParticipantAddDialog(event) {
     backdropClass: "event-participant-route-backdrop",
     modalClass: "event-participant-route-modal event-participant-add-route-modal",
     routeMode: true,
+    backAction: "event-participants-back",
+    backLabel: "חזרה למשתתפים",
     showClose: false,
     body: `
       <div class="event-participant-add-screen" data-participant-add-view>
@@ -4127,6 +4131,8 @@ function renderConnectedEventParticipantProfile(event, participant) {
     backdropClass: "event-participant-route-backdrop",
     modalClass: "event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
     routeMode: true,
+    backAction: "event-participants-back",
+    backLabel: "חזרה למשתתפים",
     showClose: false,
     body: `
       <section
@@ -4646,6 +4652,8 @@ function renderOfflineEventParticipantProfile(event, participant) {
     backdropClass: "event-participant-route-backdrop",
     modalClass: "event-participant-route-modal event-participant-detail-modal event-participant-management-modal",
     routeMode: true,
+    backAction: "event-participants-back",
+    backLabel: "חזרה למשתתפים",
     showClose: false,
     body: `
       <section
@@ -4737,6 +4745,8 @@ function renderEventParticipantLinkDialog(event) {
     backdropClass: "event-participant-route-backdrop",
     modalClass: "event-participant-route-modal event-participant-link-modal",
     routeMode: true,
+    backAction: "event-participants-back",
+    backLabel: "חזרה לניהול המשתתף",
     showClose: false,
     body: `
       <section class="event-participant-link-screen">

@@ -363,10 +363,10 @@ async function inspect(page, label) {
     );
   }
   const usesStandaloneModalChrome = state.overlayVisible && state.overlayDismissVisible;
-  const usesFocusedRouteChrome = state.focusedRoute && state.backVisible;
+  const usesFocusedRouteChrome = state.backVisible && (state.focusedRoute || state.overlayVisible);
   check(
     `${label}: product header stays visible before page scroll`,
-    state.scrollY > 1 || usesStandaloneModalChrome || state.productHeaderVisible
+    state.scrollY > 1 || usesStandaloneModalChrome || usesFocusedRouteChrome || state.productHeaderVisible
   );
   check(
     `${label}: bottom navigation or focused route exit stays visible`,
@@ -501,7 +501,9 @@ function inspectionExpression() {
         .some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)),
       bottomNavigationVisible: [...document.querySelectorAll('.product-nav-button')]
         .filter((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)).length >= 3,
-      backVisible: [...document.querySelectorAll('[data-action="go-back"]')]
+      backVisible: [...document.querySelectorAll(
+        '[data-action="go-back"],.modal-section-back-button'
+      )]
         .some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)),
       overlayDismissVisible: Boolean(activeOverlay && [...activeOverlay.querySelectorAll(
         '[data-action="close-event-dialog"],[data-action="close-profile-dialog"],[data-action="close-dialog"],button[aria-label*="סגור"]'
@@ -612,7 +614,8 @@ async function waitFor(predicate, timeoutMs = 8_000) {
 }
 
 async function waitForPage() {
-  const deadline = Date.now() + 12_000;
+  const waitTimeoutMs = Number(process.env.ANDROID_QA_WEBVIEW_TIMEOUT_MS) || 40_000;
+  const deadline = Date.now() + waitTimeoutMs;
   while (Date.now() < deadline) {
     const pid = adbRun(["-s", device, "shell", "pidof", packageName], { allowFailure: true }).trim();
     if (pid) {

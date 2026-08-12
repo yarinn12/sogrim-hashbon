@@ -541,6 +541,8 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(dialog, /renderCurrentEventParticipants/);
   assert.match(dialog, /description: event\.name/);
   assert.match(dialog, /routeMode: true/);
+  assert.match(dialog, /backAction: "event-participants-back"/);
+  assert.match(dialog, /backLabel: "חזרה לאירוע"/);
   assert.match(dialog, /showClose: false/);
   assert.match(dialog, /event-participant-route-backdrop/);
   assert.doesNotMatch(dialog, /האנשים תחת/);
@@ -552,6 +554,8 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(addDialog, /data-action="open-event-share"/);
   assert.match(addDialog, /class="event-participant-offline-entry participant-add-manual"/);
   assert.match(addDialog, /routeMode: true/);
+  assert.match(addDialog, /backAction: "event-participants-back"/);
+  assert.match(addDialog, /backLabel: "חזרה למשתתפים"/);
   assert.match(addDialog, /showClose: false/);
   assert.match(addDialog, /event-participant-add-route-modal/);
   assert.match(app, /data-event-participant-roster/);
@@ -701,6 +705,8 @@ test("connected participant profile stays focused on participant management", as
 
   assert.match(profile, /title: "ניהול משתתף"/);
   assert.match(profile, /event-participant-management-modal/);
+  assert.match(profile, /backAction: "event-participants-back"/);
+  assert.match(profile, /backLabel: "חזרה למשתתפים"/);
   assert.match(profile, /renderEventParticipantAdminControl/);
   assert.match(profile, />חברות</);
   assert.match(profile, /renderEventParticipantRemovalRow/);
