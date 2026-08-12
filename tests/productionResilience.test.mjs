@@ -23,6 +23,8 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
     "node scripts/verify-production-availability.mjs"
   );
   assert.match(workflow, /schedule:/);
+  assert.match(workflow, /push:/);
+  assert.match(workflow, /set -o pipefail/);
   assert.match(workflow, /Open one incident issue/);
   assert.match(workflow, /Close recovered incident issue/);
 });
@@ -53,4 +55,15 @@ test("the recovery runbook preserves data ownership and provider portability", a
   assert.match(runbook, /stable custom domain/);
   assert.match(runbook, /pending-sync queue/);
   assert.match(runbook, /Never copy `\.env\.local`/);
+});
+
+test("the backup image is published from main without embedding secrets", async () => {
+  const workflow = await readFile(".github/workflows/backup-image.yml", "utf8");
+
+  assert.match(workflow, /branches: \[main\]/);
+  assert.match(workflow, /packages: write/);
+  assert.match(workflow, /docker\/build-push-action@v6/);
+  assert.match(workflow, /sogrim-hashbon-server:latest/);
+  assert.match(workflow, /secrets\.GITHUB_TOKEN/);
+  assert.doesNotMatch(workflow, /SUPABASE_SERVICE_ROLE_KEY/);
 });
