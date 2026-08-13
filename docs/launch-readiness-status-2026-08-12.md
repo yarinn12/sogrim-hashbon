@@ -16,8 +16,10 @@
 - Google Play reports 12 opted-in testers and 10 consecutive closed-test days as of 2026-08-13, leaving 4 days before production access can be requested.
 - The Play Ads declaration now states that the app contains ads. Data Safety now declares the AdMob SDK's approximate location, app interactions, diagnostics and device identifiers as collected and shared for advertising, analytics and fraud prevention. Both updates were submitted to Google for review on 2026-08-13.
 - Play Vitals reports no user-perceived crashes or ANRs during the latest 28-day window ending 2026-08-13.
+- Product telemetry contains no reported client errors in the latest 14-day window. One isolated `state_load` operation failure was received from an unversioned web session without a matching `app_ready` event; it is not evidence of an Android 3.47 regression, but remains recorded for follow-up.
 - The signed `3.47 (70)` release APK installs and opens on the Android 16 emulator. Android reports a 1.963-second native cold activity launch, the account screen renders correctly, warm resume returns to the same activity and verified App Links remain active. Release WebView inspection is disabled as expected, so DOM-level startup timing remains measured on the QA build.
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
+- The Android-specific store gate passes against the developer website configured in Google Play, including the live legal pages, `app-ads.txt`, Android App Links, Google sign-in and Firebase push. The cross-platform store gate remains incomplete only because the Apple enrollment and iOS signing work are separate and unfinished.
 - Google Play confirms that the developer account and `com.sogrimhashbon.app` satisfy the Android developer-verification requirement.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
 - The backup server image is published to GitHub Container Registry on every push to `main`.

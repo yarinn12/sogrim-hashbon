@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mjs";
 
 const root = process.cwd();
+const androidOnly = process.argv.includes("--android");
 const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-hashbon.vercel.app").replace(/\/+$/, "");
 const localChecks = [];
 const liveChecks = [];
@@ -139,7 +140,7 @@ manualChecks.push({
 
 for (const path of ["privacy", "support", "terms", "account-deletion"]) {
   try {
-    const response = await fetchWithTimeout(`${publicOrigin}/${path}`, { redirect: "manual" });
+    const response = await fetchWithRetry(`${publicOrigin}/${path}`, { redirect: "manual" });
     liveChecks.push({
       name: `Public ${path} page`,
       ok: Boolean(
@@ -154,7 +155,7 @@ for (const path of ["privacy", "support", "terms", "account-deletion"]) {
 }
 
 try {
-  const response = await fetchWithTimeout(`${publicOrigin}/app-ads.txt`, {
+  const response = await fetchWithRetry(`${publicOrigin}/app-ads.txt`, {
     redirect: "manual"
   });
   const body = await response.text();
@@ -172,7 +173,7 @@ try {
 }
 
 try {
-  const response = await fetchWithTimeout(`${publicOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
+  const response = await fetchWithRetry(`${publicOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
   const statements = await response.json();
   liveChecks.push({
     name: "Live Android App Links association",
@@ -191,7 +192,7 @@ try {
 }
 
 try {
-  const configResponse = await fetchWithTimeout(`${publicOrigin}/api/config`, { redirect: "manual" });
+  const configResponse = await fetchWithRetry(`${publicOrigin}/api/config`, { redirect: "manual" });
   const config = await configResponse.json();
   const settingsResponse = await fetchWithTimeout(`${config.storage.url}/auth/v1/settings`, {
     headers: { apikey: config.storage.anonKey }
@@ -219,8 +220,32 @@ manualChecks.push({ name: "Developer accounts, identity and store forms complete
 const localReady = localChecks.every((check) => check.ok);
 const liveReady = liveChecks.every((check) => check.ok);
 const submissionReady = localReady && liveReady && manualChecks.every((check) => check.ok);
-console.log(JSON.stringify({ localReady, liveReady, submissionReady, localChecks, liveChecks, manualChecks }, null, 2));
-if (!localReady || !liveReady) process.exitCode = 1;
+const androidLocalChecks = localChecks.filter(({ name }) => !(
+  name.startsWith("Apple ") ||
+  name.startsWith("App Store ") ||
+  name.startsWith("iOS ") ||
+  name.startsWith("macOS-") ||
+  name === "Stable bundle ID"
+));
+const androidLiveChecks = liveChecks.filter(({ name }) => name !== "Sign in with Apple enabled");
+const androidManualChecks = manualChecks.filter(({ name }) => name.startsWith("Android "));
+const androidReady = [
+  ...androidLocalChecks,
+  ...androidLiveChecks,
+  ...androidManualChecks
+].every((check) => check.ok);
+console.log(JSON.stringify({
+  requestedPlatform: androidOnly ? "android" : "all",
+  androidReady,
+  localReady,
+  liveReady,
+  submissionReady,
+  overall: { localReady, liveReady, submissionReady },
+  localChecks,
+  liveChecks,
+  manualChecks
+}, null, 2));
+if (androidOnly ? !androidReady : (!localReady || !liveReady)) process.exitCode = 1;
 
 async function checkFile(name, relativePath) {
   localChecks.push({ name, ok: existsSync(join(root, ...relativePath.split("/"))) });
@@ -287,6 +312,21 @@ async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionN
 async function fetchWithTimeout(url, options = {}) {
   const signal = AbortSignal.timeout(10_000);
   return fetch(url, { ...options, signal });
+}
+
+async function fetchWithRetry(url, options = {}, attempts = 3) {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(url, options);
+      if (response.status < 500 || attempt === attempts) return response;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
+  }
+  throw lastError ?? new Error("Store readiness request failed");
 }
 
 async function hasAndroidFirebaseConfiguration() {
