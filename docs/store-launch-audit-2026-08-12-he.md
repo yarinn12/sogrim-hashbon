@@ -6,6 +6,7 @@
 
 - [x] `https://sogrim-hashbon.vercel.app` ושרת הגיבוי מחזירים `200` עבור האפליקציה, דפי המדיניות וקבצי השיוך. פריסות Vercel חדשות עדיין חסומות ברמת החשבון ולכן Render נשמר כנתיב התאוששות.
 - [x] Android AAB נבנה מחדש מהמקור המאוחד ב-13 באוגוסט 2026 ומאומת כגרסה `3.47 (70)`. פרטי הגרסה, הגודל, החתימה, SHA-256 וטביעת 523 קבצי המקור שמורים ב-`android/app/build/outputs/bundle/release/release-manifest.json`.
+- [x] Google Play מציג 12 בודקים שהביעו הסכמה ו-10 ימי בדיקה רצופים נכון ל-13 באוגוסט 2026. נותרו 4 ימים לפני שניתן לבקש גישה ל-Production.
 - [ ] להשלים Apple Developer Team ולהגדיר `APPLE_TEAM_ID`. אין Team ID ב-`ios/App/App.xcodeproj/project.pbxproj`.
 - [ ] ליצור ולפרוס `.well-known/apple-app-site-association` באמצעות `npm run native:ios:association` לאחר קבלת Team ID.
 - [ ] להפעיל Sign in with Apple ב-Apple Developer וב-Supabase ולוודא `npm run qa:ios:review` מול הסביבה החיה.
@@ -26,8 +27,10 @@
 - [x] Data Safety מתועד ב-`docs/store-submission/google-play-data-safety-he.md`.
 - [x] `versionCode 70` גבוה מגרסת הבדיקה הפעילה `69` ומוכן להעלאה לאחר פתיחת שער ה-Production.
 - [x] Google Play Billing והרשאת `com.android.vending.BILLING` אינם ארוזים בגרסת ההשקה. מסלול בתשלום יתווסף רק בגרסה עתידית לאחר החלטת מוצר והסדרה מתאימה.
-- [ ] לוודא שהצהרת Ads ב-Play Console תואמת להתנהגות בפועל. AdMob ו-UMP ארוזים באפליקציה, אך הפעלה בייצור נשלטת מרחוק.
-- [ ] לאמת ב-Play Console שה-Data Safety, Ads declaration, Content rating, App access ומדינות ההפצה תואמים לגרסה שתוגש.
+- [x] הצהרת Ads ב-Play Console עודכנה ל-"האפליקציה מכילה מודעות" ותואמת לכך ש-AdMob ו-UMP ארוזים באפליקציה, גם כאשר ההפעלה בייצור נשלטת מרחוק.
+- [x] Data Safety עודכן ב-Play Console עם מיקום משוער, אינטראקציות באפליקציה, אבחון ומזהי מכשיר שנאספים ומשותפים על ידי AdMob לצורכי פרסום, ניתוח ומניעת הונאה. הצהרת Ads ו-Data Safety נשלחו יחד לבדיקה ב-13 באוגוסט 2026.
+- [ ] לאמת ב-Play Console שה-Content rating, App access ומדינות ההפצה תואמים לגרסה שתוגש.
+- [x] Play Vitals אינו מציג קריסות שהמשתמשים חוו או ANR בחלון 28 הימים שהסתיים ב-13 באוגוסט 2026.
 - [ ] להריץ Pre-launch report על ה-AAB הסופי ולסגור כל Crash/ANR/חסימת מסלול.
 - [x] `npm run qa:android-native` עבר על אמולטור Android 16 / API 36: ללא קריסה, גלישה אופקית, פקדים ללא שם או יעדי לחיצה קטנים מ-44px.
 - [x] APK חתום במצב Release הותקן ונפתח באמולטור Android 16: גרסה `3.44 (67)`, עלייה קרה חוזרת ב-`1.917s`, מסך הכניסה הוצג במלואו ולא נרשמה `FATAL EXCEPTION`.

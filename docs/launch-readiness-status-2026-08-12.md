@@ -13,6 +13,9 @@
 - Data calculations complete for 5,000 expenses, and a 1,000-expense event opens and settles in the UI benchmark.
 - Android release `3.47` (`versionCode 70`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `DA275414D1AF2706BA1621082D14BEEF419B228CC924186CB9C3E31D69A679BE`.
 - Google Play Console currently serves release `3.46` (`versionCode 69`) to the closed-test track at a 100% rollout. Release `3.47` remains the verified production candidate until the 14-day access gate opens.
+- Google Play reports 12 opted-in testers and 10 consecutive closed-test days as of 2026-08-13, leaving 4 days before production access can be requested.
+- The Play Ads declaration now states that the app contains ads. Data Safety now declares the AdMob SDK's approximate location, app interactions, diagnostics and device identifiers as collected and shared for advertising, analytics and fraud prevention. Both updates were submitted to Google for review on 2026-08-13.
+- Play Vitals reports no user-perceived crashes or ANRs during the latest 28-day window ending 2026-08-13.
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
 - The backup server image is published to GitHub Container Registry on every push to `main`.
@@ -28,7 +31,7 @@
 2. The public app shell and private invite shell are still origin-backed. Eight production boundaries pass, while the strict CDN gate intentionally fails these two boundaries.
 3. An always-on second server host is not active. The free Render recovery host can provide a manually warmed recovery path after its production secrets and invite journey are verified, but it does not meet the instant-failover requirement.
 4. Public links still use the provider-owned `sogrim-hashbon.vercel.app` host. A stable custom domain should be purchased from an independent registrar and placed in front of both hosts.
-5. After the 14-day gate opens, upload release 70, run the Play pre-launch report and complete one smoke pass from the Play-delivered build before staged Production rollout.
+5. After the remaining 4 closed-test days, request Production access, upload release 70, run the Play pre-launch report and complete one smoke pass from the Play-delivered build before staged Production rollout.
 6. Apple submission remains blocked by Apple Developer enrollment, Sign in with Apple, the Apple Team ID association and a signed Xcode 26+ archive from macOS. The latest Apple Developer email received on 2026-08-12 says the enrollment was withdrawn, so there is no active membership to build against yet.
 
 ## Release rule
