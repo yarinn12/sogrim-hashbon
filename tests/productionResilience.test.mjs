@@ -63,6 +63,15 @@ test("the recovery runbook preserves data ownership and provider portability", a
   assert.match(runbook, /Never copy `\.env\.local`/);
 });
 
+test("the recovery host keeps the Android ad rollout in test-only mode", async () => {
+  const blueprint = await readFile("render.yaml", "utf8");
+
+  assert.match(blueprint, /key: ADMOB_ENABLED\s+value: "false"/);
+  assert.match(blueprint, /key: ADMOB_TEST_MODE\s+value: "true"/);
+  assert.match(blueprint, /key: ADMOB_MIN_ANDROID_BUILD\s+value: "70"/);
+  assert.match(blueprint, /key: ADMOB_ROLLOUT_PERCENT\s+value: "0"/);
+});
+
 test("the backup image is published from main without embedding secrets", async () => {
   const workflow = await readFile(".github/workflows/backup-image.yml", "utf8");
 

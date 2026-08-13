@@ -43,9 +43,11 @@ Production requires:
 4. Confirm entitlement, consent, navigation clearance and ad removal behavior.
 5. Set `ADMOB_TEST_MODE=false`, then enable production ads gradually with
    `ADMOB_ENABLED=true` and rollout percentages such as 5, 10, 25, 50 and 100.
-6. Keep Google''s published European-regulations UMP message active in AdMob.
-7. Add Hebrew localization in the AdMob message editor before production rollout; the currently published message contains English only.
-8. Complete the AdMob payments profile only when production ad serving is intentionally approved. It remains incomplete now, so production units do not serve.
+6. Keep Google's published European-regulations UMP message active in AdMob.
+7. Keep English as the UMP message language. The AdMob editor currently does
+   not offer Hebrew as either a default or additional language.
+8. Link the AdMob app to its Google Play listing as soon as the production
+   listing is publicly searchable, then wait for Google's app-readiness review.
 
 The app requests non-personalized ads and allows a banner only on Home and
 Friends. Event details, expenses, settlements, profile/auth screens and open
@@ -79,8 +81,13 @@ and consent flow pass internal testing.
 - Test banners remain limited to Home and Friends and still respect ad-free
   entitlements, consent, dialogs, keyboard focus, connectivity and app visibility.
 - A signed build 70 AAB is prepared to pass the full project tests and Android release lint.
-- Real ad serving remains blocked until the payment profile, Hebrew consent
-  message and a physical-device test are complete.
+- The AdMob payment profile is complete, the European-regulations UMP message
+  is published, and the policy center reports no issues.
+- `app-ads.txt` is publicly available from the recovery origin and contains the
+  production publisher ID.
+- Real ad serving remains blocked until the public Play listing can be linked
+  in AdMob, Google completes its app-readiness review, and build 70 passes a
+  physical-device test with Google's test banner.
 
 ## Subscription foundation
 

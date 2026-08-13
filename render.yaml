@@ -30,7 +30,9 @@ services:
       - key: ADMOB_ENABLED
         value: "false"
       - key: ADMOB_TEST_MODE
-        value: "false"
+        value: "true"
+      - key: ADMOB_MIN_ANDROID_BUILD
+        value: "70"
       - key: ADMOB_ROLLOUT_PERCENT
         value: "0"
       - key: SPONSORED_CARDS_ENABLED
