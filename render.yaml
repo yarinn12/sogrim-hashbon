@@ -12,8 +12,6 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: APP_PUBLIC_URL
-        sync: false
       - key: APP_SPACE_ID
         value: default
       - key: SUPABASE_URL
@@ -31,24 +29,12 @@ services:
       - key: FIREBASE_SERVICE_ACCOUNT_JSON_BASE64
         sync: false
       - key: ADMOB_ENABLED
-        sync: false
-      - key: ADMOB_ANDROID_BANNER_ID
-        sync: false
+        value: "false"
       - key: ADMOB_TEST_MODE
-        sync: false
+        value: "false"
       - key: ADMOB_ROLLOUT_PERCENT
-        sync: false
-      - key: ADMOB_MIN_ANDROID_BUILD
-        sync: false
+        value: "0"
       - key: SPONSORED_CARDS_ENABLED
-        sync: false
+        value: "false"
       - key: GOOGLE_PLAY_PREMIUM_ENABLED
-        sync: false
-      - key: GOOGLE_PLAY_PREMIUM_PRODUCT_ID
-        sync: false
-      - key: GOOGLE_PLAY_PREMIUM_BASE_PLAN_ID
-        sync: false
-      - key: GOOGLE_PLAY_PREMIUM_MIN_ANDROID_BUILD
-        sync: false
-      - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64
-        sync: false
+        value: "false"

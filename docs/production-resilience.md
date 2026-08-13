@@ -44,13 +44,12 @@
 
 The container requires the same production values used by the current server. At minimum:
 
-- `APP_PUBLIC_URL`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_SECRET_KEY`
 - `GOOGLE_CLIENT_ID`
 
-Push delivery additionally requires the Firebase project and service-account values. Billing verification remains disabled until its Google Play values are intentionally enabled.
+`APP_PUBLIC_URL` is optional because the server can derive the active HTTPS origin from the request. Push delivery additionally requires the Firebase project and service-account values. Ads, sponsored cards and Play billing are intentionally disabled on the recovery host so that it only restores the core account, sync, invitation and notification journeys.
 
 Never copy `.env.local` into an image or commit production secrets. The Docker image contains application files and production dependencies only.
 
@@ -73,8 +72,8 @@ If an incident requires immediate sustained traffic, the approved recovery path 
 Activation still requires an explicit Render account action:
 
 1. Create a Blueprint from this repository and keep the configured `free` plan. Do not add payment information.
-2. Supply every `sync: false` value from the current production environment. Keep ads and Play billing disabled unless those features are intentionally active in the primary environment.
-3. Set `APP_PUBLIC_URL` to the final public hostname. Before a custom domain exists, use the assigned HTTPS `onrender.com` URL.
+2. Supply every `sync: false` value from the current production environment. The Blueprint keeps ads, sponsored cards and Play billing disabled by design.
+3. Let the server derive its assigned HTTPS `onrender.com` origin. Set `APP_PUBLIC_URL` later only if a stable custom recovery domain is introduced.
 4. Wait for `/api/health` to report `ok: true`, `cloudStorageReady: true`, `googleAuthReady: true`, `accountDeletionReady: true`, `pushDeliveryReady: true` and `shareLinksReady: true`.
 5. Run the production gate against the backup host, followed by a two-account invite and settlement journey.
 
