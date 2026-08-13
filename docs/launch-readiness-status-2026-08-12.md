@@ -23,6 +23,7 @@
 - The backup server image is published to GitHub Container Registry on every push to `main`.
 - A Render Blueprint now defines a free Frankfurt Docker recovery host with health checks and secret placeholders. The free service sleeps after inactivity, so it can validate recovery but does not qualify as an always-on failover host.
 - The recovery origin passes all 10 strict production boundaries. Its app shell, privacy, terms, support, accessibility, account-deletion, App Links and `app-ads.txt` endpoints all return `200` over HTTPS.
+- Production monitoring now opens an incident only for an operational outage. The stricter CDN/cache contract remains recorded as advisory diagnostics until Vercel can accept the prepared deployment fix.
 - GitHub Actions use the current Node 24-compatible checkout, setup, script and artifact actions, removing the previous Node 20 runtime warnings.
 - AdMob is integrated on Android with consent before SDK initialization, non-personalized requests and one adaptive banner limited to Home and Friends. Production ad serving remains remotely disabled.
 - The AdMob payment profile, European-regulations message, production application ID and public `app-ads.txt` are prepared. Store linkage and app-readiness review remain intentionally pending until the Play listing is public.

@@ -28,12 +28,20 @@ jobs:
         with:
           node-version: 24
 
-      - name: Verify production and CDN delivery
+      - name: Verify production availability
         id: verify
         continue-on-error: true
         run: |
           set -o pipefail
-          node scripts/verify-production-availability.mjs --strict | tee production-availability.log
+          node scripts/verify-production-availability.mjs | tee production-availability.log
+        env:
+          PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
+
+      - name: Record strict CDN diagnostics
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/verify-production-availability.mjs --strict | tee production-cdn.log
         env:
           PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
 
@@ -91,7 +99,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: production-availability
-          path: production-availability.log
+          path: |
+            production-availability.log
+            production-cdn.log
           retention-days: 7
 
       - name: Fail after incident handling
