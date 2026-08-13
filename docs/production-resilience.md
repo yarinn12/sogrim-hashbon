@@ -38,7 +38,7 @@
 2. Check `/api/health`, Supabase Auth and the Data API separately.
 3. If only Vercel is affected, keep Supabase untouched and switch the public/API domain to the backup container.
 4. If Supabase is affected, leave clients in local pending-sync mode and avoid destructive retries.
-5. After recovery, run `npm test`, `npm run qa:mobile`, `npm run qa:production:strict` and one two-account invitation journey before resuming store rollout.
+5. After recovery, run `npm test`, `npm run qa:mobile`, `npm run qa:recovery:strict` and one two-account invitation journey before resuming store rollout.
 
 ## Backup-host environment
 
@@ -59,7 +59,7 @@ Every push to `main` builds and publishes the provider-portable server image to:
 
 `ghcr.io/yarinn12/sogrim-hashbon-server:latest`
 
-An immutable tag matching the Git commit SHA is published alongside `latest`. The image is only a deployable artifact; production failover is complete only after a second host is connected to it, its secrets are configured, and the stable public domain passes `npm run qa:production:strict` against that host.
+An immutable tag matching the Git commit SHA is published alongside `latest`. The image is only a deployable artifact; production failover is complete only after a second host is connected to it, its secrets are configured, and the stable public domain passes `npm run qa:recovery:strict` against that host. This recovery gate allows an explicitly origin-backed shell while preserving the account, API, invite, legal-page, asset and Supabase checks.
 
 ## Prepared free Render recovery host
 

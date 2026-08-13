@@ -1,6 +1,9 @@
 const DEFAULT_BASE_URL = "https://sogrim-hashbon.vercel.app";
 const REQUEST_TIMEOUT_MS = 10_000;
 const STRICT = process.argv.includes("--strict");
+const ALLOW_ORIGIN_BACKED_SHELL = process.argv.includes(
+  "--allow-origin-backed-shell"
+);
 const BASE_URL = normalizeBaseUrl(
   process.env.PRODUCTION_BASE_URL || DEFAULT_BASE_URL
 );
@@ -152,6 +155,7 @@ async function request(url, options = {}) {
 function warnOnOriginBackedShell(name, response) {
   const cacheControl = String(response.headers.get("cache-control") ?? "");
   if (!cacheControl.includes("no-store")) return;
+  if (ALLOW_ORIGIN_BACKED_SHELL) return;
   const detail = "app shell is origin-backed instead of CDN-backed";
   if (STRICT) throw new Error(detail);
   const current = checks.find((item) => item.name === name);

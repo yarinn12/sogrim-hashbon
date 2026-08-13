@@ -22,6 +22,11 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
     pkg.scripts["qa:production"],
     "node scripts/verify-production-availability.mjs"
   );
+  assert.equal(
+    pkg.scripts["qa:recovery:strict"],
+    "node scripts/verify-production-availability.mjs --strict --allow-origin-backed-shell"
+  );
+  assert.match(script, /ALLOW_ORIGIN_BACKED_SHELL/);
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /push:/);
   assert.match(workflow, /set -o pipefail/);
