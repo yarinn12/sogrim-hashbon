@@ -5,7 +5,7 @@ services:
     plan: starter
     region: frankfurt
     branch: main
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     maxShutdownDelaySeconds: 30

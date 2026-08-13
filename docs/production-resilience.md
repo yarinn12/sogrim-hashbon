@@ -64,7 +64,7 @@ An immutable tag matching the Git commit SHA is published alongside `latest`. Th
 
 ## Prepared Render backup
 
-`render.yaml` defines a production-sized Docker web service in Frankfurt. It deploys only after the `main` branch checks pass and uses `/api/health` as its application-level readiness check. Render keeps the previous release serving traffic when a replacement does not become healthy.
+`render.yaml` defines a production-sized Docker web service in Frankfurt. It follows commits on `main` and uses `/api/health` as its application-level readiness check. Render keeps the previous release serving traffic when a replacement does not become healthy. GitHub QA remains the release signal; the backup follows commits directly because the intentionally strict Vercel CDN monitor remains red until the provider block is removed.
 
 Activation still requires an explicit Render account action:
 

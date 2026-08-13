@@ -16,7 +16,7 @@
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
 - The backup server image is published to GitHub Container Registry on every push to `main`.
-- A Render Blueprint now defines a Frankfurt Docker backup with health-gated, post-CI deployments and secret placeholders. It still needs to be connected to a Render account before it becomes an active failover host.
+- A Render Blueprint now defines a Frankfurt Docker backup with commit-triggered, health-gated deployments and secret placeholders. It still needs to be connected to a Render account before it becomes an active failover host.
 - GitHub Actions use the current Node 24-compatible checkout, setup, script and artifact actions, removing the previous Node 20 runtime warnings.
 
 ## External blockers before a full public launch
