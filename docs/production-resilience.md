@@ -62,16 +62,20 @@ Every push to `main` builds and publishes the provider-portable server image to:
 
 An immutable tag matching the Git commit SHA is published alongside `latest`. The image is only a deployable artifact; production failover is complete only after a second host is connected to it, its secrets are configured, and the stable public domain passes `npm run qa:production:strict` against that host.
 
-## Prepared Render backup
+## Prepared free Render recovery host
 
-`render.yaml` defines a production-sized Docker web service in Frankfurt. It follows commits on `main` and uses `/api/health` as its application-level readiness check. Render keeps the previous release serving traffic when a replacement does not become healthy. GitHub QA remains the release signal; the backup follows commits directly because the intentionally strict Vercel CDN monitor remains red until the provider block is removed.
+`render.yaml` defines a free Docker recovery service in Frankfurt. It follows commits on `main` when the repository integration supports auto-deploy and uses `/api/health` as its application-level readiness check. Render keeps the previous release serving traffic when a replacement does not become healthy.
+
+The free service sleeps after inactivity and can have a cold start. It is useful for validating provider portability and for manual recovery, but it is not an always-on failover target. The project has an explicit no-paid-hosting rule until the owner changes that decision.
+
+If an incident requires immediate sustained traffic, the approved recovery path is to wake and verify the free service first, then upgrade that existing service to `starter` only after the owner explicitly approves the charge. This preserves the tested configuration and avoids building a new host during the incident.
 
 Activation still requires an explicit Render account action:
 
-1. Create a Blueprint from this repository and keep the configured `starter` plan so the backup does not sleep between requests.
+1. Create a Blueprint from this repository and keep the configured `free` plan. Do not add payment information.
 2. Supply every `sync: false` value from the current production environment. Keep ads and Play billing disabled unless those features are intentionally active in the primary environment.
 3. Set `APP_PUBLIC_URL` to the final public hostname. Before a custom domain exists, use the assigned HTTPS `onrender.com` URL.
 4. Wait for `/api/health` to report `ok: true`, `cloudStorageReady: true`, `googleAuthReady: true`, `accountDeletionReady: true`, `pushDeliveryReady: true` and `shareLinksReady: true`.
 5. Run the production gate against the backup host, followed by a two-account invite and settlement journey.
 
-Do not send user traffic to the backup host merely because the container started. A healthy API response and a complete invitation journey are both required before it can be considered a failover target.
+Do not send normal user traffic to the recovery host merely because the container started. A healthy API response and a complete invitation journey are both required before it can be used during an incident, and its cold-start behavior must be accepted explicitly.
