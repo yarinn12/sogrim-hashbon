@@ -257,6 +257,33 @@ export async function signInWithPassword(
   return sessionFromAuthResponse(response);
 }
 
+export async function signInWithIdToken(
+  config,
+  { provider, token, accessToken = "", nonce = "" },
+  fetchImpl = fetch
+) {
+  const safeProvider = String(provider ?? "").trim();
+  const safeToken = String(token ?? "").trim();
+  if (!safeProvider || !safeToken) {
+    throw new Error("Identity token is unavailable");
+  }
+
+  const body = {
+    provider: safeProvider,
+    id_token: safeToken
+  };
+  if (accessToken) body.access_token = String(accessToken);
+  if (nonce) body.nonce = String(nonce);
+
+  const response = await authRequest(
+    config,
+    "/token?grant_type=id_token",
+    { method: "POST", body },
+    fetchImpl
+  );
+  return sessionFromAuthResponse(response);
+}
+
 export async function refreshAccountSession(config, session, fetchImpl = fetch) {
   if (!session?.refresh_token) return null;
   const response = await authRequest(config, "/token?grant_type=refresh_token", {

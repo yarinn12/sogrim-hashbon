@@ -24,6 +24,13 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /signInWithPassword/);
   assert.match(layer, /signUpWithPassword/);
   assert.match(layer, /googleOAuthUrl/);
+  assert.match(layer, /@capgo\/capacitor-social-login/);
+  assert.match(layer, /signInWithIdToken/);
+  assert.doesNotMatch(layer, /scopes: \["openid", "email", "profile"\]/);
+  assert.match(layer, /filterByAuthorizedAccounts: false/);
+  assert.match(layer, /autoSelectEnabled: false/);
+  assert.match(layer, /if \(isNativeAndroid\(\)\) \{\s*await signInWithNativeGoogle\(\)/);
+  assert.match(layer, /renderAccountNameCompletionGate\(\{\s*displayName:/);
   assert.match(layer, /appleOAuthUrl/);
   assert.match(layer, /aria-label="המשך עם Apple"/);
   assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);

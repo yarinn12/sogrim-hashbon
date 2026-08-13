@@ -24,6 +24,13 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.ok(packageJson.dependencies["@capacitor/app"]);
   assert.ok(packageJson.dependencies["@capacitor/share"]);
   assert.ok(packageJson.dependencies["@capacitor/push-notifications"]);
+  assert.ok(packageJson.dependencies["@capgo/capacitor-social-login"]);
+  assert.deepEqual(config.plugins.SocialLogin.providers, {
+    google: true,
+    facebook: false,
+    apple: false,
+    twitter: false
+  });
   assert.deepEqual(config.ios.includePlugins, [
     "@capacitor/app",
     "@capacitor/browser",

@@ -27,6 +27,7 @@ import {
   saveAccountOAuthFlow,
   saveAccountSession,
   sessionFromOAuthHash,
+  signInWithIdToken,
   signInWithPassword,
   signOutAccount,
   signUpWithPassword,
@@ -109,6 +110,7 @@ let accountRefreshGeneration = 0;
 let accountConfigRetryTimer = null;
 let accountConfigRetryPromise = null;
 let accountSyncReloadScheduled = false;
+let nativeGoogleLoginPromise = null;
 
 globalThis.SogrimAccountProfile = Object.freeze({
   updateDisplayName: updateSignedInAccountDisplayName
@@ -970,9 +972,31 @@ async function handleAccountClick(event) {
     if (authBusy) return;
     setAuthBusy(true);
     try {
-      await openOAuthUrl(
-        await secureOAuthUrl(googleOAuthUrl)
-      );
+      if (isNativeAndroid()) {
+        await signInWithNativeGoogle();
+      } else {
+        await openOAuthUrl(
+          await secureOAuthUrl(googleOAuthUrl)
+        );
+      }
+    } catch (error) {
+      if (
+        accountSession?.user &&
+        String(error?.message ?? "").includes("full name")
+      ) {
+        renderAccountNameCompletionGate({
+          displayName:
+            accountProfileFromUser(accountSession.user)?.displayName ?? ""
+        });
+        return;
+      }
+      if (!isCancelledNativeGoogleLogin(error)) {
+        emitOperationFailure("auth", { screen: "auth" });
+        renderAccountGate({
+          mode: "login",
+          error: "לא הצלחנו להתחבר עם Google כרגע. כדאי לנסות שוב."
+        });
+      }
     } finally {
       setAuthBusy(false);
     }
@@ -1117,6 +1141,69 @@ async function handleAccountClick(event) {
       setAccountDeletionBusy(false);
     }
   }
+}
+
+function isNativeAndroid() {
+  return Boolean(
+    globalThis.Capacitor?.isNativePlatform?.() &&
+    globalThis.Capacitor?.getPlatform?.() === "android"
+  );
+}
+
+async function signInWithNativeGoogle() {
+  if (!nativeGoogleLoginPromise) {
+    nativeGoogleLoginPromise = import("@capgo/capacitor-social-login")
+      .then(async ({ SocialLogin }) => {
+        const webClientId = String(runtimeConfig?.auth?.googleClientId ?? "").trim();
+        if (!webClientId) throw new Error("Google client is unavailable");
+        await SocialLogin.initialize({
+          google: { webClientId, mode: "online" }
+        });
+        return SocialLogin;
+      })
+      .catch((error) => {
+        nativeGoogleLoginPromise = null;
+        throw error;
+      });
+  }
+
+  const socialLogin = await nativeGoogleLoginPromise;
+  const login = await socialLogin.login({
+    provider: "google",
+    options: {
+      style: "bottom",
+      filterByAuthorizedAccounts: false,
+      autoSelectEnabled: false
+    }
+  });
+  const result = login?.result;
+  const idToken = String(result?.idToken ?? "").trim();
+  const accessToken = String(result?.accessToken?.token ?? "").trim();
+  if (!idToken) throw new Error("Google identity token is unavailable");
+
+  const previousSession = loadStoredAccountSession();
+  accountSession = saveAccountSession(
+    await signInWithIdToken(runtimeConfig, {
+      provider: "google",
+      token: idToken,
+      accessToken
+    })
+  );
+  accountSession = await restoreAccountSession(accountSession, {
+    previousSession
+  });
+  scheduleAccountSessionRefresh();
+  await connectAccountToApp(accountSession, { forceReload: true });
+}
+
+function isCancelledNativeGoogleLogin(error) {
+  const message = String(error?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("cancel") ||
+    message.includes("canceled") ||
+    message.includes("cancelled") ||
+    message.includes("user denied")
+  );
 }
 
 function handleAccountGateKeydown(event) {

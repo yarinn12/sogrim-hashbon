@@ -27,6 +27,7 @@ import {
   LEGACY_STATE_CLAIM_PREFIX,
   loadAccountOAuthFlow,
   saveAccountOAuthFlow,
+  signInWithIdToken,
   signInWithPassword,
   signUpWithPassword
 } from "../src/data/accountAuth.mjs";
@@ -200,6 +201,36 @@ test("Google login always asks which account to use on a shared device", () => {
 
   assert.equal(googleUrl.searchParams.get("prompt"), "select_account");
   assert.equal(appleUrl.searchParams.has("prompt"), false);
+});
+
+test("native Google ID tokens create the same Supabase account session", async () => {
+  let request = null;
+  const session = await signInWithIdToken(
+    config,
+    {
+      provider: "google",
+      token: "google-id-token",
+      accessToken: "google-access-token"
+    },
+    async (url, options) => {
+      request = { url, options };
+      return jsonResponse(200, {
+        access_token: "supabase-access",
+        refresh_token: "supabase-refresh",
+        expires_in: 3600,
+        user: { id: "google-user" }
+      });
+    }
+  );
+
+  assert.match(request.url, /\/token\?grant_type=id_token$/);
+  assert.deepEqual(JSON.parse(request.options.body), {
+    provider: "google",
+    id_token: "google-id-token",
+    access_token: "google-access-token"
+  });
+  assert.equal(session.access_token, "supabase-access");
+  assert.equal(session.user.id, "google-user");
 });
 
 test("OAuth uses a one-time PKCE verifier instead of returning reusable tokens", async () => {
