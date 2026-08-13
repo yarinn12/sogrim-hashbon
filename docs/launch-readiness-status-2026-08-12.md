@@ -16,15 +16,17 @@
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
 - The backup server image is published to GitHub Container Registry on every push to `main`.
+- A Render Blueprint now defines a Frankfurt Docker backup with health-gated, post-CI deployments and secret placeholders. It still needs to be connected to a Render account before it becomes an active failover host.
+- GitHub Actions use the current Node 24-compatible checkout, setup, script and artifact actions, removing the previous Node 20 runtime warnings.
 
 ## External blockers before a full public launch
 
-1. Vercel currently blocks new deployments because the team exceeded its fair-use limit. The live deployment still serves the app and APIs, but the prepared static CDN fix cannot be promoted yet.
+1. Vercel currently blocks new deployments because the team exceeded its fair-use limit. A fresh local production build succeeds, but a preview deployment was rejected by the same account-level block. The live deployment still serves the app and APIs, but the prepared static CDN fix cannot be promoted yet.
 2. The public app shell and private invite shell are still origin-backed. Eight production boundaries pass, while the strict CDN gate intentionally fails these two boundaries.
-3. A second server host is not active. The container image is ready, but failover is not real until another provider runs it with production secrets.
+3. A second server host is not active. The container image and Render Blueprint are ready, but failover is not real until Render is connected, its production secrets are supplied and its invite journey passes.
 4. Public links still use the provider-owned `sogrim-hashbon.vercel.app` host. A stable custom domain should be purchased from an independent registrar and placed in front of both hosts.
 5. After Google approves release 68, install the Play-delivered build on a real Android device and complete one smoke pass before promoting it beyond the current testing audience.
-6. Apple submission remains blocked by Apple Developer enrollment, Sign in with Apple, the Apple Team ID association and a signed Xcode 26+ archive from macOS.
+6. Apple submission remains blocked by Apple Developer enrollment, Sign in with Apple, the Apple Team ID association and a signed Xcode 26+ archive from macOS. The latest Apple Developer email received on 2026-08-12 says the enrollment was withdrawn, so there is no active membership to build against yet.
 
 ## Release rule
 

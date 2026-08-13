@@ -38,12 +38,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Validate Apple configuration
@@ -138,7 +138,7 @@ jobs:
 
       - name: Keep IPA and diagnostics for seven days
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sogrim-hashbon-ios-${{ inputs.version }}-${{ inputs.build }}
           path: |

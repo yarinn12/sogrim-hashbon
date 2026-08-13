@@ -61,3 +61,17 @@ Every push to `main` builds and publishes the provider-portable server image to:
 `ghcr.io/yarinn12/sogrim-hashbon-server:latest`
 
 An immutable tag matching the Git commit SHA is published alongside `latest`. The image is only a deployable artifact; production failover is complete only after a second host is connected to it, its secrets are configured, and the stable public domain passes `npm run qa:production:strict` against that host.
+
+## Prepared Render backup
+
+`render.yaml` defines a production-sized Docker web service in Frankfurt. It deploys only after the `main` branch checks pass and uses `/api/health` as its application-level readiness check. Render keeps the previous release serving traffic when a replacement does not become healthy.
+
+Activation still requires an explicit Render account action:
+
+1. Create a Blueprint from this repository and keep the configured `starter` plan so the backup does not sleep between requests.
+2. Supply every `sync: false` value from the current production environment. Keep ads and Play billing disabled unless those features are intentionally active in the primary environment.
+3. Set `APP_PUBLIC_URL` to the final public hostname. Before a custom domain exists, use the assigned HTTPS `onrender.com` URL.
+4. Wait for `/api/health` to report `ok: true`, `cloudStorageReady: true`, `googleAuthReady: true`, `accountDeletionReady: true`, `pushDeliveryReady: true` and `shareLinksReady: true`.
+5. Run the production gate against the backup host, followed by a two-account invite and settlement journey.
+
+Do not send user traffic to the backup host merely because the container started. A healthy API response and a complete invitation journey are both required before it can be considered a failover target.

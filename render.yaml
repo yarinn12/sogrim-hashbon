@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: sogrim-hashbon-backup
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: APP_SPACE_ID
+        value: default
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_SNAPSHOT_TABLE
+        value: app_snapshots
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON_BASE64
+        sync: false
+      - key: ADMOB_ENABLED
+        sync: false
+      - key: ADMOB_ANDROID_BANNER_ID
+        sync: false
+      - key: ADMOB_TEST_MODE
+        sync: false
+      - key: ADMOB_ROLLOUT_PERCENT
+        sync: false
+      - key: ADMOB_MIN_ANDROID_BUILD
+        sync: false
+      - key: SPONSORED_CARDS_ENABLED
+        sync: false
+      - key: GOOGLE_PLAY_PREMIUM_ENABLED
+        sync: false
+      - key: GOOGLE_PLAY_PREMIUM_PRODUCT_ID
+        sync: false
+      - key: GOOGLE_PLAY_PREMIUM_BASE_PLAN_ID
+        sync: false
+      - key: GOOGLE_PLAY_PREMIUM_MIN_ANDROID_BUILD
+        sync: false
+      - key: GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64
+        sync: false
