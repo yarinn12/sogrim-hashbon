@@ -9,9 +9,19 @@
 
 ## Launch blockers
 
-1. The currently deployed Vercel release is older than the static-routing fix. Its app shell is still returned with `Cache-Control: no-store`, so requests can continue to consume Fast Origin Transfer.
-2. A second API host is not active yet. Vercel is still the only server for revocable invitation redemption and privileged operations.
-3. Public links use the provider-owned `sogrim-hashbon.vercel.app` hostname. Changing providers therefore requires an app release unless a stable custom domain is introduced.
+1. The Vercel Hobby workspace is paused after 29.33 GB of Fast Origin Transfer in the rolling 30-day window. The deleted `finpilot-1786556567559-EyRk` project accounts for 21.18 GB; `sogrim-hashbon` accounts for 8.15 GB. New deployments remain blocked until usage falls below 10 GB and Vercel Support unpauses the workspace.
+2. The currently deployed Vercel release is older than the static-asset cache fix. Its 1.9 MB intro video is returned with `Cache-Control: public, max-age=0, must-revalidate`, so repeated openings can continue to consume Fast Origin Transfer. The pending release gives `/assets/*` a 30-day Vercel CDN cache and a one-day browser cache.
+3. A free Render recovery host is active and passes the strict recovery gate, but it sleeps after inactivity and is not an always-on failover target.
+4. Public links use the provider-owned `sogrim-hashbon.vercel.app` hostname. Changing providers therefore requires an app release unless a stable custom domain is introduced.
+
+## Vercel unpause procedure
+
+1. Open the team Usage page and confirm Fast Origin Transfer in the rolling 30-day window is below the Hobby allowance of 10 GB.
+2. Contact Vercel Support at `https://vercel.com/help` and request a manual unpause. Include team ID `team_wkMUgwTPG4LkDcw6KZ3kigOG`, the usage split above, and that the high-traffic `finpilot` project has been deleted.
+3. Do not create a second Hobby team or move the project to bypass the limit. Do not upgrade or add a payment method without owner approval.
+4. After Vercel confirms the unpause, create a preview deployment first and inspect its build logs.
+5. Verify the preview with the production availability gate, including `/app-ads.txt`, the intro video's cache headers, App Links, legal pages and one private invite.
+6. Promote the verified preview to production, then scan runtime errors and rerun the Android store gate.
 
 ## Required production shape
 

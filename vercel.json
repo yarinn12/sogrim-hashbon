@@ -36,6 +36,13 @@
       },
       "continue": true
     },
+    {
+      "src": "/assets/(.*)",
+      "headers": {
+        "Cache-Control": "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800"
+      },
+      "continue": true
+    },
     { "src": "/api/(.*)", "dest": "/server.mjs" },
     { "src": "/i/(.*)", "dest": "/index.html" },
     { "src": "/r/(.*)", "dest": "/index.html" },

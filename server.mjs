@@ -497,6 +497,8 @@ function responseHeadersFor(filePath, requestedPath) {
 
   if (shouldBypassBrowserCache(requestedPath, extension)) {
     headers["cache-control"] = "no-store, max-age=0";
+  } else if (requestedPath.startsWith("/assets/")) {
+    headers["cache-control"] = "public, max-age=86400, stale-while-revalidate=604800";
   }
 
   if (extension === ".apk") {

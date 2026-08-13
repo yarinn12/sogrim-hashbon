@@ -167,6 +167,16 @@ test("server bypasses browser cache for the app shell and browser modules", asyn
     for (const response of [home, worker, moduleFile, stylesheet]) {
       assert.equal(response.headers.get("cache-control"), "no-store, max-age=0");
     }
+
+    const video = await fetch(
+      `http://127.0.0.1:${port}/assets/sogrim-logo-intro.mp4`,
+      { method: "HEAD" }
+    );
+    assert.equal(video.status, 200);
+    assert.equal(
+      video.headers.get("cache-control"),
+      "public, max-age=86400, stale-while-revalidate=604800"
+    );
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -195,6 +205,12 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
     assert.ok(config.builds.some((entry) => entry.src === source && entry.use === "@vercel/static"));
   }
   assert.ok(config.routes.some((route) => route.src === "/api/(.*)" && route.dest === "/server.mjs"));
+  assert.ok(config.routes.some((route) => (
+    route.src === "/assets/(.*)" &&
+    route.continue === true &&
+    route.headers?.["Cache-Control"] ===
+      "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800"
+  )));
   assert.ok(config.routes.some((route) => route.src === "/i/(.*)" && route.dest === "/index.html"));
   assert.ok(config.routes.some((route) => route.src === "/r/(.*)" && route.dest === "/index.html"));
   assert.ok(config.routes.some((route) => route.handle === "filesystem"));
