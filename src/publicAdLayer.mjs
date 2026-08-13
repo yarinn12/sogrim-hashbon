@@ -108,9 +108,9 @@ async function syncAdPlacement() {
   const admob = globalThis.Capacitor?.Plugins?.AdMob;
   if (!admob?.showBanner) return;
 
+  if (!(await ensureConsent(admob))) return;
   await initializeAdMob(admob);
   await prepareBannerListeners(admob);
-  if (!(await ensureConsent(admob))) return;
 
   if (bannerVisible || bannerRequested || bannerRetryTimer) return;
 
@@ -121,7 +121,7 @@ async function syncAdPlacement() {
       adId: testMode
         ? GOOGLE_ANDROID_FIXED_TEST_BANNER_ID
         : runtimeConfig.monetization.androidBannerId,
-      adSize: "BANNER",
+      adSize: "ADAPTIVE_BANNER",
       position: "BOTTOM_CENTER",
       margin: 0,
       isTesting: testMode,
@@ -309,7 +309,6 @@ async function showPrivacyOptions() {
   if (!admob?.requestConsentInfo || !admob?.showPrivacyOptionsForm) return false;
 
   runtimeConfig ??= await loadRuntimeConfig();
-  await initializeAdMob(admob);
   const consentInfo = await admob.requestConsentInfo();
   applyConsentInfo(consentInfo);
   if (consentInfo?.privacyOptionsRequirementStatus !== "REQUIRED") return false;

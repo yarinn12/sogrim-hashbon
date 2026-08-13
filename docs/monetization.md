@@ -4,7 +4,7 @@
 
 - Paid Premium is postponed and remains disabled in runtime configuration.
 - The only active ad-free path is the referral reward described below.
-- Android build 58 (`3.35`) is ready to use Google's fixed test banner without
+- Android build 70 (`3.47`) is ready to use Google's fixed test banner without
   enabling the production-ad switch.
 - Production AdMob rollout stays at zero until consent, placement and entitlement behavior pass real-device testing.
 
@@ -65,7 +65,7 @@ For an app-version-safe internal rollout, production can keep
 the test-mode client gate requests Google's official Android fixed-size demo banner
 (`ca-app-pub-3940256099942544/6300978111`); older installed builds continue
 without ads. The server checks the Android build before returning either the
-test or production switch. Production rollout is then assigned deterministically
+   test or production switch. Production rollout is then assigned deterministically
 per signed-in account, so the same account does not move in and out of a cohort.
 Set `ADMOB_ENABLED=true` and `ADMOB_TEST_MODE=false` only after the updated build
 and consent flow pass internal testing.
@@ -75,10 +75,10 @@ and consent flow pass internal testing.
 - Native AdMob SDK and the production application ID are included.
 - Runtime configuration currently keeps `ADMOB_ENABLED=false`,
   `ADMOB_TEST_MODE=true` and `ADMOB_ROLLOUT_PERCENT=0`.
-- Build 51 can therefore request only Google's fixed Android test banner.
+- Build 70 can therefore request only Google's fixed Android test banner.
 - Test banners remain limited to Home and Friends and still respect ad-free
   entitlements, consent, dialogs, keyboard focus, connectivity and app visibility.
-- A signed build 56 AAB is prepared to pass the full project tests and Android release lint.
+- A signed build 70 AAB is prepared to pass the full project tests and Android release lint.
 - Real ad serving remains blocked until the payment profile, Hebrew consent
   message and a physical-device test are complete.
 

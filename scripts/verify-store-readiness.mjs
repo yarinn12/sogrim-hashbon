@@ -19,6 +19,16 @@ await checkFile("Android upload key", "android/app/sogrim-upload-key.jks");
 await checkFile("Android App Bundle", "android/app/build/outputs/bundle/release/app-release.aab");
 await checkFile("Android release evidence", "android/app/build/outputs/bundle/release/release-manifest.json");
 await checkFile("Android App Links", ".well-known/assetlinks.json");
+await checkFile("AdMob app-ads.txt", "app-ads.txt");
+const localAppAds = (
+  await readFile(join(root, "app-ads.txt"), "utf8")
+).trim();
+localChecks.push({
+  name: "AdMob app-ads.txt uses the production publisher ID",
+  ok:
+    localAppAds ===
+    "google.com, pub-8171715888836308, DIRECT, f08c47fec0942fa0"
+});
 const localAssetLinks = JSON.parse(await readFile(join(root, ".well-known", "assetlinks.json"), "utf8"));
 localChecks.push({
   name: "Android App Links include Play signing key",
@@ -141,6 +151,24 @@ for (const path of ["privacy", "support", "terms", "account-deletion"]) {
   } catch {
     liveChecks.push({ name: `Public ${path} page`, ok: false });
   }
+}
+
+try {
+  const response = await fetchWithTimeout(`${publicOrigin}/app-ads.txt`, {
+    redirect: "manual"
+  });
+  const body = await response.text();
+  liveChecks.push({
+    name: "Live AdMob app-ads.txt",
+    ok:
+      response.ok &&
+      response.status === 200 &&
+      Boolean(response.headers.get("content-type")?.includes("text/plain")) &&
+      body.trim() ===
+        "google.com, pub-8171715888836308, DIRECT, f08c47fec0942fa0"
+  });
+} catch {
+  liveChecks.push({ name: "Live AdMob app-ads.txt", ok: false });
 }
 
 try {

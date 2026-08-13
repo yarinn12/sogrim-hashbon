@@ -191,7 +191,7 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
     src: "server.mjs",
     use: "@vercel/node"
   });
-  for (const source of ["*.html", "*.css", "*.png", "assets/**", "src/data/**", "src/domain/**"]) {
+  for (const source of ["*.html", "*.css", "*.png", "*.txt", "assets/**", "src/data/**", "src/domain/**"]) {
     assert.ok(config.builds.some((entry) => entry.src === source && entry.use === "@vercel/static"));
   }
   assert.ok(config.routes.some((route) => route.src === "/api/(.*)" && route.dest === "/server.mjs"));
@@ -201,6 +201,32 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
   assert.ok(config.routes.some((route) => route.src === "/(.*)" && route.dest === "/index.html"));
   assert.equal(config.routes[0].continue, true);
   assert.match(config.routes[0].headers?.["Content-Security-Policy"] ?? "", /default-src 'self'/);
+});
+
+test("AdMob ownership file is public, plain text and uses the app publisher ID", async () => {
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/app-ads.txt`);
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/plain/);
+    assert.equal(
+      body.trim(),
+      "google.com, pub-8171715888836308, DIRECT, f08c47fec0942fa0"
+    );
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 });
 
 test("deployment includes only the required public PNG assets", async () => {

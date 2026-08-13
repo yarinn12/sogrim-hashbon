@@ -367,7 +367,7 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(referralLayer, /navigator\.share/);
   assert.match(adLayer, /syncInFlight/);
   assert.match(adLayer, /syncRequestedAfterFlight/);
-  assert.match(adLayer, /adSize:\s*"BANNER"/);
+  assert.match(adLayer, /adSize:\s*"ADAPTIVE_BANNER"/);
   assert.match(adLayer, /BOTTOM_CENTER/);
   assert.match(adLayer, /ca-app-pub-3940256099942544\/6300978111/);
   assert.match(
@@ -387,6 +387,10 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(adLayer, /if \(\["blocked", "error"\]\.includes\(consentState\)\) return false/);
   assert.match(adLayer, /privacyOptionsRequirementStatus === "REQUIRED"/);
   assert.match(adLayer, /settle-friends:ad-consent-changed/);
+  assert.match(
+    adLayer,
+    /if \(!\(await ensureConsent\(admob\)\)\) return;\s*await initializeAdMob\(admob\);\s*await prepareBannerListeners\(admob\);/
+  );
   assert.match(adLayer, /await removeBanner\(\);\s*await admob\.showPrivacyOptionsForm\(\)/);
   assert.match(adLayer, /document\.addEventListener\("visibilitychange", scheduleAdSync\)/);
   assert.match(adLayer, /window\.addEventListener\("offline", removeBanner\)/);
