@@ -4,18 +4,18 @@
 
 ## חסמי P0 לפני שליחה לחנויות
 
-- [ ] להחזיר את `https://sogrim-hashbon.vercel.app` למענה `200`. כרגע הבית, פרטיות, תמיכה, תנאים, מחיקת חשבון וקבצי השיוך מחזירים `402`.
-- [x] Android AAB נבנה מחדש מהמקור המאוחד ב-12 באוגוסט 2026 ומאומת כגרסה `3.44 (67)`. פרטי הגרסה, הגודל, החתימה, SHA-256 וטביעת 524 קבצי המקור שמורים ב-`android/app/build/outputs/bundle/release/release-manifest.json`.
+- [x] `https://sogrim-hashbon.vercel.app` ושרת הגיבוי מחזירים `200` עבור האפליקציה, דפי המדיניות וקבצי השיוך. פריסות Vercel חדשות עדיין חסומות ברמת החשבון ולכן Render נשמר כנתיב התאוששות.
+- [x] Android AAB נבנה מחדש מהמקור המאוחד ב-13 באוגוסט 2026 ומאומת כגרסה `3.47 (70)`. פרטי הגרסה, הגודל, החתימה, SHA-256 וטביעת 523 קבצי המקור שמורים ב-`android/app/build/outputs/bundle/release/release-manifest.json`.
 - [ ] להשלים Apple Developer Team ולהגדיר `APPLE_TEAM_ID`. אין Team ID ב-`ios/App/App.xcodeproj/project.pbxproj`.
 - [ ] ליצור ולפרוס `.well-known/apple-app-site-association` באמצעות `npm run native:ios:association` לאחר קבלת Team ID.
 - [ ] להפעיל Sign in with Apple ב-Apple Developer וב-Supabase ולוודא `npm run qa:ios:review` מול הסביבה החיה.
 - [ ] לבנות ולחתום IPA באמצעות Xcode 26 ומעלה עם iOS 26 SDK על macOS, ולהעלות ל-TestFlight.
-- [x] `npm test` ירוק: `1,025/1,025` בדיקות עוברות.
+- [x] `npm test` ירוק: `1,032/1,032` בדיקות עוברות.
 
 ## Android - מוכן בקוד
 
 - [x] Package קבוע: `com.sogrimhashbon.app` ב-`android/app/build.gradle` וב-`capacitor.config.json`.
-- [x] גרסה נוכחית בקוד: `3.44 (67)` ב-`android/app/build.gradle`.
+- [x] גרסה נוכחית בקוד: `3.47 (70)` ב-`android/app/build.gradle`.
 - [x] Target/Compile API 36 ו-Min API 24 ב-`android/variables.gradle`.
 - [x] חתימת Upload קיימת ומוחרגת מ-Git: `android/keystore.properties`, `android/app/sogrim-upload-key.jks` ו-`.gitignore`.
 - [x] טביעת AAB שנבדקה תואמת לתעודת ה-Upload: `D9:BE:...:74:1B`; התוקף עד 4 בדצמבר 2053.
@@ -24,8 +24,8 @@
 - [x] App Links מוגדרים ל-`/i/*`, `/r/*` ו-`/auth/callback`.
 - [x] אייקון 512, Feature Graphic ושלושה צילומי חנות עוברים בדיקת ממדים.
 - [x] Data Safety מתועד ב-`docs/store-submission/google-play-data-safety-he.md`.
-- [ ] לוודא ב-Play Console ש-`versionCode 67` גבוה מכל Build שכבר הועלה, לפני העלאת ה-AAB.
-- [ ] להחליט לפני Production אם Billing ייכלל בגרסה: `com.android.billingclient:billing` והרשאת `com.android.vending.BILLING` ארוזים כעת, אף שמסלול התשלום המסחרי עדיין אינו פעיל.
+- [x] `versionCode 70` גבוה מגרסת הבדיקה הפעילה `69` ומוכן להעלאה לאחר פתיחת שער ה-Production.
+- [x] Google Play Billing והרשאת `com.android.vending.BILLING` אינם ארוזים בגרסת ההשקה. מסלול בתשלום יתווסף רק בגרסה עתידית לאחר החלטת מוצר והסדרה מתאימה.
 - [ ] לוודא שהצהרת Ads ב-Play Console תואמת להתנהגות בפועל. AdMob ו-UMP ארוזים באפליקציה, אך הפעלה בייצור נשלטת מרחוק.
 - [ ] לאמת ב-Play Console שה-Data Safety, Ads declaration, Content rating, App access ומדינות ההפצה תואמים לגרסה שתוגש.
 - [ ] להריץ Pre-launch report על ה-AAB הסופי ולסגור כל Crash/ANR/חסימת מסלול.

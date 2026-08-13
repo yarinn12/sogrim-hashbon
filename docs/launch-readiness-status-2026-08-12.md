@@ -11,7 +11,7 @@
 - Full-screen participant routes now expose a visible, tested back control instead of trapping the user without the product header or bottom navigation.
 - Live account memory, two-account event sync, invitation joining, friendship, notifications and feedback privacy checks pass against Supabase.
 - Data calculations complete for 5,000 expenses, and a 1,000-expense event opens and settles in the UI benchmark.
-- Android release `3.47` (`versionCode 70`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `0C47D854F577E09499FAC83C1EE82C4FCFE9956E9932C0F5530921DF5C54C80A`.
+- Android release `3.47` (`versionCode 70`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `DA275414D1AF2706BA1621082D14BEEF419B228CC924186CB9C3E31D69A679BE`.
 - Google Play Console currently serves release `3.46` (`versionCode 69`) to the closed-test track at a 100% rollout. Release `3.47` remains the verified production candidate until the 14-day access gate opens.
 - Android target API 36, App Links, Play signing association, Firebase push, store artwork and legal pages pass the local release gate.
 - The provider-portable Docker runtime builds and answers `/api/health` in GitHub Actions.
@@ -20,6 +20,7 @@
 - GitHub Actions use the current Node 24-compatible checkout, setup, script and artifact actions, removing the previous Node 20 runtime warnings.
 - AdMob is integrated on Android with consent before SDK initialization, non-personalized requests and one adaptive banner limited to Home and Friends. Production ad serving remains remotely disabled.
 - The AdMob payment profile, European-regulations message, production application ID and public `app-ads.txt` are prepared. Store linkage and app-readiness review remain intentionally pending until the Play listing is public.
+- Google Play Billing and the `com.android.vending.BILLING` permission are excluded from the first release; referral-based ad-free access does not require a purchase SDK.
 
 ## External blockers before a full public launch
 

@@ -15,31 +15,20 @@ const USER_ID = "11111111-2222-4333-8444-555555555555";
 const PURCHASE_TOKEN = "purchase-token-with-enough-entropy";
 const PRODUCT_ID = "sogrim_premium";
 
-test("Android uses Google Play Billing 9 with a server-verified purchase plugin", async () => {
-  const [build, manifest, activity, plugin] = await Promise.all([
+test("the first Android release does not package dormant Play Billing", async () => {
+  const [build, manifest, activity] = await Promise.all([
     readFile("android/app/build.gradle", "utf8"),
     readFile("android/app/src/main/AndroidManifest.xml", "utf8"),
     readFile(
       "android/app/src/main/java/com/sogrimhashbon/app/MainActivity.java",
       "utf8"
-    ),
-    readFile(
-      "android/app/src/main/java/com/sogrimhashbon/app/PremiumBillingPlugin.java",
-      "utf8"
     )
   ]);
 
-  assert.match(build, /com\.android\.billingclient:billing:9\.1\.0/);
-  assert.match(manifest, /com\.android\.vending\.BILLING/);
+  assert.doesNotMatch(build, /com\.android\.billingclient:billing/);
+  assert.doesNotMatch(manifest, /com\.android\.vending\.BILLING/);
   assert.match(manifest, /android:launchMode="singleTop"/);
-  assert.match(activity, /registerPlugin\(PremiumBillingPlugin\.class\)/);
-  assert.match(plugin, /@CapacitorPlugin\(name = "PremiumBilling"\)/);
-  assert.match(plugin, /enablePendingPurchases/);
-  assert.match(plugin, /setObfuscatedAccountId\(sha256\(accountId\)\)/);
-  assert.match(plugin, /includeSuspendedSubscriptions\(true\)/);
-  assert.match(plugin, /hasFreeTrial\(offer\)/);
-  assert.match(plugin, /notifyListeners\(\s*"purchaseUpdated"/);
-  assert.doesNotMatch(plugin, /acknowledgePurchase|consumeAsync/);
+  assert.doesNotMatch(activity, /PremiumBillingPlugin/);
 });
 
 test("verified active purchases are hashed, stored and acknowledged server-side", async () => {
