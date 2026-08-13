@@ -45,6 +45,7 @@ test("the backup container is minimal, non-root and health checked", async () =>
   assert.match(dockerfile, /USER node/);
   assert.match(dockerfile, /HEALTHCHECK/);
   assert.match(dockerfile, /\/api\/health/);
+  assert.match(dockerfile, /COPY .*app-ads\.txt/);
   assert.match(dockerignore, /^node_modules$/m);
   assert.match(dockerignore, /^android$/m);
   assert.match(dockerignore, /^ios$/m);

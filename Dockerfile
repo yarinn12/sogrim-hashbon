@@ -16,7 +16,7 @@ COPY src ./src
 COPY assets ./assets
 COPY .well-known ./.well-known
 COPY index.html privacy.html support.html terms.html accessibility.html account-deletion.html ./
-COPY styles.css legal.css legal.mjs manifest.webmanifest sw.js ./
+COPY styles.css legal.css legal.mjs manifest.webmanifest sw.js app-ads.txt ./
 COPY brand-mark.png brand-mark-v3.png icon.svg icon-192.png icon-512.png icon-maskable-512.png apple-touch-icon.png ./
 COPY sogrim-logo-lockup.png sogrim-share-logo.png sogrim-home-hero.png ./
 
