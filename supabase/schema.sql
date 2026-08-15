@@ -445,7 +445,17 @@ begin
   end if;
 
   foreach added_id in array added_ids loop
-    if added_id !~ '^guest-[A-Za-z0-9_-]{1,120}$'
+    if exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(
+        case
+          when pg_catalog.jsonb_typeof(p_old_state -> 'deletedParticipants') = 'array'
+            then p_old_state -> 'deletedParticipants'
+          else '[]'::jsonb
+        end
+      ) as deletion(value)
+      where deletion.value ->> 'id' = added_id
+    ) or added_id !~ '^guest-[A-Za-z0-9_-]{1,120}$'
       or not exists (
         select 1
         from pg_catalog.jsonb_array_elements(

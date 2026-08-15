@@ -17,6 +17,20 @@ const verification = readFileSync(
   ),
   "utf8"
 );
+const resurrectionMigration = readFileSync(
+  new URL(
+    "../supabase/migrations/20260815020025_reject_merged_guest_readdition.sql",
+    import.meta.url
+  ),
+  "utf8"
+);
+const resurrectionVerification = readFileSync(
+  new URL(
+    "../supabase/verification/verify_20260815020025_reject_merged_guest_readdition.sql",
+    import.meta.url
+  ),
+  "utf8"
+);
 
 for (const source of [schema, migration]) {
   test("shared event guard permits only safe offline guest additions", () => {
@@ -37,4 +51,16 @@ test("offline guest migration is bounded and independently verifiable", () => {
   assert.match(verification, /safe offline guest addition was rejected/);
   assert.match(verification, /connected user addition was incorrectly accepted/);
   assert.match(verification, /'ready' as verification_status/);
+});
+
+test("a merged offline guest cannot be resurrected by a stale device", () => {
+  for (const source of [schema, resurrectionMigration]) {
+    assert.match(source, /p_old_state -> 'deletedParticipants'/);
+    assert.match(source, /deletion\.value ->> 'id' = added_id/);
+  }
+  assert.match(
+    resurrectionVerification,
+    /merged offline guest was allowed to return/
+  );
+  assert.match(resurrectionVerification, /new offline guest was incorrectly rejected/);
 });
