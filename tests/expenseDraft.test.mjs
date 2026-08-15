@@ -16,6 +16,19 @@ test("single payer is filled from the total automatically", () => {
   assert.equal(payers[0].autoAmount, true);
 });
 
+test("automatic difference assignment fills a new blank payer", () => {
+  const payers = assignPayerDifference(
+    "120",
+    [createPayerDraft("dan")],
+    0,
+    { automatic: true }
+  );
+
+  assert.equal(payers[0].amount, "120");
+  assert.equal(payers[0].amountTouched, false);
+  assert.equal(payers[0].autoAmount, true);
+});
+
 test("editing a total assigns the entire difference to a single payer", () => {
   const payers = assignPayerDifference(
     "140",

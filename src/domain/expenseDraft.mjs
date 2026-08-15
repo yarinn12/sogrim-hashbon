@@ -52,7 +52,17 @@ export function assignPayerDifference(
   if (!Array.isArray(payers) || !payers[payerIndex]) return payers;
 
   const summary = summarizePayerDraft(totalInput, payers);
-  if (!summary.valid || summary.balanced) return payers;
+  if (!summary.valid) {
+    const payer = payers[payerIndex];
+    const blankAutomaticAmount =
+      automatic &&
+      canAutoFillPayer(payer) &&
+      String(payer.amount ?? "").trim() === "";
+    return blankAutomaticAmount
+      ? balancePayerAmounts(totalInput, payers, payerIndex)
+      : payers;
+  }
+  if (summary.balanced) return payers;
 
   const currentAmount = readDraftAmount(payers[payerIndex].amount);
   const nextAmount = summary.remaining > 0
