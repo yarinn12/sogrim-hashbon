@@ -7670,10 +7670,11 @@ function renderSettlement(event) {
                 <div class="settlement-transfer-board">
                   ${renderSettlementOfflineNotice(event, orderedTransfers)}
                   ${displayTransfers
-                    .map(({ transfer, paidHistory }) =>
+                    .map(({ transfer, paidHistory, groupedPaidTransfers }) =>
                       renderTransferRow(event, transfer, {
                         highlightPersonal: hasPersonalIdentity,
-                        paidHistory
+                        paidHistory,
+                        groupedPaidTransfers
                       })
                     )
                     .join("")}
@@ -8198,9 +8199,14 @@ function renderSettlementCloseConfirmation(event, pendingTransfers, pendingTotal
 function renderTransferRow(
   event,
   transfer,
-  { highlightPersonal = false, paidHistory = [] } = {}
+  {
+    highlightPersonal = false,
+    paidHistory = [],
+    groupedPaidTransfers = []
+  } = {}
 ) {
   const paid = transfer.status === "paid";
+  const isGroupedPaidTransfer = paid && groupedPaidTransfers.length > 1;
   const historicalPaidTotal = paidHistory.reduce(
     (sum, paidTransfer) => sum + paidTransfer.amount,
     0
@@ -8217,7 +8223,9 @@ function renderTransferRow(
       : "מחכה שיגיע"
     : "טרם הושלם";
   const statusText = paid
-    ? transferPaidStatusText(event, transfer)
+    ? isGroupedPaidTransfer
+      ? `${formatCount(groupedPaidTransfers.length, "תשלום הושלם", "תשלומים הושלמו")}`
+      : transferPaidStatusText(event, transfer)
     : pendingStatusText;
   const pendingActionLabel = isPersonal
     ? isCurrentParticipantPaying
@@ -8292,7 +8300,9 @@ function renderTransferRow(
               : ""
           }
           ${
-            paid
+            paid && isGroupedPaidTransfer
+              ? `<span class="secondary-button transfer-complete-button is-static" role="status"><span aria-hidden="true">✓</span> הושלם</span>`
+              : paid
               ? `<button class="secondary-button transfer-complete-button" data-action="mark-pending" data-transfer-id="${transfer.id}" aria-label="${escapeAttribute(`ההעברה מ-${fromName} ל-${toName} הושלמה. לחיצה תבטל את הסימון`)}"><span aria-hidden="true">✓</span> הושלם</button>`
               : `<button class="primary-button" data-action="mark-paid" data-transfer-id="${transfer.id}">${pendingActionLabel}</button>`
           }
@@ -8300,6 +8310,9 @@ function renderTransferRow(
       </div>
       ${renderTransferExplanation(event, transfer)}
       ${renderTransferPaidHistory(event, paidHistory)}
+      ${renderTransferPaidHistory(event, groupedPaidTransfers, {
+        summaryLabel: `פירוט ${formatCount(groupedPaidTransfers.length, "תשלום", "תשלומים")}`
+      })}
     </article>
   `;
 }
@@ -8355,7 +8368,11 @@ function renderDirectFeaturedSettlementBreakdown(event, transfer) {
   `;
 }
 
-function renderTransferPaidHistory(event, paidHistory) {
+function renderTransferPaidHistory(
+  event,
+  paidHistory,
+  { summaryLabel = "תשלומים קודמים" } = {}
+) {
   if (!paidHistory.length) return "";
 
   const total = paidHistory.reduce(
@@ -8365,7 +8382,7 @@ function renderTransferPaidHistory(event, paidHistory) {
   return `
     <details class="transfer-paid-history">
       <summary>
-        <span>תשלומים קודמים</span>
+        <span>${escapeHtml(summaryLabel)}</span>
         <strong class="amount"><span class="font-num">${formatEventMoney(event, total)}</span></strong>
       </summary>
       <div class="transfer-paid-history-list">

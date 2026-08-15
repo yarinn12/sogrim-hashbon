@@ -14738,6 +14738,14 @@ const CSS = `
     box-shadow: none !important;
   }
 
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-complete-button.is-static {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    cursor: default !important;
+    user-select: none !important;
+  }
+
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-actions {
     grid-area: actions !important;
     width: 100% !important;

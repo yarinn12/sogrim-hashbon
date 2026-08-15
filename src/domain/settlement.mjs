@@ -147,6 +147,7 @@ export function reconcileSettlementTransfers(
 export function groupSettlementTransfersForDisplay(transfers = []) {
   const paidByRoute = new Map();
   const pendingCountByRoute = new Map();
+  const emittedPaidRoutes = new Set();
 
   for (const transfer of transfers) {
     const route = settlementTransferRoute(transfer);
@@ -163,15 +164,38 @@ export function groupSettlementTransfersForDisplay(transfers = []) {
   return transfers.flatMap((transfer) => {
     const route = settlementTransferRoute(transfer);
     const hasSinglePendingRemainder = route && pendingCountByRoute.get(route) === 1;
+    const routePaidTransfers = route ? paidByRoute.get(route) ?? [] : [];
 
     if (transfer.status === "paid" && hasSinglePendingRemainder) return [];
+
+    if (
+      transfer.status === "paid" &&
+      route &&
+      !pendingCountByRoute.has(route) &&
+      routePaidTransfers.length > 1
+    ) {
+      if (emittedPaidRoutes.has(route)) return [];
+      emittedPaidRoutes.add(route);
+      return [{
+        transfer: {
+          ...transfer,
+          amount: routePaidTransfers.reduce(
+            (sum, paidTransfer) => sum + paidTransfer.amount,
+            0
+          )
+        },
+        paidHistory: [],
+        groupedPaidTransfers: [...routePaidTransfers]
+      }];
+    }
 
     return [{
       transfer,
       paidHistory:
         transfer.status !== "paid" && hasSinglePendingRemainder
           ? [...(paidByRoute.get(route) ?? [])]
-          : []
+          : [],
+      groupedPaidTransfers: []
     }];
   });
 }

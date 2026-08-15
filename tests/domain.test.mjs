@@ -964,6 +964,36 @@ test("paid history and a new remainder to the same person share one display row"
   assert.deepEqual(displayRows[0].paidHistory, [paidTransfer]);
 });
 
+test("completed payments on the same route share one display row", () => {
+  const firstPayment = {
+    id: "paid-b-a-9200",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 9200,
+    status: "paid"
+  };
+  const secondPayment = {
+    id: "paid-b-a-500",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 500,
+    status: "paid"
+  };
+
+  const displayRows = groupSettlementTransfersForDisplay([
+    firstPayment,
+    secondPayment
+  ]);
+
+  assert.equal(displayRows.length, 1);
+  assert.equal(displayRows[0].transfer.amount, 9700);
+  assert.equal(displayRows[0].transfer.status, "paid");
+  assert.deepEqual(displayRows[0].groupedPaidTransfers, [
+    firstPayment,
+    secondPayment
+  ]);
+});
+
 test("display grouping never combines opposite payment directions", () => {
   const paidTransfer = {
     id: "paid-b-a-2000",
@@ -987,6 +1017,7 @@ test("display grouping never combines opposite payment directions", () => {
 
   assert.equal(displayRows.length, 2);
   assert.deepEqual(displayRows.map((row) => row.paidHistory), [[], []]);
+  assert.deepEqual(displayRows.map((row) => row.groupedPaidTransfers), [[], []]);
 });
 
 test("editing below an already paid amount creates a balancing reverse transfer", () => {
