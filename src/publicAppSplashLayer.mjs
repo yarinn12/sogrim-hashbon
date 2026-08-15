@@ -1,4 +1,5 @@
 import { markStartupMilestone } from "./data/startupMetrics.mjs";
+import { loadAccessibilityPreferences } from "./data/accessibilityPreferences.mjs";
 
 const splash = document.querySelector("#app-splash");
 const app = document.querySelector("#app");
@@ -21,7 +22,9 @@ if (splash && app) {
 }
 
 function installSplash({ showPosterOnly = false } = {}) {
-  const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  const reduceMotion =
+    loadAccessibilityPreferences().reduceMotion ||
+    window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
   let fallbackMode = Boolean(showPosterOnly || reduceMotion || !video);
   let dismissed = false;
   let loadTimeoutId = 0;

@@ -11,6 +11,7 @@ const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
 const PRIMARY_NAV_SCREENS = new Set([
   "home",
   "profile",
+  "admin",
   "notifications",
   "groups",
   "event",
@@ -243,12 +244,14 @@ function syncHeaderNavState() {
     kind === "notifications"
       ? "notifications"
       : kind === "profile"
-      ? "profile"
-      : kind === "home"
-        ? preferredHomeDestination
-        : eventDestinations.has(kind)
-          ? "events"
-          : "";
+        ? "profile"
+        : kind === "admin"
+          ? "profile"
+          : kind === "home"
+            ? preferredHomeDestination
+            : eventDestinations.has(kind)
+              ? "events"
+              : "";
 
   syncNotificationNavBadge(nav);
   setPrimaryNavigationActiveDestination(nav, activeDestination);
@@ -365,6 +368,7 @@ function detectBrandScreenKind(screen) {
   if (["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"].includes(explicitKind)) {
     return explicitKind;
   }
+  if (explicitKind === "admin") return explicitKind;
   if (["group-create", "group-edit", "people"].includes(explicitKind)) {
     return "group-workflow";
   }

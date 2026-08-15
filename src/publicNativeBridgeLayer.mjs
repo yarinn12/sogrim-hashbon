@@ -1,6 +1,6 @@
 import {
   NATIVE_AUTH_PATH,
-  NATIVE_PUBLIC_HOST,
+  nativePublicOrigin,
   nativeDestination
 } from "./domain/nativeDeepLinks.mjs";
 import {
@@ -8,7 +8,10 @@ import {
   notificationTargetFromPayload
 } from "./domain/notificationTargets.mjs";
 
-const NATIVE_AUTH_CALLBACK = `https://${NATIVE_PUBLIC_HOST}${NATIVE_AUTH_PATH}`;
+const NATIVE_AUTH_CALLBACK = new URL(
+  NATIVE_AUTH_PATH,
+  nativePublicOrigin()
+).toString();
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_DESTINATION_EVENT = "settle-friends:native-destination";
 const PUSH_TOKEN_EVENT = "settle-friends:push-token";

@@ -168,6 +168,7 @@ export function buildEventInviteSnapshot(state, eventId) {
       eventType: normalizeEventType(event.eventType),
       currency: normalizeCurrency(event.currency),
       roundSettlementTransfers: event.roundSettlementTransfers !== false,
+      directSettlementTransfers: event.directSettlementTransfers === true,
       participantIds: activeParticipantIds,
       participantAliases: sanitizeParticipantAliases(
         event.participantAliases,
@@ -281,6 +282,7 @@ function normalizeEvent(event) {
     createdByParticipantId: "",
     adminsCanEditOnly: true,
     roundSettlementTransfers: event.roundSettlementTransfers !== false,
+    directSettlementTransfers: event.directSettlementTransfers === true,
     locked: true,
     expenses: [],
     transfers: [],

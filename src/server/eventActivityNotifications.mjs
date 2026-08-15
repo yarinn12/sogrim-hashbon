@@ -110,16 +110,8 @@ export async function sendEventActivityNotification({
   const eligibleRecipients = [];
   let inboxRecipients = 0;
   for (const recipientUserId of recipientUserIds) {
-    if (normalizedKind === "event-invite") {
-      const acceptedFriend = await hasAcceptedFriendship({
-        supabaseUrl,
-        serviceRoleKey,
-        senderUserId: sender.id,
-        recipientUserId,
-        fetchImpl
-      });
-      if (!acceptedFriend) continue;
-    } else {
+    let needsRecoveryInvite = false;
+    if (normalizedKind !== "event-invite") {
       const recipientState = await loadAccountState({
         supabaseUrl,
         serviceRoleKey,
@@ -128,7 +120,7 @@ export async function sendEventActivityNotification({
         fetchImpl
       });
       const recipientEvent = eventFromState(recipientState, normalizedEventId);
-      if (!sameSharedEvent(senderEvent, recipientEvent)) continue;
+      needsRecoveryInvite = !sameSharedEvent(senderEvent, recipientEvent);
     }
 
     const reservation = await reserveActivityNotification({
@@ -149,7 +141,7 @@ export async function sendEventActivityNotification({
     if (!shouldStoreInInbox) continue;
 
     let actionUrl = "";
-    if (normalizedKind === "event-invite") {
+    if (normalizedKind === "event-invite" || needsRecoveryInvite) {
       const privateInvite = await createPrivateEventInvite({
         supabaseUrl,
         serviceRoleKey,
@@ -186,6 +178,7 @@ export async function sendEventActivityNotification({
       body: notification.body,
       view: "event",
       actionUrl,
+      publicUrl: runtimeConfig?.publicUrl,
       fetchImpl
     });
     if (storedInInbox) inboxRecipients += 1;
@@ -536,29 +529,6 @@ async function loadEventUpdateDevices({
       String(row?.token ?? "").length >= 20 &&
       row?.preferences?.eventUpdates !== false
   );
-}
-
-async function hasAcceptedFriendship({
-  supabaseUrl,
-  serviceRoleKey,
-  senderUserId,
-  recipientUserId,
-  fetchImpl
-}) {
-  const params = new URLSearchParams({
-    status: "eq.accepted",
-    user_low: `eq.${[senderUserId, recipientUserId].sort()[0]}`,
-    user_high: `eq.${[senderUserId, recipientUserId].sort()[1]}`,
-    select: "id",
-    limit: "1"
-  });
-  const response = await fetchImpl(
-    `${supabaseUrl}/rest/v1/friendships?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
-  );
-  if (!response.ok) return false;
-  const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function reserveActivityNotification({

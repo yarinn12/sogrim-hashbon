@@ -449,6 +449,22 @@ try {
           and column_name = 'session_id'
           and data_type = 'uuid'
       ) as product_metrics_anonymous_ready,
+      to_regprocedure('public.admin_analytics_overview(integer)') is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.admin_analytics_overview(integer)',
+          'execute'
+        )
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.admin_analytics_overview(integer)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'service_role',
+          'public.admin_analytics_overview(integer)',
+          'execute'
+        ) as admin_analytics_function_locked,
       to_regprocedure('public.claim_referral(text)') is not null as referral_claim_ready,
       to_regprocedure('public.qualify_referral(text)') is not null as referral_qualify_ready,
       to_regprocedure('public.get_referral_program_status()') is not null as referral_status_ready,
@@ -611,6 +627,7 @@ try {
     !result?.product_metrics_rls_ready ||
     !result?.product_metrics_client_locked ||
     !result?.product_metrics_anonymous_ready ||
+    !result?.admin_analytics_function_locked ||
     !result?.referral_claim_ready ||
     !result?.referral_qualify_ready ||
     !result?.referral_status_ready ||

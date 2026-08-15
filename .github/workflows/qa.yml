@@ -29,6 +29,18 @@ jobs:
       - name: Run unit and integration tests
         run: npm test
 
+      - name: Run data capacity and contention gates
+        run: npm run qa:capacity
+
+      - name: Upload capacity diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: capacity-report
+          path: artifacts/performance/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 

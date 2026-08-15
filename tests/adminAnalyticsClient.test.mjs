@@ -1,0 +1,93 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  loadAdminAnalyticsOverview,
+  normalizeAdminAnalyticsOverview
+} from "../src/data/adminAnalyticsStore.mjs";
+import {
+  buildAdminAnalyticsViewModel,
+  formatBytes
+} from "../src/domain/adminAnalytics.mjs";
+
+test("admin analytics client stays hidden without an account session", async () => {
+  let requests = 0;
+  const result = await loadAdminAnalyticsOverview(
+    { storage: { account: {} } },
+    { fetchImpl: async () => { requests += 1; } }
+  );
+
+  assert.equal(result.available, false);
+  assert.equal(result.status, 401);
+  assert.equal(requests, 0);
+});
+
+test("admin analytics client treats an ordinary account as unavailable", async () => {
+  const result = await loadAdminAnalyticsOverview(
+    {
+      apiBaseUrl: "https://app.example.com",
+      storage: { account: { accessToken: "user-token" } }
+    },
+    {
+      fetchImpl: async (url, options) => {
+        assert.equal(url, "https://app.example.com/api/admin/overview?days=30");
+        assert.equal(options.headers.authorization, "Bearer user-token");
+        return new Response(JSON.stringify({ ok: false }), { status: 403 });
+      }
+    }
+  );
+
+  assert.deepEqual(result, {
+    available: false,
+    status: 403,
+    reason: "forbidden"
+  });
+});
+
+test("admin analytics response is normalized before rendering", async () => {
+  const result = await loadAdminAnalyticsOverview(
+    {
+      apiBaseUrl: "",
+      storage: { account: { accessToken: "admin-token" } }
+    },
+    {
+      fetchImpl: async () => new Response(JSON.stringify({
+        ok: true,
+        overview: {
+          generatedAt: "2026-08-14T10:00:00.000Z",
+          windowDays: 120,
+          accounts: { registered: "11", signedInDuringWindow: 5 },
+          storage: { sharedEvents: "113", databaseBytes: 14380179 },
+          sessions: { total: 2, affected: 1, errorFreeRate: 0.5 },
+          operationFailures: [{ operation: "state_load", count: "1" }]
+        }
+      }), { status: 200 })
+    }
+  );
+
+  assert.equal(result.available, true);
+  assert.equal(result.overview.windowDays, 90);
+  assert.equal(result.overview.accounts.registered, 11);
+  assert.equal(result.overview.storage.sharedEvents, 113);
+  assert.equal(result.overview.operationFailures[0].count, 1);
+});
+
+test("admin analytics view model keeps the daily overview concise", () => {
+  const overview = normalizeAdminAnalyticsOverview({
+    generatedAt: "2026-08-14T10:00:00.000Z",
+    windowDays: 30,
+    accounts: { registered: 11, signedInDuringWindow: 5 },
+    storage: { sharedEvents: 113, databaseBytes: 14380179 },
+    sessions: { total: 2, affected: 0, errorFreeRate: 1 },
+    operationFailures: []
+  });
+  const viewModel = buildAdminAnalyticsViewModel(overview);
+
+  assert.equal(viewModel.status, "healthy");
+  assert.equal(viewModel.statusTitle, "הכול פועל כרגיל");
+  assert.equal(viewModel.quickStats.length, 3);
+  assert.equal(viewModel.quickStats[0].value, "11");
+  assert.equal(viewModel.quickStats[1].value, "113");
+  assert.equal(viewModel.failure.title, "לא נרשמו תקלות בתקופה");
+  assert.equal(formatBytes(14380179), "13.7 MB");
+});

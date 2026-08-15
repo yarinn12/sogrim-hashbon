@@ -15,7 +15,7 @@ test("event settings exposes activity as a focused nested screen", () => {
   assert.match(app, /backAction: "event-settings-back"/);
   assert.match(
     app,
-    /\["management", "currency", "rounding", "activity", "lock", "danger"\]/
+    /\["management", "currency", "repayment", "rounding", "activity", "lock", "danger"\]/
   );
 });
 

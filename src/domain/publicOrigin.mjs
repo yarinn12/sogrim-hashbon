@@ -1,0 +1,39 @@
+export const LEGACY_PUBLIC_ORIGIN = "https://sogrim-hashbon.vercel.app";
+
+export function normalizePublicOrigin(value, fallback = "") {
+  try {
+    const url = new URL(String(value ?? "").trim());
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password
+    ) {
+      return fallback;
+    }
+    return url.origin;
+  } catch {
+    return fallback;
+  }
+}
+
+export function runtimePublicOrigin(config = globalThis.SogrimNativeRuntimeConfig) {
+  return normalizePublicOrigin(config?.publicUrl, LEGACY_PUBLIC_ORIGIN);
+}
+
+export function allowedPublicHosts(publicUrl = "") {
+  const origins = [
+    LEGACY_PUBLIC_ORIGIN,
+    normalizePublicOrigin(publicUrl),
+    runtimePublicOrigin()
+  ].filter(Boolean);
+  return new Set(origins.map((origin) => new URL(origin).hostname));
+}
+
+export function isAllowedPublicUrl(value, publicUrl = "") {
+  try {
+    const url = new URL(String(value ?? "").trim());
+    return url.protocol === "https:" && allowedPublicHosts(publicUrl).has(url.hostname);
+  } catch {
+    return false;
+  }
+}

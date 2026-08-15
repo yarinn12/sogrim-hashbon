@@ -10,8 +10,9 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../src/data/fetchTimeout.mjs";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
-function runtimeConfig() {
+function runtimeConfig(publicUrl = "") {
   return {
+    publicUrl,
     storage: {
       mode: "supabase",
       url: "https://demo.supabase.co",
@@ -62,6 +63,33 @@ test("notification inbox reads only the authenticated account and normalizes tar
     calls[0].options.headers.authorization,
     "Bearer account-access-token"
   );
+});
+
+test("notification inbox accepts an action on the configured public domain", async () => {
+  const publicUrl = "https://app.sogrim.example";
+  const result = await loadNotificationInbox(
+    runtimeConfig(publicUrl),
+    {},
+    async () => new Response(JSON.stringify([
+      {
+        id: "notification-custom-origin",
+        event_id: "event-trip",
+        activity_id: "expense-train",
+        kind: "event-invite",
+        title: "Event invitation",
+        body: "Join the shared event.",
+        view: "event",
+        action_url: `${publicUrl}/i/event-trip/t/${"a".repeat(40)}`,
+        created_at: "2026-08-14T10:00:00.000Z",
+        read_at: null
+      }
+    ]), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  );
+
+  assert.equal(result.items[0].actionUrl.startsWith(`${publicUrl}/i/`), true);
 });
 
 test("a stalled notification inbox load times out and allows a retry", async (t) => {

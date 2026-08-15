@@ -5,8 +5,10 @@ import { formatMoney, parseMoneyInput, splitEvenly } from "../src/domain/money.m
 import {
   buildParticipantSettlementBreakdown,
   calculateSettlement,
+  groupSettlementTransfersForDisplay,
   pendingBalanceForParticipant,
-  reconcileSettlementTransfers
+  reconcileSettlementTransfers,
+  roundSettlementBalances
 } from "../src/domain/settlement.mjs";
 import { validateExpense } from "../src/domain/validation.mjs";
 
@@ -588,6 +590,403 @@ test("paid transfer history survives later expenses and only the remainder stays
     ]
   );
   assert.equal(new Set(result.transfers.map((transfer) => transfer.id)).size, 2);
+});
+
+test("direct settlement keeps repayments attached to the people who funded each expense", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" }
+  ];
+  const result = calculateSettlement(
+    people,
+    [
+      {
+        id: "taxi",
+        total: 9000,
+        payers: [{ participantId: "a", amount: 9000 }],
+        sharedByParticipantIds: ["a", "b", "c"]
+      },
+      {
+        id: "food",
+        total: 6000,
+        payers: [{ participantId: "b", amount: 6000 }],
+        sharedByParticipantIds: ["a", "b"]
+      }
+    ],
+    { directTransfers: true }
+  );
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount
+    })),
+    [
+      { fromParticipantId: "b", toParticipantId: "a", amount: 3000 },
+      { fromParticipantId: "c", toParticipantId: "a", amount: 3000 },
+      { fromParticipantId: "a", toParticipantId: "b", amount: 3000 }
+    ]
+  );
+});
+
+test("direct settlement reimburses multiple payers according to their net contribution", () => {
+  const result = calculateSettlement(
+    participants,
+    [
+      {
+        id: "shared-taxi",
+        total: 12000,
+        payers: [
+          { participantId: "dani", amount: 5000 },
+          { participantId: "avi", amount: 7000 }
+        ],
+        sharedByParticipantIds: ["dani", "avi", "yarin", "maor"]
+      }
+    ],
+    { directTransfers: true }
+  );
+
+  const received = Object.fromEntries(participants.map(({ id }) => [id, 0]));
+  for (const transfer of result.transfers) {
+    received[transfer.toParticipantId] += transfer.amount;
+  }
+
+  assert.equal(received.dani, 2000);
+  assert.equal(received.avi, 4000);
+  assert.equal(received.yarin, 0);
+  assert.equal(received.maor, 0);
+});
+
+test("direct settlement fully reimburses a payer who did not share the expense", () => {
+  const people = participants.slice(0, 3);
+  const result = calculateSettlement(
+    people,
+    [
+      {
+        id: "advance-payment",
+        total: 10000,
+        payers: [{ participantId: "dani", amount: 10000 }],
+        sharedByParticipantIds: ["avi", "yarin"]
+      }
+    ],
+    { directTransfers: true }
+  );
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount
+    })),
+    [
+      { fromParticipantId: "avi", toParticipantId: "dani", amount: 5000 },
+      { fromParticipantId: "yarin", toParticipantId: "dani", amount: 5000 }
+    ]
+  );
+});
+
+test("direct settlement combines repeated repayments on the same route", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" }
+  ];
+  const expenses = ["first", "second"].map((id) => ({
+    id,
+    total: 4000,
+    payers: [{ participantId: "a", amount: 4000 }],
+    sharedByParticipantIds: ["a", "b"]
+  }));
+
+  const result = calculateSettlement(people, expenses, { directTransfers: true });
+
+  assert.equal(result.transfers.length, 1);
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount
+    })),
+    [{ fromParticipantId: "b", toParticipantId: "a", amount: 4000 }]
+  );
+});
+
+test("direct settlement rounds only final routes without creating money", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" }
+  ];
+  const result = calculateSettlement(
+    people,
+    [
+      {
+        id: "coffee",
+        total: 10000,
+        payers: [{ participantId: "a", amount: 10000 }],
+        sharedByParticipantIds: ["a", "b", "c"]
+      }
+    ],
+    { directTransfers: true, roundTransfers: true }
+  );
+
+  assert.deepEqual(result.transfers.map((transfer) => transfer.amount), [3300, 3300]);
+  assert.equal(
+    result.transfers.reduce((sum, transfer) => sum + transfer.amount, 0),
+    6600
+  );
+  assert.equal(
+    result.transfers.reduce((sum, transfer) => sum - transfer.amount + transfer.amount, 0),
+    0
+  );
+});
+
+test("direct rounding never turns two half-shekel debts into a two-shekel reimbursement", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" }
+  ];
+  const result = calculateSettlement(
+    people,
+    [
+      {
+        id: "tiny-expense",
+        total: 150,
+        payers: [{ participantId: "a", amount: 150 }],
+        sharedByParticipantIds: ["a", "b", "c"]
+      }
+    ],
+    { directTransfers: true, roundTransfers: true }
+  );
+
+  assert.equal(result.transfers.length, 1);
+  assert.equal(result.transfers[0].toParticipantId, "a");
+  assert.equal(result.transfers[0].amount, 100);
+});
+
+test("direct settlement clears exact balances across unusual mixed expenses", () => {
+  const people = Array.from({ length: 7 }, (_, index) => ({
+    id: `person-${index + 1}`,
+    displayName: `Person ${index + 1}`
+  }));
+  const expenses = Array.from({ length: 40 }, (_, index) => {
+    const payerIndex = index % people.length;
+    const secondPayerIndex = (index + 3) % people.length;
+    const sharedByParticipantIds = people
+      .filter((_, participantIndex) => (participantIndex + index) % 3 !== 0)
+      .map(({ id }) => id);
+    const total = 1001 + index * 137;
+    const firstPayment = Math.floor(total * 0.4);
+    return {
+      id: `expense-${index}`,
+      total,
+      payers: [
+        { participantId: people[payerIndex].id, amount: firstPayment },
+        { participantId: people[secondPayerIndex].id, amount: total - firstPayment }
+      ],
+      sharedByParticipantIds
+    };
+  });
+  const result = calculateSettlement(people, expenses, { directTransfers: true });
+  const balancesAfterTransfers = { ...result.balances };
+
+  for (const transfer of result.transfers) {
+    balancesAfterTransfers[transfer.fromParticipantId] += transfer.amount;
+    balancesAfterTransfers[transfer.toParticipantId] -= transfer.amount;
+  }
+
+  assert.deepEqual(
+    balancesAfterTransfers,
+    Object.fromEntries(people.map(({ id }) => [id, 0]))
+  );
+});
+
+test("direct settlement preserves every agora across many generated edge cases", () => {
+  let seed = 0x5eed1234;
+  const random = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0x100000000;
+  };
+  const randomInteger = (minimum, maximum) =>
+    minimum + Math.floor(random() * (maximum - minimum + 1));
+
+  for (let scenario = 0; scenario < 250; scenario += 1) {
+    const participantCount = randomInteger(2, 8);
+    const people = Array.from({ length: participantCount }, (_, index) => ({
+      id: `scenario-${scenario}-person-${index}`,
+      displayName: `Person ${index}`
+    }));
+    const expenseCount = randomInteger(1, 35);
+    const expenses = Array.from({ length: expenseCount }, (_, expenseIndex) => {
+      const shuffledPeople = [...people].sort(() => random() - 0.5);
+      const sharedByParticipantIds = shuffledPeople
+        .slice(0, randomInteger(1, participantCount))
+        .map(({ id }) => id);
+      const payerCount = randomInteger(1, Math.min(3, participantCount));
+      const payerIds = [...people]
+        .sort(() => random() - 0.5)
+        .slice(0, payerCount)
+        .map(({ id }) => id);
+      const total = randomInteger(payerCount, 50000);
+      let remaining = total;
+      const payers = payerIds.map((participantId, payerIndex) => {
+        const payersLeft = payerIds.length - payerIndex - 1;
+        const amount = payersLeft === 0
+          ? remaining
+          : randomInteger(1, remaining - payersLeft);
+        remaining -= amount;
+        return { participantId, amount };
+      });
+
+      return {
+        id: `scenario-${scenario}-expense-${expenseIndex}`,
+        total,
+        payers,
+        sharedByParticipantIds
+      };
+    });
+
+    for (const roundTransfers of [false, true]) {
+      const result = calculateSettlement(people, expenses, {
+        directTransfers: true,
+        roundTransfers
+      });
+      const expectedBalances = roundTransfers
+        ? roundSettlementBalances(result.balances)
+        : result.balances;
+      const balancesAfterTransfers = { ...expectedBalances };
+
+      for (const transfer of result.transfers) {
+        assert.ok(transfer.amount > 0);
+        assert.ok(Number.isSafeInteger(transfer.amount));
+        if (roundTransfers) assert.equal(transfer.amount % 100, 0);
+        balancesAfterTransfers[transfer.fromParticipantId] += transfer.amount;
+        balancesAfterTransfers[transfer.toParticipantId] -= transfer.amount;
+      }
+
+      assert.deepEqual(
+        balancesAfterTransfers,
+        Object.fromEntries(people.map(({ id }) => [id, 0])),
+        `scenario ${scenario} did not settle cleanly (round=${roundTransfers})`
+      );
+    }
+  }
+});
+
+test("direct settlement keeps paid history while preserving the remaining payer routes", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" }
+  ];
+  const expenses = [
+    {
+      id: "taxi",
+      total: 9000,
+      payers: [{ participantId: "a", amount: 9000 }],
+      sharedByParticipantIds: ["a", "b", "c"]
+    },
+    {
+      id: "food",
+      total: 6000,
+      payers: [{ participantId: "b", amount: 6000 }],
+      sharedByParticipantIds: ["a", "b"]
+    }
+  ];
+  const paid = {
+    id: "paid-b-a-3000",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 3000,
+    status: "paid",
+    markedPaidAt: "2026-08-15T12:00:00.000Z"
+  };
+
+  const result = reconcileSettlementTransfers(people, expenses, [paid], {
+    directTransfers: true
+  });
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    [
+      {
+        fromParticipantId: "b",
+        toParticipantId: "a",
+        amount: 3000,
+        status: "paid"
+      },
+      {
+        fromParticipantId: "c",
+        toParticipantId: "a",
+        amount: 3000,
+        status: "pending"
+      },
+      {
+        fromParticipantId: "a",
+        toParticipantId: "b",
+        amount: 3000,
+        status: "pending"
+      }
+    ]
+  );
+});
+
+test("paid history and a new remainder to the same person share one display row", () => {
+  const paidTransfer = {
+    id: "paid-b-a-2000",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 2000,
+    status: "paid"
+  };
+  const pendingTransfer = {
+    id: "pending-b-a-1000",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 1000,
+    status: "pending"
+  };
+
+  const displayRows = groupSettlementTransfersForDisplay([
+    paidTransfer,
+    pendingTransfer
+  ]);
+
+  assert.equal(displayRows.length, 1);
+  assert.equal(displayRows[0].transfer, pendingTransfer);
+  assert.deepEqual(displayRows[0].paidHistory, [paidTransfer]);
+});
+
+test("display grouping never combines opposite payment directions", () => {
+  const paidTransfer = {
+    id: "paid-b-a-2000",
+    fromParticipantId: "b",
+    toParticipantId: "a",
+    amount: 2000,
+    status: "paid"
+  };
+  const reverseTransfer = {
+    id: "pending-a-b-1000",
+    fromParticipantId: "a",
+    toParticipantId: "b",
+    amount: 1000,
+    status: "pending"
+  };
+
+  const displayRows = groupSettlementTransfersForDisplay([
+    paidTransfer,
+    reverseTransfer
+  ]);
+
+  assert.equal(displayRows.length, 2);
+  assert.deepEqual(displayRows.map((row) => row.paidHistory), [[], []]);
 });
 
 test("editing below an already paid amount creates a balancing reverse transfer", () => {

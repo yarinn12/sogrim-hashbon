@@ -32,6 +32,9 @@
 5. Run `npm run qa:production` every 30 minutes and open one incident when a user-facing boundary fails.
 6. Keep Vercel and the backup host in separate billing/resource scopes so traffic from another product cannot block this app.
 
+The complete domain migration order and the automated Android/iOS origin gates are
+documented in [`public-domain-cutover-he.md`](./public-domain-cutover-he.md).
+
 ## Failure behavior
 
 | Failure | User impact | Recovery |

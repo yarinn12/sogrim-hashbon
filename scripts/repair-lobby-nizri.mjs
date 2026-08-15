@@ -2,14 +2,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import postgres from "postgres";
-import { mergeParticipants } from "../src/domain/appActions.mjs";
+import { validateSharedStateFinancials } from "../src/domain/sharedStateMerge.mjs";
 import {
-  mergeSharedStates,
-  validateSharedStateFinancials
-} from "../src/domain/sharedStateMerge.mjs";
+  eventShareCredentials,
+  mergeSharedEventIntoState
+} from "../src/data/sharedEventStore.mjs";
 
 const EVENT_ID = "event-1785599593318-d10edffd8d78b";
-const OWNER_USER_ID = "c6850f3c-a184-4a32-8d0b-74998985c594";
 const ONLINE_MAOR_ID = "account-87b6c358-fe9c-448f-84e6-6bb093273944";
 const MAOR_ALIAS = "מאור סיבוני";
 const DUPLICATE_MAOR_IDS = [
@@ -29,7 +28,7 @@ const sql = postgres(databaseUrl, { ssl: "require", max: 1 });
 try {
   await sql.begin(async (transaction) => {
     const rows = await transaction`
-      select id, owner_user_id, state, updated_at
+      select id, owner_user_id, snapshot_kind, state, updated_at
       from public.app_snapshots
       where state::text like ${`%${EVENT_ID}%`}
       order by updated_at desc
@@ -39,53 +38,61 @@ try {
       throw new Error(`Expected shared copies of ${EVENT_ID}, found ${rows.length}.`);
     }
 
-    const ownerRow = rows.find(
-      (row) => String(row.owner_user_id ?? "") === OWNER_USER_ID
+    const sharedRow = rows.find(
+      (row) => row.snapshot_kind === "shared_event"
     );
-    if (!ownerRow) throw new Error("The event owner's snapshot was not found.");
+    if (!sharedRow) throw new Error("The shared event snapshot was not found.");
 
-    let canonicalState = mergeSharedStates(ownerRow.state, ownerRow.state);
-    for (const duplicateId of DUPLICATE_MAOR_IDS) {
-      canonicalState = mergeParticipants(
-        canonicalState,
-        duplicateId,
-        ONLINE_MAOR_ID
-      );
-    }
-    canonicalState = mergeSharedStates(canonicalState, canonicalState);
-
-    const canonicalEvent = canonicalState.events.find(
+    const canonicalEvent = sharedRow.state.events.find(
       (event) => event.id === EVENT_ID
     );
-    if (!canonicalEvent) throw new Error("Canonical event was not found.");
-    canonicalEvent.participantAliases = {
-      ...(canonicalEvent.participantAliases ?? {}),
-      [ONLINE_MAOR_ID]: MAOR_ALIAS
-    };
+    if (!canonicalEvent) throw new Error("The shared event was not found.");
 
     assertExpectedEvent(canonicalEvent);
-    const canonicalParticipants = canonicalState.participants.filter(
+    const canonicalParticipants = sharedRow.state.participants.filter(
       (participant) => canonicalEvent.participantIds.includes(participant.id)
     );
-    const repairedAt = new Date().toISOString();
-    const repairedRows = rows.map((row) => ({
-      ...row,
-      state: repairSnapshot(
+    const repairedRows = rows.map((row) => {
+      if (row.snapshot_kind !== "workspace") {
+        return { ...row, changed: false };
+      }
+      const localEvent = row.state.events?.find((event) => event.id === EVENT_ID);
+      if (!localEvent) return { ...row, changed: false };
+      if (!needsParticipantRepair(row.state)) {
+        return { ...row, changed: false };
+      }
+      const credentials = eventShareCredentials(localEvent);
+      if (!credentials) {
+        throw new Error(`${row.id} is missing shared event credentials.`);
+      }
+      const repairedState = mergeSharedEventIntoState(
         row.state,
-        canonicalEvent,
-        canonicalParticipants,
-        repairedAt
-      )
-    }));
+        sharedRow.state,
+        credentials
+      );
+      return {
+        ...row,
+        originalState: row.state,
+        state: repairedState,
+        changed: JSON.stringify(repairedState) !== JSON.stringify(row.state)
+      };
+    });
 
     for (const row of repairedRows) {
       validateTargetEvent(row.state, row.id);
     }
+    const changedRows = repairedRows.filter((row) => row.changed);
 
     const report = {
       mode: apply ? "apply" : "dry-run",
       eventId: EVENT_ID,
       snapshotCount: rows.length,
+      changedWorkspaceCount: changedRows.length,
+      changedWorkspaces: changedRows.map((row) => ({
+        snapshotId: row.id,
+        before: summarizeEvent(row.originalState),
+        after: summarizeEvent(row.state)
+      })),
       expenseCount: canonicalEvent.expenses.length,
       expenseTotal: canonicalEvent.expenses.reduce(
         (sum, expense) => sum + expense.total,
@@ -106,8 +113,8 @@ try {
       return;
     }
 
-    const backupPath = await writeBackup(rows);
-    for (const row of repairedRows) {
+    const backupPath = await writeBackup(changedRows);
+    for (const row of changedRows) {
       await transaction`
         update public.app_snapshots
         set state = ${transaction.json(row.state)}, updated_at = now()
@@ -118,65 +125,6 @@ try {
   });
 } finally {
   await sql.end();
-}
-
-function repairSnapshot(
-  originalState,
-  canonicalEvent,
-  canonicalParticipants,
-  repairedAt
-) {
-  let state = structuredClone(originalState);
-  const onlineMaor = canonicalParticipants.find(
-    (participant) => participant.id === ONLINE_MAOR_ID
-  );
-  if (!onlineMaor) throw new Error("The online Maor account is missing.");
-
-  const targetIndex = (state.participants ?? []).findIndex(
-    (participant) => participant.id === ONLINE_MAOR_ID
-  );
-  state.participants = [...(state.participants ?? [])];
-  if (targetIndex < 0) {
-    state.participants.push(structuredClone(onlineMaor));
-  }
-
-  for (const duplicateId of DUPLICATE_MAOR_IDS) {
-    state = mergeParticipants(state, duplicateId, ONLINE_MAOR_ID);
-  }
-
-  const participantById = new Map(
-    (state.participants ?? []).map((participant) => [participant.id, participant])
-  );
-  for (const participant of canonicalParticipants) {
-    participantById.set(participant.id, {
-      ...structuredClone(participant),
-      ...structuredClone(participantById.get(participant.id) ?? {})
-    });
-  }
-  for (const duplicateId of DUPLICATE_MAOR_IDS) {
-    participantById.delete(duplicateId);
-  }
-
-  const deletionById = new Map(
-    (state.deletedParticipants ?? []).map((deletion) => [deletion.id, deletion])
-  );
-  for (const duplicateId of DUPLICATE_MAOR_IDS) {
-    deletionById.set(duplicateId, {
-      id: duplicateId,
-      reason: "merged",
-      targetParticipantId: ONLINE_MAOR_ID,
-      deletedAt: repairedAt
-    });
-  }
-
-  return {
-    ...state,
-    participants: [...participantById.values()],
-    deletedParticipants: [...deletionById.values()],
-    events: (state.events ?? []).map((event) =>
-      event.id === EVENT_ID ? structuredClone(canonicalEvent) : event
-    )
-  };
 }
 
 function assertExpectedEvent(event) {
@@ -226,6 +174,61 @@ function participantName(participants, participantId) {
     ?.displayName ?? participantId;
 }
 
+function summarizeEvent(state) {
+  const event = state.events?.find((item) => item.id === EVENT_ID);
+  const activeState = {
+    participants: state.participants ?? [],
+    groups: state.groups ?? [],
+    events: state.events ?? []
+  };
+  return {
+    participantIds: event?.participantIds ?? [],
+    expenseIds: (event?.expenses ?? []).map((expense) => expense.id),
+    expenseTotal: (event?.expenses ?? []).reduce(
+      (sum, expense) => sum + expense.total,
+      0
+    ),
+    transfers: (event?.transfers ?? []).map((transfer) => ({
+      id: transfer.id,
+      from: transfer.fromParticipantId,
+      to: transfer.toParticipantId,
+      amount: transfer.amount,
+      status: transfer.status
+    })),
+    activeDuplicateIds: DUPLICATE_MAOR_IDS.filter((participantId) =>
+      JSON.stringify(activeState).includes(participantId)
+    ),
+    mergeTombstoneIds: (state.deletedParticipants ?? [])
+      .filter(
+        (deletion) =>
+          deletion.reason === "merged" &&
+          deletion.targetParticipantId === ONLINE_MAOR_ID
+      )
+      .map((deletion) => deletion.id)
+  };
+}
+
+function needsParticipantRepair(state) {
+  const activeState = JSON.stringify({
+    participants: state.participants ?? [],
+    groups: state.groups ?? [],
+    events: state.events ?? []
+  });
+  const tombstones = new Set(
+    (state.deletedParticipants ?? [])
+      .filter(
+        (deletion) =>
+          deletion.reason === "merged" &&
+          deletion.targetParticipantId === ONLINE_MAOR_ID
+      )
+      .map((deletion) => deletion.id)
+  );
+  return DUPLICATE_MAOR_IDS.some(
+    (participantId) =>
+      activeState.includes(participantId) || !tombstones.has(participantId)
+  );
+}
+
 async function writeBackup(rows) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const backupPath = path.resolve(
@@ -239,11 +242,11 @@ async function writeBackup(rows) {
       {
         eventId: EVENT_ID,
         exportedAt: new Date().toISOString(),
-        snapshots: rows.map(({ id, owner_user_id, state, updated_at }) => ({
+        snapshots: rows.map(({ id, owner_user_id, originalState, state, updated_at }) => ({
           id,
           ownerUserId: owner_user_id,
           updatedAt: updated_at,
-          state
+          state: originalState ?? state
         }))
       },
       null,

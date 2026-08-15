@@ -1,3 +1,5 @@
+import { isAllowedPublicUrl } from "../domain/publicOrigin.mjs";
+
 const INBOX_KINDS = new Set([
   "expense-created",
   "participant-joined",
@@ -18,6 +20,7 @@ export async function storeInboxNotification({
   body,
   view = "event",
   actionUrl = "",
+  publicUrl = "",
   fetchImpl = fetch
 }) {
   const normalized = normalizeInboxNotification({
@@ -29,7 +32,8 @@ export async function storeInboxNotification({
     title,
     body,
     view,
-    actionUrl
+    actionUrl,
+    publicUrl
   });
   if (!normalized || !supabaseUrl || !serviceRoleKey) return false;
 
@@ -59,7 +63,7 @@ function normalizeInboxNotification(value) {
   const title = String(value.title ?? "").trim().slice(0, 90);
   const body = String(value.body ?? "").trim().slice(0, 240);
   const view = String(value.view ?? "").trim();
-  const actionUrl = normalizeActionUrl(value.actionUrl);
+  const actionUrl = normalizeActionUrl(value.actionUrl, value.publicUrl);
   if (
     !recipientUserId ||
     !senderUserId ||
@@ -87,16 +91,8 @@ function normalizeInboxNotification(value) {
   };
 }
 
-function normalizeActionUrl(value) {
+function normalizeActionUrl(value, publicUrl) {
   const actionUrl = String(value ?? "").trim().slice(0, 2048);
   if (!actionUrl) return "";
-  try {
-    const url = new URL(actionUrl);
-    return url.protocol === "https:" &&
-      url.hostname === "sogrim-hashbon.vercel.app"
-      ? url.toString()
-      : "";
-  } catch {
-    return "";
-  }
+  return isAllowedPublicUrl(actionUrl, publicUrl) ? new URL(actionUrl).toString() : "";
 }

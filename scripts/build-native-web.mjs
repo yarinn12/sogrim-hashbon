@@ -7,10 +7,20 @@ import {
   getClientRuntimeConfig,
   getRuntimeConfig
 } from "../src/server/runtimeConfig.mjs";
+import {
+  LEGACY_PUBLIC_ORIGIN,
+  normalizePublicOrigin
+} from "../src/domain/publicOrigin.mjs";
 
 const root = process.cwd();
 const output = join(root, "www");
-const publicAppOrigin = "https://sogrim-hashbon.vercel.app";
+const buildEnv = { ...process.env };
+loadEnvFile(join(root, ".env.local"), buildEnv);
+loadEnvFile(join(root, ".env"), buildEnv);
+const publicAppOrigin = normalizePublicOrigin(
+  buildEnv.APP_PUBLIC_URL,
+  LEGACY_PUBLIC_ORIGIN
+);
 const publicFiles = [
   "index.html",
   "styles.css",
@@ -160,11 +170,8 @@ async function loadNativeBootstrapRuntimeConfig() {
   }
 
   try {
-    const env = { ...process.env };
-    loadEnvFile(join(root, ".env.local"), env);
-    loadEnvFile(join(root, ".env"), env);
     const config = getClientRuntimeConfig(
-      getRuntimeConfig(env, publicAppOrigin),
+      getRuntimeConfig(buildEnv, publicAppOrigin),
       { platform: "android", build: androidBuild }
     );
     console.warn(

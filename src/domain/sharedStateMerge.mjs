@@ -1,7 +1,7 @@
 import { remapParticipantPairKeys } from "./participantIdentity.mjs";
 import {
   reconcileSettlementTransfers,
-  usesRoundedSettlementTransfers
+  settlementOptionsForEvent
 } from "./settlement.mjs";
 import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 
@@ -115,7 +115,7 @@ function reconcileMergedEventTransfers(event, participants) {
     eventParticipants,
     event.expenses,
     event.transfers,
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   );
 
   return settlement.issues.length
@@ -432,6 +432,7 @@ function mergeEventSettings(remoteEvent, localEvent) {
     "groupId",
     "adminsCanEditOnly",
     "roundSettlementTransfers",
+    "directSettlementTransfers",
     "settingsUpdatedAt"
   ]) {
     if (Object.hasOwn(source, field)) {

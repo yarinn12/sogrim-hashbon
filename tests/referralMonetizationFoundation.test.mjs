@@ -406,6 +406,9 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
     /clearBannerPresentation\(\);\s*clearBannerRetry\(\);\s*if \(!currentPlacementEligible\(\)\) return/
   );
   assert.match(adLayer, /native-ad-banner-height/);
+  assert.match(adLayer, /settle-friends:accessibility-center-changed/);
+  assert.match(adLayer, /accessibility-center-open/);
+  assert.match(adLayer, /\.accessibility-center/);
   assert.match(
     adLayer,
     /html\.native-app body\.native-ad-banner-visible \.product-app-nav/

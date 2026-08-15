@@ -19,7 +19,31 @@ export function toSharedState(state) {
 }
 
 export function hasSharedStateChanged(previousState, nextState) {
-  return JSON.stringify(toSharedState(previousState)) !== JSON.stringify(toSharedState(nextState));
+  return !jsonValuesEqual(
+    toSharedState(previousState),
+    toSharedState(nextState)
+  );
+}
+
+function jsonValuesEqual(left, right) {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== typeof right || left === null || right === null) {
+    return false;
+  }
+  if (typeof left !== "object") return false;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => jsonValuesEqual(value, right[index]));
+  }
+
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) => Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key])
+    );
 }
 
 function participantExists(state, participantId) {

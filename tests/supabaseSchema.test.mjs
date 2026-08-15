@@ -49,6 +49,31 @@ test("schema deployment verifies the account deletion function that is installed
   assert.doesNotMatch(deployScript, /delete_account_data\(uuid,text,text\)/);
 });
 
+test("legacy account deletion overload is removed and independently verified", async () => {
+  const migration = await readFile(
+    "supabase/migrations/20260815015532_drop_legacy_delete_account_overload.sql",
+    "utf8"
+  );
+  const verification = await readFile(
+    "supabase/verification/verify_20260815015532_drop_legacy_delete_account_overload.sql",
+    "utf8"
+  );
+
+  assert.match(
+    migration,
+    /drop function if exists public\.delete_account_data\(uuid, text, text\)/
+  );
+  assert.match(
+    verification,
+    /to_regprocedure\(\s*'public\.delete_account_data\(uuid,text,text\)'\s*\) is not null/
+  );
+  assert.match(
+    verification,
+    /perform public\.delete_account_data\(\s*'00000000-0000-0000-0000-000000000000'::uuid/
+  );
+  assert.match(verification, /'ready' as verification_status/);
+});
+
 test("friendship data is private, approval-based and has no direct client mutation grants", async () => {
   const schema = await readFile("supabase/schema.sql", "utf8");
 

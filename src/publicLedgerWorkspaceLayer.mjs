@@ -14617,7 +14617,8 @@ const CSS = `
       "meta"
       "people"
       "actions"
-      "explanation" !important;
+      "explanation"
+      "history" !important;
     gap: 8px !important;
     padding: 12px !important;
     border: 1px solid var(--ledger-line) !important;
@@ -14748,6 +14749,72 @@ const CSS = `
     border-top: 1px solid var(--ledger-line) !important;
   }
 
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-summary {
+    display: block !important;
+    margin-top: 2px !important;
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history {
+    grid-area: history !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history > summary {
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    color: var(--ledger-muted-strong) !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+    cursor: pointer !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history > summary::marker {
+    content: "" !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history-list {
+    display: grid !important;
+    gap: 6px !important;
+    padding-bottom: 4px !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history-item {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    padding: 8px 10px !important;
+    border-radius: 9px !important;
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history-item > span {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 1px !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history-item small {
+    color: var(--ledger-muted) !important;
+    font-size: 10px !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-history-item button {
+    min-width: 96px !important;
+    min-height: 44px !important;
+    padding-inline: 10px !important;
+  }
+
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-explanation {
     grid-area: explanation !important;
     margin: 0 !important;
@@ -14799,6 +14866,46 @@ const CSS = `
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 8px !important;
     padding-bottom: 4px !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-assignment {
+    display: grid !important;
+    gap: 10px !important;
+    margin-top: 10px !important;
+    padding: 12px 0 !important;
+    border-top: 1px solid var(--ledger-line) !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-assignment > div:first-child {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-assignment > div:first-child > strong {
+    color: var(--ledger-ink) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-assignment .amount {
+    color: var(--ledger-brand) !important;
+    font-size: 15px !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-options {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  html.ledger-workspace-v1 .payer-difference-options > button {
+    min-width: 0 !important;
+    min-height: 44px !important;
+    flex: 1 1 120px !important;
   }
 
   @media (max-width: 420px) {

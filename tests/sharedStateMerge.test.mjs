@@ -535,6 +535,7 @@ test("newer event settings survive an unrelated save from a stale device", () =>
     id: "event-1",
     adminsCanEditOnly: true,
     roundSettlementTransfers: false,
+    directSettlementTransfers: true,
     settingsUpdatedAt: "2026-07-24T11:00:00.000Z",
     expenses: [],
     transfers: []
@@ -543,6 +544,7 @@ test("newer event settings survive an unrelated save from a stale device", () =>
     id: "event-1",
     adminsCanEditOnly: false,
     roundSettlementTransfers: true,
+    directSettlementTransfers: false,
     settingsUpdatedAt: "2026-07-24T10:00:00.000Z",
     expenses: [],
     transfers: []
@@ -551,6 +553,7 @@ test("newer event settings survive an unrelated save from a stale device", () =>
   const [event] = mergeSharedStates(remote, local).events;
   assert.equal(event.adminsCanEditOnly, true);
   assert.equal(event.roundSettlementTransfers, false);
+  assert.equal(event.directSettlementTransfers, true);
   assert.equal(event.settingsUpdatedAt, "2026-07-24T11:00:00.000Z");
 });
 

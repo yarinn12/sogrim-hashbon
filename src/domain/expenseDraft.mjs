@@ -43,6 +43,34 @@ export function balancePayerAmounts(totalInput, payers, preferredIndex = payers.
   );
 }
 
+export function assignPayerDifference(
+  totalInput,
+  payers,
+  payerIndex,
+  { automatic = false } = {}
+) {
+  if (!Array.isArray(payers) || !payers[payerIndex]) return payers;
+
+  const summary = summarizePayerDraft(totalInput, payers);
+  if (!summary.valid || summary.balanced) return payers;
+
+  const currentAmount = readDraftAmount(payers[payerIndex].amount);
+  const nextAmount = summary.remaining > 0
+    ? currentAmount + summary.remaining
+    : Math.max(0, currentAmount - summary.overpaid);
+
+  return payers.map((payer, index) =>
+    index === payerIndex
+      ? {
+          ...payer,
+          amount: formatDraftAmount(nextAmount),
+          amountTouched: !automatic,
+          autoAmount: automatic
+        }
+      : payer
+  );
+}
+
 export function findAutoPayerIndex(payers, preferredIndex = payers.length - 1) {
   if (!Array.isArray(payers) || payers.length === 0) return -1;
 

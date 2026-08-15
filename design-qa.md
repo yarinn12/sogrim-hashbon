@@ -1,3 +1,38 @@
+## Private Admin Overview QA - 2026-08-14
+
+**Comparison Target**
+
+- Selected concept: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\design-audits\admin-overview-2026-08-14\admin-overview-selected-concept.png`.
+- Implemented mobile state: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\design-audits\admin-overview-2026-08-14\admin-overview-mobile-390.png`.
+- Narrow mobile state: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\design-audits\admin-overview-2026-08-14\admin-overview-mobile-320.png`.
+- State: private aggregate product overview with 30-day activity, account and event totals, error-free sessions, operation failures, and storage volume.
+
+**Implemented Experience**
+
+- The entry appears in the profile only after the protected server route confirms that the signed-in account is allowlisted.
+- The screen keeps the approved product identity, app back behavior, and bottom navigation with Profile selected.
+- The status surface, three quick metrics, and two monitoring rows use aggregate data only; no names, emails, event titles, or personal financial data are rendered.
+- Loading, unavailable, failure, healthy, attention, refresh, and return-navigation states are explicit.
+
+**Visual Review**
+
+- The final 390 px implementation preserves the selected concept's compact hierarchy while matching the real app header and bottom navigation.
+- A legacy design layer initially overrode the white status heading; selector specificity was corrected and the final contrast now matches the selected concept.
+- At 320 px, measured document, app, and screen widths are all 320 px; the status surface is 296 px wide with no horizontal overflow.
+- No clipped copy, overlapping controls, hidden monitoring rows, or console warnings/errors remain.
+
+**Functional Verification**
+
+- Unauthorized and signed-out states stay hidden and do not make an aggregate-data request without a session.
+- Refresh reloads the overview without duplicating requests.
+- App back returns to the profile, and the bottom navigation keeps Profile active.
+- Focused admin analytics tests: 13 passed, 0 failed.
+- Full automated suite: 1,052 passed, 0 failed.
+- Cross-device Playwright suite: 24 passed across Android, iPhone, iPhone large text, and 320 px reflow.
+- Browser console warnings and errors: none.
+
+final result: passed
+
 **Comparison Target**
 
 - Approved reference: `C:\Users\A\AppData\Local\Temp\codex-clipboard-c6748b50-8da8-41ac-b0a9-a8464afc5942.png`

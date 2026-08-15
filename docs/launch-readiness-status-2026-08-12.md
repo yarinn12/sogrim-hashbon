@@ -1,17 +1,19 @@
-# Launch readiness status - 2026-08-13
+# Launch readiness status - 2026-08-15
 
 ## Verified today
 
-- 1,032 unit and integration tests pass.
-- All 24 mobile journeys pass on Android, iPhone WebKit, enlarged iPhone text and 200% reflow. A repeated 48-test stability run also passes without intermittent failures.
+- 1,065 unit and integration tests pass.
+- All 36 mobile journeys pass across Android, iPhone WebKit, enlarged iPhone text and 200% reflow. One enlarged-text disclosure interaction was rerun in isolation after a transient timeout and passed.
+- The accessibility center is available before sign-in and on every primary app screen. Text sizing, high contrast and reduced motion persist across a native Android restart, remain available offline and support browser, Escape and native-back dismissal.
+- Native AdMob banners are removed while the accessibility center is open and restored after it closes, so the fixed accessibility actions remain reachable.
 - A complete native Android 16 journey passes from first event creation through expense entry, participants, sharing, settings, settlement, notifications, profile, friends and cleanup.
 - Native Android enlarged-text checks pass at a 1.5 system font scale with no clipped text, horizontal overflow or undersized controls.
 - Ten cold-start samples all reach an interactive screen. Median startup is 1.75 seconds, P75 is 1.79 seconds and the slowest sample is 2.65 seconds, within the 3-second product target.
 - The Android journey now enforces at least 12px between the final settlement content and the fixed navigation. The measured clearance is 98px on the Android 16 QA device.
 - Full-screen participant routes now expose a visible, tested back control instead of trapping the user without the product header or bottom navigation.
 - Live account memory, two-account event sync, invitation joining, friendship, notifications and feedback privacy checks pass against Supabase.
-- Data calculations complete for 5,000 expenses, and a 1,000-expense event opens and settles in the UI benchmark.
-- Android release `3.47` (`versionCode 70`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `DA275414D1AF2706BA1621082D14BEEF419B228CC924186CB9C3E31D69A679BE`. A clean rebuild on 2026-08-13 produced the same AAB hash.
+- Data calculations complete for 5,000 expenses. On 2026-08-15, a 1,000-expense, 50-participant event opened in 299.1 ms and reached settlement in 613.8 ms in the UI benchmark.
+- Android release `3.48` (`versionCode 71`) is signed, source-matched and available as a verified AAB. Its SHA-256 is `10BDBF01D6C7FE36154A6228F60CAF5E68DA1A43D4F38153CCF2632A07CEE893`; the clean build completed on 2026-08-15 and includes 539 fingerprinted source files.
 - Release `3.47` was uploaded to the closed-test track and submitted to Google review on 2026-08-13. Google Play currently reports the update as `In review` while release `3.46` remains available to testers.
 - Google Play reports 12 opted-in testers and 10 consecutive closed-test days as of 2026-08-13, leaving 4 days before production access can be requested.
 - The Play Ads declaration now states that the app contains ads. Data Safety now declares the AdMob SDK's approximate location, app interactions, diagnostics and device identifiers as collected and shared for advertising, analytics and fraud prevention. Both updates were submitted to Google for review on 2026-08-13.

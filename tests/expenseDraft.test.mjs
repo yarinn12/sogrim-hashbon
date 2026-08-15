@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  assignPayerDifference,
   balancePayerAmounts,
   createPayerDraft,
   markPayerAmountEdited,
@@ -13,6 +14,31 @@ test("single payer is filled from the total automatically", () => {
 
   assert.equal(payers[0].amount, "120");
   assert.equal(payers[0].autoAmount, true);
+});
+
+test("editing a total assigns the entire difference to a single payer", () => {
+  const payers = assignPayerDifference(
+    "140",
+    [markPayerAmountEdited(createPayerDraft("dan"), "120")],
+    0,
+    { automatic: true }
+  );
+
+  assert.equal(payers[0].amount, "140");
+  assert.equal(payers[0].amountTouched, false);
+  assert.equal(payers[0].autoAmount, true);
+});
+
+test("a total increase can be assigned explicitly when several people paid", () => {
+  const payers = [
+    markPayerAmountEdited(createPayerDraft("dan"), "50"),
+    markPayerAmountEdited(createPayerDraft("avi"), "70")
+  ];
+  const assigned = assignPayerDifference("140", payers, 0);
+
+  assert.deepEqual(assigned.map((payer) => payer.amount), ["70", "70"]);
+  assert.equal(assigned[0].amountTouched, true);
+  assert.equal(summarizePayerDraft("140", assigned).balanced, true);
 });
 
 test("new payer receives the remaining amount after a manual payer edit", () => {

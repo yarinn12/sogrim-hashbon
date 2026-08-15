@@ -550,6 +550,67 @@ test("server rejects revoked links and protects private invitations by account",
   );
 });
 
+test("an active participant can redeem a private event invite while friendship is pending", async () => {
+  const recipientParticipantId = `account-${OTHER_USER_ID}`;
+  const sharedState = serverState();
+  sharedState.participants.push({
+    id: recipientParticipantId,
+    displayName: "Invited participant"
+  });
+  sharedState.events[0].participantIds.push(recipientParticipantId);
+  const requests = [];
+
+  const redemption = await redeemEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer recipient-token",
+    eventId: EVENT_ID,
+    token: TOKEN,
+    fetchImpl: async (url, options = {}) => {
+      const address = String(url);
+      requests.push({ address, options });
+      if (
+        address.includes("/rest/v1/event_invite_tokens?") &&
+        options.method !== "PATCH"
+      ) {
+        return jsonResponse([
+          {
+            id: "44444444-4444-4444-8444-444444444444",
+            event_id: EVENT_ID,
+            kind: "private",
+            created_by: USER_ID,
+            recipient_user_id: OTHER_USER_ID,
+            space_id: SPACE_ID,
+            space_key: SPACE_KEY,
+            expires_at: "2099-01-01T00:00:00.000Z"
+          }
+        ]);
+      }
+      if (address.endsWith("/auth/v1/user")) {
+        return jsonResponse({ id: OTHER_USER_ID });
+      }
+      if (address.includes("/rest/v1/app_snapshots?")) {
+        return jsonResponse([sharedSnapshot(sharedState)]);
+      }
+      if (
+        address.includes("/rest/v1/event_invite_tokens?") &&
+        options.method === "PATCH"
+      ) {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+    }
+  });
+
+  assert.equal(redemption.status, 200);
+  assert.equal(redemption.payload.kind, "private");
+  assert.equal(redemption.payload.spaceId, SPACE_ID);
+  assert.equal(
+    requests.some((request) => request.address.includes("/rest/v1/friendships?")),
+    false
+  );
+});
+
 test("private invites expire atomically and stop working after participant removal", async () => {
   const senderParticipantId = `account-${USER_ID}`;
   const recipientParticipantId = `account-${OTHER_USER_ID}`;

@@ -2,7 +2,7 @@ import { loadState } from "./data/localStore.mjs";
 import {
   calculateSettlement,
   reconcileSettlementTransfers,
-  usesRoundedSettlementTransfers
+  settlementOptionsForEvent
 } from "./domain/settlement.mjs";
 import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
 
@@ -71,14 +71,16 @@ function renderWorkspaceNav(event) {
 
 function renderInsightPanel(state, event) {
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? [], {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const settlement = calculateSettlement(
+    participants,
+    event.expenses ?? [],
+    settlementOptionsForEvent(event)
+  );
   const transfers = reconcileSettlementTransfers(
     participants,
     event.expenses ?? [],
     event.transfers ?? [],
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   ).transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const totalExpenses = (event.expenses ?? []).reduce((sum, expense) => sum + expense.total, 0);
@@ -110,14 +112,16 @@ function renderInsightPanel(state, event) {
 
 function renderSettlementHero(state, event) {
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? [], {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const settlement = calculateSettlement(
+    participants,
+    event.expenses ?? [],
+    settlementOptionsForEvent(event)
+  );
   const transfers = reconcileSettlementTransfers(
     participants,
     event.expenses ?? [],
     event.transfers ?? [],
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   ).transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const pendingTotal = sumPending(pendingTransfers);

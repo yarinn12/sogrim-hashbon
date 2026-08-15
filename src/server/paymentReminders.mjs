@@ -3,7 +3,7 @@ import { GoogleAuth } from "google-auth-library";
 import { formatCurrency, normalizeCurrency } from "../domain/currencies.mjs";
 import {
   reconcileSettlementTransfers,
-  usesRoundedSettlementTransfers
+  settlementOptionsForEvent
 } from "../domain/settlement.mjs";
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
 import { storeInboxNotification } from "./notificationInbox.mjs";
@@ -489,7 +489,7 @@ function transferFromState(state, event, transferId) {
     participants,
     Array.isArray(event.expenses) ? event.expenses : [],
     Array.isArray(event.transfers) ? event.transfers : [],
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   );
   return settlement.transfers.find((transfer) => transfer.id === transferId) ?? null;
 }

@@ -16,8 +16,11 @@ import {
 import {
   buildParticipantSettlementBreakdown,
   calculateSettlement,
+  groupSettlementTransfersForDisplay,
   pendingBalanceForParticipant,
   reconcileSettlementTransfers,
+  settlementOptionsForEvent,
+  usesDirectSettlementTransfers,
   usesRoundedSettlementTransfers
 } from "./domain/settlement.mjs";
 import { buildEventInsights } from "./domain/eventInsights.mjs";
@@ -37,6 +40,7 @@ import {
   formatSettlementSummary
 } from "./domain/settlementSummary.mjs";
 import {
+  assignPayerDifference,
   balancePayerAmounts,
   createPayerDraft,
   markPayerAmountEdited,
@@ -82,6 +86,7 @@ import {
   removeExpense,
   setEventCurrency,
   setEventAdminsCanEditOnly,
+  setEventDirectSettlementTransfers,
   setEventParticipantAdmin,
   setEventRoundSettlementTransfers,
   updateGroup,
@@ -122,6 +127,8 @@ import {
   markAllNotificationsRead,
   markNotificationRead
 } from "./data/notificationInbox.mjs";
+import { loadAdminAnalyticsOverview } from "./data/adminAnalyticsStore.mjs";
+import { buildAdminAnalyticsViewModel } from "./domain/adminAnalytics.mjs";
 import {
   blockConnectedUser,
   buildFriendInviteUrl,
@@ -221,6 +228,7 @@ const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_DESTINATION_EVENT = "settle-friends:native-destination";
 const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 const RESUME_SYNC_COOLDOWN_MS = 5_000;
+const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const DIALOG_OPEN_ACTIONS = new Set([
@@ -305,6 +313,13 @@ let notificationInbox = {
 let notificationInboxRequest = null;
 let notificationInboxRefreshQueued = false;
 let notificationsReturnScreen = null;
+let adminAnalytics = {
+  status: "idle",
+  available: false,
+  overview: null,
+  error: ""
+};
+let adminAnalyticsRequest = null;
 let eventDialog = null;
 let groupDraft = null;
 let editingGroupDraft = null;
@@ -367,16 +382,18 @@ window.addEventListener("popstate", handleBrowserHistoryBack);
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
+window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") requestResumeSync();
 });
+window.setInterval(requestVisibleEventSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 document.addEventListener("keydown", handleDialogKeydown);
 document.addEventListener("account-auth-ready", () => {
   hydrateAppAfterAccountReady().catch(renderScopedLocalFallback);
 });
 document.addEventListener("settle-friends:push-status", (event) => {
   if (event.detail?.status !== "received") return;
-  refreshNotificationInbox({ force: true }).catch(() => {});
+  requestResumeSync({ force: true }).catch(() => {});
 });
 document.addEventListener("settle-friends:notice", handleExternalNotice);
 if ("scrollRestoration" in window.history) {
@@ -474,6 +491,11 @@ function render() {
 
   if (screen.name === "notifications") {
     commitRenderedScreen(renderNotificationInbox());
+    return;
+  }
+
+  if (screen.name === "admin-overview") {
+    commitRenderedScreen(renderAdminAnalyticsOverview());
     return;
   }
 
@@ -590,6 +612,7 @@ function productMetricScreen(screenName) {
     return "new_event";
   }
   if (screenName === "join-event") return "invite";
+  if (screenName === "admin-overview") return "profile";
   return [
     "auth",
     "home",
@@ -797,7 +820,7 @@ function historyEventDialogFocusSelector(previousDialog, restoredDialog) {
   const section = previousDialog?.kind?.startsWith("settings-")
     ? previousDialog.kind.slice("settings-".length)
     : pendingSettingsReturnFocusSection;
-  if (!["management", "currency", "rounding", "activity", "lock", "danger"].includes(section)) {
+  if (!["management", "currency", "repayment", "rounding", "activity", "lock", "danger"].includes(section)) {
     return "";
   }
 
@@ -1105,9 +1128,176 @@ function renderProfileSetup() {
             ? `<button class="secondary-button" data-action="groups" data-tab="people" type="button">חברים וקבוצות</button>`
             : ""
         }
+        ${
+          isEditingProfile && adminAnalytics.status === "ready" && adminAnalytics.available
+            ? `<button class="secondary-button profile-admin-entry" data-action="open-admin-overview" type="button">
+                <span aria-hidden="true">${iconSvg("sliders")}</span>
+                <span>בקרת מוצר</span>
+              </button>`
+            : ""
+        }
       </section>
     </section>
   `;
+}
+
+function renderAdminAnalyticsOverview() {
+  const loading = adminAnalytics.status === "loading" || adminAnalytics.status === "idle";
+  const failed = adminAnalytics.status === "error";
+  const viewModel = adminAnalytics.overview
+    ? buildAdminAnalyticsViewModel(adminAnalytics.overview)
+    : null;
+
+  return `
+    <section class="screen font-hebrew admin-analytics-screen" data-screen-kind="admin" aria-busy="${loading}">
+      <header class="admin-overview-heading">
+        <div>
+          <p class="eyebrow">אזור פרטי</p>
+          <h1>בקרת מוצר</h1>
+          <p class="muted">תמונת מצב של האפליקציה, בלי מידע אישי.</p>
+        </div>
+        ${renderAppBackButton()}
+      </header>
+      ${renderNotice()}
+      ${
+        loading
+          ? renderAdminAnalyticsLoading()
+          : failed || !viewModel
+            ? renderAdminAnalyticsError()
+            : renderAdminAnalyticsContent(viewModel)
+      }
+    </section>
+  `;
+}
+
+function renderAdminAnalyticsLoading() {
+  return `
+    <div class="admin-overview-loading" role="status" aria-live="polite">
+      <span class="visually-hidden">טוען את נתוני בקרת המוצר</span>
+      <div class="admin-loading-hero" aria-hidden="true"></div>
+      <div class="admin-loading-stats" aria-hidden="true">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="admin-loading-list" aria-hidden="true"></div>
+    </div>
+  `;
+}
+
+function renderAdminAnalyticsError() {
+  return `
+    <section class="admin-overview-error" role="alert">
+      <span class="admin-overview-error-icon" aria-hidden="true">${iconSvg("history")}</span>
+      <h2>לא הצלחנו לטעון את תמונת המצב</h2>
+      <p>המידע באפליקציה לא נפגע. אפשר לבדוק את החיבור ולנסות שוב.</p>
+      <button class="secondary-button" type="button" data-action="refresh-admin-overview">נסה שוב</button>
+    </section>
+  `;
+}
+
+function renderAdminAnalyticsContent(viewModel) {
+  const attention = viewModel.status === "attention";
+  return `
+    <section class="admin-status-hero is-${escapeAttribute(viewModel.status)}" aria-labelledby="admin-status-title">
+      <span class="admin-status-indicator" aria-hidden="true"></span>
+      <p class="eyebrow">מצב המערכת</p>
+      <h2 id="admin-status-title">${escapeHtml(viewModel.statusTitle)}</h2>
+      <p>${escapeHtml(viewModel.statusDescription)}</p>
+      <div class="admin-status-meta">
+        <span>${escapeHtml(viewModel.updatedLabel)}</span>
+        <button type="button" data-action="refresh-admin-overview">רענון</button>
+      </div>
+    </section>
+
+    <section class="admin-quick-section" aria-labelledby="admin-quick-title">
+      <h2 id="admin-quick-title">תמונה מהירה</h2>
+      <div class="admin-quick-stats">
+        ${viewModel.quickStats.map((stat) => `
+          <div class="admin-quick-stat" data-admin-stat="${escapeAttribute(stat.id)}">
+            <span class="font-num admin-quick-stat-value">${escapeHtml(stat.value)}</span>
+            <span>${escapeHtml(stat.label)}</span>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="admin-monitor-section" aria-labelledby="admin-monitor-title">
+      <h2 id="admin-monitor-title">מעקב</h2>
+      <div class="admin-monitor-list">
+        <div class="admin-monitor-row${attention ? " is-attention" : ""}">
+          <span class="admin-monitor-icon" aria-hidden="true">${iconSvg(attention ? "history" : "check")}</span>
+          <div>
+            <strong>${escapeHtml(viewModel.failure.title)}</strong>
+            <span>${escapeHtml(viewModel.failure.detail)}</span>
+          </div>
+        </div>
+        <div class="admin-monitor-row">
+          <span class="admin-monitor-icon" aria-hidden="true">${iconSvg("archive")}</span>
+          <div>
+            <strong>${escapeHtml(viewModel.storage.title)}</strong>
+            <span>${escapeHtml(viewModel.storage.detail)}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+async function refreshAdminAnalytics({ force = false } = {}) {
+  if (adminAnalyticsRequest) return adminAnalyticsRequest;
+  if (!force && ["ready", "unavailable"].includes(adminAnalytics.status)) {
+    return adminAnalytics;
+  }
+
+  adminAnalytics = {
+    ...adminAnalytics,
+    status: "loading",
+    error: ""
+  };
+  if (screen.name === "admin-overview") render();
+
+  adminAnalyticsRequest = (async () => {
+    const config = runtimeConfig?.storage?.account?.accessToken
+      ? runtimeConfig
+      : await loadRuntimeConfig();
+    runtimeConfig = config;
+    const result = await loadAdminAnalyticsOverview(config);
+
+    if (!result.available) {
+      adminAnalytics = {
+        status: "unavailable",
+        available: false,
+        overview: null,
+        error: ""
+      };
+      if (screen.name === "admin-overview") {
+        screen = { name: "profile" };
+        notice = "אזור בקרת המוצר זמין רק למנהל מורשה.";
+      }
+      return adminAnalytics;
+    }
+
+    adminAnalytics = {
+      status: "ready",
+      available: true,
+      overview: result.overview,
+      error: ""
+    };
+    return adminAnalytics;
+  })()
+    .catch(() => {
+      adminAnalytics = {
+        ...adminAnalytics,
+        status: "error",
+        error: "load-failed"
+      };
+      return adminAnalytics;
+    })
+    .finally(() => {
+      adminAnalyticsRequest = null;
+      if (["profile", "admin-overview"].includes(screen.name)) render();
+    });
+
+  return adminAnalyticsRequest;
 }
 
 function renderNotificationInbox() {
@@ -3628,6 +3818,9 @@ function renderEventDialog(event) {
   if (eventDialog.kind === "settings-currency") {
     return renderEventSettingsCurrencyDialog(event);
   }
+  if (eventDialog.kind === "settings-repayment") {
+    return renderEventSettingsRepaymentDialog(event);
+  }
   if (eventDialog.kind === "settings-rounding") {
     return renderEventSettingsRoundingDialog(event);
   }
@@ -5289,6 +5482,9 @@ function renderEventSettingsDialog(event) {
       .join(", ") || "אין מנהל";
   const managementStatus = event.adminsCanEditOnly ? "ניהול מרוכז" : "ניהול משותף";
   const currencyStatus = currencySelectLabel(event.currency);
+  const repaymentStatus = usesDirectSettlementTransfers(event)
+    ? "ישירות למי ששילם"
+    : "פחות העברות";
   const roundingStatus = usesRoundedSettlementTransfers(event)
     ? "פעיל · העברות בשקלים שלמים"
     : "כבוי · דיוק מלא באגורות";
@@ -5313,6 +5509,12 @@ function renderEventSettingsDialog(event) {
           section: "currency",
           title: "מטבע האירוע",
           description: currencyStatus
+        })}
+        ${renderEventSettingsMenuItem({
+          eventId: event.id,
+          section: "repayment",
+          title: "אופן ההחזר",
+          description: repaymentStatus
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
@@ -5591,6 +5793,64 @@ function renderEventSettingsCurrencyDialog(event) {
   });
 }
 
+function renderEventSettingsRepaymentDialog(event) {
+  const canManage = canCurrentParticipantManage(event);
+  const direct = usesDirectSettlementTransfers(event);
+
+  return renderEventDialogShell({
+    eyebrow: "הגדרות",
+    title: "אופן ההחזר",
+    description: "בוחרים אם לצמצם העברות או להחזיר כסף ישירות למי ששילם.",
+    backAction: "event-settings-back",
+    body: `
+      <fieldset class="event-management-field event-repayment-field">
+        <legend>איך לחשב את ההעברות?</legend>
+        <div class="event-management-options" role="radiogroup" aria-label="אופן חישוב ההעברות">
+          ${[
+            {
+              id: "optimized",
+              enabled: false,
+              title: "פחות העברות",
+              description: "מקזזים בין כולם ומצמצמים את מספר ההעברות."
+            },
+            {
+              id: "direct",
+              enabled: true,
+              title: "ישירות למי ששילם",
+              description: "כל מי שמימן הוצאה מקבל את ההחזר שלו, גם אם יהיו יותר העברות."
+            }
+          ]
+            .map((option, index) => {
+              const selected = direct === option.enabled;
+              return `
+                <button
+                  type="button"
+                  class="event-management-option ${selected ? "is-active" : ""}"
+                  data-action="set-event-repayment-mode"
+                  data-event-id="${event.id}"
+                  data-repayment-mode="${option.id}"
+                  role="radio"
+                  aria-checked="${selected}"
+                  tabindex="${selected || (!direct && index === 0) ? "0" : "-1"}"
+                  ${!canManage ? "disabled" : ""}
+                >
+                  <span class="event-management-check" aria-hidden="true"></span>
+                  <span class="event-management-copy">
+                    <strong>${option.title}</strong>
+                    <small>${option.description}</small>
+                  </span>
+                </button>
+              `;
+            })
+            .join("")}
+        </div>
+      </fieldset>
+      <p class="event-setting-note">סימוני תשלום שכבר בוצעו נשמרים. רק ההעברות שעדיין פתוחות מחושבות מחדש.</p>
+      ${!canManage ? '<p class="event-setting-note">רק מנהל האירוע יכול לשנות את ההגדרה.</p>' : ""}
+    `
+  });
+}
+
 function renderEventSettingsRoundingDialog(event) {
   const canManage = canCurrentParticipantManage(event);
   const rounded = usesRoundedSettlementTransfers(event);
@@ -5818,6 +6078,7 @@ function renderEventSettingsMenuIcon(section) {
   const icons = {
     management: "user-check",
     currency: "coins",
+    repayment: "transfers",
     rounding: "calculator",
     activity: "history",
     lock: "edit",
@@ -6030,6 +6291,7 @@ function renderExpenseForm(event) {
                 )
                 .join("")}
             </div>
+            ${renderExpensePayerDifferenceAssignment(event)}
             ${renderExpensePayerSummary()}
             <button
               class="secondary-button section expense-add-payer-button"
@@ -7256,6 +7518,40 @@ function renderExpensePayerSummary() {
   return `<p class="expense-payer-summary is-error" aria-live="polite">סכומי המשלמים גבוהים ב-${formatEventMoney(event, summary.overpaid)} מהסכום הכולל.</p>`;
 }
 
+function renderExpensePayerDifferenceAssignment(event) {
+  if (!expenseDraft || expenseDraft.payers.length < 2) return "";
+
+  const summary = summarizePayerDraft(expenseDraft.total, expenseDraft.payers);
+  if (!summary.valid || summary.balanced) return "";
+
+  const difference = summary.remaining || summary.overpaid;
+  const isIncrease = summary.remaining > 0;
+  return `
+    <section class="payer-difference-assignment" aria-labelledby="payer-difference-title">
+      <div>
+        <strong id="payer-difference-title">
+          ${isIncrease ? "למי לשייך את התוספת?" : "ממי להפחית את ההפרש?"}
+        </strong>
+        <span class="amount"><span class="font-num">${formatEventMoney(event, difference)}</span></span>
+      </div>
+      <div class="payer-difference-options" role="group" aria-label="בחירת משלם לשיוך ההפרש">
+        ${expenseDraft.payers
+          .map(
+            (payer, index) => `
+              <button
+                type="button"
+                class="secondary-button"
+                data-action="assign-payer-difference"
+                data-index="${index}"
+              >${escapeHtml(participantName(payer.participantId, event))}</button>
+            `
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderExpenseRow(event, expense) {
   const canEdit = canCurrentParticipantEdit(event);
   const needsReview = calculateSettlement(eventParticipants(event), [expense]).issues.length > 0;
@@ -7336,14 +7632,17 @@ function renderExpenseParticipant(event, participantId) {
 function renderSettlement(event) {
   rememberRecentEvent(event.id);
   const participants = eventParticipants(event);
-  const calculated = calculateSettlement(participants, event.expenses, {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const calculated = calculateSettlement(
+    participants,
+    event.expenses,
+    settlementOptionsForEvent(event)
+  );
   const transfers = event.transfers.length ? event.transfers : calculated.transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const hasPersonalIdentity = hasReliableSettlementIdentity(event);
   const orderedTransfers = orderSettlementTransfers(transfers);
-  const hasTransfers = orderedTransfers.length > 0;
+  const displayTransfers = groupSettlementTransfersForDisplay(orderedTransfers);
+  const hasTransfers = displayTransfers.length > 0;
   const pendingTotal = transfers
     .filter((transfer) => transfer.status !== "paid")
     .reduce((sum, transfer) => sum + transfer.amount, 0);
@@ -7370,9 +7669,12 @@ function renderSettlement(event) {
                 </div>
                 <div class="settlement-transfer-board">
                   ${renderSettlementOfflineNotice(event, orderedTransfers)}
-                  ${orderedTransfers
-                    .map((transfer) =>
-                      renderTransferRow(event, transfer, { highlightPersonal: hasPersonalIdentity })
+                  ${displayTransfers
+                    .map(({ transfer, paidHistory }) =>
+                      renderTransferRow(event, transfer, {
+                        highlightPersonal: hasPersonalIdentity,
+                        paidHistory
+                      })
                     )
                     .join("")}
                 </div>
@@ -7387,7 +7689,7 @@ function renderSettlement(event) {
           <summary>
             <span>
               <strong>בדיקת חישוב ויתרות</strong>
-              <small>פירוט מלא של מצב כל משתתף${usesRoundedSettlementTransfers(event) ? " · ההעברות מעוגלות לשקל שלם" : ""}</small>
+              <small>פירוט מלא של מצב כל משתתף${usesDirectSettlementTransfers(event) ? " · החזר ישיר למי ששילם" : ""}${usesRoundedSettlementTransfers(event) ? " · ההעברות מעוגלות לשקל שלם" : ""}</small>
             </span>
             <span class="settlement-audit-count">${participants.length}</span>
           </summary>
@@ -7759,6 +8061,10 @@ function renderFeaturedSettlementHero(
 }
 
 function renderFeaturedSettlementBreakdown(event, transfer) {
+  if (usesDirectSettlementTransfers(event)) {
+    return renderDirectFeaturedSettlementBreakdown(event, transfer);
+  }
+
   const participants = eventParticipants(event);
   const debtorId = transfer.fromParticipantId;
   const debtorName = participantName(debtorId, event);
@@ -7774,7 +8080,20 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
     0
   );
   const debtTotal = Math.max(0, -breakdown.balance);
-  const allocatedToOtherRecipients = Math.max(0, debtTotal - transfer.amount);
+  const settledTransferTotal = Math.max(
+    0,
+    event.transfers
+      .filter((item) => item.status === "paid")
+      .reduce((sum, item) => {
+        if (item.fromParticipantId === debtorId) return sum + item.amount;
+        if (item.toParticipantId === debtorId) return sum - item.amount;
+        return sum;
+      }, 0)
+  );
+  const allocatedToOtherRecipients = Math.max(
+    0,
+    debtTotal - settledTransferTotal - transfer.amount
+  );
   const paidLabel = debtorId === state.currentParticipantId
     ? "פחות מה שכבר שילמת"
     : `פחות מה ש${debtorName} כבר שילם`;
@@ -7815,6 +8134,19 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
                 <div class="settlement-featured-breakdown-row is-adjustment">
                   <span><strong>${escapeHtml(paidLabel)}</strong></span>
                   <span class="amount">−<span class="font-num">${formatEventMoney(event, breakdown.paidTotal)}</span></span>
+                </div>
+              `
+            : ""
+        }
+        ${
+          settledTransferTotal > 0
+            ? `
+                <div class="settlement-featured-breakdown-row is-adjustment">
+                  <span>
+                    <strong>פחות העברות שכבר שולמו</strong>
+                    <small>תשלומים שסומנו כהושלמו נשמרים בהיסטוריה</small>
+                  </span>
+                  <span class="amount">−<span class="font-num">${formatEventMoney(event, settledTransferTotal)}</span></span>
                 </div>
               `
             : ""
@@ -7866,9 +8198,13 @@ function renderSettlementCloseConfirmation(event, pendingTransfers, pendingTotal
 function renderTransferRow(
   event,
   transfer,
-  { highlightPersonal = false } = {}
+  { highlightPersonal = false, paidHistory = [] } = {}
 ) {
   const paid = transfer.status === "paid";
+  const historicalPaidTotal = paidHistory.reduce(
+    (sum, paidTransfer) => sum + paidTransfer.amount,
+    0
+  );
   const isPersonal =
     highlightPersonal &&
     (transfer.fromParticipantId === state.currentParticipantId ||
@@ -7910,7 +8246,7 @@ function renderTransferRow(
   return `
     <article
       class="transfer-row ${paid ? "is-paid" : "is-pending"} ${isPersonal ? "is-personal" : ""} ${personalRoleClass}"
-      aria-label="${escapeAttribute(`${fromName} מעביר ${formatEventMoney(event, transfer.amount)} ל-${toName}. ${statusText}`)}"
+      aria-label="${escapeAttribute(`${fromName} מעביר ${formatEventMoney(event, transfer.amount)} ל-${toName}. ${historicalPaidTotal ? `${formatEventMoney(event, historicalPaidTotal)} כבר שולמו. ` : ""}${statusText}`)}"
     >
       <div class="transfer-main">
         <div class="transfer-card-meta">
@@ -7935,8 +8271,9 @@ function renderTransferRow(
       </div>
       <div class="transfer-actions">
         <span class="transfer-amount">
-          <small>סכום להעברה</small>
+          <small>${historicalPaidTotal ? "נשאר להעביר" : "סכום להעברה"}</small>
           <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
+          ${historicalPaidTotal ? `<span class="transfer-paid-summary">כבר שולם <span class="font-num">${formatEventMoney(event, historicalPaidTotal)}</span></span>` : ""}
         </span>
         <span class="transfer-action-buttons">
           ${
@@ -7962,7 +8299,96 @@ function renderTransferRow(
         </span>
       </div>
       ${renderTransferExplanation(event, transfer)}
+      ${renderTransferPaidHistory(event, paidHistory)}
     </article>
+  `;
+}
+
+function renderDirectFeaturedSettlementBreakdown(event, transfer) {
+  const debtorName = participantName(transfer.fromParticipantId, event);
+  const creditorName = participantName(transfer.toParticipantId, event);
+  const relatedExpenses = event.expenses.filter(
+    (expense) =>
+      expense.sharedByParticipantIds?.includes(transfer.fromParticipantId) &&
+      expense.payers?.some(
+        (payer) => payer.participantId === transfer.toParticipantId
+      )
+  );
+  const visibleExpenses = relatedExpenses.slice(0, 3);
+  const remainingCount = Math.max(0, relatedExpenses.length - visibleExpenses.length);
+
+  return `
+    <section class="settlement-featured-breakdown" aria-label="הסבר לסכום ההעברה">
+      <h3>החזר ישיר למי ששילם</h3>
+      <p class="muted">${escapeHtml(creditorName)} מימן הוצאות שבהן ${escapeHtml(debtorName)} השתתף. במצב הזה מחזירים כסף ישירות למי שהוציא אותו.</p>
+      <div class="settlement-featured-breakdown-list">
+        ${
+          visibleExpenses.length
+            ? visibleExpenses
+                .map(
+                  (expense) => `
+                    <div class="settlement-featured-breakdown-row">
+                      <span><strong>${escapeHtml(expense.name || "הוצאה")}</strong></span>
+                    </div>
+                  `
+                )
+                .join("")
+            : ""
+        }
+        ${
+          remainingCount
+            ? `<div class="settlement-featured-breakdown-row is-more-expenses"><span><strong>${formatCount(remainingCount, "הוצאה נוספת", "הוצאות נוספות")}</strong></span></div>`
+            : ""
+        }
+        <div class="settlement-featured-breakdown-row is-total">
+          <span><strong>סה״כ להעברה</strong></span>
+          <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
+        </div>
+      </div>
+      ${
+        usesRoundedSettlementTransfers(event)
+          ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; ההוצאות עצמן נשארו מדויקות.</p>'
+          : ""
+      }
+      <a class="settlement-featured-full" href="#settlement-transfers-title">פירוט מלא</a>
+    </section>
+  `;
+}
+
+function renderTransferPaidHistory(event, paidHistory) {
+  if (!paidHistory.length) return "";
+
+  const total = paidHistory.reduce(
+    (sum, transfer) => sum + transfer.amount,
+    0
+  );
+  return `
+    <details class="transfer-paid-history">
+      <summary>
+        <span>תשלומים קודמים</span>
+        <strong class="amount"><span class="font-num">${formatEventMoney(event, total)}</span></strong>
+      </summary>
+      <div class="transfer-paid-history-list">
+        ${paidHistory
+          .map(
+            (transfer) => `
+              <div class="transfer-paid-history-item">
+                <span>
+                  <strong class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></strong>
+                  <small>${escapeHtml(transferPaidStatusText(event, transfer))}</small>
+                </span>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  data-action="mark-pending"
+                  data-transfer-id="${escapeAttribute(transfer.id)}"
+                >בטל סימון</button>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    </details>
   `;
 }
 
@@ -8041,6 +8467,29 @@ function transferPaidStatusText(event, transfer) {
 }
 
 function renderTransferExplanation(event, transfer) {
+  if (usesDirectSettlementTransfers(event)) {
+    const debtorName = participantName(transfer.fromParticipantId, event);
+    const creditorName = participantName(transfer.toParticipantId, event);
+    return `
+      <details class="transfer-explanation">
+        <summary>איך הסכום חושב?</summary>
+        <div class="transfer-explanation-body">
+          <p class="transfer-route-note">
+            ${escapeHtml(debtorName)} מעביר <span class="font-num">${formatEventMoney(event, transfer.amount)}</span> ל־${escapeHtml(creditorName)} לפי ההוצאות ש${escapeHtml(creditorName)} מימן.
+          </p>
+          <p class="transfer-minimization-note">
+            באירוע הזה נבחר החזר ישיר למי ששילם. לכן לא מקזזים הוצאות שונות דרך אנשים אחרים וייתכנו יותר העברות.
+          </p>
+          ${
+            usesRoundedSettlementTransfers(event)
+              ? '<p class="transfer-rounding-note">סכומי ההעברה עוגלו לשקלים שלמים. ההוצאות נשארו מדויקות עד האגורה.</p>'
+              : ""
+          }
+        </div>
+      </details>
+    `;
+  }
+
   const participants = eventParticipants(event);
   const debtorId = transfer.fromParticipantId;
   const debtorName = participantName(debtorId, event);
@@ -8725,6 +9174,21 @@ async function handleClick(event) {
     if (shouldRefreshFriendIdentity) {
       refreshFriendNetwork().catch(() => {});
     }
+    refreshAdminAnalytics().catch(() => {});
+  }
+
+  if (action === "open-admin-overview") {
+    if (!adminAnalytics.available) return;
+    notice = "";
+    screen = { name: "admin-overview" };
+    render();
+    await refreshAdminAnalytics({ force: true });
+    return;
+  }
+
+  if (action === "refresh-admin-overview") {
+    await refreshAdminAnalytics({ force: true });
+    return;
   }
 
   if (action === "open-notifications") {
@@ -9138,6 +9602,13 @@ async function handleClick(event) {
     );
   }
 
+  if (action === "set-event-repayment-mode") {
+    setEventRepaymentMode(
+      target.dataset.eventId,
+      target.dataset.repaymentMode
+    );
+  }
+
   if (action === "join-existing-event") {
     await joinExistingEventFromDraft();
   }
@@ -9317,7 +9788,7 @@ async function handleClick(event) {
 
   if (action === "open-event-settings-section") {
     const section = target.dataset.settingsSection;
-    if (!["management", "currency", "rounding", "activity", "lock", "danger"].includes(section)) return;
+    if (!["management", "currency", "repayment", "rounding", "activity", "lock", "danger"].includes(section)) return;
     eventDialog = {
       eventId: target.dataset.eventId,
       kind: `settings-${section}`,
@@ -9477,6 +9948,24 @@ async function handleClick(event) {
       `[data-action="expense-payer-id"][data-index="${payerIndex}"]`,
       dialogScrollTop
     );
+  }
+
+  if (action === "assign-payer-difference") {
+    const payerIndex = Number(target.dataset.index);
+    const dialogScrollTop = app.querySelector(".expense-modal")?.scrollTop ?? 0;
+    expenseDraft.payers = assignPayerDifference(
+      expenseDraft.total,
+      expenseDraft.payers,
+      payerIndex
+    );
+    expenseDraft.error = "";
+    render();
+    reactivateDialogAfterRender(
+      ".expense-modal",
+      `[data-action="expense-payer-amount"][data-index="${payerIndex}"]`,
+      dialogScrollTop
+    );
+    return;
   }
 
   if (action === "expense-add-payer-guest") {
@@ -9750,6 +10239,12 @@ function goBackInApp() {
 
   if (settlementCloseConfirmation) {
     settlementCloseConfirmation = null;
+    renderHistoryFallback();
+    return;
+  }
+
+  if (screen.name === "admin-overview") {
+    screen = { name: "profile" };
     renderHistoryFallback();
     return;
   }
@@ -10109,7 +10604,16 @@ function handleInput(event) {
   }
   if (action === "expense-total") {
     expenseDraft.total = target.value;
-    rebalanceExpenseDraftPayers();
+    if (expenseDraft.payers.length === 1) {
+      expenseDraft.payers = assignPayerDifference(
+        expenseDraft.total,
+        expenseDraft.payers,
+        0,
+        { automatic: true }
+      );
+    } else {
+      rebalanceExpenseDraftPayers();
+    }
     syncExpensePayerAmountInputs();
     syncExpensePayerSummary();
     syncExpenseConfirmationSummary();
@@ -10396,6 +10900,7 @@ function createEventFromDraft() {
     createdByParticipantId: state.currentParticipantId,
     adminsCanEditOnly: managementModeRequiresAdmin(newEventDraft.managementMode),
     roundSettlementTransfers: true,
+    directSettlementTransfers: false,
     locked: false,
     createdAt: createdAtIso,
     settingsUpdatedAt: createdAtIso
@@ -13196,7 +13701,7 @@ function syncExpenseSaveState() {
     });
 }
 
-function saveExpense(eventId, { continueAdding = false } = {}) {
+async function saveExpense(eventId, { continueAdding = false } = {}) {
   if (!expenseDraft || expenseSaveInProgress) return;
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
@@ -13256,15 +13761,26 @@ function saveExpense(eventId, { continueAdding = false } = {}) {
     );
     reconcileEventTransfers(getEvent(eventId), previousTransfers);
     const saveRequest = persistState();
+    const saveResult = await saveRequest;
+    if (!saveResult?.ok) {
+      expenseDraft.id = expense.id;
+      expenseDraft.createdByParticipantId = expense.createdByParticipantId;
+      expenseDraft.error =
+        "ההוצאה נשמרה במכשיר, אך עדיין לא הסתנכרנה עם הקבוצה. בדקו את החיבור ולחצו שוב על שמירה.";
+      render();
+      reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+      return;
+    }
+
     publishReferralActivityAfterSave(
-      saveRequest,
+      saveResult,
       eventId,
       wasNewExpense ? "expense-created" : "expense-updated"
     );
     if (wasNewExpense) {
       emitProductMetric("expense_created", { screen: "expense" });
       publishEventActivityAfterSave(
-        saveRequest,
+        saveResult,
         eventId,
         "expense-created",
         expense.id
@@ -13480,9 +13996,11 @@ async function setEventStatusFromHome(eventId, nextStatus, trigger) {
     return;
   }
 
-  const settlement = calculateSettlement(eventParticipants(event), event.expenses, {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const settlement = calculateSettlement(
+    eventParticipants(event),
+    event.expenses,
+    settlementOptionsForEvent(event)
+  );
   if (settlement.issues.length) {
     notice = "אי אפשר לסגור את האירוע עד שמתקנים את ההוצאות שסומנו לבדיקה.";
     render();
@@ -13536,9 +14054,11 @@ function closeCurrentEvent(eventId, { destination = "settlement" } = {}) {
     return;
   }
 
-  const settlement = calculateSettlement(eventParticipants(event), event.expenses, {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const settlement = calculateSettlement(
+    eventParticipants(event),
+    event.expenses,
+    settlementOptionsForEvent(event)
+  );
   if (settlement.issues.length) {
     notice = "אי אפשר לסגור את האירוע עד שמתקנים את ההוצאות שסומנו לבדיקה.";
     render();
@@ -13594,7 +14114,7 @@ function reconcileEventTransfers(event, previousTransfers = []) {
     eventParticipants(event),
     event.expenses,
     previousTransfers,
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   );
   event.transfers = result.transfers;
 }
@@ -13731,6 +14251,8 @@ function markTransferPending(transferId) {
     status: "pending",
     markedAt
   });
+  const updatedEvent = getEvent(event.id);
+  reconcileEventTransfers(updatedEvent, updatedEvent?.transfers ?? []);
   recordEventActivity(event.id, "transfer-pending", {
     entityId: transfer.id,
     fromParticipantId: transfer.fromParticipantId,
@@ -13908,7 +14430,16 @@ async function openInboxNotification({ notificationId, eventId, view }) {
   if (!event) {
     notice = "האירוע מההתראה עדיין מסתנכרן. נסה שוב בעוד רגע.";
     render();
-    requestResumeSync();
+    await requestResumeSync({ force: true });
+    const syncedEvent = getEvent(eventId);
+    if (!syncedEvent) return;
+    notice = "";
+    screen = {
+      name: view === "summary" ? "settlement" : "event",
+      eventId
+    };
+    rememberRecentEvent(eventId);
+    render();
     return;
   }
 
@@ -15061,7 +15592,7 @@ function eventSettlementTransfers(event, participants = eventParticipants(event)
     participants,
     event.expenses,
     event.transfers,
-    { roundTransfers: usesRoundedSettlementTransfers(event) }
+    settlementOptionsForEvent(event)
   );
   return settlement.issues.length && event.transfers.length
     ? event.transfers
@@ -15261,6 +15792,33 @@ async function hydrateAppForActiveAccount() {
     .then(() => render())
     .catch(() => {});
   refreshNotificationInbox({ force: true }).catch(() => {});
+  refreshAdminAnalytics().catch(() => {});
+}
+
+function setEventRepaymentMode(eventId, mode) {
+  const event = getEvent(eventId);
+  if (!canCurrentParticipantManage(event)) {
+    notice = "רק מנהל יכול לשנות את אופן ההחזר.";
+    render();
+    return;
+  }
+
+  const direct = mode === "direct";
+  if (usesDirectSettlementTransfers(event) === direct) return;
+
+  state = setEventDirectSettlementTransfers(state, eventId, direct);
+  notice = direct
+    ? "החזרים ישירים הופעלו. כל מי שמימן הוצאה יקבל את ההחזר שלו."
+    : "מצב פחות העברות הופעל. המערכת תקזז בין כולם.";
+  persistState();
+  render();
+  requestAnimationFrame(() => {
+    app
+      .querySelector(
+        `[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`
+      )
+      ?.focus({ preventScroll: true });
+  });
 }
 
 function refreshStartupSharedState(refreshRequest) {
@@ -15287,9 +15845,9 @@ function renderScopedLocalFallback() {
   render();
 }
 
-function requestResumeSync() {
+function requestResumeSync({ force = false } = {}) {
   if (resumeSyncRequest) return resumeSyncRequest;
-  if (Date.now() - lastResumeSyncAt < RESUME_SYNC_COOLDOWN_MS) {
+  if (!force && Date.now() - lastResumeSyncAt < RESUME_SYNC_COOLDOWN_MS) {
     return Promise.resolve();
   }
 
@@ -15312,6 +15870,24 @@ function requestResumeSync() {
     });
 
   return resumeSyncRequest;
+}
+
+function requestVisibleEventSync() {
+  if (
+    document.visibilityState !== "visible" ||
+    !appBootHydrated ||
+    !["event", "settlement"].includes(screen.name) ||
+    expenseDraft ||
+    eventDialog ||
+    importantActionDialog ||
+    eventStatusMenu ||
+    settlementCelebration ||
+    settlementCloseConfirmation
+  ) {
+    return Promise.resolve();
+  }
+
+  return requestResumeSync();
 }
 
 bootstrapApp();

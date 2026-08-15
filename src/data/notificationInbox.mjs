@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { isAllowedPublicUrl } from "../domain/publicOrigin.mjs";
 
 const INBOX_SELECT = [
   "id",
@@ -40,7 +41,9 @@ export async function loadNotificationInbox(
   const payload = await response.json().catch(() => []);
   return {
     available: true,
-    items: Array.isArray(payload) ? payload.map(normalizeInboxItem).filter(Boolean) : []
+    items: Array.isArray(payload)
+      ? payload.map((item) => normalizeInboxItem(item, config)).filter(Boolean)
+      : []
   };
 }
 
@@ -114,7 +117,7 @@ function accountHeaders(identity) {
   };
 }
 
-function normalizeInboxItem(item) {
+function normalizeInboxItem(item, config) {
   const id = String(item?.id ?? "").trim();
   const eventId = String(item?.event_id ?? "").trim();
   if (!id || !eventId) return null;
@@ -127,22 +130,14 @@ function normalizeInboxItem(item) {
     title: String(item?.title ?? "").trim(),
     body: String(item?.body ?? "").trim(),
     view: item?.view === "summary" ? "summary" : "event",
-    actionUrl: safeNotificationActionUrl(item?.action_url),
+    actionUrl: safeNotificationActionUrl(item?.action_url, config?.publicUrl),
     createdAt: String(item?.created_at ?? "").trim(),
     readAt: String(item?.read_at ?? "").trim()
   };
 }
 
-function safeNotificationActionUrl(value) {
+function safeNotificationActionUrl(value, publicUrl) {
   const actionUrl = String(value ?? "").trim();
   if (!actionUrl) return "";
-  try {
-    const url = new URL(actionUrl);
-    return url.protocol === "https:" &&
-      url.hostname === "sogrim-hashbon.vercel.app"
-      ? url.toString()
-      : "";
-  } catch {
-    return "";
-  }
+  return isAllowedPublicUrl(actionUrl, publicUrl) ? new URL(actionUrl).toString() : "";
 }

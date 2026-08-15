@@ -19,6 +19,7 @@ import {
   reopenEvent,
   removeParticipant,
   removeExpense,
+  setEventDirectSettlementTransfers,
   setEventRoundSettlementTransfers,
   updateTransferStatus,
   switchCurrentParticipant,
@@ -110,6 +111,41 @@ test("event transfer rounding can be disabled and enabled again", () => {
   assert.equal(disabled.events[0].roundSettlementTransfers, false);
   assert.equal(enabled.events[0].roundSettlementTransfers, true);
   assert.equal(disabled.events[0].transfers[0].status, "pending");
+});
+
+test("event repayment mode can switch between optimized and direct reimbursements", () => {
+  const state = baseState();
+  state.events[0].roundSettlementTransfers = false;
+  state.events[0].transfers = [];
+  state.events[0].expenses.push({
+    id: "expense-2",
+    name: "Food",
+    total: 6000,
+    payers: [{ participantId: "dani", amount: 6000 }],
+    sharedByParticipantIds: ["owner", "dani"],
+    createdByParticipantId: "dani",
+    updatedAt: "2026-05-23T01:00:00.000Z"
+  });
+
+  const direct = setEventDirectSettlementTransfers(state, "event-1", true);
+  const optimized = setEventDirectSettlementTransfers(direct, "event-1", false);
+
+  assert.equal(direct.events[0].directSettlementTransfers, true);
+  assert.deepEqual(
+    direct.events[0].transfers.map(
+      ({ fromParticipantId, toParticipantId, amount }) =>
+        `${fromParticipantId}->${toParticipantId}:${amount}`
+    ),
+    ["dani->owner:3000", "avi->owner:3000", "owner->dani:3000"]
+  );
+  assert.equal(optimized.events[0].directSettlementTransfers, false);
+  assert.deepEqual(
+    optimized.events[0].transfers.map(
+      ({ fromParticipantId, toParticipantId, amount }) =>
+        `${fromParticipantId}->${toParticipantId}:${amount}`
+    ),
+    ["avi->owner:3000"]
+  );
 });
 
 test("archiveGroup hides a group without deleting historical events", () => {
@@ -399,6 +435,7 @@ test("duplicateEvent creates a clean event from an existing one", () => {
     createdByParticipantId: "owner",
     adminsCanEditOnly: false,
     roundSettlementTransfers: true,
+    directSettlementTransfers: false,
     locked: false,
     createdAt: "2026-05-30T00:00:00.000Z",
     settingsUpdatedAt: "2026-05-30T00:00:00.000Z"
@@ -421,10 +458,11 @@ test("duplicateEvent carries only currently active participants", () => {
   assert.equal(state.events[0].inactiveParticipantIds, undefined);
 });
 
-test("duplicateEvent preserves centralized editing and settlement rounding settings", () => {
+test("duplicateEvent preserves management, rounding, and repayment settings", () => {
   const sourceState = baseState();
   sourceState.events[0].adminsCanEditOnly = true;
   sourceState.events[0].roundSettlementTransfers = false;
+  sourceState.events[0].directSettlementTransfers = true;
 
   const state = duplicateEvent(sourceState, "event-1", {
     id: "event-2",
@@ -435,6 +473,7 @@ test("duplicateEvent preserves centralized editing and settlement rounding setti
 
   assert.equal(state.events[0].adminsCanEditOnly, true);
   assert.equal(state.events[0].roundSettlementTransfers, false);
+  assert.equal(state.events[0].directSettlementTransfers, true);
 });
 
 test("updateTransferStatus marks a transfer as paid with audit details", () => {

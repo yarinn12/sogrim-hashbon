@@ -1,4 +1,5 @@
 const iconShapes = {
+  accessibility: '<circle cx="12" cy="4.5" r="2"/><path d="M5 8.5c4.7 2 9.3 2 14 0M12 7v6M8.5 20l3.5-7 3.5 7M8.5 12.5 6 17M15.5 12.5 18 17"/>',
   archive: '<path d="M4 7h16"/><path d="M6 7v12h12V7"/><path d="M9 11h6"/><path d="M5 4h14v3H5z"/>',
   balance: '<path d="M5 7h14"/><path d="M8 7 5.5 13h5L8 7Z"/><path d="M16 7 13.5 13h5L16 7Z"/><path d="M12 4.5v14"/><path d="M8.5 19.5h7"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',

@@ -6,6 +6,7 @@ import {
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
   applyLocalParticipantId,
+  hasSharedStateChanged as hasCloudStateChanged,
   toSharedState
 } from "./localIdentity.mjs";
 import {
@@ -33,9 +34,9 @@ import {
   refreshSharedEvents,
   syncSharedEvents
 } from "./sharedEventStore.mjs";
+import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
-const NATIVE_API_ORIGIN = "https://sogrim-hashbon.vercel.app";
 const RUNTIME_CONFIG_TIMEOUT_MS = 4_000;
 const STARTUP_SHARED_STATE_WAIT_MS = 1_200;
 const NATIVE_RUNTIME_CONFIG_GLOBAL = "SogrimNativeRuntimeConfig";
@@ -268,7 +269,7 @@ function nativeBootstrapRuntimeConfig(nativeRuntime) {
 function normalizeRuntimeConfig(config, nativeRuntime) {
   return {
     ...config,
-    apiBaseUrl: nativeRuntime ? NATIVE_API_ORIGIN : ""
+    apiBaseUrl: nativeRuntime ? runtimePublicOrigin(config) : ""
   };
 }
 
@@ -280,7 +281,7 @@ async function fetchRuntimeConfig(nativeRuntime, requestOptions) {
   );
   try {
     return await fetch(
-      `${nativeRuntime ? NATIVE_API_ORIGIN : ""}/api/config`,
+      `${nativeRuntime ? runtimePublicOrigin() : ""}/api/config`,
       {
         ...requestOptions,
         signal: controller.signal
@@ -890,10 +891,6 @@ function clearPendingSharedState(config) {
 
 function publishSyncFailure(error) {
   publishSyncStatus(error?.code === "CLOUD_STATE_CONFLICT" ? "conflict" : "offline");
-}
-
-function hasCloudStateChanged(nextState, previousState) {
-  return JSON.stringify(toSharedState(nextState)) !== JSON.stringify(toSharedState(previousState));
 }
 
 function publishSyncStatus(status) {

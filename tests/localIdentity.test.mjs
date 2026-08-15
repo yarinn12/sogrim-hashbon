@@ -49,6 +49,21 @@ test("shared state comparison ignores the browser-local current identity", () =>
   );
 });
 
+test("shared state comparison ignores JSON object key order", () => {
+  const reordered = {
+    events: [],
+    groups: [],
+    participants: state.participants.map((participant) => ({
+      kind: participant.kind,
+      displayName: participant.displayName,
+      id: participant.id
+    })),
+    currentParticipantId: "yarin"
+  };
+
+  assert.equal(hasSharedStateChanged(state, reordered), false);
+});
+
 test("shared state comparison detects event and participant changes", () => {
   assert.equal(
     hasSharedStateChanged(state, {

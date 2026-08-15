@@ -13,6 +13,7 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /"טרם הושלם"/);
   assert.match(app, /class="secondary-button transfer-complete-button"/);
   assert.match(app, /<span aria-hidden="true">✓<\/span> הושלם/);
+  assert.match(app, /reconcileEventTransfers\(updatedEvent, updatedEvent\?\.transfers \?\? \[\]\)/);
 });
 
 test("the final paid transfer opens one completion celebration with a history action", async () => {
@@ -75,7 +76,9 @@ test("settlement summary leads with one ordered transfer list", async () => {
 
   assert.match(app, /<h2 id="settlement-transfers-title">כל ההעברות<\/h2>/);
   assert.match(app, /orderSettlementTransfers\(transfers\)/);
-  assert.match(app, /renderTransferRow\(event, transfer, \{ highlightPersonal: hasPersonalIdentity \}\)/);
+  assert.match(app, /groupSettlementTransfersForDisplay\(orderedTransfers\)/);
+  assert.match(app, /renderTransferRow\(event, transfer, \{/);
+  assert.match(app, /paidHistory/);
   assert.match(app, /renderSettlementListActions\(event\)/);
   assert.doesNotMatch(app, /class="settlement-progress-chip"/);
 });

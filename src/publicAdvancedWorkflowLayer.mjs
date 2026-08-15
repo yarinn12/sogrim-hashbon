@@ -1,6 +1,6 @@
 import {
   calculateSettlement,
-  usesRoundedSettlementTransfers
+  settlementOptionsForEvent
 } from "./domain/settlement.mjs";
 import { formatSettlementSummary } from "./domain/settlementSummary.mjs";
 import { mergeParticipants as mergeParticipantIdentities } from "./domain/appActions.mjs";
@@ -181,9 +181,11 @@ function shareEventOnWhatsApp(eventId) {
   if (!event) return;
 
   const participants = eventParticipants(state, event);
-  const settlement = calculateSettlement(participants, event.expenses ?? [], {
-    roundTransfers: usesRoundedSettlementTransfers(event)
-  });
+  const settlement = calculateSettlement(
+    participants,
+    event.expenses ?? [],
+    settlementOptionsForEvent(event)
+  );
   const summary = formatSettlementSummary({
     eventName: event.name,
     participants,

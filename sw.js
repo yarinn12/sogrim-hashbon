@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v281";
+const CACHE_NAME = "settle-friends-live-v283";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -33,9 +33,12 @@ const CACHE_FILES = [
   "/account-deletion.html",
   "/src/app.mjs",
   "/src/publicAppSplashLayer.mjs",
+  "/src/publicAccessibilityLayer.mjs",
+  "/src/data/accessibilityPreferences.mjs",
   "/src/data/cloudStore.mjs",
   "/src/data/cloudConflictRetry.mjs",
   "/src/data/accountAuth.mjs",
+  "/src/data/adminAnalyticsStore.mjs",
   "/src/data/fetchTimeout.mjs",
   "/src/data/appFeedback.mjs",
   "/src/data/pendingInvite.mjs",
@@ -55,6 +58,7 @@ const CACHE_FILES = [
   "/src/data/friendsStore.mjs",
   "/src/data/sharedEventStore.mjs",
   "/src/domain/appActions.mjs",
+  "/src/domain/adminAnalytics.mjs",
   "/src/domain/avatarPresets.mjs",
   "/src/domain/cloudSpace.mjs",
   "/src/domain/compactInvite.mjs",
@@ -83,6 +87,7 @@ const CACHE_FILES = [
   "/src/domain/participantIdentity.mjs",
   "/src/domain/participantRelationshipInsights.mjs",
   "/src/domain/productMetrics.mjs",
+  "/src/domain/publicOrigin.mjs",
   "/src/domain/qrCode.mjs",
   "/src/domain/settlement.mjs",
   "/src/domain/settlementSummary.mjs",

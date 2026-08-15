@@ -99,12 +99,14 @@ test("settlement shows every transfer in one list and highlights personal ones",
   );
 
   assert.match(settlement, /orderSettlementTransfers\(transfers\)/);
+  assert.match(settlement, /groupSettlementTransfersForDisplay\(orderedTransfers\)/);
   assert.match(settlement, /hasReliableSettlementIdentity/);
   assert.match(settlement, /כל ההעברות/);
   assert.doesNotMatch(settlement, /ההעברות שלך מופיעות ראשונות/);
   assert.doesNotMatch(settlement, /class="settlement-progress-chip"/);
   assert.match(settlement, /renderSettlementListActions\(event\)/);
-  assert.match(settlement, /renderTransferRow\(event, transfer, \{ highlightPersonal: hasPersonalIdentity \}\)/);
+  assert.match(settlement, /renderTransferRow\(event, transfer, \{/);
+  assert.match(settlement, /paidHistory/);
   assert.doesNotMatch(settlement, /renderPersonalSettlement/);
   assert.doesNotMatch(app, /function renderSettlementPersonalOnlyState/);
   assert.match(app, /personalReceipts\.length === 1 \? "צריך" : "צריכים"/);
@@ -120,6 +122,8 @@ test("settlement shows every transfer in one list and highlights personal ones",
   assert.match(transferRow, /"ממך"/);
   assert.match(transferRow, /"אליך"/);
   assert.match(transferRow, /transfer-complete-button/);
+  assert.match(transferRow, /function renderTransferPaidHistory/);
+  assert.match(transferRow, /כבר שולם/);
   assert.match(app, /function hasReliableSettlementIdentity/);
 });
 

@@ -469,5 +469,8 @@ function rowWasRemembered(row) {
 }
 
 function prefersReducedMotion() {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  return Boolean(
+    document.documentElement.classList.contains("accessibility-reduced-motion") ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+  );
 }

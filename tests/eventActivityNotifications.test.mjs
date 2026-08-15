@@ -340,7 +340,7 @@ test("server rejects an expense update that was not created by the caller", asyn
   );
 });
 
-test("server does not notify an account whose event copy has different share credentials", async () => {
+test("server repairs an account whose event copy has stale share credentials", async () => {
   const { fetchImpl, requests } = createActivityFetch({
     recipientState: eventState({
       currentParticipantId: RECIPIENT_PARTICIPANT_ID,
@@ -354,14 +354,21 @@ test("server does not notify an account whose event copy has different share cre
     eventId: EVENT_ID,
     activityId: EXPENSE_ID,
     kind: "expense-created",
-    fetchImpl
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
   });
 
   assert.equal(result.status, 200);
-  assert.equal(result.payload.reason, "no-eligible-recipients");
-  assert.equal(
-    requests.some((request) => request.url.includes("push_devices")),
-    false
+  assert.equal(result.payload.delivered, 1);
+  const inboxWrite = requests.find((request) =>
+    request.url.includes("/rest/v1/notification_inbox?")
+  );
+  assert.match(
+    JSON.parse(inboxWrite.options.body).action_url,
+    /\/i\/event-weekend\/t\//
   );
 });
 
@@ -394,7 +401,7 @@ test("server respects the recipient event update preference", async () => {
   );
 });
 
-test("server sends an accepted online friend a secure event invitation", async () => {
+test("server sends an active online participant a secure event invitation", async () => {
   const { fetchImpl, requests } = createActivityFetch();
   const result = await sendEventActivityNotification({
     runtimeConfig: runtimeConfig(),
@@ -416,7 +423,7 @@ test("server sends an accepted online friend a secure event invitation", async (
     requests.some((request) =>
       request.url.includes("/rest/v1/friendships?")
     ),
-    true
+    false
   );
   const inboxWrite = requests.find((request) =>
     request.url.includes("/rest/v1/notification_inbox?")
@@ -439,7 +446,7 @@ test("server sends an accepted online friend a secure event invitation", async (
   assert.match(message.notification.title, /הזמנה/);
 });
 
-test("server refuses to invite an account that is not an accepted friend", async () => {
+test("a pending friendship cannot strand an active event participant", async () => {
   const { fetchImpl, requests } = createActivityFetch({
     acceptedFriend: false
   });
@@ -450,20 +457,66 @@ test("server refuses to invite an account that is not an accepted friend", async
     eventId: EVENT_ID,
     activityId: RECIPIENT_PARTICIPANT_ID,
     kind: "event-invite",
-    fetchImpl
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
   });
 
   assert.equal(result.status, 200);
-  assert.equal(result.payload.reason, "no-eligible-recipients");
+  assert.equal(result.payload.delivered, 1);
   assert.equal(
     requests.some((request) =>
       request.url.includes("/rest/v1/notification_inbox?")
     ),
-    false
+    true
   );
   assert.equal(
-    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    requests.some((request) => request.url.includes("/rest/v1/friendships?")),
     false
+  );
+});
+
+test("an expense notification repairs access when the recipient workspace lost the event", async () => {
+  const { fetchImpl, requests } = createActivityFetch({
+    recipientState: {
+      currentParticipantId: RECIPIENT_PARTICIPANT_ID,
+      participants: [],
+      events: []
+    }
+  });
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.delivered, 1);
+  const inboxWrite = requests.find((request) =>
+    request.url.includes("/rest/v1/notification_inbox?")
+  );
+  const inboxItem = JSON.parse(inboxWrite.options.body);
+  assert.equal(inboxItem.kind, "expense-created");
+  assert.match(
+    inboxItem.action_url,
+    /^https:\/\/sogrim-hashbon\.vercel\.app\/i\/event-weekend\/t\/[A-Za-z0-9_-]{32,128}$/
+  );
+  const delivery = requests.find((request) =>
+    request.url.includes("fcm.googleapis.com/")
+  );
+  assert.equal(
+    JSON.parse(delivery.options.body).message.data.actionUrl,
+    inboxItem.action_url
   );
 });
 

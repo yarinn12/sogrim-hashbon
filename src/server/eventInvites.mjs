@@ -282,13 +282,7 @@ export async function redeemEventInvite({
       isActiveEventParticipant(
         sharedEvent,
         `account-${senderUserId}`
-      ) &&
-      await hasAcceptedFriendship({
-        ...context,
-        senderUserId,
-        recipientUserId,
-        fetchImpl
-      })
+      )
     );
     if (!stillEligible) {
       await revokeInviteRow({
@@ -566,29 +560,6 @@ async function rotateOpenInviteRow({
     }
   );
   return response.ok;
-}
-
-async function hasAcceptedFriendship({
-  supabaseUrl,
-  serviceRoleKey,
-  senderUserId,
-  recipientUserId,
-  fetchImpl
-}) {
-  const params = new URLSearchParams({
-    status: "eq.accepted",
-    user_low: `eq.${[senderUserId, recipientUserId].sort()[0]}`,
-    user_high: `eq.${[senderUserId, recipientUserId].sort()[1]}`,
-    select: "id",
-    limit: "1"
-  });
-  const response = await fetchImpl(
-    `${supabaseUrl}/rest/v1/friendships?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
-  );
-  if (!response.ok) return false;
-  const rows = await response.json().catch(() => []);
-  return Array.isArray(rows) && rows.length > 0;
 }
 
 async function markInviteRedeemed({

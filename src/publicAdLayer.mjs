@@ -7,6 +7,7 @@ import {
 
 const STYLE_ID = "public-ad-layer-style";
 const ENTITLEMENT_EVENT = "settle-friends:entitlements-changed";
+const ACCESSIBILITY_CENTER_EVENT = "settle-friends:accessibility-center-changed";
 const BANNER_RETRY_DELAY_MS = 30_000;
 const DEFAULT_BANNER_HEIGHT = 50;
 const GOOGLE_ANDROID_FIXED_TEST_BANNER_ID =
@@ -39,6 +40,7 @@ function setupAdLayer() {
     window.setTimeout(scheduleAdSync, 0);
   });
   document.addEventListener("visibilitychange", scheduleAdSync);
+  document.addEventListener(ACCESSIBILITY_CENTER_EVENT, scheduleAdSync);
   window.addEventListener("online", handleNetworkRestored);
   window.addEventListener("offline", removeBanner);
   document.addEventListener(ENTITLEMENT_EVENT, (event) => {
@@ -207,10 +209,11 @@ function placementBlocked() {
   return Boolean(
     document.visibilityState === "hidden" ||
       navigator.onLine === false ||
+      document.documentElement.classList.contains("accessibility-center-open") ||
     document.body.classList.contains("app-dialog-open") ||
       document.body.classList.contains("referral-dialog-open") ||
       document.querySelector(
-        ".event-modal, .expense-modal, .important-action-dialog, .app-choice-picker"
+        ".accessibility-center, .event-modal, .expense-modal, .important-action-dialog, .app-choice-picker"
       ) ||
       isTextEntryActive()
   );

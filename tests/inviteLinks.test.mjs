@@ -324,6 +324,7 @@ test("buildEventInviteSnapshot includes active members without money, admin, or 
           eventType: "trip",
           currency: "USD",
           roundSettlementTransfers: false,
+          directSettlementTransfers: true,
           groupId: "friends",
           participantIds: ["yarin", "dani"],
           inactiveParticipantIds: ["dani"],
@@ -354,6 +355,7 @@ test("buildEventInviteSnapshot includes active members without money, admin, or 
   assert.equal(snapshot.event.eventType, "trip");
   assert.equal(snapshot.event.currency, "USD");
   assert.equal(snapshot.event.roundSettlementTransfers, false);
+  assert.equal(snapshot.event.directSettlementTransfers, true);
   assert.deepEqual(snapshot.participants.map((participant) => participant.id), ["yarin"]);
   assert.deepEqual(snapshot.groups, []);
   assert.deepEqual(snapshot.event.adminIds, []);

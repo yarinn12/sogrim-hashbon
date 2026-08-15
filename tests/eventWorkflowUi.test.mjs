@@ -1102,7 +1102,7 @@ test("event settings use a focused hub instead of one overloaded dialog", async 
     "function renderEventSettingsManagementDialog(event)"
   );
 
-  for (const section of ["management", "currency", "rounding", "lock", "danger"]) {
+  for (const section of ["management", "currency", "repayment", "rounding", "lock", "danger"]) {
     assert.match(hub, new RegExp(`section: "${section}"`));
   }
   assert.match(hub, /renderEventSettingsMenuItem/);
@@ -1113,6 +1113,7 @@ test("event settings use a focused hub instead of one overloaded dialog", async 
   assert.doesNotMatch(hub, /data-action="delete-event"/);
   assert.match(app, /eventDialog\.kind === "settings-management"/);
   assert.match(app, /eventDialog\.kind === "settings-currency"/);
+  assert.match(app, /eventDialog\.kind === "settings-repayment"/);
   assert.match(app, /eventDialog\.kind === "settings-rounding"/);
   assert.match(app, /eventDialog\.kind === "settings-lock"/);
   assert.match(app, /eventDialog\.kind === "settings-danger"/);
@@ -1130,6 +1131,18 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /data-rounding-mode="\$\{option\.id\}"/);
   assert.match(app, /סכומי ההוצאות תמיד נשמרים בדיוק כפי שהוזנו/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
+});
+
+test("event settings let managers choose direct payer reimbursements", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /directSettlementTransfers: false/);
+  assert.match(app, /title: "אופן ההחזר"/);
+  assert.match(app, /title: "פחות העברות"/);
+  assert.match(app, /title: "ישירות למי ששילם"/);
+  assert.match(app, /data-action="set-event-repayment-mode"/);
+  assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
+  assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
 });
 
 test("event screen uses one focused start action instead of a repeated command grid", async () => {

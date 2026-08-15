@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { nativeDestination } from "../src/domain/nativeDeepLinks.mjs";
+import {
+  nativeDestination,
+  nativePublicOrigin
+} from "../src/domain/nativeDeepLinks.mjs";
 
 test("Capacitor store projects use a stable app id and local web bundle", async () => {
   const [config, packageJson, buildScript, finalizer, nativeSmoke, nativeBenchmark, androidQaMetrics] = await Promise.all([
@@ -55,7 +58,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /native-auth\.mjs/);
   assert.match(buildScript, /loadNativeBootstrapRuntimeConfig/);
   assert.match(buildScript, /globalThis\.SogrimNativeRuntimeConfig/);
-  assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), env\)/);
+  assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv\)/);
   assert.match(buildScript, /validateNativeBootstrapConfig/);
   assert.match(buildScript, /Refusing to build a disconnected store release/);
   assert.doesNotMatch(buildScript, /Native runtime bootstrap was omitted/);
@@ -172,10 +175,10 @@ test("native bridge handles deep links, Android back, share and OAuth return", a
   assert.match(bridge, /if \(!window\.dispatchEvent\(backRequest\)\)/);
   assert.doesNotMatch(bridge, /history\.length > 1/);
   assert.match(bridge, /sharePlugin\.share/);
-  assert.match(bridge, /NATIVE_PUBLIC_HOST.*NATIVE_AUTH_PATH/s);
+  assert.match(bridge, /NATIVE_AUTH_PATH.*nativePublicOrigin/s);
   assert.match(bridge, /history\.replaceState\(history\.state, "", destination\)/);
   assert.match(bridge, /window\.location\.reload\(\)/);
-  assert.match(localStore, /NATIVE_API_ORIGIN/);
+  assert.match(localStore, /runtimePublicOrigin/);
   assert.match(localStore, /X-Sogrim-Platform/);
   assert.match(localStore, /X-Sogrim-App-Build/);
   assert.match(localStore, /Plugins\?\.App\?\.getInfo/);
@@ -236,6 +239,21 @@ test("native deep links preserve revocable invite tokens on warm and cold Androi
   assert.equal(destinationUrl.searchParams.get("event"), eventId);
   assert.equal(destinationUrl.searchParams.get("t"), inviteToken);
   assert.equal(destinationUrl.searchParams.get("ref"), referralCode.toLowerCase());
+});
+
+test("native runtime accepts a configured provider-independent public origin", () => {
+  const publicUrl = "https://app.sogrim.example";
+  const eventId = "event-safe";
+  const inviteToken = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
+
+  assert.equal(nativePublicOrigin({ publicUrl }), publicUrl);
+  assert.equal(
+    nativeDestination(
+      `${publicUrl}/i/${eventId}/t/${inviteToken}`,
+      { publicHosts: new Set([new URL(publicUrl).hostname]) }
+    ),
+    `./?event=${eventId}&t=${inviteToken}`
+  );
 });
 
 test("native deep links reject foreign hosts, unsafe routes and forged auth callbacks", () => {

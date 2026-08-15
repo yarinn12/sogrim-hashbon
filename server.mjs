@@ -14,6 +14,7 @@ import { verifyGooglePlaySubscription } from "./src/server/googlePlayBilling.mjs
 import { sendPaymentReminder } from "./src/server/paymentReminders.mjs";
 import { sendEventActivityNotification } from "./src/server/eventActivityNotifications.mjs";
 import { storeProductMetrics } from "./src/server/productMetrics.mjs";
+import { getAdminAnalyticsOverview } from "./src/server/adminAnalytics.mjs";
 import {
   manageOpenEventInvite,
   redeemEventInvite
@@ -63,6 +64,7 @@ export function createAppHandler({
   paymentReminderService = sendPaymentReminder,
   eventActivityNotificationService = sendEventActivityNotification,
   productMetricsService = storeProductMetrics,
+  adminAnalyticsService = getAdminAnalyticsOverview,
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite
 } = {}) {
@@ -219,6 +221,17 @@ export function createAppHandler({
         env: process.env,
         authorization: request.headers.authorization,
         payload: body
+      });
+      sendJson(response, result.status, result.payload);
+      return;
+    }
+
+    if (url.pathname === "/api/admin/overview" && request.method === "GET") {
+      const result = await adminAnalyticsService({
+        runtimeConfig,
+        env: process.env,
+        authorization: request.headers.authorization,
+        windowDays: url.searchParams.get("days")
       });
       sendJson(response, result.status, result.payload);
       return;

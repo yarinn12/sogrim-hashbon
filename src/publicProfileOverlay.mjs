@@ -204,7 +204,7 @@ function getScreenContext(screen, profile) {
   if (screen.querySelector('[data-action="copy-settlement"]')) {
     return {
       title: "סגירת חשבון",
-      helper: "כאן רואים מי מעביר למי, עם כמה שפחות העברות מיותרות.",
+      helper: "כאן רואים מי מעביר למי, מה נשאר פתוח ומה כבר שולם.",
       actions: [
         { label: "העתק סיכום", action: "copy-settlement", primary: true },
         { label: "דוח מלא", action: "copy-event-report" },

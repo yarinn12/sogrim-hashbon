@@ -12,6 +12,8 @@ import {
 } from "./eventMembership.mjs";
 import {
   reconcileSettlementTransfers,
+  settlementOptionsForEvent,
+  usesDirectSettlementTransfers,
   usesRoundedSettlementTransfers
 } from "./settlement.mjs";
 
@@ -114,6 +116,7 @@ export function duplicateEvent(state, sourceEventId, nextEvent) {
         createdByParticipantId: nextEvent.adminId,
         adminsCanEditOnly: sourceEvent.adminsCanEditOnly === true,
         roundSettlementTransfers: usesRoundedSettlementTransfers(sourceEvent),
+        directSettlementTransfers: usesDirectSettlementTransfers(sourceEvent),
         locked: false,
         createdAt: nextEvent.createdAt,
         settingsUpdatedAt: nextEvent.createdAt
@@ -171,7 +174,40 @@ export function setEventRoundSettlementTransfers(
         eventParticipants,
         event.expenses,
         event.transfers,
-        { roundTransfers: enabled }
+        settlementOptionsForEvent(nextEvent)
+      );
+      return settlement.issues.length
+        ? nextEvent
+        : { ...nextEvent, transfers: settlement.transfers };
+    })
+  };
+}
+
+export function setEventDirectSettlementTransfers(
+  state,
+  eventId,
+  directSettlementTransfers
+) {
+  const settingsUpdatedAt = new Date().toISOString();
+  const enabled = directSettlementTransfers === true;
+  return {
+    ...state,
+    events: state.events.map((event) => {
+      if (event.id !== eventId) return event;
+
+      const nextEvent = {
+        ...event,
+        directSettlementTransfers: enabled,
+        settingsUpdatedAt
+      };
+      const eventParticipants = (state.participants ?? []).filter((participant) =>
+        event.participantIds.includes(participant.id)
+      );
+      const settlement = reconcileSettlementTransfers(
+        eventParticipants,
+        event.expenses,
+        event.transfers,
+        settlementOptionsForEvent(nextEvent)
       );
       return settlement.issues.length
         ? nextEvent
@@ -673,7 +709,7 @@ function mergeParticipantRecords(
       eventParticipants,
       mergedEvent.expenses,
       mergedEvent.transfers,
-      { roundTransfers: usesRoundedSettlementTransfers(mergedEvent) }
+      settlementOptionsForEvent(mergedEvent)
     );
     return settlement.issues.length
       ? mergedEvent

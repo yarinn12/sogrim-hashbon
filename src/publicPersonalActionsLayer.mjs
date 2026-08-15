@@ -1,7 +1,7 @@
 import { loadState } from "./data/localStore.mjs";
 import {
   calculateSettlement,
-  usesRoundedSettlementTransfers
+  settlementOptionsForEvent
 } from "./domain/settlement.mjs";
 import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
 
@@ -50,9 +50,11 @@ function collectPersonalActions(state) {
       const participants = (state.participants ?? []).filter((participant) =>
         event.participantIds?.includes(participant.id)
       );
-      const calculated = calculateSettlement(participants, event.expenses ?? [], {
-        roundTransfers: usesRoundedSettlementTransfers(event)
-      });
+      const calculated = calculateSettlement(
+        participants,
+        event.expenses ?? [],
+        settlementOptionsForEvent(event)
+      );
       const transfers = event.transfers?.length ? event.transfers : calculated.transfers;
 
       return transfers
