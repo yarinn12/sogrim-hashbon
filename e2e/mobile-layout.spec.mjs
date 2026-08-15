@@ -168,7 +168,8 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await firstExpenseMenu.locator(":scope > summary").click();
   await expect(firstExpenseMenu).toHaveAttribute("open", "");
   await expect(firstExpenseParticipants).not.toHaveAttribute("open", "");
-  await firstExpenseMenu.locator(":scope > summary").click();
+  await page.locator("#event-expenses-title").click();
+  await expect(firstExpenseMenu).not.toHaveAttribute("open", "");
 
   if (process.env.CAPTURE_EVENT_LEDGER === "1") {
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -186,6 +187,14 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(page.locator(".event-workspace-nav")).toBeVisible();
   await assertLayoutHealth(page, "event summary");
   await assertCompactSettlementFirstView(page);
+
+  const settlementMoreActions = page.locator(".settlement-more-actions").first();
+  if (await settlementMoreActions.count()) {
+    await settlementMoreActions.locator(":scope > summary").click();
+    await expect(settlementMoreActions).toHaveAttribute("open", "");
+    await page.locator(".settlement-stage-heading h2").click();
+    await expect(settlementMoreActions).not.toHaveAttribute("open", "");
+  }
 
   if (process.env.CAPTURE_EVENT_SUMMARY === "1") {
     await page.evaluate(() => window.scrollTo(0, 0));

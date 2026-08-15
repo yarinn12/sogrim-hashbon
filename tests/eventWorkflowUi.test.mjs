@@ -1327,27 +1327,49 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(styles, /\.settlement-hero/);
 });
 
-test("expense action menus close when the user taps elsewhere or presses Escape", async () => {
+test("transient action menus close when the user taps elsewhere or presses Escape", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const clickHandler = sourceBetween(
     app,
     "async function handleClick(event)",
-    "function closeOpenExpenseActionMenus("
+    "function closeOpenTransientMenus("
   );
   const closeMenus = sourceBetween(
     app,
-    "function closeOpenExpenseActionMenus(",
+    "function closeOpenTransientMenus(",
     "function goBackInApp()"
   );
 
-  assert.match(clickHandler, /closest\?\.\(\s*"\.expense-row-actions-menu"/);
-  assert.match(clickHandler, /closeOpenExpenseActionMenus\(clickedExpenseMenu\)/);
+  assert.match(
+    clickHandler,
+    /closest\?\.\(\s*"\.expense-row-actions-menu, \.settlement-more-actions"/
+  );
+  assert.match(clickHandler, /closeOpenTransientMenus\(clickedTransientMenu\)/);
   assert.match(closeMenus, /\.expense-row-actions-menu\[open\]/);
+  assert.match(closeMenus, /\.settlement-more-actions\[open\]/);
   assert.match(closeMenus, /menu\.open = false/);
+  assert.match(app, /function hasOpenTransientMenu\(\)/);
+  assert.match(app, /function goBackInApp\(\) \{\s*if \(closeOpenTransientMenus\(\)\) return;/);
+  assert.match(app, /screen\.name !== "home" \|\|\s*hasOpenTransientMenu\(\)/);
   assert.match(
     app,
-    /event\.key === "Escape" && closeOpenExpenseActionMenus\(\)/
+    /event\.key === "Escape" && closeOpenTransientMenus\(\)/
   );
+});
+
+test("small action dialogs dismiss only when their actual backdrop is tapped", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const dismissBackdrop = sourceBetween(
+    app,
+    "function dismissTransientBackdrop(event)",
+    "function goBackInApp()"
+  );
+
+  assert.match(dismissBackdrop, /event\.target\.matches\?\./);
+  assert.match(dismissBackdrop, /\.event-status-menu-backdrop/);
+  assert.match(dismissBackdrop, /\.important-action-dialog-backdrop/);
+  assert.match(dismissBackdrop, /\.settlement-celebration-backdrop/);
+  assert.match(dismissBackdrop, /goBackInApp\(\)/);
 });
 
 test("groups screen exposes duplicate participant merge", async () => {

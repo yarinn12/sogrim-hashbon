@@ -1872,6 +1872,7 @@ function canNavigateBackWithinApp() {
   return Boolean(
     appHistoryDepth > 0 ||
       screen.name !== "home" ||
+      hasOpenTransientMenu() ||
       expenseDraft ||
       eventDialog ||
       editingGroupDraft ||
@@ -9039,13 +9040,15 @@ function openEventStatusMenu(eventId, trigger) {
 }
 
 async function handleClick(event) {
-  const clickedExpenseMenu = event.target.closest?.(
-    ".expense-row-actions-menu"
+  const clickedTransientMenu = event.target.closest?.(
+    ".expense-row-actions-menu, .settlement-more-actions"
   );
-  closeOpenExpenseActionMenus(clickedExpenseMenu);
+  closeOpenTransientMenus(clickedTransientMenu);
+  if (dismissTransientBackdrop(event)) return;
 
   const target = event.target.closest("[data-action]");
   if (!target) return;
+  if (clickedTransientMenu) clickedTransientMenu.open = false;
 
   const action = target.dataset.action;
 
@@ -10241,10 +10244,10 @@ async function handleClick(event) {
   }
 }
 
-function closeOpenExpenseActionMenus(exceptMenu = null) {
+function closeOpenTransientMenus(exceptMenu = null) {
   let closedMenu = false;
   for (const menu of app.querySelectorAll(
-    ".expense-row-actions-menu[open]"
+    ".expense-row-actions-menu[open], .settlement-more-actions[open]"
   )) {
     if (menu === exceptMenu) continue;
     menu.open = false;
@@ -10253,7 +10256,27 @@ function closeOpenExpenseActionMenus(exceptMenu = null) {
   return closedMenu;
 }
 
+function hasOpenTransientMenu() {
+  return Boolean(app.querySelector(
+    ".expense-row-actions-menu[open], .settlement-more-actions[open]"
+  ));
+}
+
+function dismissTransientBackdrop(event) {
+  if (!event.target.matches?.(
+    ".event-status-menu-backdrop, .important-action-dialog-backdrop, .settlement-celebration-backdrop"
+  )) {
+    return false;
+  }
+
+  event.preventDefault();
+  goBackInApp();
+  return true;
+}
+
 function goBackInApp() {
+  if (closeOpenTransientMenus()) return;
+
   if (importantActionDialog) {
     closeImportantActionDialog();
     return;
@@ -15464,7 +15487,7 @@ function handleDialogKeydown(event) {
   if (handleFriendsHubTabKeyboardNavigation(event)) return;
   if (handleInputKeyboardShortcut(event)) return;
 
-  if (event.key === "Escape" && closeOpenExpenseActionMenus()) {
+  if (event.key === "Escape" && closeOpenTransientMenus()) {
     event.preventDefault();
     return;
   }
