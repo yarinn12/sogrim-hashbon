@@ -13199,7 +13199,7 @@ function syncExpenseSaveState() {
     });
 }
 
-function saveExpense(eventId, { continueAdding = false } = {}) {
+async function saveExpense(eventId, { continueAdding = false } = {}) {
   if (!expenseDraft || expenseSaveInProgress) return;
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
@@ -13259,15 +13259,26 @@ function saveExpense(eventId, { continueAdding = false } = {}) {
     );
     reconcileEventTransfers(getEvent(eventId), previousTransfers);
     const saveRequest = persistState();
+    const saveResult = await saveRequest;
+    if (!saveResult?.ok) {
+      expenseDraft.id = expense.id;
+      expenseDraft.createdByParticipantId = expense.createdByParticipantId;
+      expenseDraft.error =
+        "ההוצאה נשמרה במכשיר, אך עדיין לא הסתנכרנה עם הקבוצה. בדקו את החיבור ולחצו שוב על שמירה.";
+      render();
+      reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+      return;
+    }
+
     publishReferralActivityAfterSave(
-      saveRequest,
+      saveResult,
       eventId,
       wasNewExpense ? "expense-created" : "expense-updated"
     );
     if (wasNewExpense) {
       emitProductMetric("expense_created", { screen: "expense" });
       publishEventActivityAfterSave(
-        saveRequest,
+        saveResult,
         eventId,
         "expense-created",
         expense.id
