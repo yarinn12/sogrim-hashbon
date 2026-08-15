@@ -107,7 +107,12 @@ try {
     createdAt: "2026-08-03T12:05:00.000Z",
     updatedAt: "2026-08-03T12:05:00.000Z"
   });
-  const joinerStaleState = addExpense(joinerState, {
+  const offlineGuestId = `guest-two-account-${suffix}`;
+  const joinerStateWithGuest = addOfflineGuest(joinerState, {
+    id: offlineGuestId,
+    displayName: "אורח בדיקת סנכרון"
+  });
+  const joinerStaleState = addExpense(joinerStateWithGuest, {
     id: `expense-joiner-${suffix}`,
     name: "מונית",
     total: 6_000,
@@ -125,6 +130,11 @@ try {
 
   assert.equal(ownerState.events[0].expenses.length, 2);
   assert.equal(joinerState.events[0].expenses.length, 2);
+  assert.equal(ownerState.events[0].participantIds.includes(offlineGuestId), true);
+  assert.equal(
+    ownerState.participants.some((participant) => participant.id === offlineGuestId),
+    true
+  );
   assert.deepEqual(
     new Set(ownerState.events[0].expenses.map((expense) => expense.id)),
     new Set(joinerState.events[0].expenses.map((expense) => expense.id))
@@ -185,6 +195,7 @@ try {
       separateAccountIdentities: true,
       inviteSnapshotReadable: true,
       connectedParticipantJoined: true,
+      nonAdminOfflineGuestAndExpenseSynced: true,
       concurrentExpensesMerged: true,
       settlementMatchedBothAccounts: true,
       transferStatusSynced: true,
@@ -298,6 +309,24 @@ function addExpense(state, expense) {
             expenses: [...event.expenses, expense],
             updatedAt: expense.updatedAt,
             transfers: []
+          }
+        : event
+    )
+  };
+}
+
+function addOfflineGuest(state, participant) {
+  return {
+    ...state,
+    participants: [
+      ...state.participants,
+      { ...participant, kind: "guest", accountLinked: false }
+    ],
+    events: state.events.map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            participantIds: [...event.participantIds, participant.id]
           }
         : event
     )

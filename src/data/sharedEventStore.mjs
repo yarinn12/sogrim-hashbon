@@ -68,6 +68,10 @@ export function buildSharedEventState(state, eventId) {
   const participants = (state.participants ?? [])
     .filter((participant) => participantIds.has(participant.id))
     .map(sanitizeParticipant);
+  const deletedParticipants = relevantParticipantMergeDeletions(
+    state.deletedParticipants,
+    participantIds
+  );
   const sharedEvent = clone(event);
   delete sharedEvent[EVENT_SPACE_ID_FIELD];
   delete sharedEvent[EVENT_SPACE_KEY_FIELD];
@@ -78,7 +82,8 @@ export function buildSharedEventState(state, eventId) {
     currentParticipantId: "",
     participants,
     groups: [],
-    events: [sharedEvent]
+    events: [sharedEvent],
+    deletedParticipants
   };
 }
 
@@ -423,18 +428,24 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
   if (!eventId) return state;
 
   const allowedParticipantIds = referencedParticipantIds(sharedEvent);
+  const deletedParticipants = relevantParticipantMergeDeletions(
+    sharedState.deletedParticipants,
+    allowedParticipantIds
+  );
   const eventOnlyState = {
     currentParticipantId: state.currentParticipantId,
     participants: (sharedState.participants ?? []).filter((participant) =>
       allowedParticipantIds.has(participant.id)
     ),
     groups: [],
-    events: [sharedEvent]
+    events: [sharedEvent],
+    deletedParticipants
   };
   const merged = mergeSharedStates(state, eventOnlyState);
   return {
     ...merged,
-    currentParticipantId: state.currentParticipantId,
+    currentParticipantId:
+      merged.currentParticipantId || state.currentParticipantId,
     events: merged.events.map((event) =>
       event.id === eventId
         ? {
@@ -501,6 +512,20 @@ function referencedParticipantIds(event) {
   ids.delete(undefined);
   ids.delete("");
   return ids;
+}
+
+function relevantParticipantMergeDeletions(deletions, participantIds) {
+  return (deletions ?? [])
+    .filter(
+      (deletion) =>
+        deletion?.reason === "merged" &&
+        deletion?.targetParticipantId &&
+        (
+          participantIds.has(deletion.id) ||
+          participantIds.has(deletion.targetParticipantId)
+        )
+    )
+    .map(clone);
 }
 
 function clone(value) {

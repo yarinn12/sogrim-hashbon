@@ -385,6 +385,92 @@ as $$
     );
 $$;
 
+create or replace function private.is_safe_offline_guest_addition(
+  p_old_state jsonb,
+  p_new_state jsonb
+)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  old_event jsonb := p_old_state -> 'events' -> 0;
+  new_event jsonb := p_new_state -> 'events' -> 0;
+  old_participant_ids text[] := private.event_text_ids(
+    old_event,
+    'participantIds'
+  );
+  new_participant_ids text[] := private.event_text_ids(
+    new_event,
+    'participantIds'
+  );
+  old_inactive_ids text[] := private.event_text_ids(
+    old_event,
+    'inactiveParticipantIds'
+  );
+  new_inactive_ids text[] := private.event_text_ids(
+    new_event,
+    'inactiveParticipantIds'
+  );
+  added_ids text[];
+  added_id text;
+begin
+  if old_event is null or new_event is null then
+    return false;
+  end if;
+
+  select coalesce(
+    pg_catalog.array_agg(candidate.participant_id order by candidate.participant_id),
+    '{}'::text[]
+  )
+  into added_ids
+  from (
+    select participant_id
+    from pg_catalog.unnest(new_participant_ids) as new_id(participant_id)
+    except
+    select participant_id
+    from pg_catalog.unnest(old_participant_ids) as old_id(participant_id)
+  ) as candidate;
+
+  if pg_catalog.cardinality(added_ids) = 0
+    or not (old_participant_ids <@ new_participant_ids)
+    or pg_catalog.cardinality(new_participant_ids) <>
+      pg_catalog.cardinality(old_participant_ids) +
+      pg_catalog.cardinality(added_ids)
+    or old_inactive_ids is distinct from new_inactive_ids
+    or private.event_admin_ids(p_old_state) is distinct from
+      private.event_admin_ids(p_new_state) then
+    return false;
+  end if;
+
+  foreach added_id in array added_ids loop
+    if added_id !~ '^guest-[A-Za-z0-9_-]{1,120}$'
+      or not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(
+          case
+            when pg_catalog.jsonb_typeof(p_new_state -> 'participants') = 'array'
+              then p_new_state -> 'participants'
+            else '[]'::jsonb
+          end
+        ) as participant(value)
+        where participant.value ->> 'id' = added_id
+          and participant.value ->> 'kind' = 'guest'
+          and coalesce(participant.value -> 'accountLinked', 'false'::jsonb)
+            is distinct from 'true'::jsonb
+          and coalesce(participant.value ->> 'authProvider', '') = ''
+          and coalesce(participant.value ->> 'authSubject', '') = ''
+          and coalesce(participant.value ->> 'email', '') = ''
+      ) then
+      return false;
+    end if;
+  end loop;
+
+  return true;
+end;
+$$;
+
 create or replace function private.guard_shared_snapshot_update()
 returns trigger
 language plpgsql
@@ -398,11 +484,16 @@ declare
   new_event jsonb := new.state -> 'events' -> 0;
   old_active_ids text[] := private.active_event_participant_ids(old.state);
   new_active_ids text[] := private.active_event_participant_ids(new.state);
+  old_participant_ids text[] := private.event_text_ids(old_event, 'participantIds');
+  new_participant_ids text[] := private.event_text_ids(new_event, 'participantIds');
+  old_inactive_ids text[] := private.event_text_ids(old_event, 'inactiveParticipantIds');
+  new_inactive_ids text[] := private.event_text_ids(new_event, 'inactiveParticipantIds');
   old_admin_ids text[] := private.event_admin_ids(old.state);
   new_admin_ids text[] := private.event_admin_ids(new.state);
   actor_is_admin boolean;
   actor_is_joining boolean;
   actor_is_leaving boolean;
+  actor_is_adding_offline_guests boolean;
 begin
   if old.snapshot_kind <> new.snapshot_kind then
     raise exception 'Snapshot kind cannot be changed'
@@ -482,10 +573,18 @@ begin
     and old_active_ids <@ new_active_ids
     and old_admin_ids = new_admin_ids;
 
+  actor_is_adding_offline_guests :=
+    actor_participant_id = any(old_active_ids)
+    and private.is_safe_offline_guest_addition(old.state, new.state);
+
   if (
-    old_active_ids is distinct from new_active_ids
+    old_participant_ids is distinct from new_participant_ids
+    or old_inactive_ids is distinct from new_inactive_ids
     or old_admin_ids is distinct from new_admin_ids
-  ) and not actor_is_admin and not actor_is_leaving and not actor_is_joining then
+  ) and not actor_is_admin
+    and not actor_is_leaving
+    and not actor_is_joining
+    and not actor_is_adding_offline_guests then
     raise exception 'Only an event admin can manage event membership'
       using errcode = '42501';
   end if;
@@ -735,6 +834,8 @@ grant execute on function public.request_space_key_hash() to anon, authenticated
 revoke all on function private.event_text_ids(jsonb, text) from public, anon, authenticated;
 revoke all on function private.is_shared_event_state(jsonb) from public, anon, authenticated;
 revoke all on function private.classify_snapshot_kind() from public, anon, authenticated;
+revoke all on function private.is_safe_offline_guest_addition(jsonb, jsonb)
+  from public, anon, authenticated;
 revoke all on function private.active_event_participant_ids(jsonb) from public, anon, authenticated;
 revoke all on function private.event_admin_ids(jsonb) from public, anon, authenticated;
 revoke all on function private.current_actor_participant_id() from public, anon, authenticated;

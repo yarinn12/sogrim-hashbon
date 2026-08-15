@@ -168,6 +168,51 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.events[0].sharedSpaceKey, undefined);
 });
 
+test("shared event payload carries only participant merges relevant to that event", () => {
+  const payload = buildSharedEventState(
+    {
+      participants: [
+        { id: "kept-user", displayName: "Kept", accountLinked: true },
+        { id: "other-user", displayName: "Other", accountLinked: true }
+      ],
+      groups: [],
+      events: [
+        {
+          id: "event-1",
+          participantIds: ["kept-user"],
+          adminIds: ["kept-user"],
+          expenses: [],
+          transfers: []
+        }
+      ],
+      deletedParticipants: [
+        {
+          id: "stale-guest",
+          deletedAt: "2026-08-15T01:00:00.000Z",
+          reason: "merged",
+          targetParticipantId: "kept-user"
+        },
+        {
+          id: "unrelated-guest",
+          deletedAt: "2026-08-15T01:00:00.000Z",
+          reason: "merged",
+          targetParticipantId: "other-user"
+        }
+      ]
+    },
+    "event-1"
+  );
+
+  assert.deepEqual(payload.deletedParticipants, [
+    {
+      id: "stale-guest",
+      deletedAt: "2026-08-15T01:00:00.000Z",
+      reason: "merged",
+      targetParticipantId: "kept-user"
+    }
+  ]);
+});
+
 test("incoming event data cannot inject unrelated events into the account", () => {
   const localState = {
     currentParticipantId: "local",
@@ -198,6 +243,75 @@ test("incoming event data cannot inject unrelated events into the account", () =
   assert.deepEqual(merged.groups, localState.groups);
   assert.deepEqual(merged.participants.map((participant) => participant.id), ["a", "local"]);
   assert.equal(merged.events[0].sharedSpaceId, "space-event-one");
+});
+
+test("incoming participant merge removes a stale offline duplicate from the event", () => {
+  const localState = {
+    currentParticipantId: "stale-guest",
+    participants: [
+      { id: "kept-user", displayName: "Kept", accountLinked: true },
+      { id: "stale-guest", displayName: "Old offline name", kind: "guest" }
+    ],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        participantIds: ["kept-user", "stale-guest"],
+        adminIds: ["kept-user"],
+        expenses: [],
+        transfers: []
+      }
+    ]
+  };
+  const incoming = {
+    currentParticipantId: "",
+    participants: [
+      { id: "kept-user", displayName: "Kept", accountLinked: true }
+    ],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        participantIds: ["kept-user"],
+        adminIds: ["kept-user"],
+        expenses: [],
+        transfers: []
+      }
+    ],
+    deletedParticipants: [
+      {
+        id: "stale-guest",
+        deletedAt: "2026-08-15T01:00:00.000Z",
+        reason: "merged",
+        targetParticipantId: "kept-user"
+      },
+      {
+        id: "unrelated-guest",
+        deletedAt: "2026-08-15T01:00:00.000Z",
+        reason: "merged",
+        targetParticipantId: "unrelated-user"
+      }
+    ]
+  };
+
+  const merged = mergeSharedEventIntoState(localState, incoming, {
+    id: "space-event-one",
+    key: "event_share_key_12345678901234567890"
+  });
+
+  assert.deepEqual(merged.participants.map((participant) => participant.id), [
+    "kept-user"
+  ]);
+  assert.equal(merged.currentParticipantId, "kept-user");
+  assert.deepEqual(merged.events[0].participantIds, ["kept-user"]);
+  assert.deepEqual(merged.deletedParticipants, [
+    {
+      id: "stale-guest",
+      deletedAt: "2026-08-15T01:00:00.000Z",
+      reason: "merged",
+      targetParticipantId: "kept-user"
+    }
+  ]);
 });
 
 test("a shared event deletion removes a stale local copy and keeps retry credentials", () => {
