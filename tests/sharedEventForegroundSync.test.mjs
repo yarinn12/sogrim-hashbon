@@ -16,7 +16,6 @@ test("open shared events refresh quietly while the app remains visible", () => {
     /function requestVisibleEventSync\(\) \{[\s\S]*\!\["event", "settlement"\]\.includes\(screen\.name\)[\s\S]*expenseDraft[\s\S]*eventDialog[\s\S]*return requestResumeSync\(\);[\s\S]*\}/
   );
 });
-
 test("a received push forces the shared event to refresh before the inbox opens", () => {
   assert.match(
     appSource,
