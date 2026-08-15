@@ -9039,6 +9039,11 @@ function openEventStatusMenu(eventId, trigger) {
 }
 
 async function handleClick(event) {
+  const clickedExpenseMenu = event.target.closest?.(
+    ".expense-row-actions-menu"
+  );
+  closeOpenExpenseActionMenus(clickedExpenseMenu);
+
   const target = event.target.closest("[data-action]");
   if (!target) return;
 
@@ -10234,6 +10239,18 @@ async function handleClick(event) {
     );
     return;
   }
+}
+
+function closeOpenExpenseActionMenus(exceptMenu = null) {
+  let closedMenu = false;
+  for (const menu of app.querySelectorAll(
+    ".expense-row-actions-menu[open]"
+  )) {
+    if (menu === exceptMenu) continue;
+    menu.open = false;
+    closedMenu = true;
+  }
+  return closedMenu;
 }
 
 function goBackInApp() {
@@ -15446,6 +15463,11 @@ function handleDialogKeydown(event) {
   if (handleRadioGroupKeyboardNavigation(event)) return;
   if (handleFriendsHubTabKeyboardNavigation(event)) return;
   if (handleInputKeyboardShortcut(event)) return;
+
+  if (event.key === "Escape" && closeOpenExpenseActionMenus()) {
+    event.preventDefault();
+    return;
+  }
 
   const eventRow = event.target.closest?.(
     '[data-long-press-event="true"][data-event-id]'

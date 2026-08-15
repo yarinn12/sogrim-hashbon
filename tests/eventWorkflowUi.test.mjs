@@ -1327,6 +1327,29 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(styles, /\.settlement-hero/);
 });
 
+test("expense action menus close when the user taps elsewhere or presses Escape", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const clickHandler = sourceBetween(
+    app,
+    "async function handleClick(event)",
+    "function closeOpenExpenseActionMenus("
+  );
+  const closeMenus = sourceBetween(
+    app,
+    "function closeOpenExpenseActionMenus(",
+    "function goBackInApp()"
+  );
+
+  assert.match(clickHandler, /closest\?\.\(\s*"\.expense-row-actions-menu"/);
+  assert.match(clickHandler, /closeOpenExpenseActionMenus\(clickedExpenseMenu\)/);
+  assert.match(closeMenus, /\.expense-row-actions-menu\[open\]/);
+  assert.match(closeMenus, /menu\.open = false/);
+  assert.match(
+    app,
+    /event\.key === "Escape" && closeOpenExpenseActionMenus\(\)/
+  );
+});
+
 test("groups screen exposes duplicate participant merge", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const styles = await readFile("styles.css", "utf8");
