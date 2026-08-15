@@ -120,3 +120,12 @@ test("high contrast keeps dark hero content readable", async ({ page }) => {
   await expect(heroDescription).toBeVisible();
   await expect(heroDescription).toHaveCSS("color", "rgb(255, 255, 255)");
 });
+
+test("profile exposes a clearly labeled accessibility entry", async ({ page }) => {
+  await page.locator('[data-action="edit-profile"]').first().click();
+  const entry = page.getByRole("button", { name: "הגדרות נגישות", exact: true });
+  await entry.scrollIntoViewIfNeeded();
+  await expect(entry).toBeVisible();
+  await entry.click();
+  await expect(page.locator('.accessibility-center[role="dialog"]')).toBeVisible();
+});

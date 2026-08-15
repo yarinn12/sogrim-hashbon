@@ -1277,7 +1277,7 @@ function enhanceAccountControls() {
       <nav class="account-data-links" aria-label="מידע על החשבון">
         <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
         <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
-        <a href="./accessibility.html" class="account-data-link">נגישות</a>
+        <a href="./accessibility.html" class="account-data-link">הצהרת נגישות</a>
         <a href="./support.html" class="account-data-link">תמיכה</a>
         ${adPrivacyControl}
       </nav>

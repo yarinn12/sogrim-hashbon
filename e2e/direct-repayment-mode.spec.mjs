@@ -82,12 +82,14 @@ test.beforeEach(async ({ page, request }) => {
 test("a manager can keep every reimbursement attached to the original payer", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.getByText("חלוקת ההחזרים", { exact: true })).toBeVisible();
   await page.locator('[data-settings-section="repayment"]').click();
 
   const directOption = page.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="direct"]'
   );
   await expect(directOption).toBeVisible();
+  await expect(directOption).toContainText("לפי מי ששילם");
   await directOption.click();
   await expect(directOption).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("סימוני תשלום שכבר בוצעו נשמרים")).toBeVisible();

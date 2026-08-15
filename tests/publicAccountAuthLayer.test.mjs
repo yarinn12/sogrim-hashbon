@@ -219,7 +219,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /href="\.\/accessibility\.html" class="account-data-link">נגישות<\/a>/
+    /href="\.\/accessibility\.html" class="account-data-link">הצהרת נגישות<\/a>/
   );
   assert.doesNotMatch(layer, /href="\.\/(?:privacy|support|terms|accessibility|account-deletion)"/);
 });

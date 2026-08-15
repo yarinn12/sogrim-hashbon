@@ -48,8 +48,9 @@ test("accessibility preferences persist on the device", () => {
 });
 
 test("accessibility center is semantic, persistent and compatible with app navigation", async () => {
-  const [index, layer, splash, motion, icons] = await Promise.all([
+  const [index, app, layer, splash, motion, icons] = await Promise.all([
     readFile("index.html", "utf8"),
+    readFile("src/app.mjs", "utf8"),
     readFile("src/publicAccessibilityLayer.mjs", "utf8"),
     readFile("src/publicAppSplashLayer.mjs", "utf8"),
     readFile("src/publicFramerMotionLayer.mjs", "utf8"),
@@ -58,6 +59,7 @@ test("accessibility center is semantic, persistent and compatible with app navig
 
   assert.match(index, /publicAccessibilityLayer\.mjs/);
   assert.match(layer, /aria-label="פתיחת הגדרות נגישות"/);
+  assert.match(app, /class="secondary-button profile-accessibility-entry" data-open-accessibility/);
   assert.match(layer, /role="dialog"/);
   assert.match(layer, /aria-modal="true"/);
   assert.match(layer, /aria-labelledby="accessibility-center-title"/);

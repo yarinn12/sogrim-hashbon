@@ -1125,7 +1125,11 @@ function renderProfileSetup() {
         <button class="primary-button" data-action="save-profile">${isEditingProfile ? "שמור שינויים" : "המשך"}</button>
         ${
           isEditingProfile
-            ? `<button class="secondary-button" data-action="groups" data-tab="people" type="button">חברים וקבוצות</button>`
+            ? `<button class="secondary-button" data-action="groups" data-tab="people" type="button">חברים וקבוצות</button>
+               <button class="secondary-button profile-accessibility-entry" data-open-accessibility type="button">
+                 <span aria-hidden="true">${iconSvg("accessibility")}</span>
+                 <span>הגדרות נגישות</span>
+               </button>`
             : ""
         }
         ${
@@ -5484,7 +5488,7 @@ function renderEventSettingsDialog(event) {
   const managementStatus = event.adminsCanEditOnly ? "ניהול מרוכז" : "ניהול משותף";
   const currencyStatus = currencySelectLabel(event.currency);
   const repaymentStatus = usesDirectSettlementTransfers(event)
-    ? "ישירות למי ששילם"
+    ? "לפי מי ששילם"
     : "פחות העברות";
   const roundingStatus = usesRoundedSettlementTransfers(event)
     ? "פעיל · העברות בשקלים שלמים"
@@ -5514,7 +5518,7 @@ function renderEventSettingsDialog(event) {
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "repayment",
-          title: "אופן ההחזר",
+          title: "חלוקת ההחזרים",
           description: repaymentStatus
         })}
         ${renderEventSettingsMenuItem({
@@ -5800,12 +5804,12 @@ function renderEventSettingsRepaymentDialog(event) {
 
   return renderEventDialogShell({
     eyebrow: "הגדרות",
-    title: "אופן ההחזר",
-    description: "בוחרים אם לצמצם העברות או להחזיר כסף ישירות למי ששילם.",
+    title: "חלוקת ההחזרים",
+    description: "בוחרים אם לצמצם העברות או שכל אחד יקבל לפי מה ששילם.",
     backAction: "event-settings-back",
     body: `
       <fieldset class="event-management-field event-repayment-field">
-        <legend>איך לחשב את ההעברות?</legend>
+        <legend>איך לחלק את ההחזרים?</legend>
         <div class="event-management-options" role="radiogroup" aria-label="אופן חישוב ההעברות">
           ${[
             {
@@ -5817,8 +5821,8 @@ function renderEventSettingsRepaymentDialog(event) {
             {
               id: "direct",
               enabled: true,
-              title: "ישירות למי ששילם",
-              description: "כל מי שמימן הוצאה מקבל את ההחזר שלו, גם אם יהיו יותר העברות."
+              title: "לפי מי ששילם",
+              description: "כל אחד מקבל בחזרה לפי הסכום שמימן, גם אם יהיו יותר העברות."
             }
           ]
             .map((option, index) => {

@@ -1137,9 +1137,9 @@ test("event settings let managers choose direct payer reimbursements", async () 
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /directSettlementTransfers: false/);
-  assert.match(app, /title: "אופן ההחזר"/);
+  assert.match(app, /title: "חלוקת ההחזרים"/);
   assert.match(app, /title: "פחות העברות"/);
-  assert.match(app, /title: "ישירות למי ששילם"/);
+  assert.match(app, /title: "לפי מי ששילם"/);
   assert.match(app, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
