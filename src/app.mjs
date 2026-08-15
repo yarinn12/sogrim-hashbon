@@ -221,6 +221,7 @@ const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_DESTINATION_EVENT = "settle-friends:native-destination";
 const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 const RESUME_SYNC_COOLDOWN_MS = 5_000;
+const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const DIALOG_OPEN_ACTIONS = new Set([
@@ -367,9 +368,11 @@ window.addEventListener("popstate", handleBrowserHistoryBack);
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
+window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") requestResumeSync();
 });
+window.setInterval(requestVisibleEventSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 document.addEventListener("keydown", handleDialogKeydown);
 document.addEventListener("account-auth-ready", () => {
   hydrateAppAfterAccountReady().catch(renderScopedLocalFallback);
@@ -15312,6 +15315,24 @@ function requestResumeSync() {
     });
 
   return resumeSyncRequest;
+}
+
+function requestVisibleEventSync() {
+  if (
+    document.visibilityState !== "visible" ||
+    !appBootHydrated ||
+    !["event", "settlement"].includes(screen.name) ||
+    expenseDraft ||
+    eventDialog ||
+    importantActionDialog ||
+    eventStatusMenu ||
+    settlementCelebration ||
+    settlementCloseConfirmation
+  ) {
+    return Promise.resolve();
+  }
+
+  return requestResumeSync();
 }
 
 bootstrapApp();
