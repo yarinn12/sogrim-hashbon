@@ -14849,6 +14849,81 @@ const CSS = `
     border-top: 1px solid var(--ledger-line) !important;
   }
 
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading > div {
+    min-width: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading h2 {
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading > div > small {
+    display: block !important;
+    margin-top: 2px !important;
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-repayment-shortcut {
+    min-width: 0 !important;
+    min-height: 44px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    flex: 0 0 auto !important;
+    padding: 0 10px !important;
+    border: 1px solid var(--ledger-line-strong) !important;
+    border-radius: 10px !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: 0 1px 2px rgba(7, 27, 24, 0.04) !important;
+    font: inherit !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 button.settlement-repayment-shortcut {
+    cursor: pointer !important;
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      transform 160ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-repayment-shortcut > span:first-child {
+    width: 17px !important;
+    height: 17px !important;
+    display: inline-flex !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-repayment-shortcut svg {
+    width: 17px !important;
+    height: 17px !important;
+    stroke-width: 1.9 !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-repayment-shortcut small {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-repayment-shortcut.is-readonly {
+    border-color: transparent !important;
+    color: var(--ledger-muted-strong) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-list-actions > summary {
     min-height: 44px !important;
     display: flex !important;
@@ -14917,12 +14992,46 @@ const CSS = `
   }
 
   @media (max-width: 420px) {
+    html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading {
+      align-items: center !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-repayment-shortcut {
+      max-width: 48% !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-repayment-shortcut > span:nth-child(2) {
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-repayment-shortcut small {
+      display: none !important;
+    }
+
     html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-list-actions > div {
       grid-template-columns: minmax(0, 1fr) !important;
     }
   }
 
+  @media (max-width: 340px) {
+    html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading {
+      flex-wrap: wrap !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-repayment-shortcut {
+      max-width: 100% !important;
+    }
+  }
+
   @media (hover: hover) {
+    html.ledger-workspace-v1 button.settlement-repayment-shortcut:hover {
+      border-color: var(--ledger-brand) !important;
+      background: var(--ledger-surface-soft) !important;
+      transform: translateY(-1px) !important;
+    }
+
     html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-menu > summary:hover {
       border-color: var(--ledger-line-strong) !important;
       color: var(--ledger-brand) !important;

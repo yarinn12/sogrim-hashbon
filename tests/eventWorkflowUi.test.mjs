@@ -1145,6 +1145,18 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
 });
 
+test("settlement exposes the active repayment mode without burying it in settings", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const ledgerStyles = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(app, /function renderSettlementRepaymentShortcut\(event\)/);
+  assert.match(app, /data-action="open-event-repayment-settings"/);
+  assert.match(app, /openEventDialog\(target\.dataset\.eventId, "settings-repayment", target\)/);
+  assert.match(app, /aria-label="שנה את חלוקת ההחזרים\. כרגע:/);
+  assert.match(ledgerStyles, /\.settlement-repayment-shortcut/);
+  assert.match(ledgerStyles, /min-height: 44px !important/);
+});
+
 test("event screen uses one focused start action instead of a repeated command grid", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const startPanel = sourceBetween(app, "function renderEventStartPanel(event)", "function renderEventTypeGuide");

@@ -7670,7 +7670,11 @@ function renderSettlement(event) {
           ? `
               <section class="section settlement-stage" aria-labelledby="settlement-transfers-title">
                 <div class="settlement-stage-heading">
-                  <h2 id="settlement-transfers-title">כל ההעברות</h2>
+                  <div>
+                    <h2 id="settlement-transfers-title">כל ההעברות</h2>
+                    <small>מי מעביר למי אחרי כל הקיזוזים</small>
+                  </div>
+                  ${renderSettlementRepaymentShortcut(event)}
                 </div>
                 <div class="settlement-transfer-board">
                   ${renderSettlementOfflineNotice(event, orderedTransfers)}
@@ -7707,6 +7711,36 @@ function renderSettlement(event) {
         </details>
       </section>
     </section>
+  `;
+}
+
+function renderSettlementRepaymentShortcut(event) {
+  const label = usesDirectSettlementTransfers(event)
+    ? "לפי מי ששילם"
+    : "פחות העברות";
+  const canManage = canCurrentParticipantManage(event);
+
+  if (!canManage) {
+    return `
+      <span class="settlement-repayment-shortcut is-readonly">
+        <span aria-hidden="true">${iconSvg("transfers")}</span>
+        <span>${escapeHtml(label)}</span>
+      </span>
+    `;
+  }
+
+  return `
+    <button
+      class="settlement-repayment-shortcut"
+      type="button"
+      data-action="open-event-repayment-settings"
+      data-event-id="${escapeAttribute(event.id)}"
+      aria-label="שנה את חלוקת ההחזרים. כרגע: ${escapeAttribute(label)}"
+    >
+      <span aria-hidden="true">${iconSvg("transfers")}</span>
+      <span>${escapeHtml(label)}</span>
+      <small>שינוי</small>
+    </button>
   `;
 }
 
@@ -9813,6 +9847,11 @@ async function handleClick(event) {
 
   if (action === "open-event-settings") {
     openEventDialog(target.dataset.eventId, "settings", target);
+  }
+
+  if (action === "open-event-repayment-settings") {
+    openEventDialog(target.dataset.eventId, "settings-repayment", target);
+    return;
   }
 
   if (action === "open-event-settings-section") {
