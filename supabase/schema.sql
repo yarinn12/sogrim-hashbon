@@ -586,6 +586,12 @@ begin
       using errcode = '22023';
   end if;
 
+  if coalesce(old_event -> 'transferStatusUpdates', '[]'::jsonb) = '[]'::jsonb
+    and coalesce(new_event -> 'transferStatusUpdates', '[]'::jsonb) = '[]'::jsonb then
+    old_event := old_event - 'transferStatusUpdates';
+    new_event := new_event - 'transferStatusUpdates';
+  end if;
+
   if exists (
     select 1
     from pg_catalog.unnest(new_admin_ids) as admin_id(value)
@@ -760,6 +766,7 @@ begin
             'expenses',
             'deletedExpenses',
             'transfers',
+            'transferStatusUpdates',
             'activityLog'
           ]
           else array[
@@ -767,6 +774,7 @@ begin
             'expenses',
             'deletedExpenses',
             'transfers',
+            'transferStatusUpdates',
             'activityLog'
           ]
         end) is distinct from new_event - (case
@@ -779,6 +787,7 @@ begin
             'expenses',
             'deletedExpenses',
             'transfers',
+            'transferStatusUpdates',
             'activityLog'
           ]
           else array[
@@ -786,6 +795,7 @@ begin
             'expenses',
             'deletedExpenses',
             'transfers',
+            'transferStatusUpdates',
             'activityLog'
           ]
         end) then
@@ -4475,6 +4485,7 @@ declare
   expense_record jsonb;
   payer_record jsonb;
   transfer_record jsonb;
+  transfer_status_update_record jsonb;
   participant_ids text[] := '{}'::text[];
   event_participant_ids text[] := '{}'::text[];
   ids text[];
@@ -4528,9 +4539,11 @@ begin
 
   if pg_catalog.jsonb_typeof(coalesce(event_record -> 'expenses', '[]'::jsonb)) <> 'array'
     or pg_catalog.jsonb_typeof(coalesce(event_record -> 'transfers', '[]'::jsonb)) <> 'array'
+    or pg_catalog.jsonb_typeof(coalesce(event_record -> 'transferStatusUpdates', '[]'::jsonb)) <> 'array'
     or pg_catalog.jsonb_typeof(coalesce(event_record -> 'deletedExpenses', '[]'::jsonb)) <> 'array'
     or pg_catalog.jsonb_array_length(coalesce(event_record -> 'expenses', '[]'::jsonb)) > 5000
     or pg_catalog.jsonb_array_length(coalesce(event_record -> 'transfers', '[]'::jsonb)) > 10000
+    or pg_catalog.jsonb_array_length(coalesce(event_record -> 'transferStatusUpdates', '[]'::jsonb)) > 10000
     or pg_catalog.jsonb_array_length(coalesce(event_record -> 'deletedExpenses', '[]'::jsonb)) > 5000 then
     return false;
   end if;
@@ -4642,6 +4655,55 @@ begin
       or not ((transfer_record ->> 'fromParticipantId') = any(event_participant_ids))
       or not ((transfer_record ->> 'toParticipantId') = any(event_participant_ids))
       or transfer_record ->> 'fromParticipantId' = transfer_record ->> 'toParticipantId' then
+      return false;
+    end if;
+  end loop;
+
+  select coalesce(pg_catalog.array_agg(item.value ->> 'id'), '{}'::text[])
+  into ids
+  from pg_catalog.jsonb_array_elements(
+    coalesce(event_record -> 'transferStatusUpdates', '[]'::jsonb)
+  ) as item(value);
+  if exists (
+      select 1 from pg_catalog.unnest(ids) as id(value)
+      where coalesce(id.value, '') !~ '^[A-Za-z0-9_-]{1,128}$'
+    )
+    or pg_catalog.cardinality(ids) <> (
+      select count(distinct id.value) from pg_catalog.unnest(ids) as id(value)
+    ) then
+    return false;
+  end if;
+
+  for transfer_status_update_record in
+    select item.value
+    from pg_catalog.jsonb_array_elements(
+      coalesce(event_record -> 'transferStatusUpdates', '[]'::jsonb)
+    ) as item(value)
+  loop
+    if pg_catalog.jsonb_typeof(transfer_status_update_record) <> 'object'
+      or transfer_status_update_record - array[
+        'id',
+        'status',
+        'updatedAt',
+        'markedAt',
+        'markedPaidByParticipantId'
+      ] <> '{}'::jsonb
+      or coalesce(transfer_status_update_record ->> 'status', '') not in ('pending', 'paid')
+      or pg_catalog.jsonb_typeof(transfer_status_update_record -> 'updatedAt') <> 'string'
+      or pg_catalog.jsonb_typeof(transfer_status_update_record -> 'markedAt') <> 'string'
+      or char_length(transfer_status_update_record ->> 'updatedAt') not between 1 and 64
+      or transfer_status_update_record ->> 'updatedAt'
+        is distinct from transfer_status_update_record ->> 'markedAt'
+      or (
+        coalesce(transfer_status_update_record ->> 'markedPaidByParticipantId', '') <> ''
+        and not (
+          (transfer_status_update_record ->> 'markedPaidByParticipantId') = any(participant_ids)
+        )
+      )
+      or (
+        transfer_status_update_record ->> 'status' = 'pending'
+        and transfer_status_update_record ? 'markedPaidByParticipantId'
+      ) then
       return false;
     end if;
   end loop;

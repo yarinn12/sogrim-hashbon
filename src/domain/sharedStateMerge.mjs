@@ -391,7 +391,12 @@ function mergeEvent(remoteEvent, localEvent) {
     chooseNewerDeletion
   );
   const deletedExpenseIds = new Set(deletedExpenses.map((item) => item.id));
-  return {
+  const transferStatusUpdates = mergeEntities(
+    remoteEvent.transferStatusUpdates,
+    localEvent.transferStatusUpdates,
+    mergeTransferStatusUpdate
+  );
+  const mergedEvent = {
     ...cloneValue(remoteEvent),
     ...cloneValue(localEvent),
     ...membership,
@@ -419,13 +424,18 @@ function mergeEvent(remoteEvent, localEvent) {
       remoteEvent.transfers,
       localEvent.transfers,
       mergeTransfer
-    ),
-    transferStatusUpdates: mergeEntities(
-      remoteEvent.transferStatusUpdates,
-      localEvent.transferStatusUpdates,
-      mergeTransferStatusUpdate
     )
   };
+
+  if (
+    transferStatusUpdates.length > 0 ||
+    Object.hasOwn(remoteEvent, "transferStatusUpdates") ||
+    Object.hasOwn(localEvent, "transferStatusUpdates")
+  ) {
+    mergedEvent.transferStatusUpdates = transferStatusUpdates;
+  }
+
+  return mergedEvent;
 }
 
 function mergeEventSettings(remoteEvent, localEvent) {

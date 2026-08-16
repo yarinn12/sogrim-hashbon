@@ -517,6 +517,18 @@ test("a canceled payment cannot return from a stale device after reconciliation"
   assert.deepEqual(event.transferStatusUpdates, local.events[0].transferStatusUpdates);
 });
 
+test("merging legacy events does not invent an empty transfer status history", () => {
+  const remote = settlementState({ id: "event-legacy" });
+  const local = settlementState({ id: "event-legacy" });
+
+  delete remote.events[0].transferStatusUpdates;
+  delete local.events[0].transferStatusUpdates;
+
+  const [event] = mergeSharedStates(remote, local).events;
+
+  assert.equal(Object.hasOwn(event, "transferStatusUpdates"), false);
+});
+
 test("stale pending settlement versions are rebuilt instead of accumulating", () => {
   const remote = settlementState({
     id: "event-1",

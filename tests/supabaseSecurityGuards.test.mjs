@@ -64,6 +64,18 @@ const sharedEventAtomicWriteRollback = await readFile(
   "supabase/rollbacks/20260816114500_harden_shared_event_atomic_writes_safe.sql",
   "utf8"
 );
+const transferStatusMigration = await readFile(
+  "supabase/migrations/20260816145622_allow_shared_transfer_status_updates.sql",
+  "utf8"
+);
+const transferStatusVerification = await readFile(
+  "supabase/verification/verify_20260816145622_shared_transfer_status_updates.sql",
+  "utf8"
+);
+const transferStatusRollback = await readFile(
+  "supabase/rollbacks/20260816145622_allow_shared_transfer_status_updates_safe.sql",
+  "utf8"
+);
 const interactionHardeningMigration = await readFile(
   "supabase/migrations/20260816090759_harden_user_interactions_and_metrics.sql",
   "utf8"
@@ -313,6 +325,8 @@ test("shared-event writes require live server membership instead of the retained
   assert.match(guardFunction, /The event state must include the active member before editing/);
   assert.match(guardFunction, /pg_catalog\.pg_trigger_depth\(\) > 1/);
   assert.match(guardFunction, /private\.is_safe_account_deletion_anonymization/);
+  assert.match(guardFunction, /old_event := old_event - 'transferStatusUpdates'/);
+  assert.match(guardFunction, /'transfers',\s*'transferStatusUpdates',\s*'activityLog'/);
 
   const deletionCompatibilityFunction = sqlFunction(
     "private.is_safe_account_deletion_anonymization"
@@ -399,6 +413,30 @@ test("shared event updates are atomic, server-validated and cannot use legacy bo
   );
   assert.match(sharedEventAtomicWriteVerification, /Malformed payer totals/);
   assert.match(sharedEventAtomicWriteRollback, /Rollback refused/);
+});
+
+test("shared transfer status histories are validated and member-updatable", () => {
+  assert.match(transferStatusMigration, /^begin;/);
+  assert.match(transferStatusMigration, /commit;\s*$/);
+  assert.match(
+    transferStatusMigration,
+    /create or replace function private\.is_valid_shared_event_financials/
+  );
+  assert.match(
+    transferStatusMigration,
+    /create or replace function private\.guard_shared_snapshot_update/
+  );
+  assert.match(
+    transferStatusMigration,
+    /old_event := old_event - 'transferStatusUpdates'/
+  );
+  assert.match(
+    transferStatusMigration,
+    /'transfers',\s*'transferStatusUpdates',\s*'activityLog'/
+  );
+  assert.match(transferStatusVerification, /A valid transfer status history is rejected/);
+  assert.match(transferStatusVerification, /unknown participant can mark a transfer as paid/i);
+  assert.match(transferStatusRollback, /Rollback refused/);
 });
 
 test("interaction hardening bounds metrics, profile access and stale invitations", () => {
