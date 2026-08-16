@@ -9,7 +9,8 @@ import {
 } from "../src/server/runtimeConfig.mjs";
 import {
   LEGACY_PUBLIC_ORIGIN,
-  normalizePublicOrigin
+  normalizePublicOrigin,
+  runtimeApiOrigins
 } from "../src/domain/publicOrigin.mjs";
 
 const root = process.cwd();
@@ -148,25 +149,31 @@ async function bundleNativeModules() {
 
 async function loadNativeBootstrapRuntimeConfig() {
   const androidBuild = await readAndroidBuildCode();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
   let remoteError = null;
 
-  try {
-    const response = await fetch(`${publicAppOrigin}/api/config`, {
-      cache: "no-store",
-      headers: {
-        "X-Sogrim-Platform": "android",
-        "X-Sogrim-App-Build": String(androidBuild)
-      },
-      signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return validateNativeBootstrapConfig(await response.json());
-  } catch (error) {
-    remoteError = error;
-  } finally {
-    clearTimeout(timeoutId);
+  for (const apiBaseUrl of runtimeApiOrigins({ publicUrl: publicAppOrigin })) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/config`, {
+        cache: "no-store",
+        headers: {
+          "X-Sogrim-Platform": "android",
+          "X-Sogrim-App-Build": String(androidBuild)
+        },
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return {
+        ...validateNativeBootstrapConfig(await response.json()),
+        publicUrl: publicAppOrigin,
+        apiBaseUrl
+      };
+    } catch (error) {
+      remoteError = error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   try {

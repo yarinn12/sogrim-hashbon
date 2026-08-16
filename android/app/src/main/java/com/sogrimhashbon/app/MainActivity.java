@@ -11,7 +11,7 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
-    private static final long SPLASH_SAFETY_TIMEOUT_MS = 3_500L;
+    private static final long SPLASH_SAFETY_TIMEOUT_MS = 1_800L;
     private boolean lightStatusBars = true;
 
     @Override

@@ -44,7 +44,7 @@
 ### יום 1 לפני פתיחת השער
 
 - הרצה אחרונה של `npm test`, `npm run qa:mobile`, שער Android הייעודי, `npm run qa:production` ו-`npm run metrics:report -- 14`.
-- שער החנות של Android: `$env:STORE_PUBLIC_ORIGIN='https://sogrim-hashbon-recovery.onrender.com'; node scripts/verify-store-readiness.mjs --android`.
+- שער החנות של Android: `node scripts/verify-store-readiness.mjs --android`. הבדיקה משתמשת כברירת מחדל בכתובת Render שמוגדרת ב-Google Play; אפשר להחליף אותה זמנית באמצעות `STORE_ANDROID_ORIGIN`.
 - שמירת תוצאות, בדיקת SHA-256 של ה-AAB ואיסור העלאת Build חדש אלא אם נמצא פגם חוסם.
 - בדיקת זמינות של איש הקשר לתמיכה ושל יכולת לעצור Rollout במהירות.
 

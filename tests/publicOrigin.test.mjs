@@ -6,6 +6,8 @@ import {
   isAllowedPublicUrl,
   LEGACY_PUBLIC_ORIGIN,
   normalizePublicOrigin,
+  RECOVERY_PUBLIC_ORIGIN,
+  runtimeApiOrigins,
   runtimePublicOrigin
 } from "../src/domain/publicOrigin.mjs";
 
@@ -26,9 +28,17 @@ test("runtime public origin keeps the live host as a safe migration fallback", (
   );
 });
 
+test("native API origins keep the public host first and add the recovery host", () => {
+  assert.deepEqual(runtimeApiOrigins({ publicUrl: "https://app.sogrim.example" }), [
+    "https://app.sogrim.example",
+    RECOVERY_PUBLIC_ORIGIN
+  ]);
+});
+
 test("public URL validation accepts the configured and legacy hosts only", () => {
   const publicUrl = "https://app.sogrim.example";
   assert.ok(allowedPublicHosts(publicUrl).has("app.sogrim.example"));
+  assert.ok(allowedPublicHosts(publicUrl).has(new URL(RECOVERY_PUBLIC_ORIGIN).hostname));
   assert.equal(isAllowedPublicUrl(`${publicUrl}/i/event/t/token`, publicUrl), true);
   assert.equal(isAllowedPublicUrl(`${LEGACY_PUBLIC_ORIGIN}/privacy`, publicUrl), true);
   assert.equal(isAllowedPublicUrl("https://evil.example/i/event/t/token", publicUrl), false);

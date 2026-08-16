@@ -5,6 +5,7 @@
 - The Android and iOS packages contain the complete web interface. Opening the installed app does not download the UI from Vercel.
 - Account state and shared-event state are written directly to Supabase. Local snapshots and a pending-sync queue preserve edits during a temporary connection failure.
 - Vercel serves public links and the Node API used for revocable invites, push delivery, account deletion, metrics and future purchase verification.
+- Native builds keep the official public-link host but probe the Vercel API first and the Render recovery API second. A successful recovery response becomes the active API origin without moving account or financial data.
 - A Vercel deployment block freezes releases but does not delete Supabase data or remove an already installed native app.
 
 ## Launch blockers
@@ -40,7 +41,7 @@ documented in [`public-domain-cutover-he.md`](./public-domain-cutover-he.md).
 | Failure | User impact | Recovery |
 | --- | --- | --- |
 | Vercel cannot deploy | Existing app and data continue; releases are frozen | Remove the block or deploy the prepared container elsewhere |
-| Vercel runtime is unavailable | Existing local data remains usable; revocable invites and server notifications pause | Move the custom domain to the backup host |
+| Vercel runtime is unavailable | Account and financial sync continue through Supabase; a current native build moves server API calls to the recovery host | Verify the recovery host and move a future stable custom domain if public links are also affected |
 | Supabase is temporarily unavailable | Edits remain local and enter the pending-sync queue | Sync resumes when Supabase returns |
 | A bad release is published | Installed app may remain on the previous store build; web can be rolled back | Promote the last healthy deployment and stop rollout |
 | Google Play release has a defect | Only the active rollout is affected | Halt staged rollout and publish the last verified AAB with a higher version code |

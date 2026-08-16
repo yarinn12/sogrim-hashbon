@@ -140,12 +140,20 @@ async function waitForInteractive(startedAt) {
       try {
         const state = await readWebViewState(socket);
         lastState = state;
-        const elapsedMs = Date.now() - startedAt;
-        milestones.firstWebViewMs ??= elapsedMs;
-        if (!state.appBoot) milestones.appRenderedMs ??= elapsedMs;
-        if (!state.authPending) milestones.authReadyMs ??= elapsedMs;
-        if (!state.splash) milestones.splashRemovedMs ??= elapsedMs;
+        const observedElapsedMs = Date.now() - startedAt;
+        const markedElapsedMs = startupElapsedMs(state, startedAt);
+        milestones.firstWebViewMs ??= observedElapsedMs;
+        milestones.appRenderedMs ??= markedElapsedMs.appRenderedMs;
+        milestones.authReadyMs ??= markedElapsedMs.authReadyMs;
+        milestones.splashRemovedMs ??= markedElapsedMs.splashRemovedMs;
+        if (!state.appBoot) milestones.appRenderedMs ??= observedElapsedMs;
+        if (!state.authPending) milestones.authReadyMs ??= observedElapsedMs;
+        if (!state.splash) milestones.splashRemovedMs ??= observedElapsedMs;
         if (state.interactive) {
+          const elapsedMs = Math.max(
+            nativeLaunchMs,
+            markedElapsedMs.interactiveMs || observedElapsedMs
+          );
           return {
             ready: true,
             elapsedMs,
@@ -190,6 +198,7 @@ async function readWebViewState(socket) {
 
   const result = await cdpEvaluate(page.webSocketDebuggerUrl, `({
     title: document.title,
+    timeOriginMs: Math.round(performance.timeOrigin),
     splash: Boolean(document.querySelector('#app-splash')),
     authPending: document.documentElement.classList.contains('account-auth-pending'),
     appBoot: document.querySelector('#app')?.classList.contains('app-boot') ?? true,
@@ -312,6 +321,26 @@ async function readWebViewState(socket) {
         })
   })`);
   return result;
+}
+
+function startupElapsedMs(state, startedAt) {
+  const timeOriginMs = Number(state?.timeOriginMs);
+  const markElapsed = (name) => {
+    const markMs = Number(state?.startupMarks?.[name]);
+    if (!Number.isFinite(timeOriginMs) || !Number.isFinite(markMs)) return undefined;
+    return Math.max(0, Math.round(timeOriginMs + markMs - startedAt));
+  };
+  const appRenderedMs = markElapsed("first-screen-rendered");
+  const authReadyMs = markElapsed("auth-ready");
+  const splashRemovedMs = markElapsed("splash-dismissed");
+  const interactiveMarks = [appRenderedMs, authReadyMs, splashRemovedMs]
+    .filter(Number.isFinite);
+  return {
+    appRenderedMs,
+    authReadyMs,
+    splashRemovedMs,
+    interactiveMs: interactiveMarks.length ? Math.max(...interactiveMarks) : undefined
+  };
 }
 
 function cdpEvaluate(url, expression) {

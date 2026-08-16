@@ -57,6 +57,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /native-core\.mjs/);
   assert.match(buildScript, /native-auth\.mjs/);
   assert.match(buildScript, /loadNativeBootstrapRuntimeConfig/);
+  assert.match(buildScript, /runtimeApiOrigins\(\{ publicUrl: publicAppOrigin \}\)/);
+  assert.match(buildScript, /apiBaseUrl/);
   assert.match(buildScript, /globalThis\.SogrimNativeRuntimeConfig/);
   assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv\)/);
   assert.match(buildScript, /validateNativeBootstrapConfig/);
@@ -69,6 +71,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeSmoke, /webview_devtools_remote_/);
   assert.match(nativeSmoke, /Runtime\.evaluate/);
   assert.match(nativeSmoke, /account-auth-pending/);
+  assert.match(nativeSmoke, /timeOriginMs: Math\.round\(performance\.timeOrigin\)/);
+  assert.match(nativeSmoke, /startupElapsedMs\(state, startedAt\)/);
   assert.match(nativeSmoke, /25_000/);
   assert.match(nativeSmoke, /ANDROID_QA_DEVICE/);
   assert.match(androidQaMetrics, /Multiple Android devices are connected/);
@@ -126,6 +130,14 @@ test("native projects include store signing and Apple privacy requirements", asy
   assert.match(androidManifest, /android:pathPrefix="\/i\/"/);
   assert.match(androidManifest, /android:pathPrefix="\/r\/"/);
   assert.match(androidManifest, /android:pathPrefix="\/auth\/callback"/);
+  assert.equal(
+    androidManifest.match(/android:host="sogrim-hashbon\.vercel\.app"/g)?.length,
+    3
+  );
+  assert.equal(
+    androidManifest.match(/android:host="sogrim-hashbon-recovery\.onrender\.com"/g)?.length,
+    3
+  );
   assert.doesNotMatch(androidManifest, /android:scheme="com\.sogrimhashbon\.app"/);
   assert.doesNotMatch(
     androidManifest,
@@ -135,7 +147,7 @@ test("native projects include store signing and Apple privacy requirements", asy
   assert.match(androidActivity, /setBackgroundColor\(Color\.rgb\(217, 213, 207\)\)/);
   assert.match(androidActivity, /setKeepOnScreenCondition/);
   assert.match(androidActivity, /getProgress\(\) < 25/);
-  assert.match(androidActivity, /SPLASH_SAFETY_TIMEOUT_MS = 3_500L/);
+  assert.match(androidActivity, /SPLASH_SAFETY_TIMEOUT_MS = 1_800L/);
   assert.match(androidActivity, /setLightStatusBars/);
   assert.match(capabilitiesPlugin, /setSystemBarStyle/);
   assert.equal(appSplash.match(/setNativeSystemBarStyle\(true\)/g)?.length, 2);

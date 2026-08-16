@@ -34,7 +34,11 @@ import {
   refreshSharedEvents,
   syncSharedEvents
 } from "./sharedEventStore.mjs";
-import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
+import {
+  normalizePublicOrigin,
+  runtimeApiOrigins,
+  runtimePublicOrigin
+} from "../domain/publicOrigin.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const RUNTIME_CONFIG_TIMEOUT_MS = 4_000;
@@ -245,11 +249,13 @@ function refreshRuntimeConfig(nativeRuntime) {
 function requestRuntimeConfig(nativeRuntime) {
   return nativeRuntimeConfigRequestOptions(nativeRuntime)
     .then((requestOptions) => fetchRuntimeConfig(nativeRuntime, requestOptions))
-    .then((response) => {
+    .then(({ response, apiBaseUrl }) => {
       if (!response.ok) throw new Error("Runtime config unavailable");
-      return response.json();
+      return response.json().then((config) => ({ config, apiBaseUrl }));
     })
-    .then((config) => normalizeRuntimeConfig(config, nativeRuntime));
+    .then(({ config, apiBaseUrl }) =>
+      normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl)
+    );
 }
 
 function nativeBootstrapRuntimeConfig(nativeRuntime) {
@@ -266,30 +272,47 @@ function nativeBootstrapRuntimeConfig(nativeRuntime) {
   return normalizeRuntimeConfig(config, true);
 }
 
-function normalizeRuntimeConfig(config, nativeRuntime) {
+function normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl = "") {
+  const bootstrapPublicUrl = normalizePublicOrigin(
+    globalThis[NATIVE_RUNTIME_CONFIG_GLOBAL]?.publicUrl
+  );
+  const nativePublicUrl = nativeRuntime
+    ? bootstrapPublicUrl || runtimePublicOrigin(config)
+    : config?.publicUrl;
   return {
     ...config,
-    apiBaseUrl: nativeRuntime ? runtimePublicOrigin(config) : ""
+    publicUrl: nativePublicUrl,
+    apiBaseUrl: nativeRuntime
+      ? normalizePublicOrigin(apiBaseUrl || config?.apiBaseUrl, runtimePublicOrigin(config))
+      : ""
   };
 }
 
 async function fetchRuntimeConfig(nativeRuntime, requestOptions) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    RUNTIME_CONFIG_TIMEOUT_MS
-  );
-  try {
-    return await fetch(
-      `${nativeRuntime ? runtimePublicOrigin() : ""}/api/config`,
-      {
+  const origins = nativeRuntime ? runtimeApiOrigins() : [""];
+  let lastError = null;
+
+  for (const apiBaseUrl of origins) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      RUNTIME_CONFIG_TIMEOUT_MS
+    );
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/config`, {
         ...requestOptions,
         signal: controller.signal
-      }
-    );
-  } finally {
-    clearTimeout(timeoutId);
+      });
+      if (response.ok) return { response, apiBaseUrl };
+      lastError = new Error(`Runtime config HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
+
+  throw lastError ?? new Error("Runtime config unavailable");
 }
 
 async function recoverOnlineSync() {

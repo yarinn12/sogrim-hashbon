@@ -149,6 +149,155 @@ test("native runtime config identifies the Android app build without user data",
   }
 });
 
+test("native runtime config fails over to the recovery API without changing shared links", async () => {
+  const storage = memoryStorage();
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const previousCapacitor = globalThis.Capacitor;
+  const requestedUrls = [];
+  const location = {
+    href: "https://localhost/",
+    hostname: "localhost",
+    protocol: "https:"
+  };
+
+  globalThis.window = {
+    addEventListener() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "android",
+    Plugins: { App: { async getInfo() { return { build: "70", version: "3.51" }; } } }
+  };
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    if (requestedUrls.length === 1) throw new Error("primary unavailable");
+    return {
+      ok: true,
+      async json() {
+        return {
+          publicUrl: "https://sogrim-hashbon-recovery.onrender.com",
+          storage: {
+            mode: "supabase",
+            url: "https://project.supabase.co",
+            anonKey: "anon-key"
+          }
+        };
+      }
+    };
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?native-runtime-failover=${Date.now()}`
+    );
+    const config = await localStore.loadRuntimeConfig();
+
+    assert.deepEqual(requestedUrls, [
+      "https://sogrim-hashbon.vercel.app/api/config",
+      "https://sogrim-hashbon-recovery.onrender.com/api/config"
+    ]);
+    assert.equal(config.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
+    assert.equal(config.publicUrl, "https://sogrim-hashbon-recovery.onrender.com");
+    assert.equal(config.storage.mode, "supabase");
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+    restoreGlobal("Capacitor", previousCapacitor);
+  }
+});
+
+test("native recovery keeps the bundled public link while moving server calls", async () => {
+  const storage = memoryStorage();
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const previousCapacitor = globalThis.Capacitor;
+  const previousBootstrap = globalThis.SogrimNativeRuntimeConfig;
+  const requestedUrls = [];
+  const location = {
+    href: "https://localhost/",
+    hostname: "localhost",
+    protocol: "https:"
+  };
+
+  globalThis.window = {
+    addEventListener() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "android",
+    Plugins: { App: { async getInfo() { return { build: "70", version: "3.51" }; } } }
+  };
+  globalThis.SogrimNativeRuntimeConfig = {
+    publicUrl: "https://sogrim-hashbon.vercel.app",
+    storage: {
+      mode: "supabase",
+      url: "https://project.supabase.co",
+      anonKey: "native-anon-key"
+    }
+  };
+  globalThis.fetch = async (url) => {
+    requestedUrls.push(String(url));
+    if (requestedUrls.length === 1) throw new Error("primary unavailable");
+    return {
+      ok: true,
+      async json() {
+        return {
+          publicUrl: "https://sogrim-hashbon-recovery.onrender.com",
+          storage: {
+            mode: "supabase",
+            url: "https://project.supabase.co",
+            anonKey: "recovery-anon-key"
+          }
+        };
+      }
+    };
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?native-runtime-bootstrap-failover=${Date.now()}`
+    );
+    const initialConfig = await localStore.loadRuntimeConfig();
+    assert.equal(initialConfig.apiBaseUrl, "https://sogrim-hashbon.vercel.app");
+
+    for (let attempt = 0; attempt < 20 && requestedUrls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const recoveredConfig = await localStore.loadRuntimeConfig();
+
+    assert.deepEqual(requestedUrls, [
+      "https://sogrim-hashbon.vercel.app/api/config",
+      "https://sogrim-hashbon-recovery.onrender.com/api/config"
+    ]);
+    assert.equal(recoveredConfig.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
+    assert.equal(recoveredConfig.publicUrl, "https://sogrim-hashbon.vercel.app");
+    assert.equal(recoveredConfig.storage.anonKey, "recovery-anon-key");
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+    restoreGlobal("Capacitor", previousCapacitor);
+    restoreGlobal("SogrimNativeRuntimeConfig", previousBootstrap);
+  }
+});
+
 test("native runtime config uses the bundled bootstrap without blocking on the network", async () => {
   const storage = memoryStorage();
   const previousWindow = globalThis.window;

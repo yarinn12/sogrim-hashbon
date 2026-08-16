@@ -8,6 +8,11 @@ import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mj
 const root = process.cwd();
 const androidOnly = process.argv.includes("--android");
 const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-hashbon.vercel.app").replace(/\/+$/, "");
+const androidStoreOrigin = String(
+  process.env.STORE_ANDROID_ORIGIN ??
+  process.env.STORE_PUBLIC_ORIGIN ??
+  "https://sogrim-hashbon-recovery.onrender.com"
+).replace(/\/+$/, "");
 const localChecks = [];
 const liveChecks = [];
 const manualChecks = [];
@@ -155,7 +160,7 @@ for (const path of ["privacy", "support", "terms", "account-deletion"]) {
 }
 
 try {
-  const response = await fetchWithRetry(`${publicOrigin}/app-ads.txt`, {
+  const response = await fetchWithRetry(`${androidStoreOrigin}/app-ads.txt`, {
     redirect: "manual"
   });
   const body = await response.text();
@@ -173,7 +178,7 @@ try {
 }
 
 try {
-  const response = await fetchWithRetry(`${publicOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
+  const response = await fetchWithRetry(`${androidStoreOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
   const statements = await response.json();
   liveChecks.push({
     name: "Live Android App Links association",
@@ -236,6 +241,7 @@ const androidReady = [
 ].every((check) => check.ok);
 console.log(JSON.stringify({
   requestedPlatform: androidOnly ? "android" : "all",
+  origins: { publicOrigin, androidStoreOrigin },
   androidReady,
   localReady,
   liveReady,

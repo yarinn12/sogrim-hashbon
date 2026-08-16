@@ -79,7 +79,7 @@ test.beforeEach(async ({ page, request }) => {
   await page.goto("/");
 });
 
-test("a manager can keep every reimbursement attached to the original payer", async ({ page }) => {
+test("a manager can reimburse only net funders without reciprocal transfers", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
   await expect(page.getByText("חלוקת ההחזרים", { exact: true })).toBeVisible();
@@ -105,7 +105,11 @@ test("a manager can keep every reimbursement attached to the original payer", as
   await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
 
   const rows = page.locator(".settlement-transfer-board .transfer-row");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText("אבי לוי");
+  await expect(rows.first()).toContainText("ירין יצחק");
+  await expect(rows.first()).toContainText("30.00");
+  await expect(rows.first()).not.toContainText("דני כהן");
   await rows.first().locator(".transfer-explanation > summary").click();
   await expect(rows.first().locator(".transfer-minimization-note")).toContainText(
     "החזר ישיר למי ששילם"
