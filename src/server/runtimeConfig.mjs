@@ -1,6 +1,8 @@
 const SNAPSHOT_TABLE = "app_snapshots";
 const DEFAULT_ANDROID_AD_BUILD = 28;
 const DEFAULT_ANDROID_PREMIUM_BUILD = 30;
+const ANDROID_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app";
 
 export function getRuntimeConfig(env = process.env, requestOrigin = "") {
   const publicUrl = normalizeUrl(env.APP_PUBLIC_URL || requestOrigin);
@@ -50,6 +52,14 @@ export function getRuntimeConfig(env = process.env, requestOrigin = "") {
     publicUrl,
     auth: {
       googleClientId
+    },
+    updates: {
+      android: {
+        minimumSupportedBuild: nonNegativeInteger(
+          env.ANDROID_MIN_SUPPORTED_BUILD
+        ),
+        storeUrl: ANDROID_STORE_URL
+      }
     },
     monetization: {
       adsEnabled,
@@ -111,13 +121,20 @@ export function getClientRuntimeConfig(
   { platform = "", build = "" } = {}
 ) {
   const monetization = config?.monetization ?? {};
+  const updates = config?.updates ?? {};
+  const androidUpdates = updates.android ?? {};
   const clientBuild = nonNegativeInteger(build);
+  const normalizedPlatform = String(platform).trim().toLowerCase();
+  const isAndroid = normalizedPlatform === "android";
+  const minimumSupportedBuild = nonNegativeInteger(
+    androidUpdates.minimumSupportedBuild
+  );
   const minimumAndroidBuild = positiveInteger(
     monetization.minimumAndroidBuild,
     DEFAULT_ANDROID_AD_BUILD
   );
   const eligibleAndroidBuild =
-    String(platform).trim().toLowerCase() === "android" &&
+    isAndroid &&
     clientBuild >= minimumAndroidBuild;
   const rolloutPercent = percentage(monetization.rolloutPercent);
   const premiumMinimumAndroidBuild = positiveInteger(
@@ -125,11 +142,26 @@ export function getClientRuntimeConfig(
     DEFAULT_ANDROID_PREMIUM_BUILD
   );
   const eligiblePremiumBuild =
-    String(platform).trim().toLowerCase() === "android" &&
+    isAndroid &&
     clientBuild >= premiumMinimumAndroidBuild;
 
   return {
     ...config,
+    updates: {
+      ...updates,
+      android: {
+        ...androidUpdates,
+        minimumSupportedBuild,
+        currentBuild: isAndroid ? clientBuild : 0,
+        required: Boolean(
+          isAndroid &&
+          clientBuild > 0 &&
+          minimumSupportedBuild > 0 &&
+          clientBuild < minimumSupportedBuild
+        ),
+        storeUrl: ANDROID_STORE_URL
+      }
+    },
     monetization: {
       ...monetization,
       adsEnabled: Boolean(

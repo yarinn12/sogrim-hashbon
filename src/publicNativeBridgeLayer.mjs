@@ -27,6 +27,7 @@ function setupNativeBridge() {
 
   const plugins = globalThis.Capacitor?.Plugins ?? {};
   const appPlugin = plugins.App;
+  const appLauncherPlugin = plugins.AppLauncher;
   const browserPlugin = plugins.Browser;
   const hapticsPlugin = plugins.Haptics;
   const sharePlugin = plugins.Share;
@@ -48,6 +49,17 @@ function setupNativeBridge() {
           build: String(info?.build ?? ""),
           platform: nativePlatform
         };
+      },
+      async openStore({ marketUrl = "", storeUrl = "" } = {}) {
+        if (appLauncherPlugin?.openUrl && marketUrl) {
+          try {
+            const result = await appLauncherPlugin.openUrl({ url: marketUrl });
+            if (result?.completed !== false) return true;
+          } catch {}
+        }
+        if (!browserPlugin?.open || !storeUrl) return false;
+        await browserPlugin.open({ url: storeUrl, presentationStyle: "popover" });
+        return true;
       }
     },
     async openAuth(url) {

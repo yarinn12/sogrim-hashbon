@@ -34,6 +34,7 @@
     "qa:android-journey": "node scripts/verify-android-user-journey.mjs",
     "qa:android-font-scale": "node scripts/verify-android-font-scale.mjs",
     "qa:android-benchmark": "node scripts/benchmark-android-startup.mjs",
+    "qa:android-update": "node scripts/verify-mandatory-android-update.mjs",
     "qa:scale": "node scripts/benchmark-data-scale.mjs",
     "qa:contention": "node scripts/benchmark-shared-event-contention.mjs",
     "qa:capacity": "npm run qa:scale && npm run qa:contention",
@@ -51,6 +52,7 @@
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",
     "@capacitor/app": "^8.1.1",
+    "@capacitor/app-launcher": "^8.0.1",
     "@capacitor/browser": "^8.0.4",
     "@capacitor/core": "^8.4.2",
     "@capacitor/haptics": "^8.0.2",

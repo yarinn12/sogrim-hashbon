@@ -10,6 +10,12 @@ test("getRuntimeConfig stays in local mode without cloud environment values", ()
   const config = getRuntimeConfig({});
 
   assert.deepEqual(config.auth, { googleClientId: "" });
+  assert.deepEqual(config.updates, {
+    android: {
+      minimumSupportedBuild: 0,
+      storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
+    }
+  });
   assert.deepEqual(config.monetization, {
     adsEnabled: false,
     androidBannerId: "",
@@ -143,6 +149,67 @@ test("client runtime config enables only an eligible Android build", () => {
   assert.equal(scoped.monetization.testMode, true);
   assert.equal(scoped.monetization.rolloutPercent, 5);
   assert.equal(scoped.monetization.minimumAndroidBuild, 28);
+});
+
+test("mandatory Android updates are disabled until a minimum build is configured", () => {
+  const config = getRuntimeConfig({});
+  const scoped = getClientRuntimeConfig(config, {
+    platform: "android",
+    build: "75"
+  });
+
+  assert.deepEqual(scoped.updates.android, {
+    minimumSupportedBuild: 0,
+    currentBuild: 75,
+    required: false,
+    storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
+  });
+});
+
+test("mandatory Android updates block only known Android builds below the minimum", () => {
+  const config = getRuntimeConfig({
+    ANDROID_MIN_SUPPORTED_BUILD: "77"
+  });
+
+  assert.equal(
+    getClientRuntimeConfig(config, {
+      platform: "android",
+      build: "76"
+    }).updates.android.required,
+    true
+  );
+  assert.equal(
+    getClientRuntimeConfig(config, {
+      platform: "android",
+      build: "77"
+    }).updates.android.required,
+    false
+  );
+  assert.equal(
+    getClientRuntimeConfig(config, {
+      platform: "web",
+      build: "76"
+    }).updates.android.required,
+    false
+  );
+  assert.equal(
+    getClientRuntimeConfig(config, {
+      platform: "android",
+      build: ""
+    }).updates.android.required,
+    false
+  );
+});
+
+test("invalid mandatory update values fail open", () => {
+  for (const value of ["-1", "not-a-build", ""]) {
+    const scoped = getClientRuntimeConfig(
+      getRuntimeConfig({ ANDROID_MIN_SUPPORTED_BUILD: value }),
+      { platform: "android", build: "1" }
+    );
+    assert.equal(scoped.updates.android.minimumSupportedBuild, 0);
+    assert.equal(scoped.updates.android.required, false);
+  }
 });
 
 test("production ads remain off when rollout percentage is zero", () => {

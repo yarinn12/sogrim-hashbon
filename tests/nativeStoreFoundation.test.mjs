@@ -25,6 +25,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.equal(packageJson.scripts["qa:android-native"], "node scripts/verify-android-native-smoke.mjs");
   assert.equal(packageJson.scripts["qa:android-benchmark"], "node scripts/benchmark-android-startup.mjs");
   assert.ok(packageJson.dependencies["@capacitor/app"]);
+  assert.ok(packageJson.dependencies["@capacitor/app-launcher"]);
   assert.ok(packageJson.dependencies["@capacitor/share"]);
   assert.ok(packageJson.dependencies["@capacitor/push-notifications"]);
   assert.ok(packageJson.dependencies["@capgo/capacitor-social-login"]);
@@ -179,6 +180,7 @@ test("native bridge handles deep links, Android back, share and OAuth return", a
   ]);
 
   assert.match(index, /publicNativeBridgeLayer\.mjs/);
+  assert.match(index, /publicMandatoryUpdateLayer\.mjs/);
   assert.match(bridge, /appUrlOpen/);
   assert.match(bridge, /getLaunchUrl/);
   assert.match(bridge, /backButton/);
@@ -187,6 +189,8 @@ test("native bridge handles deep links, Android back, share and OAuth return", a
   assert.match(bridge, /if \(!window\.dispatchEvent\(backRequest\)\)/);
   assert.doesNotMatch(bridge, /history\.length > 1/);
   assert.match(bridge, /sharePlugin\.share/);
+  assert.match(bridge, /appLauncherPlugin\.openUrl/);
+  assert.match(bridge, /marketUrl/);
   assert.match(bridge, /NATIVE_AUTH_PATH.*nativePublicOrigin/s);
   assert.match(bridge, /history\.replaceState\(history\.state, "", destination\)/);
   assert.match(bridge, /window\.location\.reload\(\)/);
@@ -196,6 +200,7 @@ test("native bridge handles deep links, Android back, share and OAuth return", a
   assert.match(localStore, /Plugins\?\.App\?\.getInfo/);
   assert.match(authLayer, /SogrimNative\?\.openAuth/);
   assert.match(sw, /publicNativeBridgeLayer\.mjs/);
+  assert.match(sw, /publicMandatoryUpdateLayer\.mjs/);
   assert.match(sw, /nativeDeepLinks\.mjs/);
   assert.match(
     await readFile("server.mjs", "utf8"),

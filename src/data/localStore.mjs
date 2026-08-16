@@ -52,6 +52,14 @@ const SYNC_STATUS_EVENT = "sogrim:sync-status";
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
   auth: { googleClientId: "" },
+  updates: {
+    android: {
+      minimumSupportedBuild: 0,
+      currentBuild: 0,
+      required: false,
+      storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
+    }
+  },
   monetization: {
     adsEnabled: false,
     androidBannerId: "",
@@ -231,6 +239,12 @@ export async function retryRuntimeConfig() {
     runtimeConfigUsedFallback = false;
   }
   return loadRuntimeConfig();
+}
+
+export async function refreshRuntimeConfigNow() {
+  return attachStoredAccountIdentity(
+    await refreshRuntimeConfig(isNativeRuntime())
+  );
 }
 
 function refreshRuntimeConfig(nativeRuntime) {

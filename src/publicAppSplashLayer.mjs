@@ -14,6 +14,7 @@ const MIN_VISIBLE_VIDEO_MS = 300;
 const MAX_SPLASH_WAIT_MS = 5500;
 const MAX_SPLASH_RENDER_RETRY_MS = 750;
 const SPLASH_EXIT_MS = 100;
+const UPDATE_CHECK_EVENT = "sogrim:mandatory-update-check";
 
 const showPosterOnly = consumeSplashBypass();
 
@@ -53,6 +54,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     subtree: true
   });
   document.addEventListener("account-auth-ready", dismissWhenReady);
+  document.addEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
   maximumWaitId = window.setTimeout(
     dismissAfterMaximumWait,
     MAX_SPLASH_WAIT_MS
@@ -200,7 +202,10 @@ function installSplash({ showPosterOnly = false } = {}) {
   function dismissAfterMaximumWait() {
     maximumWaitId = 0;
     if (dismissed) return;
-    if (app.classList.contains("app-boot")) {
+    if (
+      app.classList.contains("app-boot") ||
+      document.documentElement.classList.contains("mandatory-update-checking")
+    ) {
       maximumWaitId = window.setTimeout(
         dismissAfterMaximumWait,
         MAX_SPLASH_RENDER_RETRY_MS
@@ -252,6 +257,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     window.clearInterval(watchdogIntervalId);
     appObserver.disconnect();
     document.removeEventListener("account-auth-ready", dismissWhenReady);
+    document.removeEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     video?.removeEventListener("playing", handleVideoPlaying);
     video?.removeEventListener("timeupdate", handleVideoProgress);
@@ -293,5 +299,8 @@ function applicationIsReady() {
   const accountGateRendered = Boolean(
     document.querySelector("#public-account-auth-gate")
   );
-  return !accountAuthPending && (accountGateRendered || appRendered);
+  const updateCheckPending = document.documentElement.classList.contains(
+    "mandatory-update-checking"
+  );
+  return !updateCheckPending && !accountAuthPending && (accountGateRendered || appRendered);
 }
