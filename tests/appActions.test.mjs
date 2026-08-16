@@ -500,6 +500,15 @@ test("updateTransferStatus marks a transfer as paid with audit details", () => {
     markedPaidAt: "2026-05-23T02:00:00.000Z",
     statusUpdatedAt: "2026-05-23T02:00:00.000Z"
   });
+  assert.deepEqual(state.events[0].transferStatusUpdates, [
+    {
+      id: "transfer-dani-owner-3000",
+      status: "paid",
+      updatedAt: "2026-05-23T02:00:00.000Z",
+      markedAt: "2026-05-23T02:00:00.000Z",
+      markedPaidByParticipantId: "owner"
+    }
+  ]);
 });
 
 test("updateTransferStatus can return a paid transfer to pending", () => {
@@ -529,6 +538,14 @@ test("updateTransferStatus can return a paid transfer to pending", () => {
     status: "pending",
     statusUpdatedAt: "2026-05-23T03:00:00.000Z"
   });
+  assert.deepEqual(state.events[0].transferStatusUpdates, [
+    {
+      id: "transfer-dani-owner-3000",
+      status: "pending",
+      updatedAt: "2026-05-23T03:00:00.000Z",
+      markedAt: "2026-05-23T03:00:00.000Z"
+    }
+  ]);
 });
 
 test("repeating the same transfer status is idempotent", () => {

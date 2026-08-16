@@ -8349,7 +8349,7 @@ function renderTransferRow(
           }
           ${
             paid && isGroupedPaidTransfer
-              ? `<span class="secondary-button transfer-complete-button is-static" role="status"><span aria-hidden="true">✓</span> הושלם</span>`
+              ? `<button class="secondary-button transfer-complete-button" data-action="mark-pending-group" data-transfer-ids="${escapeAttribute(groupedPaidTransfers.map((paidTransfer) => paidTransfer.id).join(","))}" aria-label="${escapeAttribute(`${formatCount(groupedPaidTransfers.length, "העברה שסומנה", "העברות שסומנו")} כהושלמו. לחיצה תבטל את כל הסימונים`)}"><span aria-hidden="true">✓</span> הושלם</button>`
               : paid
               ? `<button class="secondary-button transfer-complete-button" data-action="mark-pending" data-transfer-id="${transfer.id}" aria-label="${escapeAttribute(`ההעברה מ-${fromName} ל-${toName} הושלמה. לחיצה תבטל את הסימון`)}"><span aria-hidden="true">✓</span> הושלם</button>`
               : `<button class="primary-button" data-action="mark-paid" data-transfer-id="${transfer.id}">${pendingActionLabel}</button>`
@@ -10286,6 +10286,14 @@ async function handleClick(event) {
 
   if (action === "mark-pending") {
     markTransferPending(target.dataset.transferId);
+  }
+
+  if (action === "mark-pending-group") {
+    markTransfersPending(
+      String(target.dataset.transferIds || "")
+        .split(",")
+        .filter(Boolean)
+    );
   }
 
   if (action === "send-payment-reminder") {
@@ -14378,24 +14386,38 @@ function markTransferPaid(transferId, trigger) {
 }
 
 function markTransferPending(transferId) {
+  markTransfersPending([transferId]);
+}
+
+function markTransfersPending(transferIds) {
   const event = getEvent(screen.eventId);
-  const transfer = event?.transfers.find((item) => item.id === transferId);
-  if (!transfer || transfer.status !== "paid") return;
+  const transferIdsToUpdate = new Set(transferIds);
+  const transfers = (event?.transfers ?? []).filter(
+    (transfer) =>
+      transferIdsToUpdate.has(transfer.id) && transfer.status === "paid"
+  );
+  if (!event || !transfers.length) return;
 
   const markedAt = new Date().toISOString();
-  state = updateTransferStatus(state, event.id, transferId, {
-    status: "pending",
-    markedAt
-  });
+  for (const transfer of transfers) {
+    state = updateTransferStatus(state, event.id, transfer.id, {
+      status: "pending",
+      markedAt
+    });
+  }
   const updatedEvent = getEvent(event.id);
   reconcileEventTransfers(updatedEvent, updatedEvent?.transfers ?? []);
-  recordEventActivity(event.id, "transfer-pending", {
-    entityId: transfer.id,
-    fromParticipantId: transfer.fromParticipantId,
-    toParticipantId: transfer.toParticipantId
-  }, markedAt);
+  for (const transfer of transfers) {
+    recordEventActivity(event.id, "transfer-pending", {
+      entityId: transfer.id,
+      fromParticipantId: transfer.fromParticipantId,
+      toParticipantId: transfer.toParticipantId
+    }, markedAt);
+  }
   syncSettlementCloseConfirmation(event.id);
-  notice = "סימון התשלום בוטל.";
+  notice = transfers.length === 1
+    ? "סימון התשלום בוטל."
+    : "סימוני התשלומים בוטלו.";
   persistState();
   render();
 }

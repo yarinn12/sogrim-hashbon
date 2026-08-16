@@ -467,6 +467,56 @@ test("a newer pending status can undo a stale paid mark after sync", () => {
   assert.equal(transfer.markedPaidAt, undefined);
 });
 
+test("a canceled payment cannot return from a stale device after reconciliation", () => {
+  const remote = settlementState({
+    id: "event-1",
+    transfers: [
+      {
+        id: "transfer-friend-owner-3000",
+        fromParticipantId: "friend",
+        toParticipantId: "owner",
+        amount: 3000,
+        status: "paid",
+        markedPaidAt: "2026-07-24T10:00:00.000Z",
+        statusUpdatedAt: "2026-07-24T10:00:00.000Z"
+      }
+    ]
+  });
+  const local = settlementState({
+    id: "event-1",
+    transfers: [
+      {
+        id: "transfer-friend-owner-5000",
+        fromParticipantId: "friend",
+        toParticipantId: "owner",
+        amount: 5000,
+        status: "pending"
+      }
+    ],
+    transferStatusUpdates: [
+      {
+        id: "transfer-friend-owner-3000",
+        status: "pending",
+        updatedAt: "2026-07-24T11:00:00.000Z",
+        markedAt: "2026-07-24T11:00:00.000Z"
+      }
+    ]
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+
+  assert.deepEqual(event.transfers, [
+    {
+      id: "transfer-friend-owner-5000",
+      fromParticipantId: "friend",
+      toParticipantId: "owner",
+      amount: 5000,
+      status: "pending"
+    }
+  ]);
+  assert.deepEqual(event.transferStatusUpdates, local.events[0].transferStatusUpdates);
+});
+
 test("stale pending settlement versions are rebuilt instead of accumulating", () => {
   const remote = settlementState({
     id: "event-1",

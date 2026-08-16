@@ -7,6 +7,10 @@ test("settlement screen lets a paid transfer return to pending", async () => {
 
   assert.match(app, /data-action="mark-pending"/);
   assert.match(app, /markTransferPending\(target\.dataset\.transferId\)/);
+  assert.match(app, /data-action="mark-pending-group"/);
+  assert.match(app, /markTransfersPending/);
+  assert.match(app, /data-transfer-ids=/);
+  assert.doesNotMatch(app, /transfer-complete-button is-static/);
   assert.match(app, /updateTransferStatus/);
   assert.match(app, /"מחכה שתעביר"/);
   assert.match(app, /"מחכה שיגיע"/);

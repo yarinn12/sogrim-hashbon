@@ -417,6 +417,13 @@ export function updateTransferStatus(state, eventId, transferId, update) {
   const currentStatus = transfer?.status === "paid" ? "paid" : "pending";
   if (!transfer || currentStatus === nextStatus) return state;
 
+  const markedAt = update.markedAt || new Date().toISOString();
+  const statusUpdate = buildTransferStatusUpdate(transferId, {
+    ...update,
+    status: nextStatus,
+    markedAt
+  });
+
   return {
     ...state,
     events: state.events.map((event) =>
@@ -424,7 +431,13 @@ export function updateTransferStatus(state, eventId, transferId, update) {
         ? {
             ...event,
             transfers: event.transfers.map((transfer) =>
-              transfer.id === transferId ? applyTransferStatus(transfer, update) : transfer
+              transfer.id === transferId
+                ? applyTransferStatus(transfer, statusUpdate)
+                : transfer
+            ),
+            transferStatusUpdates: upsertTransferStatusUpdate(
+              event.transferStatusUpdates,
+              statusUpdate
             )
           }
         : event
@@ -475,12 +488,12 @@ export function reopenEvent(state, eventId, reopenedAt) {
 }
 
 function applyTransferStatus(transfer, update) {
-  const statusUpdatedAt = update.markedAt || new Date().toISOString();
+  const statusUpdatedAt = update.markedAt;
   if (update.status === "paid") {
     return {
       ...transfer,
       status: "paid",
-      markedPaidByParticipantId: update.participantId,
+      markedPaidByParticipantId: update.markedPaidByParticipantId,
       markedPaidAt: statusUpdatedAt,
       statusUpdatedAt
     };
@@ -488,6 +501,28 @@ function applyTransferStatus(transfer, update) {
 
   const { markedPaidByParticipantId, markedPaidAt, ...pendingTransfer } = transfer;
   return { ...pendingTransfer, status: "pending", statusUpdatedAt };
+}
+
+function buildTransferStatusUpdate(transferId, update) {
+  const statusUpdate = {
+    id: transferId,
+    status: update.status === "paid" ? "paid" : "pending",
+    updatedAt: update.markedAt,
+    markedAt: update.markedAt
+  };
+  if (statusUpdate.status === "paid" && update.participantId) {
+    statusUpdate.markedPaidByParticipantId = update.participantId;
+  }
+  return statusUpdate;
+}
+
+function upsertTransferStatusUpdate(statusUpdates, nextUpdate) {
+  const updates = Array.isArray(statusUpdates) ? statusUpdates : [];
+  const existingIndex = updates.findIndex((update) => update.id === nextUpdate.id);
+  if (existingIndex < 0) return [...updates, nextUpdate];
+  return updates.map((update, index) =>
+    index === existingIndex ? nextUpdate : update
+  );
 }
 
 export function setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly) {

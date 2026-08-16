@@ -111,10 +111,14 @@ function reconcileMergedEventTransfers(event, participants) {
   const eventParticipants = (participants ?? []).filter((participant) =>
     eventParticipantIds.has(participant?.id)
   );
+  const transfersWithStatusUpdates = applyTransferStatusUpdates(
+    event.transfers,
+    event.transferStatusUpdates
+  );
   const settlement = reconcileSettlementTransfers(
     eventParticipants,
     event.expenses,
-    event.transfers,
+    transfersWithStatusUpdates,
     settlementOptionsForEvent(event)
   );
 
@@ -415,6 +419,11 @@ function mergeEvent(remoteEvent, localEvent) {
       remoteEvent.transfers,
       localEvent.transfers,
       mergeTransfer
+    ),
+    transferStatusUpdates: mergeEntities(
+      remoteEvent.transferStatusUpdates,
+      localEvent.transferStatusUpdates,
+      mergeTransferStatusUpdate
     )
   };
 }
@@ -686,6 +695,65 @@ function mergeTransfer(remoteTransfer, localTransfer) {
   }
 
   return merged;
+}
+
+function mergeTransferStatusUpdate(remoteUpdate, localUpdate) {
+  const remoteTime = timestamp(remoteUpdate.updatedAt);
+  const localTime = timestamp(localUpdate.updatedAt);
+  if (
+    remoteTime === localTime &&
+    (remoteUpdate.status === "paid") !== (localUpdate.status === "paid")
+  ) {
+    return cloneValue(
+      remoteUpdate.status === "pending" ? remoteUpdate : localUpdate
+    );
+  }
+  return cloneValue(remoteTime > localTime ? remoteUpdate : localUpdate);
+}
+
+function applyTransferStatusUpdates(transfers, statusUpdates) {
+  const updatesById = new Map(
+    (Array.isArray(statusUpdates) ? statusUpdates : [])
+      .filter((update) => update?.id)
+      .map((update) => [update.id, update])
+  );
+
+  return (transfers ?? []).map((transfer) => {
+    const statusUpdate = updatesById.get(transfer?.id);
+    if (!statusUpdate) return transfer;
+
+    const transferStatusTime = timestamp(
+      transfer.statusUpdatedAt ?? transfer.markedPaidAt
+    );
+    const updateTime = timestamp(statusUpdate.updatedAt);
+    if (updateTime < transferStatusTime) return transfer;
+
+    const {
+      markedPaidAt,
+      markedPaidByParticipantId,
+      ...transferWithoutPaidStatus
+    } = transfer;
+    if (statusUpdate.status !== "paid") {
+      return {
+        ...transferWithoutPaidStatus,
+        status: "pending",
+        statusUpdatedAt: statusUpdate.updatedAt
+      };
+    }
+
+    return {
+      ...transferWithoutPaidStatus,
+      status: "paid",
+      statusUpdatedAt: statusUpdate.updatedAt,
+      markedPaidAt: statusUpdate.markedAt ?? statusUpdate.updatedAt,
+      ...(statusUpdate.markedPaidByParticipantId
+        ? {
+            markedPaidByParticipantId:
+              statusUpdate.markedPaidByParticipantId
+          }
+        : {})
+    };
+  });
 }
 
 function removeDeletedGroupParticipants(group, deletedParticipantIds) {
@@ -1009,6 +1077,20 @@ function remapEventParticipantReferences(
             deletedParticipantIds.has(transfer.toParticipantId)
           )
       );
+  }
+  if (Array.isArray(event.transferStatusUpdates)) {
+    nextEvent.transferStatusUpdates = event.transferStatusUpdates.map(
+      (statusUpdate) => {
+        const nextStatusUpdate = { ...statusUpdate };
+        if (statusUpdate.markedPaidByParticipantId) {
+          nextStatusUpdate.markedPaidByParticipantId = remapParticipantId(
+            statusUpdate.markedPaidByParticipantId,
+            redirects
+          );
+        }
+        return nextStatusUpdate;
+      }
+    );
   }
   if (Array.isArray(event.activityLog)) {
     nextEvent.activityLog = event.activityLog.map((entry) => ({
