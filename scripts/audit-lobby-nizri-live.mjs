@@ -118,6 +118,20 @@ try {
             comparableEvent(workspaceEvent)
           ).slice(0, 20)
         : [],
+      ...(INCLUDE_DETAILS && workspaceEvent
+        ? {
+            workspaceTransfers: (workspaceEvent.transfers ?? []).map(
+              (transfer) => ({
+                id: transfer.id,
+                fromParticipantId: transfer.fromParticipantId,
+                toParticipantId: transfer.toParticipantId,
+                amount: transfer.amount,
+                status: transfer.status,
+                statusUpdatedAt: transfer.statusUpdatedAt ?? null
+              })
+            )
+          }
+        : {}),
       workspaceUpdatedAt: workspace?.updated_at ?? null
     };
   });
@@ -239,6 +253,9 @@ function comparableEvent(event) {
   delete copy[EVENT_SPACE_ID_FIELD];
   delete copy[EVENT_SPACE_KEY_FIELD];
   delete copy[EVENT_OPEN_INVITE_TOKEN_FIELD];
+  // The timestamp can legitimately differ between account workspaces even
+  // when every synchronized setting value is identical.
+  delete copy.settingsUpdatedAt;
   if (copy.membershipUpdatedAtByParticipant) {
     const activeParticipantIds = new Set(copy.participantIds ?? []);
     copy.membershipUpdatedAtByParticipant = Object.fromEntries(

@@ -568,6 +568,114 @@ test("stale pending settlement versions are rebuilt instead of accumulating", ()
   ]);
 });
 
+test("legacy payer-by-expense routes do not accumulate after repayment mode changes", () => {
+  const participants = [
+    { id: "yarin", displayName: "Yarin" },
+    { id: "harel", displayName: "Harel" },
+    { id: "ariel", displayName: "Ariel" },
+    { id: "maor", displayName: "Maor" }
+  ];
+  const expenses = [
+    {
+      id: "drinks",
+      total: 17000,
+      payers: [{ participantId: "maor", amount: 17000 }],
+      sharedByParticipantIds: ["yarin", "harel", "ariel", "maor"]
+    },
+    {
+      id: "taxi",
+      total: 21000,
+      payers: [{ participantId: "ariel", amount: 21000 }],
+      sharedByParticipantIds: ["yarin", "harel", "ariel", "maor"]
+    },
+    {
+      id: "ice",
+      total: 1000,
+      payers: [{ participantId: "ariel", amount: 1000 }],
+      sharedByParticipantIds: ["yarin", "harel", "ariel", "maor"]
+    }
+  ];
+  const paidTransfer = {
+    id: "transfer-harel-maor-7200",
+    fromParticipantId: "harel",
+    toParticipantId: "maor",
+    amount: 7200,
+    status: "paid",
+    markedPaidAt: "2026-08-15T22:47:01.103Z",
+    statusUpdatedAt: "2026-08-15T22:47:01.103Z"
+  };
+  const event = {
+    id: "event-lobby",
+    name: "Lobby",
+    participantIds: participants.map((participant) => participant.id),
+    adminIds: ["yarin"],
+    expenses,
+    directSettlementTransfers: true,
+    roundSettlementTransfers: true,
+    settingsUpdatedAt: "2026-08-16T13:00:00.000Z"
+  };
+  const remote = {
+    currentParticipantId: "harel",
+    participants,
+    groups: [],
+    events: [{
+      ...event,
+      transfers: [
+        paidTransfer,
+        {
+          id: "transfer-yarin-ariel-9700",
+          fromParticipantId: "yarin",
+          toParticipantId: "ariel",
+          amount: 9700,
+          status: "pending"
+        },
+        {
+          id: "transfer-harel-ariel-2600",
+          fromParticipantId: "harel",
+          toParticipantId: "ariel",
+          amount: 2600,
+          status: "pending"
+        }
+      ]
+    }]
+  };
+  const local = {
+    currentParticipantId: "yarin",
+    participants,
+    groups: [],
+    events: [{
+      ...event,
+      transfers: [
+        paidTransfer,
+        ...[
+          ["yarin", "maor", 4200],
+          ["ariel", "maor", 4200],
+          ["maor", "ariel", 2900],
+          ["yarin", "ariel", 5500],
+          ["harel", "ariel", 5500],
+          ["maor", "ariel", 5500]
+        ].map(([fromParticipantId, toParticipantId, amount]) => ({
+          id: `transfer-${fromParticipantId}-${toParticipantId}-${amount}`,
+          fromParticipantId,
+          toParticipantId,
+          amount,
+          status: "pending"
+        }))
+      ]
+    }]
+  };
+
+  const transfers = mergeSharedStates(remote, local).events[0].transfers;
+
+  assert.equal(transfers.length, 3);
+  assert.equal(transfers.filter((transfer) => transfer.status === "paid").length, 1);
+  assert.equal(transfers.filter((transfer) => transfer.status === "pending").length, 2);
+  assert.equal(
+    transfers.some((transfer) => [2900, 4200, 5500].includes(transfer.amount)),
+    false
+  );
+});
+
 test("an expense deletion tombstone wins over a stale synced expense", () => {
   const remote = stateWithEvent({
     id: "event-1",
