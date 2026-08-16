@@ -160,18 +160,36 @@ export async function saveSharedEventState(
   if (!config || !payload) return state;
 
   const remote = await readCloudState(config, fetchImpl);
-  if (remote) {
-    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  if (!remote) {
+    await createSharedEventSnapshot(
+      runtimeConfig,
+      credentials,
+      payload,
+      fetchImpl
+    );
+    const created = await readCloudState(config, fetchImpl);
+    if (!created) {
+      const error = new Error("The shared event was created but could not be verified");
+      error.code = "SHARED_EVENT_CREATE_UNVERIFIED";
+      throw error;
+    }
+    return mergeSharedEventIntoState(state, created, credentials);
   }
-  const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
+
+  await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  const mergedPayload = buildSharedEventState(
+    mergeSharedStates(remote, payload),
+    eventId
+  );
   const saved = await saveCloudStateWithConflictRetry({
     state: mergedPayload,
     loadLatest: () => readCloudState(config, fetchImpl),
-    save: (candidate) => saveCloudState(config, candidate, fetchImpl)
+    save: (candidate) => saveCloudState(
+      config,
+      buildSharedEventState(candidate, eventId),
+      fetchImpl
+    )
   });
-  if (!remote) {
-    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
-  }
 
   return mergeSharedEventIntoState(state, saved.state, credentials);
 }
@@ -208,13 +226,34 @@ export async function syncSharedEvents(
 
   const eventResults = await mapSettledWithConcurrency(
     sharedEventIds,
-    (eventId) =>
-      saveSharedEventState(runtimeConfig, state, eventId, fetchImpl),
+    async (eventId) => {
+      try {
+        return await saveSharedEventState(runtimeConfig, state, eventId, fetchImpl);
+      } catch (error) {
+        const event = state.events?.find((item) => item.id === eventId);
+        const credentials = eventShareCredentials(event);
+        if (credentials && await sharedEventMembershipWasRevoked(
+          runtimeConfig,
+          credentials,
+          fetchImpl
+        )) {
+          return revokeSharedEventAccess(state, eventId, runtimeConfig);
+        }
+        throw error;
+      }
+    },
     SHARED_EVENT_WRITE_CONCURRENCY
   );
   for (const result of eventResults) {
     if (result.status === "fulfilled") {
       const eventId = result.item;
+      const revokedEvent = result.value?.events?.find(
+        (event) => event.id === eventId && !eventShareCredentials(event)
+      );
+      if (revokedEvent) {
+        nextState = revokeSharedEventAccess(nextState, eventId, runtimeConfig);
+        continue;
+      }
       const syncedEvent = result.value?.events?.find((event) => event.id === eventId);
       if (syncedEvent) {
         nextState = mergeSharedEventIntoState(
@@ -305,7 +344,6 @@ export async function ensureSharedEventMembership(
       headers: {
         apikey: storage.anonKey,
         authorization: `Bearer ${accessToken}`,
-        "x-space-key": key,
         "content-type": "application/json"
       },
       body: JSON.stringify({ p_snapshot_id: id })
@@ -329,6 +367,53 @@ export async function ensureSharedEventMembership(
   return true;
 }
 
+async function createSharedEventSnapshot(
+  runtimeConfig,
+  credentials,
+  payload,
+  fetchImpl = fetch
+) {
+  const storage = runtimeConfig?.storage;
+  const id = normalizeSpaceId(credentials?.id);
+  const key = normalizeSpaceKey(credentials?.key);
+  const accessToken = storage?.account?.accessToken;
+  if (storage?.mode !== "supabase" || !id || !key) return false;
+  if (!accessToken || !storage?.account?.userId) {
+    const error = new Error("A signed-in account is required to create a shared event");
+    error.code = "SHARED_EVENT_ACCOUNT_REQUIRED";
+    error.status = 401;
+    throw error;
+  }
+
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    `${storage.url}/rest/v1/rpc/create_shared_event_snapshot`,
+    {
+      method: "POST",
+      headers: {
+        apikey: storage.anonKey,
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        p_snapshot_id: id,
+        p_space_key: key,
+        p_state: payload
+      })
+    }
+  );
+  if (!response.ok) {
+    const error = new Error("Shared event creation failed");
+    error.code = response.status === 401 || response.status === 403
+      ? "SHARED_EVENT_CREATE_NOT_ALLOWED"
+      : "SHARED_EVENT_CREATE_FAILED";
+    error.status = Number(response.status ?? 0) || 0;
+    throw error;
+  }
+
+  return true;
+}
+
 export async function refreshSharedEvents(runtimeConfig, state, fetchImpl = fetch) {
   if (runtimeConfig?.storage?.mode !== "supabase") return state;
 
@@ -340,26 +425,71 @@ export async function refreshSharedEvents(runtimeConfig, state, fetchImpl = fetc
     .filter(({ credentials }) => credentials);
   const remoteEvents = await mapSettledWithConcurrency(
     sharedEvents,
-    async ({ event, credentials }) => ({
-      credentials,
-      remote: await readSharedEventState(
+    async ({ event, credentials }) => {
+      const remote = await readSharedEventState(
         runtimeConfig,
         credentials,
         event.id,
         fetchImpl
-      )
-    }),
+      );
+      const revoked = !remote && await sharedEventMembershipWasRevoked(
+        runtimeConfig,
+        credentials,
+        fetchImpl
+      );
+      return { credentials, eventId: event.id, remote, revoked };
+    },
     SHARED_EVENT_READ_CONCURRENCY
   );
 
   let nextState = state;
   for (const result of remoteEvents) {
     if (result.status !== "fulfilled") continue;
-    const { credentials, remote } = result.value;
-    if (remote) nextState = mergeSharedEventIntoState(nextState, remote, credentials);
+    const { credentials, eventId, remote, revoked } = result.value;
+    if (revoked) {
+      nextState = revokeSharedEventAccess(nextState, eventId, runtimeConfig);
+    } else if (remote) {
+      nextState = mergeSharedEventIntoState(nextState, remote, credentials);
+    }
   }
 
   return nextState;
+}
+
+export function revokeSharedEventAccess(state, eventId, runtimeConfig = null) {
+  const accountParticipantId = runtimeConfig?.storage?.account?.userId
+    ? `account-${runtimeConfig.storage.account.userId}`
+    : "";
+  const currentParticipantId = String(state?.currentParticipantId ?? "");
+
+  return {
+    ...state,
+    events: (state?.events ?? []).map((event) => {
+      if (event?.id !== eventId) return event;
+      const participantId = [accountParticipantId, currentParticipantId].find((candidate) =>
+        candidate && event.participantIds?.includes(candidate)
+      );
+      const nextEvent = {
+        ...event,
+        inactiveParticipantIds: participantId
+          ? [...new Set([...(event.inactiveParticipantIds ?? []), participantId])]
+          : [...(event.inactiveParticipantIds ?? [])]
+      };
+      delete nextEvent[EVENT_SPACE_ID_FIELD];
+      delete nextEvent[EVENT_SPACE_KEY_FIELD];
+      delete nextEvent[EVENT_OPEN_INVITE_TOKEN_FIELD];
+      return nextEvent;
+    })
+  };
+}
+
+async function sharedEventMembershipWasRevoked(runtimeConfig, credentials, fetchImpl) {
+  try {
+    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+    return false;
+  } catch (error) {
+    return error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED";
+  }
 }
 
 function sharedEventFingerprint(state, eventId) {

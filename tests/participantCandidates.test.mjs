@@ -112,7 +112,7 @@ test("participant search never triggers a state re-render", () => {
 
 test("toggling a participant keeps the open dialog and any active search", () => {
   const toggle = app.slice(
-    app.indexOf("function toggleEventParticipant(eventId, participantId, checked)"),
+    app.indexOf("async function toggleEventParticipant(eventId, participantId, checked)"),
     app.indexOf("function toggleId(")
   );
 
@@ -135,7 +135,7 @@ test("toggling a participant keeps the open dialog and any active search", () =>
 
 test("participant toggling still re-renders outside the participant dialog", () => {
   const toggle = app.slice(
-    app.indexOf("function toggleEventParticipant(eventId, participantId, checked)"),
+    app.indexOf("async function toggleEventParticipant(eventId, participantId, checked)"),
     app.indexOf("function syncEventParticipantDialog")
   );
 

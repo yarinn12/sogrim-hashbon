@@ -109,14 +109,14 @@ async function saveCloudStateWithRetry(config, state) {
 }
 
 async function syncAndPersistCloudState(config, state, syncSelection = null) {
-  const initialSave = await saveCloudStateWithRetry(config, toSharedState(state));
+  const initialSave = await saveCloudStateWithRetry(config, toCloudState(config, state));
   let syncedState = await syncSharedEvents(
     config,
     mergeSharedStates(initialSave.state, state),
     globalThis.fetch,
     initialSave.conflictCount ? null : syncSelection
   );
-  const syncedSharedState = toSharedState(syncedState);
+  const syncedSharedState = toCloudState(config, syncedState);
   let finalSave = initialSave;
 
   if (hasCloudStateChanged(syncedSharedState, initialSave.state)) {
@@ -403,7 +403,10 @@ async function loadSharedStateOnce(requestScope) {
     const pendingState = loadPendingSharedState(runtimeConfig);
     if (pendingState) {
       try {
-        const remoteState = await loadCloudState(runtimeConfig, toSharedState(localState));
+        const remoteState = await loadCloudState(
+          runtimeConfig,
+          toCloudState(runtimeConfig, localState)
+        );
         const mergedState = mergeSharedStates(remoteState, pendingState);
         const syncedState = (await syncAndPersistCloudState(
           runtimeConfig,
@@ -431,13 +434,19 @@ async function loadSharedStateOnce(requestScope) {
 
     try {
       let state = cleanLegacyStarterData(
-        await loadCloudState(runtimeConfig, toSharedState(localState)),
+        await loadCloudState(
+          runtimeConfig,
+          toCloudState(runtimeConfig, localState)
+        ),
         loadProtectedParticipantId()
       );
       const accountState = state;
       state = await refreshSharedEvents(runtimeConfig, state);
       if (hasCloudStateChanged(state, accountState)) {
-        const saved = await saveCloudStateWithRetry(runtimeConfig, toSharedState(state));
+        const saved = await saveCloudStateWithRetry(
+          runtimeConfig,
+          toCloudState(runtimeConfig, state)
+        );
         state = mergeSharedStates(saved.state, state);
       }
       const localStateWithIdentity = applyLocalParticipantId(
@@ -463,8 +472,9 @@ export async function saveSharedState(state) {
   const localSaved = saveState(cleanState);
   const requestSaveGeneration = ++sharedStateSaveGeneration;
   const requestAccountGeneration = accountStorageGeneration;
-  const sharedState = clone(toSharedState(cleanState));
+  const stateSnapshot = clone(cleanState);
   const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
+  const sharedState = toCloudState(runtimeConfig, stateSnapshot);
   if (
     requestScope !== synchronizeAccountStorageScope() ||
     requestAccountGeneration !== accountStorageGeneration
@@ -840,6 +850,16 @@ function activateClientSpace(config) {
     storage: window.localStorage
   });
   return applyClientSpaceToConfig(config, spaceId, spaceKey);
+}
+
+function toCloudState(config, state) {
+  const account = config?.storage?.account;
+  const preserveCurrentParticipantId = Boolean(
+    account?.userId &&
+      account?.spaceId &&
+      account.spaceId === config?.storage?.spaceId
+  );
+  return toSharedState(state, { preserveCurrentParticipantId });
 }
 
 function pendingSyncStorageKey(config) {

@@ -9,6 +9,7 @@ import {
   authCallbackType,
   accountProfileFromUser,
   clearAccountOAuthFlow,
+  clearAccountOAuthFlows,
   clearAccountSession,
   clearAccountWorkspace,
   createAccountOAuthFlowId,
@@ -479,6 +480,8 @@ function handleAccountSessionStorageSync(event) {
     return;
   }
 
+  clearPendingInviteUrl();
+  clearAccountOAuthFlows();
   accountSyncReloadScheduled = true;
   accountRefreshGeneration += 1;
   accountSession = null;
@@ -1062,6 +1065,8 @@ async function handleAccountClick(event) {
     button.disabled = true;
     button.textContent = "מתנתק…";
     clearTimeout(accountRefreshTimer);
+    clearPendingInviteUrl();
+    clearAccountOAuthFlows();
     try {
       await settleWithin(
         globalThis.SogrimNotifications?.prepareSignOut?.(),
@@ -1125,6 +1130,8 @@ async function handleAccountClick(event) {
     setAccountDeletionBusy(true);
     try {
       await deleteAccount(runtimeConfig, accountSession);
+      clearPendingInviteUrl();
+      clearAccountOAuthFlows();
       clearLocalAccountData();
       clearAccountSession();
       publishAccountSessionSync(null, { reason: "deleted" });

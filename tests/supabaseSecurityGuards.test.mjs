@@ -28,6 +28,30 @@ const membershipVerification = await readFile(
   "supabase/verification/verify_20260812151750_shared_event_membership.sql",
   "utf8"
 );
+const inviteAuthorizationMigration = await readFile(
+  "supabase/migrations/20260815225737_harden_shared_event_invite_authorization.sql",
+  "utf8"
+);
+const inviteAuthorizationVerification = await readFile(
+  "supabase/verification/verify_20260815225737_shared_event_invite_authorization.sql",
+  "utf8"
+);
+const inviteAuthorizationRollback = await readFile(
+  "supabase/rollbacks/20260815225737_harden_shared_event_invite_authorization_safe.sql",
+  "utf8"
+);
+const sharedEventCreationMigration = await readFile(
+  "supabase/migrations/20260815232950_create_shared_event_snapshot_rpc.sql",
+  "utf8"
+);
+const sharedEventCreationVerification = await readFile(
+  "supabase/verification/verify_20260815232950_create_shared_event_snapshot_rpc.sql",
+  "utf8"
+);
+const sharedEventCreationRollback = await readFile(
+  "supabase/rollbacks/20260815232950_create_shared_event_snapshot_rpc_safe.sql",
+  "utf8"
+);
 const deletionCompatibilityMigration = await readFile(
   "supabase/migrations/20260812185000_allow_guarded_account_deletion_anonymization.sql",
   "utf8"
@@ -227,10 +251,25 @@ test("shared-event writes require live server membership instead of the retained
   );
 
   const joinFunction = sqlFunction("public.join_shared_event");
-  assert.match(joinFunction, /snapshot\.access_key_hash is distinct from public\.request_space_key_hash\(\)/);
-  assert.match(joinFunction, /existing_member\.status = 'removed'/);
+  assert.doesNotMatch(joinFunction, /request_space_key_hash/);
+  assert.match(joinFunction, /existing_member\.status <> 'active'/);
   assert.match(joinFunction, /You are no longer a member of this event/);
-  assert.match(joinFunction, /on conflict \(snapshot_id, user_id\) do update/);
+  assert.doesNotMatch(joinFunction, /insert into private\.shared_snapshot_members/);
+
+  const redemptionFunction = sqlFunction("public.redeem_event_invite_membership");
+  assert.match(redemptionFunction, /from public\.event_invite_tokens as record[\s\S]+for update/);
+  assert.match(redemptionFunction, /invite\.revoked_at is not null/);
+  assert.match(redemptionFunction, /invite\.recipient_user_id <> p_user_id/);
+  assert.match(redemptionFunction, /existing_member\.status = 'removed'/);
+  assert.match(redemptionFunction, /insert into private\.shared_snapshot_members/);
+  assert.match(
+    schema,
+    /revoke all on function public\.redeem_event_invite_membership\(uuid, text, uuid\)[\s\S]+from public, anon, authenticated/
+  );
+  assert.match(
+    schema,
+    /grant execute on function public\.redeem_event_invite_membership\(uuid, text, uuid\)[\s\S]+to service_role/
+  );
 
   const bootstrapFunction = sqlFunction("public.can_bootstrap_shared_snapshot");
   assert.match(bootstrapFunction, /snapshot\.access_key_hash = public\.request_space_key_hash\(\)/);
@@ -243,6 +282,11 @@ test("shared-event writes require live server membership instead of the retained
   assert.match(guardFunction, /actor_is_leaving/);
   assert.match(guardFunction, /actor_is_joining/);
   assert.match(guardFunction, /Only an event admin can edit this event/);
+  assert.match(guardFunction, /Only an event admin can merge participant identities/);
+  assert.match(guardFunction, /A membership update cannot change event content/);
+  assert.match(guardFunction, /Only an event admin can change event settings/);
+  assert.match(guardFunction, /Expenses cannot be changed while the event is locked/);
+  assert.match(guardFunction, /The event state must include the active member before editing/);
   assert.match(guardFunction, /pg_catalog\.pg_trigger_depth\(\) > 1/);
   assert.match(guardFunction, /private\.is_safe_account_deletion_anonymization/);
 
@@ -257,6 +301,44 @@ test("shared-event writes require live server membership instead of the retained
   const syncFunction = sqlFunction("private.sync_shared_snapshot_members");
   assert.match(syncFunction, /status = case[\s\S]*then 'active'[\s\S]*else 'removed'/);
   assert.match(syncFunction, /removed_at = case/);
+});
+
+test("invite authorization hardening is transactional, verifiable and cannot roll back unsafely", () => {
+  assert.match(inviteAuthorizationMigration, /^begin;/);
+  assert.match(inviteAuthorizationMigration, /commit;\s*$/);
+  assert.match(inviteAuthorizationMigration, /create policy app_snapshots_member_select/);
+  assert.match(inviteAuthorizationMigration, /redeem_event_invite_membership/);
+  assert.match(inviteAuthorizationMigration, /Only an event admin can merge participant identities/);
+  assert.match(inviteAuthorizationVerification, /Shared-event reads do not require active membership/);
+  assert.match(inviteAuthorizationVerification, /Retained keys can still bootstrap/);
+  assert.match(inviteAuthorizationRollback, /Rollback refused/);
+  assert.match(inviteAuthorizationRollback, /tenant-isolation vulnerability/);
+});
+
+test("shared event creation is atomic, creator-bound and cannot roll back to a race", () => {
+  assert.match(sharedEventCreationMigration, /^begin;/);
+  assert.match(sharedEventCreationMigration, /commit;\s*$/);
+  assert.match(sharedEventCreationMigration, /security definer/);
+  assert.match(sharedEventCreationMigration, /actor_id uuid := auth\.uid\(\)/);
+  assert.match(sharedEventCreationMigration, /private\.current_actor_participant_id\(\)/);
+  assert.match(sharedEventCreationMigration, /private\.is_shared_event_state\(p_state\)/);
+  assert.match(sharedEventCreationMigration, /createdByParticipantId/);
+  assert.match(
+    sharedEventCreationMigration,
+    /revoke all on function public\.create_shared_event_snapshot\(text, text, jsonb\)\s+from public, anon/
+  );
+  assert.match(
+    sharedEventCreationMigration,
+    /grant execute on function public\.create_shared_event_snapshot\(text, text, jsonb\)\s+to authenticated/
+  );
+  assert.match(sharedEventCreationMigration, /actor_is_adding_offline_guests/);
+  assert.match(sharedEventCreationMigration, /'updatedAt'/);
+
+  assert.match(sharedEventCreationVerification, /Atomic shared-event creation function is missing/);
+  assert.match(sharedEventCreationVerification, /Atomic shared-event creation grants are unsafe/);
+  assert.match(sharedEventCreationVerification, /safe content boundary/);
+  assert.match(sharedEventCreationRollback, /Rollback refused/);
+  assert.match(sharedEventCreationRollback, /event creation race/);
 });
 
 test("account deletion compatibility allows only the nested participant anonymization", () => {

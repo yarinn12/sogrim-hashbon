@@ -9,4 +9,4 @@ Review flow:
 6. Open the sharing screen to inspect the invitation link and QR code.
 7. Account deletion is available under Profile > "מחיקת חשבון".
 
-The first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release. Sign in with Apple is available alongside Google and email authentication.
+The first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release. Do not submit these notes until the production readiness check confirms that Sign in with Apple is visible and completes successfully. Once verified, Sign in with Apple is available alongside Google and email authentication.

@@ -19,6 +19,8 @@ test("public store readiness pages exist with stable URLs", async () => {
 
   assert.match(privacy, /מדיניות פרטיות/);
   assert.match(privacy, /Google/);
+  assert.match(privacy, /בחירה מאנשי הקשר ב-Android/);
+  assert.match(privacy, /אינה קוראת או שומרת את מספר הטלפון/);
   assert.match(support, /תמיכה/);
   assert.match(support, /קישור הצטרפות/);
   assert.match(terms, /תנאי שימוש/);
@@ -156,6 +158,8 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(packageJson.scripts["native:ios:association"], /setup-apple-association/);
   assert.match(packageJson.scripts["qa:store"], /verify-store-readiness/);
   assert.match(dataSafety, /Other financial info|מידע פיננסי אחר/);
+  assert.match(dataSafety, /Contacts > Contacts/);
+  assert.match(dataSafety, /READ_CONTACTS/);
   assert.match(dataSafety, /account-deletion/);
   assert.match(dataSafety, /אסימון התראות של Android/);
   assert.match(appPrivacy, /NSPrivacyCollectedDataTypeOtherFinancialInfo/);

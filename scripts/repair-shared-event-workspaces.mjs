@@ -97,12 +97,25 @@ try {
       if (!workspace) {
         throw new Error(`Active member ${member.user_id} has no account workspace.`);
       }
-      const nextState = mergeSharedEventIntoState(
+      const mergedState = mergeSharedEventIntoState(
         workspace.state,
         sharedRow.state,
         credentials
       );
+      const nextState = {
+        ...mergedState,
+        currentParticipantId: member.participant_id
+      };
       validateRecoveredEvent(nextState, workspace.id);
+      if (
+        !nextState.participants?.some(
+          (participant) => participant.id === member.participant_id
+        )
+      ) {
+        throw new Error(
+          `${workspace.id} is missing its account participant ${member.participant_id}.`
+        );
+      }
       return {
         ...workspace,
         participantId: member.participant_id,
@@ -127,6 +140,10 @@ try {
         changedPaths: row.changed
           ? changedValuePaths(row.state, row.nextState).slice(0, 20)
           : [],
+        beforeCurrentParticipantId: row.state.currentParticipantId ?? null,
+        afterCurrentParticipantId: row.nextState.currentParticipantId ?? null,
+        beforeParticipantIds: eventParticipantIds(row.state),
+        afterParticipantIds: eventParticipantIds(row.nextState),
         beforeExpenseCount: eventExpenseCount(row.state),
         afterExpenseCount: eventExpenseCount(row.nextState)
       }))
@@ -168,6 +185,10 @@ function validateRecoveredEvent(state, snapshotId) {
 
 function eventExpenseCount(state) {
   return state.events?.find((event) => event.id === eventId)?.expenses?.length ?? 0;
+}
+
+function eventParticipantIds(state) {
+  return state.events?.find((event) => event.id === eventId)?.participantIds ?? [];
 }
 
 function toPlainJson(value) {

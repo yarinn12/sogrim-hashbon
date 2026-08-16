@@ -19,15 +19,19 @@
 | Personal info > Email address | אימייל בהרשמה או Google | כן | כן | Account management, App functionality |
 | Personal info > User IDs | מזהה חשבון ומזהה משתתף | כן | כן | Account management, App functionality, Security |
 | Financial info > Other financial info | סכומי הוצאות, יתרות וחובות בין משתתפים | כן | לפי שימוש | App functionality |
+| Contacts > Contacts | שם התצוגה של איש קשר יחיד שהמשתמש בוחר במפורש באמצעות בוחר המערכת; אין גישה לרשימה המלאה או למספר הטלפון | כן, אם השם נוסף לאירוע או נשמר בחשבון | לא | App functionality |
 | App activity > Other user-generated content | שמות אירועים, הוצאות, משתתפים והערות שהמשתמש מזין | כן | לפי שימוש | App functionality |
-| App activity > App interactions | אירועים טכניים מצומצמים כמו פתיחת האפליקציה, יצירת אירוע או הוצאה, פתיחת סיכום, שיתוף הזמנה ושגיאת לקוח; ללא שמות או סכומים | לא | כן | Analytics, App functionality |
+| App activity > App interactions | אירועים טכניים מצומצמים כמו פתיחת האפליקציה, יצירת אירוע או הוצאה, פתיחת סיכום ושיתוף הזמנה; ללא שמות או סכומים | כן, הבקשה מאומתת לחשבון | כן | Analytics, App functionality |
+| App info and performance > Diagnostics | גרסת אפליקציה, פלטפורמה, מספר בנייה, כשלי פעולה ושגיאות לקוח מצומצמות; ללא תוכן אירוע או סכומים | כן, הבקשה מאומתת לחשבון | כן | Analytics, App functionality |
 | Device or other IDs | אסימון התראות של Android המקושר לחשבון, יחד עם גרסת האפליקציה והעדפות התראה | כן | רק אם המשתמש מפעיל התראות | App functionality |
 | Location > Approximate location | מיקום כללי שנגזר מכתובת IP על ידי Google Mobile Ads SDK | לא על ידי האפליקציה; עשוי להיות מקושר על ידי Google | לפי זכאות להצגת מודעה והסכמה | Advertising or marketing, Analytics, Fraud prevention |
 | App activity > App interactions | הפעלות, הקשות ואינטראקציות עם מודעות הנאספות על ידי Google Mobile Ads SDK | עשוי להיות מקושר על ידי Google | לפי זכאות להצגת מודעה והסכמה | Advertising or marketing, Analytics, Fraud prevention |
-| App info and performance > Diagnostics | נתוני ביצועים ואבחון של האפליקציה ושל SDK המודעות | עשוי להיות מקושר על ידי Google | לפי זכאות להצגת מודעה והסכמה | Analytics, Fraud prevention |
+| App info and performance > Diagnostics | נתוני ביצועים ואבחון נוספים של Google Mobile Ads SDK | עשוי להיות מקושר על ידי Google | לפי זכאות להצגת מודעה והסכמה | Analytics, Fraud prevention |
 | Device or other IDs | Android Advertising ID, App Set ID ומזהי מכשיר רלוונטיים לפרסום | עשוי להיות מקושר על ידי Google | לפי זכאות להצגת מודעה, הגדרות המכשיר והסכמה | Advertising or marketing, Analytics, Fraud prevention |
 
 אין לסמן Payment info: האפליקציה אינה מקבלת מספרי כרטיס, חשבון בנק או אמצעי תשלום ואינה מבצעת העברת כסף.
+
+במסך השאלות של Contacts יש להצהיר שהאיסוף אופציונלי, מופעל רק לאחר פעולה יזומה, ומשמש להוספת שם משתתף. אין הרשאת `READ_CONTACTS`; הבחירה נעשית באמצעות בוחר המערכת.
 
 ## שיתוף מידע
 

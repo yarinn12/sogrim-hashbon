@@ -58,6 +58,29 @@ export async function storeProductMetrics({
   };
 }
 
+export async function purgeExpiredProductMetrics({
+  runtimeConfig,
+  env = process.env,
+  fetchImpl = fetch,
+  now = Date.now
+}) {
+  const supabaseUrl = runtimeConfig?.storage?.url;
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    return failure(503, "Product metric retention is not configured");
+  }
+
+  const response = await cleanupExpiredMetrics({
+    supabaseUrl,
+    serviceRoleKey,
+    fetchImpl,
+    now
+  });
+  if (!response?.ok) return failure(502, "Expired product metrics could not be deleted");
+
+  return { ok: true, status: 200, payload: { ok: true, retentionDays: RETENTION_DAYS } };
+}
+
 function toDatabaseRow(metric, createId) {
   return {
     id: metric.id,
@@ -74,7 +97,7 @@ function toDatabaseRow(metric, createId) {
 
 async function cleanupExpiredMetrics({ supabaseUrl, serviceRoleKey, fetchImpl, now }) {
   const cutoff = new Date((Number(now()) || Date.now()) - RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  await fetchImpl(
+  return fetchImpl(
     `${supabaseUrl}/rest/v1/product_metrics?received_at=lt.${encodeURIComponent(cutoff.toISOString())}`,
     {
       method: "DELETE",

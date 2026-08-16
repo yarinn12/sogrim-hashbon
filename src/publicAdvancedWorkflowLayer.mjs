@@ -4,6 +4,7 @@ import {
 } from "./domain/settlement.mjs";
 import { formatSettlementSummary } from "./domain/settlementSummary.mjs";
 import { mergeParticipants as mergeParticipantIdentities } from "./domain/appActions.mjs";
+import { canManageEventSettings } from "./domain/permissions.mjs";
 import {
   loadState as loadStoredState,
   saveSharedState
@@ -77,9 +78,13 @@ function enhanceSettlement() {
   actions.className = "actions advanced-settlement-actions";
   actions.innerHTML = `
     <button class="secondary-button whatsapp-button" data-advanced-action="whatsapp" data-event-id="${escapeAttribute(copyButton.dataset.eventId)}">שלח בוואטסאפ</button>
-    <button class="secondary-button" data-advanced-action="${isClosed(event) ? "reopen" : "close"}" data-event-id="${escapeAttribute(copyButton.dataset.eventId)}">
-      ${isClosed(event) ? "פתח לעריכה" : "סגור אירוע"}
-    </button>
+    ${
+      canManageEventSettings(state, event, state.currentParticipantId)
+        ? `<button class="secondary-button" data-advanced-action="${isClosed(event) ? "reopen" : "close"}" data-event-id="${escapeAttribute(copyButton.dataset.eventId)}">
+            ${isClosed(event) ? "פתח לעריכה" : "סגור אירוע"}
+          </button>`
+        : ""
+    }
   `;
   copyButton.closest(".actions")?.after(actions);
 }
@@ -198,6 +203,12 @@ function shareEventOnWhatsApp(eventId) {
 
 async function setEventClosed(eventId, closed) {
   const state = loadState();
+  const selectedEvent = findEvent(state, eventId);
+  if (!selectedEvent || !canManageEventSettings(
+    state,
+    selectedEvent,
+    state.currentParticipantId
+  )) return;
   const statusUpdatedAt = new Date().toISOString();
   const nextState = {
     ...state,

@@ -126,13 +126,18 @@ test("queued cloud writes use immutable snapshots and stale completions cannot r
   );
   assert.match(
     save,
-    /const sharedState = clone\(toSharedState\(cleanState\)\)/,
+    /const stateSnapshot = clone\(cleanState\)/,
     "queued writes must not retain references to live event and expense objects"
   );
   assert.ok(
-    save.indexOf("const sharedState = clone(toSharedState(cleanState))") <
+    save.indexOf("const stateSnapshot = clone(cleanState)") <
       save.indexOf("await loadRuntimeConfig()"),
     "the immutable snapshot is captured before any asynchronous gap"
+  );
+  assert.match(
+    save,
+    /const sharedState = toCloudState\(runtimeConfig, stateSnapshot\)/,
+    "the immutable snapshot is scoped to the authenticated cloud account"
   );
   assert.match(
     save,
@@ -394,7 +399,10 @@ test("shared event writes also retry through a merge on conflict", () => {
 
   assert.match(save, /saveCloudStateWithConflictRetry\(\{/);
   assert.match(save, /loadLatest: \(\) => readCloudState\(config, fetchImpl\)/);
-  assert.match(save, /save: \(candidate\) => saveCloudState\(config, candidate, fetchImpl\)/);
+  assert.match(
+    save,
+    /save: \(candidate\) => saveCloudState\([\s\S]*buildSharedEventState\(candidate, eventId\)/
+  );
   assert.match(save, /saved\.state/);
 });
 

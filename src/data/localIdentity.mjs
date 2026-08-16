@@ -11,10 +11,15 @@ export function applyLocalParticipantId(state, localParticipantId) {
   };
 }
 
-export function toSharedState(state) {
+export function toSharedState(
+  state,
+  { preserveCurrentParticipantId = false } = {}
+) {
   return {
     ...state,
-    currentParticipantId: state.participants[0]?.id ?? state.currentParticipantId ?? ""
+    currentParticipantId: preserveCurrentParticipantId
+      ? state.currentParticipantId ?? state.participants[0]?.id ?? ""
+      : state.participants[0]?.id ?? state.currentParticipantId ?? ""
   };
 }
 

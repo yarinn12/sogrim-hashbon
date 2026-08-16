@@ -2,6 +2,8 @@ import { createReadStream, existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize, resolve } from "node:path";
+import { sep } from "node:path";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { demoState } from "./src/data/demoData.mjs";
 import { loadEnvFile } from "./src/server/envFile.mjs";
@@ -13,7 +15,10 @@ import { verifyGoogleCredential } from "./src/server/googleAuth.mjs";
 import { verifyGooglePlaySubscription } from "./src/server/googlePlayBilling.mjs";
 import { sendPaymentReminder } from "./src/server/paymentReminders.mjs";
 import { sendEventActivityNotification } from "./src/server/eventActivityNotifications.mjs";
-import { storeProductMetrics } from "./src/server/productMetrics.mjs";
+import {
+  purgeExpiredProductMetrics,
+  storeProductMetrics
+} from "./src/server/productMetrics.mjs";
 import { getAdminAnalyticsOverview } from "./src/server/adminAnalytics.mjs";
 import {
   manageOpenEventInvite,
@@ -52,6 +57,36 @@ const staticAliases = {
   "/account-deletion": "/account-deletion.html",
   "/delete-account": "/account-deletion.html"
 };
+const publicRootFiles = new Set([
+  "/index.html",
+  "/privacy.html",
+  "/support.html",
+  "/terms.html",
+  "/accessibility.html",
+  "/account-deletion.html",
+  "/styles.css",
+  "/legal.css",
+  "/legal.mjs",
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/app-ads.txt",
+  "/apple-touch-icon.png",
+  "/brand-mark.png",
+  "/brand-mark-v2.png",
+  "/brand-mark-v3.png",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/icon-maskable-512.png",
+  "/sogrim-logo-lockup.png",
+  "/sogrim-share-logo.png",
+  "/sogrim-home-hero.png"
+]);
+const publicStaticPrefixes = ["/.well-known/", "/assets/", "/icons/", "/src/"];
+const publicStaticExtensions = new Set([
+  ".apk", ".css", ".ico", ".jpeg", ".jpg", ".js", ".json", ".mjs",
+  ".mp4", ".png", ".svg", ".ttf", ".txt", ".webmanifest", ".webp"
+]);
 const MAX_JSON_BODY_BYTES = 1_000_000;
 
 export function createAppHandler({
@@ -64,6 +99,7 @@ export function createAppHandler({
   paymentReminderService = sendPaymentReminder,
   eventActivityNotificationService = sendEventActivityNotification,
   productMetricsService = storeProductMetrics,
+  productMetricsRetentionService = purgeExpiredProductMetrics,
   adminAnalyticsService = getAdminAnalyticsOverview,
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite
@@ -78,7 +114,7 @@ export function createAppHandler({
     const url = new URL(request.url ?? "/", `http://localhost:${port}`);
     const origin = requestOrigin(request, port);
     const runtimeConfig = getRuntimeConfig(process.env, origin);
-    const localStateAllowed = isTrustedLocalOrigin(origin) && !isDeployedRuntime(process.env);
+    const localStateAllowed = isTrustedLocalRequest(request, origin, process.env);
     applyNativeCors(request, response);
 
     if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
@@ -221,6 +257,24 @@ export function createAppHandler({
         env: process.env,
         authorization: request.headers.authorization,
         payload: body
+      });
+      sendJson(response, result.status, result.payload);
+      return;
+    }
+
+    if (url.pathname === "/api/maintenance/retention" && request.method === "GET") {
+      const cronSecret = String(process.env.CRON_SECRET ?? "").trim();
+      if (!cronSecret) {
+        sendJson(response, 503, { ok: false, error: "Retention job is not configured" });
+        return;
+      }
+      if (request.headers.authorization !== `Bearer ${cronSecret}`) {
+        sendJson(response, 401, { ok: false, error: "Unauthorized" });
+        return;
+      }
+      const result = await productMetricsRetentionService({
+        runtimeConfig,
+        env: process.env
       });
       sendJson(response, result.status, result.payload);
       return;
@@ -415,10 +469,30 @@ export function createAppHandler({
       /^\/r\/[a-f0-9]{20}\/?$/i.test(url.pathname)
       ? "/index.html"
       : staticAliases[url.pathname] ?? url.pathname;
+    if (!["GET", "HEAD"].includes(request.method ?? "GET")) {
+      response.writeHead(405, {
+        "content-type": "text/plain; charset=utf-8",
+        "allow": "GET, HEAD",
+        ...securityHeaders()
+      });
+      response.end("Method not allowed");
+      return;
+    }
+    if (!isAllowedStaticPath(requestedPath)) {
+      response.writeHead(404, {
+        "content-type": "text/plain; charset=utf-8",
+        ...securityHeaders()
+      });
+      response.end("Not found");
+      return;
+    }
     const safePath = normalize(requestedPath).replace(/^(\.\.[/\\])+/, "");
     const filePath = join(resolvedRoot, safePath);
 
-    if (!filePath.startsWith(resolvedRoot) || !existsSync(filePath)) {
+    if (
+      !filePath.startsWith(`${resolvedRoot}${sep}`) ||
+      !existsSync(filePath)
+    ) {
       response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       response.end("Not found");
       return;
@@ -434,7 +508,19 @@ export function createAppHandler({
       return;
     }
 
-    await serveStaticFile(request, response, filePath, requestedPath);
+    try {
+      await serveStaticFile(request, response, filePath, requestedPath);
+    } catch {
+      if (!response.headersSent) {
+        response.writeHead(404, {
+          "content-type": "text/plain; charset=utf-8",
+          ...securityHeaders()
+        });
+        response.end("Not found");
+      } else {
+        response.destroy();
+      }
+    }
   };
 }
 
@@ -442,7 +528,7 @@ export default createAppHandler();
 
 if (isDirectRun()) {
   const port = Number(process.argv[2] ?? process.env.PORT ?? 4173);
-  const host = process.argv[3] ?? "0.0.0.0";
+  const host = process.argv[3] ?? "127.0.0.1";
 
   createServer(createAppHandler({ root: defaultRoot, port })).listen(port, host, () => {
     console.log(`Server running at http://127.0.0.1:${port}`);
@@ -522,8 +608,25 @@ function responseHeadersFor(filePath, requestedPath) {
   return headers;
 }
 
+function isAllowedStaticPath(requestedPath) {
+  const value = String(requestedPath ?? "");
+  if (
+    !value.startsWith("/") ||
+    value.includes("\0") ||
+    value.split("/").some((segment) => segment === ".." || segment.startsWith(".")) ||
+    value.startsWith("/src/server/")
+  ) {
+    return false;
+  }
+  if (publicRootFiles.has(value)) return true;
+  if (value === "/downloads/sogrim-hashbon-android-1.2.apk") return true;
+  return publicStaticPrefixes.some((prefix) => value.startsWith(prefix)) &&
+    publicStaticExtensions.has(extname(value).toLowerCase());
+}
+
 async function serveStaticFile(request, response, filePath, requestedPath) {
   const fileStats = await stat(filePath);
+  if (!fileStats.isFile()) throw new Error("Static path is not a file");
   const extension = extname(filePath);
   const headers = responseHeadersFor(filePath, requestedPath);
   const rangeHeader = request.headers.range;
@@ -555,7 +658,7 @@ async function serveStaticFile(request, response, filePath, requestedPath) {
       response.end();
       return;
     }
-    createReadStream(filePath, range).pipe(response);
+    await pipeline(createReadStream(filePath, range), response);
     return;
   }
 
@@ -567,7 +670,7 @@ async function serveStaticFile(request, response, filePath, requestedPath) {
     response.end();
     return;
   }
-  createReadStream(filePath).pipe(response);
+  await pipeline(createReadStream(filePath), response);
 }
 
 function parseByteRange(rangeHeader, fileSize) {
@@ -629,19 +732,26 @@ async function readJsonBody(request, maxBytes = MAX_JSON_BODY_BYTES) {
 function isTrustedLocalOrigin(origin) {
   try {
     const hostname = new URL(origin).hostname;
-    return (
-      ["localhost", "127.0.0.1", "::1"].includes(hostname) ||
-      /^10\./.test(hostname) ||
-      /^192\.168\./.test(hostname) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
-    );
+    return ["localhost", "127.0.0.1", "::1"].includes(hostname);
   } catch {
     return false;
   }
 }
 
+function isTrustedLocalRequest(request, origin, env) {
+  if (isDeployedRuntime(env) || !isTrustedLocalOrigin(origin)) return false;
+  const address = String(request.socket?.remoteAddress ?? "");
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+}
+
 function isDeployedRuntime(env) {
-  return env.VERCEL === "1" || Boolean(env.VERCEL_ENV);
+  return (
+    env.NODE_ENV === "production" ||
+    env.VERCEL === "1" ||
+    Boolean(env.VERCEL_ENV) ||
+    Boolean(env.RENDER) ||
+    Boolean(env.RENDER_SERVICE_ID)
+  );
 }
 
 function securityHeaders() {

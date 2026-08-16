@@ -8,7 +8,10 @@ import {
   sanitizeClientError
 } from "../src/domain/productMetrics.mjs";
 import { startProductMetricTransport } from "../src/data/productMetrics.mjs";
-import { storeProductMetrics } from "../src/server/productMetrics.mjs";
+import {
+  purgeExpiredProductMetrics,
+  storeProductMetrics
+} from "../src/server/productMetrics.mjs";
 
 const NOW = Date.parse("2026-08-03T09:00:00.000Z");
 const METRIC_ID = "8e842107-f250-44ed-aec0-5993ca53d9f1";
@@ -91,7 +94,7 @@ test("client error sanitizer never keeps messages, stack traces or full paths", 
   assert.doesNotMatch(detail, /yarin|private|secret|https|app\.mjs/i);
 });
 
-test("metrics server verifies auth then stores an anonymous service-role row", async () => {
+test("metrics server verifies auth then stores a privacy-safe service-role row", async () => {
   const requests = [];
   const result = await storeProductMetrics({
     runtimeConfig,
@@ -131,6 +134,54 @@ test("metrics server verifies auth then stores an anonymous service-role row", a
   ]);
   assert.match(row.session_id, /^[0-9a-f-]{36}$/i);
   assert.doesNotMatch(JSON.stringify(row), /private@example|2f1fcf8b|user-access-token/);
+});
+
+test("daily retention removes product metrics older than 90 days", async () => {
+  let deletion = null;
+  const result = await purgeExpiredProductMetrics({
+    runtimeConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    now: () => NOW,
+    fetchImpl: async (url, options) => {
+      deletion = { url, options };
+      return jsonResponse(204, null);
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.retentionDays, 90);
+  assert.match(deletion.url, /product_metrics\?received_at=lt\./);
+  assert.equal(deletion.options.method, "DELETE");
+  assert.equal(deletion.options.headers.apikey, "service-key");
+});
+
+test("retention HTTP route requires the configured cron secret", async () => {
+  const previousSecret = process.env.CRON_SECRET;
+  process.env.CRON_SECRET = "cron-test-secret";
+  let calls = 0;
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    productMetricsRetentionService: async () => {
+      calls += 1;
+      return { status: 200, payload: { ok: true, retentionDays: 90 } };
+    }
+  }));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    const endpoint = `http://127.0.0.1:${address.port}/api/maintenance/retention`;
+    assert.equal((await fetch(endpoint)).status, 401);
+    const response = await fetch(endpoint, {
+      headers: { authorization: "Bearer cron-test-secret" }
+    });
+    assert.equal(response.status, 200);
+    assert.equal(calls, 1);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previousSecret === undefined) delete process.env.CRON_SECRET;
+    else process.env.CRON_SECRET = previousSecret;
+  }
 });
 
 test("metrics server rejects invalid fields before contacting Supabase", async () => {

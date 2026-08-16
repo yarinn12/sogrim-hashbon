@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
 const packageName = process.env.ANDROID_QA_PACKAGE || "com.sogrimhashbon.app.debug";
-const activityName = "com.sogrimhashbon.app.MainActivity";
 const requestedScale = Number.parseFloat(process.env.ANDROID_QA_FONT_SCALE || "1.5");
 const adb = findAdb();
 const device = process.env.ANDROID_QA_DEVICE || firstDevice();
@@ -12,6 +11,7 @@ const screenshotPath = join(root, "artifacts", "android-qa", "font-scale.png");
 const checks = [];
 
 if (!device) fail("No authorized Android device or emulator is connected");
+const activityName = resolveLaunchActivity();
 if (!Number.isFinite(requestedScale) || requestedScale < 1 || requestedScale > 2) {
   fail("ANDROID_QA_FONT_SCALE must be between 1 and 2");
 }
@@ -28,7 +28,7 @@ const originalScale = adbRun([
 
 try {
   setFontScale(requestedScale);
-  launchApp();
+  await launchApp();
   const page = await waitForPage();
   await waitFor(
     () => evaluate(page, `Boolean(document.querySelector('#app')?.dataset?.screen)`),
@@ -87,7 +87,7 @@ try {
   if (!ready) process.exitCode = 1;
 } finally {
   setFontScale(originalScale);
-  launchApp();
+  await launchApp();
 }
 
 function setFontScale(scale) {
@@ -103,9 +103,31 @@ function setFontScale(scale) {
   ]);
 }
 
-function launchApp() {
-  adbRun(["-s", device, "shell", "am", "force-stop", packageName]);
-  adbRun(["-s", device, "shell", "am", "start", "-n", `${packageName}/${activityName}`]);
+async function launchApp() {
+  let lastOutput = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    adbRun(["-s", device, "shell", "am", "force-stop", packageName], { allowFailure: true });
+    lastOutput = adbRun(
+      ["-s", device, "shell", "am", "start", "-n", `${packageName}/${activityName}`],
+      { allowFailure: true }
+    );
+    if (!/device offline|does not exist|Error type/i.test(lastOutput)) return;
+    adbRun(["reconnect", "offline"], { allowFailure: true });
+    await sleep(1_000);
+  }
+  throw new Error(`Unable to launch ${packageName}/${activityName}: ${lastOutput.trim()}`);
+}
+
+function resolveLaunchActivity() {
+  const output = adbRun(
+    ["-s", device, "shell", "cmd", "package", "resolve-activity", "--brief", packageName],
+    { allowFailure: true }
+  );
+  const component = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .findLast((line) => line.includes("/"));
+  return component?.split("/").at(-1) || "com.sogrimhashbon.app.MainActivity";
 }
 
 async function waitForPage() {

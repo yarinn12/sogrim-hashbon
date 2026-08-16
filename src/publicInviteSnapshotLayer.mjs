@@ -26,6 +26,7 @@ import {
   resolveEventInviteCredentials
 } from "./data/eventInvites.mjs";
 import {
+  clearPendingInviteUrl,
   pendingInviteUrl,
   rememberPendingInviteUrl
 } from "./data/pendingInvite.mjs";
@@ -312,6 +313,7 @@ async function importIncomingSharedEvent(
     if (profile && !wasAlreadyParticipant) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId, config);
     }
+    clearPendingInviteUrl();
     return true;
   } catch {
     // The URL preview remains usable when the event cloud is temporarily unavailable.

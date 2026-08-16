@@ -85,6 +85,95 @@ test("an expired cloud token refreshes once and retries with the same account", 
   }
 });
 
+test("an account workspace persists the signed-in participant instead of the first event member", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = new MemoryStorage();
+  const spaceId = "account-space-two";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyz_654321";
+  const state = {
+    currentParticipantId: "account-user-two",
+    participants: [
+      { id: "account-user-one", displayName: "User One", kind: "user" },
+      { id: "account-user-two", displayName: "User Two", kind: "user" }
+    ],
+    friendContacts: [],
+    groups: [],
+    events: []
+  };
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(state));
+  storage.setItem(
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "token-two",
+      refresh_token: "refresh-two",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: {
+        id: "user-two",
+        user_metadata: {
+          account_space_id: spaceId,
+          account_space_key: spaceKey
+        }
+      }
+    })
+  );
+
+  globalThis.window = {
+    localStorage: storage,
+    location: { href: "https://sogrim-hashbon.vercel.app/" },
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = {
+    protocol: "https:",
+    hostname: "sogrim-hashbon.vercel.app"
+  };
+  globalThis.localStorage = storage;
+
+  const writtenStates = [];
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots",
+          spaceId
+        }
+      });
+    }
+    if (options.method === "POST" || options.method === "PATCH") {
+      writtenStates.push(JSON.parse(options.body).state);
+      return jsonResponse([{ updated_at: "2026-08-16T00:00:00.000Z" }]);
+    }
+    return jsonResponse([]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?account-identity-save=${Date.now()}`
+    );
+    const result = await localStore.saveSharedState(state);
+
+    assert.equal(result.ok, true, result.error?.stack);
+    assert.ok(writtenStates.length >= 1);
+    assert.deepEqual(
+      writtenStates.map((writtenState) => writtenState.currentParticipantId),
+      writtenStates.map(() => "account-user-two")
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 function saveSession(storage, accessToken) {
   storage.setItem(
     "settle-friends-account-session",

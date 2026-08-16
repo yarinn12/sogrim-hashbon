@@ -29,6 +29,7 @@ test("invite failures are distinguishable from account session failures", () => 
     "LEGACY_INVITE_REPLACED",
     "EVENT_INVITE_REVOKED",
     "EVENT_INVITE_EXPIRED",
+    "EVENT_INVITE_AUTH_REQUIRED",
     "PRIVATE_INVITE_RECIPIENT_MISMATCH"
   ]) {
     assert.equal(isEventInviteError({ code }), true, code);
@@ -466,6 +467,7 @@ test("closed events cannot create or redeem an open invitation", async () => {
   const redemption = await redeemEventInvite({
     runtimeConfig: runtimeConfig(),
     env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
     eventId: EVENT_ID,
     token: TOKEN,
     fetchImpl: async (url, options = {}) => {
@@ -485,6 +487,9 @@ test("closed events cannot create or redeem an open invitation", async () => {
       }
       if (address.includes("/rest/v1/app_snapshots?")) {
         return jsonResponse([sharedSnapshot(closedState)]);
+      }
+      if (address.endsWith("/auth/v1/user")) {
+        return jsonResponse({ id: USER_ID });
       }
       if (address.includes("/rest/v1/event_invite_tokens") && options.method === "PATCH") {
         revoked = true;
@@ -550,6 +555,36 @@ test("server rejects revoked links and protects private invitations by account",
   );
 });
 
+test("an open event invitation cannot be redeemed without a signed-in account", async () => {
+  let sharedEventRead = false;
+  const redemption = await redeemEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    eventId: EVENT_ID,
+    token: TOKEN,
+    fetchImpl: async (url) => {
+      const address = String(url);
+      if (address.includes("/rest/v1/event_invite_tokens?")) {
+        return jsonResponse([{
+          id: "33333333-3333-4333-8333-333333333333",
+          event_id: EVENT_ID,
+          kind: "open",
+          created_by: USER_ID,
+          space_id: SPACE_ID,
+          space_key: SPACE_KEY,
+          expires_at: null
+        }]);
+      }
+      if (address.includes("/rest/v1/app_snapshots?")) sharedEventRead = true;
+      throw new Error(`Unexpected request: ${address}`);
+    }
+  });
+
+  assert.equal(redemption.status, 401);
+  assert.equal(redemption.payload.code, "EVENT_INVITE_AUTH_REQUIRED");
+  assert.equal(sharedEventRead, false);
+});
+
 test("an active participant can redeem a private event invite while friendship is pending", async () => {
   const recipientParticipantId = `account-${OTHER_USER_ID}`;
   const sharedState = serverState();
@@ -592,6 +627,9 @@ test("an active participant can redeem a private event invite while friendship i
       if (address.includes("/rest/v1/app_snapshots?")) {
         return jsonResponse([sharedSnapshot(sharedState)]);
       }
+      if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
+        return jsonResponse({ status: "active" });
+      }
       if (
         address.includes("/rest/v1/event_invite_tokens?") &&
         options.method === "PATCH"
@@ -605,6 +643,14 @@ test("an active participant can redeem a private event invite while friendship i
   assert.equal(redemption.status, 200);
   assert.equal(redemption.payload.kind, "private");
   assert.equal(redemption.payload.spaceId, SPACE_ID);
+  const activation = requests.find((request) =>
+    request.address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")
+  );
+  assert.deepEqual(JSON.parse(activation.options.body), {
+    p_invite_id: "44444444-4444-4444-8444-444444444444",
+    p_token_hash: "6aee57d3be56e70babaca8a2590d9da69566d8d629b0f46c02609af14fa82907",
+    p_user_id: OTHER_USER_ID
+  });
   assert.equal(
     requests.some((request) => request.address.includes("/rest/v1/friendships?")),
     false

@@ -32,7 +32,8 @@ await checkJson("runtime config", "/api/config", (payload) => {
   assert(Boolean(payload?.storage?.anonKey), "Supabase public key is missing");
 });
 await checkHtml("private invite shell", inviteProbePath(), {
-  requireAppShell: true
+  requireAppShell: true,
+  allowPrivateNoStore: true
 });
 await checkHtml("privacy", "/privacy");
 await checkHtml("support", "/support");
@@ -69,7 +70,11 @@ console.log(
 
 if (failures.length > 0) process.exitCode = 1;
 
-async function checkHtml(name, path, { requireAppShell = false } = {}) {
+async function checkHtml(
+  name,
+  path,
+  { requireAppShell = false, allowPrivateNoStore = false } = {}
+) {
   await runCheck(name, async () => {
     const response = await request(new URL(path, `${BASE_URL}/`));
     assert(response.ok, `HTTP ${response.status}`);
@@ -80,7 +85,7 @@ async function checkHtml(name, path, { requireAppShell = false } = {}) {
     if (requireAppShell) {
       const body = await response.text();
       assert(/id=["']app["']/.test(body), "app shell marker is missing");
-      warnOnOriginBackedShell(name, response);
+      warnOnOriginBackedShell(name, response, { allowPrivateNoStore });
     } else {
       await response.body?.cancel();
     }
@@ -152,9 +157,10 @@ async function request(url, options = {}) {
   }
 }
 
-function warnOnOriginBackedShell(name, response) {
+function warnOnOriginBackedShell(name, response, { allowPrivateNoStore = false } = {}) {
   const cacheControl = String(response.headers.get("cache-control") ?? "");
   if (!cacheControl.includes("no-store")) return;
+  if (allowPrivateNoStore) return;
   if (ALLOW_ORIGIN_BACKED_SHELL) return;
   const detail = "app shell is origin-backed instead of CDN-backed";
   if (STRICT) throw new Error(detail);

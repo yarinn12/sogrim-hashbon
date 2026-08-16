@@ -93,6 +93,7 @@ function jsonResponse(payload, status = 200) {
 
 function createActivityFetch({
   senderState = eventState(),
+  authoritativeState = senderState,
   recipientState = eventState({
     currentParticipantId: RECIPIENT_PARTICIPANT_ID
   }),
@@ -113,10 +114,14 @@ function createActivityFetch({
       return jsonResponse({ id: SENDER_USER_ID });
     }
     if (address.includes("/rest/v1/app_snapshots?")) {
-      if (!address.includes("owner_user_id")) {
+      const params = new URL(address).searchParams;
+      if (
+        params.get("snapshot_kind") === "eq.shared_event" ||
+        !params.has("owner_user_id")
+      ) {
         return jsonResponse([
           {
-            state: senderState,
+            state: authoritativeState,
             access_key_hash: createHash("sha256")
               .update(senderState.events[0].sharedSpaceKey)
               .digest("hex")
@@ -318,9 +323,11 @@ test("two connected accounts keep one inbox item while the recipient receives it
   );
 });
 
-test("server rejects an expense update that was not created by the caller", async () => {
+test("server rejects an expense forged in the caller's editable workspace", async () => {
   const { fetchImpl, requests } = createActivityFetch({
-    senderState: eventState({ expenseCreator: RECIPIENT_PARTICIPANT_ID })
+    authoritativeState: eventState({
+      expenseCreator: RECIPIENT_PARTICIPANT_ID
+    })
   });
   const result = await sendEventActivityNotification({
     runtimeConfig: runtimeConfig(),
@@ -334,8 +341,25 @@ test("server rejects an expense update that was not created by the caller", asyn
 
   assert.equal(result.status, 403);
   assert.equal(result.payload.code, "EVENT_ACTIVITY_NOT_ALLOWED");
+  const sharedSnapshotRead = requests.find((request) =>
+    request.url.includes("snapshot_kind=eq.shared_event")
+  );
+  assert.ok(sharedSnapshotRead);
+  const sharedSnapshotParams = new URL(sharedSnapshotRead.url).searchParams;
+  assert.equal(sharedSnapshotParams.get("id"), "eq.shared-event-space");
+  assert.equal(sharedSnapshotParams.get("owner_user_id"), "is.null");
+  assert.equal(sharedSnapshotParams.get("snapshot_kind"), "eq.shared_event");
+  assert.equal(sharedSnapshotRead.options.headers.apikey, "service-role");
   assert.equal(
-    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    sharedSnapshotRead.options.headers.authorization,
+    "Bearer service-role"
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("reserve_event_activity_notification") ||
+      request.url.includes("/rest/v1/notification_inbox?") ||
+      request.url.includes("fcm.googleapis.com/")
+    ),
     false
   );
 });

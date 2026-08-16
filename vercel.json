@@ -23,6 +23,12 @@
     { "src": "src/domain/**", "use": "@vercel/static" },
     { "src": "src/vendor/**", "use": "@vercel/static" }
   ],
+  "crons": [
+    {
+      "path": "/api/maintenance/retention",
+      "schedule": "17 2 * * *"
+    }
+  ],
   "routes": [
     {
       "src": "/(.*)",
@@ -40,6 +46,27 @@
       "src": "/assets/(.*)",
       "headers": {
         "Cache-Control": "public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800"
+      },
+      "continue": true
+    },
+    {
+      "src": "^/$",
+      "headers": {
+        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+      },
+      "continue": true
+    },
+    {
+      "src": "/(i|r)/(.*)",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
+      },
+      "continue": true
+    },
+    {
+      "src": "/auth/callback",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
       },
       "continue": true
     },

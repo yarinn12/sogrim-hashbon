@@ -444,6 +444,43 @@ begin
     return false;
   end if;
 
+  if pg_catalog.jsonb_array_length(
+      case
+        when pg_catalog.jsonb_typeof(p_new_state -> 'participants') = 'array'
+          then p_new_state -> 'participants'
+        else '[]'::jsonb
+      end
+    ) <> pg_catalog.jsonb_array_length(
+      case
+        when pg_catalog.jsonb_typeof(p_old_state -> 'participants') = 'array'
+          then p_old_state -> 'participants'
+        else '[]'::jsonb
+      end
+    ) + pg_catalog.cardinality(added_ids)
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(
+        case
+          when pg_catalog.jsonb_typeof(p_old_state -> 'participants') = 'array'
+            then p_old_state -> 'participants'
+          else '[]'::jsonb
+        end
+      ) as old_participant(value)
+      where not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(
+          case
+            when pg_catalog.jsonb_typeof(p_new_state -> 'participants') = 'array'
+              then p_new_state -> 'participants'
+            else '[]'::jsonb
+          end
+        ) as new_participant(value)
+        where new_participant.value = old_participant.value
+      )
+    ) then
+    return false;
+  end if;
+
   foreach added_id in array added_ids loop
     if exists (
       select 1
@@ -599,6 +636,175 @@ begin
       using errcode = '42501';
   end if;
 
+  if not actor_is_admin then
+    if old.state -> 'deletedParticipants' is distinct from
+      new.state -> 'deletedParticipants' then
+      raise exception 'Only an event admin can merge participant identities'
+        using errcode = '42501';
+    end if;
+
+    if old.state - array['events', 'participants', 'deletedParticipants'] is distinct from
+      new.state - array['events', 'participants', 'deletedParticipants'] then
+      raise exception 'Only an event admin can change shared event metadata'
+        using errcode = '42501';
+    end if;
+
+    if actor_is_joining or actor_is_leaving then
+      if old_event - array[
+          'participantIds',
+          'inactiveParticipantIds',
+          'membershipUpdatedAt',
+          'membershipUpdatedAtByParticipant',
+          'adminIds',
+          'adminIdsUpdatedAt'
+        ] is distinct from new_event - array[
+          'participantIds',
+          'inactiveParticipantIds',
+          'membershipUpdatedAt',
+          'membershipUpdatedAtByParticipant',
+          'adminIds',
+          'adminIdsUpdatedAt'
+        ] then
+        raise exception 'A membership update cannot change event content'
+          using errcode = '42501';
+      end if;
+
+      if actor_is_leaving
+        and old.state -> 'participants' is distinct from
+          new.state -> 'participants' then
+        raise exception 'Leaving cannot change participant profiles'
+          using errcode = '42501';
+      end if;
+
+      if actor_is_joining and (
+        pg_catalog.jsonb_array_length(
+          case
+            when pg_catalog.jsonb_typeof(new.state -> 'participants') = 'array'
+              then new.state -> 'participants'
+            else '[]'::jsonb
+          end
+        ) > pg_catalog.jsonb_array_length(
+          case
+            when pg_catalog.jsonb_typeof(old.state -> 'participants') = 'array'
+              then old.state -> 'participants'
+            else '[]'::jsonb
+          end
+        ) + 1
+        or exists (
+          select 1
+          from pg_catalog.jsonb_array_elements(
+            case
+              when pg_catalog.jsonb_typeof(old.state -> 'participants') = 'array'
+                then old.state -> 'participants'
+              else '[]'::jsonb
+            end
+          ) as old_participant(value)
+          where not exists (
+            select 1
+            from pg_catalog.jsonb_array_elements(
+              case
+                when pg_catalog.jsonb_typeof(new.state -> 'participants') = 'array'
+                  then new.state -> 'participants'
+                else '[]'::jsonb
+              end
+            ) as new_participant(value)
+            where new_participant.value = old_participant.value
+          )
+        )
+        or exists (
+          select 1
+          from pg_catalog.jsonb_array_elements(
+            case
+              when pg_catalog.jsonb_typeof(new.state -> 'participants') = 'array'
+                then new.state -> 'participants'
+              else '[]'::jsonb
+            end
+          ) as new_participant(value)
+          where not exists (
+            select 1
+            from pg_catalog.jsonb_array_elements(
+              case
+                when pg_catalog.jsonb_typeof(old.state -> 'participants') = 'array'
+                  then old.state -> 'participants'
+                else '[]'::jsonb
+              end
+            ) as old_participant(value)
+            where old_participant.value = new_participant.value
+          )
+          and new_participant.value ->> 'id' is distinct from actor_participant_id
+        )
+      ) then
+        raise exception 'Joining can add only the authenticated participant profile'
+          using errcode = '42501';
+      end if;
+    else
+      if not (actor_participant_id = any(old_active_ids)) then
+        raise exception 'The event state must include the active member before editing'
+          using errcode = '42501';
+      end if;
+
+      if not actor_is_adding_offline_guests
+        and old.state -> 'participants' is distinct from
+          new.state -> 'participants' then
+        raise exception 'Only an event admin can change participant profiles'
+          using errcode = '42501';
+      end if;
+
+      if old_event - (case
+          when actor_is_adding_offline_guests then array[
+            'participantIds',
+            'inactiveParticipantIds',
+            'membershipUpdatedAt',
+            'membershipUpdatedAtByParticipant',
+            'updatedAt',
+            'expenses',
+            'deletedExpenses',
+            'transfers',
+            'activityLog'
+          ]
+          else array[
+            'updatedAt',
+            'expenses',
+            'deletedExpenses',
+            'transfers',
+            'activityLog'
+          ]
+        end) is distinct from new_event - (case
+          when actor_is_adding_offline_guests then array[
+            'participantIds',
+            'inactiveParticipantIds',
+            'membershipUpdatedAt',
+            'membershipUpdatedAtByParticipant',
+            'updatedAt',
+            'expenses',
+            'deletedExpenses',
+            'transfers',
+            'activityLog'
+          ]
+          else array[
+            'updatedAt',
+            'expenses',
+            'deletedExpenses',
+            'transfers',
+            'activityLog'
+          ]
+        end) then
+        raise exception 'Only an event admin can change event settings'
+          using errcode = '42501';
+      end if;
+
+      if coalesce((old_event ->> 'locked')::boolean, false)
+        and (
+          old_event -> 'expenses' is distinct from new_event -> 'expenses'
+          or old_event -> 'deletedExpenses' is distinct from
+            new_event -> 'deletedExpenses'
+        ) then
+        raise exception 'Expenses cannot be changed while the event is locked'
+          using errcode = '42501';
+      end if;
+    end if;
+  end if;
+
   if coalesce((old_event ->> 'adminsCanEditOnly')::boolean, false)
     and not actor_is_admin
     and not actor_is_leaving
@@ -731,9 +937,7 @@ declare
   actor_participant_id text := private.current_actor_participant_id();
   snapshot public.app_snapshots%rowtype;
   existing_member private.shared_snapshot_members%rowtype;
-  active_ids text[];
   inactive_ids text[];
-  admin_ids text[];
 begin
   if actor_id is null or actor_participant_id is null then
     raise exception 'Authentication is required'
@@ -746,10 +950,8 @@ begin
   where record.id = p_snapshot_id
   for update;
 
-  if snapshot.id is null
-    or snapshot.snapshot_kind <> 'shared_event'
-    or snapshot.access_key_hash is distinct from public.request_space_key_hash() then
-    raise exception 'Shared event invitation is invalid'
+  if snapshot.id is null or snapshot.snapshot_kind <> 'shared_event' then
+    raise exception 'Shared event membership is invalid'
       using errcode = '42501';
   end if;
 
@@ -758,13 +960,10 @@ begin
       using errcode = '42501';
   end if;
 
-  active_ids := private.active_event_participant_ids(snapshot.state);
   inactive_ids := private.event_text_ids(
     snapshot.state -> 'events' -> 0,
     'inactiveParticipantIds'
   );
-  admin_ids := private.event_admin_ids(snapshot.state);
-
   select member.*
   into existing_member
   from private.shared_snapshot_members as member
@@ -772,9 +971,9 @@ begin
     and member.user_id = actor_id
   for update;
 
-  if existing_member.user_id is not null
-    and existing_member.status = 'removed'
-    and not (actor_participant_id = any(active_ids)) then
+  if existing_member.user_id is null
+    or existing_member.status <> 'active'
+    or existing_member.participant_id <> actor_participant_id then
     raise exception 'You are no longer a member of this event'
       using errcode = '42501';
   end if;
@@ -784,32 +983,112 @@ begin
       using errcode = '42501';
   end if;
 
-  insert into private.shared_snapshot_members (
-    snapshot_id,
-    user_id,
-    participant_id,
-    role,
-    status
-  )
-  values (
-    snapshot.id,
-    actor_id,
-    actor_participant_id,
-    case when actor_participant_id = any(admin_ids) then 'admin' else 'member' end,
-    'active'
-  )
-  on conflict (snapshot_id, user_id) do update
-  set
-    participant_id = excluded.participant_id,
-    role = excluded.role,
-    status = 'active',
-    removed_at = null,
-    updated_at = pg_catalog.now();
-
   return pg_catalog.jsonb_build_object(
     'status', 'active',
     'snapshotId', snapshot.id,
     'participantId', actor_participant_id
+  );
+end;
+$$;
+
+create or replace function public.create_shared_event_snapshot(
+  p_snapshot_id text,
+  p_space_key text,
+  p_state jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  actor_id uuid := auth.uid();
+  actor_participant_id text := private.current_actor_participant_id();
+  event_record jsonb := p_state -> 'events' -> 0;
+  existing_snapshot public.app_snapshots%rowtype;
+  existing_member private.shared_snapshot_members%rowtype;
+  expected_hash text;
+begin
+  if actor_id is null or actor_participant_id is null then
+    raise exception 'Authentication is required'
+      using errcode = '42501';
+  end if;
+
+  if coalesce(p_snapshot_id, '') !~ '^[A-Za-z0-9_-]{3,80}$'
+    or char_length(coalesce(p_space_key, '')) < 24
+    or char_length(p_space_key) > 256
+    or not private.is_shared_event_state(p_state)
+    or event_record is null then
+    raise exception 'Shared event creation payload is invalid'
+      using errcode = '22023';
+  end if;
+
+  if not (
+      actor_participant_id = any(private.active_event_participant_ids(p_state))
+      and actor_participant_id = any(private.event_admin_ids(p_state))
+      and event_record ->> 'createdByParticipantId' = actor_participant_id
+    ) then
+    raise exception 'Only the authenticated event creator can create this event'
+      using errcode = '42501';
+  end if;
+
+  expected_hash := pg_catalog.encode(
+    extensions.digest(p_space_key, 'sha256'),
+    'hex'
+  );
+
+  select snapshot.*
+  into existing_snapshot
+  from public.app_snapshots as snapshot
+  where snapshot.id = p_snapshot_id
+  for update;
+
+  if existing_snapshot.id is not null then
+    select member.*
+    into existing_member
+    from private.shared_snapshot_members as member
+    where member.snapshot_id = p_snapshot_id
+      and member.user_id = actor_id
+    for update;
+
+    if existing_snapshot.snapshot_kind <> 'shared_event'
+      or existing_snapshot.access_key_hash <> expected_hash
+      or existing_snapshot.state -> 'events' -> 0 ->> 'id'
+        is distinct from event_record ->> 'id'
+      or existing_member.user_id is null
+      or existing_member.status <> 'active'
+      or existing_member.participant_id <> actor_participant_id then
+      raise exception 'Shared event identifier is already in use'
+        using errcode = '42501';
+    end if;
+
+    return pg_catalog.jsonb_build_object(
+      'status', 'existing',
+      'snapshotId', existing_snapshot.id,
+      'updatedAt', existing_snapshot.updated_at
+    );
+  end if;
+
+  insert into public.app_snapshots (
+    id,
+    access_key_hash,
+    owner_user_id,
+    snapshot_kind,
+    state,
+    updated_at
+  )
+  values (
+    p_snapshot_id,
+    expected_hash,
+    null,
+    'shared_event',
+    p_state,
+    pg_catalog.now()
+  );
+
+  return pg_catalog.jsonb_build_object(
+    'status', 'created',
+    'snapshotId', p_snapshot_id
   );
 end;
 $$;
@@ -863,12 +1142,33 @@ revoke all on function public.join_shared_event(text) from public, anon;
 grant execute on function public.join_shared_event(text) to authenticated;
 grant execute on function public.join_shared_event(text) to service_role;
 
+revoke all on function public.create_shared_event_snapshot(text, text, jsonb)
+  from public, anon;
+grant execute on function public.create_shared_event_snapshot(text, text, jsonb)
+  to authenticated;
+grant execute on function public.create_shared_event_snapshot(text, text, jsonb)
+  to service_role;
+
 drop policy if exists app_snapshots_select on public.app_snapshots;
 create policy app_snapshots_select
   on public.app_snapshots
   for select
   to anon, authenticated
-  using (access_key_hash = (select public.request_space_key_hash()));
+  using (
+    owner_user_id is null
+    and snapshot_kind = 'workspace'
+    and access_key_hash = (select public.request_space_key_hash())
+  );
+
+drop policy if exists app_snapshots_member_select on public.app_snapshots;
+create policy app_snapshots_member_select
+  on public.app_snapshots
+  for select
+  to authenticated
+  using (
+    snapshot_kind = 'shared_event'
+    and (select public.can_write_shared_snapshot(id))
+  );
 
 drop policy if exists app_snapshots_insert on public.app_snapshots;
 create policy app_snapshots_insert
@@ -2396,6 +2696,135 @@ grant execute on function public.rotate_private_event_invite(
   timestamptz,
   timestamptz
 ) to service_role;
+
+create or replace function public.redeem_event_invite_membership(
+  p_invite_id uuid,
+  p_token_hash text,
+  p_user_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  invite public.event_invite_tokens%rowtype;
+  snapshot public.app_snapshots%rowtype;
+  existing_member private.shared_snapshot_members%rowtype;
+  event_record jsonb;
+  actor_participant_id text := 'account-' || p_user_id::text;
+  creator_participant_id text;
+  active_ids text[];
+  inactive_ids text[];
+  admin_ids text[];
+begin
+  if p_invite_id is null
+    or p_user_id is null
+    or p_token_hash !~ '^[a-f0-9]{64}$' then
+    raise exception 'Event invitation is invalid'
+      using errcode = '42501';
+  end if;
+
+  select record.*
+  into invite
+  from public.event_invite_tokens as record
+  where record.id = p_invite_id
+  for update;
+
+  if invite.id is null
+    or invite.token_hash <> p_token_hash
+    or invite.revoked_at is not null
+    or (invite.expires_at is not null and invite.expires_at <= pg_catalog.now())
+    or (invite.kind = 'private' and invite.recipient_user_id <> p_user_id) then
+    raise exception 'Event invitation is no longer active'
+      using errcode = '42501';
+  end if;
+
+  select record.*
+  into snapshot
+  from public.app_snapshots as record
+  where record.id = invite.space_id
+    and record.snapshot_kind = 'shared_event'
+  for update;
+
+  event_record := snapshot.state -> 'events' -> 0;
+  if snapshot.id is null
+    or event_record is null
+    or event_record ->> 'id' <> invite.event_id
+    or coalesce((event_record ->> 'locked')::boolean, false)
+    or nullif(event_record ->> 'closedAt', '') is not null then
+    raise exception 'Shared event is no longer available'
+      using errcode = '42501';
+  end if;
+
+  active_ids := private.active_event_participant_ids(snapshot.state);
+  inactive_ids := private.event_text_ids(event_record, 'inactiveParticipantIds');
+  admin_ids := private.event_admin_ids(snapshot.state);
+  creator_participant_id := 'account-' || invite.created_by::text;
+
+  if not (creator_participant_id = any(active_ids))
+    or actor_participant_id = any(inactive_ids)
+    or (
+      invite.kind = 'private'
+      and not (actor_participant_id = any(active_ids))
+    ) then
+    raise exception 'Event invitation is no longer active'
+      using errcode = '42501';
+  end if;
+
+  select member.*
+  into existing_member
+  from private.shared_snapshot_members as member
+  where member.snapshot_id = snapshot.id
+    and member.user_id = p_user_id
+  for update;
+
+  if existing_member.user_id is not null
+    and existing_member.status = 'removed' then
+    raise exception 'You are no longer a member of this event'
+      using errcode = '42501';
+  end if;
+
+  insert into private.shared_snapshot_members (
+    snapshot_id,
+    user_id,
+    participant_id,
+    role,
+    status
+  )
+  values (
+    snapshot.id,
+    p_user_id,
+    actor_participant_id,
+    case when actor_participant_id = any(admin_ids) then 'admin' else 'member' end,
+    'active'
+  )
+  on conflict (snapshot_id, user_id) do update
+  set
+    participant_id = excluded.participant_id,
+    role = excluded.role,
+    status = 'active',
+    removed_at = null,
+    updated_at = pg_catalog.now();
+
+  update public.event_invite_tokens
+  set
+    last_redeemed_at = pg_catalog.now(),
+    updated_at = pg_catalog.now()
+  where id = invite.id;
+
+  return pg_catalog.jsonb_build_object(
+    'status', 'active',
+    'snapshotId', snapshot.id,
+    'participantId', actor_participant_id
+  );
+end;
+$$;
+
+revoke all on function public.redeem_event_invite_membership(uuid, text, uuid)
+  from public, anon, authenticated;
+grant execute on function public.redeem_event_invite_membership(uuid, text, uuid)
+  to service_role;
 
 create table if not exists public.event_activity_notifications (
   id uuid primary key default extensions.gen_random_uuid(),

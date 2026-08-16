@@ -496,6 +496,22 @@ export function clearAccountOAuthFlow(
   }
 }
 
+export function clearAccountOAuthFlows(storage = globalThis.localStorage) {
+  try {
+    const keys = [];
+    for (let index = 0; index < Number(storage?.length ?? 0); index += 1) {
+      const key = storage?.key(index);
+      if (String(key ?? "").startsWith(ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) storage?.removeItem(key);
+    return keys.length;
+  } catch {
+    return 0;
+  }
+}
+
 export async function createOAuthPkceChallenge(
   verifier,
   cryptoImpl = globalThis.crypto

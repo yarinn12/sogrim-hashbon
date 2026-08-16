@@ -492,7 +492,7 @@ test("event participant changes stay inside the dialog without blocking browser 
   );
   const toggle = sourceBetween(
     app,
-    "function toggleEventParticipant(eventId, participantId, checked)",
+    "async function toggleEventParticipant(eventId, participantId, checked)",
     "function syncEventParticipantDialog(event)"
   );
   const sync = sourceBetween(
@@ -578,6 +578,14 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(app, /participants\.length > EVENT_PARTICIPANT_SEARCH_THRESHOLD/g);
   assert.match(app, /kind: "remove-event-participant"/);
   assert.match(app, /confirmLabel: "הסר מהאירוע"/);
+  assert.match(
+    app,
+    /function canCurrentParticipantChangeEventMembership\(event, participantId\) \{[\s\S]*?canCurrentParticipantManage\(event\)/
+  );
+  assert.match(
+    app,
+    /async function removeEventParticipant\([\s\S]*?const result = await persistState\(\);[\s\S]*?לא בוצע שינוי/
+  );
   assert.match(design, /\.event-participant-roster-row/);
   assert.match(design, /\.event-participant-roster-search/);
   assert.match(design, /\.event-participant-inactive-row/);
@@ -740,44 +748,41 @@ test("participant membership changes protect creators and admins while preservin
   const requestRemoval = sourceBetween(
     app,
     "function requestEventParticipantRemoval(eventId, participantId, trigger)",
-    "function removeEventParticipant(eventId, participantId)"
+    "async function removeEventParticipant(eventId, participantId)"
   );
   const remove = sourceBetween(
     app,
-    "function removeEventParticipant(eventId, participantId)",
-    "function toggleEventParticipant(eventId, participantId, checked)"
+    "async function removeEventParticipant(eventId, participantId)",
+    "async function toggleEventParticipant(eventId, participantId, checked)"
   );
   const restore = sourceBetween(
     app,
-    "function restoreEventParticipant(eventId, participantId)",
-    "function toggleEventParticipant(eventId, participantId, checked)"
+    "async function restoreEventParticipant(eventId, participantId)",
+    "async function toggleEventParticipant(eventId, participantId, checked)"
   );
   const membershipAuthorization = sourceBetween(
     app,
-    "function eventParticipantMembershipRequiresManagement(event, participantId)",
+    "function canCurrentParticipantChangeEventMembership(event, participantId)",
     "function editBlockedMessage(event)"
   );
 
   assert.match(requestRemoval, /eventParticipantHasMoneyHistory/);
   assert.match(requestRemoval, /participantId === state\.currentParticipantId/);
   assert.match(requestRemoval, /participantId === event\.createdByParticipantId/);
-  assert.match(requestRemoval, /eventParticipantMembershipRequiresManagement/);
   assert.match(requestRemoval, /!canCurrentParticipantManage\(event\)/);
   assert.match(requestRemoval, /ההוצאות וההעברות שכבר רשומות על שמו יישארו ללא שינוי/);
   assert.match(requestRemoval, /אפשר להוסיף אותו שוב בהמשך/);
   assert.doesNotMatch(requestRemoval, /קודם מעדכנים את ההוצאות שלו/);
   assert.match(remove, /participantId === event\.createdByParticipantId/);
-  assert.match(remove, /eventParticipantMembershipRequiresManagement/);
   assert.match(remove, /!canCurrentParticipantManage\(event\)/);
   assert.match(remove, /state = deactivateEventParticipant\(state, eventId, participantId\)/);
+  assert.match(remove, /const result = await persistState\(\)/);
+  assert.match(remove, /state = previousState/);
   assert.match(remove, /ההיסטוריה הכספית נשמרה/);
   assert.match(remove, /notice = ""/);
   assert.match(restore, /event\.inactiveParticipantIds = \(event\.inactiveParticipantIds \?\? \[\]\)\.filter/);
-  assert.match(restore, /eventParticipantMembershipRequiresManagement/);
   assert.match(restore, /!canCurrentParticipantManage\(event\)/);
   assert.match(restore, /message: `\$\{participant\.displayName\} חזר לאירוע\.`/);
-  assert.match(membershipAuthorization, /event\?\.createdByParticipantId/);
-  assert.match(membershipAuthorization, /eventAdminIds\(state, event \?\? \{\}\)/);
   assert.match(membershipAuthorization, /canCurrentParticipantManage\(event\)/);
 });
 
@@ -1135,6 +1140,11 @@ test("event settings expose friendly settlement rounding with an exact fallback"
 
 test("event settings let managers choose direct payer reimbursements", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const repaymentHandler = sourceBetween(
+    app,
+    "async function setEventRepaymentMode(eventId, mode)",
+    "function refreshStartupSharedState(refreshRequest)"
+  );
 
   assert.match(app, /directSettlementTransfers: false/);
   assert.match(app, /title: "חלוקת ההחזרים"/);
@@ -1143,6 +1153,9 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(app, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
+  assert.match(repaymentHandler, /const previousState = state/);
+  assert.match(repaymentHandler, /const result = await persistState\(\)/);
+  assert.match(repaymentHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
 });
 
 test("settlement exposes the active repayment mode without burying it in settings", async () => {

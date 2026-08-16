@@ -71,6 +71,7 @@ import {
   archiveGroup,
   canLeaveEvent,
   canLinkParticipantAccount,
+  canLinkParticipantAccountInEvent,
   canMergeParticipants,
   canRemoveParticipant,
   closeEvent,
@@ -79,6 +80,7 @@ import {
   deleteEvent,
   leaveEvent,
   linkParticipantAccount,
+  linkParticipantAccountInEvent,
   mergeParticipants,
   renameOfflineParticipant,
   reopenEvent,
@@ -94,6 +96,7 @@ import {
   updateExpense
 } from "./domain/appActions.mjs";
 import {
+  bindStateBackupToCurrentParticipant,
   parseStateBackup,
   serializeStateBackup
 } from "./domain/stateBackup.mjs";
@@ -591,7 +594,13 @@ function ensureRenderableScreen() {
   }
 
   if (!["event", "settlement"].includes(screen.name)) return;
-  if (getEvent(screen.eventId)) return;
+  const currentEvent = getEvent(screen.eventId);
+  if (
+    currentEvent &&
+    visibleEventsForParticipant(state, state.currentParticipantId).some(
+      (event) => event.id === currentEvent.id
+    )
+  ) return;
 
   screen = { name: "home" };
   newEventDraft = null;
@@ -4215,7 +4224,7 @@ function renderEventParticipantAddDialog(event) {
               </div>
             </details>
           </div>
-          <p class="participant-add-privacy-note"><strong>פרטי</strong><span>שם שמתווסף ידנית נשמר רק אצלך, עד שמקשרים אותו לחשבון אמיתי.</span></p>
+          <p class="participant-add-privacy-note"><strong>שם ידני</strong><span>השם יוצג למשתתפי האירוע, אך לא ייצור לאדם חשבון.</span></p>
         </section>
       </div>
     `
@@ -9666,10 +9675,11 @@ async function handleClick(event) {
   }
 
   if (action === "set-event-repayment-mode") {
-    setEventRepaymentMode(
+    await setEventRepaymentMode(
       target.dataset.eventId,
       target.dataset.repaymentMode
     );
+    return;
   }
 
   if (action === "join-existing-event") {
@@ -9686,7 +9696,7 @@ async function handleClick(event) {
   }
 
   if (action === "add-event-participant") {
-    toggleEventParticipant(
+    await toggleEventParticipant(
       target.dataset.eventId,
       target.dataset.participantId,
       true
@@ -9704,7 +9714,7 @@ async function handleClick(event) {
   }
 
   if (action === "restore-event-participant") {
-    restoreEventParticipant(
+    await restoreEventParticipant(
       target.dataset.eventId,
       target.dataset.participantId
     );
@@ -10840,11 +10850,11 @@ async function handleChange(event) {
   }
 
   if (action === "event-participant") {
-    toggleEventParticipant(screen.eventId, target.dataset.participantId, target.checked);
+    await toggleEventParticipant(screen.eventId, target.dataset.participantId, target.checked);
   }
 
   if (action === "toggle-event-participant-admin") {
-    toggleEventParticipantAdmin(
+    await toggleEventParticipantAdmin(
       target.dataset.eventId,
       target.dataset.participantId,
       target.checked
@@ -12038,8 +12048,9 @@ function requestExplicitParticipantLink(
     !participantHasConnectedAccount(target) ||
     !sourceIsActive ||
     !targetIsActive ||
-    !canLinkParticipantAccount(
+    !canLinkParticipantAccountInEvent(
       state,
+      eventId,
       sourceParticipantId,
       targetParticipantId
     )
@@ -12051,15 +12062,14 @@ function requestExplicitParticipantLink(
     return;
   }
 
-  const impact = participantMergeImpact(source.id);
+  const impact = participantMergeImpactForEvent(event, source.id);
   openImportantActionDialog(
     {
       kind: "merge-participants",
       label: "אישור קישור",
       title: `לקשר את ${source.displayName} לחשבון של ${target.displayName}?`,
-      description: `כל ההוצאות וההעברות של ${source.displayName} יעברו לחשבון של ${target.displayName}. השם הידני יוסר ואי אפשר לבטל את הפעולה.`,
+      description: `באירוע הזה, כל ההוצאות וההעברות של ${source.displayName} יעברו לחשבון של ${target.displayName}. אירועים אחרים לא ישתנו.`,
       metrics: [
-        { label: "אירועים", value: String(impact.events) },
         { label: "הוצאות", value: String(impact.expenses) },
         { label: "העברות", value: String(impact.transfers) }
       ],
@@ -12067,11 +12077,29 @@ function requestExplicitParticipantLink(
       payload: {
         sourceId: source.id,
         targetId: target.id,
+        eventId,
         mergeKind: "account-link"
       }
     },
     trigger
   );
+}
+
+function participantMergeImpactForEvent(event, participantId) {
+  return {
+    expenses: (event.expenses ?? []).filter(
+      (expense) =>
+        expense.createdByParticipantId === participantId ||
+        expense.sharedByParticipantIds.includes(participantId) ||
+        expense.payers.some((payer) => payer.participantId === participantId)
+    ).length,
+    transfers: (event.transfers ?? []).filter(
+      (transfer) =>
+        transfer.fromParticipantId === participantId ||
+        transfer.toParticipantId === participantId ||
+        transfer.markedPaidByParticipantId === participantId
+    ).length
+  };
 }
 
 function participantMergeImpact(participantId) {
@@ -12436,7 +12464,7 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "remove-event-participant") {
-    removeEventParticipant(
+    await removeEventParticipant(
       action.payload.eventId,
       action.payload.participantId
     );
@@ -12447,6 +12475,7 @@ async function executeImportantAction(action) {
     mergeParticipantsDraft = {
       sourceId: action.payload.sourceId,
       targetId: action.payload.targetId,
+      eventId: action.payload.eventId ?? "",
       mergeKind: action.payload.mergeKind ?? "duplicate"
     };
     mergeParticipantsInState();
@@ -12710,7 +12739,14 @@ function mergeParticipantsInState() {
   if (!source || !target || source.id === target.id) return;
 
   const nextState = mergeParticipantsDraft.mergeKind === "account-link"
-    ? linkParticipantAccount(state, source.id, target.id)
+    ? mergeParticipantsDraft.eventId
+      ? linkParticipantAccountInEvent(
+          state,
+          mergeParticipantsDraft.eventId,
+          source.id,
+          target.id
+        )
+      : linkParticipantAccount(state, source.id, target.id)
     : mergeParticipants(state, source.id, target.id);
   if (nextState === state) {
     mergeParticipantsDraft = null;
@@ -13355,7 +13391,7 @@ async function importStateBackup(file, trigger) {
 }
 
 function restoreStateBackup(restoredState) {
-  state = restoredState;
+  state = bindStateBackupToCurrentParticipant(restoredState, state);
   screen = { name: "home" };
   newEventDraft = null;
   joinEventDraft = null;
@@ -14610,7 +14646,7 @@ function setEventManagementMode(eventId, mode) {
   render();
 }
 
-function toggleEventParticipantAdmin(eventId, participantId, enabled) {
+async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   const event = getEvent(eventId);
   const participant = state.participants.find((item) => item.id === participantId);
   const focusSelector =
@@ -14662,6 +14698,7 @@ function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   );
   if (nextState === state) return;
 
+  const previousState = cloneNavigationValue(state);
   state = nextState;
   const participantLabel = participantName(participantId, event);
   eventDialog = eventDialog?.eventId === eventId
@@ -14673,7 +14710,15 @@ function toggleEventParticipantAdmin(eventId, participantId, enabled) {
       }
     : eventDialog;
   notice = "";
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    const failureMessage = "לא הצלחנו לשנות את הרשאת הניהול. לא בוצע שינוי.";
+    eventDialog = eventDialog?.eventId === eventId
+      ? { ...eventDialog, message: failureMessage }
+      : eventDialog;
+    notice = eventDialog?.eventId === eventId ? "" : failureMessage;
+  }
   render();
   reactivateDialogAfterRender(".event-modal", focusSelector);
 }
@@ -14755,19 +14800,8 @@ function requestEventParticipantRemoval(eventId, participantId, trigger) {
   const participant = state.participants.find((item) => item.id === participantId);
   if (!event || !participant || !event.participantIds.includes(participantId)) return;
 
-  if (!canCurrentParticipantEdit(event)) {
+  if (!canCurrentParticipantManage(event)) {
     showEventParticipantMessage(eventId, editBlockedMessage(event));
-    return;
-  }
-
-  if (
-    eventParticipantMembershipRequiresManagement(event, participantId) &&
-    !canCurrentParticipantManage(event)
-  ) {
-    showEventParticipantMessage(
-      eventId,
-      "רק מנהל אירוע יכול לשנות חברות של מנהל או יוצר האירוע."
-    );
     return;
   }
 
@@ -14797,17 +14831,13 @@ function requestEventParticipantRemoval(eventId, participantId, trigger) {
   );
 }
 
-function removeEventParticipant(eventId, participantId) {
+async function removeEventParticipant(eventId, participantId) {
   const event = getEvent(eventId);
   const participant = state.participants.find((item) => item.id === participantId);
   if (
     !event ||
     !participant ||
-    !canCurrentParticipantEdit(event) ||
-    (
-      eventParticipantMembershipRequiresManagement(event, participantId) &&
-      !canCurrentParticipantManage(event)
-    ) ||
+    !canCurrentParticipantManage(event) ||
     participantId === state.currentParticipantId ||
     isEventParticipantInactive(event, participantId)
   ) {
@@ -14828,6 +14858,7 @@ function removeEventParticipant(eventId, participantId) {
     eventDialog?.kind === "participant-profile" &&
     eventDialog.eventId === eventId &&
     eventDialog.participantId === participantId;
+  const previousState = cloneNavigationValue(state);
   state = deactivateEventParticipant(state, eventId, participantId);
   recordEventActivity(eventId, "participant-removed", {
     subjectParticipantId: participantId
@@ -14846,28 +14877,40 @@ function removeEventParticipant(eventId, participantId) {
       }
     : eventDialog;
   notice = "";
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    eventDialog = isEventParticipantsDialog(eventId)
+      ? {
+          ...eventDialog,
+          message: result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+            ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+            : "לא הצלחנו להסיר את המשתתף. לא בוצע שינוי."
+        }
+      : eventDialog;
+    notice = eventDialog ? "" : "לא הצלחנו להסיר את המשתתף. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(".event-modal");
+    return;
+  }
   render();
   reactivateDialogAfterRender(".event-modal");
 }
 
-function restoreEventParticipant(eventId, participantId) {
+async function restoreEventParticipant(eventId, participantId) {
   const event = getEvent(eventId);
   const participant = state.participants.find((item) => item.id === participantId);
   if (
     !event ||
     !participant ||
-    !canCurrentParticipantEdit(event) ||
-    (
-      eventParticipantMembershipRequiresManagement(event, participantId) &&
-      !canCurrentParticipantManage(event)
-    ) ||
+    !canCurrentParticipantManage(event) ||
     !isEventParticipantInactive(event, participantId)
   ) {
     showEventParticipantMessage(eventId, "לא ניתן להחזיר את המשתתף כרגע.");
     return;
   }
 
+  const previousState = cloneNavigationValue(state);
   event.inactiveParticipantIds = (event.inactiveParticipantIds ?? []).filter(
     (id) => id !== participantId
   );
@@ -14887,7 +14930,20 @@ function restoreEventParticipant(eventId, participantId) {
       }
     : eventDialog;
   notice = "";
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    eventDialog = isEventParticipantsDialog(eventId)
+      ? {
+          ...eventDialog,
+          message: "לא הצלחנו להחזיר את המשתתף. לא בוצע שינוי."
+        }
+      : eventDialog;
+    notice = eventDialog ? "" : "לא הצלחנו להחזיר את המשתתף. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(".event-modal");
+    return;
+  }
   render();
   reactivateDialogAfterRender(
     ".event-modal",
@@ -14895,7 +14951,7 @@ function restoreEventParticipant(eventId, participantId) {
   );
 }
 
-function toggleEventParticipant(eventId, participantId, checked) {
+async function toggleEventParticipant(eventId, participantId, checked) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantChangeEventMembership(event, participantId)) {
     notice = editBlockedMessage(event);
@@ -14917,10 +14973,11 @@ function toggleEventParticipant(eventId, participantId, checked) {
   const participant = state.participants.find((item) => item.id === participantId);
   if (!participant) return;
   if (isEventParticipantInactive(event, participantId)) {
-    restoreEventParticipant(eventId, participantId);
+    await restoreEventParticipant(eventId, participantId);
     return;
   }
   if (event.participantIds.includes(participantId)) return;
+  const previousState = cloneNavigationValue(state);
   const returnsToParticipantRoster = eventDialog?.kind === "participants-add";
   if (returnsToParticipantRoster) {
     eventDialog = {
@@ -14943,7 +15000,20 @@ function toggleEventParticipant(eventId, participantId, checked) {
       subjectParticipantId: participantId
     });
   }
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    eventDialog = isEventParticipantsDialog(eventId)
+      ? {
+          ...eventDialog,
+          message: "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי."
+        }
+      : eventDialog;
+    notice = eventDialog ? "" : "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(".event-modal");
+    return;
+  }
   publishEventInvitation(eventId, participant);
   if (returnsToParticipantRoster) {
     renderHistoryFallback();
@@ -15769,19 +15839,8 @@ function canCurrentParticipantManage(event) {
   return event ? canManageEventSettings(state, event, state.currentParticipantId) : false;
 }
 
-function eventParticipantMembershipRequiresManagement(event, participantId) {
-  return (
-    participantId === event?.createdByParticipantId ||
-    eventAdminIds(state, event ?? {}).includes(participantId)
-  );
-}
-
 function canCurrentParticipantChangeEventMembership(event, participantId) {
-  if (!canCurrentParticipantEdit(event)) return false;
-  return (
-    !eventParticipantMembershipRequiresManagement(event, participantId) ||
-    canCurrentParticipantManage(event)
-  );
+  return Boolean(participantId && canCurrentParticipantManage(event));
 }
 
 function editBlockedMessage(event) {
@@ -15900,7 +15959,7 @@ async function hydrateAppForActiveAccount() {
   refreshAdminAnalytics().catch(() => {});
 }
 
-function setEventRepaymentMode(eventId, mode) {
+async function setEventRepaymentMode(eventId, mode) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לשנות את אופן ההחזר.";
@@ -15911,11 +15970,24 @@ function setEventRepaymentMode(eventId, mode) {
   const direct = mode === "direct";
   if (usesDirectSettlementTransfers(event) === direct) return;
 
+  const previousState = state;
   state = setEventDirectSettlementTransfers(state, eventId, direct);
   notice = direct
     ? "החזרים ישירים הופעלו. כל מי שמימן הוצאה יקבל את ההחזר שלו."
     : "מצב פחות העברות הופעל. המערכת תקזז בין כולם.";
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : "לא הצלחנו לשנות את אופן ההחזר. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(
+      ".event-modal",
+      `[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`
+    );
+    return;
+  }
   render();
   requestAnimationFrame(() => {
     app
@@ -15981,7 +16053,7 @@ function requestVisibleEventSync() {
   if (
     document.visibilityState !== "visible" ||
     !appBootHydrated ||
-    !["event", "settlement"].includes(screen.name) ||
+    !["home", "event", "settlement"].includes(screen.name) ||
     expenseDraft ||
     eventDialog ||
     importantActionDialog ||

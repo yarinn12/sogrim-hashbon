@@ -146,6 +146,17 @@ test("reconnecting refreshes config once while retaining compact invite credenti
   );
 });
 
+test("a successful invite import cannot leak into the next account", async () => {
+  const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const importFlow = sourceBetween(
+    layer,
+    "async function importIncomingSharedEvent",
+    "function notifyJoinedEvent"
+  );
+
+  assert.match(importFlow, /clearPendingInviteUrl\(\);\s*return true;/);
+});
+
 test("public profile gate keeps invite snapshot while saving a new visitor", async () => {
   const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
 

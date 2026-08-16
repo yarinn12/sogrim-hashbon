@@ -241,6 +241,7 @@ function inviteErrorMessage(code, fallbackMessage) {
     EVENT_INVITE_INVALIDATED: "האירוע כבר אינו זמין דרך הקישור הזה.",
     LEGACY_INVITE_REPLACED: "זהו קישור ישן. צריך לבקש קישור הצטרפות חדש.",
     PRIVATE_INVITE_AUTH_REQUIRED: "צריך להתחבר לחשבון שאליו נשלחה ההזמנה.",
+    EVENT_INVITE_AUTH_REQUIRED: "צריך להתחבר כדי להצטרף לאירוע.",
     PRIVATE_INVITE_RECIPIENT_MISMATCH: "ההזמנה הפרטית נשלחה לחשבון אחר."
   };
   return messages[code] ?? fallbackMessage;

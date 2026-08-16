@@ -67,6 +67,23 @@ try {
           and pg_catalog.lower(policy.with_check) like '%can_write_shared_snapshot%'
           and pg_catalog.lower(policy.with_check) like '%can_bootstrap_shared_snapshot%'
       ) as shared_snapshot_policy_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_policies as policy
+        where policy.schemaname = 'public'
+          and policy.tablename = 'app_snapshots'
+          and policy.policyname = 'app_snapshots_select'
+          and pg_catalog.lower(policy.qual) like '%owner_user_id is null%'
+          and pg_catalog.lower(policy.qual) like '%snapshot_kind = ''workspace''%'
+      ) and exists (
+        select 1
+        from pg_catalog.pg_policies as policy
+        where policy.schemaname = 'public'
+          and policy.tablename = 'app_snapshots'
+          and policy.policyname = 'app_snapshots_member_select'
+          and pg_catalog.lower(policy.qual) like '%snapshot_kind = ''shared_event''%'
+          and pg_catalog.lower(policy.qual) like '%can_write_shared_snapshot%'
+      ) as shared_read_policy_ready,
       to_regprocedure('public.can_bootstrap_shared_snapshot(text)') is not null
         and not pg_catalog.has_function_privilege(
           'anon', 'public.can_bootstrap_shared_snapshot(text)', 'execute'
@@ -80,7 +97,62 @@ try {
         )
         and pg_catalog.has_function_privilege(
           'authenticated', 'public.join_shared_event(text)', 'execute'
-        ) as shared_join_ready,
+        )
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'public.join_shared_event(text)'::regprocedure
+          ),
+          'request_space_key_hash'
+        ) = 0
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'public.join_shared_event(text)'::regprocedure
+          ),
+          'existing_member.status <> ''active'''
+        ) > 0 as shared_join_ready,
+      to_regprocedure(
+        'public.create_shared_event_snapshot(text,text,jsonb)'
+      ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.create_shared_event_snapshot(text,text,jsonb)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.create_shared_event_snapshot(text,text,jsonb)',
+          'execute'
+        ) as shared_creation_ready,
+      pg_catalog.strpos(
+        pg_catalog.pg_get_functiondef(
+          'private.guard_shared_snapshot_update()'::regprocedure
+        ),
+        '''updatedAt'''
+      ) > 0
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'private.guard_shared_snapshot_update()'::regprocedure
+          ),
+          'not actor_is_adding_offline_guests'
+        ) > 0 as shared_member_content_ready,
+      to_regprocedure(
+        'public.redeem_event_invite_membership(uuid,text,uuid)'
+      ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.redeem_event_invite_membership(uuid,text,uuid)',
+          'execute'
+        )
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.redeem_event_invite_membership(uuid,text,uuid)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'service_role',
+          'public.redeem_event_invite_membership(uuid,text,uuid)',
+          'execute'
+        ) as event_invite_membership_redeem_ready,
       exists (
         select 1
         from pg_catalog.pg_trigger as trigger
@@ -568,8 +640,12 @@ try {
     !result?.signup_claim_trigger_ready ||
     !result?.signup_claim_function_private ||
     !result?.shared_snapshot_policy_ready ||
+    !result?.shared_read_policy_ready ||
     !result?.shared_bootstrap_ready ||
     !result?.shared_join_ready ||
+    !result?.shared_creation_ready ||
+    !result?.shared_member_content_ready ||
+    !result?.event_invite_membership_redeem_ready ||
     !result?.shared_membership_triggers_ready ||
     !result?.deletion_ready ||
     !result?.deletion_trigger_ready ||

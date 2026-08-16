@@ -42,6 +42,14 @@ test("toSharedState removes the current browser identity from shared saves", () 
   assert.equal(sharedState.currentParticipantId, "yarin");
 });
 
+test("account-owned cloud saves preserve the signed-in participant identity", () => {
+  const sharedState = toSharedState(state, {
+    preserveCurrentParticipantId: true
+  });
+
+  assert.equal(sharedState.currentParticipantId, "avi");
+});
+
 test("shared state comparison ignores the browser-local current identity", () => {
   assert.equal(
     hasSharedStateChanged(state, { ...state, currentParticipantId: "yarin" }),
@@ -84,13 +92,15 @@ test("shared state comparison detects event and participant changes", () => {
   );
 });
 
-test("localStore stores identity separately from shared event data", async () => {
+test("localStore keeps device identity local and account identity in its own cloud workspace", async () => {
   const localStore = await readFile("src/data/localStore.mjs", "utf8");
 
   assert.match(localStore, /LOCAL_PARTICIPANT_KEY/);
   assert.match(localStore, /applyLocalParticipantId/);
-  assert.match(localStore, /toSharedState\(state\)/);
-  assert.match(localStore, /loadCloudState\(runtimeConfig, toSharedState\(localState\)\)/);
+  assert.match(localStore, /JSON\.stringify\(toSharedState\(cleanState\)\)/);
+  assert.match(localStore, /function toCloudState\(config, state\)/);
+  assert.match(localStore, /toCloudState\(runtimeConfig, localState\)/);
+  assert.match(localStore, /preserveCurrentParticipantId/);
 });
 
 test("localStore keeps local-mode saves on the current device", async () => {

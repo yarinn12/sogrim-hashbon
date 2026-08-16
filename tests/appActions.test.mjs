@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   archiveGroup,
   canLinkParticipantAccount,
+  canLinkParticipantAccountInEvent,
   canMergeParticipants,
   canRemoveParticipant,
   closeEvent,
@@ -14,6 +15,7 @@ import {
   joinGuestToEvent,
   leaveEvent,
   linkParticipantAccount,
+  linkParticipantAccountInEvent,
   mergeParticipants,
   renameOfflineParticipant,
   reopenEvent,
@@ -1038,6 +1040,74 @@ test("linkParticipantAccount preserves a valid manager account-link flow", () =>
   assert.equal(
     linked.participants.some((participant) => participant.id === "guest-dani"),
     false
+  );
+});
+
+test("an event manager can link an offline name only inside the current event", () => {
+  const state = mergeSettlementState({
+    expense: {
+      total: 6000,
+      payers: [{ participantId: "guest-dani", amount: 6000 }],
+      sharedByParticipantIds: ["owner", "dani", "guest-dani"]
+    },
+    transfers: []
+  });
+  state.participants = state.participants.map((participant) =>
+    participant.id === "dani"
+      ? { ...participant, accountLinked: true }
+      : participant.id === "guest-dani"
+        ? { ...participant, displayName: "Dani from work" }
+        : participant
+  );
+  state.events.push({
+    id: "event-managed-by-someone-else",
+    name: "Other event",
+    participantIds: ["owner", "dani", "guest-dani"],
+    adminIds: ["dani"],
+    expenses: [{
+      id: "expense-other-event",
+      name: "Other expense",
+      total: 3000,
+      payers: [{ participantId: "guest-dani", amount: 3000 }],
+      sharedByParticipantIds: ["owner", "guest-dani"],
+      createdByParticipantId: "guest-dani"
+    }],
+    transfers: []
+  });
+
+  assert.equal(canLinkParticipantAccount(state, "guest-dani", "dani"), false);
+  assert.equal(
+    canLinkParticipantAccountInEvent(
+      state,
+      "event-merge-settlement",
+      "guest-dani",
+      "dani"
+    ),
+    true
+  );
+
+  const linked = linkParticipantAccountInEvent(
+    state,
+    "event-merge-settlement",
+    "guest-dani",
+    "dani"
+  );
+  const currentEvent = linked.events[0];
+  const otherEvent = linked.events[1];
+
+  assert.deepEqual(currentEvent.participantIds, ["owner", "dani"]);
+  assert.deepEqual(currentEvent.expenses[0].payers, [
+    { participantId: "dani", amount: 6000 }
+  ]);
+  assert.equal(
+    currentEvent.membershipUpdatedAtByParticipant["guest-dani"],
+    currentEvent.membershipUpdatedAtByParticipant.dani
+  );
+  assert.equal(otherEvent.participantIds.includes("guest-dani"), true);
+  assert.equal(otherEvent.expenses[0].payers[0].participantId, "guest-dani");
+  assert.equal(
+    linked.participants.some((participant) => participant.id === "guest-dani"),
+    true
   );
 });
 

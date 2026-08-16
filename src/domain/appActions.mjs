@@ -645,6 +645,35 @@ export function canLinkParticipantAccount(
   return canManageAffectedParticipantMergeEvents(state, sourceParticipantId);
 }
 
+export function canLinkParticipantAccountInEvent(
+  state,
+  eventId,
+  sourceParticipantId,
+  targetParticipantId
+) {
+  const event = state.events.find((item) => item.id === eventId);
+  const { source, target } = participantMergePair(
+    state,
+    sourceParticipantId,
+    targetParticipantId
+  );
+  if (
+    !event ||
+    !source ||
+    !target ||
+    participantHasConnectedAccount(source) ||
+    !participantHasConnectedAccount(target) ||
+    !event.participantIds.includes(sourceParticipantId) ||
+    !event.participantIds.includes(targetParticipantId) ||
+    (event.inactiveParticipantIds ?? []).includes(sourceParticipantId) ||
+    (event.inactiveParticipantIds ?? []).includes(targetParticipantId)
+  ) {
+    return false;
+  }
+
+  return canManageEventSettings(state, event, state.currentParticipantId);
+}
+
 export function mergeParticipants(
   state,
   sourceParticipantId,
@@ -675,6 +704,77 @@ export function linkParticipantAccount(
     sourceParticipantId,
     targetParticipantId
   );
+}
+
+export function linkParticipantAccountInEvent(
+  state,
+  eventId,
+  sourceParticipantId,
+  targetParticipantId
+) {
+  if (
+    !canLinkParticipantAccountInEvent(
+      state,
+      eventId,
+      sourceParticipantId,
+      targetParticipantId
+    )
+  ) {
+    return state;
+  }
+
+  const linkedAt = new Date().toISOString();
+  const events = state.events.map((event) => {
+    if (event.id !== eventId) return event;
+    const linkedEvent = mergeParticipantIntoEvent(
+      event,
+      sourceParticipantId,
+      targetParticipantId,
+      linkedAt
+    );
+    return {
+      ...linkedEvent,
+      membershipUpdatedAtByParticipant: {
+        ...(linkedEvent.membershipUpdatedAtByParticipant ?? {}),
+        [sourceParticipantId]: linkedAt,
+        [targetParticipantId]: linkedAt
+      }
+    };
+  });
+  const sourceStillReferenced =
+    state.groups.some(
+      (group) =>
+        group.memberIds.includes(sourceParticipantId) ||
+        group.adminIds?.includes(sourceParticipantId)
+    ) ||
+    events.some((event) => eventReferencesParticipant(event, sourceParticipantId));
+
+  return {
+    ...state,
+    currentParticipantId:
+      state.currentParticipantId === sourceParticipantId
+        ? targetParticipantId
+        : state.currentParticipantId,
+    participants: sourceStillReferenced
+      ? state.participants
+      : state.participants.filter(
+          (participant) => participant.id !== sourceParticipantId
+        ),
+    deletedParticipants: sourceStillReferenced
+      ? state.deletedParticipants
+      : [
+          {
+            id: sourceParticipantId,
+            deletedAt: linkedAt,
+            reason: "merged",
+            targetParticipantId
+          },
+          ...(state.deletedParticipants ?? []).filter(
+            (item) => item.id !== sourceParticipantId
+          )
+        ],
+    events
+  };
 }
 
 function mergeParticipantRecords(
@@ -930,53 +1030,92 @@ function mergeParticipantIntoEvent(
     inactiveParticipantIds: remappedInactiveParticipantIds,
     adminIds: uniqueIds((event.adminIds ?? []).map((id) => replaceId(id, sourceParticipantId, targetParticipantId))),
     createdByParticipantId: replaceId(event.createdByParticipantId, sourceParticipantId, targetParticipantId),
-    expenses: event.expenses.map((expense) => ({
-      ...expense,
-      updatedAt,
-      createdByParticipantId: replaceId(expense.createdByParticipantId, sourceParticipantId, targetParticipantId),
-      sharedByParticipantIds: uniqueIds(
-        expense.sharedByParticipantIds.map((id) => replaceId(id, sourceParticipantId, targetParticipantId))
-      ),
-      payers: mergeExpensePayers(
-        expense.payers.map((payer) => ({
-          ...payer,
-          participantId: replaceId(payer.participantId, sourceParticipantId, targetParticipantId)
-        }))
-      )
-    })),
-    activityLog: (event.activityLog ?? []).map((entry) => ({
-      ...entry,
-      actorParticipantId: replaceId(
-        entry.actorParticipantId,
-        sourceParticipantId,
-        targetParticipantId
-      ),
-      subjectParticipantId: replaceId(
-        entry.subjectParticipantId,
-        sourceParticipantId,
-        targetParticipantId
-      ),
-      fromParticipantId: replaceId(
-        entry.fromParticipantId,
-        sourceParticipantId,
-        targetParticipantId
-      ),
-      toParticipantId: replaceId(
-        entry.toParticipantId,
-        sourceParticipantId,
-        targetParticipantId
-      )
-    })),
-    transfers: event.transfers
-      .map((transfer) => ({
-        ...transfer,
+    expenses: event.expenses.map((expense) => {
+      if (!expenseReferencesParticipant(expense, sourceParticipantId)) {
+        return expense;
+      }
+      return {
+        ...expense,
         updatedAt,
-        fromParticipantId: replaceId(transfer.fromParticipantId, sourceParticipantId, targetParticipantId),
-        toParticipantId: replaceId(transfer.toParticipantId, sourceParticipantId, targetParticipantId),
-        markedPaidByParticipantId: replaceId(transfer.markedPaidByParticipantId, sourceParticipantId, targetParticipantId)
-      }))
+        createdByParticipantId: replaceId(expense.createdByParticipantId, sourceParticipantId, targetParticipantId),
+        sharedByParticipantIds: uniqueIds(
+          expense.sharedByParticipantIds.map((id) => replaceId(id, sourceParticipantId, targetParticipantId))
+        ),
+        payers: mergeExpensePayers(
+          expense.payers.map((payer) => ({
+            ...payer,
+            participantId: replaceId(payer.participantId, sourceParticipantId, targetParticipantId)
+          }))
+        )
+      };
+    }),
+    activityLog: (event.activityLog ?? []).map((entry) => {
+      if (!activityEntryReferencesParticipant(entry, sourceParticipantId)) {
+        return entry;
+      }
+      return {
+        ...entry,
+        actorParticipantId: replaceId(
+          entry.actorParticipantId,
+          sourceParticipantId,
+          targetParticipantId
+        ),
+        subjectParticipantId: replaceId(
+          entry.subjectParticipantId,
+          sourceParticipantId,
+          targetParticipantId
+        ),
+        fromParticipantId: replaceId(
+          entry.fromParticipantId,
+          sourceParticipantId,
+          targetParticipantId
+        ),
+        toParticipantId: replaceId(
+          entry.toParticipantId,
+          sourceParticipantId,
+          targetParticipantId
+        )
+      };
+    }),
+    transfers: event.transfers
+      .map((transfer) =>
+        transferReferencesParticipant(transfer, sourceParticipantId)
+          ? {
+              ...transfer,
+              updatedAt,
+              fromParticipantId: replaceId(transfer.fromParticipantId, sourceParticipantId, targetParticipantId),
+              toParticipantId: replaceId(transfer.toParticipantId, sourceParticipantId, targetParticipantId),
+              markedPaidByParticipantId: replaceId(transfer.markedPaidByParticipantId, sourceParticipantId, targetParticipantId)
+            }
+          : transfer
+      )
       .filter((transfer) => transfer.fromParticipantId !== transfer.toParticipantId)
   };
+}
+
+function expenseReferencesParticipant(expense, participantId) {
+  return (
+    expense.createdByParticipantId === participantId ||
+    expense.sharedByParticipantIds.includes(participantId) ||
+    expense.payers.some((payer) => payer.participantId === participantId)
+  );
+}
+
+function transferReferencesParticipant(transfer, participantId) {
+  return (
+    transfer.fromParticipantId === participantId ||
+    transfer.toParticipantId === participantId ||
+    transfer.markedPaidByParticipantId === participantId
+  );
+}
+
+function activityEntryReferencesParticipant(entry, participantId) {
+  return [
+    entry.actorParticipantId,
+    entry.subjectParticipantId,
+    entry.fromParticipantId,
+    entry.toParticipantId
+  ].includes(participantId);
 }
 
 function mergeParticipantMembershipTimestamps(

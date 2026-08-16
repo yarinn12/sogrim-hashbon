@@ -17,6 +17,7 @@ import {
   markNotificationRead
 } from "../src/data/notificationInbox.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
+import { redeemEventInvite } from "../src/server/eventInvites.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
@@ -153,20 +154,18 @@ try {
   const inviteToken = parseInviteToken(invitation.actionUrl);
   assert.equal(inviteEventId, eventId);
   assert.ok(inviteToken);
-  const redemptionResponse = await fetch(`${apiBaseUrl}/api/event-invites/redeem`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${recipient.session.access_token}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ eventId: inviteEventId, token: inviteToken })
+  const redemption = await redeemEventInvite({
+    runtimeConfig: accountCloudConfig(recipient),
+    env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
+    authorization: `Bearer ${recipient.session.access_token}`,
+    eventId: inviteEventId,
+    token: inviteToken
   });
-  const redemption = await redemptionResponse.json();
-  assert.equal(redemptionResponse.ok, true);
-  assert.equal(redemption.kind, "private");
+  assert.equal(redemption.ok, true);
+  assert.equal(redemption.payload.kind, "private");
   const invitationCredentials = {
-    id: redemption.spaceId,
-    key: redemption.spaceKey
+    id: redemption.payload.spaceId,
+    key: redemption.payload.spaceKey
   };
   assert.equal(invitationCredentials.id, sharedSpace.id);
   assert.equal(invitationCredentials.key, sharedSpace.key);
@@ -365,11 +364,20 @@ function accountState(account, participants, expenses, includeEvent = true) {
     adminIds: participants.map((participant) => participant.id),
     createdByParticipantId: participants[0].id,
     adminsCanEditOnly: false,
+    currency: "ILS",
+    roundSettlementTransfers: false,
     locked: false,
+    closedAt: null,
     createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     sharedSpaceId: sharedSpace.id,
     sharedSpaceKey: sharedSpace.key,
+    inactiveParticipantIds: [],
+    participantAliases: {},
+    distinctParticipantPairs: [],
     expenses,
+    deletedExpenses: [],
+    activityLog: [],
     transfers: []
   };
   return {

@@ -14,11 +14,17 @@ import {
 } from "../src/data/sharedEventStore.mjs";
 import {
   closeEvent,
+  deactivateEventParticipant,
+  reopenEvent,
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
 import { ensureNamedParticipant } from "../src/domain/userProfile.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
+import {
+  manageOpenEventInvite,
+  redeemEventInvite
+} from "../src/server/eventInvites.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
@@ -57,11 +63,17 @@ try {
       adminsCanEditOnly: false,
       roundSettlementTransfers: false,
       locked: false,
+      closedAt: null,
       createdAt,
       updatedAt: createdAt,
       sharedSpaceId: eventCredentials.id,
       sharedSpaceKey: eventCredentials.key,
+      inactiveParticipantIds: [],
+      participantAliases: {},
+      distinctParticipantPairs: [],
       expenses: [],
+      deletedExpenses: [],
+      activityLog: [],
       transfers: []
     }
   ];
@@ -69,9 +81,33 @@ try {
   await saveCloudState(ownerConfig, ownerState);
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
 
+  const openInvite = await manageOpenEventInvite({
+    runtimeConfig: ownerConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
+    authorization: `Bearer ${owner.session.access_token}`,
+    eventId,
+    operation: "rotate"
+  });
+  assert.equal(openInvite.ok, true);
+  assert.match(String(openInvite.payload?.token ?? ""), /^[A-Za-z0-9_-]{32,128}$/);
+
+  const redeemedInvite = await redeemEventInvite({
+    runtimeConfig: joinerConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
+    authorization: `Bearer ${joiner.session.access_token}`,
+    eventId,
+    token: openInvite.payload.token
+  });
+  assert.equal(redeemedInvite.ok, true);
+  const redeemedCredentials = {
+    id: redeemedInvite.payload.spaceId,
+    key: redeemedInvite.payload.spaceKey
+  };
+  assert.deepEqual(redeemedCredentials, eventCredentials);
+
   const inviteSnapshot = await readSharedEventState(
     joinerConfig,
-    eventCredentials,
+    redeemedCredentials,
     eventId
   );
   assert.equal(inviteSnapshot?.events?.[0]?.id, eventId);
@@ -79,7 +115,7 @@ try {
   let joinerState = mergeSharedEventIntoState(
     baseAccountState(joinerProfile),
     inviteSnapshot,
-    eventCredentials
+    redeemedCredentials
   );
   joinerState = ensureNamedParticipant(joinerState, {
     id: joinerProfile.participantId,
@@ -189,11 +225,77 @@ try {
   assert.equal(ownerReloaded.events[0].transfers[0].status, "paid");
   assert.equal(joinerReloaded.events[0].locked, true);
 
+  ownerState = reopenEvent(ownerState, eventId, "2026-08-03T12:16:00.000Z");
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].locked, false);
+
+  const staleJoinerState = addExpense(structuredClone(joinerState), {
+    id: `expense-revoked-${suffix}`,
+    name: "כתיבה אחרי הסרה",
+    total: 1_000,
+    payers: [{ participantId: joinerProfile.participantId, amount: 1_000 }],
+    sharedByParticipantIds: [ownerProfile.participantId, joinerProfile.participantId],
+    createdByParticipantId: joinerProfile.participantId,
+    createdAt: "2026-08-03T12:17:00.000Z",
+    updatedAt: "2026-08-03T12:17:00.000Z"
+  });
+  const removalAt = new Date(Date.now() + 60_000).toISOString();
+  ownerState = deactivateEventParticipant(
+    ownerState,
+    eventId,
+    joinerProfile.participantId,
+    removalAt
+  );
+  assert.equal(
+    !ownerState.events[0].participantIds.includes(joinerProfile.participantId) ||
+      ownerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
+    true
+  );
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  assert.equal(
+    !ownerState.events[0].participantIds.includes(joinerProfile.participantId) ||
+      ownerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
+    true
+  );
+
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  const revokedEvent = joinerState.events.find((event) => event.id === eventId);
+  assert.equal(
+    revokedEvent?.inactiveParticipantIds?.includes(joinerProfile.participantId),
+    true
+  );
+  assert.equal(revokedEvent?.sharedSpaceId, undefined);
+  assert.equal(revokedEvent?.sharedSpaceKey, undefined);
+
+  await assert.rejects(
+    saveSharedEventState(joinerConfig, staleJoinerState, eventId),
+    (error) =>
+      error.code === "SHARED_EVENT_CREATE_NOT_ALLOWED" && error.status === 403
+  );
+  const revokedInvite = await redeemEventInvite({
+    runtimeConfig: joinerConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
+    authorization: `Bearer ${joiner.session.access_token}`,
+    eventId,
+    token: openInvite.payload.token
+  });
+  assert.equal(revokedInvite.ok, false);
+  assert.equal(revokedInvite.payload?.code, "EVENT_INVITE_INVALIDATED");
+
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  assert.equal(
+    ownerState.events[0].expenses.some(
+      (expense) => expense.id === `expense-revoked-${suffix}`
+    ),
+    false
+  );
+
   console.log(JSON.stringify({
     ok: true,
     checks: {
       separateAccountIdentities: true,
-      inviteSnapshotReadable: true,
+      authenticatedInviteRedeemed: true,
       connectedParticipantJoined: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
       concurrentExpensesMerged: true,
@@ -201,6 +303,9 @@ try {
       transferStatusSynced: true,
       eventClosureSynced: true,
       bothAccountWorkspacesReloaded: true,
+      removedMemberAccessRevoked: true,
+      removedMemberStaleWriteBlocked: true,
+      oldInviteCannotRejoinRemovedMember: true,
       temporaryDataCleanup: true
     }
   }));

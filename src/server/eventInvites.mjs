@@ -213,19 +213,25 @@ export async function redeemEventInvite({
     });
   }
 
-  if (invite.kind === "private") {
-    const accountToken = bearerToken(authorization);
-    if (!accountToken) {
-      return failure(401, "Sign in to accept this private invitation", {
-        code: "PRIVATE_INVITE_AUTH_REQUIRED"
-      });
-    }
-    const recipient = await loadAuthenticatedUser({
-      ...context,
-      accessToken: accountToken,
-      fetchImpl
+  const accountToken = bearerToken(authorization);
+  if (!accountToken) {
+    return failure(401, "Sign in to accept this invitation", {
+      code: "EVENT_INVITE_AUTH_REQUIRED"
     });
-    if (!recipient?.id || recipient.id !== invite.recipient_user_id) {
+  }
+  const recipient = await loadAuthenticatedUser({
+    ...context,
+    accessToken: accountToken,
+    fetchImpl
+  });
+  if (!recipient?.id) {
+    return failure(401, "Sign in to accept this invitation", {
+      code: "EVENT_INVITE_AUTH_REQUIRED"
+    });
+  }
+
+  if (invite.kind === "private") {
+    if (recipient.id !== invite.recipient_user_id) {
       return failure(403, "This private invitation belongs to another account", {
         code: "PRIVATE_INVITE_RECIPIENT_MISMATCH"
       });
@@ -296,11 +302,18 @@ export async function redeemEventInvite({
     }
   }
 
-  await markInviteRedeemed({
+  const membershipActivated = await activateInviteMembership({
     ...context,
     inviteId: invite.id,
+    token: normalizedToken,
+    userId: recipient.id,
     fetchImpl
-  }).catch(() => {});
+  });
+  if (!membershipActivated) {
+    return failure(410, "This invitation can no longer open the event", {
+      code: "EVENT_INVITE_INVALIDATED"
+    });
+  }
 
   return success({
     eventId: normalizedEventId,
@@ -562,27 +575,34 @@ async function rotateOpenInviteRow({
   return response.ok;
 }
 
-async function markInviteRedeemed({
+async function activateInviteMembership({
   supabaseUrl,
   serviceRoleKey,
   inviteId,
+  token,
+  userId,
   fetchImpl
 }) {
-  if (!UUID_PATTERN.test(String(inviteId ?? ""))) return;
-  await fetchImpl(
-    `${supabaseUrl}/rest/v1/event_invite_tokens?id=eq.${inviteId}`,
+  if (
+    !UUID_PATTERN.test(String(inviteId ?? "")) ||
+    !UUID_PATTERN.test(String(userId ?? "")) ||
+    !normalizeInviteToken(token)
+  ) {
+    return false;
+  }
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/redeem_event_invite_membership`,
     {
-      method: "PATCH",
-      headers: {
-        ...serviceHeaders(serviceRoleKey),
-        prefer: "return=minimal"
-      },
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
       body: JSON.stringify({
-        last_redeemed_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        p_invite_id: inviteId,
+        p_token_hash: hashInviteToken(token),
+        p_user_id: userId
       })
     }
   );
+  return response.ok;
 }
 
 async function revokeInviteRow({

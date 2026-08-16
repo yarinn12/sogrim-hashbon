@@ -16,7 +16,14 @@ test("Supabase schema secures shared snapshots with explicit grants and RLS", as
   assert.match(schema, /grant insert, update on table public\.app_snapshots to authenticated/);
   assert.match(schema, /for insert\s+to authenticated/);
   assert.match(schema, /for update\s+to authenticated/);
-  assert.match(schema, /to anon, authenticated[\s\S]+using \(access_key_hash/);
+  assert.match(
+    schema,
+    /create policy app_snapshots_select[\s\S]+snapshot_kind = 'workspace'[\s\S]+access_key_hash/
+  );
+  assert.match(
+    schema,
+    /create policy app_snapshots_member_select[\s\S]+to authenticated[\s\S]+snapshot_kind = 'shared_event'[\s\S]+can_write_shared_snapshot/
+  );
   assert.match(schema, /owner_user_id = \(select auth\.uid\(\)\)/);
   assert.match(schema, /create or replace function private\.claim_signup_workspace/);
   assert.match(schema, /after insert on auth\.users/);

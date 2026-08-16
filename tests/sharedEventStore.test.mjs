@@ -8,10 +8,11 @@ import {
   ensureEventShareCredentials,
   eventShareCredentials,
   mergeSharedEventIntoState,
-  refreshSharedEvents
+  refreshSharedEvents,
+  saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
 
-test("shared-event membership is registered with the signed-in account before writes", async () => {
+test("shared-event membership is verified with the signed-in account before writes", async () => {
   const requests = [];
   const runtimeConfig = {
     storage: {
@@ -43,10 +44,7 @@ test("shared-event membership is registered with the signed-in account before wr
     "https://project.supabase.co/rest/v1/rpc/join_shared_event"
   );
   assert.equal(requests[0].options.headers.authorization, "Bearer account-token");
-  assert.equal(
-    requests[0].options.headers["x-space-key"],
-    "event_share_key_12345678901234567890"
-  );
+  assert.equal("x-space-key" in requests[0].options.headers, false);
   assert.deepEqual(JSON.parse(requests[0].options.body), {
     p_snapshot_id: "event-space-one"
   });
@@ -166,6 +164,88 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.participants[1].accountLinked, false);
   assert.equal(payload.events[0].groupId, undefined);
   assert.equal(payload.events[0].sharedSpaceKey, undefined);
+});
+
+test("a new shared event is created atomically with its authenticated owner", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000011";
+  const participantId = `account-${accountUserId}`;
+  const credentials = {
+    id: "event-space-created",
+    key: "event-share-key-created-1234567890123456"
+  };
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Creator", accountLinked: true }],
+    groups: [],
+    events: [{
+      id: "event-created",
+      name: "Created safely",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      adminIds: [participantId],
+      createdByParticipantId: participantId,
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: credentials.id,
+      sharedSpaceKey: credentials.key
+    }]
+  };
+  const sharedState = buildSharedEventState(state, "event-created");
+  const requests = [];
+  let readCount = 0;
+
+  const saved = await saveSharedEventState(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    "event-created",
+    async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.includes("/rpc/create_shared_event_snapshot")) {
+        return {
+          ok: true,
+          status: 200,
+          async json() { return { status: "created" }; }
+        };
+      }
+      readCount += 1;
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return readCount === 1
+            ? []
+            : [{ state: sharedState, updated_at: "2026-08-16T00:00:00.000Z" }];
+        }
+      };
+    }
+  );
+
+  const creation = requests.find(({ url }) =>
+    url.includes("/rpc/create_shared_event_snapshot")
+  );
+  assert.ok(creation);
+  assert.equal(creation.options.headers.authorization, "Bearer account-token");
+  assert.deepEqual(JSON.parse(creation.options.body), {
+    p_snapshot_id: credentials.id,
+    p_space_key: credentials.key,
+    p_state: sharedState
+  });
+  assert.equal(saved.events[0].sharedSpaceId, credentials.id);
+  assert.equal(saved.events[0].sharedSpaceKey, credentials.key);
+  assert.equal(
+    requests.some(({ url, options }) =>
+      !url.includes("/rpc/") && options.method === "POST"
+    ),
+    false
+  );
 });
 
 test("shared event payload carries only participant merges relevant to that event", () => {
@@ -442,4 +522,80 @@ test("shared events refresh concurrently without losing remote updates", async (
       "event-2": "Remote two"
     }
   );
+});
+
+test("refresh removes retained credentials when server membership was revoked", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000009";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Removed member" }],
+    groups: [],
+    events: [{
+      id: "event-revoked",
+      name: "Former event",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: "event-space-revoked",
+      sharedSpaceKey: "event-share-key-revoked-123456789012345"
+    }]
+  };
+  const refreshed = await refreshSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    async (url) => url.includes("/rpc/join_shared_event")
+      ? { ok: false, status: 403 }
+      : { ok: true, status: 200, async json() { return []; } }
+  );
+
+  const event = refreshed.events[0];
+  assert.deepEqual(event.inactiveParticipantIds, [participantId]);
+  assert.equal(event.sharedSpaceId, undefined);
+  assert.equal(event.sharedSpaceKey, undefined);
+});
+
+test("an empty shared read does not revoke a membership the server still verifies", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000010";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Active member" }],
+    groups: [],
+    events: [{
+      id: "event-active",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: "event-space-active",
+      sharedSpaceKey: "event-share-key-active-1234567890123456"
+    }]
+  };
+  const refreshed = await refreshSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    async (url) => url.includes("/rpc/join_shared_event")
+      ? { ok: true, status: 200 }
+      : { ok: true, status: 200, async json() { return []; } }
+  );
+
+  assert.deepEqual(refreshed, state);
 });

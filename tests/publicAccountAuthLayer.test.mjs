@@ -392,6 +392,18 @@ test("account auth synchronizes completed account switches and sign-out across t
   );
 });
 
+test("account boundaries clear invite capabilities before another account loads", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  assert.match(
+    layer,
+    /if \(action === "signout"\)[\s\S]*?clearPendingInviteUrl\(\);[\s\S]*?clearAccountOAuthFlows\(\);/
+  );
+  assert.match(
+    layer,
+    /deleteAccount\(runtimeConfig, accountSession\);[\s\S]*?clearPendingInviteUrl\(\);[\s\S]*?clearAccountOAuthFlows\(\);/
+  );
+});
+
 test("a restored account does not reload the app a second time on cold start", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 

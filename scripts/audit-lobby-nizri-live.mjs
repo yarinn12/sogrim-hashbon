@@ -8,8 +8,10 @@ import {
   EVENT_SPACE_ID_FIELD,
   EVENT_SPACE_KEY_FIELD
 } from "../src/data/sharedEventStore.mjs";
+import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "../src/data/eventInvites.mjs";
 
 const EVENT_ID = argumentValue("--event-id");
+const INCLUDE_DETAILS = process.argv.includes("--details");
 const EXPECTED_PARTICIPANT_COUNT = Number(
   argumentValue("--expected-participants") || 0
 );
@@ -192,6 +194,35 @@ try {
     duplicateNames,
     activeMembershipWithoutParticipant,
     financialErrors,
+    ...(INCLUDE_DETAILS
+      ? {
+          details: {
+            participantIds: event.participantIds ?? [],
+            inactiveParticipantIds: event.inactiveParticipantIds ?? [],
+            participantAliases: event.participantAliases ?? {},
+            membershipUpdatedAt: event.membershipUpdatedAt ?? null,
+            membershipUpdatedAtByParticipant:
+              event.membershipUpdatedAtByParticipant ?? {},
+            expenses: (event.expenses ?? []).map((expense) => ({
+              id: expense.id,
+              name: expense.name,
+              total: expense.total,
+              payers: expense.payers ?? [],
+              sharedByParticipantIds: expense.sharedByParticipantIds ?? [],
+              updatedAt: expense.updatedAt ?? null
+            })),
+            transfers: (event.transfers ?? []).map((transfer) => ({
+              id: transfer.id,
+              fromParticipantId: transfer.fromParticipantId,
+              toParticipantId: transfer.toParticipantId,
+              amount: transfer.amount,
+              status: transfer.status,
+              updatedAt: transfer.updatedAt ?? null,
+              statusUpdatedAt: transfer.statusUpdatedAt ?? null
+            }))
+          }
+        }
+      : {}),
     issues,
     healthy: issues.length === 0
   }, null, 2));
@@ -207,6 +238,15 @@ function comparableEvent(event) {
   const copy = JSON.parse(JSON.stringify(event));
   delete copy[EVENT_SPACE_ID_FIELD];
   delete copy[EVENT_SPACE_KEY_FIELD];
+  delete copy[EVENT_OPEN_INVITE_TOKEN_FIELD];
+  if (copy.membershipUpdatedAtByParticipant) {
+    const activeParticipantIds = new Set(copy.participantIds ?? []);
+    copy.membershipUpdatedAtByParticipant = Object.fromEntries(
+      Object.entries(copy.membershipUpdatedAtByParticipant).filter(([id]) =>
+        activeParticipantIds.has(id)
+      )
+    );
+  }
   for (const field of [
     "participantIds",
     "inactiveParticipantIds",

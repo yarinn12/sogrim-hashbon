@@ -13,6 +13,7 @@ import {
   accountAuthErrorMessage,
   clearAccountWorkspace,
   clearAccountOAuthFlow,
+  clearAccountOAuthFlows,
   createAccountOAuthFlowId,
   createAccountWorkspace,
   createOAuthPkce,
@@ -201,6 +202,18 @@ test("Google login always asks which account to use on a shared device", () => {
 
   assert.equal(googleUrl.searchParams.get("prompt"), "select_account");
   assert.equal(appleUrl.searchParams.has("prompt"), false);
+});
+
+test("account cleanup removes abandoned OAuth flows without touching other data", () => {
+  const storage = memoryStorage();
+  storage.setItem(`${ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX}flow-one`, "one");
+  storage.setItem(`${ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX}flow-two`, "two");
+  storage.setItem("keep-me", "safe");
+
+  assert.equal(clearAccountOAuthFlows(storage), 2);
+  assert.equal(storage.getItem(`${ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX}flow-one`), null);
+  assert.equal(storage.getItem(`${ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX}flow-two`), null);
+  assert.equal(storage.getItem("keep-me"), "safe");
 });
 
 test("native Google ID tokens create the same Supabase account session", async () => {
@@ -516,6 +529,12 @@ test("account auth errors stay helpful without exposing account existence", () =
 function memoryStorage() {
   const values = new Map();
   return {
+    get length() {
+      return values.size;
+    },
+    key(index) {
+      return [...values.keys()][index] ?? null;
+    },
     getItem(key) {
       return values.has(key) ? values.get(key) : null;
     },

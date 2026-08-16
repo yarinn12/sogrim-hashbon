@@ -48,7 +48,7 @@ export async function deleteSupabaseAccount({
     payload: {
       ok: true,
       accountDeleted: true,
-      sharedRecordsAnonymized: true,
+      sharedRecordsPseudonymized: true,
       deletionAtomic: true
     }
   };

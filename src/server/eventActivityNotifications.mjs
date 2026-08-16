@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { GoogleAuth } from "google-auth-library";
 
 import { buildEventInviteUrl } from "../domain/inviteLinks.mjs";
@@ -75,7 +77,14 @@ export async function sendEventActivityNotification({
     eventId: normalizedEventId,
     fetchImpl
   });
-  const senderEvent = eventFromState(senderState, normalizedEventId);
+  const senderWorkspaceEvent = eventFromState(senderState, normalizedEventId);
+  const senderEvent = await loadAuthoritativeSharedEvent({
+    supabaseUrl,
+    serviceRoleKey,
+    eventId: normalizedEventId,
+    workspaceEvent: senderWorkspaceEvent,
+    fetchImpl
+  });
   const senderParticipantId = `account-${sender.id}`;
   if (
     !senderEvent ||
@@ -507,6 +516,46 @@ async function loadAccountState({
     .find((state) => eventFromState(state, eventId)) ?? null;
 }
 
+async function loadAuthoritativeSharedEvent({
+  supabaseUrl,
+  serviceRoleKey,
+  eventId,
+  workspaceEvent,
+  fetchImpl
+}) {
+  const spaceId = String(workspaceEvent?.sharedSpaceId ?? "").trim();
+  const spaceKey = String(workspaceEvent?.sharedSpaceKey ?? "").trim();
+  if (
+    !isSafeSharedIdentifier(spaceId) ||
+    !isSafeSharedIdentifier(spaceKey)
+  ) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    id: `eq.${spaceId}`,
+    owner_user_id: "is.null",
+    snapshot_kind: "eq.shared_event",
+    select: "state,access_key_hash",
+    limit: "1"
+  });
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
+    { headers: serviceHeaders(serviceRoleKey) }
+  );
+  if (!response.ok) return null;
+
+  const rows = await response.json().catch(() => []);
+  const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
+  const expectedHash = createHash("sha256").update(spaceKey).digest("hex");
+  if (!secureHashEquals(snapshot?.access_key_hash, expectedHash)) return null;
+
+  const event = eventFromState(snapshot.state, eventId);
+  return event
+    ? { ...event, sharedSpaceId: spaceId, sharedSpaceKey: spaceKey }
+    : null;
+}
+
 async function loadEventUpdateDevices({
   supabaseUrl,
   serviceRoleKey,
@@ -660,6 +709,15 @@ function invalidFirebaseToken(payload) {
   return (
     serialized.includes("UNREGISTERED") ||
     serialized.includes("registration-token-not-registered")
+  );
+}
+
+function secureHashEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left ?? ""));
+  const rightBuffer = Buffer.from(String(right ?? ""));
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
   );
 }
 
