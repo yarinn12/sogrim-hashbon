@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 
 import { getHealthPayload } from "../src/server/health.mjs";
-import { createAppHandler } from "../server.mjs";
+import { createAppHandler, resolveServerHost } from "../server.mjs";
 
 test("getHealthPayload exposes deployment readiness without secrets", () => {
   const payload = getHealthPayload({
@@ -39,6 +39,22 @@ test("server exposes a health endpoint and loads local env files", async () => {
   assert.match(server, /getHealthPayload/);
   assert.match(server, /"\/api\/health"/);
   assert.match(server, /"\/api\/account"/);
+});
+
+test("server binds containers publicly while keeping local development private", () => {
+  assert.equal(resolveServerHost({ env: {} }), "127.0.0.1");
+  assert.equal(
+    resolveServerHost({ env: { NODE_ENV: "production" } }),
+    "0.0.0.0"
+  );
+  assert.equal(
+    resolveServerHost({ env: { RENDER: "true" } }),
+    "0.0.0.0"
+  );
+  assert.equal(
+    resolveServerHost({ explicitHost: "10.0.0.4", env: {} }),
+    "10.0.0.4"
+  );
 });
 
 test("public deployments block legacy shared-state mutation endpoints", async () => {
