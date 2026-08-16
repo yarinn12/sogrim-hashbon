@@ -17,7 +17,6 @@ export function calculateSettlement(
     validParticipants.map((participant) => [participant.id, 0])
   );
   const issues = [];
-  const directTransferAmounts = new Map();
 
   for (const expense of expenses ?? []) {
     const normalizedExpense = normalizeExpenseForSettlement(expense, knownParticipantIds);
@@ -33,30 +32,13 @@ export function calculateSettlement(
       normalizedExpense.total,
       normalizedExpense.sharedByParticipantIds
     );
-    const expenseBalances = directTransfers ? {} : null;
-
     for (const [participantId, share] of Object.entries(shares)) {
       balances[participantId] = (balances[participantId] ?? 0) - share;
-      if (expenseBalances) {
-        expenseBalances[participantId] =
-          (expenseBalances[participantId] ?? 0) - share;
-      }
     }
 
     for (const payer of normalizedExpense.payers) {
       balances[payer.participantId] =
         (balances[payer.participantId] ?? 0) + payer.amount;
-      if (expenseBalances) {
-        expenseBalances[payer.participantId] =
-          (expenseBalances[payer.participantId] ?? 0) + payer.amount;
-      }
-    }
-
-    if (expenseBalances) {
-      addTransfersToRouteAmounts(
-        directTransferAmounts,
-        buildTransfersFromBalances(expenseBalances)
-      );
     }
   }
 
@@ -64,10 +46,7 @@ export function calculateSettlement(
     ? roundSettlementBalances(balances)
     : balances;
   const transfers = directTransfers
-    ? buildTransfersFromRouteAmounts(directTransferAmounts, {
-        roundTransfers,
-        targetBalances: transferBalances
-      })
+    ? buildDirectTransfersFromBalances(transferBalances)
     : buildTransfersFromBalances(transferBalances);
 
   return { balances, transfers, issues };
@@ -123,13 +102,12 @@ export function reconcileSettlementTransfers(
     outstandingBalances[transfer.toParticipantId] -= transfer.amount;
   }
 
+  const pendingBalances = roundTransfers
+    ? roundSettlementBalances(outstandingBalances)
+    : outstandingBalances;
   const pendingTransfers = (directTransfers
-    ? buildOutstandingDirectTransfers(settlement.transfers, paidTransfers)
-    : buildTransfersFromBalances(
-        roundTransfers
-          ? roundSettlementBalances(outstandingBalances)
-          : outstandingBalances
-      )).map(
+    ? buildDirectTransfersFromBalances(pendingBalances)
+    : buildTransfersFromBalances(pendingBalances)).map(
     (transfer) => ({
       ...transfer,
       id: uniqueTransferId(transfer.id, usedTransferIds, "remaining")
@@ -275,6 +253,13 @@ function buildTransfersFromBalances(balances) {
   if (greedyTransfers.length <= minimumTransferCount) return greedyTransfers;
 
   return optimalGroups.flatMap((group) => buildGreedyTransfers(group));
+}
+
+function buildDirectTransfersFromBalances(balances) {
+  const entries = Object.entries(balances ?? {})
+    .filter(([, balance]) => balance !== 0)
+    .map(([participantId, balance]) => ({ participantId, balance }));
+  return buildGreedyTransfers(entries);
 }
 
 function buildGreedyTransfers(entries) {
@@ -481,185 +466,6 @@ function paidTransferKey(transfer) {
 
 function transferIdFor(transfer) {
   return `transfer-${transfer.fromParticipantId}-${transfer.toParticipantId}-${transfer.amount}`;
-}
-
-function buildOutstandingDirectTransfers(calculatedTransfers, paidTransfers) {
-  const routeAmounts = new Map();
-  addTransfersToRouteAmounts(routeAmounts, calculatedTransfers);
-
-  for (const transfer of paidTransfers) {
-    const route = settlementTransferRoute(transfer);
-    if (!route) continue;
-    routeAmounts.set(route, (routeAmounts.get(route) ?? 0) - transfer.amount);
-  }
-
-  return buildTransfersFromRouteAmounts(routeAmounts);
-}
-
-function addTransfersToRouteAmounts(routeAmounts, transfers) {
-  for (const transfer of transfers ?? []) {
-    const route = settlementTransferRoute(transfer);
-    if (!route || !isPositiveAgoraAmount(transfer.amount)) continue;
-    routeAmounts.set(route, (routeAmounts.get(route) ?? 0) + transfer.amount);
-  }
-}
-
-function buildTransfersFromRouteAmounts(
-  routeAmounts,
-  { roundTransfers = false, targetBalances = {} } = {}
-) {
-  const normalizedRouteAmounts = new Map();
-
-  for (const [route, rawAmount] of routeAmounts ?? []) {
-    if (!Number.isSafeInteger(rawAmount) || rawAmount === 0) continue;
-    const [fromParticipantId, toParticipantId] = route.split("\u0000");
-    if (!fromParticipantId || !toParticipantId) continue;
-
-    const amount = Math.abs(rawAmount);
-    const normalizedRoute = rawAmount > 0
-      ? route
-      : `${toParticipantId}\u0000${fromParticipantId}`;
-    normalizedRouteAmounts.set(
-      normalizedRoute,
-      (normalizedRouteAmounts.get(normalizedRoute) ?? 0) + amount
-    );
-  }
-
-  const finalRouteAmounts = roundTransfers
-    ? roundDirectRouteAmounts(normalizedRouteAmounts, targetBalances)
-    : normalizedRouteAmounts;
-
-  return [...finalRouteAmounts.entries()].flatMap(([route, amount]) => {
-    if (!isPositiveAgoraAmount(amount)) return [];
-
-    const [fromParticipantId, toParticipantId] = route.split("\u0000");
-    return [{
-      id: `transfer-${fromParticipantId}-${toParticipantId}-${amount}`,
-      fromParticipantId,
-      toParticipantId,
-      amount,
-      status: "pending"
-    }];
-  });
-}
-
-function roundDirectRouteAmounts(routeAmounts, targetBalances) {
-  const roundedRouteAmounts = new Map();
-  const currentBalances = Object.fromEntries(
-    Object.keys(targetBalances ?? {}).map((participantId) => [participantId, 0])
-  );
-  const candidates = [];
-
-  [...routeAmounts.entries()].forEach(([route, amount]) => {
-    const floorAmount = Math.floor(amount / WHOLE_CURRENCY_UNIT) * WHOLE_CURRENCY_UNIT;
-    roundedRouteAmounts.set(route, floorAmount);
-    applyTransferAmountToBalances(currentBalances, route, floorAmount);
-    const remainder = amount - floorAmount;
-    if (remainder > 0) candidates.push({ route });
-  });
-
-  // Treat every fractional route as a unit-capacity edge so rounding decisions
-  // are made together and still match every participant's rounded balance.
-  const selectedRoutes = selectDirectRoundingRoutes(
-    candidates,
-    currentBalances,
-    targetBalances
-  );
-  for (const route of selectedRoutes) {
-    roundedRouteAmounts.set(
-      route,
-      (roundedRouteAmounts.get(route) ?? 0) + WHOLE_CURRENCY_UNIT
-    );
-  }
-
-  return roundedRouteAmounts;
-}
-
-function selectDirectRoundingRoutes(candidates, currentBalances, targetBalances) {
-  const participantIds = [...new Set([
-    ...Object.keys(currentBalances ?? {}),
-    ...Object.keys(targetBalances ?? {})
-  ])];
-  const sourceIndex = participantIds.length;
-  const sinkIndex = sourceIndex + 1;
-  const graph = Array.from({ length: sinkIndex + 1 }, () => []);
-  const participantIndexes = new Map(
-    participantIds.map((participantId, index) => [participantId, index])
-  );
-
-  const addEdge = (from, to, capacity) => {
-    const forward = { to, capacity, reverseIndex: graph[to].length };
-    const reverse = { to: from, capacity: 0, reverseIndex: graph[from].length };
-    graph[from].push(forward);
-    graph[to].push(reverse);
-    return forward;
-  };
-
-  const candidateEdges = candidates.map(({ route }) => {
-    const [fromParticipantId, toParticipantId] = route.split("\u0000");
-    return {
-      route,
-      edge: addEdge(
-        participantIndexes.get(fromParticipantId),
-        participantIndexes.get(toParticipantId),
-        1
-      )
-    };
-  });
-
-  let requiredFlow = 0;
-  for (const participantId of participantIds) {
-    const difference =
-      (targetBalances[participantId] ?? 0) -
-      (currentBalances[participantId] ?? 0);
-    if (difference % WHOLE_CURRENCY_UNIT !== 0) return [];
-    const differenceUnits = difference / WHOLE_CURRENCY_UNIT;
-    const participantIndex = participantIndexes.get(participantId);
-    if (differenceUnits < 0) {
-      addEdge(sourceIndex, participantIndex, -differenceUnits);
-    } else if (differenceUnits > 0) {
-      addEdge(participantIndex, sinkIndex, differenceUnits);
-      requiredFlow += differenceUnits;
-    }
-  }
-
-  let deliveredFlow = 0;
-  while (deliveredFlow < requiredFlow) {
-    const previous = Array(graph.length).fill(null);
-    const queue = [sourceIndex];
-    previous[sourceIndex] = { node: -1, edgeIndex: -1 };
-
-    for (let cursor = 0; cursor < queue.length && !previous[sinkIndex]; cursor += 1) {
-      const node = queue[cursor];
-      graph[node].forEach((edge, edgeIndex) => {
-        if (edge.capacity <= 0 || previous[edge.to]) return;
-        previous[edge.to] = { node, edgeIndex };
-        queue.push(edge.to);
-      });
-    }
-
-    if (!previous[sinkIndex]) return [];
-    let node = sinkIndex;
-    while (node !== sourceIndex) {
-      const { node: previousNode, edgeIndex } = previous[node];
-      const edge = graph[previousNode][edgeIndex];
-      edge.capacity -= 1;
-      graph[node][edge.reverseIndex].capacity += 1;
-      node = previousNode;
-    }
-    deliveredFlow += 1;
-  }
-
-  return candidateEdges
-    .filter(({ edge }) => edge.capacity === 0)
-    .map(({ route }) => route);
-}
-
-function applyTransferAmountToBalances(balances, route, amount) {
-  if (!amount) return;
-  const [fromParticipantId, toParticipantId] = route.split("\u0000");
-  balances[fromParticipantId] = (balances[fromParticipantId] ?? 0) - amount;
-  balances[toParticipantId] = (balances[toParticipantId] ?? 0) + amount;
 }
 
 function settlementTransferRoute(transfer) {

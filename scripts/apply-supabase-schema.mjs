@@ -61,11 +61,13 @@ try {
           and policy.tablename = 'app_snapshots'
           and policy.policyname = 'app_snapshots_update'
           and pg_catalog.lower(policy.qual) like '%owner_user_id is null%'
-          and pg_catalog.lower(policy.qual) like '%can_write_shared_snapshot%'
-          and pg_catalog.lower(policy.qual) like '%can_bootstrap_shared_snapshot%'
+          and pg_catalog.lower(policy.qual) like '%snapshot_kind = ''workspace''%'
+          and pg_catalog.lower(policy.qual) not like '%shared_event%'
+          and pg_catalog.lower(policy.qual) not like '%can_bootstrap_shared_snapshot%'
           and pg_catalog.lower(policy.with_check) like '%owner_user_id is null%'
-          and pg_catalog.lower(policy.with_check) like '%can_write_shared_snapshot%'
-          and pg_catalog.lower(policy.with_check) like '%can_bootstrap_shared_snapshot%'
+          and pg_catalog.lower(policy.with_check) like '%snapshot_kind = ''workspace''%'
+          and pg_catalog.lower(policy.with_check) not like '%shared_event%'
+          and pg_catalog.lower(policy.with_check) not like '%can_bootstrap_shared_snapshot%'
       ) as shared_snapshot_policy_ready,
       exists (
         select 1
@@ -88,7 +90,7 @@ try {
         and not pg_catalog.has_function_privilege(
           'anon', 'public.can_bootstrap_shared_snapshot(text)', 'execute'
         )
-        and pg_catalog.has_function_privilege(
+        and not pg_catalog.has_function_privilege(
           'authenticated', 'public.can_bootstrap_shared_snapshot(text)', 'execute'
         ) as shared_bootstrap_ready,
       to_regprocedure('public.join_shared_event(text)') is not null
@@ -122,7 +124,31 @@ try {
           'authenticated',
           'public.create_shared_event_snapshot(text,text,jsonb)',
           'execute'
-        ) as shared_creation_ready,
+        ) and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'public.create_shared_event_snapshot(text,text,jsonb)'::regprocedure
+          ),
+          'is_valid_shared_event_financials'
+        ) > 0 as shared_creation_ready,
+      to_regprocedure(
+        'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)'
+      ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)',
+          'execute'
+        )
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)'::regprocedure
+          ),
+          '''status'', ''conflict'''
+        ) > 0 as shared_atomic_update_ready,
       pg_catalog.strpos(
         pg_catalog.pg_get_functiondef(
           'private.guard_shared_snapshot_update()'::regprocedure
@@ -283,6 +309,10 @@ try {
         'public.submit_user_report(text,uuid,text,text)',
         'execute'
       ) as safety_function_access_ready,
+      pg_catalog.strpos(
+        pg_catalog.pg_get_functiondef('public.block_user(uuid)'::regprocedure),
+        'has_known_relationship'
+      ) > 0 as block_relationship_ready,
       to_regprocedure('public.register_push_device(text,text,jsonb,text)') is not null as push_register_ready,
       to_regprocedure('public.disable_push_device(text)') is not null as push_disable_ready,
       to_regprocedure(
@@ -521,6 +551,27 @@ try {
           and column_name = 'session_id'
           and data_type = 'uuid'
       ) as product_metrics_anonymous_ready,
+      to_regclass('private.product_metric_rate_limits') is not null
+        and to_regprocedure(
+          'public.reserve_product_metric_batch(uuid,integer,integer,integer)'
+        ) is not null
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.reserve_product_metric_batch(uuid,integer,integer,integer)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'service_role',
+          'public.reserve_product_metric_batch(uuid,integer,integer,integer)',
+          'execute'
+        ) as product_metrics_rate_limit_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_trigger as trigger
+        where trigger.tgrelid = 'public.app_snapshots'::regclass
+          and trigger.tgname = 'revoke_event_invites_after_member_removal'
+          and not trigger.tgisinternal
+      ) as removed_member_invites_revoked,
       to_regprocedure('public.admin_analytics_overview(integer)') is not null
         and not pg_catalog.has_function_privilege(
           'anon',
@@ -644,6 +695,7 @@ try {
     !result?.shared_bootstrap_ready ||
     !result?.shared_join_ready ||
     !result?.shared_creation_ready ||
+    !result?.shared_atomic_update_ready ||
     !result?.shared_member_content_ready ||
     !result?.event_invite_membership_redeem_ready ||
     !result?.shared_membership_triggers_ready ||
@@ -679,6 +731,7 @@ try {
     !result?.safety_rls_ready ||
     !result?.safety_client_mutation_locked ||
     !result?.safety_function_access_ready ||
+    !result?.block_relationship_ready ||
     !result?.push_register_ready ||
     !result?.push_disable_ready ||
     !result?.payment_reminder_reserve_ready ||
@@ -703,6 +756,8 @@ try {
     !result?.product_metrics_rls_ready ||
     !result?.product_metrics_client_locked ||
     !result?.product_metrics_anonymous_ready ||
+    !result?.product_metrics_rate_limit_ready ||
+    !result?.removed_member_invites_revoked ||
     !result?.admin_analytics_function_locked ||
     !result?.referral_claim_ready ||
     !result?.referral_qualify_ready ||

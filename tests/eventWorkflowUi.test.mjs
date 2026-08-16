@@ -1153,6 +1153,7 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(app, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
+  assert.match(app, /לא יוצגו העברות נגדיות או כפולות/);
   assert.match(repaymentHandler, /const previousState = state/);
   assert.match(repaymentHandler, /const result = await persistState\(\)/);
   assert.match(repaymentHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);

@@ -52,6 +52,30 @@ const sharedEventCreationRollback = await readFile(
   "supabase/rollbacks/20260815232950_create_shared_event_snapshot_rpc_safe.sql",
   "utf8"
 );
+const sharedEventAtomicWriteMigration = await readFile(
+  "supabase/migrations/20260816114500_harden_shared_event_atomic_writes.sql",
+  "utf8"
+);
+const sharedEventAtomicWriteVerification = await readFile(
+  "supabase/verification/verify_20260816114500_shared_event_atomic_writes.sql",
+  "utf8"
+);
+const sharedEventAtomicWriteRollback = await readFile(
+  "supabase/rollbacks/20260816114500_harden_shared_event_atomic_writes_safe.sql",
+  "utf8"
+);
+const interactionHardeningMigration = await readFile(
+  "supabase/migrations/20260816090759_harden_user_interactions_and_metrics.sql",
+  "utf8"
+);
+const interactionHardeningVerification = await readFile(
+  "supabase/verification/verify_20260816090759_user_interactions_and_metrics.sql",
+  "utf8"
+);
+const interactionHardeningRollback = await readFile(
+  "supabase/rollbacks/20260816090759_harden_user_interactions_and_metrics_safe.sql",
+  "utf8"
+);
 const deletionCompatibilityMigration = await readFile(
   "supabase/migrations/20260812185000_allow_guarded_account_deletion_anonymization.sql",
   "utf8"
@@ -339,6 +363,57 @@ test("shared event creation is atomic, creator-bound and cannot roll back to a r
   assert.match(sharedEventCreationVerification, /safe content boundary/);
   assert.match(sharedEventCreationRollback, /Rollback refused/);
   assert.match(sharedEventCreationRollback, /event creation race/);
+});
+
+test("shared event updates are atomic, server-validated and cannot use legacy bootstrap", () => {
+  assert.match(sharedEventAtomicWriteMigration, /^begin;/);
+  assert.match(sharedEventAtomicWriteMigration, /commit;\s*$/);
+  assert.match(
+    sharedEventAtomicWriteMigration,
+    /create or replace function public\.update_shared_event_snapshot/
+  );
+  assert.match(
+    sharedEventAtomicWriteMigration,
+    /private\.is_valid_shared_event_financials\(p_state\)/
+  );
+  assert.match(
+    sharedEventAtomicWriteMigration,
+    /snapshot\.updated_at is distinct from p_expected_updated_at/
+  );
+  assert.match(sharedEventAtomicWriteMigration, /'status', 'conflict'/);
+  assert.match(
+    sharedEventAtomicWriteMigration,
+    /revoke execute on function public\.can_bootstrap_shared_snapshot\(text\)/
+  );
+  const directUpdatePolicy = sharedEventAtomicWriteMigration.slice(
+    sharedEventAtomicWriteMigration.lastIndexOf("create policy app_snapshots_update"),
+    sharedEventAtomicWriteMigration.indexOf(
+      "create or replace function public.create_shared_event_snapshot"
+    )
+  );
+  assert.match(directUpdatePolicy, /snapshot_kind = 'workspace'/);
+  assert.doesNotMatch(directUpdatePolicy, /shared_event/);
+  assert.match(
+    sharedEventAtomicWriteVerification,
+    /Direct shared-event table updates are still permitted/
+  );
+  assert.match(sharedEventAtomicWriteVerification, /Malformed payer totals/);
+  assert.match(sharedEventAtomicWriteRollback, /Rollback refused/);
+});
+
+test("interaction hardening bounds metrics, profile access and stale invitations", () => {
+  assert.match(interactionHardeningMigration, /^begin;/);
+  assert.match(interactionHardeningMigration, /commit;\s*$/);
+  assert.match(interactionHardeningMigration, /private\.product_metric_rate_limits/);
+  assert.match(interactionHardeningMigration, /reserve_product_metric_batch/);
+  assert.match(interactionHardeningMigration, /has_known_relationship/);
+  assert.match(interactionHardeningMigration, /private\.shared_snapshot_members/);
+  assert.match(interactionHardeningMigration, /revoke_event_invites_after_member_removal/);
+  assert.match(interactionHardeningVerification, /Product metric rate-limit state is missing/);
+  assert.match(interactionHardeningVerification, /Block-user relationship boundary is missing/);
+  assert.match(interactionHardeningVerification, /Removed members do not revoke/);
+  assert.match(interactionHardeningVerification, /'ready' as verification_status/);
+  assert.match(interactionHardeningRollback, /Rollback refused/);
 });
 
 test("account deletion compatibility allows only the nested participant anonymization", () => {

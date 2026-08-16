@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { GoogleAuth } from "google-auth-library";
 
 import { formatCurrency, normalizeCurrency } from "../domain/currencies.mjs";
@@ -75,7 +77,14 @@ export async function sendPaymentReminder({
     eventId: normalizedEventId,
     fetchImpl
   });
-  const senderEvent = eventFromState(senderState, normalizedEventId);
+  const senderWorkspaceEvent = eventFromState(senderState, normalizedEventId);
+  const senderEvent = await loadAuthoritativeSharedEvent({
+    supabaseUrl,
+    serviceRoleKey,
+    eventId: normalizedEventId,
+    workspaceEvent: senderWorkspaceEvent,
+    fetchImpl
+  });
   const senderTransfer = transferFromState(
     senderState,
     senderEvent,
@@ -84,6 +93,7 @@ export async function sendPaymentReminder({
   const senderParticipantId = `account-${sender.id}`;
   if (
     !senderEvent ||
+    !isActiveEventParticipant(senderEvent, senderParticipantId) ||
     !senderTransfer ||
     senderTransfer.status === "paid" ||
     senderTransfer.toParticipantId !== senderParticipantId
@@ -101,24 +111,9 @@ export async function sendPaymentReminder({
       code: "RECIPIENT_OFFLINE"
     });
   }
-
-  const recipientState = await loadAccountState({
-    supabaseUrl,
-    serviceRoleKey,
-    userId: recipientUserId,
-    eventId: normalizedEventId,
-    fetchImpl
-  });
-  const recipientEvent = eventFromState(recipientState, normalizedEventId);
-  const recipientTransfer = transferFromState(
-    recipientState,
-    recipientEvent,
-    normalizedTransferId
-  );
-  if (!matchingPendingTransfer(senderTransfer, recipientTransfer)) {
-    return failure(409, "The shared payment is not synchronized yet", {
-      code: "EVENT_NOT_SYNCED",
-      retryable: true
+  if (!isActiveEventParticipant(senderEvent, `account-${recipientUserId}`)) {
+    return failure(403, "The payer is no longer in this event", {
+      code: "REMINDER_NOT_ALLOWED"
     });
   }
 
@@ -362,6 +357,54 @@ async function loadAccountState({
     .find((state) => eventFromState(state, eventId)) ?? null;
 }
 
+async function loadAuthoritativeSharedEvent({
+  supabaseUrl,
+  serviceRoleKey,
+  eventId,
+  workspaceEvent,
+  fetchImpl
+}) {
+  const spaceId = String(workspaceEvent?.sharedSpaceId ?? "").trim();
+  const spaceKey = String(workspaceEvent?.sharedSpaceKey ?? "").trim();
+  if (!isSafeSharedIdentifier(spaceId) || !isSafeSharedIdentifier(spaceKey)) {
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    id: `eq.${spaceId}`,
+    owner_user_id: "is.null",
+    snapshot_kind: "eq.shared_event",
+    select: "state,access_key_hash",
+    limit: "1"
+  });
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
+    { headers: serviceHeaders(serviceRoleKey) }
+  );
+  if (!response.ok) return null;
+
+  const rows = await response.json().catch(() => []);
+  const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
+  const expectedHash = createHash("sha256").update(spaceKey).digest("hex");
+  if (!secureHashEquals(snapshot?.access_key_hash, expectedHash)) return null;
+  return eventFromState(snapshot?.state, eventId);
+}
+
+function isActiveEventParticipant(event, participantId) {
+  return Boolean(
+    participantId &&
+    event?.participantIds?.includes(participantId) &&
+    !(event.inactiveParticipantIds ?? []).includes(participantId)
+  );
+}
+
+function secureHashEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left ?? ""));
+  const rightBuffer = Buffer.from(String(right ?? ""));
+  return leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 async function loadPaymentReminderDevices({
   supabaseUrl,
   serviceRoleKey,
@@ -492,17 +535,6 @@ function transferFromState(state, event, transferId) {
     settlementOptionsForEvent(event)
   );
   return settlement.transfers.find((transfer) => transfer.id === transferId) ?? null;
-}
-
-function matchingPendingTransfer(expected, actual) {
-  return Boolean(
-    expected &&
-    actual &&
-    actual.status !== "paid" &&
-    expected.fromParticipantId === actual.fromParticipantId &&
-    expected.toParticipantId === actual.toParticipantId &&
-    expected.amount === actual.amount
-  );
 }
 
 function accountUserId(participantId) {

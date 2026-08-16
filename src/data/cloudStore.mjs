@@ -56,8 +56,19 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
   }
 
   const currentVersion = snapshotVersions.get(snapshotVersionKey(config));
-  const nextVersion = new Date().toISOString();
   const isUpdate = Boolean(currentVersion);
+  if (isSharedEventSpace(config)) {
+    if (!isUpdate) throw new CloudStateConflictError();
+    await saveSharedEventStateAtomically(
+      config,
+      state,
+      currentVersion,
+      fetchImpl
+    );
+    return;
+  }
+
+  const nextVersion = new Date().toISOString();
   const response = await fetchWithTimeout(
     fetchImpl,
     isUpdate ? snapshotUpdateUrl(config, currentVersion) : snapshotWriteUrl(config),
@@ -98,6 +109,36 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
   rememberSnapshotVersion(config, rows?.[0]?.updated_at ?? nextVersion);
 }
 
+async function saveSharedEventStateAtomically(
+  config,
+  state,
+  currentVersion,
+  fetchImpl
+) {
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    `${config.storage.url}/rest/v1/rpc/update_shared_event_snapshot`,
+    {
+      method: "POST",
+      headers: cloudHeaders(config),
+      body: JSON.stringify({
+        p_snapshot_id: config.storage.spaceId,
+        p_space_key: config.storage.spaceKey,
+        p_expected_updated_at: currentVersion,
+        p_state: state
+      })
+    }
+  );
+  if (!response.ok) throw cloudResponseError(response, "Shared event save failed");
+
+  const result = await response.json().catch(() => null);
+  if (result?.status === "conflict") throw new CloudStateConflictError();
+  if (result?.status !== "updated" || !result?.updatedAt) {
+    throw new Error("Shared event save returned an invalid response");
+  }
+  rememberSnapshotVersion(config, result.updatedAt);
+}
+
 function snapshotReadUrl(config) {
   return `${snapshotWriteUrl(config)}?id=eq.${encodeURIComponent(config.storage.spaceId)}&select=state,updated_at`;
 }
@@ -127,6 +168,10 @@ function isAccountOwnedSpace(config) {
     account?.accessToken &&
     account?.spaceId === config?.storage?.spaceId
   );
+}
+
+function isSharedEventSpace(config) {
+  return config?.storage?.snapshotKind === "shared_event";
 }
 
 function snapshotVersionKey(config) {

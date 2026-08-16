@@ -5,6 +5,7 @@ import {
   CloudStateAuthError,
   CloudStateConflictError,
   loadCloudState,
+  readCloudState,
   saveCloudState
 } from "../src/data/cloudStore.mjs";
 
@@ -114,17 +115,65 @@ test("saveCloudState upserts the latest app snapshot", async () => {
   assert.equal(requests[0].options.headers.prefer, "resolution=merge-duplicates,return=representation");
 });
 
-test("new shared snapshots carry an explicit server-enforced kind", async () => {
+test("shared snapshot updates use the atomic server-validated RPC", async () => {
   const config = createConfig("shared-event-new");
   config.storage.snapshotKind = "shared_event";
-  let request;
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "personal-account-space"
+  };
+  const requests = [];
 
-  await saveCloudState(config, state, async (_url, options) => {
-    request = options;
-    return jsonResponse([{ updated_at: "2026-07-17T10:00:00.000Z" }]);
+  await readCloudState(config, async () =>
+    jsonResponse([{ state, updated_at: "2026-07-17T10:00:00.000Z" }])
+  );
+  await saveCloudState(config, state, async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse({
+      status: "updated",
+      updatedAt: "2026-07-17T10:00:01.000Z"
+    });
   });
 
-  assert.equal(JSON.parse(request.body).snapshot_kind, "shared_event");
+  assert.equal(
+    requests[0].url,
+    "https://demo.supabase.co/rest/v1/rpc/update_shared_event_snapshot"
+  );
+  assert.equal(requests[0].options.method, "POST");
+  assert.equal(
+    requests[0].options.headers.authorization,
+    "Bearer account-access-token"
+  );
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    p_snapshot_id: "shared-event-new",
+    p_space_key: config.storage.spaceKey,
+    p_expected_updated_at: "2026-07-17T10:00:00.000Z",
+    p_state: state
+  });
+});
+
+test("shared snapshot RPC conflicts never overwrite the newer state", async () => {
+  const config = createConfig("shared-event-conflict");
+  config.storage.snapshotKind = "shared_event";
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "personal-account-space"
+  };
+  await readCloudState(config, async () =>
+    jsonResponse([{ state, updated_at: "2026-07-17T10:00:00.000Z" }])
+  );
+
+  await assert.rejects(
+    saveCloudState(config, state, async () =>
+      jsonResponse({
+        status: "conflict",
+        updatedAt: "2026-07-17T10:00:02.000Z"
+      })
+    ),
+    CloudStateConflictError
+  );
 });
 
 test("account ownership is only assigned when a snapshot is first inserted", async () => {

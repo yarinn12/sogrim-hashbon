@@ -137,7 +137,7 @@ test("payment reminders are visible only for a real online payer who owes the ac
   assert.match(app, /function sendTransferReminder/);
   assert.match(server, /REMINDER_COOLDOWN_MINUTES = 12 \* 60/);
   assert.match(server, /Only the payment recipient can send this reminder/);
-  assert.match(server, /matchingPendingTransfer/);
+  assert.match(server, /loadAuthoritativeSharedEvent/);
   assert.match(server, /preferences\?\.paymentReminders !== false/);
   assert.match(route, /\/api\/notifications\/payment-reminder/);
   assert.match(route, /\/api\/notifications\/event-activity/);

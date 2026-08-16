@@ -374,6 +374,10 @@ export async function signOutAccount(
   fetchImpl = fetch,
   storage = globalThis.localStorage
 ) {
+  // Remove locally reusable credentials before the best-effort network logout.
+  // A slow or offline request must not let startup restore the old account.
+  clearAccountSession(storage);
+  clearAccountWorkspace(session?.user, storage);
   if (session?.access_token) {
     try {
       await authRequest(config, "/logout", {
@@ -382,8 +386,6 @@ export async function signOutAccount(
       }, fetchImpl);
     } catch {}
   }
-  clearAccountSession(storage);
-  clearAccountWorkspace(session?.user, storage);
 }
 
 export function googleOAuthUrl(config, redirectTo, options = {}) {

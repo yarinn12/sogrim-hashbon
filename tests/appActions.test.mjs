@@ -138,7 +138,7 @@ test("event repayment mode can switch between optimized and direct reimbursement
       ({ fromParticipantId, toParticipantId, amount }) =>
         `${fromParticipantId}->${toParticipantId}:${amount}`
     ),
-    ["dani->owner:3000", "avi->owner:3000", "owner->dani:3000"]
+    ["avi->owner:3000"]
   );
   assert.equal(optimized.events[0].directSettlementTransfers, false);
   assert.deepEqual(

@@ -48,6 +48,36 @@ test("local state APIs reject a spoofed LAN host even from the local server", as
   assert.equal(response.statusCode, 503);
 });
 
+test("local destructive APIs reject cross-site browser requests", async () => {
+  const handler = createAppHandler({ root: process.cwd(), port: 4173 });
+  const response = responseRecorder();
+  await handler({
+    url: "/api/reset",
+    method: "POST",
+    headers: {
+      host: "127.0.0.1:4173",
+      origin: "https://attacker.example",
+      "sec-fetch-site": "cross-site"
+    },
+    socket: { remoteAddress: "127.0.0.1" }
+  }, response);
+
+  assert.equal(response.statusCode, 404);
+});
+
+test("network diagnostics are local-only", async () => {
+  const handler = createAppHandler({ root: process.cwd(), port: 4173 });
+  const response = responseRecorder();
+  await handler({
+    url: "/api/network",
+    method: "GET",
+    headers: { host: "app.example" },
+    socket: { remoteAddress: "203.0.113.10" }
+  }, response);
+
+  assert.equal(response.statusCode, 404);
+});
+
 function responseRecorder() {
   return {
     headers: {},

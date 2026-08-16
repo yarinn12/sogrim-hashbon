@@ -115,6 +115,11 @@ export function createAppHandler({
     const origin = requestOrigin(request, port);
     const runtimeConfig = getRuntimeConfig(process.env, origin);
     const localStateAllowed = isTrustedLocalRequest(request, origin, process.env);
+    const localMutationAllowed = isTrustedLocalMutation(
+      request,
+      origin,
+      process.env
+    );
     applyNativeCors(request, response);
 
     if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
@@ -136,7 +141,7 @@ export function createAppHandler({
     }
 
     if (url.pathname === "/api/state" && request.method === "PUT") {
-      if (!localStateAllowed) {
+      if (!localMutationAllowed) {
         sendJson(response, 503, {
           ok: false,
           error: "Cloud storage is required for shared state"
@@ -158,7 +163,7 @@ export function createAppHandler({
     }
 
     if (url.pathname === "/api/reset" && request.method === "POST") {
-      if (!localStateAllowed) {
+      if (!localMutationAllowed) {
         sendJson(response, 404, { ok: false, error: "Not found" });
         return;
       }
@@ -168,6 +173,10 @@ export function createAppHandler({
     }
 
     if (url.pathname === "/api/network" && request.method === "GET") {
+      if (!localStateAllowed) {
+        sendJson(response, 404, { ok: false, error: "Not found" });
+        return;
+      }
       sendJson(response, 200, {
         localUrl: `http://127.0.0.1:${port}`,
         lanUrls: getLanUrls(port)
@@ -742,6 +751,14 @@ function isTrustedLocalRequest(request, origin, env) {
   if (isDeployedRuntime(env) || !isTrustedLocalOrigin(origin)) return false;
   const address = String(request.socket?.remoteAddress ?? "");
   return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+}
+
+function isTrustedLocalMutation(request, origin, env) {
+  if (!isTrustedLocalRequest(request, origin, env)) return false;
+  const browserOrigin = String(request.headers.origin ?? "").trim();
+  if (browserOrigin) return browserOrigin === origin;
+  const fetchSite = String(request.headers["sec-fetch-site"] ?? "").trim();
+  return !fetchSite || fetchSite === "same-origin" || fetchSite === "none";
 }
 
 function isDeployedRuntime(env) {

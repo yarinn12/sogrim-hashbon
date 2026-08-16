@@ -420,3 +420,31 @@ test("a restored account does not reload the app a second time on cold start", a
     /await connectAccountToApp\(accountSession, \{ forceReload: true \}\)/
   );
 });
+
+test("OAuth fragment sessions are accepted only for password recovery", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /const fragmentSession = sessionFromOAuthHash\(window\.location\.hash\);[\s\S]*?callbackType === "recovery" \? fragmentSession : null;/
+  );
+  assert.match(
+    layer,
+    /if \(fragmentSession && !callbackSession\) cleanAuthHash\(\);/
+  );
+});
+
+test("sign-out removes reusable local credentials before awaiting the network", async () => {
+  const auth = await readFile("src/data/accountAuth.mjs", "utf8");
+  const signOut = auth.slice(
+    auth.indexOf("export async function signOutAccount"),
+    auth.indexOf("export function googleOAuthUrl")
+  );
+
+  assert.ok(
+    signOut.indexOf("clearAccountSession(storage)") < signOut.indexOf("await authRequest")
+  );
+  assert.ok(
+    signOut.indexOf("clearAccountWorkspace(session?.user, storage)") < signOut.indexOf("await authRequest")
+  );
+});

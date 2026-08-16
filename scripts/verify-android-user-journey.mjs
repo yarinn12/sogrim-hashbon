@@ -260,9 +260,19 @@ async function createAcceptanceFixture(page) {
   await clickAction(page, "save-expense");
   await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
   await waitForScreen(page, "event");
+  let expenseVisible = false;
+  try {
+    await waitFor(
+      () => evaluate(page, `document.body.textContent.includes('QA Ride')`),
+      15_000
+    );
+    expenseVisible = true;
+  } catch {
+    // Keep the journey running so the remaining screens still receive coverage.
+  }
   check(
     "Acceptance fixture creates an expense through the native UI",
-    await evaluate(page, `document.body.textContent.includes('QA Ride')`)
+    expenseVisible
   );
 
   await clickAction(page, "home");

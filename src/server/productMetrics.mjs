@@ -4,6 +4,8 @@ import {
 } from "../domain/productMetrics.mjs";
 
 const RETENTION_DAYS = 90;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_EVENTS = 120;
 
 export async function storeProductMetrics({
   runtimeConfig,
@@ -38,6 +40,23 @@ export async function storeProductMetrics({
   if (!userResponse.ok) return failure(401, "Account session is invalid");
   const user = await userResponse.json().catch(() => null);
   if (!user?.id) return failure(401, "Account session is invalid");
+
+  const capacityResponse = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/reserve_product_metric_batch`,
+    {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey, "return=representation"),
+      body: JSON.stringify({
+        p_user_id: user.id,
+        p_event_count: metrics.length,
+        p_window_seconds: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
+        p_event_limit: RATE_LIMIT_EVENTS
+      })
+    }
+  );
+  if (!capacityResponse.ok) return failure(502, "Metrics capacity could not be reserved");
+  const capacityReserved = await capacityResponse.json().catch(() => false);
+  if (capacityReserved !== true) return failure(429, "Metrics rate limit exceeded");
 
   const insertResponse = await fetchImpl(
     `${supabaseUrl}/rest/v1/product_metrics?on_conflict=id`,

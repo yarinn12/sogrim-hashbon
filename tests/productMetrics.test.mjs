@@ -110,6 +110,9 @@ test("metrics server verifies auth then stores a privacy-safe service-role row",
           email: "private@example.com"
         });
       }
+      if (url.endsWith("/rest/v1/rpc/reserve_product_metric_batch")) {
+        return jsonResponse(200, true);
+      }
       return jsonResponse(204, null);
     }
   });
@@ -119,6 +122,14 @@ test("metrics server verifies auth then stores a privacy-safe service-role row",
   assert.equal(requests[0].options.headers.apikey, "anon-key");
   const insert = requests.find(({ url }) => url.includes("/rest/v1/product_metrics?on_conflict=id"));
   assert.ok(insert);
+  const reservation = requests.find(({ url }) => url.endsWith("/rpc/reserve_product_metric_batch"));
+  assert.ok(reservation);
+  assert.deepEqual(JSON.parse(reservation.options.body), {
+    p_user_id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2",
+    p_event_count: 1,
+    p_window_seconds: 60,
+    p_event_limit: 120
+  });
   assert.equal(insert.options.headers.apikey, "service-key");
   const [row] = JSON.parse(insert.options.body);
   assert.deepEqual(Object.keys(row).sort(), [
@@ -134,6 +145,33 @@ test("metrics server verifies auth then stores a privacy-safe service-role row",
   ]);
   assert.match(row.session_id, /^[0-9a-f-]{36}$/i);
   assert.doesNotMatch(JSON.stringify(row), /private@example|2f1fcf8b|user-access-token/);
+});
+
+test("metrics server rejects an authenticated event storm before storing rows", async () => {
+  const requests = [];
+  const result = await storeProductMetrics({
+    runtimeConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    authorization: "Bearer user-access-token",
+    payload: metricPayload(),
+    now: () => NOW,
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.endsWith("/auth/v1/user")) {
+        return jsonResponse(200, { id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2" });
+      }
+      if (url.endsWith("/rest/v1/rpc/reserve_product_metric_batch")) {
+        return jsonResponse(200, false);
+      }
+      return jsonResponse(204, null);
+    }
+  });
+
+  assert.equal(result.status, 429);
+  assert.equal(
+    requests.some(({ url }) => url.includes("/rest/v1/product_metrics?on_conflict=id")),
+    false
+  );
 });
 
 test("daily retention removes product metrics older than 90 days", async () => {

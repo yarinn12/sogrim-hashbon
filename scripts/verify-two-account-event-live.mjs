@@ -281,7 +281,7 @@ try {
     token: openInvite.payload.token
   });
   assert.equal(revokedInvite.ok, false);
-  assert.equal(revokedInvite.payload?.code, "EVENT_INVITE_INVALIDATED");
+  assert.equal(revokedInvite.payload?.code, "EVENT_INVITE_REVOKED");
 
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.equal(

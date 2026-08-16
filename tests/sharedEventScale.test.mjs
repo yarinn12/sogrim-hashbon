@@ -30,6 +30,12 @@ test("selected shared-event sync does not request unchanged event snapshots", as
       return jsonResponse({ status: "active" });
     }
     requestedKeys.push(key);
+    if (url.includes("/rest/v1/rpc/update_shared_event_snapshot")) {
+      return jsonResponse({
+        status: "updated",
+        updatedAt: "2026-08-05T12:01:00.000Z"
+      });
+    }
     const index = Number(key.match(/(\d+)$/)?.[1] ?? 1);
     const event = state.events[index - 1];
     const payload = {

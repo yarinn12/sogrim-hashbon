@@ -177,7 +177,11 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
 
   const callbackType = authCallbackType(window.location.hash);
-  let callbackSession = sessionFromOAuthHash(window.location.hash);
+  const fragmentSession = sessionFromOAuthHash(window.location.hash);
+  // Provider sign-in must return through the state-bound PKCE code flow below.
+  // Fragment sessions remain valid only for password-recovery links.
+  let callbackSession = callbackType === "recovery" ? fragmentSession : null;
+  if (fragmentSession && !callbackSession) cleanAuthHash();
   let sessionBeforeCallback = null;
   const callbackParams = new URLSearchParams(window.location.search);
   const callbackCode = callbackParams.get("code");

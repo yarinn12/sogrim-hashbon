@@ -5831,7 +5831,7 @@ function renderEventSettingsRepaymentDialog(event) {
               id: "direct",
               enabled: true,
               title: "לפי מי ששילם",
-              description: "כל אחד מקבל בחזרה לפי הסכום שמימן, גם אם יהיו יותר העברות."
+              description: "מי שבמאזן הסופי מימן יותר מקבל בחזרה, בלי שיעביר כסף לאחרים."
             }
           ]
             .map((option, index) => {
@@ -5859,7 +5859,7 @@ function renderEventSettingsRepaymentDialog(event) {
             .join("")}
         </div>
       </fieldset>
-      <p class="event-setting-note">סימוני תשלום שכבר בוצעו נשמרים. רק ההעברות שעדיין פתוחות מחושבות מחדש.</p>
+      <p class="event-setting-note">סימוני תשלום שכבר בוצעו נשמרים. לא יוצגו העברות נגדיות או כפולות.</p>
       ${!canManage ? '<p class="event-setting-note">רק מנהל האירוע יכול לשנות את ההגדרה.</p>' : ""}
     `
   });

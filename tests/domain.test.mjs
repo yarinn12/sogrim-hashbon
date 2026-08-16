@@ -592,7 +592,7 @@ test("paid transfer history survives later expenses and only the remainder stays
   assert.equal(new Set(result.transfers.map((transfer) => transfer.id)).size, 2);
 });
 
-test("direct settlement keeps repayments attached to the people who funded each expense", () => {
+test("direct settlement never makes a net funder send money", () => {
   const people = [
     { id: "a", displayName: "A" },
     { id: "b", displayName: "B" },
@@ -623,12 +623,47 @@ test("direct settlement keeps repayments attached to the people who funded each 
       toParticipantId,
       amount
     })),
-    [
-      { fromParticipantId: "b", toParticipantId: "a", amount: 3000 },
-      { fromParticipantId: "c", toParticipantId: "a", amount: 3000 },
-      { fromParticipantId: "a", toParticipantId: "b", amount: 3000 }
-    ]
+    [{ fromParticipantId: "c", toParticipantId: "a", amount: 3000 }]
   );
+});
+
+test("direct settlement has no duplicate or reciprocal routes", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" },
+    { id: "d", displayName: "D" }
+  ];
+  const result = calculateSettlement(people, [
+    {
+      id: "ride",
+      total: 24000,
+      payers: [{ participantId: "a", amount: 24000 }],
+      sharedByParticipantIds: ["a", "b", "c", "d"]
+    },
+    {
+      id: "food",
+      total: 10000,
+      payers: [{ participantId: "b", amount: 10000 }],
+      sharedByParticipantIds: ["a", "b", "c", "d"]
+    }
+  ], { directTransfers: true });
+
+  const routes = result.transfers.map(
+    (transfer) => `${transfer.fromParticipantId}>${transfer.toParticipantId}`
+  );
+  assert.equal(new Set(routes).size, routes.length);
+  assert.equal(
+    routes.some((route) => {
+      const [from, to] = route.split(">");
+      return routes.includes(`${to}>${from}`);
+    }),
+    false
+  );
+  for (const transfer of result.transfers) {
+    assert.ok(result.balances[transfer.fromParticipantId] < 0);
+    assert.ok(result.balances[transfer.toParticipantId] > 0);
+  }
 });
 
 test("direct settlement reimburses multiple payers according to their net contribution", () => {
@@ -875,7 +910,7 @@ test("direct settlement preserves every agora across many generated edge cases",
   }
 });
 
-test("direct settlement keeps paid history while preserving the remaining payer routes", () => {
+test("direct settlement keeps paid history and nets only the true remainder", () => {
   const people = [
     { id: "a", displayName: "A" },
     { id: "b", displayName: "B" },
@@ -924,12 +959,6 @@ test("direct settlement keeps paid history while preserving the remaining payer 
       },
       {
         fromParticipantId: "c",
-        toParticipantId: "a",
-        amount: 3000,
-        status: "pending"
-      },
-      {
-        fromParticipantId: "a",
         toParticipantId: "b",
         amount: 3000,
         status: "pending"

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import { sendPaymentReminder as sendClientPaymentReminder } from "../src/data/paymentReminders.mjs";
 import { sendPaymentReminder } from "../src/server/paymentReminders.mjs";
@@ -12,6 +13,8 @@ const EVENT_ID = "event-payment-reminder";
 const TRANSFER_ID =
   `transfer-${DEBTOR_PARTICIPANT_ID}-${CREDITOR_PARTICIPANT_ID}-5000`;
 const REMINDER_ID = "33333333-3333-4333-8333-333333333333";
+const SHARED_SPACE_ID = "shared-reminder-space";
+const SHARED_SPACE_KEY = "shared-reminder-key-abcdefghijklmnopqrstuvwxyz";
 
 function runtimeConfig() {
   return {
@@ -24,7 +27,7 @@ function runtimeConfig() {
   };
 }
 
-function accountState({ includeEvent = true } = {}) {
+function accountState({ includeEvent = true, transferStatus = "pending" } = {}) {
   return {
     currentParticipantId: CREDITOR_PARTICIPANT_ID,
     participants: [
@@ -45,6 +48,8 @@ function accountState({ includeEvent = true } = {}) {
             id: EVENT_ID,
             name: "ארוחת שישי",
             currency: "ILS",
+            sharedSpaceId: SHARED_SPACE_ID,
+            sharedSpaceKey: SHARED_SPACE_KEY,
             participantIds: [
               CREDITOR_PARTICIPANT_ID,
               DEBTOR_PARTICIPANT_ID
@@ -72,7 +77,7 @@ function accountState({ includeEvent = true } = {}) {
                 fromParticipantId: DEBTOR_PARTICIPANT_ID,
                 toParticipantId: CREDITOR_PARTICIPANT_ID,
                 amount: 5000,
-                status: "pending"
+                status: transferStatus
               }
             ]
           }
@@ -91,6 +96,7 @@ function jsonResponse(payload, status = 200) {
 function createReminderFetch({
   actorId = CREDITOR_USER_ID,
   recipientState = accountState(),
+  authoritativeState = accountState(),
   reservation = { allowed: true, reminder_id: REMINDER_ID }
 } = {}) {
   const requests = [];
@@ -102,6 +108,14 @@ function createReminderFetch({
       return jsonResponse({ id: actorId });
     }
     if (address.includes("/rest/v1/app_snapshots?")) {
+      if (address.includes("snapshot_kind=eq.shared_event")) {
+        return jsonResponse([{
+          state: authoritativeState,
+          access_key_hash: createHash("sha256")
+            .update(SHARED_SPACE_KEY)
+            .digest("hex")
+        }]);
+      }
       const isRecipient = address.includes(
         encodeURIComponent(`eq.${DEBTOR_USER_ID}`)
       );
@@ -147,7 +161,7 @@ function createReminderFetch({
   return { fetchImpl, requests };
 }
 
-test("server sends an authenticated FCM reminder only after both account states agree", async () => {
+test("server sends a reminder only after the authoritative shared event approves it", async () => {
   const { fetchImpl, requests } = createReminderFetch();
   const result = await sendPaymentReminder({
     runtimeConfig: runtimeConfig(),
@@ -223,9 +237,9 @@ test("server rejects reminders when the caller is not the creditor", async () =>
   );
 });
 
-test("server fails closed when the debtor copy is not synchronized", async () => {
+test("server fails closed when the authoritative shared transfer is already paid", async () => {
   const { fetchImpl } = createReminderFetch({
-    recipientState: accountState({ includeEvent: false })
+    authoritativeState: accountState({ transferStatus: "paid" })
   });
   const result = await sendPaymentReminder({
     runtimeConfig: runtimeConfig(),
@@ -236,8 +250,8 @@ test("server fails closed when the debtor copy is not synchronized", async () =>
     fetchImpl
   });
 
-  assert.equal(result.status, 409);
-  assert.equal(result.payload.code, "EVENT_NOT_SYNCED");
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
 });
 
 test("server enforces the reminder cooldown before contacting Firebase", async () => {
