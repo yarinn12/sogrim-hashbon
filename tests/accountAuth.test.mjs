@@ -524,6 +524,16 @@ test("account auth errors stay helpful without exposing account existence", () =
     accountAuthErrorMessage(new Error("Email not confirmed")),
     "צריך לאשר את המייל לפני ההתחברות."
   );
+  const googleConfigurationError = new Error("invalid audience");
+  googleConfigurationError.status = 400;
+  assert.equal(
+    accountAuthErrorMessage(googleConfigurationError, "google"),
+    "הכניסה עם Google לא הושלמה. כדאי לעדכן את האפליקציה, לבחור את החשבון שוב ולנסות."
+  );
+  assert.equal(
+    accountAuthErrorMessage(new Error("Failed to fetch"), "google"),
+    "לא הצלחנו להגיע לשירות החשבון. כדאי לבדוק את החיבור ולנסות שוב."
+  );
 });
 
 function memoryStorage() {

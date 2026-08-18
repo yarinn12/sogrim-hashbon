@@ -1,22 +1,106 @@
-import { flushPendingSharedState } from "./data/localStore.mjs";
+import {
+  flushPendingSharedState,
+  loadRuntimeConfig
+} from "./data/localStore.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
 const HIDE_DELAY_MS = 1400;
+const ONLINE_MUTATION_ACTIONS = new Set([
+  "accept-friend-request",
+  "add-event-participant",
+  "archive-group",
+  "archive-settled-event",
+  "block-connected-user",
+  "cancel-friend-request",
+  "choose-event-status",
+  "confirm-close-event",
+  "confirm-important-action",
+  "connect-duplicate-participant",
+  "create-event",
+  "create-group",
+  "decline-friend-request",
+  "delete-event",
+  "delete-expense",
+  "edit-group-add-member",
+  "event-add-guest",
+  "expense-add-friend-participant",
+  "expense-add-payer-guest",
+  "finish-restaurant-calculation",
+  "friends-add-offline",
+  "group-add-member",
+  "join-existing-event",
+  "leave-event",
+  "link-offline-participant-account",
+  "mark-all-notifications-read",
+  "mark-paid",
+  "mark-pending",
+  "mark-pending-group",
+  "merge-participants",
+  "new-event-add-guest",
+  "remove-event-from-list",
+  "remove-event-participant",
+  "remove-network-friend",
+  "remove-offline-friend",
+  "remove-participant",
+  "request-event-friendship",
+  "reset",
+  "restore-event-participant",
+  "rotate-event-invite",
+  "save-edit-group",
+  "save-expense",
+  "save-expense-and-continue",
+  "save-offline-participant-name",
+  "save-participant-alias",
+  "save-profile",
+  "save-quick-expenses",
+  "send-friend-request",
+  "set-event-management-mode",
+  "set-event-repayment-mode",
+  "set-event-rounding-mode",
+  "submit-participant-report",
+  "toggle-admin-edit",
+  "toggle-lock",
+  "unblock-connected-user"
+]);
+const ONLINE_MUTATION_CHANGE_ACTIONS = new Set([
+  "event-currency",
+  "event-participant",
+  "import-state-file",
+  "toggle-event-participant-admin"
+]);
 
 let hideTimer = null;
 let currentStatus = "";
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
+let mutationLockReason = navigator.onLine === false ? "offline" : "";
+let reconnectPromise = null;
+const controlSnapshots = new WeakMap();
 
 injectStyles();
 window.addEventListener(STATUS_EVENT, handleSyncStatus);
+window.addEventListener("offline", handleOffline);
+window.addEventListener("online", recoverOnlineMutationAccess);
 document.addEventListener("click", handleRetryClick);
+document.addEventListener("click", blockOfflineMutation, true);
+document.addEventListener("change", blockOfflineMutation, true);
+document.addEventListener("focusin", rememberControlSnapshot, true);
+document.addEventListener("pointerdown", rememberControlSnapshot, true);
 observeInlineStatusTargets();
+syncMutationControls();
+if (mutationLockReason) showStatus("offline");
 
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
   const currentScreenSignature = screenSignature();
+
+  if (["offline", "conflict"].includes(status)) {
+    mutationLockReason = status;
+  } else if (status === "saved") {
+    mutationLockReason = "";
+  }
+  syncMutationControls();
 
   if (status === "saving") activeSaveScreenSignature = currentScreenSignature;
   if (status === "saved" && !activeSaveScreenSignature) {
@@ -36,6 +120,81 @@ function handleSyncStatus(event) {
   if (!["saving", "saved"].includes(status)) activeSaveScreenSignature = "";
   showStatus(status);
   if (status === "saved") activeSaveScreenSignature = "";
+}
+
+function handleOffline() {
+  mutationLockReason = "offline";
+  showStatus("offline");
+  syncMutationControls();
+}
+
+async function recoverOnlineMutationAccess() {
+  if (reconnectPromise || mutationLockReason === "conflict") return reconnectPromise;
+
+  mutationLockReason = "reconnecting";
+  showStatus("reconnecting");
+  syncMutationControls();
+  reconnectPromise = flushPendingSharedState()
+    .then(async (result) => {
+      if (!result?.ok) {
+        const config = await loadRuntimeConfig();
+        if (config?.storage?.mode === "supabase") {
+          throw result?.error ?? new Error("Sync unavailable");
+        }
+      }
+      mutationLockReason = "";
+      showStatus("");
+      return result;
+    })
+    .catch(() => {
+      mutationLockReason = "offline";
+      showStatus("offline");
+      return { ok: false };
+    })
+    .finally(() => {
+      reconnectPromise = null;
+      syncMutationControls();
+    });
+  return reconnectPromise;
+}
+
+function blockOfflineMutation(event) {
+  if (!mutationLockReason) return;
+
+  const target = event.target?.closest?.("[data-action]");
+  if (!target) return;
+  const action = target.dataset.action ?? "";
+  const requiresOnline = event.type === "change"
+    ? ONLINE_MUTATION_CHANGE_ACTIONS.has(action)
+    : ONLINE_MUTATION_ACTIONS.has(action) || ONLINE_MUTATION_CHANGE_ACTIONS.has(action);
+  if (!requiresOnline) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  restoreControlSnapshot(target);
+  showStatus(mutationLockReason === "conflict" ? "conflict" : "offline");
+  target.setAttribute("aria-disabled", "true");
+  target.dataset.onlineMutationDisabled = "true";
+}
+
+function rememberControlSnapshot(event) {
+  const target = event.target?.closest?.("[data-action]");
+  if (!target || !ONLINE_MUTATION_CHANGE_ACTIONS.has(target.dataset.action ?? "")) return;
+  controlSnapshots.set(target, {
+    checked: "checked" in target ? target.checked : undefined,
+    value: "value" in target ? target.value : undefined
+  });
+}
+
+function restoreControlSnapshot(target) {
+  const snapshot = controlSnapshots.get(target);
+  if (!snapshot) return;
+  if (snapshot.checked !== undefined && "checked" in target) {
+    target.checked = snapshot.checked;
+  }
+  if (snapshot.value !== undefined && "value" in target) {
+    target.value = snapshot.value;
+  }
 }
 
 async function handleRetryClick(event) {
@@ -149,6 +308,39 @@ function syncInlineStatusTargets() {
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
     button.hidden = !["offline", "conflict"].includes(currentStatus);
   });
+  syncMutationControls();
+}
+
+function syncMutationControls() {
+  const locked = Boolean(mutationLockReason);
+  document.querySelectorAll("[data-action]").forEach((control) => {
+    const action = control.dataset.action ?? "";
+    const isMutation =
+      ONLINE_MUTATION_ACTIONS.has(action) ||
+      ONLINE_MUTATION_CHANGE_ACTIONS.has(action);
+    if (!isMutation) return;
+
+    if (locked) {
+      if (!control.hasAttribute("data-online-mutation-disabled")) {
+        control.dataset.onlineMutationPreviousAriaDisabled =
+          control.getAttribute("aria-disabled") ?? "__missing__";
+      }
+      control.setAttribute("aria-disabled", "true");
+      control.dataset.onlineMutationDisabled = "true";
+    } else {
+      if (!control.hasAttribute("data-online-mutation-disabled")) return;
+      const previousAriaDisabled =
+        control.dataset.onlineMutationPreviousAriaDisabled ?? "__missing__";
+      if (previousAriaDisabled === "__missing__") {
+        control.removeAttribute("aria-disabled");
+      } else {
+        control.setAttribute("aria-disabled", previousAriaDisabled);
+      }
+      delete control.dataset.onlineMutationDisabled;
+      delete control.dataset.onlineMutationPreviousAriaDisabled;
+    }
+  });
+  document.documentElement.classList.toggle("app-online-mutations-locked", locked);
 }
 
 function inlineStatusContent(status) {
@@ -156,7 +348,8 @@ function inlineStatusContent(status) {
   if (status === "saved") return "נשמר";
   if (status === "conflict") return "המידע השתנה במכשיר אחר. צריך לרענן לפני שינוי נוסף.";
   if (status === "unavailable") return "השיתוף בין מכשירים עדיין לא מחובר.";
-  if (status === "offline") return "נשמר במכשיר וממתין לסנכרון";
+  if (status === "reconnecting") return "בודק חיבור...";
+  if (status === "offline") return "אין חיבור · צפייה בלבד";
   return "";
 }
 
@@ -177,8 +370,15 @@ function statusContent(status) {
     };
   }
 
+  if (status === "reconnecting") {
+    return {
+      message: "בודקים שהסנכרון חזר…",
+      autoHide: false
+    };
+  }
+
   return {
-    message: "השינוי נשמר במכשיר ויעלה כשהחיבור יחזור.",
+    message: "אין חיבור. אפשר לצפות, אבל אי אפשר לשנות עד שהסנכרון יחזור.",
     retry: true,
     autoHide: false
   };
@@ -212,7 +412,11 @@ function injectStyles() {
     }
 
     .public-sync-status[hidden] { display: none; }
-    body.app-dialog-open .public-sync-status { display: none !important; }
+    body.app-dialog-open .public-sync-status {
+      z-index: 160;
+      top: calc(14px + env(safe-area-inset-top));
+      bottom: auto;
+    }
     body.has-event-action-dock .public-sync-status { display: none !important; }
     html.account-auth-locked .public-sync-status { display: none !important; }
     .public-sync-status.is-offline,
@@ -257,6 +461,10 @@ function injectStyles() {
     .public-sync-status button:hover { background: #d4ebe5; }
     .public-sync-status button:focus-visible { outline: 3px solid rgba(10, 123, 111, 0.28); }
     .public-sync-status button:disabled { cursor: wait; opacity: 0.6; }
+
+    [data-online-mutation-disabled="true"] {
+      cursor: not-allowed !important;
+    }
 
     @media (max-width: 720px) {
       .public-sync-status {

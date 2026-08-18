@@ -30,6 +30,23 @@ test("large-text home keeps dedicated clearance above fixed navigation", () => {
   );
 });
 
+test("large text keeps short event tabs together while longer participant actions stack", async () => {
+  const design = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    design,
+    /html:is\(\.dynamic-type-large, \.dynamic-type-extra-large, \.dynamic-type-preview\)[\s\S]*?\.event-workspace-nav \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/
+  );
+  assert.match(
+    design,
+    /html:is\(\.dynamic-type-large, \.dynamic-type-extra-large, \.dynamic-type-preview\)\.ledger-workspace-v1[\s\S]*?\.event-participant-primary-actions \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/
+  );
+  assert.match(
+    design,
+    /\.settlement-screen[\s\S]*?> \.settlement-hero[\s\S]*?\+ \.settlement-stage \{[\s\S]*?margin-top: 0[\s\S]*?padding-top: 8px/
+  );
+});
+
 test("mobile share choices remain separate when text grows", () => {
   assert.match(
     coherenceLayer,
@@ -37,10 +54,12 @@ test("mobile share choices remain separate when text grows", () => {
   );
   assert.match(
     coherenceLayer,
-    /\.event-share-modal[\s\S]*?\.event-share-choice \{[\s\S]*?grid-template-rows: repeat\(2, max-content\) !important;[\s\S]*?align-content: start !important;/
+    /\.event-share-modal[\s\S]*?\.event-share-choice \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?align-content: start !important;/
   );
   assert.match(
     coherenceLayer,
-    /\.event-share-choice[\s\S]*?> button \{[\s\S]*?position: relative !important;[\s\S]*?grid-row: 2 !important;/
+    /\.event-share-choice[\s\S]*?> button \{[\s\S]*?position: relative !important;[\s\S]*?width: 100% !important;/
   );
+  assert.doesNotMatch(coherenceLayer, /grid-template-rows: repeat\(2, max-content\) !important;/);
+  assert.doesNotMatch(coherenceLayer, /grid-row: 2 !important;/);
 });

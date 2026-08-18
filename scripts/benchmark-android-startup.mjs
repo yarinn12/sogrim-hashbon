@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseSmokeResult, percentile, summarize } from "./androidQaMetrics.mjs";
 
@@ -12,6 +12,7 @@ const performanceGateMs = positiveInteger(process.env.ANDROID_BENCHMARK_MAX_P75_
 const interactiveTimeoutMs = positiveInteger(process.env.ANDROID_INTERACTIVE_TIMEOUT_MS, 45_000);
 const reportPath = process.env.ANDROID_BENCHMARK_REPORT ||
   join(root, "artifacts", "android-qa", "startup-benchmark.json");
+const expectedVersionCode = readExpectedVersionCode();
 const samples = [];
 
 for (let index = 0; index < runCount; index += 1) {
@@ -38,18 +39,31 @@ for (let index = 0; index < runCount; index += 1) {
     process.stderr.write(result.stderr || "");
   }
   samples.push(sample);
+  if (
+    expectedVersionCode > 0 &&
+    Number(sample.appInfo?.versionCode) !== expectedVersionCode
+  ) {
+    sample.ready = false;
+    sample.inspectionError =
+      `Installed benchmark build ${sample.appInfo?.versionCode ?? "unknown"} ` +
+      `does not match project build ${expectedVersionCode}`;
+    process.stderr.write(`${sample.inspectionError}\n`);
+    break;
+  }
 }
 
 const successfulSamples = samples.filter((sample) => sample.ready);
 const interactiveP75 = percentile(successfulSamples.map((sample) => sample.interactiveMs), 0.75);
 const report = {
-  ready: samples.every((sample) => sample.ready),
+  ready: samples.length === runCount && samples.every((sample) => sample.ready),
   generatedAt: new Date().toISOString(),
   device: samples[0]?.device || null,
   deviceInfo: samples[0]?.deviceInfo || null,
   appInfo: samples[0]?.appInfo || null,
   packageName,
   runCount,
+  executedRuns: samples.length,
+  expectedVersionCode,
   successfulRuns: successfulSamples.length,
   failedRuns: samples.length - successfulSamples.length,
   targetMs,
@@ -141,4 +155,16 @@ function summarizeResources(values) {
 function positiveInteger(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readExpectedVersionCode() {
+  try {
+    const gradle = readFileSync(
+      join(root, "android", "app", "build.gradle"),
+      "utf8"
+    );
+    return positiveInteger(gradle.match(/versionCode\s+(\d+)/)?.[1], 0);
+  } catch {
+    return 0;
+  }
 }

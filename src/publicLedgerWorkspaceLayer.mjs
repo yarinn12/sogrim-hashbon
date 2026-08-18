@@ -245,7 +245,7 @@ const CSS = `
 
   html.ledger-workspace-v1 input::placeholder,
   html.ledger-workspace-v1 textarea::placeholder {
-    color: #697a76 !important;
+    color: #5f706b !important;
     opacity: 1 !important;
   }
 
@@ -4307,7 +4307,7 @@ const CSS = `
     position: relative !important;
     min-width: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) 118px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     align-items: stretch !important;
     gap: 0 !important;
     margin: 0 0 14px !important;
@@ -4401,13 +4401,10 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-invite-pass-stub {
     min-width: 0 !important;
-    display: grid !important;
-    align-content: center !important;
-    justify-items: start !important;
-    gap: 3px !important;
-    padding: 16px 14px !important;
-    border-inline-start: 1px dashed rgba(255, 255, 255, 0.3) !important;
-    background: #052f2b !important;
+    display: block !important;
+    padding: 0 18px 16px !important;
+    border: 0 !important;
+    background: transparent !important;
   }
 
   html.ledger-workspace-v1 .event-invite-pass-stub > strong {
@@ -4426,20 +4423,15 @@ const CSS = `
   html.ledger-workspace-v1 .event-invite-pass-state {
     display: inline-flex !important;
     align-items: center !important;
-    gap: 5px !important;
-    margin-block-end: 5px !important;
+    gap: 0 !important;
+    margin: 0 !important;
     color: #a5eee5 !important;
-    font-size: 10px !important;
-    font-weight: 760 !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
   }
 
   html.ledger-workspace-v1 .event-invite-pass-state > i {
-    width: 7px !important;
-    height: 7px !important;
-    display: block !important;
-    border-radius: 50% !important;
-    background: #55d9c9 !important;
-    box-shadow: 0 0 0 3px rgba(85, 217, 201, 0.12) !important;
+    display: none !important;
   }
 
   html.ledger-workspace-v1 .event-invite-pass.is-local .event-invite-pass-state {
@@ -4619,6 +4611,161 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-share-open-heading > span {
     gap: 3px !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route {
+    min-width: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-list {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-radius: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-list > .event-share-route-choice {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 76px !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) 20px !important;
+    align-items: center !important;
+    gap: 13px !important;
+    margin: 0 !important;
+    padding: 14px 15px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: none !important;
+    text-align: start !important;
+    cursor: pointer !important;
+    transition: background-color 160ms ease, transform 160ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-list > .event-share-route-choice + .event-share-route-choice {
+    border-block-start: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice > .command-card-icon {
+    width: 42px !important;
+    height: 42px !important;
+    display: grid !important;
+    place-items: center !important;
+    margin: 0 !important;
+    border: 1px solid rgba(11, 74, 56, 0.14) !important;
+    border-radius: 10px !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice > .command-card-icon svg {
+    width: 21px !important;
+    height: 21px !important;
+    stroke-width: 1.8 !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice > span:not(.command-card-icon, .event-share-route-chevron) {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 760 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice small {
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 540 !important;
+    line-height: 1.45 !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-chevron {
+    width: 20px !important;
+    height: 20px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-route-chevron svg {
+    width: 18px !important;
+    height: 18px !important;
+    stroke-width: 1.8 !important;
+  }
+
+  @media (hover: hover) {
+    html.ledger-workspace-v1 .event-share-route-choice:hover {
+      background: var(--ledger-surface-soft) !important;
+    }
+  }
+
+  html.ledger-workspace-v1 .event-share-route-choice:active {
+    transform: scale(0.99) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friend-list {
+    min-width: 0 !important;
+    display: grid !important;
+    overflow: hidden !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 12px !important;
+    background: var(--ledger-surface) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friend-list .event-participant-candidate-row {
+    margin: 0 !important;
+    padding: 13px 14px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friend-list .event-participant-candidate-row + .event-participant-candidate-row {
+    border-block-start: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-empty {
+    min-height: 180px !important;
+    display: grid !important;
+    place-items: center !important;
+    align-content: center !important;
+    gap: 8px !important;
+    padding: 24px !important;
+    border-block: 1px solid var(--ledger-line) !important;
+    color: var(--ledger-muted) !important;
+    text-align: center !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-empty > .command-card-icon {
+    width: 28px !important;
+    height: 28px !important;
+    display: grid !important;
+    place-items: center !important;
+    margin: 0 0 2px !important;
+    color: var(--ledger-brand) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-empty strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 720 !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-empty p {
+    margin: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
   }
 
   html.ledger-workspace-v1 .event-invite-rotate-button {
@@ -4890,7 +5037,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .event-invite-pass {
-      grid-template-columns: minmax(0, 1fr) 104px !important;
+      grid-template-columns: minmax(0, 1fr) !important;
     }
 
     html.ledger-workspace-v1 .event-invite-pass-main {
@@ -4909,7 +5056,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .event-invite-pass-stub {
-      padding: 14px 11px !important;
+      padding: 0 15px 14px !important;
     }
 
     html.ledger-workspace-v1 .event-invite-recovery {
@@ -5257,8 +5404,8 @@ const CSS = `
     --ledger-surface: #ffffff;
     --ledger-surface-soft: #f3f7f6;
     --ledger-ink: #0c1b20;
-    --ledger-muted: #6b7d75;
-    --ledger-faint: #94a3b8;
+    --ledger-muted: #5f706b;
+    --ledger-faint: #64748b;
     --ledger-line: rgba(12, 27, 32, 0.085);
     --ledger-line-strong: rgba(12, 27, 32, 0.14);
     --ledger-brand: #0b4a38;
@@ -8462,20 +8609,33 @@ const CSS = `
   html.ledger-workspace-v1
     .expense-step-modal[data-expense-step="name"]
     .expense-flow-body {
-    align-content: center !important;
+    align-content: start !important;
     justify-items: center !important;
+    padding-top: clamp(38px, 7vh, 72px) !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-total-field {
-    width: min(100%, 420px) !important;
+    width: min(100%, 400px) !important;
     margin: 0 !important;
-    padding: 24px !important;
-    border: 1px solid rgba(11, 74, 56, 0.1) !important;
-    border-radius: 20px !important;
+    padding: 18px 20px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 14px !important;
     background: #ffffff !important;
     box-shadow:
-      0 24px 54px -38px rgba(6, 54, 40, 0.62),
+      0 14px 32px -28px rgba(6, 54, 40, 0.5),
+      0 1px 3px rgba(8, 39, 31, 0.05),
       inset 0 1px 0 #ffffff !important;
+    transition-property: border-color, box-shadow, transform !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-step-modal .expense-total-field:focus-within {
+    border-color: rgba(8, 96, 73, 0.42) !important;
+    box-shadow:
+      0 0 0 3px rgba(22, 168, 153, 0.09),
+      0 16px 34px -28px rgba(6, 54, 40, 0.55),
+      0 1px 3px rgba(8, 39, 31, 0.06) !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-total-field > span {
@@ -8485,13 +8645,13 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-total-field input {
-    min-height: 88px !important;
+    min-height: 72px !important;
     border: 0 !important;
     color: var(--ledger-brand) !important;
     background: transparent !important;
     box-shadow: none !important;
     font-family: var(--font-num) !important;
-    font-size: clamp(40px, 9vw, 58px) !important;
+    font-size: clamp(38px, 8vw, 52px) !important;
     font-weight: 900 !important;
     line-height: 1 !important;
     text-align: center !important;
@@ -8499,13 +8659,14 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-step-modal .expense-name-field {
     width: min(100%, 460px) !important;
-    gap: 10px !important;
+    gap: 8px !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-name-field input {
-    min-height: 68px !important;
-    font-size: 19px !important;
-    font-weight: 650 !important;
+    min-height: 58px !important;
+    border-radius: 12px !important;
+    font-size: 17px !important;
+    font-weight: 600 !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-template-grid {
@@ -8516,8 +8677,23 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-template-grid button {
-    min-height: 46px !important;
-    border-radius: 13px !important;
+    min-height: 44px !important;
+    border-radius: 10px !important;
+    color: var(--ledger-ink) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(8, 39, 31, 0.04) !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-step-modal
+    .expense-template-grid
+    button.is-active {
+    border-color: rgba(8, 96, 73, 0.34) !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-accent-soft) !important;
+    box-shadow: inset 0 0 0 1px rgba(8, 96, 73, 0.08) !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-mode-switch {
@@ -8575,13 +8751,19 @@ const CSS = `
     .expense-payer-section,
   html.ledger-workspace-v1
     .expense-step-modal[data-expense-step="participants"]
-    :is(.expense-participant-section, .expense-guest-box) {
+    .expense-participant-section {
     display: block !important;
   }
 
   html.ledger-workspace-v1
     .expense-step-modal[data-expense-step="participants"]
-    .expense-guest-box {
+    .expense-participant-add-launch {
+    display: grid !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-step-modal[data-expense-step="participants"]
+    .expense-participant-add-launch {
     margin-top: 14px !important;
   }
 
@@ -8606,11 +8788,11 @@ const CSS = `
     align-items: center !important;
     justify-content: space-between !important;
     gap: 12px !important;
-    margin-bottom: 12px !important;
-    padding: 9px 10px !important;
-    border: 1px solid var(--ledger-line) !important;
-    border-radius: 14px !important;
-    background: rgba(247, 250, 249, 0.96) !important;
+    margin-bottom: 18px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
   }
 
   html.ledger-workspace-v1 .expense-participant-selection-count {
@@ -8621,14 +8803,14 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-participant-selection-count strong {
     color: var(--ledger-ink) !important;
-    font-size: 13px !important;
+    font-size: 16px !important;
     font-weight: 780 !important;
     line-height: 1.25 !important;
   }
 
   html.ledger-workspace-v1 .expense-participant-selection-count small {
     color: var(--ledger-muted) !important;
-    font-size: 10.5px !important;
+    font-size: 11.5px !important;
     font-weight: 650 !important;
     line-height: 1.25 !important;
   }
@@ -8642,7 +8824,7 @@ const CSS = `
     padding: 3px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 12px !important;
-    background: #ffffff !important;
+    background: var(--ledger-surface-soft) !important;
   }
 
   html.ledger-workspace-v1 .expense-participant-presets > button {
@@ -8657,9 +8839,112 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .expense-participant-presets > button.is-active {
+    color: var(--ledger-ink) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-list {
+    min-width: 0 !important;
+    display: grid !important;
+    border-block: 1px solid var(--ledger-line) !important;
+    background: #ffffff !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row {
+    position: relative !important;
+    min-width: 0 !important;
+    min-height: 64px !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) 26px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 9px 4px !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+    cursor: pointer !important;
+    background: #ffffff !important;
+    transition: background-color 150ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row:last-child {
+    border-bottom: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row:hover {
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-participant-row:has(.expense-participant-checkbox:focus-visible) {
+    outline: 3px solid rgba(22, 168, 153, 0.18) !important;
+    outline-offset: -3px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-checkbox {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row > .avatar {
+    width: 42px !important;
+    height: 42px !important;
+    font-size: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row.is-offline > .avatar {
+    filter: grayscale(1) !important;
+    opacity: 0.72 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row-copy strong {
+    overflow-wrap: anywhere !important;
+    color: var(--ledger-ink) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row-copy small {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-row-check {
+    width: 24px !important;
+    height: 24px !important;
+    display: grid !important;
+    place-items: center !important;
+    border: 1.5px solid #aab6b2 !important;
+    border-radius: 7px !important;
     color: #ffffff !important;
+    background: #ffffff !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-participant-row:has(.expense-participant-checkbox:checked)
+    .expense-participant-row-check {
+    border-color: var(--ledger-brand) !important;
     background: var(--ledger-brand) !important;
-    box-shadow: 0 8px 18px -14px rgba(6, 54, 40, 0.72) !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-participant-row:has(.expense-participant-checkbox:checked)
+    .expense-participant-row-check::after {
+    content: "✓" !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
   }
 
   html.ledger-workspace-v1 .expense-guest-details {
@@ -8737,6 +9022,256 @@ const CSS = `
     min-height: 44px !important;
   }
 
+  html.ledger-workspace-v1 .expense-participant-add-empty {
+    margin: 0 !important;
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 560 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-list {
+    display: grid !important;
+    max-height: 220px !important;
+    overflow: auto !important;
+    border-block: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option {
+    min-height: 54px !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 7px 2px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+    border-radius: 0 !important;
+    color: var(--ledger-ink) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-align: start !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option:last-child {
+    border-bottom: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option > .avatar {
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option > span:not(.avatar) {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 1px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option > span > strong {
+    overflow: hidden !important;
+    color: var(--ledger-ink) !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-friend-option > b {
+    color: var(--ledger-brand) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-invite-message {
+    margin: 0 !important;
+    color: var(--ledger-brand) !important;
+    font-size: 11px !important;
+    font-weight: 650 !important;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    html.ledger-workspace-v1 .expense-participant-friend-option:hover {
+      background: var(--ledger-surface-soft) !important;
+    }
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch {
+    width: 100% !important;
+    min-height: 64px !important;
+    grid-template-columns: 24px minmax(0, 1fr) 20px !important;
+    align-items: center !important;
+    gap: 11px !important;
+    padding: 11px 4px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+    border-radius: 0 !important;
+    color: var(--ledger-ink) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-align: start !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch > span:nth-child(2) {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch strong {
+    color: var(--ledger-ink) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch small {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 560 !important;
+  }
+
+  html.ledger-workspace-v1
+    :is(.expense-participant-add-launch-icon, .expense-participant-add-launch-chevron) {
+    display: inline-grid !important;
+    place-items: center !important;
+    color: var(--ledger-brand) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch-icon svg {
+    width: 21px !important;
+    height: 21px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch-chevron {
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-launch-chevron svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-route-body {
+    align-content: start !important;
+    justify-items: center !important;
+    padding-top: 30px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-menu,
+  html.ledger-workspace-v1 .expense-participant-friend-list,
+  html.ledger-workspace-v1 .expense-participant-offline-form,
+  html.ledger-workspace-v1 .expense-participant-add-empty {
+    width: min(100%, 500px) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-menu {
+    display: grid !important;
+    border-block: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice {
+    min-height: 72px !important;
+    display: grid !important;
+    grid-template-columns: 28px minmax(0, 1fr) 18px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 11px 2px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+    border-radius: 0 !important;
+    color: var(--ledger-ink) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    text-align: start !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice:last-child {
+    border-bottom: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice > span:nth-child(2) {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice small {
+    overflow: hidden !important;
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 550 !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice-icon,
+  html.ledger-workspace-v1 .expense-participant-choice-chevron {
+    display: inline-grid !important;
+    place-items: center !important;
+    color: var(--ledger-brand) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice-icon svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice-chevron {
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice-chevron svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-choice:disabled {
+    opacity: 0.5 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-route .expense-participant-friend-list {
+    max-height: none !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-offline-form {
+    display: grid !important;
+    gap: 14px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-offline-form .field {
+    gap: 8px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-offline-form input {
+    min-height: 56px !important;
+    font-size: 16px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-offline-form .primary-button {
+    min-height: 50px !important;
+  }
+
+  html.ledger-workspace-v1 .expense-participant-add-route .expense-participant-invite-message {
+    width: min(100%, 500px) !important;
+    padding: 10px 0 !important;
+    color: var(--ledger-muted) !important;
+    text-align: center !important;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    html.ledger-workspace-v1 .expense-participant-add-launch:hover,
+    html.ledger-workspace-v1 .expense-participant-choice:hover:not(:disabled) {
+      border-color: rgba(8, 96, 73, 0.22) !important;
+      background: var(--ledger-surface-soft) !important;
+      transform: none !important;
+    }
+  }
+
   html.ledger-workspace-v1 .expense-flow-review {
     width: min(100%, 500px) !important;
     justify-self: center !important;
@@ -8799,17 +9334,54 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-review-edit {
     flex: 0 0 auto !important;
-    color: var(--ledger-accent) !important;
-    font-size: 12px !important;
-    font-weight: 750 !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-review-edit svg {
+    width: 17px !important;
+    height: 17px !important;
   }
 
   html.ledger-workspace-v1 .expense-flow-review .expense-review-date {
+    min-height: 68px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 16px !important;
     margin: 0 !important;
-    padding: 14px !important;
-    border: 1px solid var(--ledger-line) !important;
-    border-radius: 16px !important;
-    background: #ffffff !important;
+    padding: 12px 15px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+
+  html.ledger-workspace-v1 .expense-flow-review .expense-review-date > span {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-step-modal[data-expense-step="review"]
+    .expense-flow-review
+    .expense-review-list
+    > .expense-review-date
+    input[type="date"] {
+    width: 176px !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--ledger-ink) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-family: var(--font-num) !important;
+    font-size: 14px !important;
+    font-weight: 750 !important;
+    text-align: end !important;
   }
 
   html.ledger-workspace-v1 .expense-step-modal .expense-modal-actions {
@@ -8851,7 +9423,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .expense-step-modal .expense-total-field {
-      padding: 20px 16px !important;
+      padding: 16px !important;
     }
 
     html.ledger-workspace-v1 .expense-step-modal .expense-template-grid {
@@ -8859,12 +9431,12 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .expense-participant-toolbar {
-      align-items: stretch !important;
-      flex-wrap: wrap !important;
+      align-items: center !important;
+      flex-wrap: nowrap !important;
     }
 
     html.ledger-workspace-v1 .expense-participant-presets {
-      flex: 1 1 170px !important;
+      flex: 0 1 190px !important;
       grid-auto-columns: minmax(0, 1fr) !important;
     }
 
@@ -9945,7 +10517,7 @@ const CSS = `
   html.ledger-workspace-v1 .event-participant-primary-actions {
     min-width: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 3fr) minmax(136px, 2fr) !important;
     gap: 8px !important;
     margin: 13px 0 4px !important;
   }
@@ -9962,8 +10534,29 @@ const CSS = `
     border-radius: 12px !important;
     transition:
       background-color 170ms cubic-bezier(0.2, 0, 0, 1),
+      border-color 170ms cubic-bezier(0.2, 0, 0, 1),
       box-shadow 170ms cubic-bezier(0.2, 0, 0, 1),
       transform 140ms cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-add-launch {
+    min-width: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-invite-launch {
+    width: auto !important;
+    min-width: 136px !important;
+    padding-inline: 12px !important;
+    color: var(--ledger-ink) !important;
+    border-color: var(--ledger-line-strong) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: 0 1px 2px rgba(15, 36, 31, 0.04) !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-invite-launch:hover:not(:disabled) {
+    border-color: rgba(17, 94, 74, 0.34) !important;
+    background: var(--ledger-surface-soft) !important;
+    box-shadow: 0 2px 6px rgba(15, 36, 31, 0.06) !important;
   }
 
   html.ledger-workspace-v1 :is(.event-participant-add-launch, .event-participant-invite-launch):active:not(:disabled) {
@@ -9987,10 +10580,26 @@ const CSS = `
     height: 20px !important;
   }
 
-  @media (max-width: 340px) {
+  @media (max-width: 350px) {
     html.ledger-workspace-v1 .event-participant-primary-actions {
       grid-template-columns: minmax(0, 1fr) !important;
     }
+
+    html.ledger-workspace-v1 .event-participant-invite-launch {
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+  }
+
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
+    .event-participant-primary-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
+    .event-participant-invite-launch {
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   html.ledger-workspace-v1 .event-participant-add-screen {
@@ -10939,11 +11548,19 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .friend-remove-button {
+    width: 44px !important;
+    min-width: 44px !important;
     min-height: 44px !important;
+    padding: 0 !important;
     border: 1px solid rgba(185, 71, 57, 0.18) !important;
     color: var(--ledger-negative) !important;
     background: rgba(185, 71, 57, 0.055) !important;
     box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .friend-remove-button svg {
+    width: 19px !important;
+    height: 19px !important;
   }
 
   html.ledger-workspace-v1 .friend-remove-button:hover:not(:disabled) {
@@ -11730,6 +12347,94 @@ const CSS = `
     border-bottom: 0 !important;
   }
 
+  html.ledger-workspace-v1 .groups-list-section .group-archive-button {
+    width: 44px !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    padding: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .groups-list-section .group-archive-button svg {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  html.ledger-workspace-v1 .group-workflow-screen .group-editor-disclosure {
+    border-block: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .group-workflow-screen .group-editor-disclosure > summary {
+    min-height: 68px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto 20px !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 11px 2px !important;
+    list-style: none !important;
+    cursor: pointer !important;
+  }
+
+  html.ledger-workspace-v1 .group-workflow-screen .group-editor-disclosure > summary::-webkit-details-marker {
+    display: none !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-copy strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 720 !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-copy small,
+  html.ledger-workspace-v1 .group-editor-disclosure-count {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    font-weight: 580 !important;
+    line-height: 1.4 !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-count {
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-chevron {
+    display: inline-grid !important;
+    place-items: center !important;
+    color: var(--ledger-muted) !important;
+    transition: transform 160ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-chevron svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure[open] .group-editor-disclosure-chevron {
+    transform: rotate(-90deg) !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-disclosure-body {
+    padding: 4px 2px 14px !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-offline-add > summary {
+    grid-template-columns: minmax(0, 1fr) 20px !important;
+  }
+
+  html.ledger-workspace-v1 .group-editor-offline-add .inline-actions {
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .group-create-panel > [data-action="create-group"] {
+    width: 100% !important;
+    min-height: 52px !important;
+  }
+
   html.ledger-workspace-v1 .profile-setup-panel,
   html.ledger-workspace-v1 .create-event-panel,
   html.ledger-workspace-v1 .join-event-panel,
@@ -11853,8 +12558,13 @@ const CSS = `
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
-    :is(.friends-hub-tabs, .event-workspace-nav) {
+    .friends-hub-tabs {
     grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+    .event-workspace-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
@@ -14179,16 +14889,86 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .settlement-featured-breakdown {
-    display: grid !important;
-    gap: 12px !important;
-    padding: 20px !important;
+    display: block !important;
+    padding: 0 !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
     background: #ffffff !important;
   }
 
-  html.ledger-workspace-v1 .settlement-featured-breakdown h3 {
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary {
+    min-height: 58px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 16px !important;
+    padding: 10px 20px !important;
+    list-style: none !important;
+    color: var(--ledger-ink) !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    transition: background-color 160ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary::-webkit-details-marker {
+    display: none !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary:hover {
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary:focus-visible {
+    outline: 3px solid rgba(22, 168, 153, 0.2) !important;
+    outline-offset: -3px !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary > span {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary strong {
     margin: 0 !important;
     color: var(--ledger-ink) !important;
-    font-size: 17px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary small {
+    color: var(--ledger-muted) !important;
+    font-size: 11px !important;
+    line-height: 1.35 !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown > summary::after {
+    content: "" !important;
+    width: 8px !important;
+    height: 8px !important;
+    flex: 0 0 auto !important;
+    margin-inline-end: 3px !important;
+    border-inline-end: 1.5px solid var(--ledger-brand) !important;
+    border-bottom: 1.5px solid var(--ledger-brand) !important;
+    transform: rotate(45deg) !important;
+    transition: transform 160ms ease !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown[open] > summary::after {
+    transform: rotate(225deg) !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown-body {
+    display: grid !important;
+    gap: 12px !important;
+    padding: 2px 20px 20px !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .settlement-featured-breakdown-body > h3 {
+    margin: 16px 0 0 !important;
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
     font-weight: 700 !important;
     line-height: 1.35 !important;
   }
@@ -14325,7 +15105,15 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .settlement-featured-breakdown {
-      padding: 16px !important;
+      padding: 0 !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-featured-breakdown > summary {
+      padding-inline: 16px !important;
+    }
+
+    html.ledger-workspace-v1 .settlement-featured-breakdown-body {
+      padding: 2px 16px 16px !important;
     }
 
     html.ledger-workspace-v1 .settlement-featured-breakdown-row {
@@ -14738,6 +15526,28 @@ const CSS = `
     box-shadow: none !important;
   }
 
+  html.ledger-workspace-v1 .expense-step-modal .expense-payer-summary {
+    width: max-content !important;
+    max-width: 100% !important;
+    min-height: 36px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    margin: 10px 0 0 auto !important;
+    padding: 7px 11px !important;
+    border-radius: 10px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.ledger-workspace-v1
+    .expense-step-modal
+    .expense-payer-summary.is-balanced {
+    border-color: rgba(15, 23, 42, 0.12) !important;
+    color: #52605b !important;
+    background: #f3f5f4 !important;
+  }
+
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-complete-button.is-static {
     display: inline-flex !important;
     align-items: center !important;
@@ -14759,7 +15569,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-paid-summary {
     display: block !important;
-    margin-top: 2px !important;
+    margin-top: 0 !important;
     color: var(--ledger-muted) !important;
     font-size: 11px !important;
     font-weight: 600 !important;
@@ -14991,6 +15801,120 @@ const CSS = `
     flex: 1 1 120px !important;
   }
 
+  html.ledger-workspace-v1 .people-management-screen > .merge-participants-panel {
+    display: grid !important;
+    gap: 18px !important;
+    margin-top: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .merge-participants-panel > .section-title-row {
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .merge-participants-panel .merge-participants-grid {
+    gap: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .merge-participants-panel > [data-action="merge-participants"] {
+    width: 100% !important;
+    min-height: 52px !important;
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-screen > .people-management-disclosure {
+    margin-top: 16px !important;
+    padding: 0 !important;
+    overflow: clip !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure > summary {
+    min-height: 72px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 14px 18px !important;
+    list-style: none !important;
+    cursor: pointer !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure > summary::-webkit-details-marker {
+    display: none !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-copy > strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-copy > small {
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    line-height: 1.45 !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-count {
+    color: var(--ledger-muted-strong) !important;
+    font-size: 12px !important;
+    font-weight: 650 !important;
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-chevron {
+    width: 20px !important;
+    height: 20px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: var(--ledger-muted-strong) !important;
+    transition: transform 180ms cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-chevron svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure[open] .people-management-disclosure-chevron {
+    transform: rotate(-90deg) !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure-body {
+    gap: 0 !important;
+    padding: 0 18px 8px !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure .known-participant-row {
+    min-height: 68px !important;
+    margin: 0 !important;
+    padding: 13px 0 !important;
+    border: 0 !important;
+    border-top: 1px solid var(--ledger-line) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure .known-participant-row:first-child {
+    border-top: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .people-management-disclosure .known-participant-row > .danger-button {
+    min-width: 44px !important;
+    min-height: 40px !important;
+    padding-inline: 12px !important;
+  }
+
   @media (max-width: 420px) {
     html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-stage-heading {
       align-items: center !important;
@@ -15013,6 +15937,18 @@ const CSS = `
     html.ledger-workspace-v1 .screen[data-event-view="summary"] .settlement-list-actions > div {
       grid-template-columns: minmax(0, 1fr) !important;
     }
+
+    html.ledger-workspace-v1 .merge-participants-panel .merge-participants-grid {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    html.ledger-workspace-v1 .people-management-disclosure > summary {
+      grid-template-columns: minmax(0, 1fr) auto !important;
+    }
+
+    html.ledger-workspace-v1 .people-management-disclosure-count {
+      display: none !important;
+    }
   }
 
   @media (max-width: 340px) {
@@ -15023,6 +15959,14 @@ const CSS = `
     html.ledger-workspace-v1 .settlement-repayment-shortcut {
       max-width: 100% !important;
     }
+  }
+
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1.circle-design-v1
+    .settlement-screen
+    > .settlement-hero
+    + .settlement-stage {
+    margin-top: 0 !important;
+    padding-top: 8px !important;
   }
 
   @media (hover: hover) {

@@ -17,16 +17,17 @@ test("expense save waits for cloud confirmation before closing", () => {
   assert.ok(closeDialog > awaitSave);
 });
 
-test("failed expense sync stays retryable without creating a duplicate", () => {
+test("failed shared expense sync stays retryable after the durable state is restored", () => {
   const start = appSource.indexOf("async function saveExpense(");
   const end = appSource.indexOf("\nfunction continueExpenseEntry", start);
   const source = appSource.slice(start, end);
 
   assert.match(source, /if \(!saveResult\?\.ok\)/);
-  assert.match(source, /expenseDraft\.id = expense\.id;/);
-  assert.match(source, /עדיין לא הסתנכרנה עם הקבוצה/);
+  assert.match(source, /if \(saveResult\?\.reverted && wasNewExpense\)/);
+  assert.match(source, /delete expenseDraft\.id;/);
+  assert.match(source, /למנוע הבדל בין חברי הקבוצה/);
   assert.ok(
-    source.indexOf("expenseDraft.id = expense.id;") <
+    source.indexOf("delete expenseDraft.id;") <
       source.indexOf("expenseDraft = null;")
   );
 });

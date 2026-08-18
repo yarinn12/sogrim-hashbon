@@ -203,7 +203,8 @@ test("expense dialog can add a missing guest without leaving the expense", async
   const expenseForm = app.match(/function renderExpenseForm\(event\) \{[\s\S]*?\nfunction renderExpenseRow/);
 
   assert.ok(expenseForm);
-  assert.match(expenseForm[0], /expense-guest-box/);
+  assert.match(expenseForm[0], /expense-participant-add-launch/);
+  assert.match(expenseForm[0], /expense-participant-add-route/);
   assert.match(expenseForm[0], /data-action="event-guest-name"/);
   assert.match(expenseForm[0], /data-action="event-add-guest"/);
   assert.match(app, /expenseDraft\?\.eventId === event\.id/);
@@ -222,7 +223,7 @@ test("ordinary expense entry keeps the fast path visible and progressively revea
   assert.match(expenseForm, /data-action="expense-date"/);
   assert.match(expenseForm, /renderExpensePayerSummary\(\)/);
   assert.match(expenseForm, /renderParticipantChecks\(expenseDraft\.sharedByParticipantIds, "expense-shared", event\)/);
-  assert.match(expenseForm, /expense-guest-box/);
+  assert.match(expenseForm, /expense-participant-add-launch/);
   assert.match(expenseForm, /function shouldOpenExpenseDetails/);
   assert.match(expenseForm, /expenseDraft\.error/);
   assert.match(expenseForm, /EVENT_TYPE_TRIP/);
@@ -300,6 +301,22 @@ test("ordinary expense entry presents one focused decision per step", async () =
     design,
     /\.expense-step-modal\[data-expense-step="review"\][\s\S]*?\.expense-flow-review/
   );
+  assert.match(
+    design,
+    /\.expense-step-modal\[data-expense-step="amount"\][\s\S]*?\.expense-flow-body,[\s\S]*?padding-top: clamp\(38px, 7vh, 72px\) !important;/
+  );
+  assert.match(
+    design,
+    /\.expense-step-modal \.expense-total-field \{[\s\S]*?border-radius: 14px !important;[\s\S]*?transition-property: border-color, box-shadow, transform !important;/
+  );
+  assert.match(
+    design,
+    /\.expense-step-modal \.expense-name-field input \{[\s\S]*?min-height: 58px !important;[\s\S]*?font-weight: 600 !important;/
+  );
+  assert.doesNotMatch(
+    design,
+    /\.expense-step-modal \.expense-total-field \{[\s\S]*?transition:\s*all/
+  );
   assert.match(app, /data-action="expense-name"[\s\S]*?enterkeyhint="next"/);
   assert.match(app, /function expenseFlowValidationMessage\(step\)/);
   assert.match(app, /יש להזין סכום גדול מאפס/);
@@ -310,7 +327,7 @@ test("ordinary expense entry presents one focused decision per step", async () =
   );
 });
 
-test("expense participant step offers quick presets without crowding the guest action", async () => {
+test("expense participant step keeps additions in a focused sub-screen", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const design = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
   const expenseForm = sourceBetween(
@@ -325,7 +342,21 @@ test("expense participant step offers quick presets without crowding the guest a
   assert.match(expenseForm, /data-expense-participant-toolbar/);
   assert.match(
     expenseForm,
-    /<details class="expense-guest-box expense-guest-details">[\s\S]*?<summary>/
+    /class="expense-participant-add-launch"[\s\S]*?data-action="expense-open-participant-add"/
+  );
+  assert.match(expenseForm, /renderExpenseParticipantAddRoute\(event, canEdit\)/);
+  assert.match(app, /function renderExpenseParticipantAddRoute\(event, canEdit\)/);
+  assert.match(app, /data-expense-participant-add-view="\$\{view\}"/);
+  assert.match(app, /data-action="expense-participant-add-view"/);
+  assert.match(app, /data-action="expense-participant-add-back"/);
+  assert.match(app, /data-action="expense-add-friend-participant"/);
+  assert.match(app, /data-action="expense-share-invite"/);
+  assert.match(app, /מהחברים שלי/);
+  assert.match(app, /הזמן בקישור/);
+  assert.match(app, /שם אופליין/);
+  assert.match(
+    app,
+    /async function addFriendParticipantToExpense[\s\S]*?activateParticipantForEvent[\s\S]*?sharedByParticipantIds\.push[\s\S]*?publishEventInvitation/
   );
   assert.match(app, /function applyExpenseParticipantPreset\(mode, trigger\)/);
   assert.match(
@@ -335,11 +366,39 @@ test("expense participant step offers quick presets without crowding the guest a
   assert.match(design, /\.expense-participant-toolbar \{/);
   assert.match(
     design,
-    /\.expense-participant-presets > button\.is-active \{[\s\S]*?background: var\(--ledger-brand\) !important/
+    /\.expense-participant-presets > button\.is-active \{[\s\S]*?background: #ffffff !important/
   );
+  assert.match(app, /function renderExpenseParticipantRow\(/);
+  assert.match(app, /class="expense-participant-list"/);
+  assert.match(design, /\.expense-participant-row \{/);
   assert.match(
     design,
-    /\.expense-guest-details > summary \{[\s\S]*?min-height: 56px !important/
+    /\.expense-participant-add-launch \{[\s\S]*?min-height: 64px !important/
+  );
+  assert.match(design, /\.expense-participant-add-menu \{/);
+  assert.match(design, /\.expense-participant-choice \{/);
+  assert.match(design, /\.expense-participant-friend-option \{/);
+  assert.match(design, /\.expense-participant-offline-form \{/);
+});
+
+test("expense review keeps editing subtle and the date inside one summary list", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const design = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const review = sourceBetween(
+    app,
+    "function renderExpenseFlowReview(event, participants)",
+    "function expenseFlowReady"
+  );
+
+  assert.match(
+    review,
+    /<div class="expense-review-list">[\s\S]*?renderExpenseDateField\("expense-review-date"\)[\s\S]*?<\/div>/
+  );
+  assert.doesNotMatch(review, />שינוי<\/span>/);
+  assert.match(review, /class="expense-review-edit"[\s\S]*?iconSvg\("chevron-left"\)/);
+  assert.match(
+    design,
+    /\.expense-step-modal\[data-expense-step="review"\][\s\S]*?\.expense-review-date[\s\S]*?input\[type="date"\]/
   );
 });
 
@@ -469,8 +528,9 @@ test("inviting from participant management returns to the participant roster", a
     shareDialog,
     /\["participants", "participants-add"\]\.includes\(\s*eventDialog\?\.returnKind/
   );
-  assert.match(shareDialog, /backAction: returnsToParticipants \? "event-share-back" : ""/);
-  assert.match(shareDialog, /backLabel: "חזרה למשתתפים"/);
+  assert.match(shareDialog, /\? "event-share-view-back"/);
+  assert.match(shareDialog, /\? "event-share-back"/);
+  assert.match(shareDialog, /backLabel: isShareRoute \? "חזרה לדרכי ההזמנה" : "חזרה למשתתפים"/);
   assert.match(openDialog, /\["participants", "participants-add"\]\.includes\(eventDialog\.kind\)/);
   assert.match(openDialog, /returnKind,/);
   assert.match(goBack, /eventDialog\?\.kind === "share"/);
@@ -480,6 +540,35 @@ test("inviting from participant management returns to the participant roster", a
   );
   assert.match(goBack, /renderHistoryFallback\(\)/);
   assert.match(app, /if \(action === "event-share-back"\) \{\s*goBackInApp\(\)/);
+  assert.match(app, /if \(action === "event-share-view-back"\) \{\s*goBackInApp\(\)/);
+});
+
+test("event sharing reveals one invitation path at a time", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const shareDialog = sourceBetween(
+    app,
+    "function renderEventShareDialog(event)",
+    "function renderEventSettingsDialog(event)"
+  );
+  const inviteStatus = sourceBetween(
+    app,
+    "function renderInviteStatus(event, ready, available = ready)",
+    "function eventInviteUrl(eventId)"
+  );
+
+  assert.match(shareDialog, /data-event-share-view="menu"/);
+  assert.match(shareDialog, /data-share-view="friends"/);
+  assert.match(shareDialog, /data-share-view="link"/);
+  assert.match(shareDialog, /data-event-share-view="friends"/);
+  assert.match(shareDialog, /data-event-share-view="link"/);
+  assert.match(shareDialog, /activeFriendParticipantIds\(state\)/);
+  assert.match(shareDialog, /renderInviteStatus\(event, shareReady, shareAvailable\)/);
+  assert.match(shareDialog, /class="event-invite-link-preview"/);
+  assert.match(shareDialog, /קישור ההזמנה מוכן/);
+  assert.match(shareDialog, /readonly\s+tabindex="-1"\s+name="eventInviteUrl"/);
+  assert.match(inviteStatus, /ready\s*\? ""/);
+  assert.doesNotMatch(inviteStatus, /<i aria-hidden="true"><\/i>/);
+  assert.match(app, /shareView: dialog\.shareView \?\? ""/);
 });
 
 test("event participant changes stay inside the dialog without blocking browser alerts", async () => {
@@ -696,6 +785,18 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(design, /\.event-participant-add-launch/);
   assert.match(design, /\.event-participant-primary-actions/);
   assert.match(design, /\.event-participant-invite-launch/);
+  assert.match(
+    design,
+    /\.event-participant-primary-actions[\s\S]*?grid-template-columns: minmax\(0, 3fr\) minmax\(136px, 2fr\)/
+  );
+  assert.match(
+    design,
+    /\.event-participant-invite-launch[\s\S]*?min-width: 136px/
+  );
+  assert.match(
+    design,
+    /@media \(max-width: 350px\)[\s\S]*?\.event-participant-primary-actions[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/
+  );
   assert.match(design, /\.event-participant-add-screen/);
 });
 
@@ -1351,6 +1452,15 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(app, /https:\/\/wa\.me\/\?text=/);
   assert.match(styles, /\.whatsapp-button/);
   assert.match(styles, /\.settlement-hero/);
+});
+
+test("new event creation makes a one-person roster explicit", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /function newEventParticipantSelectionLabel\(participantIds\)/);
+  assert.match(app, /selectedIds\.length === 1/);
+  assert.match(app, /selectedIds\[0\] === state\.currentParticipantId/);
+  assert.match(app, /return "רק אתה כרגע"/);
 });
 
 test("transient action menus close when the user taps elsewhere or presses Escape", async () => {

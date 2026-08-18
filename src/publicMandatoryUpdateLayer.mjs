@@ -14,6 +14,7 @@ const ANDROID_PACKAGE_ID = "com.sogrimhashbon.app";
 const PLAY_STORE_URL =
   `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE_ID}`;
 const PLAY_MARKET_URL = `market://details?id=${ANDROID_PACKAGE_ID}`;
+const INITIAL_UPDATE_CHECK_BUDGET_MS = 1_200;
 
 const CSS = `
   html.mandatory-update-checking body {
@@ -217,11 +218,42 @@ async function performUpdateCheck() {
     );
   } catch {}
 
+  const freshConfigRequest = refreshRuntimeConfigNow();
+  if (initialPolicyRequired) {
+    try {
+      const freshConfig = await freshConfigRequest;
+      applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
+    } catch {
+      // A locally known mandatory update remains blocking while offline.
+    }
+    return;
+  }
+
+  const firstResult = await Promise.race([
+    freshConfigRequest.then(
+      (config) => ({ status: "ready", config }),
+      () => ({ status: "failed" })
+    ),
+    wait(INITIAL_UPDATE_CHECK_BUDGET_MS).then(() => ({ status: "timeout" }))
+  ]);
+
+  if (firstResult.status === "ready") {
+    applyUpdatePolicy(firstResult.config?.updates?.android, { final: true });
+    return;
+  }
+  if (firstResult.status === "failed") {
+    hideUpdateGate();
+    return;
+  }
+
+  // Do not keep the branded launch screen waiting on a slow failover host.
+  // The same in-flight request can still present the mandatory gate later.
+  releaseUpdateCheck();
   try {
-    const freshConfig = await refreshRuntimeConfigNow();
+    const freshConfig = await freshConfigRequest;
     applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
   } catch {
-    if (!initialPolicyRequired) hideUpdateGate();
+    releaseUpdateCheck();
   }
 }
 
@@ -321,6 +353,10 @@ function releaseUpdateCheck() {
 
 function announceUpdateCheckComplete() {
   document.dispatchEvent(new CustomEvent(UPDATE_CHECK_EVENT));
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function installStyles() {

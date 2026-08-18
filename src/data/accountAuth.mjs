@@ -619,11 +619,35 @@ export function authCallbackType(hashValue) {
 
 export function accountAuthErrorMessage(error, mode = "login") {
   const message = String(error?.message ?? "").toLowerCase();
+  const status = Number(error?.status ?? 0);
+  if (
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("offline") ||
+    message.includes("timeout") ||
+    message.includes("timed out")
+  ) {
+    return "לא הצלחנו להגיע לשירות החשבון. כדאי לבדוק את החיבור ולנסות שוב.";
+  }
   if (message.includes("email not confirmed")) return "צריך לאשר את המייל לפני ההתחברות.";
   if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
   if (message.includes("user already registered")) return "כבר קיים חשבון עם האימייל הזה.";
   if (message.includes("password")) return "הסיסמה צריכה להכיל לפחות 8 תווים.";
-  if (message.includes("rate limit")) return "בוצעו יותר מדי ניסיונות. אפשר לנסות שוב בעוד כמה דקות.";
+  if (message.includes("rate limit") || status === 429) {
+    return "בוצעו יותר מדי ניסיונות. אפשר לנסות שוב בעוד כמה דקות.";
+  }
+  if (mode === "google") {
+    if (
+      status === 400 ||
+      message.includes("developer_error") ||
+      message.includes("identity token") ||
+      message.includes("invalid audience") ||
+      message.includes("google client")
+    ) {
+      return "הכניסה עם Google לא הושלמה. כדאי לעדכן את האפליקציה, לבחור את החשבון שוב ולנסות.";
+    }
+    return "לא הצלחנו להתחבר עם Google כרגע. כדאי לנסות שוב.";
+  }
   return mode === "signup"
     ? "לא הצלחנו להשלים את ההרשמה כרגע."
     : "לא הצלחנו להתחבר כרגע.";

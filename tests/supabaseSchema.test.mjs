@@ -24,6 +24,18 @@ test("Supabase schema secures shared snapshots with explicit grants and RLS", as
     schema,
     /create policy app_snapshots_member_select[\s\S]+to authenticated[\s\S]+snapshot_kind = 'shared_event'[\s\S]+can_write_shared_snapshot/
   );
+  assert.match(
+    schema,
+    /create or replace function public\.can_read_deleted_shared_snapshot[\s\S]+private\.shared_snapshot_members[\s\S]+member\.user_id = \(select auth\.uid\(\)\)/
+  );
+  assert.match(
+    schema,
+    /create policy app_snapshots_member_select[\s\S]+state -> 'events' -> 0 is null[\s\S]+jsonb_array_length\(state -> 'deletedEvents'\) > 0[\s\S]+can_read_deleted_shared_snapshot/
+  );
+  assert.match(
+    schema,
+    /revoke all on function public\.can_read_deleted_shared_snapshot\(text\)[\s\S]+from public, anon[\s\S]+grant execute on function public\.can_read_deleted_shared_snapshot\(text\)[\s\S]+to authenticated/
+  );
   assert.match(schema, /owner_user_id = \(select auth\.uid\(\)\)/);
   assert.match(schema, /create or replace function private\.claim_signup_workspace/);
   assert.match(schema, /after insert on auth\.users/);

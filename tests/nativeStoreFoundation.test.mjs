@@ -96,6 +96,9 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeBenchmark, /failedRuns/);
   assert.match(nativeBenchmark, /ANDROID_BENCHMARK_MAX_P75_MS/);
   assert.match(nativeBenchmark, /summarizeResources/);
+  assert.match(nativeBenchmark, /readExpectedVersionCode/);
+  assert.match(nativeBenchmark, /does not match project build/);
+  assert.match(nativeBenchmark, /executedRuns/);
 });
 
 test("native projects include store signing and Apple privacy requirements", async () => {

@@ -385,6 +385,7 @@ window.addEventListener("popstate", handleBrowserHistoryBack);
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
+window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted);
 window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") requestResumeSync();
@@ -398,6 +399,16 @@ document.addEventListener("settle-friends:push-status", (event) => {
   if (event.detail?.status !== "received") return;
   requestResumeSync({ force: true }).catch(() => {});
 });
+
+function handleSharedSaveReverted() {
+  state = loadState();
+  notice = "השינוי לא נשמר כי הסנכרון לא זמין. המידע הוחזר לגרסה האחרונה שנשמרה.";
+  render();
+  if (expenseDraft) {
+    expenseDraft.error = "השינוי לא נשמר. בדקו את החיבור ונסו שוב.";
+    reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+  }
+}
 document.addEventListener("settle-friends:notice", handleExternalNotice);
 if ("scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -746,7 +757,8 @@ function handleBrowserHistoryBack(event) {
       mode: targetExpenseDraft.mode === "items" ? "items" : "single",
       flowStep: normalizeExpenseFlowStep(targetExpenseDraft.flowStep),
       quickStage: targetExpenseDraft.quickStage,
-      restaurantEqualSplit: Boolean(targetExpenseDraft.restaurantEqualSplit)
+      restaurantEqualSplit: Boolean(targetExpenseDraft.restaurantEqualSplit),
+      participantAddView: targetExpenseDraft.participantAddView ?? ""
     };
   }
   restoringBrowserHistory = true;
@@ -800,6 +812,14 @@ function hasIndependentHistoryDialog() {
 }
 
 function historyEventDialogFocusSelector(previousDialog, restoredDialog) {
+  if (
+    previousDialog?.kind === "share" &&
+    ["friends", "link"].includes(previousDialog.shareView) &&
+    restoredDialog?.kind === "share" &&
+    !["friends", "link"].includes(restoredDialog.shareView)
+  ) {
+    return `[data-action="event-share-view"][data-share-view="${previousDialog.shareView}"]`;
+  }
   if (
     previousDialog?.kind === "share" &&
     ["participants", "participants-add"].includes(previousDialog.returnKind) &&
@@ -889,7 +909,8 @@ function navigationViewKey() {
           id: expenseDraft.id ?? "",
           mode: expenseDraft.mode,
           flowStep: normalizeExpenseFlowStep(expenseDraft.flowStep),
-          quickStage: expenseDraft.quickStage ?? ""
+          quickStage: expenseDraft.quickStage ?? "",
+          participantAddView: expenseDraft.participantAddView ?? ""
         }
       : null,
     eventDialog: eventDialogHistoryKey(eventDialog),
@@ -913,7 +934,8 @@ function eventDialogHistoryKey(dialog) {
     eventId: dialog.eventId ?? "",
     kind: dialog.kind ?? "",
     returnKind: dialog.returnKind ?? "",
-    participantId: dialog.participantId ?? ""
+    participantId: dialog.participantId ?? "",
+    shareView: dialog.shareView ?? ""
   };
 }
 
@@ -1077,7 +1099,7 @@ function renderProfileUsernameField() {
           name="username"
           dir="ltr"
           value="${escapeAttribute(usernameValue)}"
-          placeholder="@yarin"
+          placeholder="בחר שם משתמש"
           autocomplete="username"
           autocapitalize="none"
           spellcheck="false"
@@ -1418,12 +1440,14 @@ function renderNotificationInboxLoading() {
 function formatNotificationTime(value) {
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) return "";
+  const calendarLabel = formatRelativeCalendarDate(value);
   const elapsedMinutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60_000));
-  if (elapsedMinutes < 1) return "עכשיו";
-  if (elapsedMinutes < 60) return `לפני ${elapsedMinutes} דק׳`;
-  const elapsedHours = Math.floor(elapsedMinutes / 60);
-  if (elapsedHours < 24) return `לפני ${elapsedHours} שע׳`;
-  return formatRelativeCalendarDate(new Date(timestamp).toISOString());
+  if (calendarLabel === "היום") {
+    if (elapsedMinutes < 1) return "עכשיו";
+    if (elapsedMinutes < 60) return `לפני ${elapsedMinutes} דק׳`;
+    return `לפני ${Math.floor(elapsedMinutes / 60)} שע׳`;
+  }
+  return calendarLabel;
 }
 
 function renderProfileAvatarPicker() {
@@ -2078,14 +2102,6 @@ function renderFriendsPeopleTab({
       role="tabpanel"
       aria-labelledby="friends-tab-people"
     >
-      <details class="friend-privacy-note">
-        <summary>
-          <span class="friend-privacy-summary-label">איך נשמרת הפרטיות?</span>
-          <span class="inline-chevron friend-privacy-chevron">${iconSvg("chevron-left")}</span>
-        </summary>
-        <p>משתמש מחובר מופיע רק אחרי אישור הדדי. שם אופליין נשמר רק אצלך.</p>
-      </details>
-
       ${
         friendCount
           ? `<div class="friends-toolbar ${showSearch ? "has-search" : "is-compact"}">
@@ -2150,6 +2166,14 @@ function renderFriendsPeopleTab({
           `
           : ""
       }
+
+      <details class="friend-privacy-note">
+        <summary>
+          <span class="friend-privacy-summary-label">איך נשמרת הפרטיות?</span>
+          <span class="inline-chevron friend-privacy-chevron">${iconSvg("chevron-left")}</span>
+        </summary>
+        <p>משתמש מחובר מופיע רק אחרי אישור הדדי. שם אופליין נשמר רק אצלך.</p>
+      </details>
     </section>
   `;
 }
@@ -2257,7 +2281,7 @@ function renderOfflineFriendAddStep() {
             name="offlineFriendName"
             autocomplete="off"
             enterkeyhint="done"
-            placeholder="לדוגמה: דני כהן"
+            placeholder="שם פרטי ושם משפחה"
             value="${escapeAttribute(friendsNewOfflineName)}"
           />
         </label>
@@ -2521,13 +2545,8 @@ function renderNetworkFriendRow(friendship) {
         <span class="friend-row-copy">
           <span class="friend-row-name">
             <strong>${escapeHtml(profile.display_name)}</strong>
-            <small class="participant-connection-badge is-connected">
-              <span class="participant-connection-dot" aria-hidden="true"></span>
-              חבר מאושר
-            </small>
           </span>
           ${username ? `<bdi class="friend-username" dir="ltr">${escapeHtml(username)}</bdi>` : ""}
-          <small>משתמש מחובר · אפשר לצרף לאירועים גם בלי קבוצה</small>
         </span>
       </button>
       <button
@@ -2537,8 +2556,9 @@ function renderNetworkFriendRow(friendship) {
         data-participant-id="${participantId}"
         type="button"
         ${friendNetworkBusyAction ? "disabled" : ""}
+        title="הסר חבר"
         aria-label="הסר את ${escapeAttribute(profile.display_name)} מרשימת החברים"
-      >הסר</button>
+      ></button>
     </article>
   `;
 }
@@ -2602,10 +2622,6 @@ function renderFriendRelationshipProfile() {
             <div class="relationship-identity-copy">
               <strong>${escapeHtml(targetName)}</strong>
               ${renderParticipantUsername(participant)}
-              <span class="event-participant-profile-account">
-                <span aria-hidden="true"></span>
-                משתמש מחובר
-              </span>
             </div>
             <span class="relationship-friendship-badge is-accepted">חבר</span>
           </header>
@@ -2732,7 +2748,7 @@ function renderFriendRow(participant) {
       </span>
       ${
         !identity.connected && !isCurrent
-          ? `<button class="friend-remove-button" data-action="remove-offline-friend" data-participant-id="${participant.id}" type="button" aria-label="הסר את ${escapeAttribute(participant.displayName)} מרשימת החברים">הסר</button>`
+          ? `<button class="friend-remove-button" data-action="remove-offline-friend" data-participant-id="${participant.id}" type="button" title="הסר שם אופליין" aria-label="הסר את ${escapeAttribute(participant.displayName)} מרשימת החברים"></button>`
           : `<span class="friend-row-state">${isCurrent ? "אתה" : "מחובר"}</span>`
       }
     </article>
@@ -2825,10 +2841,19 @@ function renderGroupCreate() {
         </div>
         ${renderParticipantChecks(groupDraft.memberIds, "group-member")}
 
-        <div class="inline-actions section">
-          <input class="guest-input" data-action="group-member-name" name="groupMemberName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם אופליין חדש…" value="${escapeAttribute(groupDraft.newMemberName)}" />
-          <button class="secondary-button" data-action="group-add-member" type="button">הוסף שם אופליין</button>
-        </div>
+        <details class="group-editor-disclosure group-editor-offline-add section">
+          <summary>
+            <span class="group-editor-disclosure-copy">
+              <strong>הוסף שם אופליין</strong>
+              <small>לאדם שלא משתמש עדיין באפליקציה.</small>
+            </span>
+            <span class="group-editor-disclosure-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </summary>
+          <div class="inline-actions group-editor-disclosure-body">
+            <input class="guest-input" data-action="group-member-name" name="groupMemberName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם פרטי ושם משפחה" value="${escapeAttribute(groupDraft.newMemberName)}" />
+            <button class="secondary-button" data-action="group-add-member" type="button">הוסף לקבוצה</button>
+          </div>
+        </details>
 
         <button class="primary-button section" data-action="create-group" ${!groupDraft.name.trim() || groupDraft.memberIds.length === 0 ? "disabled" : ""}>שמור קבוצה</button>
       </section>
@@ -2872,8 +2897,8 @@ function renderPeople() {
         </div>
       </header>
       ${renderNotice()}
-      ${renderKnownParticipantsPanel()}
       ${renderMergeParticipantsPanel()}
+      ${renderKnownParticipantsPanel()}
     </section>
   `;
 }
@@ -2893,15 +2918,33 @@ function renderEditGroupPanel() {
         ${renderParticipantChecks(editingGroupDraft.memberIds, "edit-group-member")}
       </section>
 
-      <section class="section">
-        <h3>מנהלים</h3>
-        ${renderParticipantChecks(editingGroupDraft.adminIds, "edit-group-admin")}
-      </section>
+      <details class="group-editor-disclosure section">
+        <summary>
+          <span class="group-editor-disclosure-copy">
+            <strong>מנהלים</strong>
+            <small>בחר מי יכול לנהל את הקבוצה.</small>
+          </span>
+          <bdi class="group-editor-disclosure-count">${formatCount(editingGroupDraft.adminIds.length, "מנהל", "מנהלים")}</bdi>
+          <span class="group-editor-disclosure-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+        </summary>
+        <div class="group-editor-disclosure-body">
+          ${renderParticipantChecks(editingGroupDraft.adminIds, "edit-group-admin")}
+        </div>
+      </details>
 
-      <div class="inline-actions section">
-        <input class="guest-input" data-action="edit-group-member-name" name="editGroupMemberName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם אופליין חדש…" value="${escapeAttribute(editingGroupDraft.newMemberName)}" />
-        <button class="secondary-button" data-action="edit-group-add-member">הוסף שם אופליין</button>
-      </div>
+      <details class="group-editor-disclosure group-editor-offline-add section">
+        <summary>
+          <span class="group-editor-disclosure-copy">
+            <strong>הוסף שם אופליין</strong>
+            <small>לאדם שלא משתמש עדיין באפליקציה.</small>
+          </span>
+          <span class="group-editor-disclosure-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+        </summary>
+        <div class="inline-actions group-editor-disclosure-body">
+          <input class="guest-input" data-action="edit-group-member-name" name="editGroupMemberName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם פרטי ושם משפחה" value="${escapeAttribute(editingGroupDraft.newMemberName)}" />
+          <button class="secondary-button" data-action="edit-group-add-member">הוסף לקבוצה</button>
+        </div>
+      </details>
 
       <div class="actions section">
         <button class="primary-button" data-action="save-edit-group" ${editingGroupDraft.memberIds.length === 0 ? "disabled" : ""}>שמור שינויים</button>
@@ -2932,7 +2975,7 @@ function renderGroupRow(group, peerGroups = []) {
       </div>
       <div class="section-title-actions">
         <button class="secondary-button" data-action="edit-group" data-group-id="${group.id}">עריכה</button>
-        <button class="secondary-button danger-button" data-action="archive-group" data-group-id="${group.id}">ארכוב</button>
+        <button class="secondary-button danger-button group-archive-button" data-action="archive-group" data-group-id="${group.id}" title="ארכב קבוצה" aria-label="ארכב את הקבוצה ${escapeAttribute(group.name)}"></button>
       </div>
     </article>
   `;
@@ -2940,21 +2983,23 @@ function renderGroupRow(group, peerGroups = []) {
 
 function renderKnownParticipantsPanel() {
   return `
-    <section class="panel section known-participants-panel">
-      <div class="section-title-row">
-        <div>
-          <h2>שמות שנשמרו</h2>
-          <p class="muted">כאן מנהלים שמות ששמרת. אפשר להסיר שם שלא מופיע בהוצאות קיימות.</p>
-        </div>
-      </div>
-      <div class="stack">
+    <details class="panel section known-participants-panel people-management-disclosure">
+      <summary>
+        <span class="people-management-disclosure-copy">
+          <strong>כל השמות השמורים</strong>
+          <small>צפייה והסרה של שמות שלא מופיעים בהוצאות.</small>
+        </span>
+        <bdi class="people-management-disclosure-count"><span class="font-num">${state.participants.length}</span> ${state.participants.length === 1 ? "שם" : "שמות"}</bdi>
+        <span class="people-management-disclosure-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </summary>
+      <div class="stack people-management-disclosure-body">
         ${
           state.participants.length
             ? state.participants.map(renderKnownParticipantRow).join("")
             : `<div class="empty-state">עדיין לא נשמרו שמות</div>`
         }
       </div>
-    </section>
+    </details>
   `;
 }
 
@@ -2965,8 +3010,7 @@ function renderMergeParticipantsPanel() {
     .filter((participant) => participant.id !== mergeParticipantsDraft.targetId)
     .map((participant) => renderParticipantOption(participant, mergeParticipantsDraft.sourceId))
     .join("");
-  const targetOptions = state.participants
-    .filter((participant) => participant.id !== mergeParticipantsDraft.sourceId)
+  const targetOptions = mergeParticipantTargetCandidates(mergeParticipantsDraft.sourceId)
     .map((participant) => renderParticipantOption(participant, mergeParticipantsDraft.targetId))
     .join("");
   const disabled =
@@ -2982,17 +3026,17 @@ function renderMergeParticipantsPanel() {
     <section class="panel section merge-participants-panel">
       <div class="section-title-row">
         <div>
-          <h2>איחוד שמות כפולים</h2>
-          <p class="muted">אם אותו אדם נשמר כשם אופליין ואז התחבר כמשתמש, מאחדים את כל ההיסטוריה שלו לשם אחד.</p>
+          <h2>איחוד שם כפול</h2>
+          <p class="muted">בוחרים את השם המיותר ואת החשבון שיישאר. האירועים וההוצאות נשמרים.</p>
         </div>
       </div>
       <div class="merge-participants-grid">
         <label class="field">
-          <span>שם שמאחדים ומסירים</span>
+          <span>השם שיוסר</span>
           <select data-action="merge-source" name="mergeSourceParticipant">${sourceOptions}</select>
         </label>
         <label class="field">
-          <span>השם שנשאר</span>
+          <span>החשבון שיישאר</span>
           <select data-action="merge-target" name="mergeTargetParticipant">${targetOptions}</select>
         </label>
       </div>
@@ -3191,6 +3235,21 @@ function eventCreationTypeOptions() {
   );
 }
 
+function newEventParticipantSelectionLabel(participantIds) {
+  const selectedIds = Array.isArray(participantIds) ? participantIds : [];
+  if (
+    selectedIds.length === 1 &&
+    selectedIds[0] === state.currentParticipantId
+  ) {
+    return "רק אתה כרגע";
+  }
+  return formatCount(
+    selectedIds.length,
+    "משתתף נבחר",
+    "משתתפים נבחרו"
+  );
+}
+
 function renderNewEventType() {
   ensureNewEventDraft();
 
@@ -3275,10 +3334,8 @@ function renderNewEvent() {
   ensureNewEventDraft();
   const selectedType = eventTypeConfig(newEventDraft.eventType);
   const availableGroups = visibleGroupsForParticipant(state, state.currentParticipantId);
-  const selectedParticipantLabel = formatCount(
-    newEventDraft.participantIds.length,
-    "משתתף נבחר",
-    "משתתפים נבחרו"
+  const selectedParticipantLabel = newEventParticipantSelectionLabel(
+    newEventDraft.participantIds
   );
 
   return `
@@ -3388,7 +3445,9 @@ function syncNewEventParticipantControls() {
   const count = newEventDraft.participantIds.length;
   const countNode = app.querySelector("[data-new-event-participant-count]");
   if (countNode) {
-    countNode.textContent = formatCount(count, "משתתף נבחר", "משתתפים נבחרו");
+    countNode.textContent = newEventParticipantSelectionLabel(
+      newEventDraft.participantIds
+    );
   }
 
   const createButton = app.querySelector('[data-action="create-event"]');
@@ -5380,6 +5439,9 @@ function renderAvailableEventParticipantRow(event, participant, canEdit) {
 }
 
 function renderEventShareDialog(event) {
+  const shareView = ["friends", "link"].includes(eventDialog?.shareView)
+    ? eventDialog.shareView
+    : "menu";
   const inviteUrl = eventInviteUrl(event.id);
   const shareAvailable = !eventSharePreparationPromises.has(event.id);
   const shareFailed = eventSharePreparationErrors.has(event.id);
@@ -5394,35 +5456,45 @@ function renderEventShareDialog(event) {
     eventDialog?.returnKind
   );
   const canManageInvite = canCurrentParticipantEdit(event);
+  const isShareRoute = shareView !== "menu";
+  const dialogCopy = shareView === "friends"
+    ? {
+        title: "בחר חבר",
+        description: "רק חברים מחוברים שעדיין לא נמצאים באירוע."
+      }
+    : shareView === "link"
+      ? {
+          title: "שתף קישור",
+          description: "שולחים בוואטסאפ, מעתיקים או מציגים QR."
+        }
+      : {
+          title: "איך מזמינים?",
+          description: "בוחרים דרך אחת וממשיכים."
+        };
 
   return renderEventDialogShell({
-    eyebrow: "שיתוף",
-    title: "הזמנה לאירוע ולאפליקציה",
-    description: "בוחרים הזמנה פרטית לחבר או קישור פתוח לקבוצה.",
+    eyebrow: "הזמנה לאירוע",
+    title: dialogCopy.title,
+    description: dialogCopy.description,
     modalClass: "event-task-modal event-share-modal",
-    backAction: returnsToParticipants ? "event-share-back" : "",
-    backLabel: "חזרה למשתתפים",
-    body: `
-      <section class="event-share-choice event-share-private">
-        <div>
-          <small>הזמנה פרטית</small>
-          <strong>חבר מחובר</strong>
-          <p>רק החבר שתבחר יקבל התראה ויוכל לפתוח את האירוע.</p>
-        </div>
-        <button
-          class="secondary-button"
-          type="button"
-          data-action="open-event-participant-add"
-          data-event-id="${escapeAttribute(event.id)}"
-        >בחר חבר</button>
-      </section>
+    backAction: isShareRoute
+      ? "event-share-view-back"
+      : returnsToParticipants
+        ? "event-share-back"
+        : "",
+    backLabel: isShareRoute ? "חזרה לדרכי ההזמנה" : "חזרה למשתתפים",
+    body: shareView === "friends"
+      ? renderEventShareFriends(event, canManageInvite)
+      : shareView === "link"
+        ? `
+      <div class="event-share-route" data-event-share-view="link">
       <section class="event-share-open" aria-labelledby="open-invite-title">
         <div class="event-share-open-heading">
           <span>
-            <small>קישור פתוח ו-QR</small>
-            <strong id="open-invite-title">מתאים לקבוצת WhatsApp</strong>
+            <small>הזמנה פתוחה</small>
+            <strong id="open-invite-title">קישור אחד לכל הקבוצה</strong>
           </span>
-          <p>כל מי שמקבל את הקישור יכול להצטרף ולערוך הוצאות באירוע.</p>
+          <p>כל מי שמקבל אותו יכול להצטרף לאירוע.</p>
         </div>
         ${renderInviteStatus(event, shareReady, shareAvailable)}
         ${
@@ -5443,9 +5515,16 @@ function renderEventShareDialog(event) {
         }
         <div class="invite-link-row">
           <label class="event-invite-link-field">
-            <span>הקישור הפתוח</span>
+            <span class="event-invite-link-label">הקישור הפתוח</span>
+            <span class="event-invite-link-preview" aria-hidden="true">
+              ${renderCommandIcon("share")}
+              <span>
+                <strong>קישור ההזמנה מוכן</strong>
+              </span>
+            </span>
             <input
               readonly
+              tabindex="-1"
               name="eventInviteUrl"
               aria-label="קישור הצטרפות פתוח"
               aria-busy="${!shareReady}"
@@ -5483,8 +5562,81 @@ function renderEventShareDialog(event) {
             : ""
         }
       </section>
+      </div>
     `
+        : renderEventShareMenu(event)
   });
+}
+
+function renderEventShareMenu(event) {
+  return `
+    <div class="event-share-route" data-event-share-view="menu">
+      <section class="event-share-choice event-share-route-list" aria-label="דרכי הזמנה">
+        <button
+          class="event-share-route-choice"
+          type="button"
+          data-action="event-share-view"
+          data-share-view="friends"
+          data-event-id="${escapeAttribute(event.id)}"
+        >
+          ${renderCommandIcon("participants")}
+          <span>
+            <strong>בחר חבר</strong>
+            <small>הזמנה פרטית לחשבון שכבר מחובר אליך</small>
+          </span>
+          <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+        </button>
+        <button
+          class="event-share-route-choice"
+          type="button"
+          data-action="event-share-view"
+          data-share-view="link"
+          data-event-id="${escapeAttribute(event.id)}"
+        >
+          ${renderCommandIcon("share")}
+          <span>
+            <strong>שתף קישור</strong>
+            <small>WhatsApp, העתקה או סריקת QR</small>
+          </span>
+          <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+        </button>
+      </section>
+    </div>
+  `;
+}
+
+function renderEventShareFriends(event, canEdit) {
+  const friendIds = new Set(activeFriendParticipantIds(state));
+  const participants = state.participants
+    .filter((participant) =>
+      participant.id !== state.currentParticipantId &&
+      friendIds.has(participant.id) &&
+      participantConnectionStatus(participant).connected &&
+      !event.participantIds.includes(participant.id)
+    )
+    .sort((left, right) => compareEventParticipantRoster(left, right, event));
+  const message = eventDialog?.message ?? "";
+
+  return `
+    <div class="event-share-route event-share-friends" data-event-share-view="friends">
+      ${message ? `<p class="event-participant-notice" role="status">${escapeHtml(message)}</p>` : ""}
+      ${
+        participants.length
+          ? `<section class="event-share-friend-list" aria-label="חברים זמינים להזמנה">
+              ${participants
+                .map((participant) =>
+                  renderAvailableEventParticipantRow(event, participant, canEdit)
+                )
+                .join("")}
+            </section>`
+          : `<section class="event-share-empty" role="status">
+              ${renderCommandIcon("participants")}
+              <strong>אין כרגע חבר זמין להזמנה</strong>
+              <p>חברים שכבר באירוע לא יופיעו כאן.</p>
+            </section>`
+      }
+    </div>
+  `;
 }
 
 function renderEventSettingsDialog(event) {
@@ -6106,12 +6258,12 @@ function renderInviteStatus(event, ready, available = ready) {
   const publicSharingReady = runtimeConfig.launch.shareLinksReady;
   const failed = eventSharePreparationErrors.has(event.id);
   const stateLabel = failed
-    ? "דורש חיבור"
+    ? "נדרש חיבור כדי להכין את הקישור"
     : ready
-    ? "מוכן"
+    ? ""
     : available
-      ? "לא זמין"
-      : "בהכנה";
+      ? "הקישור לא זמין כרגע"
+      : "מכינים את הקישור…";
 
   return `
     <section
@@ -6126,14 +6278,13 @@ function renderInviteStatus(event, ready, available = ready) {
           <span>קישור ישיר שמכניס את החברים לאירוע</span>
         </span>
       </div>
-      <span class="event-invite-pass-stub">
-        <span class="event-invite-pass-state">
-          <i aria-hidden="true"></i>
-          ${stateLabel}
-        </span>
-        <strong>הצטרפות</strong>
-        <small>בלחיצה אחת</small>
-      </span>
+      ${
+        stateLabel
+          ? `<span class="event-invite-pass-stub">
+              <span class="event-invite-pass-state">${stateLabel}</span>
+            </span>`
+          : ""
+      }
     </section>
   `;
 }
@@ -6183,6 +6334,9 @@ function renderExpenseForm(event) {
   const flowStep = normalizeExpenseFlowStep(expenseDraft.flowStep);
   expenseDraft.flowStep = flowStep;
   const flowMeta = expenseFlowMeta(flowStep);
+  if (flowStep === "participants" && expenseDraft.participantAddView) {
+    return renderExpenseParticipantAddRoute(event, canEdit);
+  }
 
   return `
     <section class="expense-modal-backdrop" aria-label="חלון הוצאה">
@@ -6212,11 +6366,11 @@ function renderExpenseForm(event) {
       <div class="expense-flow-body">
       <label class="field expense-total-field">
         <span>סכום כולל <span class="currency-input-badge font-num" dir="ltr">${escapeHtml(currencyCompactLabel(event))}</span></span>
-        <input data-action="expense-total" name="expenseTotal" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" value="${escapeAttribute(expenseDraft.total)}" placeholder="0.00" />
+        <input data-action="expense-total" name="expenseTotal" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" value="${escapeAttribute(expenseDraft.total)}" placeholder="0.00" ${expenseFlowFieldErrorAttributes("amount")} />
       </label>
       <label class="field expense-name-field">
         <span>שם ההוצאה</span>
-        <input data-action="expense-name" name="expenseName" autocomplete="off" enterkeyhint="next" value="${escapeAttribute(expenseDraft.name)}" placeholder="לדוגמה: מונית או ארוחת ערב" />
+        <input data-action="expense-name" name="expenseName" autocomplete="off" enterkeyhint="next" value="${escapeAttribute(expenseDraft.name)}" placeholder="לדוגמה: מונית או ארוחת ערב" ${expenseFlowFieldErrorAttributes("name")} />
       </label>
 
       <section class="expense-template-grid" aria-label="תבניות הוצאה מהירות">
@@ -6244,7 +6398,7 @@ function renderExpenseForm(event) {
         <div class="expense-details-body">
           ${isTripEvent ? "" : renderExpenseDateField()}
 
-          <section class="section expense-payer-section">
+          <section class="section expense-payer-section" ${expenseFlowFieldErrorAttributes("payer")}>
             <h3>מי שילם וכמה?</h3>
             <div class="payer-list">
               ${expenseDraft.payers
@@ -6318,24 +6472,25 @@ function renderExpenseForm(event) {
             </button>
           </section>
 
-          <section class="section expense-participant-section">
+          <section class="section expense-participant-section" ${expenseFlowFieldErrorAttributes("participants")}>
             <h3>מי שותף בהוצאה?</h3>
             ${renderExpenseParticipantToolbar(event, participants)}
             ${renderParticipantChecks(expenseDraft.sharedByParticipantIds, "expense-shared", event)}
           </section>
 
-          <details class="expense-guest-box expense-guest-details">
-            <summary>
-              <span>
-                <strong>חסר מישהו?</strong>
-                <small>הוסף שם בלי לצאת מההוצאה</small>
-              </span>
-            </summary>
-            <div class="inline-actions expense-guest-actions">
-              <input class="guest-input" data-action="event-guest-name" name="expenseGuestName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין להוצאה" placeholder="שם אופליין" ${!canEdit ? "disabled" : ""} />
-              <button class="secondary-button" data-action="event-add-guest" data-event-id="${event.id}" ${!canEdit ? "disabled" : ""}>הוסף שם אופליין</button>
-            </div>
-          </details>
+          <button
+            class="expense-participant-add-launch"
+            type="button"
+            data-action="expense-open-participant-add"
+            ${canEdit ? "" : "disabled"}
+          >
+            <span class="expense-participant-add-launch-icon" aria-hidden="true">${iconSvg("user-plus")}</span>
+            <span>
+              <strong>הוסף משתתף</strong>
+              <small>חבר, קישור או שם אופליין</small>
+            </span>
+            <span class="expense-participant-add-launch-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
         </div>
       </details>
 
@@ -6355,7 +6510,7 @@ function renderExpenseForm(event) {
                     : `<button class="secondary-button expense-save-more" data-action="save-expense-and-continue" data-event-id="${event.id}" ${canEdit && expenseFlowReady("review") ? "" : "disabled"}>שמור והוסף עוד</button>`
                 }
               `
-            : `<button class="primary-button expense-step-next" data-action="expense-step-next" type="button" ${canEdit && expenseFlowReady(flowStep) ? "" : "disabled"}>${escapeHtml(expenseFlowNextLabel(flowStep))}</button>`
+            : `<button class="primary-button expense-step-next" data-action="expense-step-next" type="button" ${canEdit ? "" : "disabled"}>${escapeHtml(expenseFlowNextLabel(flowStep))}</button>`
         }
       </div>
       </section>
@@ -6386,8 +6541,8 @@ function renderExpenseParticipantToolbar(event, participants) {
   return `
     <div class="expense-participant-toolbar" data-expense-participant-toolbar>
       <span class="expense-participant-selection-count" aria-live="polite">
-        <strong>${formatCount(selectedIds.length, "משתתף מסומן", "משתתפים מסומנים")}</strong>
-        <small>מתוך ${availableIds.length}</small>
+        <strong>משתתפים</strong>
+        <small>${selectedIds.length} מתוך ${availableIds.length} נבחרו</small>
       </span>
       <span class="expense-participant-presets" role="group" aria-label="בחירה מהירה של משתתפים">
         <button
@@ -6407,6 +6562,165 @@ function renderExpenseParticipantToolbar(event, participants) {
             : ""
         }
       </span>
+    </div>
+  `;
+}
+
+function expenseAvailableFriendParticipants(event) {
+  const friendParticipantIds = new Set(activeFriendParticipantIds(state));
+  const activeParticipantIds = new Set(
+    activeEventParticipants(event).map((participant) => participant.id)
+  );
+
+  return state.participants
+    .filter(
+      (participant) =>
+        participant.id !== state.currentParticipantId &&
+        friendParticipantIds.has(participant.id) &&
+        participantConnectionStatus(participant).connected &&
+        !activeParticipantIds.has(participant.id)
+    )
+    .sort((left, right) => left.displayName.localeCompare(right.displayName, "he"));
+}
+
+function renderExpenseParticipantAddRoute(event, canEdit) {
+  const view = ["friends", "offline"].includes(expenseDraft.participantAddView)
+    ? expenseDraft.participantAddView
+    : "menu";
+  const friends = expenseAvailableFriendParticipants(event);
+  const invitationMessage = String(expenseDraft?.participantInviteMessage ?? "").trim();
+  const title = view === "friends"
+    ? "בחר חבר"
+    : view === "offline"
+      ? "שם אופליין"
+      : "איך להוסיף?";
+  const description = view === "friends"
+    ? "בחירה תוסיף את החבר לאירוע ולהוצאה."
+    : view === "offline"
+      ? "למי שלא יתחבר לאפליקציה."
+      : "בוחרים דרך אחת וממשיכים.";
+
+  return `
+    <section class="expense-modal-backdrop" aria-label="הוספת משתתף להוצאה">
+      <section
+        class="panel expense-modal expense-step-modal expense-participant-add-route"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="expense-participant-add-title"
+        aria-describedby="expense-participant-add-description"
+        data-event-id="${escapeAttribute(event.id)}"
+        data-expense-step="participants"
+        data-expense-participant-add-view="${view}"
+        tabindex="-1"
+      >
+        <div class="expense-modal-header expense-modal-step-header">
+          <div>
+            <p class="eyebrow">הוספת הוצאה · משתתפים</p>
+            <h2 id="expense-participant-add-title">${escapeHtml(title)}</h2>
+            <p class="muted" id="expense-participant-add-description">${escapeHtml(description)}</p>
+          </div>
+          <div class="expense-modal-header-actions">
+            <button class="icon-button modal-section-back-button" data-action="expense-participant-add-back" aria-label="חזרה" title="חזרה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>
+            <button class="icon-button modal-back-button modal-close-button" data-action="cancel-expense" aria-label="סגירת חלון ההוצאה" title="סגירת חלון ההוצאה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
+          </div>
+        </div>
+        ${renderExpenseFlowProgress("participants")}
+        <p class="expense-loop-status" role="status" aria-live="polite" hidden></p>
+        <p class="expense-sync-status" data-inline-sync-status role="status" aria-live="polite" hidden></p>
+        ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
+        <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
+          <div class="expense-flow-body expense-participant-add-route-body">
+            ${view === "menu" ? renderExpenseParticipantAddMenu(event, friends, canEdit) : ""}
+            ${view === "friends" ? renderExpenseParticipantFriendList(event, friends, canEdit) : ""}
+            ${view === "offline" ? renderExpenseParticipantOfflineForm(event, canEdit) : ""}
+            ${invitationMessage ? `<p class="expense-participant-invite-message" role="status">${escapeHtml(invitationMessage)}</p>` : ""}
+          </div>
+        </fieldset>
+      </section>
+    </section>
+  `;
+}
+
+function renderExpenseParticipantAddMenu(event, friends, canEdit) {
+  return `
+    <div class="expense-participant-add-menu" aria-label="דרכים להוספת משתתף">
+      <button
+        class="expense-participant-choice"
+        type="button"
+        data-action="expense-participant-add-view"
+        data-view="friends"
+        ${friends.length && canEdit ? "" : "disabled"}
+      >
+        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("users")}</span>
+        <span><strong>מהחברים שלי</strong><small>${friends.length ? "בחר משתמש שכבר מחובר אליך" : "אין כרגע חבר נוסף להוספה"}</small></span>
+        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </button>
+      <button
+        class="expense-participant-choice"
+        type="button"
+        data-action="expense-share-invite"
+        data-event-id="${escapeAttribute(event.id)}"
+        ${canEdit ? "" : "disabled"}
+      >
+        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("share")}</span>
+        <span><strong>הזמן בקישור</strong><small>שלח קישור הצטרפות לאירוע</small></span>
+        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </button>
+      <button
+        class="expense-participant-choice"
+        type="button"
+        data-action="expense-participant-add-view"
+        data-view="offline"
+        ${canEdit ? "" : "disabled"}
+      >
+        <span class="expense-participant-choice-icon" aria-hidden="true">${iconSvg("edit")}</span>
+        <span><strong>שם אופליין</strong><small>למי שלא יתחבר לאפליקציה</small></span>
+        <span class="expense-participant-choice-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </button>
+    </div>
+  `;
+}
+
+function renderExpenseParticipantFriendList(event, friends, canEdit) {
+  if (!friends.length) {
+    return '<p class="expense-participant-add-empty">אין כרגע חברים נוספים שאפשר להוסיף.</p>';
+  }
+
+  return `
+    <div class="expense-participant-friend-list">
+      ${friends
+        .map(
+          (participant) => `
+            <button
+              class="expense-participant-friend-option"
+              type="button"
+              data-action="expense-add-friend-participant"
+              data-event-id="${escapeAttribute(event.id)}"
+              data-participant-id="${escapeAttribute(participant.id)}"
+              ${canEdit ? "" : "disabled"}
+            >
+              ${renderAvatar(participant.id, event)}
+              <span>
+                <strong>${escapeHtml(participantName(participant.id, event))}</strong>
+                ${renderParticipantUsername(participant)}
+              </span>
+              <b>הוסף</b>
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderExpenseParticipantOfflineForm(event, canEdit) {
+  return `
+    <div class="expense-participant-offline-form">
+      <label class="field">
+        <span>שם פרטי ומשפחה</span>
+        <input class="guest-input" data-action="event-guest-name" name="expenseGuestName" autocomplete="off" enterkeyhint="done" placeholder="שם פרטי ושם משפחה" ${canEdit ? "" : "disabled"} />
+      </label>
+      <button class="primary-button" data-action="event-add-guest" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>הוסף להוצאה</button>
     </div>
   `;
 }
@@ -6431,7 +6745,7 @@ function applyExpenseParticipantPreset(mode, trigger) {
     .forEach((checkbox) => {
       if (!(checkbox instanceof HTMLInputElement)) return;
       checkbox.checked = nextIds.includes(checkbox.dataset.participantId);
-      checkbox.closest(".participant-pill")?.classList.toggle(
+      checkbox.closest(".participant-pill, .expense-participant-row")?.classList.toggle(
         "is-selected",
         checkbox.checked
       );
@@ -6499,6 +6813,15 @@ function expenseFlowMeta(step) {
   };
 }
 
+function expenseFlowFieldErrorAttributes(step) {
+  const isInvalid =
+    Boolean(expenseDraft?.error) &&
+    normalizeExpenseFlowStep(expenseDraft?.flowStep) === step;
+  return isInvalid
+    ? 'aria-invalid="true" aria-describedby="expense-form-error"'
+    : 'aria-invalid="false"';
+}
+
 function renderExpenseFlowProgress(step) {
   const flowSteps = expenseFlowStepsForDraft();
   const currentIndex = flowSteps.indexOf(normalizeExpenseFlowStep(step));
@@ -6534,8 +6857,8 @@ function renderExpenseFlowReview(event, participants) {
         ${renderExpenseReviewRow("name", "שם ההוצאה", expenseDraft.name.trim())}
         ${renderExpenseReviewRow("payer", "שילם", values.payer)}
         ${renderExpenseReviewRow("participants", "משתתפים", values.participants)}
+        ${renderExpenseDateField("expense-review-date")}
       </div>
-      ${renderExpenseDateField("expense-review-date")}
       ${renderExpenseConfirmationSummary(event, participants)}
     </section>
   `;
@@ -6548,7 +6871,7 @@ function renderExpenseReviewRow(step, label, value) {
         <small>${escapeHtml(label)}</small>
         <strong>${escapeHtml(value || "לא הוזן")}</strong>
       </span>
-      <span class="expense-review-edit">שינוי</span>
+      <span class="expense-review-edit" aria-hidden="true">${iconSvg("chevron-left")}</span>
     </button>
   `;
 }
@@ -7522,7 +7845,7 @@ function renderExpensePayerSummary() {
   }
 
   if (summary.balanced) {
-    return `<p class="expense-payer-summary is-balanced" aria-live="polite">סכומי המשלמים תואמים לסכום הכולל.</p>`;
+    return `<p class="expense-payer-summary is-balanced" aria-live="polite">הסכום הושלם</p>`;
   }
 
   if (summary.remaining > 0) {
@@ -7654,6 +7977,13 @@ function renderSettlement(event) {
   const transfers = event.transfers.length ? event.transfers : calculated.transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
   const hasPersonalIdentity = hasReliableSettlementIdentity(event);
+  const hasPersonalPendingTransfers =
+    hasPersonalIdentity &&
+    pendingTransfers.some(
+      (transfer) =>
+        transfer.fromParticipantId === state.currentParticipantId ||
+        transfer.toParticipantId === state.currentParticipantId
+    );
   const orderedTransfers = orderSettlementTransfers(transfers);
   const displayTransfers = groupSettlementTransfersForDisplay(orderedTransfers);
   const hasTransfers = displayTransfers.length > 0;
@@ -7670,7 +8000,7 @@ function renderSettlement(event) {
       ${expenseDraft?.eventId === event.id ? renderExpenseForm(event) : ""}
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
 
-      ${!hasTransfers || calculated.issues.length
+      ${!hasTransfers || calculated.issues.length || hasPersonalPendingTransfers
         ? renderSettlementHero(event, transfers, pendingTotal, calculated.issues)
         : ""}
 
@@ -8148,9 +8478,15 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
     : `פחות מה ש${debtorName} כבר שילם`;
 
   return `
-    <section class="settlement-featured-breakdown" aria-label="הסבר לסכום ההעברה">
-      <h3>איך הגענו לסכום?</h3>
-      <div class="settlement-featured-breakdown-list">
+    <details class="settlement-featured-breakdown">
+      <summary>
+        <span>
+          <strong>איך חישבנו?</strong>
+          <small>פירוט ההוצאות והקיזוזים</small>
+        </span>
+      </summary>
+      <div class="settlement-featured-breakdown-body">
+        <div class="settlement-featured-breakdown-list">
         ${visibleExpenseShares
           .map(
             (expenseShare) => `
@@ -8217,14 +8553,15 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
           <span><strong>סה״כ להעברה</strong></span>
           <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
         </div>
+        </div>
+        ${
+          usesRoundedSettlementTransfers(event)
+            ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; פירוט ההוצאות נשאר מדויק עד האגורה.</p>'
+            : ""
+        }
+        <a class="settlement-featured-full" href="#settlement-transfers-title">לכל ההעברות</a>
       </div>
-      ${
-        usesRoundedSettlementTransfers(event)
-          ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; פירוט ההוצאות נשאר מדויק עד האגורה.</p>'
-          : ""
-      }
-      <a class="settlement-featured-full" href="#settlement-transfers-title">פירוט מלא</a>
-    </section>
+    </details>
   `;
 }
 
@@ -8352,7 +8689,7 @@ function renderTransferRow(
               ? `<button class="secondary-button transfer-complete-button" data-action="mark-pending-group" data-transfer-ids="${escapeAttribute(groupedPaidTransfers.map((paidTransfer) => paidTransfer.id).join(","))}" aria-label="${escapeAttribute(`${formatCount(groupedPaidTransfers.length, "העברה שסומנה", "העברות שסומנו")} כהושלמו. לחיצה תבטל את כל הסימונים`)}"><span aria-hidden="true">✓</span> הושלם</button>`
               : paid
               ? `<button class="secondary-button transfer-complete-button" data-action="mark-pending" data-transfer-id="${transfer.id}" aria-label="${escapeAttribute(`ההעברה מ-${fromName} ל-${toName} הושלמה. לחיצה תבטל את הסימון`)}"><span aria-hidden="true">✓</span> הושלם</button>`
-              : `<button class="primary-button" data-action="mark-paid" data-transfer-id="${transfer.id}">${pendingActionLabel}</button>`
+              : `<button class="${isPersonal ? "primary-button" : "secondary-button transfer-group-complete-button"}" data-action="mark-paid" data-transfer-id="${transfer.id}">${pendingActionLabel}</button>`
           }
         </span>
       </div>
@@ -8379,10 +8716,17 @@ function renderDirectFeaturedSettlementBreakdown(event, transfer) {
   const remainingCount = Math.max(0, relatedExpenses.length - visibleExpenses.length);
 
   return `
-    <section class="settlement-featured-breakdown" aria-label="הסבר לסכום ההעברה">
-      <h3>החזר ישיר למי ששילם</h3>
-      <p class="muted">${escapeHtml(creditorName)} מימן הוצאות שבהן ${escapeHtml(debtorName)} השתתף. במצב הזה מחזירים כסף ישירות למי שהוציא אותו.</p>
-      <div class="settlement-featured-breakdown-list">
+    <details class="settlement-featured-breakdown">
+      <summary>
+        <span>
+          <strong>איך חישבנו?</strong>
+          <small>פירוט ההוצאות והקיזוזים</small>
+        </span>
+      </summary>
+      <div class="settlement-featured-breakdown-body">
+        <h3>החזר ישיר למי ששילם</h3>
+        <p class="muted">${escapeHtml(creditorName)} מימן הוצאות שבהן ${escapeHtml(debtorName)} השתתף. במצב הזה מחזירים כסף ישירות למי שהוציא אותו.</p>
+        <div class="settlement-featured-breakdown-list">
         ${
           visibleExpenses.length
             ? visibleExpenses
@@ -8405,14 +8749,15 @@ function renderDirectFeaturedSettlementBreakdown(event, transfer) {
           <span><strong>סה״כ להעברה</strong></span>
           <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
         </div>
+        </div>
+        ${
+          usesRoundedSettlementTransfers(event)
+            ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; ההוצאות עצמן נשארו מדויקות.</p>'
+            : ""
+        }
+        <a class="settlement-featured-full" href="#settlement-transfers-title">לכל ההעברות</a>
       </div>
-      ${
-        usesRoundedSettlementTransfers(event)
-          ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; ההוצאות עצמן נשארו מדויקות.</p>'
-          : ""
-      }
-      <a class="settlement-featured-full" href="#settlement-transfers-title">פירוט מלא</a>
-    </section>
+    </details>
   `;
 }
 
@@ -8836,6 +9181,37 @@ function renderParticipantPill(participant, selectedIds, action, event, disabled
   `;
 }
 
+function renderExpenseParticipantRow(participant, selectedIds, event, disabled) {
+  const displayName = participantName(participant.id, event);
+  const identity = participantConnectionStatus(participant);
+  const selected = selectedIds.includes(participant.id);
+
+  return `
+    <label
+      class="expense-participant-row ${identity.connected ? "is-account" : "is-offline"}"
+      data-participant-name="${escapeAttribute(participantSearchIdentity(participant, displayName))}"
+      data-participant-identity="${identity.connected ? "account" : "offline"}"
+    >
+      <input
+        class="expense-participant-checkbox"
+        type="checkbox"
+        data-action="expense-shared"
+        data-participant-id="${participant.id}"
+        name="participantSelection"
+        value="${participant.id}"
+        ${selected ? "checked" : ""}
+        ${disabled ? "disabled" : ""}
+      />
+      ${renderAvatar(participant.id, event)}
+      <span class="expense-participant-row-copy">
+        <strong>${escapeHtml(displayName)}</strong>
+        <small>${escapeHtml(identity.label)}</small>
+      </span>
+      <span class="expense-participant-row-check" aria-hidden="true"></span>
+    </label>
+  `;
+}
+
 function renderParticipantMembershipStatus(selected) {
   return `
     <span
@@ -8917,10 +9293,21 @@ function renderParticipantChecks(selectedIds, action, event = null) {
   });
   const disabled = event && !canCurrentParticipantEdit(event);
   const showSearch =
-    action === "event-participant" && participants.length > PARTICIPANT_SEARCH_THRESHOLD;
+    ["event-participant", "new-event-participant"].includes(action) &&
+    participants.length > PARTICIPANT_SEARCH_THRESHOLD;
   const groupByIdentity = IDENTITY_GROUPED_PARTICIPANT_ACTIONS.has(action);
-  const participantList = groupByIdentity
+  const participantList = action === "expense-shared"
     ? `
+      <div class="expense-participant-list" role="group" aria-label="משתתפים בהוצאה">
+        ${participants
+          .map((participant) =>
+            renderExpenseParticipantRow(participant, selectedIds, event, disabled)
+          )
+          .join("")}
+      </div>
+    `
+    : groupByIdentity
+      ? `
       <div class="participant-identity-groups">
         ${renderParticipantIdentityGroup(
           participants.filter((participant) => participantConnectionStatus(participant).connected),
@@ -8940,7 +9327,7 @@ function renderParticipantChecks(selectedIds, action, event = null) {
         )}
       </div>
     `
-    : `
+      : `
       <div class="participant-grid">
         ${participants
           .map((participant) =>
@@ -9888,6 +10275,35 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "event-share-view") {
+    const shareView = target.dataset.shareView;
+    if (
+      eventDialog?.kind !== "share" ||
+      eventDialog.eventId !== target.dataset.eventId ||
+      !["friends", "link"].includes(shareView)
+    ) {
+      return;
+    }
+    eventDialog = {
+      ...eventDialog,
+      shareView,
+      message: ""
+    };
+    render();
+    reactivateDialogAfterRender(
+      ".event-modal",
+      shareView === "friends"
+        ? '[data-action="add-event-participant"]'
+        : '[data-action="share-invite-whatsapp"]'
+    );
+    return;
+  }
+
+  if (action === "event-share-view-back") {
+    goBackInApp();
+    return;
+  }
+
   if (action === "close-event-dialog") {
     const historyBaseDepth = Number.isFinite(eventDialog?.historyBaseDepth)
       ? eventDialog.historyBaseDepth
@@ -10014,6 +10430,57 @@ async function handleClick(event) {
       action === "expense-select-current" ? "current" : "all",
       target
     );
+  }
+
+  if (action === "expense-open-participant-add") {
+    expenseDraft.participantAddView = "menu";
+    expenseDraft.participantAddHistoryBaseDepth = appHistoryDepth;
+    expenseDraft.participantInviteMessage = "";
+    expenseDraft.error = "";
+    render();
+    activateDialog(
+      ".expense-modal",
+      '[data-action="expense-participant-add-view"]:not([disabled]), [data-action="expense-share-invite"]'
+    );
+    return;
+  }
+
+  if (action === "expense-participant-add-view") {
+    const view = target.dataset.view;
+    if (!expenseDraft || !["friends", "offline"].includes(view)) return;
+    expenseDraft.participantAddView = view;
+    expenseDraft.participantInviteMessage = "";
+    render();
+    activateDialog(
+      ".expense-modal",
+      view === "offline"
+        ? '[data-action="event-guest-name"]'
+        : '[data-action="expense-add-friend-participant"]'
+    );
+    return;
+  }
+
+  if (action === "expense-participant-add-back") {
+    goBackInApp();
+    return;
+  }
+
+  if (action === "expense-add-friend-participant") {
+    await addFriendParticipantToExpense(
+      target.dataset.eventId,
+      target.dataset.participantId
+    );
+    return;
+  }
+
+  if (action === "expense-copy-invite") {
+    await shareExpenseParticipantInvite(target.dataset.eventId, "copy");
+    return;
+  }
+
+  if (action === "expense-share-invite") {
+    await shareExpenseParticipantInvite(target.dataset.eventId, "share");
+    return;
   }
 
   if (action === "add-payer") {
@@ -10369,6 +10836,21 @@ function goBackInApp() {
 
   if (
     eventDialog?.kind === "share" &&
+    ["friends", "link"].includes(eventDialog.shareView)
+  ) {
+    if (appHistoryDepth === 0) {
+      eventDialog = {
+        ...eventDialog,
+        shareView: "menu",
+        message: ""
+      };
+    }
+    renderHistoryFallback();
+    return;
+  }
+
+  if (
+    eventDialog?.kind === "share" &&
     ["participants", "participants-add"].includes(eventDialog.returnKind)
   ) {
     renderHistoryFallback();
@@ -10481,6 +10963,15 @@ function goBackInApp() {
         pendingSettingsReturnFocusSection = "";
       }
     }, 500);
+    return;
+  }
+
+  if (expenseDraft?.participantAddView) {
+    if (appHistoryDepth === 0) {
+      expenseDraft.participantAddView =
+        expenseDraft.participantAddView === "menu" ? "" : "menu";
+    }
+    renderHistoryFallback();
     return;
   }
 
@@ -10833,8 +11324,9 @@ async function handleChange(event) {
     );
     if (!source) return;
     mergeParticipantsDraft.sourceId = source.id;
-    if (mergeParticipantsDraft.targetId === target.value) {
-      mergeParticipantsDraft.targetId = firstParticipantIdExcept(target.value);
+    const targetCandidates = mergeParticipantTargetCandidates(source.id);
+    if (!targetCandidates.some((participant) => participant.id === mergeParticipantsDraft.targetId)) {
+      mergeParticipantsDraft.targetId = targetCandidates[0]?.id ?? "";
     }
     syncMergeParticipantControls("merge-source");
     return;
@@ -12666,13 +13158,10 @@ function ensureMergeParticipantsDraft() {
   if (mergeParticipantsDraft && participantsExistForMerge(mergeParticipantsDraft)) return;
 
   const source = mergeParticipantSourceCandidates()[0];
+  const targetCandidates = mergeParticipantTargetCandidates(source?.id);
   const target =
-    state.participants.find(
-      (participant) =>
-        participant.id !== source?.id &&
-        participantConnectionStatus(participant).connected
-    ) ??
-    state.participants.find((participant) => participant.id !== source?.id);
+    targetCandidates.find((participant) => participantConnectionStatus(participant).connected) ??
+    targetCandidates[0];
   mergeParticipantsDraft = source && target
     ? { sourceId: source.id, targetId: target.id }
     : null;
@@ -12691,10 +13180,32 @@ function participantsExistForMerge(draft) {
 }
 
 function mergeParticipantSourceCandidates() {
+  const duplicateIds = new Set(
+    mergeableDuplicateParticipantGroups()
+      .flat()
+      .map((participant) => participant.id)
+  );
   return state.participants.filter(
     (participant) =>
-      !participantConnectionStatus(participant).connected ||
-      !accountUserIdFromParticipantId(participant.id)
+      duplicateIds.has(participant.id) &&
+      (
+        !participantConnectionStatus(participant).connected ||
+        !accountUserIdFromParticipantId(participant.id)
+      )
+  );
+}
+
+function mergeParticipantTargetCandidates(sourceParticipantId) {
+  const source = state.participants.find(
+    (participant) => participant.id === sourceParticipantId
+  );
+  const sourceName = normalizeParticipantDisplayName(source?.displayName);
+  if (!sourceName) return [];
+
+  return state.participants.filter(
+    (participant) =>
+      participant.id !== sourceParticipantId &&
+      normalizeParticipantDisplayName(participant.displayName) === sourceName
   );
 }
 
@@ -12707,8 +13218,7 @@ function syncMergeParticipantControls(changedAction) {
   if (!sourceSelect || !targetSelect || !mergeButton) return;
 
   if (changedAction === "merge-source") {
-    targetSelect.innerHTML = state.participants
-      .filter((participant) => participant.id !== mergeParticipantsDraft.sourceId)
+    targetSelect.innerHTML = mergeParticipantTargetCandidates(mergeParticipantsDraft.sourceId)
       .map((participant) =>
         renderParticipantOption(participant, mergeParticipantsDraft.targetId)
       )
@@ -12732,10 +13242,6 @@ function syncMergeParticipantControls(changedAction) {
       mergeParticipantsDraft.sourceId,
       mergeParticipantsDraft.targetId
     );
-}
-
-function firstParticipantIdExcept(participantId) {
-  return state.participants.find((participant) => participant.id !== participantId)?.id ?? "";
 }
 
 function mergeParticipantsInState() {
@@ -12880,6 +13386,10 @@ function addGuestToEvent(eventId) {
     : input?.closest(".event-modal")
       ? ".event-modal"
       : "";
+  const returnsToExpenseParticipants = Boolean(
+    input?.closest(".expense-participant-add-route") &&
+    expenseDraft?.participantAddView
+  );
   const dialogScrollTop = input?.closest(".expense-modal, .event-modal")?.scrollTop ?? 0;
   const name = normalizeProfileName(
     String(input?.value ?? "").normalize("NFKC")
@@ -12933,12 +13443,89 @@ function addGuestToEvent(eventId) {
     );
     return;
   }
+  if (returnsToExpenseParticipants) {
+    finishExpenseParticipantAddRoute();
+    return;
+  }
   render();
   reactivateDialogAfterRender(
     dialogSelector,
     `${dialogSelector} [data-action="event-guest-name"]`,
     dialogScrollTop
   );
+}
+
+function expenseParticipantAddRewindSteps() {
+  const baseDepth = Number.isFinite(expenseDraft?.participantAddHistoryBaseDepth)
+    ? expenseDraft.participantAddHistoryBaseDepth
+    : Math.max(0, appHistoryDepth - 1);
+  return Math.max(1, appHistoryDepth - baseDepth);
+}
+
+function finishExpenseParticipantAddRoute() {
+  if (!expenseDraft) return;
+  const rewindSteps = expenseParticipantAddRewindSteps();
+  expenseDraft.participantAddView = "";
+  expenseDraft.participantInviteMessage = "";
+  delete expenseDraft.participantAddHistoryBaseDepth;
+  renderHistoryFallback(rewindSteps);
+}
+
+async function addFriendParticipantToExpense(eventId, participantId) {
+  const event = getEvent(eventId);
+  const participant = state.participants.find((item) => item.id === participantId);
+  const friendParticipantIds = new Set(activeFriendParticipantIds(state));
+  const dialogScrollTop = app.querySelector(".expense-modal")?.scrollTop ?? 0;
+
+  if (
+    !expenseDraft ||
+    expenseDraft.eventId !== eventId ||
+    !event ||
+    !participant ||
+    !friendParticipantIds.has(participantId) ||
+    !participantConnectionStatus(participant).connected
+  ) {
+    return;
+  }
+
+  if (!canCurrentParticipantEdit(event)) {
+    expenseDraft.error = editBlockedMessage(event);
+    render();
+    reactivateDialogAfterRender(".expense-modal", "", dialogScrollTop);
+    return;
+  }
+
+  const previousState = cloneNavigationValue(state);
+  const previousSharedParticipantIds = [...expenseDraft.sharedByParticipantIds];
+  const participantAdded = activateParticipantForEvent(event, participantId);
+  if (participantAdded) {
+    recordEventActivity(eventId, "participant-added", {
+      subjectParticipantId: participantId
+    });
+  }
+  if (!expenseDraft.sharedByParticipantIds.includes(participantId)) {
+    expenseDraft.sharedByParticipantIds.push(participantId);
+  }
+  expenseDraft.error = "";
+  expenseDraft.participantInviteMessage = `${participant.displayName} נוסף לאירוע ולהוצאה.`;
+
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    expenseDraft.sharedByParticipantIds = previousSharedParticipantIds;
+    expenseDraft.participantInviteMessage = "";
+    expenseDraft.error = "לא הצלחנו להוסיף את החבר. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(
+      ".expense-modal",
+      `[data-action="expense-add-friend-participant"][data-participant-id="${participantId}"]`,
+      dialogScrollTop
+    );
+    return;
+  }
+
+  publishEventInvitation(eventId, participant);
+  finishExpenseParticipantAddRoute();
 }
 
 function addInlinePayerGuest(eventId, payerIndex) {
@@ -13229,6 +13816,30 @@ async function copyInviteLink(eventId) {
   } finally {
     eventSharePreparationPromises.delete(`copy:${eventId}`);
   }
+}
+
+async function shareExpenseParticipantInvite(eventId, method) {
+  if (!expenseDraft || expenseDraft.eventId !== eventId) return;
+  const dialogScrollTop = app.querySelector(".expense-modal")?.scrollTop ?? 0;
+  const action = method === "share" ? "expense-share-invite" : "expense-copy-invite";
+
+  if (method === "share") {
+    await shareInviteOnWhatsApp(eventId);
+  } else {
+    await copyInviteLink(eventId);
+  }
+
+  if (!expenseDraft || expenseDraft.eventId !== eventId) return;
+  expenseDraft.participantInviteMessage = notice || (
+    method === "share" ? "אפשרויות השיתוף נפתחו." : "קישור ההזמנה הועתק."
+  );
+  notice = "";
+  render();
+  reactivateDialogAfterRender(
+    ".expense-modal",
+    `[data-action="${action}"]`,
+    dialogScrollTop
+  );
 }
 
 async function shareInviteOnWhatsApp(eventId) {
@@ -13907,10 +14518,15 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     const saveRequest = persistState();
     const saveResult = await saveRequest;
     if (!saveResult?.ok) {
-      expenseDraft.id = expense.id;
-      expenseDraft.createdByParticipantId = expense.createdByParticipantId;
+      if (saveResult?.reverted && wasNewExpense) {
+        delete expenseDraft.id;
+        delete expenseDraft.createdByParticipantId;
+      } else {
+        expenseDraft.id = expense.id;
+        expenseDraft.createdByParticipantId = expense.createdByParticipantId;
+      }
       expenseDraft.error =
-        "ההוצאה נשמרה במכשיר, אך עדיין לא הסתנכרנה עם הקבוצה. בדקו את החיבור ולחצו שוב על שמירה.";
+        "ההוצאה לא נשמרה כדי למנוע הבדל בין חברי הקבוצה. בדקו את החיבור ולחצו שוב על שמירה.";
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
       return;
@@ -14240,7 +14856,7 @@ async function reopenCurrentEvent(eventId) {
   render();
   const result = await persistState();
   notice = result?.ok === false
-    ? "האירוע נפתח. השינויים יישמרו אוטומטית כשהחיבור יחזור."
+    ? "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי."
     : "האירוע נפתח לעריכה ונשמר.";
   render();
   return result;
@@ -14801,7 +15417,10 @@ function eventParticipantHasMoneyHistory(event, participantId) {
 function isEventParticipantsDialog(eventId) {
   return (
     eventDialog?.eventId === eventId &&
-    ["participants", "participants-add"].includes(eventDialog.kind)
+    (
+      ["participants", "participants-add"].includes(eventDialog.kind) ||
+      (eventDialog.kind === "share" && eventDialog.shareView === "friends")
+    )
   );
 }
 
@@ -15055,7 +15674,10 @@ async function toggleEventParticipant(eventId, participantId, checked) {
   }
   if (syncEventParticipantDialog(event)) return;
   render();
-  if (eventDialog?.kind === "participants-add") {
+  if (
+    eventDialog?.kind === "participants-add" ||
+    (eventDialog?.kind === "share" && eventDialog.shareView === "friends")
+  ) {
     reactivateDialogAfterRender(".event-modal");
   }
 }

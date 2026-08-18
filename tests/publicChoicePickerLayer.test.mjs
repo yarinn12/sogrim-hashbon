@@ -69,6 +69,18 @@ test("the picker is accessible and closes with mobile app back", () => {
   assert.match(nativeBridge, /new CustomEvent\(NATIVE_BACK_EVENT/);
 });
 
+test("currency pickers can be searched by currency, country, or code", () => {
+  assert.match(layer, /SEARCHABLE_CHOICE_ACTIONS/);
+  assert.match(layer, /new-event-currency/);
+  assert.match(layer, /event-currency/);
+  assert.match(layer, /חיפוש לפי מטבע, מדינה או קוד/);
+  assert.match(layer, /option\.dataset\.choiceSearch/);
+  assert.match(layer, /normalizedText} \$\{option\.value/);
+  assert.match(layer, /filterChoiceOptions\(list, emptyState, input\.value\)/);
+  assert.match(layer, /לא נמצא מטבע מתאים/);
+  assert.match(layer, /app-choice-option:not\(:disabled\):not\(\[hidden\]\)/);
+});
+
 test("the choice picker ships in the public and offline app shells", () => {
   assert.match(index, /publicChoicePickerLayer\.mjs/);
   assert.match(serviceWorker, /"\/src\/publicChoicePickerLayer\.mjs"/);

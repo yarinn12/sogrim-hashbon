@@ -425,6 +425,127 @@ test("sync failures surface a status rather than failing silently", () => {
   assert.match(localStore, /const SYNC_STATUS_EVENT = "sogrim:sync-status";/);
 });
 
+test("a failed shared-event write restores the last durable state instead of diverging offline", () => {
+  const save = localStore.slice(
+    localStore.indexOf("export async function saveSharedState(state)"),
+    localStore.indexOf("export async function flushPendingSharedState")
+  );
+
+  assert.match(save, /const hasSharedEventMutation = Boolean\(/);
+  assert.match(save, /requestSaveGeneration === sharedStateSaveGeneration/);
+  assert.match(save, /saveState\(previousState\);/);
+  assert.match(save, /publishSharedSaveReverted\(syncSelection\);/);
+  assert.match(localStore, /SHARED_SAVE_REVERTED_EVENT/);
+});
+
+test("shared-event mutations reach the canonical event before the personal workspace", () => {
+  const persist = localStore.slice(
+    localStore.indexOf("async function syncAndPersistCloudState"),
+    localStore.indexOf("async function withFreshCloudAccount")
+  );
+  const prioritizedSync = persist.indexOf(
+    "? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)"
+  );
+  const workspaceSave = persist.indexOf("const initialSave = await saveCloudStateWithRetry(");
+
+  assert.match(persist, /const prioritizeSharedEventWrite = Boolean\(/);
+  assert.ok(prioritizedSync >= 0, "shared mutations have an explicit canonical-first path");
+  assert.ok(
+    prioritizedSync < workspaceSave,
+    "the canonical shared event is persisted before the private workspace copy"
+  );
+  assert.match(
+    persist,
+    /if \(!prioritizeSharedEventWrite \|\| initialSave\.conflictCount\)/,
+    "workspace conflicts are reconciled back through the shared event"
+  );
+});
+
+test("a failed shared-event request restores the actual persisted snapshot and clears its queue", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const dispatched = [];
+  const spaceId = "space-account-a";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyzABCDEF";
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  const durableState = deviceState("Durable");
+  durableState.currentParticipantId = "account-user-a";
+  durableState.participants = [
+    { id: "account-user-a", displayName: "Durable", kind: "user", accountLinked: true }
+  ];
+  durableState.events[0] = {
+    ...durableState.events[0],
+    participantIds: ["account-user-a"],
+    adminIds: ["account-user-a"],
+    createdByParticipantId: "account-user-a",
+    sharedSpaceId: "shared-event-space",
+    sharedSpaceKey: "shared-event-secret-that-is-long-enough-123"
+  };
+  const changedState = structuredClone(durableState);
+  changedState.events[0].expenses.push(expense("offline-change", 700));
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId,
+    spaceKey
+  });
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(durableState));
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent(event) {
+      dispatched.push(event);
+    },
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    return { ok: false, status: 503 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?shared-write-revert=${Date.now()}`
+    );
+    const result = await store.saveSharedState(changedState);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reverted, true);
+    assert.deepEqual(
+      JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`)),
+      durableState
+    );
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${spaceId}`), null);
+    assert.ok(
+      dispatched.some((event) => event.type === "sogrim:shared-save-reverted")
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("local mode never reports a false cloud success", () => {
   const save = localStore.slice(
     localStore.indexOf("export async function saveSharedState(state)"),

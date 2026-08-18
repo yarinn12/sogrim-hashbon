@@ -2,6 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+test("secondary ledger text keeps accessible contrast on light surfaces", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(layer, /--ledger-muted: #5f706b/);
+  assert.match(layer, /--ledger-faint: #64748b/);
+  assert.match(layer, /input::placeholder,[\s\S]*?color: #5f706b !important/);
+});
+
 test("ledger workspace is the final public design layer", async () => {
   const [html, worker, layer] = await Promise.all([
     readFile("index.html", "utf8"),
@@ -347,7 +355,11 @@ test("final route polish keeps every screen on the home width and surface system
   );
   assert.match(
     layer,
-    /dynamic-type-extra-large[\s\S]*?:is\(\.friends-hub-tabs, \.event-workspace-nav\) \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+    /dynamic-type-extra-large[\s\S]*?\.friends-hub-tabs \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+  );
+  assert.match(
+    layer,
+    /dynamic-type-extra-large[\s\S]*?\.event-workspace-nav \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
   );
   assert.match(app, /data-screen-kind="\$\{isEditingProfile \? "profile" : "profile-setup"\}"/);
 });

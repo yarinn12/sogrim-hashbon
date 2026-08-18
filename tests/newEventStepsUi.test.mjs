@@ -113,6 +113,12 @@ test("event details keep participant management optional until the user needs it
       detailsStep.indexOf('data-action="new-event-participant"')
   );
   assert.match(app, /function syncNewEventParticipantControls\(\)/);
+  assert.match(app, /function newEventParticipantSelectionLabel\(participantIds\)/);
+  assert.match(app, /return "רק אתה כרגע"/);
+  assert.match(
+    app,
+    /countNode\.textContent = newEventParticipantSelectionLabel\(\s*newEventDraft\.participantIds\s*\)/
+  );
   assert.match(app, /createButton\.disabled = count === 0/);
   assert.match(app, /keepParticipantsOpen/);
   assert.match(app, /participantDetails\.open = true/);

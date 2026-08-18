@@ -62,7 +62,7 @@ function renderInviteQr(copyButton) {
 
   if (existing?.dataset.inviteUrl === qrUrl) return;
 
-  const qr = existing ?? document.createElement("section");
+  const qr = existing ?? document.createElement("details");
   qr.className = "public-invite-qr";
   qr.dataset.publicInviteQr = "true";
   qr.dataset.eventId = eventId;
@@ -75,12 +75,22 @@ function renderInviteQr(copyButton) {
 function renderInviteQrContent(inviteUrl) {
   try {
     return `
-      <div class="public-invite-qr-code" aria-hidden="true">
-        ${createQrSvg(inviteUrl, { cellSize: 3, quietZone: 4 })}
-      </div>
-      <div class="public-invite-qr-copy">
-        <strong>הצטרפות עם QR</strong>
-        <small>פותחים מצלמה בטלפון, סורקים ונכנסים ישר לאירוע.</small>
+      <summary class="public-invite-qr-summary">
+        <span class="public-invite-qr-mark" aria-hidden="true">QR</span>
+        <span>
+          <strong>הצג QR להצטרפות</strong>
+          <small>לסריקה מטלפון אחר</small>
+        </span>
+        <span class="public-invite-qr-chevron" aria-hidden="true">⌄</span>
+      </summary>
+      <div class="public-invite-qr-body">
+        <div class="public-invite-qr-code" aria-hidden="true">
+          ${createQrSvg(inviteUrl, { cellSize: 3, quietZone: 4 })}
+        </div>
+        <div class="public-invite-qr-copy">
+          <strong>סורקים ומצטרפים</strong>
+          <small>פותחים מצלמה בטלפון ונכנסים ישר לאירוע.</small>
+        </div>
       </div>
     `;
   } catch {
@@ -124,17 +134,86 @@ function injectInviteQrStyles() {
   style.textContent = `
     .public-invite-qr {
       margin-top: 14px;
+      border: 1px solid rgba(18, 29, 27, 0.08);
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(13, 39, 35, 0.05);
+      overflow: hidden;
+    }
+
+    .public-invite-qr-summary {
+      min-height: 64px;
+      display: grid;
+      grid-template-columns: 40px minmax(0, 1fr) 18px;
+      align-items: center;
+      gap: 11px;
+      padding: 11px 13px;
+      color: var(--text);
+      cursor: pointer;
+      list-style: none;
+      transition: background-color 160ms ease, transform 160ms ease;
+    }
+
+    .public-invite-qr-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .public-invite-qr-summary > span:nth-child(2) {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+
+    .public-invite-qr-summary strong {
+      color: var(--text);
+      font-size: .95rem;
+      font-weight: 700;
+    }
+
+    .public-invite-qr-summary small {
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 500;
+    }
+
+    .public-invite-qr-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(11, 74, 56, 0.12);
+      border-radius: 8px;
+      color: var(--primary, #0b4a38);
+      background: rgba(11, 74, 56, 0.035);
+      font-family: var(--font-num, sans-serif);
+      font-size: .72rem;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .public-invite-qr-chevron {
+      color: var(--muted);
+      font-size: 1.15rem;
+      line-height: 1;
+      transition: transform 180ms cubic-bezier(.2, 0, 0, 1);
+    }
+
+    .public-invite-qr[open] .public-invite-qr-chevron {
+      transform: rotate(180deg);
+    }
+
+    .public-invite-qr-summary:active {
+      transform: scale(.96);
+    }
+
+    .public-invite-qr-body {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       gap: 14px;
       padding: 14px;
-      border: 1px solid rgba(18, 29, 27, 0.08);
-      border-radius: 8px;
-      background:
-        linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,252,250,.94)),
-        radial-gradient(circle at 0 0, rgba(8,123,116,.12), transparent 34%);
-      box-shadow: var(--shadow-panel, var(--shadow));
+      border-top: 1px solid rgba(18, 29, 27, 0.08);
+      background: #fbfcfc;
     }
 
     .public-invite-qr-code {
@@ -184,7 +263,7 @@ function injectInviteQrStyles() {
     }
 
     @media (max-width: 520px) {
-      .public-invite-qr {
+      .public-invite-qr-body {
         grid-template-columns: 1fr;
       }
 
@@ -193,6 +272,19 @@ function injectInviteQrStyles() {
         height: auto;
         aspect-ratio: 1;
         justify-self: center;
+      }
+    }
+
+    @media (hover: hover) {
+      .public-invite-qr-summary:hover {
+        background: rgba(11, 74, 56, 0.025);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .public-invite-qr-summary,
+      .public-invite-qr-chevron {
+        transition-duration: 1ms;
       }
     }
   `;

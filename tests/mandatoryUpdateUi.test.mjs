@@ -26,12 +26,25 @@ test("mandatory update gate blocks only native Android and has no dismiss action
   assert.doesNotMatch(layer, /data-action=["'](?:close|dismiss)/);
   assert.doesNotMatch(layer, /mandatory-update-(?:close|dismiss|skip)/);
   assert.match(localStore, /export async function refreshRuntimeConfigNow/);
+  assert.match(layer, /INITIAL_UPDATE_CHECK_BUDGET_MS = 1_200/);
+  assert.match(layer, /Promise\.race/);
+  assert.match(layer, /releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/);
   assert.match(splash, /mandatory-update-checking/);
   assert.match(splash, /sogrim:mandatory-update-check/);
-  assert.match(gradle, /versionCode 76/);
-  assert.match(gradle, /versionName "3\.53"/);
+  assert.match(gradle, /versionCode 78/);
+  assert.match(gradle, /versionName "3\.55"/);
   assert.match(envExample, /ANDROID_MIN_SUPPORTED_BUILD=0/);
   assert.match(renderBlueprint, /key: ANDROID_MIN_SUPPORTED_BUILD\s+value: "0"/);
+});
+
+test("mandatory update QA starts and stops its own isolated server", async () => {
+  const script = await readFile("scripts/verify-mandatory-android-update.mjs", "utf8");
+
+  assert.match(script, /const qaPort = "4194"/);
+  assert.match(script, /spawn\(process\.execPath, \["server\.mjs", qaPort\]/);
+  assert.match(script, /APP_LOCAL_STATE_FILE: "\.qa-mandatory-update\/app-state\.json"/);
+  assert.match(script, /await waitForHealth\(`\$\{baseUrl\}\/api\/health`\)/);
+  assert.match(script, /localQaServer\?\.kill\(\)/);
 });
 
 test("mandatory update gate fails open when the policy or build is unknown", async () => {
@@ -40,5 +53,6 @@ test("mandatory update gate fails open when the policy or build is unknown", asy
   assert.match(layer, /minimumSupportedBuild > 0/);
   assert.match(layer, /currentBuild > 0/);
   assert.match(layer, /currentBuild < minimumSupportedBuild/);
-  assert.match(layer, /if \(!initialPolicyRequired\) hideUpdateGate\(\)/);
+  assert.match(layer, /firstResult\.status === "failed"[\s\S]*?hideUpdateGate\(\)/);
+  assert.match(layer, /locally known mandatory update remains blocking while offline/);
 });

@@ -102,7 +102,8 @@ export function createAppHandler({
   productMetricsRetentionService = purgeExpiredProductMetrics,
   adminAnalyticsService = getAdminAnalyticsOverview,
   openEventInviteService = manageOpenEventInvite,
-  eventInviteRedemptionService = redeemEventInvite
+  eventInviteRedemptionService = redeemEventInvite,
+  cdnCacheAppShell = isDeployedRuntime(process.env)
 } = {}) {
   const resolvedRoot = resolve(root);
   const resolvedStateFile = stateFile
@@ -518,7 +519,12 @@ export function createAppHandler({
     }
 
     try {
-      await serveStaticFile(request, response, filePath, requestedPath);
+      await serveStaticFile(request, response, filePath, requestedPath, {
+        cacheAppShell:
+          cdnCacheAppShell &&
+          url.pathname === "/" &&
+          !url.search
+      });
     } catch {
       if (!response.headersSent) {
         response.writeHead(404, {
@@ -603,7 +609,11 @@ function sendJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
-function responseHeadersFor(filePath, requestedPath) {
+function responseHeadersFor(
+  filePath,
+  requestedPath,
+  { cacheAppShell = false } = {}
+) {
   const extension = extname(filePath);
   const headers = {
     "content-type": requestedPath.endsWith("apple-app-site-association")
@@ -612,7 +622,10 @@ function responseHeadersFor(filePath, requestedPath) {
     ...securityHeaders()
   };
 
-  if (shouldBypassBrowserCache(requestedPath, extension)) {
+  if (cacheAppShell && requestedPath === "/index.html") {
+    headers["cache-control"] =
+      "public, max-age=0, s-maxage=60, stale-while-revalidate=300";
+  } else if (shouldBypassBrowserCache(requestedPath, extension)) {
     headers["cache-control"] = "no-store, max-age=0";
   } else if (requestedPath.startsWith("/assets/")) {
     headers["cache-control"] = "public, max-age=86400, stale-while-revalidate=604800";
@@ -642,11 +655,17 @@ function isAllowedStaticPath(requestedPath) {
     publicStaticExtensions.has(extname(value).toLowerCase());
 }
 
-async function serveStaticFile(request, response, filePath, requestedPath) {
+async function serveStaticFile(
+  request,
+  response,
+  filePath,
+  requestedPath,
+  responseOptions = {}
+) {
   const fileStats = await stat(filePath);
   if (!fileStats.isFile()) throw new Error("Static path is not a file");
   const extension = extname(filePath);
-  const headers = responseHeadersFor(filePath, requestedPath);
+  const headers = responseHeadersFor(filePath, requestedPath, responseOptions);
   const rangeHeader = request.headers.range;
   const supportsRanges = extension === ".mp4";
 

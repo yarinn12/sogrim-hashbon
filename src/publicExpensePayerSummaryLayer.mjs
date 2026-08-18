@@ -59,7 +59,7 @@ function summarizePayers(totalInput, payerAmounts, currency) {
     return {
       total,
       className: "is-balanced",
-      text: "סכומי המשלמים תואמים לסכום הכולל."
+      text: "הסכום הושלם"
     };
   }
 
@@ -104,9 +104,9 @@ function injectStyle() {
     }
 
     .expense-payer-summary.is-balanced {
-      color: #0b675c;
-      border-color: rgba(8, 123, 116, 0.22);
-      background: rgba(8, 123, 116, 0.08);
+      color: #52605b;
+      border-color: rgba(15, 23, 42, 0.12);
+      background: #f3f5f4;
     }
 
     .expense-payer-summary.is-warning {

@@ -97,7 +97,7 @@ test("participant search appears only above the threshold and filters in the DOM
   assert.match(app, /const PARTICIPANT_SEARCH_THRESHOLD = 15;/);
   assert.match(
     app,
-    /action === "event-participant" && participants\.length > PARTICIPANT_SEARCH_THRESHOLD/
+    /\["event-participant", "new-event-participant"\]\.includes\(action\) &&\s*participants\.length > PARTICIPANT_SEARCH_THRESHOLD/
   );
   assert.match(app, /data-action="participant-search"/);
   assert.match(app, /function filterParticipantChecks\(input\)/);
@@ -142,7 +142,7 @@ test("participant toggling still re-renders outside the participant dialog", () 
   assert.match(toggle, /persistState\(\);/, "state is always persisted first");
   assert.match(
     toggle,
-    /render\(\);\s*\n\s*if \(eventDialog\?\.kind === "participants-add"\)/,
+    /render\(\);\s*\n\s*if \(\s*eventDialog\?\.kind === "participants-add" \|\|\s*\(eventDialog\?\.kind === "share" && eventDialog\.shareView === "friends"\)/,
     "the normal render path is preserved as a fallback"
   );
 });

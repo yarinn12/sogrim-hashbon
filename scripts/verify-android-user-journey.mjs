@@ -248,15 +248,20 @@ async function createAcceptanceFixture(page) {
   await clickAction(page, "show-expense-form");
   await waitForExpenseStep(page, "amount");
   await fillSelector(page, '[data-action="expense-total"]', "120");
+  await inspect(page, "expense-amount");
   await clickAction(page, "expense-step-next");
   await waitForExpenseStep(page, "name");
   await fillSelector(page, '[data-action="expense-name"]', "QA Ride");
+  await inspect(page, "expense-name");
   await clickAction(page, "expense-step-next");
   await waitForExpenseStep(page, "payer");
+  await inspect(page, "expense-payer");
   await clickAction(page, "expense-step-next");
   await waitForExpenseStep(page, "participants");
+  await inspect(page, "expense-participants");
   await clickAction(page, "expense-step-next");
   await waitForExpenseStep(page, "review");
+  await inspect(page, "expense-review");
   await clickAction(page, "save-expense");
   await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
   await waitForScreen(page, "event");
@@ -391,6 +396,8 @@ async function inspect(page, label) {
 function inspectionExpression() {
   return `(() => {
     const visible = (element) => {
+      const closedDetails = element.closest('details:not([open])');
+      if (closedDetails && !element.closest('summary')) return false;
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
       return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
@@ -410,7 +417,9 @@ function inspectionExpression() {
       .filter((element) => !element.matches(':disabled,[aria-disabled="true"]'))
       .filter((element) => {
         const rect = element.getBoundingClientRect();
-        return rect.bottom > 0 && rect.top < innerHeight;
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        return centerX >= 0 && centerX <= innerWidth && centerY >= 0 && centerY <= innerHeight;
       })
       .filter((element) => !activeOverlay || activeOverlay.contains(element) || element.matches('[data-action="go-back"]'));
     const label = (element) => String(
@@ -448,6 +457,21 @@ function inspectionExpression() {
       const rect = element.getBoundingClientRect();
       return rect.bottom > bottomNav.getBoundingClientRect().top;
     };
+    const coveredByStickyChrome = (element) => {
+      const rect = element.getBoundingClientRect();
+      return [...document.querySelectorAll('*')]
+        .filter((candidate) => candidate !== element && !candidate.contains(element))
+        .some((candidate) => {
+          const style = getComputedStyle(candidate);
+          if (!['fixed', 'sticky'].includes(style.position)) return false;
+          const chromeRect = candidate.getBoundingClientRect();
+          if (chromeRect.width <= 0 || chromeRect.height <= 0) return false;
+          const centerX = rect.left + rect.width / 2;
+          const centerY = rect.top + rect.height / 2;
+          return centerX >= chromeRect.left && centerX <= chromeRect.right &&
+            centerY >= chromeRect.top && centerY <= chromeRect.bottom;
+        });
+    };
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
     const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
     const visibleInviteInput = [...document.querySelectorAll('input[name="eventInviteUrl"]')].find(visible);
@@ -472,7 +496,8 @@ function inspectionExpression() {
         return { action: element.dataset?.action || '', label: label(element), width: Math.round(rect.width), height: Math.round(rect.height) };
       }),
       blockedControls: controls.filter((element) =>
-        label(element) && !hitTarget(element) && !waitsBelowFixedNavigation(element)
+        label(element) && !hitTarget(element) && !waitsBelowFixedNavigation(element) &&
+        !coveredByStickyChrome(element)
       )
         .map((element) => ({ action: element.dataset?.action || '', label: label(element) })),
       modalHeaderDescriptions: [...document.querySelectorAll('.event-modal-header .muted,.expense-modal-header .muted')]
@@ -516,7 +541,7 @@ function inspectionExpression() {
       )]
         .some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)),
       overlayDismissVisible: Boolean(activeOverlay && [...activeOverlay.querySelectorAll(
-        '[data-action="close-event-dialog"],[data-action="close-profile-dialog"],[data-action="close-dialog"],button[aria-label*="סגור"]'
+        '[data-action="close-event-dialog"],[data-action="close-profile-dialog"],[data-action="close-dialog"],[data-action="cancel-expense"],button[aria-label*="סגור"]'
       )].some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element))),
       visibleControlCount: controls.filter(hitTarget).length
     };

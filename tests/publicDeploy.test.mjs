@@ -219,6 +219,45 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
   assert.match(config.routes[0].headers?.["Content-Security-Policy"] ?? "", /default-src 'self'/);
 });
 
+test("deployed app shell uses the CDN without caching private invite pages", async () => {
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    cdnCacheAppShell: true
+  }));
+
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const [home, privateInvite, authCallback] = await Promise.all([
+      fetch(`http://127.0.0.1:${port}/`),
+      fetch(`http://127.0.0.1:${port}/i/event-cache-check/t/${"a".repeat(40)}`),
+      fetch(`http://127.0.0.1:${port}/auth/callback?code=private-code`)
+    ]);
+
+    assert.equal(
+      home.headers.get("cache-control"),
+      "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+    );
+    assert.equal(
+      privateInvite.headers.get("cache-control"),
+      "no-store, max-age=0"
+    );
+    assert.equal(
+      authCallback.headers.get("cache-control"),
+      "no-store, max-age=0"
+    );
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test("AdMob ownership file is public, plain text and uses the app publisher ID", async () => {
   const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
 

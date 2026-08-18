@@ -49,6 +49,7 @@ const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 const ACCOUNT_STORAGE_KEY_SEGMENT = "account";
 const PENDING_SYNC_KEY_PREFIX = "settle-friends-pending-sync:";
 const SYNC_STATUS_EVENT = "sogrim:sync-status";
+const SHARED_SAVE_REVERTED_EVENT = "sogrim:shared-save-reverted";
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
   auth: { googleClientId: "" },
@@ -121,13 +122,32 @@ async function saveCloudStateWithRetry(config, state) {
 }
 
 async function syncAndPersistCloudState(config, state, syncSelection = null) {
-  const initialSave = await saveCloudStateWithRetry(config, toCloudState(config, state));
-  let syncedState = await syncSharedEvents(
-    config,
-    mergeSharedStates(initialSave.state, state),
-    globalThis.fetch,
-    initialSave.conflictCount ? null : syncSelection
+  const prioritizeSharedEventWrite = Boolean(
+    syncSelection &&
+    (
+      syncSelection.eventIds?.length ||
+      syncSelection.deletedEventIds?.length
+    )
   );
+  let syncedState = prioritizeSharedEventWrite
+    ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
+    : state;
+  const initialSave = await saveCloudStateWithRetry(
+    config,
+    toCloudState(config, syncedState)
+  );
+  syncedState = mergeSharedStates(initialSave.state, syncedState);
+
+  if (!prioritizeSharedEventWrite || initialSave.conflictCount) {
+    syncedState = await syncSharedEvents(
+      config,
+      syncedState,
+      globalThis.fetch,
+      initialSave.conflictCount && !prioritizeSharedEventWrite
+        ? null
+        : syncSelection
+    );
+  }
   const syncedSharedState = toCloudState(config, syncedState);
   let finalSave = initialSave;
 
@@ -506,6 +526,9 @@ export async function saveSharedState(state) {
   const previousState = loadState();
   const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
   const syncSelection = buildSharedEventSyncSelection(previousState, cleanState);
+  const hasSharedEventMutation = Boolean(
+    syncSelection.eventIds.length || syncSelection.deletedEventIds.length
+  );
   const localSaved = saveState(cleanState);
   const requestSaveGeneration = ++sharedStateSaveGeneration;
   const requestAccountGeneration = accountStorageGeneration;
@@ -566,9 +589,22 @@ export async function saveSharedState(state) {
             ...(saved.conflictCount ? { merged: true } : {})
           };
         } catch (error) {
+          let reverted = false;
+          if (
+            hasSharedEventMutation &&
+            requestAccountGeneration === accountStorageGeneration &&
+            requestSaveGeneration === sharedStateSaveGeneration
+          ) {
+            if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
+              clearPendingSharedState(runtimeConfig);
+            }
+            saveState(previousState);
+            publishSharedSaveReverted(syncSelection);
+            reverted = true;
+          }
           publishSyncFailure(error);
           emitOperationFailure("state_save");
-          return { ok: false, mode: "cloud", error };
+          return { ok: false, mode: "cloud", error, ...(reverted ? { reverted: true } : {}) };
         }
       });
 
@@ -956,6 +992,19 @@ function publishSyncStatus(status) {
   const EventConstructor = globalThis.CustomEvent;
   if (typeof EventConstructor !== "function") return;
   window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail: { status } }));
+}
+
+function publishSharedSaveReverted(syncSelection) {
+  if (typeof window === "undefined" || !window.dispatchEvent) return;
+
+  const EventConstructor = globalThis.CustomEvent;
+  if (typeof EventConstructor !== "function") return;
+  window.dispatchEvent(new EventConstructor(SHARED_SAVE_REVERTED_EVENT, {
+    detail: {
+      eventIds: [...(syncSelection?.eventIds ?? [])],
+      deletedEventIds: [...(syncSelection?.deletedEventIds ?? [])]
+    }
+  }));
 }
 
 function saveLocalParticipantId(participantId) {

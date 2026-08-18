@@ -58,9 +58,15 @@ test("participant search filters the DOM instead of re-rendering the dialog", ()
   assert.match(filter, /role="status"/);
 });
 
-test("expense steps and saving stay disabled until their data is valid", () => {
+test("expense steps explain invalid input while final saving stays guarded", () => {
   assert.match(app, /function expenseFlowReady\(step/);
   assert.match(app, /amount: hasPositiveExpenseTotal\(expenseDraft\.total\)/);
+  assert.match(app, /function expenseFlowFieldErrorAttributes\(step\)/);
+  assert.match(app, /aria-invalid="true" aria-describedby="expense-form-error"/);
+  assert.match(
+    app,
+    /class="primary-button expense-step-next"[\s\S]*?\$\{canEdit \? "" : "disabled"\}/
+  );
   assert.match(
     app,
     /\$\{canEdit && expenseFlowReady\("review"\) \? "" : "disabled"\}/

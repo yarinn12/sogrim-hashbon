@@ -107,9 +107,13 @@ test("connected friends open the approved relationship statistics route", async 
 
   assert.match(networkRow, /data-action="open-friend-profile"/);
   assert.match(networkRow, /data-participant-id="\$\{participantId\}"/);
+  assert.match(networkRow, /data-action="remove-network-friend"/);
+  assert.doesNotMatch(networkRow, /חבר מאושר/);
+  assert.doesNotMatch(networkRow, /משתמש מחובר · אפשר לצרף/);
   assert.match(friendProfile, /friend-relationship-screen/);
   assert.match(friendProfile, /event-participant-relationship/);
   assert.match(friendProfile, /renderParticipantRelationshipScorecard/);
+  assert.doesNotMatch(friendProfile, /event-participant-profile-account/);
   assert.match(friendProfile, /renderParticipantRelationshipHabit/);
   assert.match(friendProfile, /renderParticipantRelationshipFacts/);
   assert.doesNotMatch(friendProfile, /relationship-event-management/);
@@ -155,6 +159,24 @@ test("friends hub keeps friend creation on a focused screen", async () => {
   assert.match(app, /data-action="remove-offline-friend"/);
 });
 
+test("friends and groups keep destructive actions compact without hiding them", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const commandIcons = await readFile("src/publicCommandIconLayer.mjs", "utf8");
+  const peopleStart = app.indexOf("function renderFriendsPeopleTab");
+  const peopleEnd = app.indexOf("function renderBlockedUsersPanel", peopleStart);
+  const peoplePanel = app.slice(peopleStart, peopleEnd);
+  const groupRowStart = app.indexOf("function renderGroupRow");
+  const groupRowEnd = app.indexOf("function renderKnownParticipantsPanel", groupRowStart);
+  const groupRow = app.slice(groupRowStart, groupRowEnd);
+
+  assert.ok(peoplePanel.indexOf("friends-roster") < peoplePanel.indexOf("friend-privacy-note"));
+  assert.match(app, /class="friend-remove-button"[\s\S]*?title="הסר חבר"/);
+  assert.match(commandIcons, /"remove-network-friend": "user-minus"/);
+  assert.match(commandIcons, /"remove-offline-friend": "user-minus"/);
+  assert.match(groupRow, /class="secondary-button danger-button group-archive-button"/);
+  assert.match(commandIcons, /"archive-group": "archive"/);
+});
+
 test("empty and short friend lists avoid unnecessary controls", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
@@ -175,6 +197,9 @@ test("online friends use unique usernames without changing offline names", async
   assert.match(app, /requestFriendshipByUsername/);
   assert.match(app, /setFriendUsername/);
   assert.match(app, /data-action="profile-username"/);
+  assert.match(app, /placeholder="בחר שם משתמש"/);
+  assert.doesNotMatch(app, /placeholder="@yarin"/);
+  assert.doesNotMatch(app, /placeholder="לדוגמה: דני כהן"/);
   assert.match(app, /data-action="friend-code"[\s\S]+placeholder="@username"/);
   assert.match(app, /class="friend-username"/);
   assert.match(app, /\[profile\.display_name, username\]/);
@@ -190,6 +215,29 @@ test("friends hub only highlights duplicate names when identity matching finds t
   assert.match(app, /מצאנו שם כפול/);
   assert.match(app, /participant-connection-badge is-duplicate/);
   assert.match(app, /friends-merge-entry \$\{duplicateGroupCount \? "has-duplicates" : ""\}/);
+});
+
+test("duplicate-name management starts with a valid focused pair and collapses the full roster", async () => {
+  const [app, layer] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+  ]);
+  const peopleStart = app.indexOf("function renderPeople()");
+  const peopleEnd = app.indexOf("function renderEditGroupPanel", peopleStart);
+  const peopleScreen = app.slice(peopleStart, peopleEnd);
+  const mergeStart = app.indexOf("function ensureMergeParticipantsDraft()");
+  const mergeEnd = app.indexOf("function mergeParticipantsInState", mergeStart);
+  const mergeHelpers = app.slice(mergeStart, mergeEnd);
+
+  assert.ok(peopleScreen.indexOf("renderMergeParticipantsPanel()") < peopleScreen.indexOf("renderKnownParticipantsPanel()"));
+  assert.match(app, /<details class="panel section known-participants-panel people-management-disclosure">/);
+  assert.match(app, /השם שיוסר/);
+  assert.match(app, /החשבון שיישאר/);
+  assert.match(mergeHelpers, /mergeableDuplicateParticipantGroups\(\)/);
+  assert.match(mergeHelpers, /function mergeParticipantTargetCandidates/);
+  assert.match(mergeHelpers, /normalizeParticipantDisplayName\(participant\.displayName\) === sourceName/);
+  assert.match(layer, /\.people-management-disclosure > summary/);
+  assert.match(layer, /\.people-management-disclosure \.known-participant-row/);
 });
 
 test("friends hub has mobile and keyboard accessibility polish", async () => {

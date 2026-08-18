@@ -73,6 +73,10 @@ test("settlement action hierarchy follows payment state", async () => {
     app,
     /data-action="share-whatsapp"[\s\S]*?class="settlement-more-actions"[\s\S]*?data-action="(?:reopen-event|close-event)"/
   );
+  assert.match(
+    app,
+    /isPersonal \? "primary-button" : "secondary-button transfer-group-complete-button"/
+  );
 });
 
 test("settlement summary leads with one ordered transfer list", async () => {
@@ -94,18 +98,27 @@ test("a single personal transfer leads with its amount and a compact explanation
   ]);
 
   assert.match(app, /const featuredPersonalTransfer = singlePersonalPayment \?\? singlePersonalReceipt/);
+  assert.match(app, /const hasPersonalPendingTransfers =/);
+  assert.match(
+    app,
+    /!hasTransfers \|\| calculated\.issues\.length \|\| hasPersonalPendingTransfers/
+  );
   assert.match(app, /function renderFeaturedSettlementHero/);
   assert.match(app, /class="panel settlement-hero is-pending is-personal-pending is-explained"/);
   assert.match(app, /class="settlement-featured-route"/);
   assert.match(app, /class="settlement-featured-amount amount"/);
   assert.match(app, /data-action="mark-paid" data-transfer-id=/);
   assert.match(app, /function renderFeaturedSettlementBreakdown/);
-  assert.match(app, /איך הגענו לסכום\?/);
+  assert.match(app, /<details class="settlement-featured-breakdown">/);
+  assert.match(app, /<strong>איך חישבנו\?<\/strong>/);
+  assert.match(app, /class="settlement-featured-breakdown-body"/);
   assert.match(app, /breakdown\.expenseShares\.slice\(0, 3\)/);
   assert.match(app, /פחות מה שמועבר לאחרים/);
   assert.match(app, /סה״כ להעברה/);
-  assert.match(app, /href="#settlement-transfers-title">פירוט מלא/);
+  assert.match(app, /href="#settlement-transfers-title">לכל ההעברות/);
   assert.match(ledger, /Selected settlement concept: show the personal route, amount and proof first/);
+  assert.match(ledger, /\.settlement-featured-breakdown > summary/);
+  assert.match(ledger, /\.settlement-featured-breakdown\[open\] > summary::after/);
   assert.match(ledger, /\.settlement-featured-breakdown-row\.is-total/);
 });
 

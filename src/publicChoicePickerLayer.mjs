@@ -5,6 +5,10 @@ const ENHANCED_CLASS = "app-choice-native";
 const TRIGGER_CLASS = "app-choice-trigger";
 const PICKER_CLASS = "app-choice-picker-backdrop";
 const PICKER_HISTORY_KEY = "settleFriendsChoicePicker";
+const SEARCHABLE_CHOICE_ACTIONS = new Set([
+  "new-event-currency",
+  "event-currency"
+]);
 
 let activeSelect = null;
 let activeTrigger = null;
@@ -153,12 +157,34 @@ function openChoicePicker(select, trigger) {
   list.setAttribute("role", "listbox");
   list.setAttribute("aria-label", choicePickerTitle(select));
 
+  const searchable = isSearchableChoiceSelect(select);
   Array.from(select.options).forEach((option) => {
-    list.append(renderChoiceOption(option, select.value));
+    list.append(
+      renderChoiceOption(option, select.value, {
+        showStatusDot: !searchable
+      })
+    );
   });
 
+  const optionsRegion = document.createElement("div");
+  optionsRegion.className = "app-choice-options-region";
+  optionsRegion.append(list);
+
+  const emptyState = document.createElement("p");
+  emptyState.className = "app-choice-search-empty";
+  emptyState.setAttribute("role", "status");
+  emptyState.setAttribute("aria-live", "polite");
+  emptyState.textContent = "לא נמצא מטבע מתאים";
+  emptyState.hidden = true;
+  optionsRegion.append(emptyState);
+
   header.append(heading, closeButton);
-  dialog.append(header, list);
+  dialog.append(header);
+  if (searchable) {
+    dialog.classList.add("has-search");
+    dialog.append(renderChoiceSearch(list, emptyState));
+  }
+  dialog.append(optionsRegion);
   backdrop.append(dialog);
   document.body.append(backdrop);
 
@@ -178,7 +204,11 @@ function openChoicePicker(select, trigger) {
   });
 }
 
-function renderChoiceOption(option, selectedValue) {
+function renderChoiceOption(
+  option,
+  selectedValue,
+  { showStatusDot = true } = {}
+) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "app-choice-option";
@@ -191,6 +221,9 @@ function renderChoiceOption(option, selectedValue) {
   button.disabled = option.disabled;
 
   const normalizedText = option.textContent?.replace(/\s+/g, " ").trim() ?? "";
+  button.dataset.choiceSearch = normalizeChoiceSearch(
+    `${normalizedText} ${option.value}`
+  );
   const [primaryText, ...detailParts] = normalizedText
     .split("·")
     .map((part) => part.trim())
@@ -199,7 +232,7 @@ function renderChoiceOption(option, selectedValue) {
 
   const identity = document.createElement("span");
   identity.className = "app-choice-option-identity";
-  if (detailText) {
+  if (detailText && showStatusDot) {
     const statusDot = document.createElement("span");
     statusDot.className = `app-choice-status-dot ${
       detailText.includes("אופליין") ? "is-offline" : "is-connected"
@@ -233,6 +266,61 @@ function renderChoiceOption(option, selectedValue) {
     button.classList.add("is-add-option");
   }
   return button;
+}
+
+function renderChoiceSearch(list, emptyState) {
+  const search = document.createElement("div");
+  search.className = "app-choice-search";
+  search.setAttribute("role", "search");
+
+  const icon = document.createElement("span");
+  icon.className = "app-choice-search-icon";
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = iconSvg("search");
+
+  const input = document.createElement("input");
+  input.type = "search";
+  input.className = "app-choice-search-input";
+  input.placeholder = "חיפוש לפי מטבע, מדינה או קוד";
+  input.setAttribute("aria-label", "חיפוש מטבע");
+  input.setAttribute("autocomplete", "off");
+  input.setAttribute("autocapitalize", "off");
+  input.setAttribute("spellcheck", "false");
+  input.setAttribute("enterkeyhint", "search");
+  input.addEventListener("input", () => {
+    filterChoiceOptions(list, emptyState, input.value);
+  });
+
+  search.append(icon, input);
+  return search;
+}
+
+function filterChoiceOptions(list, emptyState, query) {
+  const normalizedQuery = normalizeChoiceSearch(query);
+  let visibleCount = 0;
+
+  list.querySelectorAll(".app-choice-option").forEach((option) => {
+    const matches =
+      !normalizedQuery ||
+      (option.dataset.choiceSearch ?? "").includes(normalizedQuery);
+    option.hidden = !matches;
+    if (matches) visibleCount += 1;
+  });
+
+  emptyState.hidden = visibleCount > 0;
+}
+
+function normalizeChoiceSearch(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/[\u0591-\u05c7]/g, "")
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSearchableChoiceSelect(select) {
+  return SEARCHABLE_CHOICE_ACTIONS.has(select?.dataset.action ?? "");
 }
 
 async function chooseOption(optionButton) {
@@ -399,7 +487,7 @@ function handleChoiceKeydown(event) {
   if (event.key === "Tab") {
     const focusable = Array.from(
       activePicker.querySelectorAll(
-        ".app-choice-picker-close, .app-choice-option:not(:disabled)"
+        ".app-choice-picker-close, .app-choice-search-input, .app-choice-option:not(:disabled):not([hidden])"
       )
     );
     if (!focusable.length) return;
@@ -417,9 +505,22 @@ function handleChoiceKeydown(event) {
     return;
   }
 
+  if (event.target.matches?.(".app-choice-search-input")) {
+    if (event.key !== "ArrowDown") return;
+    const firstVisibleOption = activePicker.querySelector(
+      ".app-choice-option:not(:disabled):not([hidden])"
+    );
+    if (!firstVisibleOption) return;
+    event.preventDefault();
+    firstVisibleOption.focus({ preventScroll: true });
+    return;
+  }
+
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
   const options = Array.from(
-    activePicker.querySelectorAll(".app-choice-option:not(:disabled)")
+    activePicker.querySelectorAll(
+      ".app-choice-option:not(:disabled):not([hidden])"
+    )
   );
   if (!options.length) return;
 
@@ -588,6 +689,10 @@ function injectChoicePickerStyles() {
       animation: app-choice-rise-in 190ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    .app-choice-picker.has-search {
+      grid-template-rows: auto auto minmax(0, 1fr);
+    }
+
     .app-choice-picker-header {
       min-height: 68px;
       display: flex;
@@ -624,15 +729,87 @@ function injectChoicePickerStyles() {
       cursor: pointer;
     }
 
+    .app-choice-search {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      align-items: center;
+      gap: 9px;
+      margin: 12px 12px 0;
+      padding: 0 13px;
+      min-height: 50px;
+      border: 1px solid rgba(15, 72, 66, 0.18);
+      border-radius: 11px;
+      background: #ffffff;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    .app-choice-search:focus-within {
+      border-color: #168f88;
+      box-shadow: 0 0 0 3px rgba(22, 143, 136, 0.14);
+    }
+
+    .app-choice-search-icon {
+      width: 22px;
+      height: 22px;
+      display: grid;
+      place-items: center;
+      color: #60736e;
+    }
+
+    .app-choice-search-icon .ui-icon-svg {
+      width: 21px;
+      height: 21px;
+    }
+
+    .app-choice-search-input {
+      width: 100%;
+      min-width: 0;
+      min-height: 48px;
+      padding: 0;
+      border: 0;
+      outline: 0;
+      color: #152724;
+      background: transparent;
+      font: inherit;
+      font-weight: 700;
+      text-align: start;
+    }
+
+    .app-choice-search-input::placeholder {
+      color: #7b8b87;
+      opacity: 1;
+    }
+
+    .app-choice-search-input::-webkit-search-cancel-button {
+      cursor: pointer;
+    }
+
+    .app-choice-options-region {
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .app-choice-options {
       display: grid;
       grid-auto-rows: minmax(58px, auto);
       align-content: start;
       gap: 8px;
       padding: 12px;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
+    }
+
+    .app-choice-option[hidden] {
+      display: none !important;
+    }
+
+    .app-choice-search-empty {
+      margin: 0;
+      padding: 48px 20px;
+      color: #6c7d78;
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-align: center;
     }
 
     .app-choice-option {

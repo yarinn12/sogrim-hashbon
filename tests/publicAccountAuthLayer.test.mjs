@@ -16,6 +16,20 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js"><\/script>/);
 });
 
+test("a fresh signup never inherits the previous device owner's name", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const accountGate = layer.slice(
+    layer.indexOf("function renderAccountGate("),
+    layer.indexOf("function scheduleAccountConfigRetry(")
+  );
+
+  assert.match(
+    accountGate,
+    /name="displayName"[\s\S]*?value="\$\{escapeAttribute\(values\.displayName \?\? ""\)\}"/
+  );
+  assert.doesNotMatch(accountGate, /loadLocalProfile|previousProfile/);
+});
+
 test("account gate offers email registration, Google, Apple, sign out and deletion", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 
@@ -30,6 +44,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /filterByAuthorizedAccounts: false/);
   assert.match(layer, /autoSelectEnabled: false/);
   assert.match(layer, /if \(isNativeAndroid\(\)\) \{\s*await signInWithNativeGoogle\(\)/);
+  assert.match(layer, /accountAuthErrorMessage\(error, "google"\)/);
   assert.match(layer, /renderAccountNameCompletionGate\(\{\s*displayName:/);
   assert.match(layer, /appleOAuthUrl/);
   assert.match(layer, /aria-label="המשך עם Apple"/);
@@ -106,6 +121,9 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /data-mode="complete-profile"/);
   assert.match(layer, /updateAccountUser/);
   assert.match(layer, /accountFormValidationError/);
+  assert.match(layer, /errorFieldName = ""/);
+  assert.match(layer, /aria-invalid="true" aria-describedby="account-auth-feedback"/);
+  assert.match(layer, /errorFieldName: validationError\.fieldName/);
   assert.match(layer, /novalidate/);
   assert.match(layer, /handleAccountGateNativeBack/);
   assert.match(layer, /collapseAccountEmailAuth/);
@@ -187,6 +205,16 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /window\.addEventListener\("online", refreshAccountSessionIfNeeded\)/);
   assert.match(layer, /document\.visibilityState === "visible"/);
   assert.match(layer, /\.profile-setup-panel/);
+  assert.match(
+    layer,
+    /<details class="account-profile-controls" data-account-controls>/
+  );
+  assert.match(layer, /<summary class="account-profile-controls-summary">/);
+  assert.match(layer, /<strong>חשבון ותמיכה<\/strong>/);
+  assert.doesNotMatch(
+    layer,
+    /<details class="account-profile-controls" data-account-controls open/
+  );
   assert.match(layer, /class="account-data-links" aria-label="מידע על החשבון"/);
   assert.match(layer, /\.account-data-link[\s\S]*?min-width: 44px;[\s\S]*?min-height: 44px;/);
   assert.ok(

@@ -1430,18 +1430,25 @@ const CSS = `
   html.design-coherence-v1 body #app
     .event-share-modal
     .event-share-choice {
-    min-height: 92px !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 12px !important;
-    padding: 13px !important;
+    min-height: 0 !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 0 !important;
+    padding: 0 !important;
   }
 
   html.design-coherence-v1 body #app
     .event-share-modal
     .event-share-choice
     > button {
-    min-width: 104px !important;
-    min-height: 46px !important;
+    min-width: 0 !important;
+    min-height: 76px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-share-route-choice
+    small {
+    color: var(--app-muted) !important;
   }
 
   html.design-coherence-v1 body #app
@@ -1497,7 +1504,7 @@ const CSS = `
   html.design-coherence-v1 body #app
     .event-share-modal
     .event-invite-pass-stub {
-    padding: 12px 10px !important;
+    padding: 0 13px 12px !important;
   }
 
   html.design-coherence-v1 body #app
@@ -1513,6 +1520,111 @@ const CSS = `
     .event-share-modal
     .event-invite-link-actions {
     gap: 8px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    > .event-modal-header
+    :is(.modal-close-button, .modal-section-back-button) {
+    border-color: transparent !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-share-route-choice {
+    grid-template-columns: 32px minmax(0, 1fr) 18px !important;
+    column-gap: 11px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-share-route-choice
+    > .command-card-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-share-route-choice:active {
+    transform: scale(0.96) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-label,
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-field
+    > input {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-preview {
+    min-height: 58px !important;
+    display: grid !important;
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-control) !important;
+    color: var(--app-brand) !important;
+    background: var(--app-surface-soft) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-preview
+    > .command-card-icon {
+    width: 34px !important;
+    height: 34px !important;
+    display: grid !important;
+    place-items: center !important;
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-preview
+    > span:last-child {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-preview
+    strong {
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-invite-link-preview
+    small {
+    color: var(--app-muted) !important;
+    font-size: 11.5px !important;
+    font-weight: 500 !important;
   }
 
   @media (max-width: 720px) {
@@ -1543,7 +1655,6 @@ const CSS = `
       .event-share-choice {
       min-height: 0 !important;
       grid-template-columns: minmax(0, 1fr) !important;
-      grid-template-rows: repeat(2, max-content) !important;
       align-items: stretch !important;
       align-content: start !important;
     }
@@ -1554,8 +1665,6 @@ const CSS = `
       > button {
       position: relative !important;
       inset: auto !important;
-      grid-column: 1 !important;
-      grid-row: 2 !important;
       width: 100% !important;
     }
   }
@@ -2831,6 +2940,69 @@ const CSS = `
   html.design-coherence-v1 body #app
     :is(.event-settings-menu-item, .event-participant-management-row, .notification-inbox-item, .friend-row, .group-row) {
     font-family: var(--app-font-hebrew) !important;
+  }
+
+  /* Settings stay compact: familiar controls without a box around every symbol. */
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    > .event-modal-header
+    .modal-close-button {
+    border-color: transparent !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-item {
+    grid-template-columns: 32px minmax(0, 1fr) 18px !important;
+    column-gap: 11px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-item:nth-child(5),
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-item.is-danger {
+    border-top: 6px solid var(--app-canvas) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-icon
+    .ui-icon-svg {
+    width: 22px !important;
+    height: 22px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-item.is-danger
+    .event-settings-menu-icon {
+    border: 0 !important;
+    background: transparent !important;
+  }
+
+  @media (hover: hover) {
+    html.design-coherence-v1 body #app
+      .event-settings-modal
+      > .event-modal-header
+      .modal-close-button:hover:not(:disabled) {
+      background: var(--app-surface-soft) !important;
+    }
   }
 
   @media (hover: hover) {

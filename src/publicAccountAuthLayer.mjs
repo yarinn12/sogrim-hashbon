@@ -538,13 +538,13 @@ function renderAccountGate({
   mode = "login",
   message = "",
   error = "",
+  errorFieldName = "",
   values = {}
 } = {}) {
   document.querySelector(".public-profile-gate")?.remove();
   document.getElementById(GATE_ID)?.remove();
   document.querySelector("#app")?.setAttribute("inert", "");
 
-  const previousProfile = loadLocalProfile();
   const inviteContext = accountInviteContext();
   const inviteMarkup = accountInviteMarkup(inviteContext);
   const heading = inviteContext
@@ -564,6 +564,13 @@ function renderAccountGate({
     mode === "signup" ||
     Boolean(message) ||
     Boolean(error);
+  const safeErrorFieldName = /^[a-zA-Z][\w-]*$/.test(errorFieldName)
+    ? errorFieldName
+    : "";
+  const fieldErrorAttributes = (fieldName) =>
+    safeErrorFieldName === fieldName
+      ? 'aria-invalid="true" aria-describedby="account-auth-feedback"'
+      : 'aria-invalid="false"';
   const gate = document.createElement("section");
   gate.id = GATE_ID;
   gate.className = "account-auth-gate font-hebrew";
@@ -618,17 +625,17 @@ function renderAccountGate({
               mode === "signup"
                 ? `<label>
                     <span>שם פרטי ושם משפחה</span>
-                    <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? previousProfile?.displayName ?? "")}" required />
+                    <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? "")}" ${fieldErrorAttributes("displayName")} required />
                   </label>`
                 : ""
             }
             <label>
               <span>אימייל</span>
-              <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" required />
+              <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" ${fieldErrorAttributes("email")} required />
             </label>
             <label>
               <span>סיסמה</span>
-              <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" required />
+              <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" ${fieldErrorAttributes("password")} required />
             </label>
             ${
               mode === "login"
@@ -799,7 +806,8 @@ async function handleAccountSubmit(event) {
       renderAccountGate({
         mode,
         values: { email, displayName },
-        error: validationError.message
+        error: validationError.message,
+        errorFieldName: validationError.fieldName
       });
     }
     focusAccountInput(document.getElementById(GATE_ID), {
@@ -1001,7 +1009,7 @@ async function handleAccountClick(event) {
         emitOperationFailure("auth", { screen: "auth" });
         renderAccountGate({
           mode: "login",
-          error: "לא הצלחנו להתחבר עם Google כרגע. כדאי לנסות שוב."
+          error: accountAuthErrorMessage(error, "google")
         });
       }
     } finally {
@@ -1273,36 +1281,45 @@ function enhanceAccountControls() {
       : "";
   host.insertAdjacentHTML(
     "beforeend",
-    `<div class="account-profile-controls" data-account-controls>
-      <span>${escapeHtml(email)}</span>
-      <button class="account-feedback-entry" type="button" data-account-action="feedback-open">
-        <span class="account-feedback-entry-icon" aria-hidden="true">
-          ${iconSvg("message")}
+    `<details class="account-profile-controls" data-account-controls>
+      <summary class="account-profile-controls-summary">
+        <span class="account-profile-controls-summary-copy">
+          <strong>חשבון ותמיכה</strong>
+          <small>פרטיות, התקנה וניהול החשבון</small>
         </span>
-        <span class="account-feedback-entry-copy">
-          <strong>משוב לבודקים</strong>
-          <small>תקלה, משהו שלא היה ברור או רעיון לשיפור</small>
-        </span>
-        <span class="account-feedback-entry-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
-      </button>
-      <nav class="account-data-links" aria-label="מידע על החשבון">
-        <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
-        <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
-        <a href="./accessibility.html" class="account-data-link">הצהרת נגישות</a>
-        <a href="./support.html" class="account-data-link">תמיכה</a>
-        ${adPrivacyControl}
-      </nav>
-      <div class="account-profile-actions">
-        <button class="secondary-button" type="button" data-account-action="signout">התנתק</button>
+        <span class="account-profile-controls-summary-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+      </summary>
+      <div class="account-profile-controls-body">
+        <span class="account-profile-email">${escapeHtml(email)}</span>
+        <button class="account-feedback-entry" type="button" data-account-action="feedback-open">
+          <span class="account-feedback-entry-icon" aria-hidden="true">
+            ${iconSvg("message")}
+          </span>
+          <span class="account-feedback-entry-copy">
+            <strong>משוב לבודקים</strong>
+            <small>תקלה, משהו שלא היה ברור או רעיון לשיפור</small>
+          </span>
+          <span class="account-feedback-entry-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+        </button>
+        <nav class="account-data-links" aria-label="מידע על החשבון">
+          <a href="./privacy.html" class="account-data-link">מדיניות פרטיות</a>
+          <a href="./terms.html" class="account-data-link">תנאי שימוש</a>
+          <a href="./accessibility.html" class="account-data-link">הצהרת נגישות</a>
+          <a href="./support.html" class="account-data-link">תמיכה</a>
+          ${adPrivacyControl}
+        </nav>
+        <div class="account-profile-actions">
+          <button class="secondary-button" type="button" data-account-action="signout">התנתק</button>
+        </div>
+        <div class="account-danger-zone">
+          <span class="account-danger-copy">
+            <strong>מחיקת חשבון</strong>
+            <small>החשבון והמידע האישי יימחקו לצמיתות.</small>
+          </span>
+          <button class="secondary-button account-delete-button" type="button" data-account-action="delete-account-open">מחק חשבון</button>
+        </div>
       </div>
-      <div class="account-danger-zone">
-        <span class="account-danger-copy">
-          <strong>מחיקת חשבון</strong>
-          <small>החשבון והמידע האישי יימחקו לצמיתות.</small>
-        </span>
-        <button class="secondary-button account-delete-button" type="button" data-account-action="delete-account-open">מחק חשבון</button>
-      </div>
-    </div>`
+    </details>`
   );
 }
 
@@ -2457,14 +2474,72 @@ function injectStyle() {
 
     .account-profile-controls {
       min-width: 0;
+      display: block;
+      width: 100%;
+      margin-inline-start: auto;
+      border-top: 1px solid rgba(16, 35, 33, .1);
+    }
+
+    .account-profile-controls-summary {
+      min-height: 68px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 24px;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 2px;
+      color: #163a34;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .account-profile-controls-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .account-profile-controls-summary-copy {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .account-profile-controls-summary-copy strong {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .account-profile-controls-summary-copy small {
+      color: #677872;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .account-profile-controls-summary-chevron {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      color: #78918a;
+      transition: transform .18s ease;
+    }
+
+    .account-profile-controls-summary-chevron svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .account-profile-controls[open] .account-profile-controls-summary-chevron {
+      transform: rotate(-90deg);
+    }
+
+    .account-profile-controls-body {
+      min-width: 0;
       display: grid;
       align-items: start;
       gap: 10px;
-      width: 100%;
-      margin-inline-start: auto;
+      padding-top: 4px;
     }
 
-    .account-profile-controls > span {
+    .account-profile-email {
       max-width: 220px;
       overflow: hidden;
       color: #6a7771;

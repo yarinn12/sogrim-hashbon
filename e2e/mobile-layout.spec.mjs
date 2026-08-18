@@ -135,6 +135,48 @@ test.afterEach(() => {
   expect(runtimeIssues, "the core mobile journey must not emit browser runtime errors").toEqual([]);
 });
 
+test("offline mode keeps shared event data read-only until sync access returns", async ({
+  page,
+  context
+}) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`)
+    .click();
+
+  const adminToggle = page.locator('[data-action="toggle-event-participant-admin"]');
+  await expect(adminToggle).not.toBeChecked();
+
+  await context.setOffline(true);
+  await expect(page.locator("[data-sync-status]")).toContainText(
+    "אין חיבור. אפשר לצפות, אבל אי אפשר לשנות"
+  );
+  await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
+  await adminToggle.click({ force: true });
+  await expect(adminToggle).not.toBeChecked();
+
+  await page.goBack();
+  await expect(page.locator(".event-participant-roster-modal")).toBeVisible();
+
+  await context.setOffline(false);
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`)
+    .click();
+  const reconnectedAdminToggle = page.locator(
+    '[data-action="toggle-event-participant-admin"]'
+  );
+  await expect(reconnectedAdminToggle).not.toHaveAttribute("aria-disabled", "true");
+  await reconnectedAdminToggle.check();
+  await expect(reconnectedAdminToggle).toBeChecked();
+});
+
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {
   await assertDocumentDirection(page);
   await assertLayoutHealth(page, "home");
@@ -188,6 +230,22 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await assertLayoutHealth(page, "event summary");
   await assertCompactSettlementFirstView(page);
 
+  const settlementCalculation = page.locator(".settlement-featured-breakdown").first();
+  if (await settlementCalculation.count()) {
+    await expect(settlementCalculation).not.toHaveAttribute("open", "");
+    await expect(
+      settlementCalculation.locator(":scope > summary")
+    ).toContainText("איך חישבנו?");
+    await settlementCalculation.locator(":scope > summary").click();
+    await expect(settlementCalculation).toHaveAttribute("open", "");
+    await expect(
+      settlementCalculation.locator(".settlement-featured-breakdown-body")
+    ).toBeVisible();
+    await assertLayoutHealth(page, "expanded settlement calculation");
+    await settlementCalculation.locator(":scope > summary").click();
+    await expect(settlementCalculation).not.toHaveAttribute("open", "");
+  }
+
   const settlementMoreActions = page.locator(".settlement-more-actions").first();
   if (await settlementMoreActions.count()) {
     await settlementMoreActions.locator(":scope > summary").click();
@@ -223,6 +281,12 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await assertFocusedControlIsVisible(page);
   await assertLayoutHealth(page, "expense dialog");
   await assertSingleDecisionExpenseStep(page);
+  if (process.env.CAPTURE_EXPENSE_DIALOG === "1") {
+    await page.screenshot({
+      path: "design-audits/expense-dialog-current.png",
+      fullPage: false
+    });
+  }
   await page.keyboard.press("Escape");
   await expect(expenseDialog).toBeHidden();
 
@@ -243,6 +307,35 @@ test("core mobile journey remains readable, reachable and correctly layered", as
       fullPage: false
     });
   }
+
+  const addParticipantLaunch = participantsRoute.locator(
+    '[data-action="open-event-participant-add"]'
+  );
+  const inviteParticipantLaunch = participantsRoute.locator(
+    '[data-action="open-event-share"]'
+  );
+  await expect(addParticipantLaunch).toBeVisible();
+  await expect(inviteParticipantLaunch).toBeVisible();
+
+  await addParticipantLaunch.click();
+  const participantAddRoute = page.locator(
+    '.event-participant-add-route-modal[role="region"][aria-labelledby="event-modal-title"]'
+  );
+  await expect(participantAddRoute).toBeVisible();
+  await assertLayoutHealth(page, "participant add route");
+  await page.goBack();
+  await expect(participantAddRoute).toBeHidden();
+  await expect(participantsRoute).toBeVisible();
+
+  await participantsRoute.locator('[data-action="open-event-share"]').click();
+  const participantShareRoute = page.locator(
+    '.event-share-modal[role="dialog"][aria-labelledby="event-modal-title"]'
+  );
+  await expect(participantShareRoute).toBeVisible();
+  await assertLayoutHealth(page, "participant share route");
+  await page.goBack();
+  await expect(participantShareRoute).toBeHidden();
+  await expect(participantsRoute).toBeVisible();
 
   const connectedParticipantRow = participantsRoute.locator(
     `[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`
@@ -385,6 +478,12 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
     await assertLayoutHealth(page, "new event details");
     await captureCoherenceScreen(page, "11-new-event-details");
+
+    const newEventParticipants = page.locator(".new-event-participants");
+    await newEventParticipants.locator(":scope > summary").click();
+    await expect(newEventParticipants).toHaveAttribute("open", "");
+    await assertLayoutHealth(page, "new event participants");
+    await captureCoherenceScreen(page, "11b-new-event-participants");
   }
 });
 

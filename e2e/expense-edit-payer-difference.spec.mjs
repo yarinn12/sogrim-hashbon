@@ -104,7 +104,7 @@ test("editing a multi-payer expense asks who owns the added amount", async ({ pa
     .toHaveValue("70.00");
   await expect(dialog.locator(".payer-difference-assignment")).toHaveCount(0);
   await expect(dialog.locator(".expense-payer-summary")).toContainText(
-    "סכומי המשלמים תואמים לסכום הכולל"
+    "הסכום הושלם"
   );
 });
 
@@ -123,6 +123,6 @@ test("editing a single-payer expense assigns the added amount automatically", as
   await expect(dialog.locator('[data-action="expense-payer-amount"]')).toHaveValue("120");
   await expect(dialog.locator(".payer-difference-assignment")).toHaveCount(0);
   await expect(dialog.locator(".expense-payer-summary")).toContainText(
-    "סכומי המשלמים תואמים לסכום הכולל"
+    "הסכום הושלם"
   );
 });

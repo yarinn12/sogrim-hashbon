@@ -33,6 +33,10 @@ test("public invite QR layer renders a QR code from the smart event invite link"
   assert.match(layer, /data-open-link="true"/);
   assert.match(layer, /data-public-invite-qr/);
   assert.match(layer, /public-invite-qr/);
+  assert.match(layer, /document\.createElement\("details"\)/);
+  assert.match(layer, /public-invite-qr-summary/);
+  assert.match(layer, /public-invite-qr-body/);
+  assert.match(layer, /הצג QR להצטרפות/);
   assert.match(layer, /QR/);
   assert.match(layer, /catch/);
 });

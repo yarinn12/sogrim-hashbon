@@ -19,7 +19,16 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /data-inline-sync-retry/);
   assert.match(layer, /has-event-action-dock/);
   assert.match(layer, /html\.account-auth-locked \.public-sync-status/);
-  assert.match(layer, /נשמר במכשיר וממתין לסנכרון/);
+  assert.match(layer, /אין חיבור · צפייה בלבד/);
+  assert.match(layer, /ONLINE_MUTATION_ACTIONS/);
+  assert.match(layer, /ONLINE_MUTATION_CHANGE_ACTIONS/);
+  assert.match(layer, /document\.addEventListener\("click", blockOfflineMutation, true\)/);
+  assert.match(layer, /document\.addEventListener\("change", blockOfflineMutation, true\)/);
+  assert.match(layer, /event\.stopImmediatePropagation\(\)/);
+  assert.match(layer, /restoreControlSnapshot\(target\)/);
+  assert.match(layer, /window\.addEventListener\("offline", handleOffline\)/);
+  assert.match(layer, /window\.addEventListener\("online", recoverOnlineMutationAccess\)/);
+  assert.match(layer, /אין חיבור\. אפשר לצפות, אבל אי אפשר לשנות עד שהסנכרון יחזור\./);
   assert.match(layer, /MutationObserver/);
   assert.match(layer, /let lastScreenSignature = screenSignature\(\)/);
   assert.match(layer, /let activeSaveScreenSignature = ""/);

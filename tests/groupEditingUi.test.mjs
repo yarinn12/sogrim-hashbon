@@ -11,6 +11,8 @@ test("groups screen exposes edit controls for permanent groups", async () => {
   assert.match(app, /data-action="save-edit-group"/);
   assert.match(app, /data-action="cancel-edit-group"/);
   assert.match(app, /renderParticipantChecks\(editingGroupDraft\.adminIds, "edit-group-admin"\)/);
+  assert.match(app, /group-editor-disclosure/);
+  assert.match(app, /group-editor-offline-add/);
   assert.match(app, /saveEditedGroup\(\)/);
 });
 
@@ -33,6 +35,7 @@ test("new groups start blank and become saveable only after a real name", async 
   assert.match(groups, /name: ""/);
   assert.match(groups, /group-create-panel/);
   assert.match(groups, /placeholder="[^"]+"/);
+  assert.match(groups, /group-editor-offline-add/);
   assert.match(groups, /!groupDraft\.name\.trim\(\) \|\| groupDraft\.memberIds\.length === 0/);
   assert.match(app, /function syncCreateGroupButton\(\)/);
   assert.match(app, /name: groupName/);

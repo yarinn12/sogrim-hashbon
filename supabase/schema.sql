@@ -352,6 +352,22 @@ as $$
     );
 $$;
 
+create or replace function public.can_read_deleted_shared_snapshot(p_snapshot_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select (select auth.uid()) is not null
+    and exists (
+      select 1
+      from private.shared_snapshot_members as member
+      where member.snapshot_id = p_snapshot_id
+        and member.user_id = (select auth.uid())
+    );
+$$;
+
 create or replace function public.can_bootstrap_shared_snapshot(p_snapshot_id text)
 returns boolean
 language sql
@@ -1145,6 +1161,10 @@ revoke all on function private.sync_shared_snapshot_members() from public, anon,
 revoke all on function private.register_shared_snapshot_creator() from public, anon, authenticated;
 revoke all on function public.can_write_shared_snapshot(text) from public, anon;
 grant execute on function public.can_write_shared_snapshot(text) to authenticated;
+revoke all on function public.can_read_deleted_shared_snapshot(text)
+  from public, anon;
+grant execute on function public.can_read_deleted_shared_snapshot(text)
+  to authenticated;
 revoke all on function public.can_bootstrap_shared_snapshot(text) from public, anon;
 grant execute on function public.can_bootstrap_shared_snapshot(text) to authenticated;
 
@@ -1177,7 +1197,15 @@ create policy app_snapshots_member_select
   to authenticated
   using (
     snapshot_kind = 'shared_event'
-    and (select public.can_write_shared_snapshot(id))
+    and (
+      (select public.can_write_shared_snapshot(id))
+      or (
+        state -> 'events' -> 0 is null
+        and pg_catalog.jsonb_typeof(state -> 'deletedEvents') = 'array'
+        and pg_catalog.jsonb_array_length(state -> 'deletedEvents') > 0
+        and (select public.can_read_deleted_shared_snapshot(id))
+      )
+    )
   );
 
 drop policy if exists app_snapshots_insert on public.app_snapshots;

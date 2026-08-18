@@ -24,9 +24,12 @@ test("unknown and missing currencies safely fall back to ILS", () => {
 
 test("currency options are unique and expose readable labels", () => {
   const options = currencyOptions();
-  assert.ok(options.length >= 10);
+  assert.ok(options.length >= 25);
   assert.equal(new Set(options.map((option) => option.id)).size, options.length);
-  assert.equal(currencySelectLabel("USD"), "דולר אמריקאי ($)");
+  assert.ok(options.every((option) => option.country));
+  assert.equal(currencySelectLabel("USD"), "דולר אמריקאי (ארצות הברית) · $");
+  assert.equal(currencySelectLabel("EUR"), "אירו (גוש האירו) · €");
+  assert.equal(currencySelectLabel("JPY"), "ין (יפן) · ¥");
 });
 
 test("an event currency with expenses changes only after explicit approval", () => {

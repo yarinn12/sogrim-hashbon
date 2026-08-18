@@ -1,20 +1,44 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "@playwright/test";
 
-const baseUrl = process.env.MANDATORY_UPDATE_QA_URL || "http://127.0.0.1:4190";
-const oldBuild = process.env.MANDATORY_UPDATE_OLD_BUILD || "76";
-const currentBuild = process.env.MANDATORY_UPDATE_CURRENT_BUILD || "77";
+const qaPort = "4194";
+const baseUrl = process.env.MANDATORY_UPDATE_QA_URL || `http://127.0.0.1:${qaPort}`;
+const oldBuild = process.env.MANDATORY_UPDATE_OLD_BUILD || "77";
+const currentBuild = process.env.MANDATORY_UPDATE_CURRENT_BUILD || "78";
+const localQaServer = process.env.MANDATORY_UPDATE_QA_URL
+  ? null
+  : spawn(process.execPath, ["server.mjs", qaPort], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        APP_LOCAL_STATE_FILE: ".qa-mandatory-update/app-state.json",
+        APP_PUBLIC_URL: " ",
+        SUPABASE_URL: " ",
+        SUPABASE_ANON_KEY: " ",
+        SUPABASE_SERVICE_ROLE_KEY: " ",
+        SUPABASE_SECRET_KEY: " ",
+        GOOGLE_CLIENT_ID: " ",
+        VERCEL: "",
+        VERCEL_ENV: ""
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true
+    });
 
-const browser = await chromium.launch({ headless: true });
+let browser;
 try {
+  if (localQaServer) await waitForHealth(`${baseUrl}/api/health`);
+  browser = await chromium.launch({ headless: true });
   await verifyBlockedBuild(oldBuild);
   await verifyCurrentBuild(currentBuild);
   console.log(
     `Mandatory update QA passed: build ${oldBuild} is blocked and build ${currentBuild} is allowed.`
   );
 } finally {
-  await browser.close();
+  await browser?.close();
+  localQaServer?.kill();
 }
 
 async function verifyBlockedBuild(build) {
@@ -153,4 +177,18 @@ async function nativeAndroidContext(build) {
     };
   }, { nativeBuild: String(build) });
   return context;
+}
+
+async function waitForHealth(url) {
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      // The isolated QA server is still starting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error(`Mandatory update QA server did not become ready at ${url}`);
 }

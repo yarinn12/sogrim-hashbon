@@ -158,6 +158,18 @@ test("event tools reuse compact app chrome instead of retired oversized modal st
   );
   assert.match(
     layer,
+    /Settings stay compact[\s\S]*?\.event-settings-modal[\s\S]*?\.modal-close-button \{[\s\S]*?border-color: transparent !important;[\s\S]*?border-radius: 50% !important;/
+  );
+  assert.match(
+    layer,
+    /\.event-settings-menu-item:nth-child\(5\)[\s\S]*?\.event-settings-menu-item\.is-danger[\s\S]*?border-top: 6px solid var\(--app-canvas\) !important;/
+  );
+  assert.match(
+    layer,
+    /\.event-settings-modal[\s\S]*?\.event-settings-menu-icon \{[\s\S]*?width: 32px !important;[\s\S]*?border: 0 !important;[\s\S]*?background: transparent !important;/
+  );
+  assert.match(
+    layer,
     /\.event-share-modal[\s\S]*?:is\(\.event-share-choice, \.event-share-open\)[\s\S]*?border-radius: var\(--app-radius-panel\) !important;/
   );
 });
