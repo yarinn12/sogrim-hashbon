@@ -31,8 +31,8 @@ test("mandatory update gate blocks only native Android and has no dismiss action
   assert.match(layer, /releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/);
   assert.match(splash, /mandatory-update-checking/);
   assert.match(splash, /sogrim:mandatory-update-check/);
-  assert.match(gradle, /versionCode 78/);
-  assert.match(gradle, /versionName "3\.55"/);
+  assert.match(gradle, /versionCode 81/);
+  assert.match(gradle, /versionName "3\.56"/);
   assert.match(envExample, /ANDROID_MIN_SUPPORTED_BUILD=0/);
   assert.match(renderBlueprint, /key: ANDROID_MIN_SUPPORTED_BUILD\s+value: "0"/);
 });

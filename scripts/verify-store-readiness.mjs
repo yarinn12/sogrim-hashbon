@@ -178,7 +178,7 @@ try {
 }
 
 try {
-  const response = await fetchWithRetry(`${androidStoreOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
+  const response = await fetchWithRetry(`${publicOrigin}/.well-known/assetlinks.json`, { redirect: "manual" });
   const statements = await response.json();
   liveChecks.push({
     name: "Live Android App Links association",

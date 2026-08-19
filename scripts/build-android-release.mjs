@@ -142,6 +142,9 @@ function verifyMergedManifest(manifest, expected) {
   if (/android:debuggable="true"/.test(manifest)) {
     throw new Error("Android release manifest must not be debuggable.");
   }
+  if (/android:host="sogrim-hashbon-recovery\.onrender\.com"/.test(manifest)) {
+    throw new Error("The recovery API host must not be exposed as an Android App Link domain.");
+  }
 }
 
 function escapeRegExp(value) {

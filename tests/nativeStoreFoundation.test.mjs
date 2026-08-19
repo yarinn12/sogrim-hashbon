@@ -138,9 +138,9 @@ test("native projects include store signing and Apple privacy requirements", asy
     androidManifest.match(/android:host="sogrim-hashbon\.vercel\.app"/g)?.length,
     3
   );
-  assert.equal(
-    androidManifest.match(/android:host="sogrim-hashbon-recovery\.onrender\.com"/g)?.length,
-    3
+  assert.doesNotMatch(
+    androidManifest,
+    /android:host="sogrim-hashbon-recovery\.onrender\.com"/
   );
   assert.doesNotMatch(androidManifest, /android:scheme="com\.sogrimhashbon\.app"/);
   assert.doesNotMatch(

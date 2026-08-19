@@ -45,10 +45,6 @@
                     android:scheme="https"
                     android:host="sogrim-hashbon.vercel.app"
                     android:pathPrefix="/i/" />
-                <data
-                    android:scheme="https"
-                    android:host="sogrim-hashbon-recovery.onrender.com"
-                    android:pathPrefix="/i/" />
             </intent-filter>
 
             <intent-filter android:autoVerify="true">
@@ -59,10 +55,6 @@
                     android:scheme="https"
                     android:host="sogrim-hashbon.vercel.app"
                     android:pathPrefix="/r/" />
-                <data
-                    android:scheme="https"
-                    android:host="sogrim-hashbon-recovery.onrender.com"
-                    android:pathPrefix="/r/" />
             </intent-filter>
 
             <intent-filter android:autoVerify="true">
@@ -72,10 +64,6 @@
                 <data
                     android:scheme="https"
                     android:host="sogrim-hashbon.vercel.app"
-                    android:pathPrefix="/auth/callback" />
-                <data
-                    android:scheme="https"
-                    android:host="sogrim-hashbon-recovery.onrender.com"
                     android:pathPrefix="/auth/callback" />
             </intent-filter>
         </activity>
