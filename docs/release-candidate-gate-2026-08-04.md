@@ -3,7 +3,7 @@
 ## מצב נוכחי
 
 - גרסת Web חיה: `v276`
-- כתובת: `https://sogrim-hashbon.vercel.app`
+- כתובת: `https://sogrim-hesbon-app.vercel.app`
 - פריסת Vercel: `dpl_Bvr3nkG2cfwk1ZjPuS86fwbcrUZE`
 - Android: חבילת Release `3.35 (58)` מוכנה ומסלול הבדיקה הסגורה פעיל
 - Android AAB: `14,265,119` bytes, SHA-256 `6D6A12029BB3795CED9D8257366F8DF8EC8BADDF06491CA56A8F4FA7929BF8E7`

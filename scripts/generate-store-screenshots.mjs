@@ -64,7 +64,7 @@ const server = spawn(process.execPath, ["server.mjs", String(port)], {
   env: {
     ...process.env,
     APP_LOCAL_STATE_FILE: ".qa-store-assets/app-state.json",
-    APP_PUBLIC_URL: "https://sogrim-hashbon.vercel.app",
+    APP_PUBLIC_URL: "https://sogrim-hesbon-app.vercel.app",
     SUPABASE_URL: " ",
     SUPABASE_ANON_KEY: " ",
     SUPABASE_SERVICE_ROLE_KEY: " ",
@@ -190,7 +190,7 @@ async function openInvite(page) {
 }
 
 async function finalizeInvite(page) {
-  const inviteUrl = `https://sogrim-hashbon.vercel.app/?event=${eventId}&t=0123456789abcdef0123456789abcdef`;
+  const inviteUrl = `https://sogrim-hesbon-app.vercel.app/?event=${eventId}&t=0123456789abcdef0123456789abcdef`;
   const qrMarkup = createQrSvg(inviteUrl, { cellSize: 3, quietZone: 4 });
   const dialog = page.locator('.event-modal[role="dialog"]:visible').last();
   await dialog.evaluate((activeDialog, { url, markup }) => {

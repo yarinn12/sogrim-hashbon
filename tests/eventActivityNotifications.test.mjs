@@ -16,7 +16,7 @@ const NOTIFICATION_ID = "33333333-3333-4333-8333-333333333333";
 function runtimeConfig() {
   return {
     apiBaseUrl: "https://sogrim.example",
-    publicUrl: "https://sogrim-hashbon.vercel.app/",
+    publicUrl: "https://sogrim-hesbon-app.vercel.app/",
     storage: {
       mode: "supabase",
       url: "https://demo.supabase.co",
@@ -457,7 +457,7 @@ test("server sends an active online participant a secure event invitation", asyn
   assert.equal(inboxItem.activity_id, RECIPIENT_PARTICIPANT_ID);
   assert.match(
     inboxItem.action_url,
-    /^https:\/\/sogrim-hashbon\.vercel\.app\/i\/event-weekend\/t\/[A-Za-z0-9_-]{32,128}$/
+    /^https:\/\/sogrim-hesbon-app\.vercel\.app\/i\/event-weekend\/t\/[A-Za-z0-9_-]{32,128}$/
   );
   assert.doesNotMatch(inboxItem.action_url, /shared-event-space|shared-event-secret/);
 
@@ -533,7 +533,7 @@ test("an expense notification repairs access when the recipient workspace lost t
   assert.equal(inboxItem.kind, "expense-created");
   assert.match(
     inboxItem.action_url,
-    /^https:\/\/sogrim-hashbon\.vercel\.app\/i\/event-weekend\/t\/[A-Za-z0-9_-]{32,128}$/
+    /^https:\/\/sogrim-hesbon-app\.vercel\.app\/i\/event-weekend\/t\/[A-Za-z0-9_-]{32,128}$/
   );
   const delivery = requests.find((request) =>
     request.url.includes("fcm.googleapis.com/")

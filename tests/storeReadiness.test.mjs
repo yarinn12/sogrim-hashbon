@@ -138,8 +138,8 @@ test("store submission documents capture remaining Google and store work", async
   assert.match(readiness, /Apple/);
   assert.match(readiness, /Google Play/);
   assert.match(listing, /התחשבנות חכמה בין חברים/);
-  assert.match(listing, /https:\/\/sogrim-hashbon\.vercel\.app\/privacy/);
-  assert.match(listing, /https:\/\/sogrim-hashbon\.vercel\.app\/support/);
+  assert.match(listing, /https:\/\/sogrim-hesbon-app\.vercel\.app\/privacy/);
+  assert.match(listing, /https:\/\/sogrim-hesbon-app\.vercel\.app\/support/);
 });
 
 test("verified app links and store submission declarations are prepared", async () => {

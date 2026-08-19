@@ -15,7 +15,7 @@ const referralCode = "0123456789abcdefabcd";
 
 function accountConfig() {
   return {
-    publicUrl: "https://sogrim-hashbon.vercel.app/",
+    publicUrl: "https://sogrim-hesbon-app.vercel.app/",
     storage: {
       mode: "supabase",
       url: "https://demo.supabase.co",
@@ -30,7 +30,7 @@ function accountConfig() {
 
 test("referral links reuse the private friend code without exposing identity", () => {
   const link = buildReferralInviteUrl(
-    "https://sogrim-hashbon.vercel.app/",
+    "https://sogrim-hesbon-app.vercel.app/",
     referralCode
   );
   const url = new URL(link);

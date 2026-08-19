@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibility.mjs";
 import {
-  LEGACY_PUBLIC_ORIGIN,
+  PUBLIC_ORIGIN,
   RECOVERY_PUBLIC_ORIGIN
 } from "../src/domain/publicOrigin.mjs";
 
 const PRIMARY_ORIGIN = normalizedOrigin(
-  process.env.PRIMARY_PRODUCTION_ORIGIN || LEGACY_PUBLIC_ORIGIN
+  process.env.PRIMARY_PRODUCTION_ORIGIN || PUBLIC_ORIGIN
 );
 const RECOVERY_ORIGIN = normalizedOrigin(
   process.env.RECOVERY_PRODUCTION_ORIGIN || RECOVERY_PUBLIC_ORIGIN

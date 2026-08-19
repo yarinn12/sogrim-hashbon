@@ -138,7 +138,7 @@ test("native projects include store signing and Apple privacy requirements", asy
   assert.match(androidManifest, /android:pathPrefix="\/r\/"/);
   assert.match(androidManifest, /android:pathPrefix="\/auth\/callback"/);
   assert.equal(
-    androidManifest.match(/android:host="sogrim-hashbon\.vercel\.app"/g)?.length,
+    androidManifest.match(/android:host="sogrim-hesbon-app\.vercel\.app"/g)?.length,
     3
   );
   assert.doesNotMatch(
@@ -150,7 +150,7 @@ test("native projects include store signing and Apple privacy requirements", asy
   assert.doesNotMatch(androidFilePaths, /<external-path/);
   assert.doesNotMatch(
     androidManifest,
-    /android:host="sogrim-hashbon\.vercel\.app"\s*\/>/
+    /android:host="sogrim-hesbon-app\.vercel\.app"\s*\/>/
   );
   assert.match(androidActivity, /SplashScreen\.installSplashScreen\(this\)/);
   assert.match(androidActivity, /setBackgroundColor\(Color\.rgb\(217, 213, 207\)\)/);
@@ -222,7 +222,7 @@ test("native deep links preserve compact invite credentials on warm and cold And
   const spaceKey = "a".repeat(40);
   const referralCode = "ABCDEF0123456789ABCD";
   const destination = nativeDestination(
-    `https://sogrim-hashbon.vercel.app/i/${eventId}/${spaceId}/${spaceKey}?ref=${referralCode}&ignored=value#invite`
+    `https://sogrim-hesbon-app.vercel.app/i/${eventId}/${spaceId}/${spaceKey}?ref=${referralCode}&ignored=value#invite`
   );
   const destinationUrl = new URL(destination, "https://localhost/");
 
@@ -234,18 +234,18 @@ test("native deep links preserve compact invite credentials on warm and cold And
   assert.equal(destinationUrl.searchParams.has("ignored"), false);
   assert.equal(destinationUrl.hash, "#invite");
   assert.equal(
-    nativeDestination("https://sogrim-hashbon.vercel.app/?event=e1&invite=safe"),
+    nativeDestination("https://sogrim-hesbon-app.vercel.app/?event=e1&invite=safe"),
     "./?event=e1&invite=safe"
   );
   assert.equal(
     nativeDestination(
-      `https://sogrim-hashbon.vercel.app/r/${referralCode.toUpperCase()}`
+      `https://sogrim-hesbon-app.vercel.app/r/${referralCode.toUpperCase()}`
     ),
     `./?ref=${referralCode.toLowerCase()}`
   );
   assert.equal(
     nativeDestination(
-      "https://sogrim-hashbon.vercel.app/auth/callback?code=one-time#done"
+      "https://sogrim-hesbon-app.vercel.app/auth/callback?code=one-time#done"
     ),
     "./?code=one-time#done"
   );
@@ -256,7 +256,7 @@ test("native deep links preserve revocable invite tokens on warm and cold Androi
   const inviteToken = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
   const referralCode = "ABCDEF0123456789ABCD";
   const destination = nativeDestination(
-    `https://sogrim-hashbon.vercel.app/i/${eventId}/t/${inviteToken}?ref=${referralCode}`
+    `https://sogrim-hesbon-app.vercel.app/i/${eventId}/t/${inviteToken}?ref=${referralCode}`
   );
   const destinationUrl = new URL(destination, "https://localhost/");
 
@@ -285,11 +285,11 @@ test("native deep links reject foreign hosts, unsafe routes and forged auth call
   const compactInvitePath = `/i/event-safe/space-safe/${"a".repeat(40)}`;
 
   assert.equal(nativeDestination("https://example.com/?event=e1&key=secret"), "");
-  assert.equal(nativeDestination("https://sogrim-hashbon.vercel.app/privacy"), "");
+  assert.equal(nativeDestination("https://sogrim-hesbon-app.vercel.app/privacy"), "");
   assert.equal(
     new URL(
       nativeDestination(
-        `https://sogrim-hashbon.vercel.app${compactInvitePath}?ref=%3Cscript%3Ealert(1)%3C%2Fscript%3E#safe`
+        `https://sogrim-hesbon-app.vercel.app${compactInvitePath}?ref=%3Cscript%3Ealert(1)%3C%2Fscript%3E#safe`
       ),
       "https://localhost/"
     ).searchParams.has("ref"),

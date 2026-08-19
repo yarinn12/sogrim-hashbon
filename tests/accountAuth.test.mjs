@@ -430,7 +430,7 @@ test("account deletion calls the protected same-origin endpoint", async () => {
 test("native account deletion uses the production API origin", async () => {
   let requestUrl = "";
   await deleteAccount(
-    { ...config, apiBaseUrl: "https://sogrim-hashbon.vercel.app" },
+    { ...config, apiBaseUrl: "https://sogrim-hesbon-app.vercel.app" },
     { access_token: "access" },
     async (url) => {
       requestUrl = url;
@@ -438,7 +438,7 @@ test("native account deletion uses the production API origin", async () => {
     }
   );
 
-  assert.equal(requestUrl, "https://sogrim-hashbon.vercel.app/api/account");
+  assert.equal(requestUrl, "https://sogrim-hesbon-app.vercel.app/api/account");
 });
 
 test("signing out removes the active account workspace from a shared device", () => {

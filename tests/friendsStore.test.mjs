@@ -25,7 +25,7 @@ const friendCode = "0123456789abcdefabcd";
 
 function accountConfig() {
   return {
-    publicUrl: "https://sogrim-hashbon.vercel.app/",
+    publicUrl: "https://sogrim-hesbon-app.vercel.app/",
     storage: {
       mode: "supabase",
       url: "https://demo.supabase.co",

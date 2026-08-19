@@ -75,7 +75,7 @@ test("large text preview is constrained to local QA URLs", () => {
     32
   );
   assert.equal(
-    localPreviewSize(new URL("https://sogrim-hashbon.vercel.app/?dynamic-type-preview=28")),
+    localPreviewSize(new URL("https://sogrim-hesbon-app.vercel.app/?dynamic-type-preview=28")),
     0
   );
 });

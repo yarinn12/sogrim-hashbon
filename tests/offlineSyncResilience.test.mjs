@@ -163,8 +163,8 @@ test("queued writes keep their snapshot and stop at an account boundary", async 
   const releaseSecondWrite = deferred();
   const writes = [];
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
 
@@ -471,8 +471,8 @@ test("a failed shared-event request restores the actual persisted snapshot and c
   const spaceId = "space-account-a";
   const spaceKey = "abcdefghijklmnopqrstuvwxyzABCDEF";
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   const durableState = deviceState("Durable");
@@ -554,8 +554,8 @@ test("a workspace failure after canonical persistence keeps the same expense que
   const storage = memoryStorage();
   const spaceId = "space-partial-account";
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   const durableState = deviceState("Durable");
@@ -725,8 +725,8 @@ test("state owned by another account is rejected before any local write", async 
   const previousFetch = globalThis.fetch;
   const storage = memoryStorage();
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   saveTestAccount(storage, {
@@ -774,8 +774,8 @@ test("legacy cleanup cannot rewrite stale state into the active account", async 
   const previousFetch = globalThis.fetch;
   const storage = memoryStorage();
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   saveTestAccount(storage, {
@@ -858,8 +858,8 @@ test("a valid signed-in account can still save while runtime config is offline",
   const previousFetch = globalThis.fetch;
   const storage = memoryStorage();
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   saveTestAccount(storage, {
@@ -909,8 +909,8 @@ test("a guest can still save without an account participant identity", async () 
   const previousFetch = globalThis.fetch;
   const storage = memoryStorage();
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   globalThis.window = {

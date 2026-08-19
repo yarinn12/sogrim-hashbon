@@ -8,7 +8,7 @@ import {
   getRuntimeConfig
 } from "../src/server/runtimeConfig.mjs";
 import {
-  LEGACY_PUBLIC_ORIGIN,
+  PUBLIC_ORIGIN,
   normalizePublicOrigin,
   runtimeApiOrigins
 } from "../src/domain/publicOrigin.mjs";
@@ -21,7 +21,7 @@ loadEnvFile(join(root, ".env.local"), buildEnv);
 loadEnvFile(join(root, ".env"), buildEnv);
 const publicAppOrigin = normalizePublicOrigin(
   buildEnv.APP_PUBLIC_URL,
-  LEGACY_PUBLIC_ORIGIN
+  PUBLIC_ORIGIN
 );
 const publicFiles = [
   "index.html",

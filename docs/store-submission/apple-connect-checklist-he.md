@@ -34,16 +34,16 @@
 
 ## 4. App Privacy
 
-- Privacy Policy URL: `https://sogrim-hashbon.vercel.app/privacy`.
-- User Privacy Choices URL: `https://sogrim-hashbon.vercel.app/account-deletion`.
+- Privacy Policy URL: `https://sogrim-hesbon-app.vercel.app/privacy`.
+- User Privacy Choices URL: `https://sogrim-hesbon-app.vercel.app/account-deletion`.
 - לסמן שהמידע מקושר לזהות, משמש ל-App Functionality ואינו משמש למעקב.
 - סוגי המידע המדויקים נמצאים ב-`apple-app-privacy-he.md` ותואמים ל-Privacy Manifest שבאפליקציה.
 
 ## 5. גרסה 3.38
 
 - Promotional Text, Description ו-Keywords: להעתיק מ-`app-store-metadata-he.json`.
-- Support URL: `https://sogrim-hashbon.vercel.app/support`.
-- Marketing URL: `https://sogrim-hashbon.vercel.app/`.
+- Support URL: `https://sogrim-hesbon-app.vercel.app/support`.
+- Marketing URL: `https://sogrim-hesbon-app.vercel.app/`.
 - Copyright: `2026 Yarin Izhak`.
 - להעלות את שלושת צילומי ה-6.9 אינץ' מתוך `docs/store-assets` לפי הסדר 01, 02, 03.
 - לבחור את Build 61 לאחר שהוא מסיים Processing ב-TestFlight.

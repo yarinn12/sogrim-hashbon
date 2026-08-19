@@ -115,7 +115,7 @@ async function nativeAndroidContext(build) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        publicUrl: "https://sogrim-hashbon.vercel.app",
+        publicUrl: "https://sogrim-hesbon-app.vercel.app",
         auth: { googleClientId: "" },
         updates: {
           android: {

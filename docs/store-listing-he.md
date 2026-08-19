@@ -42,12 +42,12 @@ Finance או Productivity.
 
 ## URLs לחנות
 
-- אתר: `https://sogrim-hashbon.vercel.app/`
-- פרטיות: `https://sogrim-hashbon.vercel.app/privacy`
-- תמיכה: `https://sogrim-hashbon.vercel.app/support`
-- תנאים: `https://sogrim-hashbon.vercel.app/terms`
-- נגישות: `https://sogrim-hashbon.vercel.app/accessibility`
-- מחיקת חשבון: `https://sogrim-hashbon.vercel.app/account-deletion`
+- אתר: `https://sogrim-hesbon-app.vercel.app/`
+- פרטיות: `https://sogrim-hesbon-app.vercel.app/privacy`
+- תמיכה: `https://sogrim-hesbon-app.vercel.app/support`
+- תנאים: `https://sogrim-hesbon-app.vercel.app/terms`
+- נגישות: `https://sogrim-hesbon-app.vercel.app/accessibility`
+- מחיקת חשבון: `https://sogrim-hesbon-app.vercel.app/account-deletion`
 
 ## הערות לבודק חנות
 

@@ -20,7 +20,7 @@
 | בניית Android | `assembleDebug testDebugUnitTest lintDebug` | עבר, 421 משימות |
 | עשן נייטיבי חוזר | `npm run qa:android-native` | עבר פונקציונלית; אזהרת ביצועים |
 | התקנה | APK נפרד `com.sogrimhashbon.app.debug` | עבר |
-| App Links בגרסת החנות | `sogrim-hashbon.vercel.app` | `verified` |
+| App Links בגרסת החנות | `sogrim-hesbon-app.vercel.app` | `verified` |
 | חזרה לרקע וחידוש | Home ואז פתיחה מחדש | עבר, ללא קריסה |
 | קריסות נייטיביות | `AndroidRuntime` / `FATAL EXCEPTION` | לא נמצאו |
 

@@ -86,7 +86,7 @@ test("client error sanitizer never keeps messages, stack traces or full paths", 
       message: "Failed for yarinn12@gmail.com at event-secret",
       stack: "https://private.example/path?invite=secret"
     },
-    filename: "https://sogrim-hashbon.vercel.app/src/app.mjs?event=secret",
+    filename: "https://sogrim-hesbon-app.vercel.app/src/app.mjs?event=secret",
     line: 123
   });
 
@@ -315,7 +315,7 @@ test("product metrics collapse identical client error storms without losing late
   const stop = startProductMetricTransport(harness.options);
   const repeatedError = {
     error: { name: "TypeError", message: "private content" },
-    filename: "https://sogrim-hashbon.vercel.app/src/app.mjs?event=private",
+    filename: "https://sogrim-hesbon-app.vercel.app/src/app.mjs?event=private",
     lineno: 123
   };
   harness.windowRef.emit("error", repeatedError);

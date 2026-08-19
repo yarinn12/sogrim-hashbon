@@ -7,7 +7,7 @@ import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mj
 
 const root = process.cwd();
 const androidOnly = process.argv.includes("--android");
-const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-hashbon.vercel.app").replace(/\/+$/, "");
+const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-hesbon-app.vercel.app").replace(/\/+$/, "");
 const androidStoreOrigin = String(
   process.env.STORE_ANDROID_ORIGIN ??
   process.env.STORE_PUBLIC_ORIGIN ??

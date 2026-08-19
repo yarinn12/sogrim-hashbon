@@ -24,7 +24,7 @@ test("notification targets open an exact event or settlement screen", () => {
   );
 
   const destination = buildNotificationDestination(
-    "https://sogrim-hashbon.vercel.app/current?private=value",
+    "https://sogrim-hesbon-app.vercel.app/current?private=value",
     { eventId: "event-123", view: "summary" }
   );
   const url = new URL(destination);
@@ -52,13 +52,13 @@ test("notification targets reject forged ids, views, and unrelated urls", () => 
   );
   assert.equal(
     notificationTargetFromUrl(
-      "https://sogrim-hashbon.vercel.app/?event=event-1"
+      "https://sogrim-hesbon-app.vercel.app/?event=event-1"
     ),
     null
   );
   assert.equal(
     buildNotificationDestination(
-      "https://sogrim-hashbon.vercel.app/",
+      "https://sogrim-hesbon-app.vercel.app/",
       { eventId: "", view: "event" }
     ),
     ""
@@ -67,7 +67,7 @@ test("notification targets reject forged ids, views, and unrelated urls", () => 
 
 test("notification urls are consumed without removing unrelated launch data", () => {
   const value =
-    "https://sogrim-hashbon.vercel.app/?openEvent=event-1&view=event&source=push&theme=dark#top";
+    "https://sogrim-hesbon-app.vercel.app/?openEvent=event-1&view=event&source=push&theme=dark#top";
   assert.deepEqual(notificationTargetFromUrl(value), {
     eventId: "event-1",
     view: "event"

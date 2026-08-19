@@ -15,8 +15,8 @@ test("runtime config always uses the latest stored account token", async () => {
   let configRequests = 0;
 
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
 
@@ -33,7 +33,7 @@ test("runtime config always uses the latest stored account token", async () => {
       ok: true,
       async json() {
         return {
-          publicUrl: "https://sogrim-hashbon.vercel.app",
+          publicUrl: "https://sogrim-hesbon-app.vercel.app",
           storage: {
             mode: "supabase",
             url: "https://project.supabase.co",
@@ -111,7 +111,7 @@ test("native runtime config identifies the Android app build without user data",
       ok: true,
       async json() {
         return {
-          publicUrl: "https://sogrim-hashbon.vercel.app",
+          publicUrl: "https://sogrim-hesbon-app.vercel.app",
           storage: { mode: "local" }
         };
       }
@@ -126,7 +126,7 @@ test("native runtime config identifies the Android app build without user data",
 
     assert.equal(
       requestedUrl,
-      "https://sogrim-hashbon.vercel.app/api/config"
+      "https://sogrim-hesbon-app.vercel.app/api/config"
     );
     assert.equal(requestedOptions.cache, "no-store");
     assert.deepEqual(requestedOptions.headers, {
@@ -200,7 +200,7 @@ test("native runtime config fails over to the recovery API without changing shar
     const config = await localStore.loadRuntimeConfig();
 
     assert.deepEqual(requestedUrls, [
-      "https://sogrim-hashbon.vercel.app/api/config",
+      "https://sogrim-hesbon-app.vercel.app/api/config",
       "https://sogrim-hashbon-recovery.onrender.com/api/config"
     ]);
     assert.equal(config.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
@@ -243,7 +243,7 @@ test("native recovery keeps the bundled public link while moving server calls", 
     Plugins: { App: { async getInfo() { return { build: "70", version: "3.51" }; } } }
   };
   globalThis.SogrimNativeRuntimeConfig = {
-    publicUrl: "https://sogrim-hashbon.vercel.app",
+    publicUrl: "https://sogrim-hesbon-app.vercel.app",
     storage: {
       mode: "supabase",
       url: "https://project.supabase.co",
@@ -273,7 +273,7 @@ test("native recovery keeps the bundled public link while moving server calls", 
       `../src/data/localStore.mjs?native-runtime-bootstrap-failover=${Date.now()}`
     );
     const initialConfig = await localStore.loadRuntimeConfig();
-    assert.equal(initialConfig.apiBaseUrl, "https://sogrim-hashbon.vercel.app");
+    assert.equal(initialConfig.apiBaseUrl, "https://sogrim-hesbon-app.vercel.app");
 
     for (let attempt = 0; attempt < 20 && requestedUrls.length < 2; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -282,11 +282,11 @@ test("native recovery keeps the bundled public link while moving server calls", 
     const recoveredConfig = await localStore.loadRuntimeConfig();
 
     assert.deepEqual(requestedUrls, [
-      "https://sogrim-hashbon.vercel.app/api/config",
+      "https://sogrim-hesbon-app.vercel.app/api/config",
       "https://sogrim-hashbon-recovery.onrender.com/api/config"
     ]);
     assert.equal(recoveredConfig.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
-    assert.equal(recoveredConfig.publicUrl, "https://sogrim-hashbon.vercel.app");
+    assert.equal(recoveredConfig.publicUrl, "https://sogrim-hesbon-app.vercel.app");
     assert.equal(recoveredConfig.storage.anonKey, "recovery-anon-key");
   } finally {
     restoreGlobal("window", previousWindow);
@@ -333,7 +333,7 @@ test("native runtime config uses the bundled bootstrap without blocking on the n
     }
   };
   globalThis.SogrimNativeRuntimeConfig = {
-    publicUrl: "https://sogrim-hashbon.vercel.app",
+    publicUrl: "https://sogrim-hesbon-app.vercel.app",
     auth: { googleClientId: "native-google-client" },
     storage: {
       mode: "supabase",
@@ -368,7 +368,7 @@ test("native runtime config uses the bundled bootstrap without blocking on the n
 
     assert.equal(config.storage.mode, "supabase");
     assert.equal(config.auth.googleClientId, "native-google-client");
-    assert.equal(config.apiBaseUrl, "https://sogrim-hashbon.vercel.app");
+    assert.equal(config.apiBaseUrl, "https://sogrim-hesbon-app.vercel.app");
     assert.equal(localStore.runtimeConfigUsesFallback(), false);
     assert.equal(configRequests, 1);
     releaseNetwork?.();
@@ -390,8 +390,8 @@ test("runtime config exposes when it had to use the local fallback", async () =>
   const previousLocalStorage = globalThis.localStorage;
   const previousFetch = globalThis.fetch;
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
 
@@ -429,8 +429,8 @@ test("runtime config retry replaces a temporary fallback without reloading the a
   const previousLocalStorage = globalThis.localStorage;
   const previousFetch = globalThis.fetch;
   const location = {
-    href: "https://sogrim-hashbon.vercel.app/",
-    hostname: "sogrim-hashbon.vercel.app",
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
     protocol: "https:"
   };
   let requests = 0;
@@ -449,7 +449,7 @@ test("runtime config retry replaces a temporary fallback without reloading the a
       ok: true,
       async json() {
         return {
-          publicUrl: "https://sogrim-hashbon.vercel.app",
+          publicUrl: "https://sogrim-hesbon-app.vercel.app",
           storage: {
             mode: "supabase",
             url: "https://project.supabase.co",

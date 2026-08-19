@@ -28,7 +28,7 @@ export function notificationTargetFromPayload(payload) {
 
 export function notificationTargetFromUrl(value) {
   try {
-    const url = new URL(value, "https://sogrim-hashbon.vercel.app/");
+    const url = new URL(value, "https://sogrim-hesbon-app.vercel.app/");
     if (!url.searchParams.has(NOTIFICATION_EVENT_PARAM)) return null;
 
     return normalizeNotificationTarget({

@@ -29,13 +29,13 @@ test("an expired cloud token refreshes once and retries with the same account", 
 
   globalThis.window = {
     localStorage: storage,
-    location: { href: "https://sogrim-hashbon.vercel.app/" },
+    location: { href: "https://sogrim-hesbon-app.vercel.app/" },
     addEventListener() {},
     dispatchEvent() {}
   };
   globalThis.location = {
     protocol: "https:",
-    hostname: "sogrim-hashbon.vercel.app"
+    hostname: "sogrim-hesbon-app.vercel.app"
   };
   globalThis.localStorage = storage;
 
@@ -124,13 +124,13 @@ test("an account workspace persists the signed-in participant instead of the fir
 
   globalThis.window = {
     localStorage: storage,
-    location: { href: "https://sogrim-hashbon.vercel.app/" },
+    location: { href: "https://sogrim-hesbon-app.vercel.app/" },
     addEventListener() {},
     dispatchEvent() {}
   };
   globalThis.location = {
     protocol: "https:",
-    hostname: "sogrim-hashbon.vercel.app"
+    hostname: "sogrim-hesbon-app.vercel.app"
   };
   globalThis.localStorage = storage;
 

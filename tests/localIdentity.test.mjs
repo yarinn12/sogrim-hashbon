@@ -332,7 +332,7 @@ function withLocalStorage(callback) {
   const previousWindow = globalThis.window;
   globalThis.window = {
     localStorage: new MemoryStorage(),
-    location: { href: "https://sogrim-hashbon.vercel.app/" }
+    location: { href: "https://sogrim-hesbon-app.vercel.app/" }
   };
 
   try {

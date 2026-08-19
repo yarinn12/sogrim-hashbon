@@ -28,7 +28,7 @@ const anonKey =
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
 assertLiveQaTarget();
 const apiBaseUrl = String(
-  process.env.PUBLIC_APP_URL || "https://sogrim-hashbon.vercel.app"
+  process.env.PUBLIC_APP_URL || "https://sogrim-hesbon-app.vercel.app"
 ).replace(/\/+$/, "");
 const suffix = `${Date.now()}-${randomBytes(4).toString("hex")}`;
 const password = `${randomBytes(18).toString("base64url")}Aa1!`;
@@ -150,7 +150,7 @@ try {
   assert.ok(invitation, "The recipient did not receive the event invitation");
   assert.match(
     invitation.actionUrl,
-    /^https:\/\/sogrim-hashbon\.vercel\.app\/i\/[A-Za-z0-9_-]+\/t\/[A-Za-z0-9_-]{32,128}$/
+    /^https:\/\/sogrim-hesbon-app\.vercel\.app\/i\/[A-Za-z0-9_-]+\/t\/[A-Za-z0-9_-]{32,128}$/
   );
   assert.doesNotMatch(invitation.actionUrl, /space=|key=|sharedSpace/);
   const inviteEventId = parseInviteEventId(invitation.actionUrl);

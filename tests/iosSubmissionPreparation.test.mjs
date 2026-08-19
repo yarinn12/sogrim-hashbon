@@ -80,7 +80,7 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(submissionCheck, /sign-in-with-apple-iw\.png/);
   assert.match(artifactCheck, /codesign/);
   assert.match(artifactCheck, /embedded\.mobileprovision/);
-  assert.match(artifactCheck, /applinks:sogrim-hashbon\.vercel\.app/);
+  assert.match(artifactCheck, /applinks:sogrim-hesbon-app\.vercel\.app/);
   assert.match(artifactCheck, /release-manifest\.json/);
   assert.match(liveReview, /external\?\.apple === true/);
   assert.match(liveReview, /apple-app-site-association/);

@@ -14,7 +14,7 @@ services:
       - key: APP_SPACE_ID
         value: default
       - key: APP_PUBLIC_URL
-        value: https://sogrim-hashbon.vercel.app
+        value: https://sogrim-hesbon-app.vercel.app
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

@@ -35,7 +35,7 @@ jobs:
           set -o pipefail
           node scripts/verify-production-availability.mjs | tee production-availability.log
         env:
-          PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
+          PRODUCTION_BASE_URL: https://sogrim-hesbon-app.vercel.app
 
       - name: Record strict CDN diagnostics
         continue-on-error: true
@@ -43,7 +43,7 @@ jobs:
           set -o pipefail
           node scripts/verify-production-availability.mjs --strict | tee production-cdn.log
         env:
-          PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
+          PRODUCTION_BASE_URL: https://sogrim-hesbon-app.vercel.app
 
       - name: Verify deployment failover parity
         id: parity

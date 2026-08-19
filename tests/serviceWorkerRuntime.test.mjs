@@ -41,7 +41,7 @@ async function createWorker({
 
   vm.runInNewContext(source, {
     self: {
-      location: { origin: "https://sogrim-hashbon.vercel.app" },
+      location: { origin: "https://sogrim-hesbon-app.vercel.app" },
       clients: { claim: async () => {} },
       skipWaiting: async () => {},
       addEventListener(type, listener) {
@@ -79,7 +79,7 @@ test("service worker bypasses cross-origin resources and API calls", async () =>
     undefined
   );
   assert.equal(
-    worker.dispatchFetch(new Request("https://sogrim-hashbon.vercel.app/api/config")),
+    worker.dispatchFetch(new Request("https://sogrim-hesbon-app.vercel.app/api/config")),
     undefined
   );
   assert.equal(worker.fetchCalls.length, 0);
@@ -95,7 +95,7 @@ test("service worker never stores range responses used by the intro video", asyn
       })
   });
   const response = await worker.dispatchFetch(
-    new Request("https://sogrim-hashbon.vercel.app/assets/sogrim-logo-intro.mp4", {
+    new Request("https://sogrim-hesbon-app.vercel.app/assets/sogrim-logo-intro.mp4", {
       headers: { range: "bytes=0-6" }
     })
   );
@@ -113,7 +113,7 @@ test("a cache write failure never hides a valid network response", async () => {
     }
   });
   const response = await worker.dispatchFetch(
-    new Request("https://sogrim-hashbon.vercel.app/src/app.mjs")
+    new Request("https://sogrim-hesbon-app.vercel.app/src/app.mjs")
   );
 
   assert.equal(response.status, 200);
@@ -126,8 +126,8 @@ test("private query and compact invites use no-store and fall back to the shell 
     fetchImpl: () => Promise.reject(new Error("offline"))
   });
   const privateUrls = [
-    "https://sogrim-hashbon.vercel.app/?event=e1&key=" + "a".repeat(40),
-    "https://sogrim-hashbon.vercel.app/i/e1/space-safe/" + "b".repeat(40)
+    "https://sogrim-hesbon-app.vercel.app/?event=e1&key=" + "a".repeat(40),
+    "https://sogrim-hesbon-app.vercel.app/i/e1/space-safe/" + "b".repeat(40)
   ];
 
   for (const url of privateUrls) {

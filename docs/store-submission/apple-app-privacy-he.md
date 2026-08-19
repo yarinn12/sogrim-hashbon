@@ -18,9 +18,9 @@ Name, Email Address, User ID, Other Financial Info ו-Other User Content משמ�
 
 ## כתובות
 
-- Privacy Policy: `https://sogrim-hashbon.vercel.app/privacy`
-- User Privacy Choices / Account deletion: `https://sogrim-hashbon.vercel.app/account-deletion`
-- Support URL: `https://sogrim-hashbon.vercel.app/support`
-- Accessibility statement: `https://sogrim-hashbon.vercel.app/accessibility`
+- Privacy Policy: `https://sogrim-hesbon-app.vercel.app/privacy`
+- User Privacy Choices / Account deletion: `https://sogrim-hesbon-app.vercel.app/account-deletion`
+- Support URL: `https://sogrim-hesbon-app.vercel.app/support`
+- Accessibility statement: `https://sogrim-hesbon-app.vercel.app/accessibility`
 
 הקובץ `ios/App/App/PrivacyInfo.xcprivacy` מכיל את אותה הצהרה בתוך חבילת האפליקציה.

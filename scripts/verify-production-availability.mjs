@@ -1,4 +1,4 @@
-const DEFAULT_BASE_URL = "https://sogrim-hashbon.vercel.app";
+const DEFAULT_BASE_URL = "https://sogrim-hesbon-app.vercel.app";
 const REQUEST_TIMEOUT_MS = 10_000;
 const STRICT = process.argv.includes("--strict");
 const ALLOW_ORIGIN_BACKED_SHELL = process.argv.includes(

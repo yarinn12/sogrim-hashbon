@@ -132,9 +132,9 @@ function verifyMergedManifest(manifest, expected) {
     /android:allowBackup="false"/,
     /android:usesCleartextTraffic="false"/,
     /android:name="com\.sogrimhashbon\.app\.MainActivity"[\s\S]*?android:exported="true"/,
-    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hashbon\.vercel\.app"[\s\S]*?android:pathPrefix="\/i\/"/,
-    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hashbon\.vercel\.app"[\s\S]*?android:pathPrefix="\/r\/"/,
-    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hashbon\.vercel\.app"[\s\S]*?android:pathPrefix="\/auth\/callback"/
+    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hesbon-app\.vercel\.app"[\s\S]*?android:pathPrefix="\/i\/"/,
+    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hesbon-app\.vercel\.app"[\s\S]*?android:pathPrefix="\/r\/"/,
+    /android:autoVerify="true"[\s\S]*?android:host="sogrim-hesbon-app\.vercel\.app"[\s\S]*?android:pathPrefix="\/auth\/callback"/
   ];
   if (requiredPatterns.some((pattern) => !pattern.test(manifest))) {
     throw new Error("Android merged release manifest is missing a required store or security setting.");

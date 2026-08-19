@@ -18,7 +18,7 @@ const template = `<!doctype html>
 
 test("invite metadata gives compact cloud links a trustworthy preview", () => {
   const metadata = invitePageMetadata(
-    "https://sogrim-hashbon.vercel.app/?event=event-1&space=space-1&key=private-key"
+    "https://sogrim-hesbon-app.vercel.app/?event=event-1&space=space-1&key=private-key"
   );
 
   assert.equal(metadata.title, "הזמנה לאירוע | סוגרים חשבון");
@@ -26,7 +26,7 @@ test("invite metadata gives compact cloud links a trustworthy preview", () => {
 });
 
 test("invite metadata uses the event name from a safe snapshot", () => {
-  const url = new URL("https://sogrim-hashbon.vercel.app/");
+  const url = new URL("https://sogrim-hesbon-app.vercel.app/");
   url.searchParams.set("event", "event-1");
   url.searchParams.set("invite", JSON.stringify({
     version: 2,
@@ -48,7 +48,7 @@ test("invite metadata uses the event name from a safe snapshot", () => {
 });
 
 test("ordinary pages keep the default document metadata", () => {
-  assert.equal(renderInviteDocument(template, "https://sogrim-hashbon.vercel.app/"), template);
+  assert.equal(renderInviteDocument(template, "https://sogrim-hesbon-app.vercel.app/"), template);
 });
 
 test("compact invite metadata uses the app logo without exposing its access key", () => {
@@ -57,22 +57,22 @@ test("compact invite metadata uses the app logo without exposing its access key"
 <meta name="description" content="Default" />
 <meta property="og:title" content="Default" />
 <meta property="og:description" content="Default" />
-<meta property="og:url" content="https://sogrim-hashbon.vercel.app/" />
-<meta property="og:image" content="https://sogrim-hashbon.vercel.app/sogrim-home-hero.png" />
-<meta property="og:image:secure_url" content="https://sogrim-hashbon.vercel.app/sogrim-home-hero.png" />
+<meta property="og:url" content="https://sogrim-hesbon-app.vercel.app/" />
+<meta property="og:image" content="https://sogrim-hesbon-app.vercel.app/sogrim-home-hero.png" />
+<meta property="og:image:secure_url" content="https://sogrim-hesbon-app.vercel.app/sogrim-home-hero.png" />
 <meta property="og:image:width" content="1672" />
 <meta property="og:image:height" content="941" />
 <meta property="og:image:alt" content="Default" />
 <meta name="twitter:title" content="Default" />
 <meta name="twitter:description" content="Default" />
-<meta name="twitter:image" content="https://sogrim-hashbon.vercel.app/sogrim-home-hero.png" />`;
-  const url = "https://sogrim-hashbon.vercel.app/i/event-1/space-party/abcdefghijklmnopqrstuvwxyzABCDEF";
+<meta name="twitter:image" content="https://sogrim-hesbon-app.vercel.app/sogrim-home-hero.png" />`;
+  const url = "https://sogrim-hesbon-app.vercel.app/i/event-1/space-party/abcdefghijklmnopqrstuvwxyzABCDEF";
   const document = renderInviteDocument(socialTemplate, url);
 
-  assert.match(document, /property="og:image" content="https:\/\/sogrim-hashbon\.vercel\.app\/sogrim-share-logo\.png"/);
+  assert.match(document, /property="og:image" content="https:\/\/sogrim-hesbon-app\.vercel\.app\/sogrim-share-logo\.png"/);
   assert.match(document, /property="og:image:width" content="1200"/);
   assert.match(document, /property="og:image:height" content="630"/);
-  assert.match(document, /property="og:url" content="https:\/\/sogrim-hashbon\.vercel\.app\/"/);
+  assert.match(document, /property="og:url" content="https:\/\/sogrim-hesbon-app\.vercel\.app\/"/);
   assert.doesNotMatch(document, /abcdefghijklmnopqrstuvwxyzABCDEF/);
 });
 

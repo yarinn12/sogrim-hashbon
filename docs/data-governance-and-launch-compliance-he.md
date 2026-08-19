@@ -71,7 +71,7 @@
 
 - Data Safety: לסמן Name, Email, User IDs, Other financial info, Other user-generated content, App interactions, Push token/device ID, וכן Contacts עבור שם יחיד שנבחר אופציונלית באמצעות בוחר המערכת.
 - Ads: לסמן שהאפליקציה מכילה מודעות אם AdMob ארוז בגרסה, גם אם ההצגה נשלטת מרחוק.
-- Account deletion URL: `https://sogrim-hashbon.vercel.app/account-deletion`.
+- Account deletion URL: `https://sogrim-hesbon-app.vercel.app/account-deletion`.
 - Target audience: לא לבחור Kids/ילדים; להשיב לפי קהל היעד האמיתי.
 - App access: למסור חשבון Review פעיל והוראות לאירוע בדיקה.
 - לעדכן את ההצהרות בכל שינוי ב-SDK, בהרשאות או בסוגי המידע.

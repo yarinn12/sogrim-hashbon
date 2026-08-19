@@ -100,7 +100,7 @@ test("server binds containers publicly while keeping local development private",
 test("public deployments block legacy shared-state mutation endpoints", async () => {
   const previousPublicUrl = process.env.APP_PUBLIC_URL;
   const previousVercel = process.env.VERCEL;
-  process.env.APP_PUBLIC_URL = "https://sogrim-hashbon.vercel.app";
+  process.env.APP_PUBLIC_URL = "https://sogrim-hesbon-app.vercel.app";
   process.env.VERCEL = "1";
   const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
 
@@ -112,7 +112,7 @@ test("public deployments block legacy shared-state mutation endpoints", async ()
   try {
     const { port } = server.address();
     const response = await fetch(`http://127.0.0.1:${port}/api/state`, {
-      headers: { host: "sogrim-hashbon.vercel.app", "x-forwarded-proto": "https" }
+      headers: { host: "sogrim-hesbon-app.vercel.app", "x-forwarded-proto": "https" }
     });
     assert.equal(response.status, 503);
     assert.equal(response.headers.get("referrer-policy"), "no-referrer");

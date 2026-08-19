@@ -7,7 +7,7 @@ import { loadEnvFile } from "../src/server/envFile.mjs";
 loadEnvFile(".env.local");
 loadEnvFile(".env");
 
-const publicUrl = "https://sogrim-hashbon.vercel.app";
+const publicUrl = "https://sogrim-hesbon-app.vercel.app";
 const bundleId = "com.sogrimhashbon.app";
 const supabaseUrl = String(process.env.SUPABASE_URL ?? "").replace(/\/+$/, "");
 const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || "";

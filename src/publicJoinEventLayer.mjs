@@ -283,7 +283,7 @@ function renderJoinPanel() {
           autocomplete="off"
           spellcheck="false"
           dir="ltr"
-          placeholder="https://sogrim-hashbon.vercel.app/i/…"
+          placeholder="https://sogrim-hesbon-app.vercel.app/i/…"
         />
       </label>
       <p class="field-error" data-public-join-event-error hidden></p>

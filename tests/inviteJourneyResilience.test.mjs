@@ -23,7 +23,7 @@ import {
 const SPACE_ID = "space-abc123";
 const SPACE_KEY = "abcdefghijklmnopqrstuvwxyz0123456789ABCD";
 const INVITE_TOKEN = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
-const ORIGIN = "https://sogrim-hashbon.vercel.app/";
+const ORIGIN = "https://sogrim-hesbon-app.vercel.app/";
 
 function shareState() {
   return {
@@ -292,7 +292,7 @@ test("a pending invite survives an auth redirect and is validated on the way bac
 
   rememberPendingInviteUrl(inviteUrl, storage);
   assert.equal(store.get(PENDING_INVITE_URL_STORAGE_KEY), inviteUrl);
-  assert.equal(pendingInviteUrl("https://sogrim-hashbon.vercel.app/", storage), inviteUrl);
+  assert.equal(pendingInviteUrl("https://sogrim-hesbon-app.vercel.app/", storage), inviteUrl);
 
   clearPendingInviteUrl(storage);
   assert.equal(store.has(PENDING_INVITE_URL_STORAGE_KEY), false);
@@ -347,7 +347,7 @@ test("a URL without invite evidence is never remembered as pending", () => {
     removeItem: (key) => store.delete(key)
   };
 
-  assert.equal(rememberPendingInviteUrl("https://sogrim-hashbon.vercel.app/", storage), null);
+  assert.equal(rememberPendingInviteUrl("https://sogrim-hesbon-app.vercel.app/", storage), null);
   assert.equal(store.size, 0);
 });
 
@@ -427,7 +427,7 @@ test("invite previews arrive locked so a joiner cannot edit before syncing", () 
 test("malformed invite payloads are rejected instead of merged", () => {
   const state = shareState();
 
-  assert.equal(parseInviteSnapshot("https://sogrim-hashbon.vercel.app/?invite=%7Bbroken"), null);
+  assert.equal(parseInviteSnapshot("https://sogrim-hesbon-app.vercel.app/?invite=%7Bbroken"), null);
   assert.equal(parseInviteEventId("not a url"), null);
   assert.equal(mergeInviteSnapshotIntoState(state, null), state);
   assert.throws(() => buildEventInviteUrl(ORIGIN, "../etc/passwd"), TypeError);

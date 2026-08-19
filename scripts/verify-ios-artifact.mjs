@@ -42,7 +42,7 @@ try {
   if (applicationIdentifier !== `${expectedTeamId}.com.sogrimhashbon.app`) {
     throw new Error("Signed IPA application identifier does not match the Apple Team ID.");
   }
-  if (!entitlements.includes("applinks:sogrim-hashbon.vercel.app")) {
+  if (!entitlements.includes("applinks:sogrim-hesbon-app.vercel.app")) {
     throw new Error("Signed IPA is missing the production Associated Domains entitlement.");
   }
   if (!entitlements.includes("com.apple.developer.applesignin")) {

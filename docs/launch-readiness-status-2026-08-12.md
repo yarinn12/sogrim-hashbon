@@ -39,7 +39,7 @@
 1. Vercel currently blocks new deployments because the team exceeded its fair-use limit. The live deployment still serves the app and APIs, but the prepared static CDN fix cannot be promoted yet.
 2. The public app shell and private invite shell are still origin-backed. Eight production boundaries pass, while the strict CDN gate intentionally fails these two boundaries.
 3. An always-on second server host is not active. The free Render recovery host can provide a manually warmed recovery path after its production secrets and invite journey are verified, but it does not meet the instant-failover requirement.
-4. Public links still use the provider-owned `sogrim-hashbon.vercel.app` host. A stable custom domain should be purchased from an independent registrar and placed in front of both hosts.
+4. Public links still use the provider-owned `sogrim-hesbon-app.vercel.app` host. A stable custom domain should be purchased from an independent registrar and placed in front of both hosts.
 5. After the remaining 4 closed-test days, request Production access, wait for release 70 and its pre-launch report to clear review, then complete one smoke pass from the Play-delivered build before staged Production rollout.
 6. Apple submission remains blocked by Apple Developer enrollment, Sign in with Apple, the Apple Team ID association and a signed Xcode 26+ archive from macOS. The latest Apple Developer email received on 2026-08-12 says the enrollment was withdrawn, so there is no active membership to build against yet.
 

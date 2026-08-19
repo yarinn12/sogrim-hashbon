@@ -17,7 +17,7 @@ test("buildEventInviteUrl creates a clean event invite URL", () => {
 });
 
 test("buildEventInviteUrl can carry an event snapshot for a new visitor", () => {
-  const url = buildEventInviteUrl("https://sogrim-hashbon.vercel.app/", "event-123", {
+  const url = buildEventInviteUrl("https://sogrim-hesbon-app.vercel.app/", "event-123", {
     version: 1,
     participants: [{ id: "yarin", displayName: "Yarin Cohen", kind: "user" }],
     groups: [],
@@ -39,7 +39,7 @@ test("buildEventInviteUrl can carry an event snapshot for a new visitor", () => 
 });
 
 test("invite snapshots cannot claim that an offline name is a verified account", () => {
-  const url = buildEventInviteUrl("https://sogrim-hashbon.vercel.app/", "event-123", {
+  const url = buildEventInviteUrl("https://sogrim-hesbon-app.vercel.app/", "event-123", {
     version: 1,
     participants: [
       {
@@ -64,7 +64,7 @@ test("invite snapshots cannot claim that an offline name is a verified account",
 
 test("buildEventInviteUrl can carry a shared cloud space for invitees", () => {
   const url = buildEventInviteUrl(
-    "https://sogrim-hashbon.vercel.app/dashboard?old=1",
+    "https://sogrim-hesbon-app.vercel.app/dashboard?old=1",
     "event-123",
     null,
     {
@@ -83,7 +83,7 @@ test("buildEventInviteUrl can carry a shared cloud space for invitees", () => {
 
 test("buildEventInviteUrl creates a compact cloud invite without a snapshot", () => {
   const url = buildEventInviteUrl(
-    "https://sogrim-hashbon.vercel.app/?old=1",
+    "https://sogrim-hesbon-app.vercel.app/?old=1",
     "event-123",
     {
       version: 2,
@@ -100,7 +100,7 @@ test("buildEventInviteUrl creates a compact cloud invite without a snapshot", ()
 
   assert.equal(
     url,
-    "https://sogrim-hashbon.vercel.app/i/event-123/space-friends-night/abcdefghijklmnopqrstuvwxyzABCDEF"
+    "https://sogrim-hesbon-app.vercel.app/i/event-123/space-friends-night/abcdefghijklmnopqrstuvwxyzABCDEF"
   );
   assert.equal(parseInviteEventId(url), "event-123");
   assert.equal(parseInviteSnapshot(url), null);
@@ -109,7 +109,7 @@ test("buildEventInviteUrl creates a compact cloud invite without a snapshot", ()
 test("open event invites carry only a revocable token", () => {
   const token = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
   const url = buildEventInviteUrl(
-    "https://sogrim-hashbon.vercel.app/dashboard?old=1",
+    "https://sogrim-hesbon-app.vercel.app/dashboard?old=1",
     "event-123",
     {
       version: 2,
@@ -154,7 +154,7 @@ test("event invites carry a valid referral code in regular and compact links", (
   const referralCode = "0123456789abcdefabcd";
   const regular = new URL(
     buildEventInviteUrl(
-      "https://sogrim-hashbon.vercel.app/",
+      "https://sogrim-hesbon-app.vercel.app/",
       "event-123",
       null,
       { referralCode }
@@ -162,7 +162,7 @@ test("event invites carry a valid referral code in regular and compact links", (
   );
   const compact = new URL(
     buildEventInviteUrl(
-      "https://sogrim-hashbon.vercel.app/",
+      "https://sogrim-hesbon-app.vercel.app/",
       "event-123",
       null,
       {
@@ -182,7 +182,7 @@ test("event invites carry a valid referral code in regular and compact links", (
 test("event invites ignore malformed referral codes", () => {
   const url = new URL(
     buildEventInviteUrl(
-      "https://sogrim-hashbon.vercel.app/",
+      "https://sogrim-hesbon-app.vercel.app/",
       "event-123",
       null,
       { referralCode: "not-a-private-code" }

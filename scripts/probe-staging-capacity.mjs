@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { loadEnvFile } from "../src/server/envFile.mjs";
-import { LEGACY_PUBLIC_ORIGIN } from "../src/domain/publicOrigin.mjs";
+import { PUBLIC_ORIGIN } from "../src/domain/publicOrigin.mjs";
 
 const root = process.cwd();
 loadEnvFile(resolve(root, ".env.local"));
@@ -139,7 +139,7 @@ function requireStagingUrl(value) {
   assert(url.protocol === "https:" || isLocalHost(url.hostname), "Staging must use HTTPS");
 
   const blockedHosts = new Set([
-    new URL(LEGACY_PUBLIC_ORIGIN).hostname,
+    new URL(PUBLIC_ORIGIN).hostname,
     hostnameFrom(process.env.PRODUCTION_BASE_URL),
     hostnameFrom(process.env.APP_PUBLIC_URL)
   ].filter(Boolean));

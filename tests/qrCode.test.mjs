@@ -8,7 +8,7 @@ import {
 } from "../src/domain/qrCode.mjs";
 
 test("createQrMatrix renders a deterministic QR matrix with finder patterns", () => {
-  const url = "https://sogrim-hashbon.vercel.app/?event=event-123";
+  const url = "https://sogrim-hesbon-app.vercel.app/?event=event-123";
   const first = createQrMatrix(url);
   const second = createQrMatrix(url);
 
@@ -22,7 +22,7 @@ test("createQrMatrix renders a deterministic QR matrix with finder patterns", ()
 });
 
 test("createQrSvg returns a safe standalone SVG for an invite link", () => {
-  const svg = createQrSvg("https://sogrim-hashbon.vercel.app/?event=event-123", {
+  const svg = createQrSvg("https://sogrim-hesbon-app.vercel.app/?event=event-123", {
     cellSize: 3,
     quietZone: 3
   });
@@ -36,12 +36,12 @@ test("createQrSvg returns a safe standalone SVG for an invite link", () => {
 
 test("QR uses a compact cloud invite while copied links keep their full fallback", () => {
   const fullInvite =
-    "https://sogrim-hashbon.vercel.app/?event=event-1&space=space-1&key=abcdefghijklmnopqrstuvwxyzABCDEF&invite=large-snapshot&ref=0123456789abcdefabcd";
+    "https://sogrim-hesbon-app.vercel.app/?event=event-1&space=space-1&key=abcdefghijklmnopqrstuvwxyzABCDEF&invite=large-snapshot&ref=0123456789abcdefabcd";
   const compactInvite = compactQrInviteUrl(fullInvite);
 
   assert.equal(
     compactInvite,
-    "https://sogrim-hashbon.vercel.app/i/event-1/space-1/abcdefghijklmnopqrstuvwxyzABCDEF?ref=0123456789abcdefabcd"
+    "https://sogrim-hesbon-app.vercel.app/i/event-1/space-1/abcdefghijklmnopqrstuvwxyzABCDEF?ref=0123456789abcdefabcd"
   );
   assert.doesNotMatch(compactInvite, /invite=/);
   assert.ok(compactInvite.length < fullInvite.length);
@@ -49,7 +49,7 @@ test("QR uses a compact cloud invite while copied links keep their full fallback
 
 test("QR keeps the snapshot when no cloud access is available", () => {
   const snapshotInvite =
-    "https://sogrim-hashbon.vercel.app/?event=event-1&invite=offline-snapshot";
+    "https://sogrim-hesbon-app.vercel.app/?event=event-1&invite=offline-snapshot";
 
   assert.equal(compactQrInviteUrl(snapshotInvite), snapshotInvite);
 });

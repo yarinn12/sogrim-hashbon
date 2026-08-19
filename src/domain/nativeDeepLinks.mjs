@@ -2,12 +2,12 @@ import { parseCompactInviteUrl } from "./compactInvite.mjs";
 import { parseInviteEventId, parseInviteToken } from "./inviteLinks.mjs";
 import {
   allowedPublicHosts,
-  LEGACY_PUBLIC_ORIGIN,
+  PUBLIC_ORIGIN,
   runtimePublicOrigin
 } from "./publicOrigin.mjs";
 import { normalizeReferralCode } from "./referralCodes.mjs";
 
-export const NATIVE_PUBLIC_HOST = new URL(LEGACY_PUBLIC_ORIGIN).hostname;
+export const NATIVE_PUBLIC_HOST = new URL(PUBLIC_ORIGIN).hostname;
 export const NATIVE_AUTH_PATH = "/auth/callback";
 
 export function nativePublicOrigin(config) {

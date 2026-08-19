@@ -27,7 +27,7 @@
 3. להעלות את `android/app/build/outputs/bundle/release/app-release.aab`.
 4. להעתיק מ-Play Console את טביעת ה-SHA-256 של App Signing ולהוסיף אותה לצד טביעת Upload Key בקובץ `.well-known/assetlinks.json`.
 5. למלא את Data Safety לפי `docs/store-submission/google-play-data-safety-he.md`.
-6. להזין את כתובת מחיקת החשבון: `https://sogrim-hashbon.vercel.app/account-deletion`.
+6. להזין את כתובת מחיקת החשבון: `https://sogrim-hesbon-app.vercel.app/account-deletion`.
 7. אם זה חשבון אישי שנפתח אחרי 13 בנובמבר 2023, להריץ Closed Test עם 12 בודקים במשך 14 ימים רצופים.
 
 ## פעולות שחייבות Apple Developer ומחשב Mac

@@ -43,7 +43,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="sogrim-hashbon.vercel.app"
+                    android:host="sogrim-hesbon-app.vercel.app"
                     android:pathPrefix="/i/" />
             </intent-filter>
 
@@ -53,7 +53,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="sogrim-hashbon.vercel.app"
+                    android:host="sogrim-hesbon-app.vercel.app"
                     android:pathPrefix="/r/" />
             </intent-filter>
 
@@ -63,7 +63,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="https"
-                    android:host="sogrim-hashbon.vercel.app"
+                    android:host="sogrim-hesbon-app.vercel.app"
                     android:pathPrefix="/auth/callback" />
             </intent-filter>
         </activity>

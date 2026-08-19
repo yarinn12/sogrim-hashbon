@@ -177,7 +177,7 @@ test("shared links have a branded social preview", async () => {
 
   assert.match(index, /name="description"/);
   assert.match(index, /property="og:title"/);
-  assert.match(index, /property="og:image" content="https:\/\/sogrim-hashbon\.vercel\.app\/sogrim-share-logo\.png"/);
+  assert.match(index, /property="og:image" content="https:\/\/sogrim-hesbon-app\.vercel\.app\/sogrim-share-logo\.png"/);
   assert.match(index, /name="twitter:card" content="summary_large_image"/);
 });
 

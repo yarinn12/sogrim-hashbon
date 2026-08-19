@@ -16,7 +16,7 @@ test("public join layer adds existing event entry points", async () => {
   assert.match(layer, /name="joinEventLink"/);
   assert.match(layer, /type="url"/);
   assert.match(layer, /inputmode="url"/);
-  assert.match(layer, /placeholder="https:\/\/sogrim-hashbon\.vercel\.app\/i\/…"/);
+  assert.match(layer, /placeholder="https:\/\/sogrim-hesbon-app\.vercel\.app\/i\/…"/);
   assert.match(layer, /rememberRequestedEventMode/);
   assert.match(layer, /applyNewEventMode/);
   assert.match(layer, /scheduleJoinEventEnhancement/);

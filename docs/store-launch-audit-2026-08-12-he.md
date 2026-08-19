@@ -4,7 +4,7 @@
 
 ## חסמי P0 לפני שליחה לחנויות
 
-- [x] `https://sogrim-hashbon.vercel.app` ושרת הגיבוי מחזירים `200` עבור האפליקציה, דפי המדיניות וקבצי השיוך. פריסות Vercel חדשות עדיין חסומות ברמת החשבון ולכן Render נשמר כנתיב התאוששות.
+- [x] `https://sogrim-hesbon-app.vercel.app` ושרת הגיבוי מחזירים `200` עבור האפליקציה, דפי המדיניות וקבצי השיוך. פריסות Vercel חדשות עדיין חסומות ברמת החשבון ולכן Render נשמר כנתיב התאוששות.
 - [x] Android AAB נבנה מחדש מהמקור המאוחד ב-15 באוגוסט 2026 ומאומת כגרסה `3.48 (71)`. פרטי הגרסה, הגודל, החתימה, SHA-256 וטביעת 539 קבצי המקור שמורים ב-`android/app/build/outputs/bundle/release/release-manifest.json`.
 - [x] Google Play מציג 12 בודקים שהביעו הסכמה ו-10 ימי בדיקה רצופים נכון ל-13 באוגוסט 2026. נותרו 4 ימים לפני שניתן לבקש גישה ל-Production.
 - [ ] להשלים Apple Developer Team ולהגדיר `APPLE_TEAM_ID`. אין Team ID ב-`ios/App/App.xcodeproj/project.pbxproj`.

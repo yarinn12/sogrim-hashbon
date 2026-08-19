@@ -85,7 +85,7 @@ check("No Android fatal exception is logged", !/FATAL EXCEPTION|Process:\s*com\.
 let releaseAppLinks = "not-installed";
 if (packageInstalled(releasePackageName)) {
   const appLinks = adbRun(["-s", device, "shell", "pm", "get-app-links", releasePackageName]);
-  releaseAppLinks = /sogrim-hashbon\.vercel\.app:\s*verified/.test(appLinks) ? "verified" : "unverified";
+  releaseAppLinks = /sogrim-hesbon-app\.vercel\.app:\s*verified/.test(appLinks) ? "verified" : "unverified";
   if (requireReleaseAppLinks) {
     check("Installed release package has verified App Links", releaseAppLinks === "verified");
   } else if (releaseAppLinks !== "verified") {

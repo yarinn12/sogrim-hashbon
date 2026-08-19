@@ -2,13 +2,13 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
 import {
-  LEGACY_PUBLIC_ORIGIN,
+  PUBLIC_ORIGIN,
   normalizePublicOrigin
 } from "../src/domain/publicOrigin.mjs";
 
 const origin = normalizePublicOrigin(
   process.env.APP_PUBLIC_URL || process.env.PUBLIC_APP_ORIGIN,
-  LEGACY_PUBLIC_ORIGIN
+  PUBLIC_ORIGIN
 );
 const host = new URL(origin).hostname;
 const includeIos = process.argv.includes("--ios");

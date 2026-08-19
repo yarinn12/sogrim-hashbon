@@ -34,7 +34,7 @@ npm.cmd run qa:staging-load
 - `STAGING_LOAD_CONCURRENCY` בטווח 1 עד 100.
 - `STAGING_LOAD_TIMEOUT_MS` בטווח 1,000 עד 30,000.
 
-הסקריפט מסרב לפעול מול `sogrim-hashbon.vercel.app`, מול `APP_PUBLIC_URL`,
+הסקריפט מסרב לפעול מול `sogrim-hesbon-app.vercel.app`, מול `APP_PUBLIC_URL`,
 מול `PRODUCTION_BASE_URL`, או מול אותו פרויקט Supabase שמוגדר מקומית כייצור.
 אם שם המארח אינו כולל `staging`, `stage`, `preview` או `qa`, נדרש גם
 `STAGING_CONFIRM_NON_PRODUCTION=1` לאחר בדיקה ידנית.

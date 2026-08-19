@@ -41,7 +41,7 @@ test("notification inbox reads only the authenticated account and normalizes tar
           title: "הוצאה חדשה באירוע",
           body: "נוספה הוצאה חדשה לאירוע.",
           view: "event",
-          action_url: "https://sogrim-hashbon.vercel.app/i/event-trip/shared-space/abcdefghijklmnopqrstuvwxyz123456",
+          action_url: "https://sogrim-hesbon-app.vercel.app/i/event-trip/shared-space/abcdefghijklmnopqrstuvwxyz123456",
           created_at: "2026-07-27T10:00:00.000Z",
           read_at: null
         }

@@ -3507,7 +3507,7 @@ function renderJoinEvent() {
             enterkeyhint="go"
             dir="ltr"
             value="${escapeAttribute(joinEventDraft.link)}"
-            placeholder="https://sogrim-hashbon.vercel.app/?event=…"
+            placeholder="https://sogrim-hesbon-app.vercel.app/?event=…"
             ${joinEventDraft.error ? 'aria-invalid="true" aria-describedby="join-event-error"' : ""}
           />
         </label>

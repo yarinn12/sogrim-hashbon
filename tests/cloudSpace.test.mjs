@@ -13,21 +13,21 @@ import {
 
 test("parseInviteSpaceId reads a safe space id from an invite URL", () => {
   assert.equal(
-    parseInviteSpaceId("https://sogrim-hashbon.vercel.app/?event=event-1&space=space-friends"),
+    parseInviteSpaceId("https://sogrim-hesbon-app.vercel.app/?event=event-1&space=space-friends"),
     "space-friends"
   );
   assert.equal(
-    parseInviteSpaceId("https://sogrim-hashbon.vercel.app/?event=event-1&space=../bad"),
+    parseInviteSpaceId("https://sogrim-hesbon-app.vercel.app/?event=event-1&space=../bad"),
     null
   );
   assert.equal(
-    parseInviteSpaceId("https://sogrim-hashbon.vercel.app/?event=event-1&space=default"),
+    parseInviteSpaceId("https://sogrim-hesbon-app.vercel.app/?event=event-1&space=default"),
     null
   );
 });
 
 test("compact invite paths expose the same safe cloud credentials", () => {
-  const url = "https://sogrim-hashbon.vercel.app/i/event-1/space-party/abcdefghijklmnopqrstuvwxyzABCDEF";
+  const url = "https://sogrim-hesbon-app.vercel.app/i/event-1/space-party/abcdefghijklmnopqrstuvwxyzABCDEF";
 
   assert.equal(parseInviteSpaceId(url), "space-party");
   assert.equal(parseInviteSpaceKey(url), "abcdefghijklmnopqrstuvwxyzABCDEF");
@@ -35,7 +35,7 @@ test("compact invite paths expose the same safe cloud credentials", () => {
 
 test("an event invite key never becomes the personal account key", () => {
   const storage = fakeStorage();
-  const url = "https://sogrim-hashbon.vercel.app/?event=event-1&space=space-party&key=abcdefghijklmnopqrstuvwxyz_123456";
+  const url = "https://sogrim-hesbon-app.vercel.app/?event=event-1&space=space-party&key=abcdefghijklmnopqrstuvwxyz_123456";
 
   assert.equal(parseInviteSpaceKey(url), "abcdefghijklmnopqrstuvwxyz_123456");
   assert.equal(
@@ -48,7 +48,7 @@ test("an event invite key never becomes the personal account key", () => {
     "personal_account_key_123456789012"
   );
   assert.equal(
-    peekClientSpaceKey("https://sogrim-hashbon.vercel.app/", "space-personal", storage),
+    peekClientSpaceKey("https://sogrim-hesbon-app.vercel.app/", "space-personal", storage),
     "personal_account_key_123456789012"
   );
 });
@@ -57,34 +57,34 @@ test("resolveClientSpaceId ignores an event invite and creates a personal space"
   const storage = fakeStorage();
 
   const spaceId = resolveClientSpaceId({
-    currentUrl: "https://sogrim-hashbon.vercel.app/?event=event-1&space=space-party",
+    currentUrl: "https://sogrim-hesbon-app.vercel.app/?event=event-1&space=space-party",
     storage,
     createId: () => "space-new"
   });
 
   assert.equal(spaceId, "space-new");
-  assert.equal(peekClientSpaceId("https://sogrim-hashbon.vercel.app/", storage), "space-new");
+  assert.equal(peekClientSpaceId("https://sogrim-hesbon-app.vercel.app/", storage), "space-new");
 });
 
 test("resolveClientSpaceId creates a private client space when none exists", () => {
   const storage = fakeStorage();
 
   const spaceId = resolveClientSpaceId({
-    currentUrl: "https://sogrim-hashbon.vercel.app/",
+    currentUrl: "https://sogrim-hesbon-app.vercel.app/",
     configuredSpaceId: "default",
     storage,
     createId: () => "space-private"
   });
 
   assert.equal(spaceId, "space-private");
-  assert.equal(peekClientSpaceId("https://sogrim-hashbon.vercel.app/", storage), "space-private");
+  assert.equal(peekClientSpaceId("https://sogrim-hesbon-app.vercel.app/", storage), "space-private");
 });
 
 test("resolveClientSpaceId does not reuse a configured global space for a new client", () => {
   const storage = fakeStorage();
 
   const spaceId = resolveClientSpaceId({
-    currentUrl: "https://sogrim-hashbon.vercel.app/",
+    currentUrl: "https://sogrim-hesbon-app.vercel.app/",
     configuredSpaceId: "friends-beta",
     storage,
     createId: () => "space-private"
