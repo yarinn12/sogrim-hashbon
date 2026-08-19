@@ -14,7 +14,7 @@ const RECOVERY_ORIGIN = normalizedOrigin(
 );
 const REQUEST_TIMEOUT_MS = 30_000;
 const androidBuild = await readAndroidBuildCode();
-const localAppHash = sha256(await readFile("src/app.mjs"));
+const localAppHash = sourceSha256(await readFile("src/app.mjs"));
 const origins = [
   await inspectOrigin("primary", PRIMARY_ORIGIN),
   await inspectOrigin("recovery", RECOVERY_ORIGIN)
@@ -67,7 +67,7 @@ async function inspectOrigin(label, origin) {
       health,
       config,
       shell,
-      appHash: sha256(appSource),
+      appHash: sourceSha256(appSource),
       compatibility: nativeRuntimeCompatibility(config, {
         expectedAndroidBuild: androidBuild
       })
@@ -162,6 +162,11 @@ function check(name, ok, detail = "") {
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex").toUpperCase();
+}
+
+function sourceSha256(value) {
+  const source = Buffer.isBuffer(value) ? value.toString("utf8") : String(value);
+  return sha256(source.replace(/\r\n/g, "\n"));
 }
 
 function normalizedOrigin(value) {
