@@ -6,7 +6,7 @@ import { createServer } from "node:http";
 import { createAppHandler } from "../server.mjs";
 import { getRuntimeConfig } from "../src/server/runtimeConfig.mjs";
 
-test("runtime config can infer a public URL from the deployment request origin", () => {
+test("runtime config accepts an explicit trusted build-time public URL", () => {
   const config = getRuntimeConfig(
     {
       SUPABASE_URL: "https://demo.supabase.co",
@@ -29,8 +29,12 @@ test("runtime config still prefers an explicit APP_PUBLIC_URL", () => {
   assert.equal(config.publicUrl, "https://settle.example.com");
 });
 
-test("local 127.0.0.1 requests keep http invite origins", async () => {
-  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+test("HTTP Host is not promoted to the canonical public URL", async () => {
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    env: {}
+  }));
 
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -42,7 +46,8 @@ test("local 127.0.0.1 requests keep http invite origins", async () => {
     const response = await fetch(`http://127.0.0.1:${port}/api/config`);
     const config = await response.json();
 
-    assert.equal(config.publicUrl, `http://127.0.0.1:${port}`);
+    assert.equal(config.publicUrl, "");
+    assert.equal(config.launch.publicUrlReady, false);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

@@ -1,5 +1,6 @@
 import {
   NATIVE_AUTH_PATH,
+  NATIVE_PUBLIC_HOST,
   nativePublicOrigin,
   nativeDestination
 } from "./domain/nativeDeepLinks.mjs";

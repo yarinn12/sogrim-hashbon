@@ -2,7 +2,9 @@ import { iconSvg } from "./uiIcons.mjs";
 
 import {
   ACCOUNT_OAUTH_FLOW_QUERY_PARAM,
+  ACCOUNT_RECOVERY_FLOW_PURPOSE,
   ACCOUNT_RETURN_URL_STORAGE_KEY,
+  ACCOUNT_SESSION_STORAGE_KEY,
   ACCOUNT_SESSION_SYNC_STORAGE_KEY,
   accountAuthErrorMessage,
   appleOAuthUrl,
@@ -176,20 +178,28 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
     return;
   }
 
-  const callbackType = authCallbackType(window.location.hash);
-  const fragmentSession = sessionFromOAuthHash(window.location.hash);
-  // Provider sign-in must return through the state-bound PKCE code flow below.
-  // Fragment sessions remain valid only for password-recovery links.
-  let callbackSession = callbackType === "recovery" ? fragmentSession : null;
-  if (fragmentSession && !callbackSession) cleanAuthHash();
-  let sessionBeforeCallback = null;
   const callbackParams = new URLSearchParams(window.location.search);
   const callbackCode = callbackParams.get("code");
   const callbackFlowId = callbackParams.get(ACCOUNT_OAUTH_FLOW_QUERY_PARAM) ?? "";
   const callbackFlow = loadAccountOAuthFlow(callbackFlowId);
+  const callbackType = authCallbackType(window.location.hash);
+  const fragmentSession = sessionFromOAuthHash(window.location.hash);
+  // Provider sign-in must return through the state-bound PKCE code flow below.
+  // Recovery sessions are accepted only for the locally initiated reset attempt.
+  const validRecoveryCallback =
+    callbackType === "recovery" &&
+    fragmentSession &&
+    callbackFlow?.purpose === ACCOUNT_RECOVERY_FLOW_PURPOSE;
+  let callbackSession = validRecoveryCallback ? fragmentSession : null;
+  if (fragmentSession && !callbackSession) {
+    if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
+    cleanAuthHash(callbackFlow);
+  }
+  let sessionBeforeCallback = null;
   if (!callbackSession && callbackCode) {
-    const verifier = callbackFlow?.verifier ||
-      (callbackFlowId ? "" : oauthPkceVerifier());
+    const verifier = callbackFlow?.purpose === "oauth"
+      ? callbackFlow.verifier
+      : (callbackFlowId ? "" : oauthPkceVerifier());
     if (verifier) {
       callbackSession = await exchangeOAuthCode(
         runtimeConfig,
@@ -211,10 +221,14 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   if (accountSession) {
     try {
       accountSession = await restoreAccountSession(accountSession, {
-        previousSession: sessionBeforeCallback
+        previousSession: sessionBeforeCallback,
+        expectedEmail: validRecoveryCallback ? callbackFlow.email : ""
       });
+      if (validRecoveryCallback && callbackFlowId) {
+        clearAccountOAuthFlow(callbackFlowId);
+      }
       scheduleAccountSessionRefresh();
-      if (callbackType === "recovery") {
+      if (validRecoveryCallback) {
         renderPasswordResetGate();
         return;
       }
@@ -254,6 +268,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
       }
       if (
         callbackSession &&
+        callbackFlow?.purpose === "oauth" &&
         !accountSession?.user &&
         isTransientAccountError(error)
       ) {
@@ -294,7 +309,10 @@ function isLocalDevelopmentOrigin() {
   );
 }
 
-async function restoreAccountSession(session, { previousSession = null } = {}) {
+async function restoreAccountSession(
+  session,
+  { previousSession = null, expectedEmail = "" } = {}
+) {
   let nextSession = session;
   if (isExpiring(session)) {
     nextSession = await refreshAccountSession(runtimeConfig, session);
@@ -303,8 +321,28 @@ async function restoreAccountSession(session, { previousSession = null } = {}) {
     const user = await loadAccountUser(runtimeConfig, nextSession);
     nextSession = { ...nextSession, user };
   }
-  clearPreviousAccountAfterSwitch(previousSession, nextSession);
+  const normalizedExpectedEmail = String(expectedEmail).trim().toLowerCase();
+  const normalizedSessionEmail = String(nextSession?.user?.email ?? "")
+    .trim()
+    .toLowerCase();
+  if (
+    normalizedExpectedEmail &&
+    normalizedSessionEmail !== normalizedExpectedEmail
+  ) {
+    const error = new Error(
+      "Recovery session does not match the requested account"
+    );
+    error.status = 403;
+    throw error;
+  }
+  const switchedAccount = clearPreviousAccountAfterSwitch(
+    previousSession,
+    nextSession
+  );
   nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession);
+  if (switchedAccount) {
+    publishAccountSessionSync(nextSession, { reason: "switching" });
+  }
   return saveAccountSession(nextSession);
 }
 
@@ -465,18 +503,34 @@ function deliverPendingAccountNotice() {
 
 function handleAccountSessionStorageSync(event) {
   if (
-    event.key !== ACCOUNT_SESSION_SYNC_STORAGE_KEY ||
+    ![ACCOUNT_SESSION_STORAGE_KEY, ACCOUNT_SESSION_SYNC_STORAGE_KEY].includes(
+      event.key
+    ) ||
     (event.storageArea && event.storageArea !== window.localStorage)
   ) {
     return;
   }
 
-  const change = parseAccountSessionSync(event.newValue);
-  if (!change || accountSyncReloadScheduled) return;
-
   const storedSession = loadStoredAccountSession();
   const currentUserId = String(accountSession?.user?.id ?? "").trim();
   const storedUserId = String(storedSession?.user?.id ?? "").trim();
+  if (event.key === ACCOUNT_SESSION_STORAGE_KEY) {
+    if (accountSyncReloadScheduled) return;
+    if (currentUserId && currentUserId === storedUserId) {
+      accountSession = storedSession;
+      scheduleAccountSessionRefresh();
+      return;
+    }
+    lockForAccountSessionChange();
+    return;
+  }
+
+  const change = parseAccountSessionSync(event.newValue);
+  if (!change || accountSyncReloadScheduled) return;
+  if (change.reason === "switching") {
+    if (change.userId !== currentUserId) lockForAccountSessionChange();
+    return;
+  }
   if (change.reason === "signed-in" && change.userId !== storedUserId) return;
 
   if (currentUserId && currentUserId === storedUserId) {
@@ -485,6 +539,11 @@ function handleAccountSessionStorageSync(event) {
     return;
   }
 
+  lockForAccountSessionChange();
+}
+
+function lockForAccountSessionChange() {
+  if (accountSyncReloadScheduled) return;
   clearPendingInviteUrl();
   clearAccountOAuthFlows();
   accountSyncReloadScheduled = true;
@@ -857,11 +916,12 @@ async function handleAccountSubmit(event) {
         });
         return;
       }
-      accountSession = saveAccountSession(result.session);
+      accountSession = result.session;
     } else {
-      accountSession = saveAccountSession(
-        await signInWithPassword(runtimeConfig, { email, password })
-      );
+      accountSession = await signInWithPassword(runtimeConfig, {
+        email,
+        password
+      });
     }
 
     accountSession = await restoreAccountSession(accountSession);
@@ -1047,7 +1107,26 @@ async function handleAccountClick(event) {
     setAuthBusy(true);
     try {
       rememberAccountReturnUrl();
-      await requestPasswordReset(runtimeConfig, email, authRedirectUrl());
+      const pkce = await createOAuthPkce();
+      const flowId = createAccountOAuthFlowId();
+      const flow = saveAccountOAuthFlow({
+        id: flowId,
+        verifier: pkce.verifier,
+        returnPath: accountReturnPath(),
+        purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
+        email
+      });
+      if (!flow) throw new Error("Secure password recovery is unavailable");
+      try {
+        await requestPasswordReset(
+          runtimeConfig,
+          email,
+          authRedirectUrl(flowId)
+        );
+      } catch (error) {
+        clearAccountOAuthFlow(flowId);
+        throw error;
+      }
       renderAccountGate({
         mode: "login",
         message: "שלחנו קישור לאיפוס הסיסמה. כדאי לבדוק גם בתיקיית הספאם.",
@@ -1202,13 +1281,11 @@ async function signInWithNativeGoogle() {
   if (!idToken) throw new Error("Google identity token is unavailable");
 
   const previousSession = loadStoredAccountSession();
-  accountSession = saveAccountSession(
-    await signInWithIdToken(runtimeConfig, {
-      provider: "google",
-      token: idToken,
-      accessToken
-    })
-  );
+  accountSession = await signInWithIdToken(runtimeConfig, {
+    provider: "google",
+    token: idToken,
+    accessToken
+  });
   accountSession = await restoreAccountSession(accountSession, {
     previousSession
   });

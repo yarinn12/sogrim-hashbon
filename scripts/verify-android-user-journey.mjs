@@ -36,7 +36,6 @@ await waitForScreen(page, "home");
 await inspect(page, "home");
 
 let hasEvent = await evaluate(page, `Boolean(document.querySelector('[data-action=\"open-event\"]'))`);
-createdFixtureEvent = await evaluate(page, `document.body.textContent.includes('QA acceptance event')`);
 if (!hasEvent) {
   createdFixtureEvent = await createAcceptanceFixture(page);
   hasEvent = await evaluate(page, `Boolean(document.querySelector('[data-action=\"open-event\"]'))`);
@@ -213,6 +212,15 @@ async function openAndInspectOverlay(page, action, label) {
   await clickAction(page, action);
   await waitFor(() => evaluate(page, visibleOverlayExpression()));
   if (label === "share") {
+    await waitFor(() => evaluate(page, `(() => {
+      const title = document.querySelector('#event-modal-title');
+      const close = document.querySelector('[data-action="close-event-dialog"]');
+      if (title?.textContent?.trim() !== 'איך מזמינים?' || !close) return false;
+      const rect = close.getBoundingClientRect();
+      const style = getComputedStyle(close);
+      return rect.width > 0 && rect.height > 0 &&
+        style.display !== 'none' && style.visibility !== 'hidden';
+    })()`));
     await inspect(page, "share-menu");
     await clickSelector(
       page,

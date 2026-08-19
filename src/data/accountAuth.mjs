@@ -14,6 +14,7 @@ export const ACCOUNT_SESSION_SYNC_STORAGE_KEY = "settle-friends-account-session-
 export const ACCOUNT_OAUTH_FLOW_QUERY_PARAM = "auth_flow";
 export const ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX = "settle-friends-account-oauth-flow:";
 export const ACCOUNT_OAUTH_FLOW_TTL_MS = 10 * 60 * 1000;
+export const ACCOUNT_RECOVERY_FLOW_PURPOSE = "password-recovery";
 const SIGNUP_WORKSPACE_CLAIM_PREFIX = "settle-friends-signup-workspace-claimed:";
 export const LEGACY_STATE_CLAIM_PREFIX = "settle-friends-legacy-state-claim:";
 const LEGACY_STATE_STORAGE_KEY = "settle-friends-state";
@@ -52,7 +53,7 @@ export function publishAccountSessionSync(
   } = {}
 ) {
   const payload = {
-    reason: ["signed-in", "signed-out", "deleted"].includes(reason)
+    reason: ["switching", "signed-in", "signed-out", "deleted"].includes(reason)
       ? reason
       : "signed-in",
     userId: String(session?.user?.id ?? "").trim(),
@@ -74,8 +75,8 @@ export function parseAccountSessionSync(value) {
     const userId = String(payload?.userId ?? "").trim();
     const at = Number(payload?.at ?? 0);
     const id = String(payload?.id ?? "").trim();
-    if (!["signed-in", "signed-out", "deleted"].includes(reason)) return null;
-    if (reason === "signed-in" && !userId) return null;
+    if (!["switching", "signed-in", "signed-out", "deleted"].includes(reason)) return null;
+    if (["switching", "signed-in"].includes(reason) && !userId) return null;
     if (!Number.isFinite(at) || at <= 0 || !id) return null;
     return { reason, userId, at, id };
   } catch {
@@ -419,17 +420,30 @@ export function createAccountOAuthFlowId(cryptoImpl = globalThis.crypto) {
 }
 
 export function saveAccountOAuthFlow(
-  { id, verifier, returnPath, createdAt = Date.now() },
+  {
+    id,
+    verifier,
+    returnPath,
+    purpose = "oauth",
+    email = "",
+    createdAt = Date.now()
+  },
   storage = globalThis.localStorage
 ) {
   const storageKey = accountOAuthFlowStorageKey(id);
   const safeVerifier = String(verifier ?? "").trim();
   const safeReturnPath = normalizeAccountReturnPath(returnPath);
+  const safePurpose = ["oauth", ACCOUNT_RECOVERY_FLOW_PURPOSE].includes(purpose)
+    ? purpose
+    : "";
+  const safeEmail = String(email ?? "").trim().toLowerCase();
   const safeCreatedAt = Number(createdAt);
   if (
     !storageKey ||
     !/^[A-Za-z0-9_-]{43,128}$/.test(safeVerifier) ||
     !safeReturnPath ||
+    !safePurpose ||
+    (safePurpose === ACCOUNT_RECOVERY_FLOW_PURPOSE && !validRecoveryEmail(safeEmail)) ||
     !Number.isFinite(safeCreatedAt)
   ) {
     return null;
@@ -439,6 +453,8 @@ export function saveAccountOAuthFlow(
     id: String(id),
     verifier: safeVerifier,
     returnPath: safeReturnPath,
+    purpose: safePurpose,
+    email: safePurpose === ACCOUNT_RECOVERY_FLOW_PURPOSE ? safeEmail : "",
     createdAt: safeCreatedAt
   };
   try {
@@ -459,10 +475,14 @@ export function loadAccountOAuthFlow(
   try {
     const flow = JSON.parse(storage?.getItem(storageKey) ?? "null");
     const createdAt = Number(flow?.createdAt);
+    const purpose = String(flow?.purpose ?? "oauth");
+    const email = String(flow?.email ?? "").trim().toLowerCase();
     const valid =
       flow?.id === String(id) &&
       /^[A-Za-z0-9_-]{43,128}$/.test(String(flow?.verifier ?? "")) &&
       Boolean(normalizeAccountReturnPath(flow?.returnPath)) &&
+      ["oauth", ACCOUNT_RECOVERY_FLOW_PURPOSE].includes(purpose) &&
+      (purpose !== ACCOUNT_RECOVERY_FLOW_PURPOSE || validRecoveryEmail(email)) &&
       Number.isFinite(createdAt) &&
       Number(now) >= createdAt &&
       Number(now) - createdAt <= ACCOUNT_OAUTH_FLOW_TTL_MS;
@@ -474,6 +494,8 @@ export function loadAccountOAuthFlow(
       id: flow.id,
       verifier: flow.verifier,
       returnPath: normalizeAccountReturnPath(flow.returnPath),
+      purpose,
+      email: purpose === ACCOUNT_RECOVERY_FLOW_PURPOSE ? email : "",
       createdAt
     };
   } catch {
@@ -651,6 +673,11 @@ export function accountAuthErrorMessage(error, mode = "login") {
   return mode === "signup"
     ? "לא הצלחנו להשלים את ההרשמה כרגע."
     : "לא הצלחנו להתחבר כרגע.";
+}
+
+function validRecoveryEmail(value) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function normalizeSession(session) {

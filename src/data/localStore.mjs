@@ -532,8 +532,33 @@ async function loadSharedStateOnce(requestScope) {
 
 export async function saveSharedState(state) {
   const requestScope = synchronizeAccountStorageScope();
+  const requestAccountUserId = activeAccountUserId();
+  const requestAccountParticipantId = requestAccountUserId
+    ? `account-${requestAccountUserId}`
+    : "";
+  const incomingCurrentParticipantId = state?.currentParticipantId;
+  if (
+    requestAccountParticipantId &&
+    incomingCurrentParticipantId !== requestAccountParticipantId
+  ) {
+    return {
+      ok: false,
+      mode: "stale-account",
+      error: new Error("State does not belong to the active account")
+    };
+  }
   const previousState = loadState();
   const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
+  if (
+    requestAccountParticipantId &&
+    cleanState.currentParticipantId !== requestAccountParticipantId
+  ) {
+    return {
+      ok: false,
+      mode: "stale-account",
+      error: new Error("State does not belong to the active account")
+    };
+  }
   const syncSelection = buildSharedEventSyncSelection(previousState, cleanState);
   const hasSharedEventMutation = Boolean(
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length

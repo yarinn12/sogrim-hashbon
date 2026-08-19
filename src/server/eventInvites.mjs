@@ -22,6 +22,7 @@ export async function manageOpenEventInvite({
   const normalizedOperation = operation === "rotate" ? "rotate" : "ensure";
   const normalizedCandidate = normalizeInviteToken(candidateToken);
   const accountToken = bearerToken(authorization);
+  let recoveredActiveInvite = false;
 
   if (!accountToken) {
     return failure(401, "Authentication is required", {
@@ -133,9 +134,10 @@ export async function manageOpenEventInvite({
       fetchImpl
     });
     if (active) {
-      return failure(409, "An open invitation already exists", {
-        code: "EVENT_INVITE_ACTIVE_REQUIRES_ROTATION"
-      });
+      // Tokens are stored only as hashes, so a newly signed-in device cannot
+      // recover an existing raw token. Replace that unreachable link when an
+      // authorized member explicitly asks to share the event again.
+      recoveredActiveInvite = true;
     }
   }
 
@@ -167,7 +169,7 @@ export async function manageOpenEventInvite({
     eventId: normalizedEventId,
     token,
     createdAt,
-    rotated: normalizedOperation === "rotate"
+    rotated: normalizedOperation === "rotate" || recoveredActiveInvite
   });
 }
 
@@ -193,6 +195,23 @@ export async function redeemEventInvite({
     });
   }
 
+  const accountToken = bearerToken(authorization);
+  if (!accountToken) {
+    return failure(401, "Sign in to accept this invitation", {
+      code: "EVENT_INVITE_AUTH_REQUIRED"
+    });
+  }
+  const recipient = await loadAuthenticatedUser({
+    ...context,
+    accessToken: accountToken,
+    fetchImpl
+  });
+  if (!recipient?.id) {
+    return failure(401, "Sign in to accept this invitation", {
+      code: "EVENT_INVITE_AUTH_REQUIRED"
+    });
+  }
+
   const invite = await loadActiveInviteByToken({
     ...context,
     eventId: normalizedEventId,
@@ -210,23 +229,6 @@ export async function redeemEventInvite({
   ) {
     return failure(410, "This invitation link has expired", {
       code: "EVENT_INVITE_EXPIRED"
-    });
-  }
-
-  const accountToken = bearerToken(authorization);
-  if (!accountToken) {
-    return failure(401, "Sign in to accept this invitation", {
-      code: "EVENT_INVITE_AUTH_REQUIRED"
-    });
-  }
-  const recipient = await loadAuthenticatedUser({
-    ...context,
-    accessToken: accountToken,
-    fetchImpl
-  });
-  if (!recipient?.id) {
-    return failure(401, "Sign in to accept this invitation", {
-      code: "EVENT_INVITE_AUTH_REQUIRED"
     });
   }
 

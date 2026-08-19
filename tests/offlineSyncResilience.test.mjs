@@ -718,6 +718,232 @@ test("a save that began under another account is stopped before cloud persistenc
   );
 });
 
+test("state owned by another account is rejected before any local write", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  saveTestAccount(storage, {
+    userId: "user-b",
+    accessToken: "token-b",
+    spaceId: "space-account-b",
+    spaceKey: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+  });
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async () => {
+    throw new Error("stale account state must not reach the network");
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?pre-write-account-boundary=${Date.now()}`
+    );
+    const result = await store.saveSharedState(queueTestState("User A State"));
+    assert.equal(result.ok, false);
+    assert.equal(result.mode, "stale-account");
+    assert.equal(
+      storage.getItem("settle-friends-state:space-account-b"),
+      null,
+      "state from account A must not be written into account B storage"
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("legacy cleanup cannot rewrite stale state into the active account", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  saveTestAccount(storage, {
+    userId: "user-b",
+    accessToken: "token-b",
+    spaceId: "space-account-b",
+    spaceKey: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef"
+  });
+  storage.setItem(
+    "settle-friends-local-profile:account:user-b",
+    JSON.stringify({
+      participantId: "account-user-b",
+      displayName: "User Bee",
+      authProvider: "google",
+      authSubject: "user-b",
+      email: "user-b@example.com"
+    })
+  );
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  let networkCalls = 0;
+  globalThis.fetch = async () => {
+    networkCalls += 1;
+    throw new Error("stale account state must not reach the network");
+  };
+
+  const staleState = queueTestState("User A State");
+  staleState.participants.push({
+    id: "account-user-b",
+    displayName: "User Bee",
+    kind: "user",
+    accountLinked: true
+  });
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?pre-clean-account-boundary=${Date.now()}`
+    );
+    assert.equal(
+      store.cleanLegacyStarterData(staleState, "account-user-b").currentParticipantId,
+      "account-user-b",
+      "the regression setup must exercise the identity rewrite"
+    );
+    const result = await store.saveSharedState(staleState);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.mode, "stale-account");
+    assert.equal(networkCalls, 0);
+    assert.equal(
+      storage.getItem("settle-friends-state:space-account-b"),
+      null,
+      "cleanup must not relabel and persist state owned by account A"
+    );
+
+    const activeState = {
+      ...staleState,
+      currentParticipantId: "account-user-b"
+    };
+    const activeResult = await store.saveSharedState(activeState);
+    assert.equal(activeResult.ok, true, "the active account must still be able to save");
+    assert.equal(store.loadState().currentParticipantId, "account-user-b");
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a valid signed-in account can still save while runtime config is offline", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId: "space-account-a",
+    spaceKey: "abcdefghijklmnopqrstuvwxyzABCDEF"
+  });
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async () => {
+    throw new Error("offline");
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?signed-in-offline-save=${Date.now()}`
+    );
+    const state = queueTestState("Offline Account State");
+    const result = await store.saveSharedState(state);
+
+    assert.deepEqual(result, { ok: true, mode: "local", pending: true });
+    assert.equal(
+      JSON.parse(storage.getItem("settle-friends-state:space-account-a"))
+        .currentParticipantId,
+      "account-user-a"
+    );
+    assert.ok(storage.getItem("settle-friends-pending-sync:space-account-a"));
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a guest can still save without an account participant identity", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async () => {
+    throw new Error("offline");
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?guest-offline-save=${Date.now()}`
+    );
+    const result = await store.saveSharedState(deviceState("Guest State"));
+
+    assert.deepEqual(result, { ok: true, mode: "local" });
+    assert.equal(
+      JSON.parse(storage.getItem("settle-friends-state")).currentParticipantId,
+      "me"
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 function deferred() {
   let resolve;
   const promise = new Promise((resolvePromise) => {

@@ -1,11 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, join } from "node:path";
 
 import { resolveAndroidJavaHome } from "./androidJava.mjs";
+import { backupAndroidUploadKey } from "./androidUploadKeyBackup.mjs";
 
 const root = process.cwd();
 const androidRoot = join(root, "android");
@@ -15,7 +15,6 @@ const associationDir = join(root, ".well-known");
 const assetLinksPath = join(associationDir, "assetlinks.json");
 const certificatePath = join(root, "docs", "store-submission", "android-upload-certificate-sha256.txt");
 const playCertificatePath = join(root, "docs", "store-submission", "android-play-signing-certificate-sha256.txt");
-const backupDir = join(homedir(), ".sogrim-hashbon", "android-upload-key");
 const alias = "sogrim-upload";
 const keytool = resolveKeytool();
 
@@ -87,11 +86,11 @@ await writeFile(assetLinksPath, `${JSON.stringify([
 await mkdir(join(root, "docs", "store-submission"), { recursive: true });
 await writeFile(certificatePath, `${fingerprint}\n`, "utf8");
 
-await mkdir(backupDir, { recursive: true });
-await copyFile(keystorePath, join(backupDir, basename(keystorePath)));
-await copyFile(propertiesPath, join(backupDir, basename(propertiesPath)));
+await backupAndroidUploadKey({ keystorePath, propertiesPath });
 
-console.log("Android upload key is configured and backed up outside the project.");
+console.log(
+  "Android upload key is configured with separate JKS and recovery-properties backups."
+);
 console.log(`Public certificate fingerprint: ${fingerprint}`);
 
 function resolveKeytool() {

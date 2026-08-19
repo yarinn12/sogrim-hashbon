@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX,
   ACCOUNT_OAUTH_FLOW_TTL_MS,
+  ACCOUNT_RECOVERY_FLOW_PURPOSE,
   ACCOUNT_SESSION_STORAGE_KEY,
   ACCOUNT_SESSION_SYNC_STORAGE_KEY,
   accountProfileFromUser,
@@ -89,6 +90,18 @@ test("account session sync distinguishes sign-out and rejects malformed messages
     })),
     null
   );
+
+  const switching = publishAccountSessionSync(
+    { user: { id: "user-3" } },
+    {
+      reason: "switching",
+      storage,
+      now: () => 6789,
+      randomId: () => "sync-3"
+    }
+  );
+  assert.equal(switching.reason, "switching");
+  assert.equal(switching.userId, "user-3");
 });
 
 test("account session keeps the Supabase user and activates its cloud workspace", () => {
@@ -350,6 +363,36 @@ test("OAuth flow storage rejects redirects outside the app and expires old attem
     storage.getItem(`${ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX}${id}`),
     null
   );
+});
+
+test("password recovery flow is bound to the locally requested email", async () => {
+  const storage = memoryStorage();
+  const pkce = await createOAuthPkce();
+  const id = createAccountOAuthFlowId();
+
+  const saved = saveAccountOAuthFlow({
+    id,
+    verifier: pkce.verifier,
+    returnPath: "/events",
+    purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
+    email: "USER@example.com",
+    createdAt: 1_000
+  }, storage);
+
+  assert.equal(saved.purpose, ACCOUNT_RECOVERY_FLOW_PURPOSE);
+  assert.equal(saved.email, "user@example.com");
+  assert.equal(
+    loadAccountOAuthFlow(id, storage, 1_001)?.email,
+    "user@example.com"
+  );
+  assert.equal(saveAccountOAuthFlow({
+    id: createAccountOAuthFlowId(),
+    verifier: pkce.verifier,
+    returnPath: "/events",
+    purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,
+    email: "not-an-email",
+    createdAt: 1_000
+  }, storage), null);
 });
 
 test("current signed-in session marks only its account cloud space as owned", () => {

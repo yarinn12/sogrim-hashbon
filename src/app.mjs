@@ -123,6 +123,7 @@ import {
   attachOpenInviteToken,
   ensureOpenEventInvite,
   eventOpenInviteToken,
+  isEventInviteError,
   resolveEventInviteCredentials,
   rotateOpenEventInvite
 } from "./data/eventInvites.mjs";
@@ -13718,12 +13719,15 @@ async function openPreparedEventShare(eventId, trigger) {
   openEventDialog(eventId, "share", trigger);
   try {
     await sharePreparation;
-  } catch {
+  } catch (error) {
     emitOperationFailure("event_invite", { screen: "invite" });
     if (eventDialog?.eventId !== eventId || eventDialog.kind !== "share") {
       return;
     }
-    notice = "לא הצלחנו להכין קישור בטוח כרגע. כדאי לבדוק את החיבור ולנסות שוב.";
+    notice = eventInvitePreparationNotice(
+      error,
+      "לא הצלחנו להכין קישור בטוח כרגע. כדאי לבדוק את החיבור ולנסות שוב."
+    );
     render();
     reactivateDialogAfterRender(".event-modal");
     return;
@@ -13749,9 +13753,12 @@ async function retryEventShare(eventId) {
   try {
     await sharePreparation;
     notice = "קישור ההצטרפות מוכן לשיתוף.";
-  } catch {
+  } catch (error) {
     emitOperationFailure("event_invite", { screen: "invite" });
-    notice = "עדיין לא הצלחנו להכין את הקישור. בדקו את החיבור ונסו שוב.";
+    notice = eventInvitePreparationNotice(
+      error,
+      "עדיין לא הצלחנו להכין את הקישור. בדקו את החיבור ונסו שוב."
+    );
   }
 
   if (eventDialog?.eventId === eventId && eventDialog.kind === "share") {
@@ -13764,11 +13771,19 @@ async function prepareEventShareNow(eventId) {
   const shareRuntimeConfig = await prepareSharedEventForInvitation(eventId);
   if (shareRuntimeConfig.storage?.mode === "supabase") {
     const sharedEvent = getEvent(eventId);
-    const openInvite = await ensureOpenEventInvite(
-      shareRuntimeConfig,
-      eventId,
-      eventOpenInviteToken(sharedEvent) ?? ""
-    );
+    let openInvite;
+    try {
+      openInvite = await ensureOpenEventInvite(
+        shareRuntimeConfig,
+        eventId,
+        eventOpenInviteToken(sharedEvent) ?? ""
+      );
+    } catch (error) {
+      // Compatibility with an older server: recover a valid share link when
+      // the active raw token was lost during a device or account transition.
+      if (error?.code !== "EVENT_INVITE_ACTIVE_REQUIRES_ROTATION") throw error;
+      openInvite = await rotateOpenEventInvite(shareRuntimeConfig, eventId);
+    }
     if (!attachOpenInviteToken(sharedEvent, openInvite.token)) {
       throw new Error("Open event invitation could not be attached");
     }
@@ -13839,9 +13854,12 @@ async function copyInviteLink(eventId) {
       const inviteUrl = await prepareEventShare(eventId);
       await copyText(inviteUrl, "קישור ההזמנה הועתק.");
       emitProductMetric("invite_shared", { screen: "invite" });
-    } catch {
+    } catch (error) {
       emitOperationFailure("event_invite", { screen: "invite" });
-      notice = "לא הצלחנו להכין את קישור ההזמנה כרגע. נסו שוב בעוד רגע.";
+      notice = eventInvitePreparationNotice(
+        error,
+        "לא הצלחנו להכין את קישור ההזמנה כרגע. נסו שוב בעוד רגע."
+      );
       render();
     }
   })();
@@ -13851,6 +13869,12 @@ async function copyInviteLink(eventId) {
   } finally {
     eventSharePreparationPromises.delete(`copy:${eventId}`);
   }
+}
+
+function eventInvitePreparationNotice(error, fallback) {
+  if (!isEventInviteError(error)) return fallback;
+  const message = String(error?.message ?? "").trim();
+  return message || fallback;
 }
 
 async function shareExpenseParticipantInvite(eventId, method) {
@@ -16089,12 +16113,13 @@ function recordEventActivity(
 }
 
 function publishReferralActivityAfterSave(saveRequest, eventId, kind) {
+  const sharedSpaceId = String(getEvent(eventId)?.sharedSpaceId ?? "").trim();
   Promise.resolve(saveRequest)
     .then((result) => {
-      if (!result?.ok || !eventId) return;
+      if (!result?.ok || result.mode !== "cloud" || !sharedSpaceId) return;
       document.dispatchEvent(
         new CustomEvent("settle-friends:qualifying-activity", {
-          detail: { eventId, kind }
+          detail: { eventId: sharedSpaceId, kind }
         })
       );
     })

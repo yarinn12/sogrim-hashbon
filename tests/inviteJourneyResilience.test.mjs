@@ -255,6 +255,28 @@ test("prepareEventShareNow always reloads the runtime config", () => {
   );
 });
 
+test("invite sharing self-recovers when an older server cannot return an active token", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const prepare = app.slice(
+    app.indexOf("async function prepareEventShareNow"),
+    app.indexOf("async function prepareSharedEventForInvitation")
+  );
+
+  assert.match(prepare, /EVENT_INVITE_ACTIVE_REQUIRES_ROTATION/);
+  assert.match(prepare, /await rotateOpenEventInvite\(shareRuntimeConfig, eventId\)/);
+});
+
+test("invite preparation surfaces safe Hebrew API errors instead of a generic dead end", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const notice = app.slice(
+    app.indexOf("function eventInvitePreparationNotice"),
+    app.indexOf("async function shareExpenseParticipantInvite")
+  );
+
+  assert.match(notice, /isEventInviteError\(error\)/);
+  assert.match(notice, /String\(error\?\.message/);
+});
+
 test("a pending invite survives an auth redirect and is validated on the way back", () => {
   const store = new Map();
   const storage = {

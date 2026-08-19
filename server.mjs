@@ -1,6 +1,7 @@
 import { createReadStream, existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
+import { isIP } from "node:net";
 import { extname, join, normalize, resolve } from "node:path";
 import { sep } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -88,11 +89,22 @@ const publicStaticExtensions = new Set([
   ".mp4", ".png", ".svg", ".ttf", ".txt", ".webmanifest", ".webp"
 ]);
 const MAX_JSON_BODY_BYTES = 1_000_000;
+const GOOGLE_AUTH_RATE_LIMIT = {
+  limit: 10,
+  globalLimit: 300,
+  windowMs: 60_000
+};
+const GOOGLE_PLAY_RATE_LIMIT = {
+  limit: 10,
+  globalLimit: 300,
+  windowMs: 60_000
+};
 
 export function createAppHandler({
   root = defaultRoot,
-  port = Number(process.argv[2] ?? process.env.PORT ?? 4173),
-  stateFile = process.env.APP_LOCAL_STATE_FILE,
+  env = process.env,
+  port = Number(process.argv[2] ?? env.PORT ?? 4173),
+  stateFile = env.APP_LOCAL_STATE_FILE,
   googleCredentialVerifier = verifyGoogleCredential,
   accountDeletionService = deleteSupabaseAccount,
   googlePlaySubscriptionVerifier = verifyGooglePlaySubscription,
@@ -103,7 +115,8 @@ export function createAppHandler({
   adminAnalyticsService = getAdminAnalyticsOverview,
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite,
-  cdnCacheAppShell = isDeployedRuntime(process.env)
+  requestRateLimiter = createRequestRateLimiter(),
+  cdnCacheAppShell = isDeployedRuntime(env)
 } = {}) {
   const resolvedRoot = resolve(root);
   const resolvedStateFile = stateFile
@@ -111,15 +124,15 @@ export function createAppHandler({
     : join(resolvedRoot, "data", "app-state.json");
   const stateStore = createStateStore(resolvedStateFile);
 
-  return async function appHandler(request, response) {
+  async function handleRequest(request, response) {
     const url = new URL(request.url ?? "/", `http://localhost:${port}`);
     const origin = requestOrigin(request, port);
-    const runtimeConfig = getRuntimeConfig(process.env, origin);
-    const localStateAllowed = isTrustedLocalRequest(request, origin, process.env);
+    const runtimeConfig = getRuntimeConfig(env);
+    const localStateAllowed = isTrustedLocalRequest(request, origin, env);
     const localMutationAllowed = isTrustedLocalMutation(
       request,
       origin,
-      process.env
+      env
     );
     applyNativeCors(request, response);
 
@@ -199,7 +212,7 @@ export function createAppHandler({
 
     if (url.pathname === "/api/health" && request.method === "GET") {
       const health = getHealthPayload(runtimeConfig, {
-        requireProductionReadiness: isDeployedRuntime(process.env)
+        requireProductionReadiness: isDeployedRuntime(env)
       });
       sendJson(response, health.ok ? 200 : 503, health);
       return;
@@ -210,6 +223,14 @@ export function createAppHandler({
         sendJson(response, 503, { ok: false, error: "Google sign-in is not configured" });
         return;
       }
+      if (!consumeVerificationCapacity({
+        request,
+        response,
+        env,
+        limiter: requestRateLimiter,
+        namespace: "google-auth",
+        policy: GOOGLE_AUTH_RATE_LIMIT
+      })) return;
 
       try {
         const body = await readJsonBody(request, 20_000);
@@ -243,7 +264,7 @@ export function createAppHandler({
 
       const result = await accountDeletionService({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         confirmation: body?.confirmation
       });
@@ -267,7 +288,7 @@ export function createAppHandler({
 
       const result = await productMetricsService({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         payload: body
       });
@@ -276,7 +297,7 @@ export function createAppHandler({
     }
 
     if (url.pathname === "/api/maintenance/retention" && request.method === "GET") {
-      const cronSecret = String(process.env.CRON_SECRET ?? "").trim();
+      const cronSecret = String(env.CRON_SECRET ?? "").trim();
       if (!cronSecret) {
         sendJson(response, 503, { ok: false, error: "Retention job is not configured" });
         return;
@@ -287,7 +308,7 @@ export function createAppHandler({
       }
       const result = await productMetricsRetentionService({
         runtimeConfig,
-        env: process.env
+        env
       });
       sendJson(response, result.status, result.payload);
       return;
@@ -296,7 +317,7 @@ export function createAppHandler({
     if (url.pathname === "/api/admin/overview" && request.method === "GET") {
       const result = await adminAnalyticsService({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         windowDays: url.searchParams.get("days")
       });
@@ -308,6 +329,15 @@ export function createAppHandler({
       url.pathname === "/api/billing/google/verify" &&
       request.method === "POST"
     ) {
+      if (!consumeVerificationCapacity({
+        request,
+        response,
+        env,
+        limiter: requestRateLimiter,
+        namespace: "google-play",
+        policy: GOOGLE_PLAY_RATE_LIMIT
+      })) return;
+
       let body = {};
       try {
         body = await readJsonBody(request, 16_000);
@@ -327,7 +357,7 @@ export function createAppHandler({
 
       const result = await googlePlaySubscriptionVerifier({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         productId: body?.productId,
         purchaseToken: body?.purchaseToken
@@ -359,7 +389,7 @@ export function createAppHandler({
 
       const result = await paymentReminderService({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         eventId: body?.eventId,
         transferId: body?.transferId
@@ -391,7 +421,7 @@ export function createAppHandler({
 
       const result = await eventActivityNotificationService({
         runtimeConfig,
-        env: process.env,
+        env,
         authorization: request.headers.authorization,
         eventId: body?.eventId,
         activityId: body?.activityId,
@@ -421,7 +451,7 @@ export function createAppHandler({
       try {
         const result = await openEventInviteService({
           runtimeConfig,
-          env: process.env,
+          env,
           authorization: request.headers.authorization,
           eventId: body?.eventId,
           candidateToken: body?.candidateToken,
@@ -459,7 +489,7 @@ export function createAppHandler({
       try {
         const result = await eventInviteRedemptionService({
           runtimeConfig,
-          env: process.env,
+          env,
           authorization: request.headers.authorization,
           eventId: body?.eventId,
           token: body?.token
@@ -513,11 +543,14 @@ export function createAppHandler({
 
     if (requestedPath === "/index.html" && parseInviteEventId(url.toString())) {
       const template = await readFile(filePath, "utf8");
+      const metadataBaseUrl = runtimeConfig.publicUrl || (
+        localStateAllowed ? origin : ""
+      );
+      const metadataUrl = canonicalRequestUrl(metadataBaseUrl, url);
       response.writeHead(200, responseHeadersFor(filePath, requestedPath));
-      response.end(renderInviteDocument(
-        template,
-        new URL(request.url ?? "/", origin)
-      ));
+      response.end(metadataUrl
+        ? renderInviteDocument(template, metadataUrl)
+        : template);
       return;
     }
 
@@ -539,6 +572,18 @@ export function createAppHandler({
         response.destroy();
       }
     }
+  }
+
+  return function appHandler(request, response) {
+    return handleRequest(request, response).catch((error) => {
+      try {
+        handleRequestFailure(response, error);
+      } catch {
+        try {
+          response.destroy?.();
+        } catch {}
+      }
+    });
   };
 }
 
@@ -566,15 +611,48 @@ export function resolveServerHost({
 }
 
 function requestOrigin(request, port) {
-  const host = request.headers.host;
-  if (!host) return `http://localhost:${port}`;
+  const host = String(request.headers.host ?? "").trim();
+  if (
+    !host ||
+    host.length > 255 ||
+    /[\s,/@\\?#]/.test(host)
+  ) {
+    throw invalidHostError();
+  }
+
+  let parsed;
+  try {
+    parsed = new URL(`http://${host}`);
+  } catch {
+    throw invalidHostError();
+  }
+  if (
+    !parsed.hostname ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw invalidHostError();
+  }
 
   const forwardedProto = String(request.headers["x-forwarded-proto"] ?? "")
     .split(",")[0]
-    .trim();
-  const protocol = forwardedProto || (isLocalHost(host) ? "http" : "https");
+    .trim()
+    .toLowerCase();
+  const protocol = ["http", "https"].includes(forwardedProto)
+    ? forwardedProto
+    : isLocalHost(parsed.hostname) ? "http" : "https";
 
-  return `${protocol}://${host}`;
+  parsed.protocol = `${protocol}:`;
+  return parsed.origin;
+}
+
+function invalidHostError() {
+  const error = new Error("Invalid Host header");
+  error.code = "INVALID_HOST";
+  return error;
 }
 
 function applyNativeCors(request, response) {
@@ -644,6 +722,7 @@ function responseHeadersFor(
 
 function isAllowedStaticPath(requestedPath) {
   const value = String(requestedPath ?? "");
+  const lowerValue = value.toLowerCase();
   if (
     !value.startsWith("/") ||
     value.includes("\0") ||
@@ -652,7 +731,7 @@ function isAllowedStaticPath(requestedPath) {
         segment === ".." ||
         (segment.startsWith(".") && segment !== ".well-known")
     ) ||
-    value.startsWith("/src/server/")
+    lowerValue.startsWith("/src/server/")
   ) {
     return false;
   }
@@ -660,6 +739,137 @@ function isAllowedStaticPath(requestedPath) {
   if (value === "/downloads/sogrim-hashbon-android-1.2.apk") return true;
   return publicStaticPrefixes.some((prefix) => value.startsWith(prefix)) &&
     publicStaticExtensions.has(extname(value).toLowerCase());
+}
+
+function canonicalRequestUrl(baseUrl, requestUrl) {
+  if (!baseUrl) return null;
+  try {
+    const canonical = new URL(baseUrl);
+    canonical.pathname = requestUrl.pathname;
+    canonical.search = requestUrl.search;
+    canonical.hash = "";
+    return canonical;
+  } catch {
+    return null;
+  }
+}
+
+function handleRequestFailure(response, error) {
+  if (response.headersSent) {
+    response.destroy?.();
+    return;
+  }
+  const invalidHost = error?.code === "INVALID_HOST";
+  sendJson(response, invalidHost ? 400 : 500, {
+    ok: false,
+    error: invalidHost ? "Invalid Host header" : "Internal server error",
+    code: invalidHost ? "INVALID_HOST" : "INTERNAL_SERVER_ERROR"
+  });
+}
+
+export function createRequestRateLimiter(
+  now = Date.now,
+  { maxClientBuckets = 10_000 } = {}
+) {
+  const clientBuckets = new Map();
+  const globalBuckets = new Map();
+  let nextSweepAt = 0;
+
+  function consumeBucket(buckets, key, { limit, windowMs }, maxBuckets) {
+    const currentTime = Number(now());
+    if (currentTime >= nextSweepAt) {
+      for (const bucketMap of [clientBuckets, globalBuckets]) {
+        for (const [bucketKey, bucket] of bucketMap) {
+          if (bucket.resetAt <= currentTime) bucketMap.delete(bucketKey);
+        }
+      }
+      nextSweepAt = currentTime + windowMs;
+    }
+
+    const existing = buckets.get(key);
+    if (!existing || existing.resetAt <= currentTime) {
+      if (!existing && maxBuckets !== null && buckets.size >= maxBuckets) {
+        buckets.delete(buckets.keys().next().value);
+      }
+      buckets.set(key, { count: 1, resetAt: currentTime + windowMs });
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+    if (existing.count >= limit) {
+      return {
+        allowed: false,
+        retryAfterSeconds: Math.max(
+          1,
+          Math.ceil((existing.resetAt - currentTime) / 1000)
+        )
+      };
+    }
+    existing.count += 1;
+    return { allowed: true, retryAfterSeconds: 0 };
+  }
+
+  return {
+    consume(key, policy) {
+      return consumeBucket(clientBuckets, key, policy, maxClientBuckets);
+    },
+    consumeGlobal(key, policy) {
+      return consumeBucket(globalBuckets, key, policy, null);
+    }
+  };
+}
+
+function consumeVerificationCapacity({
+  request,
+  response,
+  env,
+  limiter,
+  namespace,
+  policy
+}) {
+  const clientResults = requestRateLimitKeys(request, env).map((key) => limiter.consume(
+    `${namespace}:client:${key}`,
+    { limit: policy.limit, windowMs: policy.windowMs }
+  ));
+  const blockedClient = clientResults.find((result) => !result.allowed);
+  const globalResult = blockedClient ?? limiter.consumeGlobal(`${namespace}:global`, {
+    limit: policy.globalLimit,
+    windowMs: policy.windowMs
+  });
+  const result = blockedClient ?? globalResult;
+  if (result.allowed) return true;
+
+  response.setHeader("retry-after", String(result.retryAfterSeconds));
+  sendJson(response, 429, {
+    ok: false,
+    error: "Too many verification requests",
+    code: "RATE_LIMITED",
+    retryable: true
+  });
+  return false;
+}
+
+function requestRateLimitKeys(request, env) {
+  return [`ip:${requestClientAddress(request, env)}`];
+}
+
+function requestClientAddress(request, env) {
+  const remoteAddress = normalizedIp(request.socket?.remoteAddress);
+  const forwardedAddress = isDeployedRuntime(env)
+    ? forwardedClientAddress(request.headers["x-forwarded-for"])
+    : "";
+  return forwardedAddress || remoteAddress || "unknown";
+}
+
+function forwardedClientAddress(value) {
+  const addresses = String(value ?? "")
+    .split(",")
+    .map(normalizedIp)
+    .filter(Boolean);
+  return addresses[0] ?? "";
+}
+
+function normalizedIp(value) {
+  const address = String(value ?? "").trim().replace(/^::ffff:/i, "");
+  return isIP(address) ? address : "";
 }
 
 async function serveStaticFile(

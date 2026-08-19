@@ -240,9 +240,10 @@ test("Supabase owns referral attribution, qualification and entitlements", async
   assert.match(schema, /on conflict \(invited_user_id\) do nothing/);
   assert.match(schema, /'claimed', false/);
   assert.match(schema, /account_email_confirmed_at is null/);
-  assert.match(schema, /jsonb_array_length\(event_record -> 'participantIds'\) >= 2/);
-  assert.match(schema, /createdByParticipantId/);
-  assert.match(schema, /markedPaidByParticipantId/);
+  assert.match(schema, /private\.shared_event_qualification_activity/);
+  assert.match(schema, /activity_kind in \('expense_created', 'transfer_paid'\)/);
+  assert.match(schema, /actor_user_id = actor_id/);
+  assert.match(schema, /activity\.recorded_at >= referral\.claimed_at/);
   assert.match(schema, /rewarded_last_year >= 12/);
   assert.match(
     schema,

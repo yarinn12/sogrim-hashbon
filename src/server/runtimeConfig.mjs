@@ -4,8 +4,8 @@ const DEFAULT_ANDROID_PREMIUM_BUILD = 30;
 const ANDROID_STORE_URL =
   "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app";
 
-export function getRuntimeConfig(env = process.env, requestOrigin = "") {
-  const publicUrl = normalizeUrl(env.APP_PUBLIC_URL || requestOrigin);
+export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
+  const publicUrl = normalizeUrl(env.APP_PUBLIC_URL || trustedPublicUrl);
   const supabaseUrl = normalizeUrl(env.SUPABASE_URL ?? "");
   const supabaseAnonKey = env.SUPABASE_ANON_KEY ?? "";
   const googleClientId = String(env.GOOGLE_CLIENT_ID ?? "").trim();

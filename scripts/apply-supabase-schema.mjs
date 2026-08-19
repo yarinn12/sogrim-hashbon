@@ -28,6 +28,35 @@ try {
         as signup_claims_ready,
       to_regclass('private.shared_snapshot_members') is not null
         as shared_members_ready,
+      to_regclass('private.shared_event_qualification_activity') is not null
+        and to_regprocedure(
+          'private.is_active_shared_event_member(text,uuid)'
+        ) is not null
+        as trusted_shared_activity_ready,
+      to_regprocedure('private.guard_personal_snapshot_write()') is not null
+        and exists (
+          select 1
+          from pg_catalog.pg_trigger as trigger
+          where trigger.tgname = 'guard_personal_snapshot_write'
+            and trigger.tgrelid = 'public.app_snapshots'::regclass
+            and not trigger.tgisinternal
+        ) as personal_snapshot_guard_ready,
+      to_regprocedure(
+        'private.has_valid_shared_event_transfer_totals(jsonb)'
+      ) is not null
+        and to_regprocedure(
+          'private.has_authorized_transfer_status_changes(jsonb,jsonb,text)'
+        ) is not null
+        and to_regprocedure(
+          'private.guard_shared_event_financial_integrity()'
+        ) is not null
+        and exists (
+          select 1
+          from pg_catalog.pg_trigger as trigger
+          where trigger.tgname = 'guard_shared_event_financial_integrity'
+            and trigger.tgrelid = 'public.app_snapshots'::regclass
+            and not trigger.tgisinternal
+        ) as shared_financial_guard_ready,
       (
         select relation.relrowsecurity and relation.relforcerowsecurity
         from pg_catalog.pg_class as relation
@@ -686,6 +715,9 @@ try {
     !result?.table_ready ||
     !result?.signup_claims_ready ||
     !result?.shared_members_ready ||
+    !result?.trusted_shared_activity_ready ||
+    !result?.personal_snapshot_guard_ready ||
+    !result?.shared_financial_guard_ready ||
     !result?.signup_claims_rls_ready ||
     !result?.signup_claims_private ||
     !result?.signup_claim_trigger_ready ||

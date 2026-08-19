@@ -323,6 +323,108 @@ test("billing endpoint forwards only an authenticated purchase verification requ
   }
 });
 
+test("Google Play verification is throttled before the verifier is called", async () => {
+  let verificationCount = 0;
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    env: {},
+    googlePlaySubscriptionVerifier: async () => {
+      verificationCount += 1;
+      return { status: 200, payload: { ok: true } };
+    }
+  }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const endpoint = `http://127.0.0.1:${port}/api/billing/google/verify`;
+    const request = () => fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer account-token",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        productId: PRODUCT_ID,
+        purchaseToken: PURCHASE_TOKEN
+      })
+    });
+
+    for (let index = 0; index < 10; index += 1) {
+      assert.equal((await request()).status, 200);
+    }
+    const throttled = await request();
+    assert.equal(throttled.status, 429);
+    assert.ok(Number(throttled.headers.get("retry-after")) >= 1);
+    assert.equal((await throttled.json()).code, "RATE_LIMITED");
+    assert.equal(verificationCount, 10);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});
+
+test("Google Play rate limiting does not bucket unverified bearer values", async () => {
+  const consumed = [];
+  const requestRateLimiter = {
+    consume(key) {
+      consumed.push(["client", key]);
+      return { allowed: true, retryAfterSeconds: 0 };
+    },
+    consumeGlobal(key) {
+      consumed.push(["global", key]);
+      return { allowed: true, retryAfterSeconds: 0 };
+    }
+  };
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    env: {},
+    requestRateLimiter,
+    googlePlaySubscriptionVerifier: async () => ({
+      status: 401,
+      payload: { ok: false, error: "Unauthorized" }
+    })
+  }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/billing/google/verify`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer attacker-chosen-value",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          productId: PRODUCT_ID,
+          purchaseToken: PURCHASE_TOKEN
+        })
+      }
+    );
+
+    assert.equal(response.status, 401);
+    assert.deepEqual(consumed, [
+      ["client", "google-play:client:ip:127.0.0.1"],
+      ["global", "google-play:global"]
+    ]);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});
+
 test("Premium UI stays feature-gated and uses localized Play pricing", async () => {
   const [index, sw, store, layer] = await Promise.all([
     readFile("index.html", "utf8"),

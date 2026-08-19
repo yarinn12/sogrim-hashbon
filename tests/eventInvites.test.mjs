@@ -256,7 +256,7 @@ test("server rotates open links atomically and stores only the token hash", asyn
   assert.notEqual(body.p_token_hash, TOKEN);
 });
 
-test("server never rotates an active open link during ensure without its token", async () => {
+test("server recovers an active open link during ensure when this device lost its token", async () => {
   let rotationAttempted = false;
   const result = await manageOpenEventInvite({
     runtimeConfig: runtimeConfig(),
@@ -299,12 +299,9 @@ test("server never rotates an active open link during ensure without its token",
     }
   });
 
-  assert.equal(result.status, 409);
-  assert.equal(
-    result.payload.code,
-    "EVENT_INVITE_ACTIVE_REQUIRES_ROTATION"
-  );
-  assert.equal(rotationAttempted, false);
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.rotated, true);
+  assert.equal(rotationAttempted, true);
 });
 
 test("collaborative participants reuse the event open link instead of creating parallel links", async () => {
@@ -508,10 +505,15 @@ test("server rejects revoked links and protects private invitations by account",
   const revoked = await redeemEventInvite({
     runtimeConfig: runtimeConfig(),
     env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
     eventId: EVENT_ID,
     token: TOKEN,
     fetchImpl: async (url) => {
-      if (String(url).includes("/rest/v1/event_invite_tokens?")) {
+      const address = String(url);
+      if (address.endsWith("/auth/v1/user")) {
+        return jsonResponse({ id: USER_ID });
+      }
+      if (address.includes("/rest/v1/event_invite_tokens?")) {
         return jsonResponse([]);
       }
       throw new Error(`Unexpected request: ${url}`);
@@ -556,6 +558,7 @@ test("server rejects revoked links and protects private invitations by account",
 });
 
 test("an open event invitation cannot be redeemed without a signed-in account", async () => {
+  let inviteLookup = false;
   let sharedEventRead = false;
   const redemption = await redeemEventInvite({
     runtimeConfig: runtimeConfig(),
@@ -565,6 +568,7 @@ test("an open event invitation cannot be redeemed without a signed-in account", 
     fetchImpl: async (url) => {
       const address = String(url);
       if (address.includes("/rest/v1/event_invite_tokens?")) {
+        inviteLookup = true;
         return jsonResponse([{
           id: "33333333-3333-4333-8333-333333333333",
           event_id: EVENT_ID,
@@ -582,7 +586,33 @@ test("an open event invitation cannot be redeemed without a signed-in account", 
 
   assert.equal(redemption.status, 401);
   assert.equal(redemption.payload.code, "EVENT_INVITE_AUTH_REQUIRED");
+  assert.equal(inviteLookup, false);
   assert.equal(sharedEventRead, false);
+});
+
+test("an invalid account session is rejected before invite lookup", async () => {
+  let inviteLookup = false;
+  const redemption = await redeemEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer invalid-account-token",
+    eventId: EVENT_ID,
+    token: TOKEN,
+    fetchImpl: async (url) => {
+      const address = String(url);
+      if (address.endsWith("/auth/v1/user")) {
+        return new Response(null, { status: 401 });
+      }
+      if (address.includes("/rest/v1/event_invite_tokens?")) {
+        inviteLookup = true;
+      }
+      throw new Error(`Unexpected request: ${address}`);
+    }
+  });
+
+  assert.equal(redemption.status, 401);
+  assert.equal(redemption.payload.code, "EVENT_INVITE_AUTH_REQUIRED");
+  assert.equal(inviteLookup, false);
 });
 
 test("an active participant can redeem a private event invite while friendship is pending", async () => {

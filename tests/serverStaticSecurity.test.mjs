@@ -20,6 +20,8 @@ test("the static server exposes only client assets and never repository secrets"
       "/server.mjs",
       "/package.json",
       "/src/server/runtimeConfig.mjs",
+      "/src/Server/runtimeConfig.mjs",
+      "/SRC/SERVER/runtimeConfig.mjs",
       "/src",
       "/data/app-state.json"
     ]) {
@@ -78,6 +80,48 @@ test("network diagnostics are local-only", async () => {
   assert.equal(response.statusCode, 404);
 });
 
+test("malformed Host headers fail inside the async request boundary", async () => {
+  const handler = createAppHandler({ root: process.cwd(), port: 4173, env: {} });
+  const response = responseRecorder();
+  await handler({
+    url: "/api/config",
+    method: "GET",
+    headers: { host: "[" },
+    socket: { remoteAddress: "127.0.0.1" }
+  }, response);
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(JSON.parse(response.body).code, "INVALID_HOST");
+});
+
+test("production public config and invite metadata never derive from Host", async () => {
+  const handler = createAppHandler({
+    root: process.cwd(),
+    port: 4173,
+    env: { NODE_ENV: "production" }
+  });
+  const configResponse = responseRecorder();
+  await handler({
+    url: "/api/config",
+    method: "GET",
+    headers: { host: "attacker.example" },
+    socket: { remoteAddress: "203.0.113.10" }
+  }, configResponse);
+  const config = JSON.parse(configResponse.body);
+  assert.equal(config.publicUrl, "");
+  assert.equal(config.launch.publicUrlReady, false);
+
+  const inviteResponse = responseRecorder();
+  await handler({
+    url: "/i/event-token/t/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456",
+    method: "GET",
+    headers: { host: "attacker.example" },
+    socket: { remoteAddress: "203.0.113.10" }
+  }, inviteResponse);
+  assert.equal(inviteResponse.statusCode, 200);
+  assert.doesNotMatch(inviteResponse.body, /attacker\.example/);
+});
+
 function responseRecorder() {
   return {
     headers: {},
@@ -89,6 +133,8 @@ function responseRecorder() {
       this.statusCode = statusCode;
       Object.assign(this.headers, headers);
     },
-    end() {}
+    end(body = "") {
+      this.body = String(body);
+    }
   };
 }

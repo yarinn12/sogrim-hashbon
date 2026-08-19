@@ -92,7 +92,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     layer.indexOf("async function connectAccountToApp")
   );
   assert.ok(
-    restoreSession.indexOf("clearPreviousAccountAfterSwitch(previousSession, nextSession)") <
+    restoreSession.indexOf("clearPreviousAccountAfterSwitch(") <
       restoreSession.indexOf("ensureAccountWorkspace(runtimeConfig, nextSession)"),
     "the previous account must be cleared before a workspace is assigned to the new user"
   );
@@ -203,7 +203,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /authRedirectUrl\(flowId\)/);
   assert.match(
     layer,
-    /callbackFlow\?\.verifier \|\|\s*\(callbackFlowId \? "" : oauthPkceVerifier\(\)\)/
+    /callbackFlow\?\.purpose === "oauth"[\s\S]*?callbackFlow\.verifier[\s\S]*?callbackFlowId \? "" : oauthPkceVerifier\(\)/
   );
   assert.doesNotMatch(layer, /const existingVerifier = oauthPkceVerifier\(\)/);
   assert.match(layer, /window\.addEventListener\("online", refreshAccountSessionIfNeeded\)/);
@@ -396,7 +396,15 @@ test("account auth synchronizes completed account switches and sign-out across t
   );
   assert.match(
     layer,
-    /event\.key !== ACCOUNT_SESSION_SYNC_STORAGE_KEY[\s\S]*?parseAccountSessionSync\(event\.newValue\)/
+    /\[ACCOUNT_SESSION_STORAGE_KEY, ACCOUNT_SESSION_SYNC_STORAGE_KEY\][\s\S]*?parseAccountSessionSync\(event\.newValue\)/
+  );
+  assert.match(
+    layer,
+    /change\.reason === "switching"[\s\S]*?lockForAccountSessionChange\(\)/
+  );
+  assert.match(
+    layer,
+    /event\.key === ACCOUNT_SESSION_STORAGE_KEY[\s\S]*?lockForAccountSessionChange\(\)/
   );
   assert.match(
     layer,
@@ -453,16 +461,21 @@ test("a restored account does not reload the app a second time on cold start", a
   );
 });
 
-test("OAuth fragment sessions are accepted only for password recovery", async () => {
+test("OAuth fragment sessions require a locally bound password recovery flow", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 
   assert.match(
     layer,
-    /const fragmentSession = sessionFromOAuthHash\(window\.location\.hash\);[\s\S]*?callbackType === "recovery" \? fragmentSession : null;/
+    /const validRecoveryCallback =[\s\S]*?callbackType === "recovery"[\s\S]*?callbackFlow\?\.purpose === ACCOUNT_RECOVERY_FLOW_PURPOSE;/
   );
   assert.match(
     layer,
-    /if \(fragmentSession && !callbackSession\) cleanAuthHash\(\);/
+    /expectedEmail: validRecoveryCallback \? callbackFlow\.email : ""/
+  );
+  assert.match(layer, /normalizedSessionEmail !== normalizedExpectedEmail/);
+  assert.match(
+    layer,
+    /purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,[\s\S]*?email/
   );
 });
 
