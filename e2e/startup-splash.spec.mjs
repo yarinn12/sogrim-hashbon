@@ -4,6 +4,13 @@ const OWNER_ID = "person-splash-owner";
 const CONTENT_RENDER_BUDGET_MS = 2_500;
 const SPLASH_HARD_LIMIT_MS = 6_500;
 
+async function startupMarkTime(page, name) {
+  return page.evaluate((markName) => {
+    const entry = performance.getEntriesByName(`sogrim:start:${markName}`)[0];
+    return entry?.startTime ?? Number.POSITIVE_INFINITY;
+  }, name);
+}
+
 const accountState = {
   currentParticipantId: OWNER_ID,
   participants: [
@@ -67,11 +74,11 @@ test.describe("startup splash", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
-    expect(await page.evaluate(() => performance.now())).toBeLessThan(
+    expect(await startupMarkTime(page, "first-screen-rendered")).toBeLessThan(
       CONTENT_RENDER_BUDGET_MS
     );
     await expect(page.locator("#app-splash")).toHaveCount(0, { timeout: 8_000 });
-    expect(await page.evaluate(() => performance.now())).toBeLessThan(
+    expect(await startupMarkTime(page, "splash-dismissed")).toBeLessThan(
       SPLASH_HARD_LIMIT_MS
     );
     expect(runtimeIssues).toEqual([]);
@@ -82,11 +89,11 @@ test.describe("startup splash", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
-    expect(await page.evaluate(() => performance.now())).toBeLessThan(
+    expect(await startupMarkTime(page, "first-screen-rendered")).toBeLessThan(
       CONTENT_RENDER_BUDGET_MS
     );
     await expect(page.locator("#app-splash")).toHaveCount(0, { timeout: 8_000 });
-    expect(await page.evaluate(() => performance.now())).toBeLessThan(
+    expect(await startupMarkTime(page, "splash-dismissed")).toBeLessThan(
       SPLASH_HARD_LIMIT_MS
     );
   });

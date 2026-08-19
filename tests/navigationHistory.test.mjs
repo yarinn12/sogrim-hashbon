@@ -190,6 +190,12 @@ test("closing a dialog restores the exact action that opened it", async () => {
   assert.match(app, /function closeDialogWithHistory\(rewindSteps = 1\)/);
   assert.match(app, /deactivateDialog\(\{ deferFocus \}\)/);
   assert.match(app, /if \(!deferFocus\) window\.setTimeout\(restorePendingDialogReturnFocus, 120\)/);
+  assert.match(app, /if \(snapshot\.dialogSelector && !currentDialog\) return/);
+  assert.match(
+    app,
+    /const activeModalDialog =\s*document\.body\.classList\.contains\("app-dialog-open"\) &&\s*app\.querySelector\('\[role="dialog"\]\[aria-modal="true"\]'\)/
+  );
+  assert.match(app, /if \(!returnTarget \|\| activeModalDialog\) return/);
 });
 
 test("closing an expense keeps its draft and template rerenders keep focus", async () => {

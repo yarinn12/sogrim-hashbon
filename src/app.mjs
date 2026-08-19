@@ -971,6 +971,7 @@ function restoreRenderInteractionState(snapshot) {
     const currentDialog = snapshot.dialogSelector
       ? app.querySelector(snapshot.dialogSelector)
       : null;
+    if (snapshot.dialogSelector && !currentDialog) return;
     if (currentDialog) {
       currentDialog.scrollTop = Math.max(0, snapshot.dialogScrollTop);
     }
@@ -16099,7 +16100,10 @@ function deactivateDialog({ deferFocus = false } = {}) {
 
 function restorePendingDialogReturnFocus() {
   const returnTarget = pendingDialogReturnFocus;
-  if (!returnTarget || app.querySelector('[role="dialog"][aria-modal="true"]')) return;
+  const activeModalDialog =
+    document.body.classList.contains("app-dialog-open") &&
+    app.querySelector('[role="dialog"][aria-modal="true"]');
+  if (!returnTarget || activeModalDialog) return;
 
   if (returnTarget.element?.isConnected) {
     pendingDialogReturnFocus = null;
