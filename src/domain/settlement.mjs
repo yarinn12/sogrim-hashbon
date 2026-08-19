@@ -105,9 +105,11 @@ export function reconcileSettlementTransfers(
   const pendingBalances = roundTransfers
     ? roundSettlementBalances(outstandingBalances)
     : outstandingBalances;
-  const pendingTransfers = (directTransfers
-    ? buildDirectTransfersFromBalances(pendingBalances)
-    : buildTransfersFromBalances(pendingBalances)).map(
+  const pendingTransfers = buildOutstandingTransfers(
+    pendingBalances,
+    paidTransfers,
+    directTransfers
+  ).map(
     (transfer) => ({
       ...transfer,
       id: uniqueTransferId(transfer.id, usedTransferIds, "remaining")
@@ -260,6 +262,185 @@ function buildDirectTransfersFromBalances(balances) {
     .filter(([, balance]) => balance !== 0)
     .map(([participantId, balance]) => ({ participantId, balance }));
   return buildGreedyTransfers(entries);
+}
+
+function buildOutstandingTransfers(balances, paidTransfers, directTransfers) {
+  const buildTransfers = directTransfers
+    ? buildDirectTransfersFromBalances
+    : buildTransfersFromBalances;
+  const baseline = buildTransfers(balances);
+  const blockedRoutes = new Set(
+    (paidTransfers ?? []).flatMap((transfer) => {
+      if (!settlementTransferRoute(transfer)) return [];
+      return [
+        `${transfer.toParticipantId}\u0000${transfer.fromParticipantId}`
+      ];
+    })
+  );
+
+  if (
+    blockedRoutes.size === 0 ||
+    !baseline.some((transfer) =>
+      blockedRoutes.has(settlementTransferRoute(transfer))
+    )
+  ) {
+    return baseline;
+  }
+
+  const rerouted = buildTransfersAvoidingRoutes(
+    balances,
+    blockedRoutes,
+    buildTransfers
+  );
+  return amountOnRoutes(rerouted, blockedRoutes) <
+      amountOnRoutes(baseline, blockedRoutes)
+    ? rerouted
+    : baseline;
+}
+
+function buildTransfersAvoidingRoutes(balances, blockedRoutes, buildTransfers) {
+  const debtors = Object.entries(balances ?? {})
+    .filter(([, balance]) => balance < 0)
+    .map(([participantId, balance]) => ({
+      participantId,
+      amount: Math.abs(balance)
+    }));
+  const creditors = Object.entries(balances ?? {})
+    .filter(([, balance]) => balance > 0)
+    .map(([participantId, balance]) => ({ participantId, amount: balance }));
+  if (!debtors.length || !creditors.length) return [];
+
+  const source = 0;
+  const debtorOffset = 1;
+  const creditorOffset = debtorOffset + debtors.length;
+  const sink = creditorOffset + creditors.length;
+  const graph = Array.from({ length: sink + 1 }, () => []);
+  const routeEdges = [];
+  const addEdge = (from, to, capacity) => {
+    const forward = {
+      to,
+      capacity,
+      initialCapacity: capacity,
+      reverseIndex: graph[to].length
+    };
+    const reverse = {
+      to: from,
+      capacity: 0,
+      initialCapacity: 0,
+      reverseIndex: graph[from].length
+    };
+    graph[from].push(forward);
+    graph[to].push(reverse);
+    return forward;
+  };
+
+  debtors.forEach((debtor, debtorIndex) => {
+    addEdge(source, debtorOffset + debtorIndex, debtor.amount);
+  });
+  creditors.forEach((creditor, creditorIndex) => {
+    addEdge(creditorOffset + creditorIndex, sink, creditor.amount);
+  });
+  debtors.forEach((debtor, debtorIndex) => {
+    creditors.forEach((creditor, creditorIndex) => {
+      const route = `${debtor.participantId}\u0000${creditor.participantId}`;
+      if (blockedRoutes.has(route)) return;
+      routeEdges.push({
+        fromParticipantId: debtor.participantId,
+        toParticipantId: creditor.participantId,
+        edge: addEdge(
+          debtorOffset + debtorIndex,
+          creditorOffset + creditorIndex,
+          Math.min(debtor.amount, creditor.amount)
+        )
+      });
+    });
+  });
+
+  runMaximumFlow(graph, source, sink);
+  const allowedTransfers = routeEdges.flatMap((routeEdge) => {
+    const amount = routeEdge.edge.initialCapacity - routeEdge.edge.capacity;
+    if (!isPositiveAgoraAmount(amount)) return [];
+    return [{
+      id: transferIdFor({ ...routeEdge, amount }),
+      fromParticipantId: routeEdge.fromParticipantId,
+      toParticipantId: routeEdge.toParticipantId,
+      amount,
+      status: "pending"
+    }];
+  });
+  const remainingBalances = { ...(balances ?? {}) };
+  for (const transfer of allowedTransfers) {
+    remainingBalances[transfer.fromParticipantId] += transfer.amount;
+    remainingBalances[transfer.toParticipantId] -= transfer.amount;
+  }
+
+  return combineTransfersByRoute([
+    ...allowedTransfers,
+    ...buildTransfers(remainingBalances)
+  ]);
+}
+
+function runMaximumFlow(graph, source, sink) {
+  while (true) {
+    const level = Array(graph.length).fill(-1);
+    const queue = [source];
+    level[source] = 0;
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const node = queue[cursor];
+      for (const edge of graph[node]) {
+        if (edge.capacity <= 0 || level[edge.to] >= 0) continue;
+        level[edge.to] = level[node] + 1;
+        queue.push(edge.to);
+      }
+    }
+    if (level[sink] < 0) return;
+
+    const nextEdge = Array(graph.length).fill(0);
+    const sendFlow = (node, available) => {
+      if (node === sink) return available;
+      while (nextEdge[node] < graph[node].length) {
+        const edge = graph[node][nextEdge[node]];
+        if (edge.capacity > 0 && level[edge.to] === level[node] + 1) {
+          const sent = sendFlow(edge.to, Math.min(available, edge.capacity));
+          if (sent > 0) {
+            edge.capacity -= sent;
+            graph[edge.to][edge.reverseIndex].capacity += sent;
+            return sent;
+          }
+        }
+        nextEdge[node] += 1;
+      }
+      return 0;
+    };
+
+    while (sendFlow(source, Number.MAX_SAFE_INTEGER) > 0) {}
+  }
+}
+
+function combineTransfersByRoute(transfers) {
+  const combined = new Map();
+  for (const transfer of transfers ?? []) {
+    const route = settlementTransferRoute(transfer);
+    if (!route || !isPositiveAgoraAmount(transfer.amount)) continue;
+    const existing = combined.get(route);
+    if (existing) {
+      existing.amount += transfer.amount;
+      existing.id = transferIdFor(existing);
+      continue;
+    }
+    combined.set(route, { ...transfer });
+  }
+  return [...combined.values()];
+}
+
+function amountOnRoutes(transfers, routes) {
+  return (transfers ?? []).reduce(
+    (sum, transfer) =>
+      routes.has(settlementTransferRoute(transfer))
+        ? sum + transfer.amount
+        : sum,
+    0
+  );
 }
 
 function buildGreedyTransfers(entries) {

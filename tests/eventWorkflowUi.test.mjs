@@ -1230,6 +1230,11 @@ test("event settings use a focused hub instead of one overloaded dialog", async 
 
 test("event settings expose friendly settlement rounding with an exact fallback", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const roundingHandler = sourceBetween(
+    app,
+    "async function setEventRoundingMode(eventId, mode)",
+    "function syncSettlementCloseConfirmation(eventId)"
+  );
 
   assert.match(app, /roundSettlementTransfers: true/);
   assert.match(app, /title: "עיגול סכומים"/);
@@ -1237,6 +1242,9 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /data-rounding-mode="\$\{option\.id\}"/);
   assert.match(app, /סכומי ההוצאות תמיד נשמרים בדיוק כפי שהוזנו/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
+  assert.match(roundingHandler, /const previousState = state/);
+  assert.match(roundingHandler, /const result = await persistState\(\)/);
+  assert.match(roundingHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
 });
 
 test("event settings let managers choose direct payer reimbursements", async () => {

@@ -15361,7 +15361,7 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   reactivateDialogAfterRender(".event-modal", focusSelector);
 }
 
-function setEventRoundingMode(eventId, mode) {
+async function setEventRoundingMode(eventId, mode) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לשנות את עיגול הסכומים.";
@@ -15372,11 +15372,24 @@ function setEventRoundingMode(eventId, mode) {
   const enabled = mode !== "exact";
   if (usesRoundedSettlementTransfers(event) === enabled) return;
 
+  const previousState = state;
   state = setEventRoundSettlementTransfers(state, eventId, enabled);
   notice = enabled
     ? "סכומים נוחים הופעלו. רק ההעברות הסופיות יעוגלו."
     : "עיגול הסכומים בוטל. ההעברות יוצגו בדיוק מלא.";
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : "לא הצלחנו לשנות את עיגול הסכומים. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(
+      ".event-modal",
+      `[data-action="set-event-rounding-mode"][data-rounding-mode="${mode}"]`
+    );
+    return;
+  }
   render();
   requestAnimationFrame(() => {
     app

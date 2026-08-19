@@ -967,6 +967,116 @@ test("direct settlement keeps paid history and nets only the true remainder", ()
   );
 });
 
+test("settlement reroutes an avoidable reverse payment after completed history", () => {
+  const people = [
+    { id: "harel", displayName: "Harel" },
+    { id: "maor", displayName: "Maor" },
+    { id: "yarin", displayName: "Yarin" },
+    { id: "ariel", displayName: "Ariel" }
+  ];
+  const result = reconcileSettlementTransfers(
+    people,
+    [
+      {
+        id: "new-expense",
+        total: 10000,
+        payers: [{ participantId: "ariel", amount: 10000 }],
+        sharedByParticipantIds: ["yarin", "ariel"]
+      }
+    ],
+    [
+      {
+        id: "paid-harel-maor-5000",
+        fromParticipantId: "harel",
+        toParticipantId: "maor",
+        amount: 5000,
+        status: "paid",
+        markedPaidAt: "2026-08-19T08:00:00.000Z"
+      }
+    ],
+    { directTransfers: true }
+  );
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    [
+      {
+        fromParticipantId: "harel",
+        toParticipantId: "maor",
+        amount: 5000,
+        status: "paid"
+      },
+      {
+        fromParticipantId: "maor",
+        toParticipantId: "ariel",
+        amount: 5000,
+        status: "pending"
+      },
+      {
+        fromParticipantId: "yarin",
+        toParticipantId: "harel",
+        amount: 5000,
+        status: "pending"
+      }
+    ]
+  );
+});
+
+test("settlement keeps a reverse payment only when the balance truly requires it", () => {
+  const people = [
+    { id: "harel", displayName: "Harel" },
+    { id: "maor", displayName: "Maor" }
+  ];
+  const result = reconcileSettlementTransfers(
+    people,
+    [
+      {
+        id: "corrected-expense",
+        total: 2000,
+        payers: [{ participantId: "maor", amount: 2000 }],
+        sharedByParticipantIds: ["harel", "maor"]
+      }
+    ],
+    [
+      {
+        id: "paid-harel-maor-2000",
+        fromParticipantId: "harel",
+        toParticipantId: "maor",
+        amount: 2000,
+        status: "paid"
+      }
+    ]
+  );
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    [
+      {
+        fromParticipantId: "harel",
+        toParticipantId: "maor",
+        amount: 2000,
+        status: "paid"
+      },
+      {
+        fromParticipantId: "maor",
+        toParticipantId: "harel",
+        amount: 1000,
+        status: "pending"
+      }
+    ]
+  );
+});
+
 test("paid history and a new remainder to the same person share one display row", () => {
   const paidTransfer = {
     id: "paid-b-a-2000",

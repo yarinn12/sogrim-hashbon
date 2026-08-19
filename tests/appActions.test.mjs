@@ -115,6 +115,51 @@ test("event transfer rounding can be disabled and enabled again", () => {
   assert.equal(disabled.events[0].transfers[0].status, "pending");
 });
 
+test("rounding mode changes rebuild pending transfers instead of accumulating them", () => {
+  const state = baseState();
+  state.events[0].roundSettlementTransfers = true;
+  state.events[0].expenses = [
+    {
+      id: "expense-awkward",
+      name: "Awkward split",
+      total: 13768,
+      payers: [{ participantId: "owner", amount: 13768 }],
+      sharedByParticipantIds: ["owner", "dani"],
+      createdByParticipantId: "owner",
+      updatedAt: "2026-08-19T08:00:00.000Z"
+    }
+  ];
+  state.events[0].transfers = calculateSettlement(
+    state.participants,
+    state.events[0].expenses,
+    { roundTransfers: true }
+  ).transfers;
+
+  const exact = setEventRoundSettlementTransfers(state, "event-1", false);
+  const rounded = setEventRoundSettlementTransfers(exact, "event-1", true);
+  const exactAgain = setEventRoundSettlementTransfers(rounded, "event-1", false);
+
+  assert.deepEqual(
+    exactAgain.events[0].transfers.map(
+      ({ fromParticipantId, toParticipantId, amount, status }) => ({
+        fromParticipantId,
+        toParticipantId,
+        amount,
+        status
+      })
+    ),
+    exact.events[0].transfers.map(
+      ({ fromParticipantId, toParticipantId, amount, status }) => ({
+        fromParticipantId,
+        toParticipantId,
+        amount,
+        status
+      })
+    )
+  );
+  assert.equal(exactAgain.events[0].transfers.length, 1);
+});
+
 test("event repayment mode can switch between optimized and direct reimbursements", () => {
   const state = baseState();
   state.events[0].roundSettlementTransfers = false;
@@ -148,6 +193,112 @@ test("event repayment mode can switch between optimized and direct reimbursement
     ),
     ["avi->owner:3000"]
   );
+});
+
+test("repayment mode changes avoid an unnecessary reverse route", () => {
+  const state = {
+    currentParticipantId: "harel",
+    participants: [
+      { id: "harel", displayName: "Harel", kind: "user" },
+      { id: "maor", displayName: "Maor", kind: "user" },
+      { id: "yarin", displayName: "Yarin", kind: "user" },
+      { id: "ariel", displayName: "Ariel", kind: "user" }
+    ],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        name: "Friends",
+        participantIds: ["harel", "maor", "yarin", "ariel"],
+        expenses: [
+          {
+            id: "new-expense",
+            name: "New expense",
+            total: 10000,
+            payers: [{ participantId: "ariel", amount: 10000 }],
+            sharedByParticipantIds: ["yarin", "ariel"],
+            updatedAt: "2026-08-19T08:00:00.000Z"
+          }
+        ],
+        transfers: [
+          {
+            id: "paid-harel-maor-5000",
+            fromParticipantId: "harel",
+            toParticipantId: "maor",
+            amount: 5000,
+            status: "paid",
+            markedPaidAt: "2026-08-19T07:00:00.000Z"
+          }
+        ],
+        directSettlementTransfers: false,
+        roundSettlementTransfers: false
+      }
+    ]
+  };
+
+  const direct = setEventDirectSettlementTransfers(state, "event-1", true);
+  const routes = direct.events[0].transfers.map(
+    (transfer) => `${transfer.fromParticipantId}>${transfer.toParticipantId}`
+  );
+
+  assert.equal(routes.includes("harel>maor"), true);
+  assert.equal(routes.includes("maor>harel"), false);
+  assert.deepEqual(routes, ["harel>maor", "maor>ariel", "yarin>harel"]);
+});
+
+test("rounding changes with paid history stay stable across repeated toggles", () => {
+  const state = {
+    currentParticipantId: "a",
+    participants: [
+      { id: "a", displayName: "A", kind: "user" },
+      { id: "b", displayName: "B", kind: "user" }
+    ],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        name: "Rounded history",
+        participantIds: ["a", "b"],
+        expenses: [
+          {
+            id: "awkward-total",
+            name: "Awkward total",
+            total: 13768,
+            payers: [{ participantId: "b", amount: 13768 }],
+            sharedByParticipantIds: ["a", "b"],
+            updatedAt: "2026-08-19T08:00:00.000Z"
+          }
+        ],
+        transfers: [
+          {
+            id: "paid-rounded-transfer",
+            fromParticipantId: "a",
+            toParticipantId: "b",
+            amount: 6900,
+            status: "paid",
+            markedPaidAt: "2026-08-19T07:00:00.000Z"
+          }
+        ],
+        roundSettlementTransfers: true
+      }
+    ]
+  };
+
+  const exact = setEventRoundSettlementTransfers(state, "event-1", false);
+  const rounded = setEventRoundSettlementTransfers(exact, "event-1", true);
+  const exactAgain = setEventRoundSettlementTransfers(rounded, "event-1", false);
+  const summarize = (candidate) => candidate.events[0].transfers.map(
+    ({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })
+  );
+
+  assert.deepEqual(summarize(exactAgain), summarize(exact));
+  assert.equal(rounded.events[0].transfers.length, 1);
+  assert.equal(exact.events[0].transfers.length, 2);
 });
 
 test("archiveGroup hides a group without deleting historical events", () => {
