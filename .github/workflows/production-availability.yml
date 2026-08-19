@@ -45,12 +45,19 @@ jobs:
         env:
           PRODUCTION_BASE_URL: https://sogrim-hashbon.vercel.app
 
+      - name: Verify deployment failover parity
+        id: parity
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node scripts/verify-production-failover.mjs | tee production-failover.log
+
       - name: Open one incident issue
-        if: steps.verify.outcome == 'failure'
+        if: steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure'
         uses: actions/github-script@v8
         with:
           script: |
-            const title = '[Production] Availability check failed';
+            const title = '[Production] Availability or deployment parity failed';
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -62,17 +69,17 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
-                body: `The scheduled production check failed at ${new Date().toISOString()}. Open the failed workflow run for the exact boundary.`,
+                body: `The scheduled production check failed at ${new Date().toISOString()}. The app might be unavailable, stale, or serving different source/runtime policy across the primary and recovery origins. Open the failed workflow run for the exact boundary.`,
                 labels: []
               });
             }
 
       - name: Close recovered incident issue
-        if: steps.verify.outcome == 'success'
+        if: steps.verify.outcome == 'success' && steps.parity.outcome == 'success'
         uses: actions/github-script@v8
         with:
           script: |
-            const title = '[Production] Availability check failed';
+            const title = '[Production] Availability or deployment parity failed';
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -102,8 +109,9 @@ jobs:
           path: |
             production-availability.log
             production-cdn.log
+            production-failover.log
           retention-days: 7
 
       - name: Fail after incident handling
-        if: steps.verify.outcome == 'failure'
+        if: steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure'
         run: exit 1

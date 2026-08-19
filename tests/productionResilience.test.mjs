@@ -33,6 +33,7 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
   assert.match(workflow, /set -o pipefail/);
   assert.match(workflow, /verify-production-availability\.mjs \| tee production-availability\.log/);
   assert.match(workflow, /verify-production-availability\.mjs --strict \| tee production-cdn\.log/);
+  assert.match(workflow, /verify-production-failover\.mjs \| tee production-failover\.log/);
   assert.match(workflow, /Open one incident issue/);
   assert.match(workflow, /Close recovered incident issue/);
 });
