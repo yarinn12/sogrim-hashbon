@@ -101,7 +101,7 @@ test("settlement shows every transfer in one list and highlights personal ones",
   assert.match(settlement, /orderSettlementTransfers\(transfers\)/);
   assert.match(settlement, /groupSettlementTransfersForDisplay\(orderedTransfers\)/);
   assert.match(settlement, /hasReliableSettlementIdentity/);
-  assert.match(settlement, /כל ההעברות/);
+  assert.match(settlement, /מי מעביר למי/);
   assert.doesNotMatch(settlement, /ההעברות שלך מופיעות ראשונות/);
   assert.doesNotMatch(settlement, /class="settlement-progress-chip"/);
   assert.match(settlement, /renderSettlementListActions\(event\)/);

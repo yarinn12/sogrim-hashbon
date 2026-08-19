@@ -196,7 +196,8 @@ function shareEventOnWhatsApp(eventId) {
     participants,
     transfers: event.transfers?.length ? event.transfers : settlement.transfers,
     currency: event.currency,
-    participantAliases: event.participantAliases
+    participantAliases: event.participantAliases,
+    directSettlementTransfers: settlementOptionsForEvent(event).directTransfers
   });
   window.open(`https://wa.me/?text=${encodeURIComponent(summary)}`, "_blank", "noopener");
 }

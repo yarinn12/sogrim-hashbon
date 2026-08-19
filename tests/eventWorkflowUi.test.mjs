@@ -1257,8 +1257,8 @@ test("event settings let managers choose direct payer reimbursements", async () 
 
   assert.match(app, /directSettlementTransfers: false/);
   assert.match(app, /title: "חלוקת ההחזרים"/);
-  assert.match(app, /title: "פחות העברות"/);
-  assert.match(app, /title: "לפי מי ששילם"/);
+  assert.match(app, /title: "קיזוז חכם"/);
+  assert.match(app, /title: "החזר לפי מי ששילם"/);
   assert.match(app, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
@@ -1278,6 +1278,10 @@ test("settlement exposes the active repayment mode without burying it in setting
   assert.match(app, /aria-label="שנה את חלוקת ההחזרים\. כרגע:/);
   assert.match(ledgerStyles, /\.settlement-repayment-shortcut/);
   assert.match(ledgerStyles, /min-height: 44px !important/);
+  assert.match(app, /<h2 id="settlement-transfers-title">מי מעביר למי<\/h2>/);
+  assert.match(app, /המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם/);
+  assert.match(app, /דני חייב למאור 50 ₪/);
+  assert.match(app, /<small>\$\{canManage \? "הסבר ושינוי" : "הסבר"\}<\/small>/);
 });
 
 test("event screen uses one focused start action instead of a repeated command grid", async () => {

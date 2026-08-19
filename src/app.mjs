@@ -5650,7 +5650,7 @@ function renderEventSettingsDialog(event) {
   const currencyStatus = currencySelectLabel(event.currency);
   const repaymentStatus = usesDirectSettlementTransfers(event)
     ? "לפי מי ששילם"
-    : "פחות העברות";
+    : "קיזוז חכם";
   const roundingStatus = usesRoundedSettlementTransfers(event)
     ? "פעיל · העברות בשקלים שלמים"
     : "כבוי · דיוק מלא באגורות";
@@ -5966,7 +5966,7 @@ function renderEventSettingsRepaymentDialog(event) {
   return renderEventDialogShell({
     eyebrow: "הגדרות",
     title: "חלוקת ההחזרים",
-    description: "בוחרים אם לצמצם העברות או שכל אחד יקבל לפי מה ששילם.",
+    description: "בוחרים אם לקזז בין כולם או להחזיר ישירות למי ששילם.",
     backAction: "event-settings-back",
     body: `
       <fieldset class="event-management-field event-repayment-field">
@@ -5976,14 +5976,14 @@ function renderEventSettingsRepaymentDialog(event) {
             {
               id: "optimized",
               enabled: false,
-              title: "פחות העברות",
-              description: "מקזזים בין כולם ומצמצמים את מספר ההעברות."
+              title: "קיזוז חכם",
+              description: "כל אחד משלם בדיוק את היתרה שלו, בפחות העברות. המקבל לא תמיד מי ששילם עבורו."
             },
             {
               id: "direct",
               enabled: true,
-              title: "לפי מי ששילם",
-              description: "מי שבמאזן הסופי מימן יותר מקבל בחזרה, בלי שיעביר כסף לאחרים."
+              title: "החזר לפי מי ששילם",
+              description: "כל אחד מחזיר ישירות למי שמימן יותר. קל לעקוב, אבל בדרך כלל יש יותר העברות."
             }
           ]
             .map((option, index) => {
@@ -6011,6 +6011,11 @@ function renderEventSettingsRepaymentDialog(event) {
             .join("")}
         </div>
       </fieldset>
+      <p class="event-setting-note">
+        ${direct
+          ? "בהחזר ישיר לא מקזזים דרך חברים אחרים, ולכן ייתכנו יותר העברות."
+          : "דוגמה: דני חייב למאור 50 ₪ ומאור חייב לאבי 50 ₪. בקיזוז חכם דני מעביר 50 ₪ ישירות לאבי, וכך אותה יתרה נסגרת בהעברה אחת במקום שתיים."}
+      </p>
       <p class="event-setting-note">סימוני תשלום שכבר בוצעו נשמרים. לא יוצגו העברות נגדיות או כפולות.</p>
       ${!canManage ? '<p class="event-setting-note">רק מנהל האירוע יכול לשנות את ההגדרה.</p>' : ""}
     `
@@ -8010,8 +8015,8 @@ function renderSettlement(event) {
               <section class="section settlement-stage" aria-labelledby="settlement-transfers-title">
                 <div class="settlement-stage-heading">
                   <div>
-                    <h2 id="settlement-transfers-title">כל ההעברות</h2>
-                    <small>מי מעביר למי אחרי כל הקיזוזים</small>
+                    <h2 id="settlement-transfers-title">מי מעביר למי</h2>
+                    <small>${usesDirectSettlementTransfers(event) ? "החזר ישיר למי שמימן יותר" : "המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם"}</small>
                   </div>
                   ${renderSettlementRepaymentShortcut(event)}
                 </div>
@@ -8038,7 +8043,7 @@ function renderSettlement(event) {
           <summary>
             <span>
               <strong>בדיקת חישוב ויתרות</strong>
-              <small>פירוט מלא של מצב כל משתתף${usesDirectSettlementTransfers(event) ? " · החזר ישיר למי ששילם" : ""}${usesRoundedSettlementTransfers(event) ? " · ההעברות מעוגלות לשקל שלם" : ""}</small>
+              <small>פירוט מלא של מצב כל משתתף${usesDirectSettlementTransfers(event) ? " · החזר ישיר למי ששילם" : " · קיזוז חכם"}${usesRoundedSettlementTransfers(event) ? " · ההעברות מעוגלות לשקל שלם" : ""}</small>
             </span>
             <span class="settlement-audit-count">${participants.length}</span>
           </summary>
@@ -8056,17 +8061,8 @@ function renderSettlement(event) {
 function renderSettlementRepaymentShortcut(event) {
   const label = usesDirectSettlementTransfers(event)
     ? "לפי מי ששילם"
-    : "פחות העברות";
+    : "קיזוז חכם";
   const canManage = canCurrentParticipantManage(event);
-
-  if (!canManage) {
-    return `
-      <span class="settlement-repayment-shortcut is-readonly">
-        <span aria-hidden="true">${iconSvg("transfers")}</span>
-        <span>${escapeHtml(label)}</span>
-      </span>
-    `;
-  }
 
   return `
     <button
@@ -8078,7 +8074,7 @@ function renderSettlementRepaymentShortcut(event) {
     >
       <span aria-hidden="true">${iconSvg("transfers")}</span>
       <span>${escapeHtml(label)}</span>
-      <small>שינוי</small>
+      <small>${canManage ? "הסבר ושינוי" : "הסבר"}</small>
     </button>
   `;
 }
@@ -8954,7 +8950,7 @@ function renderTransferExplanation(event, transfer) {
             : ""
         }
         <p class="transfer-minimization-note">
-          המקבל נבחר כדי לצמצם את מספר ההעברות בקבוצה, ולכן הוא לא בהכרח האדם ששילם ישירות עבור ${escapeHtml(debtorName)}.
+          בקיזוז חכם, המקבל נבחר לפי היתרות של כל הקבוצה. לכן הוא לא בהכרח האדם ששילם ישירות עבור ${escapeHtml(debtorName)}.
         </p>
       </div>
     </details>
@@ -13914,7 +13910,8 @@ async function copySettlementSummary(eventId) {
     participants,
     transfers: eventSettlementTransfers(event, participants),
     currency: event.currency,
-    participantAliases: event.participantAliases
+    participantAliases: event.participantAliases,
+    directSettlementTransfers: usesDirectSettlementTransfers(event)
   });
   copyText(summary, "סיכום ההתחשבנות הועתק.");
 }
@@ -13930,7 +13927,8 @@ async function copyEventReport(eventId) {
     expenses: event.expenses,
     transfers: eventSettlementTransfers(event, participants),
     currency: event.currency,
-    participantAliases: event.participantAliases
+    participantAliases: event.participantAliases,
+    directSettlementTransfers: usesDirectSettlementTransfers(event)
   });
   copyText(report, "דוח האירוע הועתק.");
 }
@@ -13945,7 +13943,8 @@ function shareSettlementOnWhatsApp(eventId) {
     participants,
     transfers: eventSettlementTransfers(event, participants),
     currency: event.currency,
-    participantAliases: event.participantAliases
+    participantAliases: event.participantAliases,
+    directSettlementTransfers: usesDirectSettlementTransfers(event)
   });
   const url = `https://wa.me/?text=${encodeURIComponent(summary)}`;
 
@@ -16630,8 +16629,8 @@ async function setEventRepaymentMode(eventId, mode) {
   const previousState = state;
   state = setEventDirectSettlementTransfers(state, eventId, direct);
   notice = direct
-    ? "החזרים ישירים הופעלו. כל מי שמימן הוצאה יקבל את ההחזר שלו."
-    : "מצב פחות העברות הופעל. המערכת תקזז בין כולם.";
+    ? "החזר לפי מי ששילם הופעל. כל אחד יחזיר ישירות למי שמימן יותר."
+    : "קיזוז חכם הופעל. כולם ישלמו ויקבלו בדיוק את היתרה שלהם, בפחות העברות.";
   const result = await persistState();
   if (!result?.ok) {
     state = previousState;

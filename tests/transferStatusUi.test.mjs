@@ -82,7 +82,7 @@ test("settlement action hierarchy follows payment state", async () => {
 test("settlement summary leads with one ordered transfer list", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
-  assert.match(app, /<h2 id="settlement-transfers-title">כל ההעברות<\/h2>/);
+  assert.match(app, /<h2 id="settlement-transfers-title">מי מעביר למי<\/h2>/);
   assert.match(app, /orderSettlementTransfers\(transfers\)/);
   assert.match(app, /groupSettlementTransfersForDisplay\(orderedTransfers\)/);
   assert.match(app, /renderTransferRow\(event, transfer, \{/);

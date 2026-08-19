@@ -38,12 +38,14 @@ test("formatSettlementSummary lists only pending transfers", () => {
   assert.equal(
     summary,
     [
-      "סיכום התחשבנות",
-      "אירוע: יציאה חמישי",
+      "*סוגרים חשבון*",
+      "אירוע: \u2067יציאה חמישי\u2069",
       "",
-      "העברות לביצוע:",
-      "אל אבי:",
-      "• ירין: ₪27.50"
+      "*העברות פתוחות*",
+      "הסכומים כוללים קיזוז בין כל הוצאות הקבוצה. לכן המקבל לא תמיד מי ששילם ישירות.",
+      "",
+      "*אל \u2067אבי\u2069*",
+      "• \u2067ירין\u2069 — \u206627.50 ₪\u2069"
     ].join("\n")
   );
 });
@@ -65,7 +67,7 @@ test("formatSettlementSummary says the event is closed when no pending transfer 
 
   assert.equal(
     summary,
-    "סיכום התחשבנות\nאירוע: יציאה חמישי\n\nהכל סגור - אין העברות פתוחות."
+    "*סוגרים חשבון*\nאירוע: \u2067יציאה חמישי\u2069\n\nהכול סגור. אין העברות פתוחות."
   );
 });
 
@@ -112,8 +114,10 @@ test("formatEventReport includes expenses and pending settlement", () => {
       "הוצאות:",
       "- מונית: ₪110.00 | שילמו: דני ₪50.00, אבי ₪60.00 | שותפים: דני, אבי, ירין, מאור",
       "התחשבנות פתוחה:",
-      "אל אבי:",
-      "• ירין: ₪27.50"
+      "הסכומים כוללים קיזוז בין כל הוצאות הקבוצה. לכן המקבל לא תמיד מי ששילם ישירות.",
+      "",
+      "*אל \u2067אבי\u2069*",
+      "• \u2067ירין\u2069 — \u206627.50 ₪\u2069"
     ].join("\n")
   );
 });
@@ -137,7 +141,7 @@ test("formatSettlementSummary uses the event currency", () => {
     currency: "USD"
   });
 
-  assert.match(summary, /\$42\.50/);
+  assert.match(summary, /42\.50 \$/);
   assert.doesNotMatch(summary, /₪/);
 });
 
@@ -168,8 +172,8 @@ test("settlement copy distinguishes short aliases for people with the same name"
     ]
   });
 
-  assert.match(summary, /אל דני כהן · בן דוד:/);
-  assert.match(summary, /• דני כהן · מהעבודה: ₪25\.00/);
+  assert.match(summary, /\*אל \u2067דני כהן · בן דוד\u2069\*/);
+  assert.match(summary, /• \u2067דני כהן · מהעבודה\u2069 — \u206625\.00 ₪\u2069/);
 });
 
 test("settlement copy groups several senders under one preferred recipient name", () => {
@@ -194,15 +198,36 @@ test("settlement copy groups several senders under one preferred recipient name"
   assert.equal(
     summary,
     [
-      "סיכום התחשבנות",
-      "אירוע: לובי של ניזרי",
+      "*סוגרים חשבון*",
+      "אירוע: \u2067לובי של ניזרי\u2069",
       "",
-      "העברות לביצוע:",
-      "אל מאור סיבוני:",
-      "• Yarin Izhak: ₪82.00",
-      "• הראל: ₪82.00",
-      "• אריאל ניזרי: ₪9.00"
+      "*העברות פתוחות*",
+      "הסכומים כוללים קיזוז בין כל הוצאות הקבוצה. לכן המקבל לא תמיד מי ששילם ישירות.",
+      "",
+      "*אל \u2067מאור סיבוני\u2069*",
+      "• \u2066Yarin Izhak\u2069 — \u206682.00 ₪\u2069",
+      "• \u2067הראל\u2069 — \u206682.00 ₪\u2069",
+      "• \u2067אריאל ניזרי\u2069 — \u20669.00 ₪\u2069"
     ].join("\n")
   );
   assert.doesNotMatch(summary, /Awesome Maor/);
+});
+
+test("settlement copy explains direct reimbursements without calling them smart offsets", () => {
+  const summary = formatSettlementSummary({
+    eventName: "טיול",
+    participants,
+    transfers: [
+      {
+        fromParticipantId: "yarin",
+        toParticipantId: "avi",
+        amount: 2750,
+        status: "pending"
+      }
+    ],
+    directSettlementTransfers: true
+  });
+
+  assert.match(summary, /ההחזרים הם ישירות למי שמימן יותר/);
+  assert.doesNotMatch(summary, /קיזוז בין כל הוצאות הקבוצה/);
 });
