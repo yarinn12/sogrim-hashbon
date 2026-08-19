@@ -188,7 +188,7 @@ test("native sharing waits until the shared event is actually published", () => 
 
   assert.match(app, /data-share-ready="\$\{shareReady\}"/);
   assert.match(app, /value="\$\{shareReady \? escapeAttribute\(inviteUrl\) : ""\}"/);
-  assert.match(app, /aria-busy="\$\{!shareReady\}"/);
+  assert.match(app, /type="hidden"\s+name="eventInviteUrl"/);
   assert.match(app, /\$\{shareReady \? "" : 'disabled aria-disabled="true" aria-busy="true"'\}/);
   assert.match(app, /eventSharePreparationErrors/);
   assert.match(app, /delete event\[EVENT_SPACE_ID_FIELD\]/);

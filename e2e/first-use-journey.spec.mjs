@@ -198,6 +198,8 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(settlement).toContainText("60.00");
   const firstTransfer = settlement.locator(".settlement-transfer-board .transfer-row").first();
   await expect(firstTransfer).toBeVisible();
+  await expect(firstTransfer.locator(".transfer-participant-name strong > bdi")).toHaveCount(2);
+  await expect(firstTransfer.locator('.transfer-amount bdi[dir="ltr"] > span.font-num')).toHaveCount(1);
   await expect(settlement.locator(".settlement-hero")).toBeVisible();
   await expect(
     firstTransfer.locator('[data-action="mark-paid"]')
@@ -258,6 +260,43 @@ test("a new user completes the first useful loop without help", async ({ page })
   await page.keyboard.press("Escape");
   await expect(shareDialog).toBeHidden();
   await expect(shareButton).toBeFocused();
+});
+
+test("currency search stays stable across repeated WebKit-style reopen cycles", async ({ page }) => {
+  await page.locator('[data-action="new-event"]').first().click();
+  await page
+    .locator('[data-action="new-event-type"][data-event-type="standard"]')
+    .click();
+
+  const currencySelect = page.locator('[data-action="new-event-currency"]');
+  const pickerTrigger = page.locator(
+    '[data-choice-select-action="new-event-currency"]'
+  );
+
+  for (let iteration = 0; iteration < 20; iteration += 1) {
+    await pickerTrigger.click();
+    const currencySearch = page.locator(".app-choice-search-input");
+    await expect(currencySearch).toBeVisible();
+
+    await currencySearch.fill("יפן");
+    await expect(currencySearch, `Hebrew query on cycle ${iteration + 1}`).toHaveValue("יפן");
+    await expect(page.locator(".app-choice-option:not([hidden])")).toHaveCount(1);
+    await expect(
+      page.locator('.app-choice-option[data-choice-value="JPY"]')
+    ).toBeVisible();
+
+    await currencySearch.fill("JPY");
+    await expect(currencySearch).toHaveValue("JPY");
+    await expect(
+      page.locator('.app-choice-option[data-choice-value="JPY"]')
+    ).toBeVisible();
+
+    await currencySearch.fill("");
+    await page
+      .locator('.app-choice-option[data-choice-value="ILS"]')
+      .click();
+    await expect(currencySelect).toHaveValue("ILS");
+  }
 });
 
 test("event creation keeps its draft when the user goes back to change the type", async ({ page }) => {

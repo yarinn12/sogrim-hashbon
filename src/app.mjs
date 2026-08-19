@@ -2,6 +2,7 @@ import { formatMoney, parseMoneyInput } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import {
   formatClockTime,
+  formatDateInputLabel,
   formatPreciseClockTime,
   formatRelativeCalendarDate
 } from "./domain/dateLabels.mjs";
@@ -5523,15 +5524,10 @@ function renderEventShareDialog(event) {
               </span>
             </span>
             <input
-              readonly
-              tabindex="-1"
+              type="hidden"
               name="eventInviteUrl"
-              aria-label="קישור הצטרפות פתוח"
-              aria-busy="${!shareReady}"
-              dir="ltr"
               data-share-ready="${shareReady}"
               value="${shareReady ? escapeAttribute(inviteUrl) : ""}"
-              placeholder="${shareReady ? "" : "מכינים קישור מאובטח…"}"
             />
           </label>
           <div class="event-invite-link-actions">
@@ -5553,7 +5549,7 @@ function renderEventShareDialog(event) {
         ${
           canManageInvite && runtimeConfig.storage?.mode === "supabase"
             ? `<button
-                class="text-button event-invite-rotate-button"
+                class="secondary-button event-invite-rotate-button"
                 type="button"
                 data-action="rotate-event-invite"
                 data-event-id="${escapeAttribute(event.id)}"
@@ -7008,11 +7004,13 @@ function syncExpenseFlowActionState() {
   }
 }
 
-function renderExpenseDateField(extraClass = "") {
+function renderExpenseDateField(extraClass = "", label = "תאריך ההוצאה") {
+  const selectedDateLabel = formatDateInputLabel(expenseDraft.occurredOn ?? "");
   return `
     <label class="field expense-date-field ${extraClass}">
-      <span>תאריך ההוצאה</span>
+      <span>${escapeHtml(label)}</span>
       <input data-action="expense-date" name="expenseDate" type="date" lang="he-IL" value="${escapeAttribute(expenseDraft.occurredOn ?? "")}" />
+      ${selectedDateLabel ? `<small class="expense-date-selected" aria-live="polite">${escapeHtml(selectedDateLabel)}</small>` : ""}
     </label>
   `;
 }
@@ -7410,10 +7408,7 @@ function renderRestaurantQuickStage(event, participants, stage, summary) {
             .join("")}
         </select>
       </label>
-      <label class="field restaurant-date-field">
-        <span>תאריך</span>
-        <input data-action="expense-date" name="expenseDate" type="date" lang="he-IL" value="${escapeAttribute(expenseDraft.occurredOn ?? "")}" />
-      </label>
+      ${renderExpenseDateField("restaurant-date-field", "תאריך")}
     </section>
   `;
 }
@@ -7508,10 +7503,7 @@ function renderGenericQuickExpenseForm(event, participants, canEdit) {
                       </label>`
                     : ""
                 }
-                <label class="field">
-                  <span>תאריך</span>
-                  <input data-action="expense-date" name="expenseDate" type="date" lang="he-IL" value="${escapeAttribute(expenseDraft.occurredOn ?? "")}" />
-                </label>
+                ${renderExpenseDateField("", "תאריך")}
               </div>`
             : ""
         }
@@ -8661,8 +8653,8 @@ function renderTransferRow(
       <div class="transfer-actions">
         <span class="transfer-amount">
           <small>${historicalPaidTotal ? "נשאר להעביר" : "סכום להעברה"}</small>
-          <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
-          ${historicalPaidTotal ? `<span class="transfer-paid-summary">כבר שולם <span class="font-num">${formatEventMoney(event, historicalPaidTotal)}</span></span>` : ""}
+          <span class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi></span>
+          ${historicalPaidTotal ? `<span class="transfer-paid-summary">כבר שולם <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, historicalPaidTotal)}</span></bdi></span>` : ""}
         </span>
         <span class="transfer-action-buttons">
           ${
@@ -8743,7 +8735,7 @@ function renderDirectFeaturedSettlementBreakdown(event, transfer) {
         }
         <div class="settlement-featured-breakdown-row is-total">
           <span><strong>סה״כ להעברה</strong></span>
-          <span class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></span>
+          <span class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi></span>
         </div>
         </div>
         ${
@@ -8772,7 +8764,7 @@ function renderTransferPaidHistory(
     <details class="transfer-paid-history">
       <summary>
         <span>${escapeHtml(summaryLabel)}</span>
-        <strong class="amount"><span class="font-num">${formatEventMoney(event, total)}</span></strong>
+        <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, total)}</span></bdi></strong>
       </summary>
       <div class="transfer-paid-history-list">
         ${paidHistory
@@ -8780,7 +8772,7 @@ function renderTransferPaidHistory(
             (transfer) => `
               <div class="transfer-paid-history-item">
                 <span>
-                  <strong class="amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></strong>
+                  <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi></strong>
                   <small>${escapeHtml(transferPaidStatusText(event, transfer))}</small>
                 </span>
                 <button
@@ -8845,7 +8837,7 @@ function renderTransferParticipant(
       ${renderAvatar(participantId, event)}
       <span class="transfer-participant-copy">
         <span class="transfer-participant-name">
-          <strong>${escapeHtml(participantName(participantId, event))}</strong>
+          <strong><bdi>${escapeHtml(participantName(participantId, event))}</bdi></strong>
           ${showCurrentUser ? '<small class="transfer-current-user">אתה</small>' : ""}
         </span>
         ${showOfflineBadge ? renderParticipantConnectionBadge(participant) : ""}
@@ -8881,7 +8873,7 @@ function renderTransferExplanation(event, transfer) {
         <summary>איך הסכום חושב?</summary>
         <div class="transfer-explanation-body">
           <p class="transfer-route-note">
-            ${escapeHtml(debtorName)} מעביר <span class="font-num">${formatEventMoney(event, transfer.amount)}</span> ל־${escapeHtml(creditorName)} לפי ההוצאות ש${escapeHtml(creditorName)} מימן.
+            <bdi>${escapeHtml(debtorName)}</bdi> מעביר <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi> ל־<bdi>${escapeHtml(creditorName)}</bdi> לפי ההוצאות ש<bdi>${escapeHtml(creditorName)}</bdi> מימן.
           </p>
           <p class="transfer-minimization-note">
             באירוע הזה נבחר החזר ישיר למי ששילם. לכן לא מקזזים הוצאות שונות דרך אנשים אחרים וייתכנו יותר העברות.
@@ -8914,17 +8906,17 @@ function renderTransferExplanation(event, transfer) {
         <div class="transfer-equation" aria-label="פירוט החישוב של ${escapeHtml(debtorName)}">
           <div class="transfer-equation-item">
             <span>החלק בחלוקה</span>
-            <strong class="amount"><span class="font-num">${formatEventMoney(event, breakdown.shareTotal)}</span></strong>
+            <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, breakdown.shareTotal)}</span></bdi></strong>
           </div>
           <span class="transfer-equation-sign" aria-hidden="true">−</span>
           <div class="transfer-equation-item">
             <span>שולם בהוצאות</span>
-            <strong class="amount"><span class="font-num">${formatEventMoney(event, breakdown.paidTotal)}</span></strong>
+            <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, breakdown.paidTotal)}</span></bdi></strong>
           </div>
           <span class="transfer-equation-sign" aria-hidden="true">=</span>
           <div class="transfer-equation-item is-result">
             <span>חוב שנוצר</span>
-            <strong class="amount"><span class="font-num">${formatEventMoney(event, debtTotal)}</span></strong>
+            <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, debtTotal)}</span></bdi></strong>
           </div>
         </div>
         ${
@@ -8933,7 +8925,7 @@ function renderTransferExplanation(event, transfer) {
             : ""
         }
         <p class="transfer-route-note">
-          ${escapeHtml(debtorName)} מעביר <span class="font-num">${formatEventMoney(event, transfer.amount)}</span> ל־${escapeHtml(participantName(transfer.toParticipantId, event))}${isSplitAcrossTransfers ? ` מתוך חוב כולל של <span class="font-num">${formatEventMoney(event, debtTotal)}</span>` : ""}.
+          <bdi>${escapeHtml(debtorName)}</bdi> מעביר <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi> ל־<bdi>${escapeHtml(participantName(transfer.toParticipantId, event))}</bdi>${isSplitAcrossTransfers ? ` מתוך חוב כולל של <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, debtTotal)}</span></bdi>` : ""}.
         </p>
         ${
           breakdown.expenseShares.length

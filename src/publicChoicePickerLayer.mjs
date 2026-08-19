@@ -195,13 +195,11 @@ function openChoicePicker(select, trigger) {
   document.body.classList.add("app-choice-picker-open");
   pushChoiceHistoryState();
 
-  requestAnimationFrame(() => {
-    const selectedOption = list.querySelector(
-      '.app-choice-option[aria-selected="true"]:not(:disabled)'
-    );
-    const firstOption = list.querySelector(".app-choice-option:not(:disabled)");
-    (selectedOption ?? firstOption ?? closeButton).focus({ preventScroll: true });
-  });
+  const selectedOption = list.querySelector(
+    '.app-choice-option[aria-selected="true"]:not(:disabled)'
+  );
+  const firstOption = list.querySelector(".app-choice-option:not(:disabled)");
+  (selectedOption ?? firstOption ?? closeButton).focus({ preventScroll: true });
 }
 
 function renderChoiceOption(
@@ -326,6 +324,7 @@ function isSearchableChoiceSelect(select) {
 async function chooseOption(optionButton) {
   const originalSelect = activeSelect;
   const nextValue = optionButton.dataset.choiceValue ?? "";
+  const closingPickerSequence = pickerSequence;
   if (!originalSelect) {
     await closeChoicePicker({ restoreFocus: false });
     return;
@@ -344,6 +343,7 @@ async function chooseOption(optionButton) {
 
   if (!shouldRestoreTrigger) return;
   requestAnimationFrame(() => {
+    if (activePicker || pickerSequence !== closingPickerSequence) return;
     enhanceChoiceSelects();
     findChoiceSelect(focusDescriptor)
       ?.nextElementSibling?.focus({ preventScroll: true });

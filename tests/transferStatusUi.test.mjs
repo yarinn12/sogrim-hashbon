@@ -159,6 +159,14 @@ test("settlement identifies offline participants next to money transfers", async
   assert.match(app, /אינם מחוברים לאפליקציה/);
 });
 
+test("settlement isolates mixed-direction participant names and monetary values", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /class="transfer-participant-name">\s*<strong><bdi>/);
+  assert.match(app, /class="transfer-amount">[\s\S]*?<bdi dir="ltr"><span class="font-num">/);
+  assert.match(app, /class="transfer-paid-summary">כבר שולם <bdi dir="ltr"><span class="font-num">/);
+});
+
 test("expense changes reconcile paid history instead of clearing it", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

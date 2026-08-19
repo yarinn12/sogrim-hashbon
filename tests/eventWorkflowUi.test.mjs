@@ -565,7 +565,8 @@ test("event sharing reveals one invitation path at a time", async () => {
   assert.match(shareDialog, /renderInviteStatus\(event, shareReady, shareAvailable\)/);
   assert.match(shareDialog, /class="event-invite-link-preview"/);
   assert.match(shareDialog, /קישור ההזמנה מוכן/);
-  assert.match(shareDialog, /readonly\s+tabindex="-1"\s+name="eventInviteUrl"/);
+  assert.match(shareDialog, /type="hidden"\s+name="eventInviteUrl"/);
+  assert.match(shareDialog, /class="secondary-button event-invite-rotate-button"/);
   assert.match(inviteStatus, /ready\s*\? ""/);
   assert.doesNotMatch(inviteStatus, /<i aria-hidden="true"><\/i>/);
   assert.match(app, /shareView: dialog\.shareView \?\? ""/);

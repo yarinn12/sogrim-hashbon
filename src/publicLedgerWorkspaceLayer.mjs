@@ -4769,14 +4769,19 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-invite-rotate-button {
-    min-height: 42px !important;
+    justify-self: start !important;
+    width: auto !important;
+    min-height: 44px !important;
     margin: 12px 0 0 !important;
-    padding-inline: 4px !important;
+    padding: 0 14px !important;
+    border: 1px solid var(--ledger-line-strong) !important;
+    border-radius: 8px !important;
+    background: var(--ledger-surface) !important;
     color: var(--ledger-muted) !important;
-    font-size: 11px !important;
+    font-size: 12px !important;
     font-weight: 720 !important;
-    text-decoration: underline !important;
-    text-underline-offset: 4px !important;
+    text-decoration: none !important;
+    box-shadow: none !important;
   }
 
   @keyframes ledger-invite-pass-sheen {

@@ -63,6 +63,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /globalThis\.SogrimNativeRuntimeConfig/);
   assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv\)/);
   assert.match(buildScript, /validateNativeBootstrapConfig/);
+  assert.match(buildScript, /expectedAndroidBuild: androidBuild/);
+  assert.match(buildScript, /nativeRuntimeCompatibility/);
   assert.match(buildScript, /Refusing to build a disconnected store release/);
   assert.doesNotMatch(buildScript, /Native runtime bootstrap was omitted/);
   assert.match(buildScript, /native-account\.mjs/);

@@ -134,7 +134,7 @@ test("restaurant and trip UI receives responsive production styling", async () =
   );
   assert.match(app, /const isTripEvent = eventTypeConfig\(event\.eventType\)\.id === EVENT_TYPE_TRIP/);
   assert.match(app, /isTripEvent \? renderExpenseDateField\("expense-date-prominent"\) : ""/);
-  assert.match(app, /function renderExpenseDateField\(extraClass = ""\)/);
+  assert.match(app, /function renderExpenseDateField\(extraClass = "", label = "תאריך ההוצאה"\)/);
   assert.match(sw, /quickExpenses\.mjs/);
   assert.match(sw, /eventTypes\.mjs/);
 });

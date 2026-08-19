@@ -642,7 +642,10 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   assert.match(layer, /\.event-workspace-tab \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /\.expense-row-actions-menu > summary \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important/);
   assert.match(layer, /\.expense-participants-details > summary \{[\s\S]*?min-height: 44px !important/);
-  assert.match(layer, /\.event-invite-rotate-button \{[\s\S]*?min-height: 44px !important/);
+  assert.match(
+    layer,
+    /\.event-invite-rotate-button \{[\s\S]*?width: auto !important;[\s\S]*?min-height: 44px !important;[\s\S]*?text-decoration: none !important/
+  );
   assert.match(layer, /\.referral-reward-card\.is-home > button \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });

@@ -10,6 +10,7 @@ const device = process.env.ANDROID_QA_DEVICE || firstDevice();
 const checks = [];
 const screens = [];
 const screenshotDirectory = join(root, "artifacts", "android-qa", "journey");
+const expectedAndroidBuild = readAndroidBuildCode();
 let createdFixtureEvent = false;
 
 if (!device) fail("No authorized Android device or emulator is connected");
@@ -24,6 +25,11 @@ await waitFor(
 );
 
 await ensureQaAccount(page);
+
+await waitFor(
+  () => evaluate(page, `!document.querySelector('#app-splash')`),
+  8_000
+);
 
 await clickAction(page, "home");
 await waitForScreen(page, "home");
@@ -102,7 +108,7 @@ if (hasEvent) {
 
   await openAndInspectOverlay(page, "open-event-participants", "participants");
   await openAndInspectOverlay(page, "open-event-share", "share");
-  await openAndInspectOverlay(page, "open-event-settings", "settings");
+  await inspectEventSettingsJourney(page);
 
   await clickAction(page, "settle");
   await waitForScreen(page, "settlement");
@@ -207,6 +213,12 @@ async function openAndInspectOverlay(page, action, label) {
   await clickAction(page, action);
   await waitFor(() => evaluate(page, visibleOverlayExpression()));
   if (label === "share") {
+    await inspect(page, "share-menu");
+    await clickSelector(
+      page,
+      '[data-action="event-share-view"][data-share-view="link"]',
+      "Share link route"
+    );
     await waitFor(
       () => evaluate(page, `(
         document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true' ||
@@ -220,7 +232,76 @@ async function openAndInspectOverlay(page, action, label) {
     );
     check("share: secure invitation link is ready", shareReady);
   }
+  if (label === "home") {
+    const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
+    check(
+      `${label}: native bootstrap API uses a public HTTPS address`,
+      apiBaseUrl?.protocol === "https:" &&
+        !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(apiBaseUrl.hostname)
+    );
+    check(
+      `${label}: native update policy matches the installed build`,
+      state.nativeBootstrapCurrentBuild === expectedAndroidBuild
+    );
+    check(
+      `${label}: native update policy includes a final decision`,
+      typeof state.nativeBootstrapUpdateRequired === "boolean"
+    );
+  }
   await inspect(page, label);
+  await androidBack();
+  if (label === "share") {
+    await waitFor(() => evaluate(
+      page,
+      `document.querySelector('[data-event-share-view]')?.dataset?.eventShareView === 'menu'`
+    ));
+    check("share: Android back returns to the share method menu", true);
+    await androidBack();
+  }
+  await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
+  await waitForScreen(page, "event");
+}
+
+async function inspectEventSettingsJourney(page) {
+  const sections = [
+    ["management", "אופן ניהול"],
+    ["currency", "מטבע האירוע"],
+    ["repayment", "חלוקת ההחזרים"],
+    ["rounding", "עיגול סכומים"],
+    ["activity", "פעילות באירוע"],
+    ["lock", "עריכת האירוע"],
+    ["danger", "עזיבה ומחיקה"]
+  ];
+
+  await clickAction(page, "open-event-settings");
+  await waitFor(() => evaluate(page, visibleOverlayExpression()));
+  await inspect(page, "settings");
+
+  for (const [section, title] of sections) {
+    const selector = `[data-action="open-event-settings-section"][data-settings-section="${section}"]`;
+    await clickSelector(page, selector, `${title} settings section`);
+    await waitFor(() => evaluate(
+      page,
+      `document.querySelector('#event-modal-title')?.textContent?.trim() === ${JSON.stringify(title)}`
+    ));
+    await inspect(page, `settings-${section}`);
+
+    await evaluate(page, `(() => {
+      const body = document.querySelector('.event-modal-body');
+      if (body) body.scrollTop = body.scrollHeight;
+    })()`);
+    await androidBack();
+    await waitFor(() => evaluate(
+      page,
+      `document.querySelector('#event-modal-title')?.textContent?.trim() === 'הגדרות האירוע'`
+    ));
+    const returnedAtTop = await evaluate(
+      page,
+      `Number(document.querySelector('.event-modal-body')?.scrollTop || 0) <= 1`
+    );
+    check(`${title}: Android back returns to a clean settings menu`, returnedAtTop);
+  }
+
   await androidBack();
   await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
   await waitForScreen(page, "event");
@@ -353,6 +434,9 @@ async function waitForExpenseStep(page, step) {
 }
 
 async function inspect(page, label) {
+  // Navigation and dialog activation finish scroll restoration and focus work
+  // in the next animation frame. Capture only after that state is stable.
+  await sleep(350);
   const state = await evaluate(page, inspectionExpression());
   screens.push({ label, ...state });
   captureScreenshot(label);
@@ -474,13 +558,19 @@ function inspectionExpression() {
     };
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
     const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
-    const visibleInviteInput = [...document.querySelectorAll('input[name="eventInviteUrl"]')].find(visible);
+    const inviteInput = document.querySelector('input[name="eventInviteUrl"]');
     return {
       screen: document.querySelector('#app')?.dataset?.screen || '',
       focusedRoute: ['new-event', 'join-event'].includes(
         document.querySelector('#app .screen')?.dataset?.screenKind || ''
       ),
       nativeBootstrapPublicUrl: String(globalThis.SogrimNativeRuntimeConfig?.publicUrl || ''),
+      nativeBootstrapApiBaseUrl: String(globalThis.SogrimNativeRuntimeConfig?.apiBaseUrl || ''),
+      nativeBootstrapCurrentBuild: Number(
+        globalThis.SogrimNativeRuntimeConfig?.updates?.android?.currentBuild || 0
+      ),
+      nativeBootstrapUpdateRequired:
+        globalThis.SogrimNativeRuntimeConfig?.updates?.android?.required,
       scrollY: Math.round(window.scrollY || document.documentElement.scrollTop || 0),
       overlayVisible: ${visibleOverlayExpression()},
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
@@ -530,7 +620,7 @@ function inspectionExpression() {
           } : null;
         })
         .filter(Boolean),
-      visibleInviteUrl: visibleInviteInput?.value || '',
+      visibleInviteUrl: inviteInput?.value || '',
       bottomContentClearance,
       productHeaderVisible: [...document.querySelectorAll('.product-header-profile-avatar')]
         .some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)),
@@ -724,6 +814,15 @@ function findAdb() {
     process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Android", "Sdk", "platform-tools", "adb.exe")
   ].filter(Boolean);
   return candidates.find((candidate) => existsSync(candidate)) || "adb";
+}
+
+function readAndroidBuildCode() {
+  const gradle = readFileSync(join(root, "android", "app", "build.gradle"), "utf8");
+  const build = Number.parseInt(gradle.match(/versionCode\s+(\d+)/)?.[1] ?? "", 10);
+  if (!Number.isSafeInteger(build) || build < 1) {
+    throw new Error("Android versionCode could not be read for native QA");
+  }
+  return build;
 }
 
 function adbRun(args, { allowFailure = false } = {}) {

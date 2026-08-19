@@ -12,6 +12,7 @@ import {
   normalizePublicOrigin,
   runtimeApiOrigins
 } from "../src/domain/publicOrigin.mjs";
+import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibility.mjs";
 
 const root = process.cwd();
 const output = join(root, "www");
@@ -165,7 +166,9 @@ async function loadNativeBootstrapRuntimeConfig() {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return {
-        ...validateNativeBootstrapConfig(await response.json()),
+        ...validateNativeBootstrapConfig(await response.json(), {
+          expectedAndroidBuild: androidBuild
+        }),
         publicUrl: publicAppOrigin,
         apiBaseUrl
       };
@@ -184,7 +187,9 @@ async function loadNativeBootstrapRuntimeConfig() {
     console.warn(
       `Native runtime bootstrap loaded from local environment after remote config failed: ${remoteError?.message ?? "unknown error"}`
     );
-    return validateNativeBootstrapConfig(config);
+    return validateNativeBootstrapConfig(config, {
+      expectedAndroidBuild: androidBuild
+    });
   } catch (localError) {
     throw new Error(
       `Native runtime bootstrap is unavailable (remote: ${remoteError?.message ?? "unknown error"}; local: ${localError.message}). Refusing to build a disconnected store release.`
@@ -192,13 +197,10 @@ async function loadNativeBootstrapRuntimeConfig() {
   }
 }
 
-function validateNativeBootstrapConfig(config) {
-  if (
-    config?.storage?.mode !== "supabase" ||
-    !String(config.storage?.url ?? "").startsWith("https://") ||
-    !String(config.storage?.anonKey ?? "").trim()
-  ) {
-    throw new Error("Native bootstrap config is incomplete");
+function validateNativeBootstrapConfig(config, options = {}) {
+  const compatibility = nativeRuntimeCompatibility(config, options);
+  if (!compatibility.ok) {
+    throw new Error(`Native bootstrap config is incompatible: ${compatibility.reason}`);
   }
 
   const { account: _account, ...storage } = config.storage;

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   formatClockTime,
+  formatDateInputLabel,
   formatPreciseClockTime,
   formatRelativeCalendarDate
 } from "../src/domain/dateLabels.mjs";
@@ -39,4 +40,15 @@ test("event opening times keep a stable 24-hour clock", () => {
   assert.equal(formatRelativeCalendarDate("not-a-date"), "");
   assert.equal(formatClockTime("not-a-date"), "");
   assert.equal(formatPreciseClockTime("not-a-date"), "");
+});
+
+test("native date inputs get a stable Hebrew companion label without timezone drift", () => {
+  const label = formatDateInputLabel("2026-08-19");
+
+  assert.match(label, /יום רביעי/);
+  assert.match(label, /19/);
+  assert.match(label, /אוגוסט/);
+  assert.match(label, /2026/);
+  assert.equal(formatDateInputLabel("2026-02-31"), "");
+  assert.equal(formatDateInputLabel("not-a-date"), "");
 });

@@ -47,6 +47,21 @@ export function formatPreciseClockTime(value, locale = "he-IL") {
   }).format(date);
 }
 
+export function formatDateInputLabel(value, locale = "he-IL") {
+  const serialized = String(value ?? "");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(serialized)
+    ? dateInputValue(serialized)
+    : toValidDate(value);
+  if (!date) return "";
+
+  return new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(date);
+}
+
 function calendarDayNumber(date) {
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS;
 }
@@ -54,4 +69,22 @@ function calendarDayNumber(date) {
 function toValidDate(value) {
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function dateInputValue(value) {
+  const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(year, month - 1, day, 12);
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  return date;
 }

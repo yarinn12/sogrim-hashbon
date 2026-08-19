@@ -43,6 +43,7 @@
     "qa:production": "node scripts/verify-production-availability.mjs",
     "qa:production:strict": "node scripts/verify-production-availability.mjs --strict",
     "qa:recovery:strict": "node scripts/verify-production-availability.mjs --strict --allow-origin-backed-shell",
+    "qa:failover": "node scripts/verify-production-failover.mjs",
     "qa:public-origin": "node scripts/verify-public-origin-readiness.mjs",
     "qa:public-origin:ios": "node scripts/verify-public-origin-readiness.mjs --ios",
     "qa:store": "node scripts/verify-store-readiness.mjs",

@@ -81,6 +81,23 @@ test("currency pickers can be searched by currency, country, or code", () => {
   assert.match(layer, /app-choice-option:not\(:disabled\):not\(\[hidden\]\)/);
 });
 
+test("a stale close cannot steal focus from a newly opened picker", () => {
+  assert.match(layer, /const closingPickerSequence = pickerSequence/);
+  assert.match(
+    layer,
+    /if \(activePicker \|\| pickerSequence !== closingPickerSequence\) return;/
+  );
+});
+
+test("opening a searchable picker leaves no delayed focus task behind", () => {
+  const openPicker = layer.slice(
+    layer.indexOf("function openChoicePicker"),
+    layer.indexOf("function renderChoiceOption")
+  );
+  assert.match(openPicker, /\(selectedOption \?\? firstOption \?\? closeButton\)\.focus/);
+  assert.doesNotMatch(openPicker, /requestAnimationFrame/);
+});
+
 test("the choice picker ships in the public and offline app shells", () => {
   assert.match(index, /publicChoicePickerLayer\.mjs/);
   assert.match(serviceWorker, /"\/src\/publicChoicePickerLayer\.mjs"/);

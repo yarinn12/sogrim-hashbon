@@ -35,6 +35,16 @@ test("native API origins keep the public host first and add the recovery host", 
   ]);
 });
 
+test("native API origins keep a verified bootstrap API ahead of the public host", () => {
+  assert.deepEqual(runtimeApiOrigins({
+    apiBaseUrl: RECOVERY_PUBLIC_ORIGIN,
+    publicUrl: LEGACY_PUBLIC_ORIGIN
+  }), [
+    RECOVERY_PUBLIC_ORIGIN,
+    LEGACY_PUBLIC_ORIGIN
+  ]);
+});
+
 test("public URL validation accepts the configured and legacy hosts only", () => {
   const publicUrl = "https://app.sogrim.example";
   assert.ok(allowedPublicHosts(publicUrl).has("app.sogrim.example"));
