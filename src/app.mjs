@@ -10040,14 +10040,19 @@ async function handleClick(event) {
   }
 
   if (action === "set-event-management-mode") {
-    setEventManagementMode(target.dataset.eventId, target.dataset.managementMode);
+    await setEventManagementMode(
+      target.dataset.eventId,
+      target.dataset.managementMode
+    );
+    return;
   }
 
   if (action === "set-event-rounding-mode") {
-    setEventRoundingMode(
+    await setEventRoundingMode(
       target.dataset.eventId,
       target.dataset.roundingMode
     );
+    return;
   }
 
   if (action === "set-event-repayment-mode") {
@@ -10702,7 +10707,8 @@ async function handleClick(event) {
   }
 
   if (action === "toggle-lock") {
-    toggleEventLock(target.dataset.eventId);
+    await toggleEventLock(target.dataset.eventId);
+    return;
   }
 
   if (action === "close-event") {
@@ -12899,6 +12905,7 @@ async function confirmImportantAction() {
   const pendingAction = importantActionDialog;
   if (!pendingAction) return;
 
+  const returnFocus = importantActionReturnFocus;
   const underlyingDialogSelector = expenseDraft
     ? ".expense-modal"
     : eventDialog
@@ -12928,11 +12935,13 @@ async function confirmImportantAction() {
 
   if (shouldRewindBrowserHistory) {
     pendingConfirmedEventDialog = cloneNavigationValue(eventDialog);
+    pendingImportantActionReturnFocus = returnFocus;
     appHistoryDepth = Math.max(0, appHistoryDepth - 1);
     lastNavigationViewKey = navigationViewKey();
     window.history.back();
   } else {
     replaceBrowserHistoryState();
+    window.setTimeout(() => restoreActionFocus(returnFocus), 180);
   }
 }
 
@@ -13037,6 +13046,11 @@ function requestEventCurrencyChange(event, currency, trigger) {
     "הוצאה קיימת",
     "הוצאות קיימות"
   );
+  const visibleTrigger = trigger?.nextElementSibling?.matches?.(
+    '[data-choice-select-action="event-currency"]'
+  )
+    ? trigger.nextElementSibling
+    : trigger;
   openImportantActionDialog(
     {
       kind: "change-event-currency",
@@ -13048,7 +13062,7 @@ function requestEventCurrencyChange(event, currency, trigger) {
         currency: normalizeCurrency(currency)
       }
     },
-    trigger
+    visibleTrigger
   );
 }
 
@@ -13061,12 +13075,29 @@ async function applyEventCurrencyChange(
   if (!event || !canCurrentParticipantManage(event)) return;
 
   const nextCurrency = normalizeCurrency(currency);
+  if (nextCurrency === eventCurrency(event)) return { ok: true, unchanged: true };
+
+  const previousState = state;
   state = setEventCurrency(state, eventId, nextCurrency, {
     allowExistingExpenses
   });
-  await persistState();
-  notice = `מטבע האירוע עודכן ל${currencySelectLabel(nextCurrency)}.`;
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : "לא הצלחנו לשנות את מטבע האירוע. לא בוצע שינוי.";
+  } else {
+    notice = `מטבע האירוע עודכן ל${currencySelectLabel(nextCurrency)}.`;
+  }
   render();
+  reactivateDialogAfterRender(".event-modal");
+  window.setTimeout(() => {
+    app
+      .querySelector('[data-choice-select-action="event-currency"]')
+      ?.focus({ preventScroll: true });
+  }, 180);
+  return result;
 }
 
 async function resetApplicationState() {
@@ -13089,6 +13120,7 @@ function createActionFocusDescriptor(element) {
   return {
     element,
     action: element.dataset.action ?? "",
+    choiceSelectAction: element.dataset.choiceSelectAction ?? "",
     eventId: element.dataset.eventId ?? "",
     expenseId: element.dataset.expenseId ?? "",
     groupId: element.dataset.groupId ?? "",
@@ -13096,15 +13128,22 @@ function createActionFocusDescriptor(element) {
   };
 }
 
-function restoreActionFocus(returnTarget) {
+function restoreActionFocus(returnTarget, attempt = 0) {
   if (!returnTarget) return;
   if (returnTarget.element?.isConnected) {
     returnTarget.element.focus({ preventScroll: true });
+    if (document.activeElement === returnTarget.element || attempt >= 8) return;
+    requestAnimationFrame(() => restoreActionFocus(returnTarget, attempt + 1));
     return;
   }
 
-  const replacement = [...app.querySelectorAll("[data-action]")].find((element) =>
-    element.dataset.action === returnTarget.action &&
+  const focusCandidates = returnTarget.choiceSelectAction
+    ? app.querySelectorAll("[data-choice-select-action]")
+    : app.querySelectorAll("[data-action]");
+  const replacement = [...focusCandidates].find((element) =>
+    (returnTarget.choiceSelectAction
+      ? element.dataset.choiceSelectAction === returnTarget.choiceSelectAction
+      : element.dataset.action === returnTarget.action) &&
     (!returnTarget.eventId || element.dataset.eventId === returnTarget.eventId) &&
     (!returnTarget.expenseId || element.dataset.expenseId === returnTarget.expenseId) &&
     (!returnTarget.groupId || element.dataset.groupId === returnTarget.groupId) &&
@@ -13112,6 +13151,8 @@ function restoreActionFocus(returnTarget) {
   );
 
   replacement?.focus({ preventScroll: true });
+  if (document.activeElement === replacement || attempt >= 8) return;
+  requestAnimationFrame(() => restoreActionFocus(returnTarget, attempt + 1));
 }
 
 function archiveGroupInState(groupId) {
@@ -14840,6 +14881,7 @@ async function reopenCurrentEvent(eventId) {
     return { ok: false, reason: "forbidden" };
   }
 
+  const previousState = cloneNavigationValue(state);
   const reopenedAt = new Date().toISOString();
   state = reopenEvent(state, eventId, reopenedAt);
   recordEventActivity(eventId, "event-reopened", {}, reopenedAt);
@@ -14847,9 +14889,12 @@ async function reopenCurrentEvent(eventId) {
   notice = "פותח את האירוע ושומר…";
   render();
   const result = await persistState();
-  notice = result?.ok === false
-    ? "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי."
-    : "האירוע נפתח לעריכה ונשמר.";
+  if (result?.ok === false) {
+    state = previousState;
+    notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
+  } else {
+    notice = "האירוע נפתח לעריכה ונשמר.";
+  }
   render();
   return result;
 }
@@ -14871,15 +14916,17 @@ function reconcileEventTransfers(event, previousTransfers = []) {
   event.transfers = result.transfers;
 }
 
-function toggleEventLock(eventId) {
+async function toggleEventLock(eventId) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לנעול או לפתוח עריכה.";
     render();
     return;
   }
+  const previousState = cloneNavigationValue(state);
   const statusUpdatedAt = new Date().toISOString();
-  if (isEventClosed(event)) {
+  const opening = isEventClosed(event);
+  if (opening) {
     state = reopenEvent(state, eventId, statusUpdatedAt);
     recordEventActivity(eventId, "event-reopened", {}, statusUpdatedAt);
   } else {
@@ -14888,8 +14935,25 @@ function toggleEventLock(eventId) {
     recordEventActivity(eventId, "event-closed", {}, statusUpdatedAt);
     expenseDraft = null;
   }
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : opening
+        ? "לא הצלחנו לפתוח את האירוע. לא בוצע שינוי."
+        : "לא הצלחנו לנעול את האירוע. לא בוצע שינוי.";
+  } else {
+    notice = opening
+      ? "האירוע נפתח לעריכה ונשמר."
+      : "האירוע ננעל לעריכה ונשמר.";
+  }
   render();
+  reactivateDialogAfterRender(
+    ".event-modal",
+    '[data-action="toggle-lock"]'
+  );
+  return result;
 }
 
 function toggleAdminEditMode(eventId) {
@@ -15253,7 +15317,7 @@ function archiveSettledEvent(eventId) {
   });
 }
 
-function setEventManagementMode(eventId, mode) {
+async function setEventManagementMode(eventId, mode) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לשנות את אופן ניהול האירוע.";
@@ -15268,12 +15332,33 @@ function setEventManagementMode(eventId, mode) {
   }
 
   const adminsCanEditOnly = managementModeRequiresAdmin(mode);
-  if (event.adminsCanEditOnly === adminsCanEditOnly) return;
+  if (event.adminsCanEditOnly === adminsCanEditOnly) {
+    return { ok: true, unchanged: true };
+  }
 
+  const previousState = state;
   state = setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly);
   expenseDraft = null;
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : "לא הצלחנו לשנות את אופן הניהול. לא בוצע שינוי.";
+  } else {
+    notice = adminsCanEditOnly
+      ? "ניהול מרוכז הופעל ונשמר."
+      : "ניהול משותף הופעל ונשמר.";
+  }
   render();
+  requestAnimationFrame(() => {
+    app
+      .querySelector(
+        `[data-action="set-event-management-mode"][data-management-mode="${mode}"]`
+      )
+      ?.focus({ preventScroll: true });
+  });
+  return result;
 }
 
 async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
