@@ -26,6 +26,7 @@ const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey =
   process.env.SUPABASE_ANON_KEY || requiredEnv("SUPABASE_PUBLISHABLE_KEY");
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+assertLiveQaTarget();
 const apiBaseUrl = String(
   process.env.PUBLIC_APP_URL || "https://sogrim-hashbon.vercel.app"
 ).replace(/\/+$/, "");
@@ -44,6 +45,7 @@ const accounts = [
 ];
 
 let result = null;
+let sharedSnapshotCreated = false;
 
 try {
   for (const account of accounts) {
@@ -105,6 +107,7 @@ try {
     senderInviteState,
     eventId
   );
+  sharedSnapshotCreated = true;
 
   const invitationBeforeFriendship = await sendEventActivityNotification(
     notificationConfig(sender),
@@ -296,6 +299,16 @@ try {
   };
 } finally {
   const cleanupErrors = [];
+  if (sharedSnapshotCreated) {
+    try {
+      await adminRequest(
+        `/rest/v1/app_snapshots?id=eq.${encodeURIComponent(sharedSpace.id)}`,
+        { method: "DELETE" }
+      );
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
   for (const account of [...accounts].reverse()) {
     if (!account.userId) continue;
     try {
@@ -456,4 +469,14 @@ function requiredEnv(name) {
   const value = String(process.env[name] ?? "").trim();
   if (!value) throw new Error(`${name} is required for notification QA.`);
   return value;
+}
+
+function assertLiveQaTarget() {
+  const environment = String(process.env.LIVE_QA_ENVIRONMENT ?? "").trim();
+  const productionApproved = process.env.LIVE_QA_ALLOW_PRODUCTION === "1";
+  if (environment !== "staging" && !productionApproved) {
+    throw new Error(
+      "Live notification QA requires LIVE_QA_ENVIRONMENT=staging or explicit LIVE_QA_ALLOW_PRODUCTION=1."
+    );
+  }
 }

@@ -244,6 +244,15 @@ async function handleInviteSnapshotJoinClick(event) {
 
     saveState(state);
     const saveResult = await saveSharedState(state);
+    if (!saveResult?.ok && !saveResult?.partial) {
+      document.dispatchEvent(new CustomEvent("settle-friends:notice", {
+        detail: {
+          message:
+            "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ונסו שוב."
+        }
+      }));
+      return;
+    }
     if (profile && !wasAlreadyParticipant) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId);
     }
@@ -310,6 +319,7 @@ async function importIncomingSharedEvent(
     }
     saveState(state);
     const saveResult = await saveSharedState(state);
+    if (!saveResult?.ok && !saveResult?.partial) return false;
     if (profile && !wasAlreadyParticipant) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId, config);
     }

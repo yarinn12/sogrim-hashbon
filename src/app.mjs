@@ -11626,11 +11626,16 @@ async function joinExistingEventFromDraft() {
     }
 
     const saveResult = await saveSharedState(state);
+    if (!saveResult?.ok && !saveResult?.partial) {
+      joinEventDraft.error =
+        "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ולחצו שוב.";
+      return;
+    }
     joinEventDraft = null;
     newEventDraft = null;
     screen = { name: "event", eventId };
-    notice = saveResult?.ok === false
-      ? "הצטרפת. השמירה לענן תושלם כשהחיבור יחזור."
+    notice = saveResult?.partial
+      ? "הצטרפת. העותק האישי יסתנכרן כשהחיבור יחזור."
       : "הצטרפת לאירוע.";
     emitProductMetric("invite_joined", { screen: "invite" });
   } catch (error) {

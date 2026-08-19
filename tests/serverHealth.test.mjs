@@ -41,6 +41,46 @@ test("server exposes a health endpoint and loads local env files", async () => {
   assert.match(server, /"\/api\/account"/);
 });
 
+test("production health fails closed when a required launch dependency is missing", () => {
+  const payload = getHealthPayload(
+    {
+      storage: { mode: "local" },
+      launch: {
+        publicUrlReady: true,
+        cloudStorageReady: false,
+        googleAuthReady: true,
+        accountDeletionReady: false,
+        shareLinksReady: false
+      }
+    },
+    { requireProductionReadiness: true }
+  );
+
+  assert.equal(payload.ok, false);
+  assert.equal(payload.storageMode, "local");
+});
+
+test("the recovery server permits verified files under .well-known", async () => {
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(
+      `http://127.0.0.1:${port}/.well-known/assetlinks.json`
+    );
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /application\/json/);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});
+
 test("server binds containers publicly while keeping local development private", () => {
   assert.equal(resolveServerHost({ env: {} }), "127.0.0.1");
   assert.equal(

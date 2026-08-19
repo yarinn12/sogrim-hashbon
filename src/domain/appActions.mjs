@@ -141,7 +141,7 @@ export function setEventCurrency(
         ? {
             ...event,
             currency: normalizeCurrency(currency),
-            settingsUpdatedAt
+            ...eventSettingTimestampUpdate(event, "currency", settingsUpdatedAt)
           }
         : event
     )
@@ -163,7 +163,11 @@ export function setEventRoundSettlementTransfers(
       const nextEvent = {
         ...event,
         roundSettlementTransfers: enabled,
-        settingsUpdatedAt
+        ...eventSettingTimestampUpdate(
+          event,
+          "roundSettlementTransfers",
+          settingsUpdatedAt
+        )
       };
       if (!(event.transfers ?? []).length) return nextEvent;
 
@@ -198,7 +202,11 @@ export function setEventDirectSettlementTransfers(
       const nextEvent = {
         ...event,
         directSettlementTransfers: enabled,
-        settingsUpdatedAt
+        ...eventSettingTimestampUpdate(
+          event,
+          "directSettlementTransfers",
+          settingsUpdatedAt
+        )
       };
       const eventParticipants = (state.participants ?? []).filter((participant) =>
         event.participantIds.includes(participant.id)
@@ -531,7 +539,15 @@ export function setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly) {
     ...state,
     events: state.events.map((event) =>
       event.id === eventId
-        ? { ...event, adminsCanEditOnly, settingsUpdatedAt }
+        ? {
+            ...event,
+            adminsCanEditOnly,
+            ...eventSettingTimestampUpdate(
+              event,
+              "adminsCanEditOnly",
+              settingsUpdatedAt
+            )
+          }
         : event
     )
   };
@@ -678,6 +694,34 @@ export function canLinkParticipantAccount(
   }
 
   return canManageAffectedParticipantMergeEvents(state, sourceParticipantId);
+}
+
+function eventSettingTimestampUpdate(event, field, updatedAt) {
+  const settingFields = [
+    "name",
+    "eventType",
+    "currency",
+    "groupId",
+    "adminsCanEditOnly",
+    "roundSettlementTransfers",
+    "directSettlementTransfers"
+  ];
+  const previousTimestamp = event.settingsUpdatedAt ?? event.createdAt ?? updatedAt;
+  const settingsFieldUpdatedAt = {
+    ...(event.settingsFieldUpdatedAt ?? {})
+  };
+
+  for (const settingField of settingFields) {
+    if (
+      Object.hasOwn(event, settingField) &&
+      !settingsFieldUpdatedAt[settingField]
+    ) {
+      settingsFieldUpdatedAt[settingField] = previousTimestamp;
+    }
+  }
+  settingsFieldUpdatedAt[field] = updatedAt;
+
+  return { settingsUpdatedAt: updatedAt, settingsFieldUpdatedAt };
 }
 
 export function canLinkParticipantAccountInEvent(

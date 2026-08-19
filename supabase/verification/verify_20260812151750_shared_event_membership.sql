@@ -2,6 +2,7 @@ do $$
 declare
   update_policy_using text;
   update_policy_check text;
+  atomic_update_function text;
   join_function text;
   guard_function text;
 begin
@@ -48,14 +49,34 @@ begin
     and policy.tablename = 'app_snapshots'
     and policy.policyname = 'app_snapshots_update';
 
-  if update_policy_using is null
-    or pg_catalog.strpos(update_policy_using, 'snapshot_kind') = 0
-    or pg_catalog.strpos(update_policy_using, 'can_write_shared_snapshot') = 0
-    or pg_catalog.strpos(update_policy_using, 'can_bootstrap_shared_snapshot') = 0
-    or update_policy_check is null
-    or pg_catalog.strpos(update_policy_check, 'can_write_shared_snapshot') = 0
-    or pg_catalog.strpos(update_policy_check, 'can_bootstrap_shared_snapshot') = 0 then
-    raise exception 'shared snapshot update policy does not require active membership';
+  atomic_update_function := case
+    when to_regprocedure(
+      'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)'
+    ) is not null then pg_catalog.pg_get_functiondef(
+      'public.update_shared_event_snapshot(text,text,timestamptz,jsonb)'::regprocedure
+    )
+    else null
+  end;
+
+  if not (
+    (
+      update_policy_using is not null
+      and pg_catalog.strpos(update_policy_using, 'snapshot_kind') > 0
+      and pg_catalog.strpos(update_policy_using, 'can_write_shared_snapshot') > 0
+      and update_policy_check is not null
+      and pg_catalog.strpos(update_policy_check, 'can_write_shared_snapshot') > 0
+    )
+    or (
+      atomic_update_function is not null
+      and pg_catalog.strpos(
+        atomic_update_function,
+        'public.can_write_shared_snapshot(p_snapshot_id)'
+      ) > 0
+      and pg_catalog.strpos(atomic_update_function, 'for update') > 0
+      and pg_catalog.strpos(atomic_update_function, '''status'', ''conflict''') > 0
+    )
+  ) then
+    raise exception 'shared snapshot updates do not require active membership';
   end if;
 
   if not exists (
@@ -81,8 +102,17 @@ begin
     'private.guard_shared_snapshot_update()'::regprocedure
   );
 
-  if pg_catalog.strpos(join_function, 'existing_member.status = ''removed''') = 0
-    or pg_catalog.strpos(join_function, 'request_space_key_hash') = 0 then
+  if (
+      pg_catalog.strpos(
+        join_function,
+        'existing_member.status = ''removed'''
+      ) = 0
+      and pg_catalog.strpos(
+        join_function,
+        'existing_member.status <> ''active'''
+      ) = 0
+    )
+    or pg_catalog.strpos(join_function, 'for update') = 0 then
     raise exception 'shared event join does not reject removed members safely';
   end if;
 
@@ -107,10 +137,13 @@ begin
     'anon',
     'public.can_bootstrap_shared_snapshot(text)',
     'execute'
-  ) or not pg_catalog.has_function_privilege(
-    'authenticated',
-    'public.can_bootstrap_shared_snapshot(text)',
-    'execute'
+  ) or (
+    not pg_catalog.has_function_privilege(
+      'authenticated',
+      'public.can_bootstrap_shared_snapshot(text)',
+      'execute'
+    )
+    and atomic_update_function is null
   ) then
     raise exception 'legacy shared membership bootstrap grants are incorrect';
   end if;

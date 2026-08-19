@@ -4,6 +4,22 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 const schema = await readFile("supabase/schema.sql", "utf8");
+const lockedExpenseMigration = await readFile(
+  "supabase/migrations/20260819213000_enforce_locked_event_expenses.sql",
+  "utf8"
+);
+const lockedExpenseVerification = await readFile(
+  "supabase/verification/verify_20260819213000_locked_event_expenses.sql",
+  "utf8"
+);
+const lockedExpenseRollback = await readFile(
+  "supabase/rollbacks/20260819213000_enforce_locked_event_expenses_safe.sql",
+  "utf8"
+);
+const deletedSharedReadVerification = await readFile(
+  "supabase/verification/verify_20260816181528_deleted_shared_event_reads.sql",
+  "utf8"
+);
 const migration = await readFile(
   "supabase/migrations/20260812150007_harden_workspace_claims_and_friendship_requests.sql",
   "utf8"
@@ -415,6 +431,36 @@ test("shared event updates are atomic, server-validated and cannot use legacy bo
   assert.match(sharedEventAtomicWriteRollback, /Rollback refused/);
 });
 
+test("locked events reject expense edits from every role", () => {
+  assert.match(lockedExpenseMigration, /^begin;/);
+  assert.match(lockedExpenseMigration, /commit;\s*$/);
+  assert.match(
+    lockedExpenseMigration,
+    /create or replace function private\.prevent_locked_event_expense_updates\(\)/
+  );
+  assert.match(lockedExpenseMigration, /old_event ->> 'locked'/);
+  assert.match(lockedExpenseMigration, /old_event -> 'expenses'/);
+  assert.match(lockedExpenseMigration, /old_event -> 'deletedExpenses'/);
+  assert.doesNotMatch(lockedExpenseMigration, /actor_is_admin/);
+  assert.match(
+    lockedExpenseMigration,
+    /create trigger prevent_locked_event_expense_updates[\s\S]*?before update on public\.app_snapshots/
+  );
+  assert.match(lockedExpenseVerification, /Locked-event expense trigger is missing or duplicated/);
+  assert.match(lockedExpenseRollback, /drop trigger if exists prevent_locked_event_expense_updates/);
+  assert.match(schema, /revoke all on function private\.prevent_locked_event_expense_updates\(\)/);
+});
+
+test("deleted shared-event reads have rollout verification", () => {
+  assert.match(
+    deletedSharedReadVerification,
+    /can_read_deleted_shared_snapshot\(text\)/
+  );
+  assert.match(deletedSharedReadVerification, /app_snapshots_member_select/);
+  assert.match(deletedSharedReadVerification, /deletedEvents/);
+  assert.match(deletedSharedReadVerification, /verification_status/);
+});
+
 test("shared transfer status histories are validated and member-updatable", () => {
   assert.match(transferStatusMigration, /^begin;/);
   assert.match(transferStatusMigration, /commit;\s*$/);
@@ -490,7 +536,7 @@ test("shared membership migration, verification and rollback are deployment-safe
   assert.match(membershipMigration, /commit;\s*$/);
 
   assert.match(membershipVerification, /shared snapshot membership table is missing/);
-  assert.match(membershipVerification, /shared snapshot update policy does not require active membership/);
+  assert.match(membershipVerification, /shared snapshot updates do not require active membership/);
   assert.match(membershipVerification, /shared event join does not reject removed members safely/);
   assert.match(membershipVerification, /legacy_shared_snapshots_awaiting_first_member/);
   assert.match(membershipVerification, /'ready' as verification_status/);

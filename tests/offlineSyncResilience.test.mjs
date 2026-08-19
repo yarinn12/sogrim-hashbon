@@ -446,7 +446,7 @@ test("shared-event mutations reach the canonical event before the personal works
   const prioritizedSync = persist.indexOf(
     "? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)"
   );
-  const workspaceSave = persist.indexOf("const initialSave = await saveCloudStateWithRetry(");
+  const workspaceSave = persist.indexOf("initialSave = await saveCloudStateWithRetry(");
 
   assert.match(persist, /const prioritizeSharedEventWrite = Boolean\(/);
   assert.ok(prioritizedSync >= 0, "shared mutations have an explicit canonical-first path");
@@ -538,6 +538,111 @@ test("a failed shared-event request restores the actual persisted snapshot and c
     assert.ok(
       dispatched.some((event) => event.type === "sogrim:shared-save-reverted")
     );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a workspace failure after canonical persistence keeps the same expense queued", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const spaceId = "space-partial-account";
+  const location = {
+    href: "https://sogrim-hashbon.vercel.app/",
+    hostname: "sogrim-hashbon.vercel.app",
+    protocol: "https:"
+  };
+  const durableState = deviceState("Durable");
+  durableState.currentParticipantId = "account-user-partial";
+  durableState.participants = [
+    {
+      id: "account-user-partial",
+      displayName: "Durable",
+      kind: "user",
+      accountLinked: true
+    }
+  ];
+  durableState.events[0] = {
+    ...durableState.events[0],
+    participantIds: ["account-user-partial"],
+    adminIds: ["account-user-partial"],
+    createdByParticipantId: "account-user-partial",
+    sharedSpaceId: "shared-partial-event",
+    sharedSpaceKey: "shared-partial-secret-that-is-long-enough-123"
+  };
+  const changedState = structuredClone(durableState);
+  changedState.events[0].expenses.push(expense("stable-expense-id", 700));
+
+  saveTestAccount(storage, {
+    userId: "user-partial",
+    accessToken: "token-partial",
+    spaceId,
+    spaceKey: "partial-account-secret-that-is-long-enough-123"
+  });
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(durableState));
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    if (requestUrl.includes("id=eq.shared-partial-event")) {
+      return jsonResponse([{ state: durableState, updated_at: "2026-08-19T10:00:00.000Z" }]);
+    }
+    if (requestUrl.endsWith("/rpc/join_shared_event")) {
+      return jsonResponse({ joined: true });
+    }
+    if (requestUrl.endsWith("/rpc/update_shared_event_snapshot")) {
+      return jsonResponse({
+        status: "updated",
+        updatedAt: "2026-08-19T10:00:01.000Z"
+      });
+    }
+    if (options.method === "POST") {
+      const body = JSON.parse(options.body ?? "{}");
+      if (body.id === spaceId) return { ok: false, status: 503 };
+    }
+    return { ok: false, status: 503 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?partial-canonical-save=${Date.now()}`
+    );
+    const result = await store.saveSharedState(changedState);
+    const localState = JSON.parse(
+      storage.getItem(`settle-friends-state:${spaceId}`)
+    );
+    const pendingState = JSON.parse(
+      storage.getItem(`settle-friends-pending-sync:${spaceId}`)
+    );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.partial, true);
+    assert.equal(result.pending, true);
+    assert.equal(result.reverted, undefined);
+    assert.equal(localState.events[0].expenses.at(-1).id, "stable-expense-id");
+    assert.equal(pendingState.events[0].expenses.at(-1).id, "stable-expense-id");
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);

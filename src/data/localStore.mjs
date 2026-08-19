@@ -132,10 +132,19 @@ async function syncAndPersistCloudState(config, state, syncSelection = null) {
   let syncedState = prioritizeSharedEventWrite
     ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
     : state;
-  const initialSave = await saveCloudStateWithRetry(
-    config,
-    toCloudState(config, syncedState)
-  );
+  let initialSave;
+  try {
+    initialSave = await saveCloudStateWithRetry(
+      config,
+      toCloudState(config, syncedState)
+    );
+  } catch (error) {
+    if (prioritizeSharedEventWrite) {
+      error.sharedEventPersisted = true;
+      error.persistedState = syncedState;
+    }
+    throw error;
+  }
   syncedState = mergeSharedStates(initialSave.state, syncedState);
 
   if (!prioritizeSharedEventWrite || initialSave.conflictCount) {
@@ -590,21 +599,36 @@ export async function saveSharedState(state) {
           };
         } catch (error) {
           let reverted = false;
+          const partiallyPersistedState = error?.sharedEventPersisted
+            ? error.persistedState ?? sharedState
+            : null;
           if (
             hasSharedEventMutation &&
             requestAccountGeneration === accountStorageGeneration &&
             requestSaveGeneration === sharedStateSaveGeneration
           ) {
-            if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
-              clearPendingSharedState(runtimeConfig);
+            if (partiallyPersistedState) {
+              Object.assign(state, partiallyPersistedState);
+              saveState(partiallyPersistedState);
+              savePendingSharedState(runtimeConfig, partiallyPersistedState);
+            } else {
+              if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
+                clearPendingSharedState(runtimeConfig);
+              }
+              saveState(previousState);
+              publishSharedSaveReverted(syncSelection);
+              reverted = true;
             }
-            saveState(previousState);
-            publishSharedSaveReverted(syncSelection);
-            reverted = true;
           }
           publishSyncFailure(error);
           emitOperationFailure("state_save");
-          return { ok: false, mode: "cloud", error, ...(reverted ? { reverted: true } : {}) };
+          return {
+            ok: false,
+            mode: "cloud",
+            error,
+            ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
+            ...(reverted ? { reverted: true } : {})
+          };
         }
       });
 

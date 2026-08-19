@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("production monitoring covers the app, API, invites and Supabase boundaries", async () => {
-  const [script, workflow, pkg] = await Promise.all([
+  const [script, failoverScript, workflow, pkg] = await Promise.all([
     readFile("scripts/verify-production-availability.mjs", "utf8"),
+    readFile("scripts/verify-production-failover.mjs", "utf8"),
     readFile(".github/workflows/production-availability.yml", "utf8"),
     readFile("package.json", "utf8").then(JSON.parse)
   ]);
@@ -28,6 +29,9 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
   );
   assert.match(script, /ALLOW_ORIGIN_BACKED_SHELL/);
   assert.match(script, /allowPrivateNoStore: true/);
+  assert.match(failoverScript, /REQUEST_TIMEOUT_MS = 30_000/);
+  assert.match(failoverScript, /origin request failed/);
+  assert.match(failoverScript, /reachable/);
   assert.match(workflow, /schedule:/);
   assert.match(workflow, /push:/);
   assert.match(workflow, /set -o pipefail/);

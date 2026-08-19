@@ -104,10 +104,11 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
 });
 
 test("native projects include store signing and Apple privacy requirements", async () => {
-  const [androidVariables, androidBuild, androidManifest, androidActivity, capabilitiesPlugin, appSplash, androidStyles, entitlements, privacy, iosProject] = await Promise.all([
+  const [androidVariables, androidBuild, androidManifest, androidFilePaths, androidActivity, capabilitiesPlugin, appSplash, androidStyles, entitlements, privacy, iosProject] = await Promise.all([
     readFile("android/variables.gradle", "utf8"),
     readFile("android/app/build.gradle", "utf8"),
     readFile("android/app/src/main/AndroidManifest.xml", "utf8"),
+    readFile("android/app/src/main/res/xml/file_paths.xml", "utf8"),
     readFile("android/app/src/main/java/com/sogrimhashbon/app/MainActivity.java", "utf8"),
     readFile("android/app/src/main/java/com/sogrimhashbon/app/SogrimCapabilitiesPlugin.java", "utf8"),
     readFile("src/publicAppSplashLayer.mjs", "utf8"),
@@ -145,6 +146,8 @@ test("native projects include store signing and Apple privacy requirements", asy
     /android:host="sogrim-hashbon-recovery\.onrender\.com"/
   );
   assert.doesNotMatch(androidManifest, /android:scheme="com\.sogrimhashbon\.app"/);
+  assert.match(androidFilePaths, /<cache-path name="shared_cache" path="\." \/>/);
+  assert.doesNotMatch(androidFilePaths, /<external-path/);
   assert.doesNotMatch(
     androidManifest,
     /android:host="sogrim-hashbon\.vercel\.app"\s*\/>/

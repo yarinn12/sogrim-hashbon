@@ -141,7 +141,11 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /if \(forceReload \|\| profileChanged\) \{\s*await saveRequest;[\s\S]*?window\.location\.reload/
+    /const saveResult = await saveRequest;[\s\S]*?if \(forceReload \|\| profileChanged\) \{[\s\S]*?window\.location\.reload/
+  );
+  assert.match(
+    accountConnection,
+    /nextState\.events\.some\(\(event\) => event\.id === invitedEventId\) &&\s*\(saveResult\?\.ok \|\| saveResult\?\.partial\)[\s\S]*?clearPendingInviteUrl\(\)/
   );
   const connectAccountSource = layer.slice(
     layer.indexOf("async function connectAccountToApp"),
@@ -404,7 +408,7 @@ test("account auth synchronizes completed account switches and sign-out across t
   );
   assert.match(
     layer,
-    /await saveRequest;\s*publishAccountSessionSync\(accountSession\);\s*setSessionValue\(AUTH_CHANGED_MARKER/
+    /const saveResult = await saveRequest;[\s\S]*?publishAccountSessionSync\(accountSession\);\s*setSessionValue\(AUTH_CHANGED_MARKER/
   );
   assert.match(
     layer,

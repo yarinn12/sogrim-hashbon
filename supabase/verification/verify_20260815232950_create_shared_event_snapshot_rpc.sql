@@ -25,7 +25,16 @@ begin
   );
   if pg_catalog.strpos(creation_definition, 'auth.uid()') = 0
     or pg_catalog.strpos(creation_definition, 'private.current_actor_participant_id()') = 0
-    or pg_catalog.strpos(creation_definition, 'private.is_shared_event_state(p_state)') = 0
+    or (
+      pg_catalog.strpos(
+        creation_definition,
+        'private.is_shared_event_state(p_state)'
+      ) = 0
+      and pg_catalog.strpos(
+        creation_definition,
+        'private.is_valid_shared_event_financials(p_state)'
+      ) = 0
+    )
     or pg_catalog.strpos(creation_definition, 'createdByParticipantId') = 0 then
     raise exception 'Atomic shared-event creation does not bind the authenticated creator';
   end if;

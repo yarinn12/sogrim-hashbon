@@ -19,17 +19,7 @@ const sql = postgres(databaseUrl, {
 
 try {
   await sql.unsafe("begin");
-  const users = await sql`
-    select id
-    from auth.users
-    order by created_at
-    limit 3
-  `;
-  if (users.length < 3) {
-    throw new Error("Friend privacy verification requires three test accounts");
-  }
-
-  const [first, second, outsider] = users.map((user) => user.id);
+  const [first, second, outsider] = requiredQaUserIds();
   await sql`
     delete from public.friendships
     where requester_id in (${first}, ${second}, ${outsider})
@@ -138,4 +128,19 @@ function assertIds(rows, expectedIds, label) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`${label} failed: ${JSON.stringify(actual)}`);
   }
+}
+
+function requiredQaUserIds() {
+  const ids = String(process.env.QA_FRIEND_PRIVACY_USER_IDS ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (ids.length !== 3 || ids.some((id) => !uuidPattern.test(id))) {
+    throw new Error(
+      "Set QA_FRIEND_PRIVACY_USER_IDS to exactly three disposable test-user UUIDs."
+    );
+  }
+  return ids;
 }

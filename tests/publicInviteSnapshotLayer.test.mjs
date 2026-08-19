@@ -157,6 +157,20 @@ test("a successful invite import cannot leak into the next account", async () =>
   assert.match(importFlow, /clearPendingInviteUrl\(\);\s*return true;/);
 });
 
+test("invite context is retained until the participant save reaches the shared event", async () => {
+  const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const importFlow = layer.slice(
+    layer.indexOf("async function importIncomingSharedEvent"),
+    layer.indexOf("function notifyJoinedEvent")
+  );
+
+  assert.match(importFlow, /if \(!saveResult\?\.ok && !saveResult\?\.partial\) return false;/);
+  assert.ok(
+    importFlow.indexOf("if (!saveResult?.ok && !saveResult?.partial) return false;") <
+      importFlow.indexOf("clearPendingInviteUrl();")
+  );
+});
+
 test("public profile gate keeps invite snapshot while saving a new visitor", async () => {
   const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
 

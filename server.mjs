@@ -198,7 +198,10 @@ export function createAppHandler({
     }
 
     if (url.pathname === "/api/health" && request.method === "GET") {
-      sendJson(response, 200, getHealthPayload(runtimeConfig));
+      const health = getHealthPayload(runtimeConfig, {
+        requireProductionReadiness: isDeployedRuntime(process.env)
+      });
+      sendJson(response, health.ok ? 200 : 503, health);
       return;
     }
 
@@ -644,7 +647,11 @@ function isAllowedStaticPath(requestedPath) {
   if (
     !value.startsWith("/") ||
     value.includes("\0") ||
-    value.split("/").some((segment) => segment === ".." || segment.startsWith(".")) ||
+    value.split("/").some(
+      (segment) =>
+        segment === ".." ||
+        (segment.startsWith(".") && segment !== ".well-known")
+    ) ||
     value.startsWith("/src/server/")
   ) {
     return false;

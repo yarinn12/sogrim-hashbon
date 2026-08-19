@@ -415,7 +415,14 @@ async function joinExistingEventFromPublicPanel() {
       { reactivateInactive: false }
     );
     saveState(state);
-    await saveSharedState(state);
+    const saveResult = await saveSharedState(state);
+    if (!saveResult?.ok && !saveResult?.partial) {
+      setJoinError(
+        error,
+        "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ונסו שוב."
+      );
+      return;
+    }
   }
 
   window.location.href = buildEventInviteUrl(window.location.href, eventId);

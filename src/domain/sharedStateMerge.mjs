@@ -439,24 +439,46 @@ function mergeEvent(remoteEvent, localEvent) {
 }
 
 function mergeEventSettings(remoteEvent, localEvent) {
-  const remoteTime = timestamp(remoteEvent.settingsUpdatedAt);
-  const localTime = timestamp(localEvent.settingsUpdatedAt);
-  const source = remoteTime > localTime ? remoteEvent : localEvent;
-  const settings = {};
-
-  for (const field of [
+  const fields = [
     "name",
     "eventType",
     "currency",
     "groupId",
     "adminsCanEditOnly",
     "roundSettlementTransfers",
-    "directSettlementTransfers",
-    "settingsUpdatedAt"
-  ]) {
+    "directSettlementTransfers"
+  ];
+  const settings = {};
+  const fieldTimestamps = {};
+
+  for (const field of fields) {
+    const remoteHasField = Object.hasOwn(remoteEvent, field);
+    const localHasField = Object.hasOwn(localEvent, field);
+    if (!remoteHasField && !localHasField) continue;
+    const remoteTimeValue =
+      remoteEvent.settingsFieldUpdatedAt?.[field] ?? remoteEvent.settingsUpdatedAt;
+    const localTimeValue =
+      localEvent.settingsFieldUpdatedAt?.[field] ?? localEvent.settingsUpdatedAt;
+    const remoteTime = timestamp(remoteTimeValue);
+    const localTime = timestamp(localTimeValue);
+    const source = !localHasField || (remoteHasField && remoteTime > localTime)
+      ? remoteEvent
+      : localEvent;
+    const sourceTimestamp = source === remoteEvent ? remoteTimeValue : localTimeValue;
     if (Object.hasOwn(source, field)) {
       settings[field] = cloneValue(source[field]);
+      if (sourceTimestamp) fieldTimestamps[field] = sourceTimestamp;
     }
+  }
+
+  const remoteTime = timestamp(remoteEvent.settingsUpdatedAt);
+  const localTime = timestamp(localEvent.settingsUpdatedAt);
+  const newestSettingsSource = remoteTime > localTime ? remoteEvent : localEvent;
+  if (newestSettingsSource.settingsUpdatedAt) {
+    settings.settingsUpdatedAt = newestSettingsSource.settingsUpdatedAt;
+  }
+  if (Object.keys(fieldTimestamps).length) {
+    settings.settingsFieldUpdatedAt = fieldTimestamps;
   }
 
   const remoteAdminTime = timestamp(remoteEvent.adminIdsUpdatedAt);

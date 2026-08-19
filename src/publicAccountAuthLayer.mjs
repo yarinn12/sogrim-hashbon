@@ -399,13 +399,15 @@ async function connectAccountToApp(
   const saveRequest = accountStateChanged
     ? saveSharedState(nextState)
     : Promise.resolve({ ok: true, mode: "unchanged" });
+  const saveResult = await saveRequest;
   const invitedEventWasDeleted = nextState.deletedEvents?.some(
     (item) => item.id === invitedEventId
   );
   if (
     !invitedEventId ||
     invitedEventWasDeleted ||
-    nextState.events.some((event) => event.id === invitedEventId)
+    nextState.events.some((event) => event.id === invitedEventId) &&
+    (saveResult?.ok || saveResult?.partial)
   ) {
     clearPendingInviteUrl();
   }
@@ -413,7 +415,6 @@ async function connectAccountToApp(
     previousProfile?.authSubject !== accountProfile.authSubject ||
     previousProfile?.authProvider !== accountProfile.authProvider;
   if (forceReload || profileChanged) {
-    await saveRequest;
     publishAccountSessionSync(accountSession);
     setSessionValue(AUTH_CHANGED_MARKER, "1");
     setSessionValue(SKIP_NEXT_SPLASH_MARKER, "1");

@@ -727,6 +727,50 @@ test("newer event settings survive an unrelated save from a stale device", () =>
   assert.equal(event.settingsUpdatedAt, "2026-07-24T11:00:00.000Z");
 });
 
+test("independent event settings from concurrent admins merge field by field", () => {
+  const remote = stateWithEvent({
+    id: "event-1",
+    currency: "USD",
+    roundSettlementTransfers: true,
+    directSettlementTransfers: false,
+    settingsUpdatedAt: "2026-08-19T11:00:00.000Z",
+    settingsFieldUpdatedAt: {
+      currency: "2026-08-19T11:00:00.000Z",
+      roundSettlementTransfers: "2026-08-19T09:00:00.000Z",
+      directSettlementTransfers: "2026-08-19T09:00:00.000Z"
+    },
+    expenses: [],
+    transfers: []
+  });
+  const local = stateWithEvent({
+    id: "event-1",
+    currency: "ILS",
+    roundSettlementTransfers: false,
+    directSettlementTransfers: false,
+    settingsUpdatedAt: "2026-08-19T12:00:00.000Z",
+    settingsFieldUpdatedAt: {
+      currency: "2026-08-19T09:00:00.000Z",
+      roundSettlementTransfers: "2026-08-19T12:00:00.000Z",
+      directSettlementTransfers: "2026-08-19T09:00:00.000Z"
+    },
+    expenses: [],
+    transfers: []
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+  assert.equal(event.currency, "USD");
+  assert.equal(event.roundSettlementTransfers, false);
+  assert.equal(event.directSettlementTransfers, false);
+  assert.equal(
+    event.settingsFieldUpdatedAt.currency,
+    "2026-08-19T11:00:00.000Z"
+  );
+  assert.equal(
+    event.settingsFieldUpdatedAt.roundSettlementTransfers,
+    "2026-08-19T12:00:00.000Z"
+  );
+});
+
 test("newer event manager changes win without reviving a removed manager", () => {
   const remote = stateWithEvent({
     id: "event-1",

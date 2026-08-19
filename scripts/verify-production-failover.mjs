@@ -12,6 +12,7 @@ const PRIMARY_ORIGIN = normalizedOrigin(
 const RECOVERY_ORIGIN = normalizedOrigin(
   process.env.RECOVERY_PRODUCTION_ORIGIN || RECOVERY_PUBLIC_ORIGIN
 );
+const REQUEST_TIMEOUT_MS = 30_000;
 const androidBuild = await readAndroidBuildCode();
 const localAppHash = sha256(await readFile("src/app.mjs"));
 const origins = [
@@ -21,6 +22,7 @@ const origins = [
 const checks = [];
 
 for (const origin of origins) {
+  check(`${origin.label} reachable`, !origin.error, origin.error);
   check(`${origin.label} health`, origin.health?.ok === true);
   check(`${origin.label} app shell`, /id=["']app["']/.test(origin.shell));
   check(`${origin.label} native runtime policy`, origin.compatibility.ok, origin.compatibility.reason);
@@ -52,23 +54,36 @@ async function inspectOrigin(label, origin) {
     "x-sogrim-app-build": String(androidBuild),
     "x-sogrim-app-version": "failover-qa"
   };
-  const [health, config, shell, appSource] = await Promise.all([
-    requestJson(`${origin}/api/health`),
-    requestJson(`${origin}/api/config`, { headers }),
-    requestText(`${origin}/`),
-    requestBytes(`${origin}/src/app.mjs`)
-  ]);
-  return {
-    label,
-    origin,
-    health,
-    config,
-    shell,
-    appHash: sha256(appSource),
-    compatibility: nativeRuntimeCompatibility(config, {
-      expectedAndroidBuild: androidBuild
-    })
-  };
+  try {
+    const [health, config, shell, appSource] = await Promise.all([
+      requestJson(`${origin}/api/health`),
+      requestJson(`${origin}/api/config`, { headers }),
+      requestText(`${origin}/`),
+      requestBytes(`${origin}/src/app.mjs`)
+    ]);
+    return {
+      label,
+      origin,
+      health,
+      config,
+      shell,
+      appHash: sha256(appSource),
+      compatibility: nativeRuntimeCompatibility(config, {
+        expectedAndroidBuild: androidBuild
+      })
+    };
+  } catch (error) {
+    return {
+      label,
+      origin,
+      health: null,
+      config: null,
+      shell: "",
+      appHash: "",
+      compatibility: { ok: false, reason: "origin request failed" },
+      error: String(error?.message ?? error)
+    };
+  }
 }
 
 async function requestJson(url, options = {}) {
@@ -95,7 +110,7 @@ async function request(url, options = {}) {
       "user-agent": "sogrim-failover-monitor/1.0",
       ...(options.headers ?? {})
     },
-    signal: AbortSignal.timeout(10_000)
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
   });
   if (!response.ok) throw new Error(`${url} returned HTTP ${response.status}`);
   return response;
