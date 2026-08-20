@@ -724,6 +724,8 @@ function injectDynamicTypeStyles(document) {
 
       html:is(.${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .event-workspace-nav {
+        position: static !important;
+        inset: auto !important;
         align-items: stretch !important;
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
       }
