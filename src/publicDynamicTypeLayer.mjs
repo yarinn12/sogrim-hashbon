@@ -221,6 +221,32 @@ function injectDynamicTypeStyles(document) {
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      .product-route-controls
+      > :is(.app-back-button, .product-home-button, .accessibility-entry-button) {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 48px !important;
+      min-height: 48px !important;
+      max-height: 48px !important;
+      padding: 0 !important;
+      flex: 0 0 48px !important;
+      overflow: hidden !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      input.event-participant-admin-toggle {
+      width: 46px !important;
+      min-width: 46px !important;
+      max-width: 46px !important;
+      height: 28px !important;
+      min-height: 28px !important;
+      max-height: 28px !important;
+      padding: 0 !important;
+      flex: 0 0 46px !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
       :where(input, select, textarea, .app-choice-trigger) {
       padding-block: max(12px, 0.7rem) !important;
     }

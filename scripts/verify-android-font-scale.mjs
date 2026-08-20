@@ -57,6 +57,12 @@ try {
         return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
       });
     const clippedText = [...document.querySelectorAll('#app h1, #app h2, #app h3, #app p, #app label, #app button, #app strong')]
+      .filter((element) => !element.matches('.sr-only, .visually-hidden, [aria-hidden="true"]'))
+      .filter((element) => {
+        const visibleCopy = element.cloneNode(true);
+        visibleCopy.querySelectorAll('.sr-only, .visually-hidden, [aria-hidden="true"]').forEach((node) => node.remove());
+        return visibleCopy.textContent.trim();
+      })
       .filter((element) => element.scrollWidth > element.clientWidth + 1 || element.scrollHeight > element.clientHeight + 1)
       .map((element) => (element.textContent || '').trim().slice(0, 80))
       .filter(Boolean);

@@ -8580,7 +8580,6 @@ const CSS = `
     overflow-y: auto !important;
     overscroll-behavior: contain !important;
     -webkit-overflow-scrolling: touch;
-    animation: expense-flow-stage-enter 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   html.ledger-workspace-v1 .expense-step-modal
@@ -9406,17 +9405,6 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-step-modal .expense-step-next {
     width: 100% !important;
-  }
-
-  @keyframes expense-flow-stage-enter {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
   }
 
   @media (max-width: 720px) {

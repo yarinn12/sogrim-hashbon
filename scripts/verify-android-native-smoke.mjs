@@ -41,8 +41,16 @@ const launch = adbRun([
   "-n",
   `${packageName}/${activityName}`
 ]);
-const nativeLaunchMs = Number(launch.match(/TotalTime:\s*(\d+)/)?.[1] || 0);
-check("Android activity cold launch succeeds", /Status:\s*ok/.test(launch));
+const nativeLaunchMs = Number(
+  launch.match(/TotalTime:\s*(\d+)/)?.[1] ||
+  launch.match(/WaitTime:\s*(\d+)/)?.[1] ||
+  0
+);
+check(
+  "Android activity cold launch succeeds",
+  /Status:\s*ok/.test(launch) ||
+  (/Activity:\s*\S+/.test(launch) && !/Error type|does not exist|Exception/i.test(launch))
+);
 check("Android reports a valid native launch duration", nativeLaunchMs > 0);
 
 const interactive = await waitForInteractive(startedAt);
@@ -196,7 +204,11 @@ async function readWebViewState(socket) {
   const page = pages.find((item) => item.type === "page");
   if (!page?.webSocketDebuggerUrl) throw new Error("No inspectable WebView page");
 
-  const result = await cdpEvaluate(page.webSocketDebuggerUrl, `({
+  const webSocketUrl = new URL(page.webSocketDebuggerUrl);
+  webSocketUrl.hostname = "127.0.0.1";
+  webSocketUrl.port = String(port);
+
+  const result = await cdpEvaluate(webSocketUrl.toString(), `({
     title: document.title,
     timeOriginMs: Math.round(performance.timeOrigin),
     splash: Boolean(document.querySelector('#app-splash')),

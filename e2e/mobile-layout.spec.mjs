@@ -287,7 +287,22 @@ test("core mobile journey remains readable, reachable and correctly layered", as
       fullPage: false
     });
   }
-  await page.keyboard.press("Escape");
+
+  await assertExpenseStepStartsAtTop(page, "amount");
+  await page.locator('[data-action="expense-total"]').fill("120");
+  await page.locator('[data-action="expense-step-next"]').click();
+  await assertExpenseStepStartsAtTop(page, "name");
+  await page.locator('[data-action="expense-name"]').fill("בדיקת יציבות");
+  await page.locator('[data-action="expense-step-next"]').click();
+  await assertExpenseStepStartsAtTop(page, "payer");
+  await page.locator(".expense-flow-body").evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await page.locator('[data-action="expense-step-next"]').click();
+  await assertExpenseStepStartsAtTop(page, "participants");
+  await page.locator('[data-action="expense-step-next"]').click();
+  await assertExpenseStepStartsAtTop(page, "review");
+  await page.locator('[data-action="cancel-expense"]').click();
   await expect(expenseDialog).toBeHidden();
 
   await page
@@ -354,6 +369,14 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     '[data-action="toggle-event-participant-admin"]'
   );
   await expect(participantAdminToggle).toBeEnabled();
+  const participantAdminToggleSize = await participantAdminToggle.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  expect(participantAdminToggleSize.width, "admin toggle keeps its compact width")
+    .toBeLessThanOrEqual(52);
+  expect(participantAdminToggleSize.height, "admin toggle must not stretch into the row")
+    .toBeLessThanOrEqual(32);
   await participantAdminToggle.check();
   await expect(participantAdminToggle).toBeChecked();
   await expect(participantManagement.locator('.event-participant-notice')).toContainText(
@@ -462,6 +485,11 @@ test("core mobile journey remains readable, reachable and correctly layered", as
       .locator('.product-app-nav [data-nav-destination="notifications"]')
       .click();
     await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+    await expect(page.locator('.product-app-nav .product-nav-button:visible'))
+      .toHaveCount(4);
+    await expect.poll(async () => page.locator('.product-app-identity').evaluate((element) =>
+      Math.round(element.getBoundingClientRect().top)
+    ), { message: "notifications must open at the top of the screen" }).toBeGreaterThanOrEqual(0);
     await assertLayoutHealth(page, "notifications");
     await captureCoherenceScreen(page, "09-notifications");
 
@@ -576,6 +604,19 @@ async function assertSingleDecisionExpenseStep(page) {
   expect(layout.visibleFields, "each expense step asks for one decision at a time").toBe(1);
 }
 
+async function assertExpenseStepStartsAtTop(page, step) {
+  const dialog = page.locator(`.expense-step-modal[data-expense-step="${step}"]`);
+  await expect(dialog).toBeVisible();
+  await expect.poll(async () => dialog.locator(".expense-flow-body").evaluate(
+    (element) => Math.round(element.scrollTop)
+  ), { message: `${step}: expense step must reset its inner scroll position` }).toBe(0);
+
+  const headerTop = await dialog.locator(".expense-modal-header").evaluate((element) =>
+    Math.round(element.getBoundingClientRect().top)
+  );
+  expect(headerTop, `${step}: expense header must stay fully visible`).toBeGreaterThanOrEqual(0);
+}
+
 async function assertDocumentDirection(page) {
   await expect(page.locator("html")).toHaveAttribute("lang", "he");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
@@ -652,6 +693,71 @@ async function assertLayoutHealth(page, label) {
       .filter(({ width, height }) => width > 0 && height > 0 && (width < 44 || height < 44))
   );
   expect(undersized, `${label}: active touch targets need a 44px hit area`).toEqual([]);
+
+  const routeControlIssues = await page.locator(
+    '.product-route-controls > :is(.app-back-button, .product-home-button, .accessibility-entry-button):visible'
+  ).evaluateAll((elements) => elements
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        name: element.getAttribute("aria-label") || element.textContent?.trim() || "route control",
+        width: Math.round(rect.width),
+        height: Math.round(rect.height)
+      };
+    })
+    .filter(({ width, height }) => width > 56 || height > 56));
+  expect(routeControlIssues, `${label}: fixed route controls must not cover screen content`)
+    .toEqual([]);
+
+  const coveredControls = await page.locator(
+    'button:visible:not(:disabled), a[href]:visible, input:visible:not([type="hidden"]), select:visible, summary:visible'
+  ).evaluateAll((elements) => {
+    const bottomNavigation = document.querySelector(".product-app-nav");
+    const bottomNavigationTop = bottomNavigation?.getBoundingClientRect().top ?? innerHeight;
+    const routeControls = document.querySelector(".product-route-controls");
+    const routeControlsBottom = routeControls?.getBoundingClientRect().bottom ?? 0;
+    const activeDialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+    return elements
+    .filter((element) =>
+      (!activeDialog || activeDialog.contains(element)) &&
+      !element.inert &&
+      !element.closest("[inert]")
+    )
+    .map((element) => {
+      const hitTarget = element instanceof HTMLInputElement && element.labels?.length
+        ? element.labels[0]
+        : element;
+      const rect = hitTarget.getBoundingClientRect();
+      if (
+        rect.width <= 0 ||
+        rect.height <= 0 ||
+        rect.bottom <= 0 ||
+        rect.top >= innerHeight ||
+        rect.right <= 0 ||
+        rect.left >= innerWidth
+      ) return null;
+      if (!hitTarget.closest(".product-app-nav") && rect.bottom > bottomNavigationTop) {
+        return null;
+      }
+      const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
+      const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+      const blocker = document.elementFromPoint(x, y);
+      if (blocker?.closest(".product-route-controls") && rect.top < routeControlsBottom) {
+        return null;
+      }
+      const reachable = Boolean(
+        blocker &&
+        (hitTarget === blocker || hitTarget.contains(blocker) || blocker.closest("label") === hitTarget)
+      );
+      if (reachable) return null;
+      return {
+        name: element.getAttribute("aria-label") || element.textContent?.trim().slice(0, 70) || "control",
+        blocker: blocker?.getAttribute("aria-label") || blocker?.className || blocker?.tagName || "unknown"
+      };
+    })
+    .filter(Boolean);
+  });
+  expect(coveredControls, `${label}: every visible control must remain tappable`).toEqual([]);
 }
 
 async function assertFocusedControlIsVisible(page) {

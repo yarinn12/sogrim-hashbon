@@ -164,6 +164,7 @@ let rowStateReady = false;
 let lastNoticeSignature = "";
 let lastParticipantDetailSignature = "";
 let lastParticipantAddSignature = "";
+let lastExpenseStepSignature = "";
 const animatedHomeHeroes = new WeakSet();
 const animatedFallbackRows = new WeakSet();
 
@@ -196,6 +197,7 @@ function scheduleFramerMotionEnhancement() {
     animateHomeHero();
     animateScreenChange();
     animateDialogOpen();
+    animateExpenseStep();
     animateParticipantDetail();
     animateParticipantAdd();
     animateNewRows();
@@ -472,5 +474,31 @@ function prefersReducedMotion() {
   return Boolean(
     document.documentElement.classList.contains("accessibility-reduced-motion") ||
       window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+  );
+}
+
+function animateExpenseStep() {
+  const dialog = document.querySelector(".expense-step-modal[data-expense-step]");
+  if (!dialog) {
+    lastExpenseStepSignature = "";
+    return;
+  }
+
+  const signature = [
+    dialog.getAttribute("data-event-id") || "",
+    dialog.getAttribute("data-expense-step") || ""
+  ].join(":");
+  if (!signature || signature === lastExpenseStepSignature) return;
+  lastExpenseStepSignature = signature;
+  if (prefersReducedMotion()) return;
+
+  const motion = globalThis.Motion;
+  const body = dialog.querySelector(".expense-flow-body");
+  if (!motion?.animate || !body) return;
+
+  motion.animate(
+    body,
+    { opacity: [0.9, 1], y: [7, 0] },
+    { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
   );
 }

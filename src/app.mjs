@@ -14330,6 +14330,11 @@ function activateExpenseEntryDialog() {
           : '[data-action="quick-item-amount"][data-index="0"]'
     : expenseFlowFocusSelector(normalizeExpenseFlowStep(expenseDraft?.flowStep));
   activateDialog(".expense-modal", focusSelector);
+  requestAnimationFrame(() => {
+    const dialog = app.querySelector(".expense-step-modal");
+    const scrollSurface = dialog?.querySelector(".expense-flow-body");
+    if (scrollSurface) scrollSurface.scrollTop = 0;
+  });
 }
 
 function createQuickItemDraft(sharedBy = state.currentParticipantId, sharedByParticipantIds) {
