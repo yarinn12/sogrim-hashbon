@@ -3033,7 +3033,7 @@ const CSS = `
     display: grid !important;
     align-items: start !important;
     gap: 5px !important;
-    padding: 14px 16px 12px !important;
+    padding: 9px 16px 7px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
@@ -3093,7 +3093,7 @@ const CSS = `
     .settlement-hero-actions {
     min-height: 0 !important;
     gap: 8px !important;
-    padding: 8px !important;
+    padding: 4px 8px !important;
     border-top: 1px solid var(--app-line) !important;
     background: var(--app-surface-soft) !important;
   }
