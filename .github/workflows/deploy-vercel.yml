@@ -1,0 +1,63 @@
+name: Deploy Vercel production
+
+on:
+  workflow_run:
+    workflows: [QA]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: team_f6DbtZdpAEvbb4xchQxXM2Dp
+      VERCEL_PROJECT_ID: prj_OWIR7eLFlIC47dQFtZjq81nlZ8X3
+      VERCEL_SCOPE: sogrim-hesbon
+      DEPLOYMENT_BASE_URL: https://sogrim-hesbon-app.vercel.app
+
+    steps:
+      - name: Checkout verified revision
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull production configuration
+        run: >-
+          npx vercel@59.1.4 pull --yes --environment=production
+          --scope "$VERCEL_SCOPE" --token "${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Build the production deployment
+        run: >-
+          npx vercel@59.1.4 build --prod
+          --scope "$VERCEL_SCOPE" --token "${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Deploy the verified build
+        run: >-
+          npx vercel@59.1.4 deploy --prebuilt --prod
+          --scope "$VERCEL_SCOPE" --token "${{ secrets.VERCEL_TOKEN }}"
+
+      - name: Verify the deployed application
+        run: node scripts/verify-production-availability.mjs --strict
+        env:
+          PRODUCTION_BASE_URL: ${{ env.DEPLOYMENT_BASE_URL }}

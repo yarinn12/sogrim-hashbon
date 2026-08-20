@@ -3014,6 +3014,215 @@ const CSS = `
     }
   }
 
+  /* Compact event workflow polish: calmer summary and denser people controls. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained) {
+    border: 1px solid var(--app-line) !important;
+    border-radius: 12px !important;
+    background: var(--app-surface) !important;
+    box-shadow: var(--app-shadow-card) !important;
+    overflow: hidden !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .settlement-hero-main {
+    min-height: 0 !important;
+    display: grid !important;
+    align-items: start !important;
+    gap: 5px !important;
+    padding: 14px 16px 12px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .status-chip {
+    width: auto !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    justify-self: start !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--app-muted) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .settlement-hero-title-row {
+    min-width: 0 !important;
+    width: 100% !important;
+    align-items: end !important;
+    gap: 12px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .settlement-hero-title-row h2 {
+    margin: 0 0 3px !important;
+    color: var(--app-ink) !important;
+    font-size: clamp(19px, 5.2vw, 22px) !important;
+    font-weight: 650 !important;
+    line-height: 1.22 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .settlement-hero-title-row .muted {
+    margin: 0 !important;
+    color: var(--app-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    line-height: 1.4 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    > .settlement-hero.is-personal-pending:not(.is-explained)
+    .settlement-hero-actions {
+    min-height: 0 !important;
+    gap: 8px !important;
+    padding: 8px !important;
+    border-top: 1px solid var(--app-line) !important;
+    background: var(--app-surface-soft) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-participant-roster-row,
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-participant-management-row {
+    min-height: 72px !important;
+    transition:
+      background-color 150ms ease,
+      color 150ms ease !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-participant-roster-chevron {
+    font-size: 24px !important;
+    transform: translateY(-1px) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-participant-management-icon {
+    color: var(--app-muted-strong) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-participant-management-row.is-danger
+    :is(.event-participant-management-icon, .event-participant-management-copy strong) {
+    color: var(--app-danger) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    :is(.event-participant-roster-row, button.event-participant-management-row):focus-visible {
+    position: relative !important;
+    z-index: 1 !important;
+    outline: 2px solid rgba(5, 105, 82, 0.42) !important;
+    outline-offset: 2px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-icon {
+    color: var(--app-muted-strong) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal
+    .event-settings-menu-item.is-danger
+    .event-settings-menu-icon {
+    color: var(--app-danger) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-share-modal
+    .event-share-route-choice
+    > .command-card-icon {
+    color: var(--app-muted-strong) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    :is(.event-settings-menu-item, .event-share-route-choice):focus-visible {
+    position: relative !important;
+    z-index: 1 !important;
+    outline: 2px solid rgba(5, 105, 82, 0.42) !important;
+    outline-offset: -2px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .expense-step-modal
+    .expense-total-field {
+    transition:
+      border-color 160ms ease,
+      box-shadow 160ms ease !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .expense-step-modal
+    .expense-total-field
+    > span {
+    color: var(--app-muted-strong) !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty {
+    min-height: 190px !important;
+    gap: 7px !important;
+    padding: 24px 18px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty-icon {
+    width: 32px !important;
+    height: 32px !important;
+    margin-bottom: 3px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--app-muted-strong) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty-icon svg {
+    width: 25px !important;
+    height: 25px !important;
+    stroke-width: 1.8 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty h2 {
+    font-size: 18px !important;
+    font-weight: 650 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty
+    :is(.primary-button, .secondary-button) {
+    min-height: 44px !important;
+    margin-top: 4px !important;
+    padding-inline: 18px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .friends-empty-state {
+    min-height: 210px !important;
+    padding: 28px 22px !important;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html.design-coherence-v1 *,
     html.design-coherence-v1 *::before,

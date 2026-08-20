@@ -294,7 +294,11 @@ function screenSignature() {
 function syncInlineStatusTargets() {
   const content = inlineStatusContent(currentStatus);
   const hasEventActionDock = Boolean(document.querySelector(".event-action-dock"));
+  const hasEventRouteDialog = Boolean(
+    document.querySelector('[data-event-route-dialog="true"]')
+  );
   document.body.classList.toggle("has-event-action-dock", hasEventActionDock);
+  document.body.classList.toggle("has-event-route-dialog", hasEventRouteDialog);
 
   document.querySelectorAll("[data-inline-sync-status]").forEach((target) => {
     target.className = `${target.className
@@ -303,6 +307,8 @@ function syncInlineStatusTargets() {
       .join(" ")}${currentStatus ? ` is-sync-${currentStatus}` : ""}`;
     target.textContent = content;
     target.hidden = !content;
+    const routeStatus = target.closest("[data-route-sync-status]");
+    if (routeStatus) routeStatus.hidden = !content;
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
@@ -417,6 +423,9 @@ function injectStyles() {
       top: calc(14px + env(safe-area-inset-top));
       bottom: auto;
     }
+    body.app-dialog-open.has-event-route-dialog .public-sync-status {
+      display: none !important;
+    }
     body.has-event-action-dock .public-sync-status { display: none !important; }
     html.account-auth-locked .public-sync-status { display: none !important; }
     .public-sync-status.is-offline,
@@ -473,6 +482,41 @@ function injectStyles() {
     }
 
     [data-inline-sync-status][hidden] { display: none !important; }
+
+    .event-route-sync-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 44px;
+      margin: 0 20px 12px;
+      padding: 8px 12px;
+      border: 1px solid #d6b46b;
+      border-radius: 8px;
+      color: #493a1f;
+      background: #fffaf0;
+      font: 700 0.86rem/1.4 "Heebo", "Noto Sans Hebrew", system-ui, sans-serif;
+      direction: rtl;
+    }
+
+    .event-route-sync-status[hidden] { display: none !important; }
+
+    .event-route-sync-status [data-inline-sync-status] {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .event-route-sync-status button {
+      flex: 0 0 auto;
+      min-width: 44px;
+      min-height: 44px;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 8px;
+      color: #075f57;
+      background: #e5f3ef;
+      font: inherit;
+    }
 
     @keyframes public-sync-pulse {
       from { opacity: 0.45; transform: scale(0.82); }

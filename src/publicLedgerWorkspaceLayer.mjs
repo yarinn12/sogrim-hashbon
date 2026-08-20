@@ -15990,6 +15990,218 @@ const CSS = `
     }
   }
 
+  /* Approved event polish: quiet balance, balanced action row, discreet overflow. */
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-personal-balance {
+    border-color: var(--ledger-line) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(7, 27, 24, 0.055) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-personal-balance:hover,
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-personal-balance:focus-visible {
+    border-color: var(--ledger-line-strong) !important;
+    background: #ffffff !important;
+    box-shadow: 0 4px 14px -12px rgba(7, 27, 24, 0.34) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-personal-balance.is-debt .amount {
+    color: #c45f68 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-action-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    direction: ltr !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-action-total,
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-action-dock .primary-button {
+    width: 100% !important;
+    min-width: 0 !important;
+    direction: rtl !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-action-total {
+    display: grid !important;
+    place-items: center !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-menu > summary {
+    width: 44px !important;
+    height: 44px !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    color: #465753 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-icon {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  @media (hover: hover) {
+    html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-menu > summary:hover {
+      border-color: transparent !important;
+      color: var(--ledger-brand) !important;
+      background: var(--ledger-surface-soft) !important;
+      box-shadow: none !important;
+    }
+
+    html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-menu[open] > summary:hover {
+      color: #ffffff !important;
+      background: var(--ledger-brand) !important;
+    }
+  }
+
+  /* New-event participant routes: friends, offline name, or invite link. */
+  html.ledger-workspace-v1 .new-event-participant-picker-heading {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: 28px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin: 0 0 12px !important;
+    text-align: start !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-participant-picker-heading .command-card-icon {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    color: var(--ledger-brand) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-participant-picker-heading .command-card-icon svg {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-participant-picker-heading h3,
+  html.ledger-workspace-v1 .new-event-participant-picker-heading small,
+  html.ledger-workspace-v1 .new-event-offline-copy strong,
+  html.ledger-workspace-v1 .new-event-offline-copy small,
+  html.ledger-workspace-v1 .new-event-invite-after-create-copy strong,
+  html.ledger-workspace-v1 .new-event-invite-after-create-copy small {
+    display: block !important;
+    margin: 0 !important;
+    text-align: start !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-participant-picker-heading h3,
+  html.ledger-workspace-v1 .new-event-offline-copy strong,
+  html.ledger-workspace-v1 .new-event-invite-after-create-copy strong {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-participant-picker-heading small,
+  html.ledger-workspace-v1 .new-event-offline-copy small,
+  html.ledger-workspace-v1 .new-event-invite-after-create-copy small {
+    margin-top: 3px !important;
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    line-height: 1.45 !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-offline-add {
+    display: grid !important;
+    gap: 10px !important;
+    padding-top: 14px !important;
+    border-top: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-offline-add .inline-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-offline-add :is(input, button) {
+    min-height: 48px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 72px !important;
+    display: grid !important;
+    grid-template-columns: 28px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 13px 14px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 12px !important;
+    color: var(--ledger-ink) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 3px rgba(7, 27, 24, 0.055) !important;
+    text-align: start !important;
+    transform: none !important;
+    transition-property: border-color, background-color, box-shadow, transform !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create:active {
+    transform: scale(0.96) !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create.is-active {
+    border-color: var(--ledger-line-strong) !important;
+    background: var(--ledger-surface-soft) !important;
+    box-shadow: inset 3px 0 0 var(--ledger-brand), 0 2px 8px -6px rgba(7, 27, 24, 0.34) !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create .command-card-icon {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    color: var(--ledger-brand) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create .command-card-icon svg {
+    width: 23px !important;
+    height: 23px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create-state {
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-invite-after-create.is-active .new-event-invite-after-create-state {
+    color: var(--ledger-brand) !important;
+  }
+
+  @media (hover: hover) {
+    html.ledger-workspace-v1 .new-event-invite-after-create:hover {
+      border-color: var(--ledger-line-strong) !important;
+      background: var(--ledger-surface-soft) !important;
+      box-shadow: 0 4px 14px -12px rgba(7, 27, 24, 0.34) !important;
+    }
+  }
+
+  @media (max-width: 390px) {
+    html.ledger-workspace-v1 .new-event-offline-add .inline-actions {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    html.ledger-workspace-v1 .new-event-offline-add button {
+      width: 100% !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html.ledger-workspace-v1 *,
     html.ledger-workspace-v1 *::before,

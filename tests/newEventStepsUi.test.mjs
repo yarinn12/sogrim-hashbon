@@ -124,6 +124,47 @@ test("event details keep participant management optional until the user needs it
   assert.match(app, /participantDetails\.open = true/);
 });
 
+test("new event participants offer friends, offline names, and an invite link or QR", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const ledgerStyles = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const detailsStep = sourceBetween(
+    app,
+    "function renderNewEvent()",
+    "function syncNewEventParticipantControls()"
+  );
+  const newEventAction = sourceBetween(
+    app,
+    'if (action === "new-event")',
+    'if (action === "new-event-type")'
+  );
+  const createFlow = sourceBetween(
+    app,
+    "async function createEventFromDraft()",
+    "async function joinExistingEventFromDraft()"
+  );
+  const inviteToggleAction = sourceBetween(
+    app,
+    'if (action === "toggle-new-event-invite-after-create")',
+    'if (action === "group-add-member")'
+  );
+
+  assert.match(detailsStep, /בחר מרשימת החברים/);
+  assert.match(detailsStep, /renderParticipantChecks\(newEventDraft\.participantIds, "new-event-participant"\)/);
+  assert.match(detailsStep, /הוסף שם אופליין/);
+  assert.match(detailsStep, /הזמן בקישור או QR/);
+  assert.match(detailsStep, /data-action="toggle-new-event-invite-after-create"/);
+  assert.match(detailsStep, /aria-pressed="\$\{newEventDraft\.inviteAfterCreate\}"/);
+  assert.match(app, /inviteAfterCreate: false/);
+  assert.match(newEventAction, /refreshFriendNetwork\(\{ preserveNotice: true \}\)/);
+  assert.match(inviteToggleAction, /keepParticipantsOpen/);
+  assert.match(inviteToggleAction, /participantDetails\.open = true/);
+  assert.match(createFlow, /const inviteAfterCreate = newEventDraft\.inviteAfterCreate === true/);
+  assert.match(createFlow, /const saveRequest = persistState\(\)/);
+  assert.match(createFlow, /await openPreparedEventShare/);
+  assert.match(ledgerStyles, /\.new-event-invite-after-create/);
+  assert.match(ledgerStyles, /min-height: 72px/);
+});
+
 test("new events start without silently selecting a saved group", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const draftSetup = sourceBetween(

@@ -377,6 +377,10 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(layer, /scroll-padding-block-end: calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(layer, /new AbortController\(\)/);
   assert.match(layer, /controller\.abort\(\), 2500/);
+  assert.match(
+    layer,
+    /\.account-email-toggle \{[\s\S]*?min-height: 48px;[\s\S]*?font-weight: 800;/
+  );
 });
 
 test("service worker keeps account auth available in the installed app", async () => {

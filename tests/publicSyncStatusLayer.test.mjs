@@ -15,6 +15,10 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(sw, /publicSyncStatusLayer\.mjs/);
   assert.match(layer, /aria-live/);
   assert.match(layer, /body\.app-dialog-open \.public-sync-status/);
+  assert.match(
+    layer,
+    /body\.app-dialog-open\.has-event-route-dialog \.public-sync-status/
+  );
   assert.match(layer, /data-inline-sync-status/);
   assert.match(layer, /data-inline-sync-retry/);
   assert.match(layer, /has-event-action-dock/);
@@ -69,6 +73,9 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /message: "המידע השתנה במקום אחר\. נסה לסנכרן לפני שינוי נוסף\."/);
   assert.match(layer, /retry: true/);
   assert.match(layer, /prefers-reduced-motion/);
+  assert.match(layer, /target\.closest\("\[data-route-sync-status\]"\)/);
+  assert.match(layer, /classList\.toggle\("has-event-route-dialog", hasEventRouteDialog\)/);
+  assert.match(layer, /\.event-route-sync-status\[hidden\]/);
   assert.doesNotMatch(layer, /checkInitialReadiness/);
   assert.match(localStore, /PENDING_SYNC_KEY_PREFIX/);
   assert.match(localStore, /CLOUD_STATE_CONFLICT/);

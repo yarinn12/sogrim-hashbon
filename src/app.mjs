@@ -3227,7 +3227,8 @@ function ensureNewEventDraft() {
       currency: "ILS",
       groupId: "",
       participantIds: state.currentParticipantId ? [state.currentParticipantId] : [],
-      guestName: ""
+      guestName: "",
+      inviteAfterCreate: false
     };
   }
 }
@@ -3340,6 +3341,9 @@ function renderNewEvent() {
   const selectedParticipantLabel = newEventParticipantSelectionLabel(
     newEventDraft.participantIds
   );
+  const createLabel = newEventDraft.inviteAfterCreate
+    ? "צור אירוע ופתח הזמנה"
+    : eventTypeConfig(newEventDraft.eventType).createLabel;
 
   return `
     <section class="screen font-hebrew new-event-details-screen" data-screen-kind="new-event" data-event-creation-step="details" data-event-type="${escapeAttribute(selectedType.id)}">
@@ -3405,19 +3409,47 @@ function renderNewEvent() {
             }
 
             <section class="new-event-participant-picker">
-              <h3>מי משתתף?</h3>
+              <div class="new-event-participant-picker-heading">
+                ${renderCommandIcon("participants")}
+                <span>
+                  <h3>בחר מרשימת החברים</h3>
+                  <small>משתמשים מחוברים ושמות שכבר שמרת.</small>
+                </span>
+              </div>
               ${renderParticipantChecks(newEventDraft.participantIds, "new-event-participant")}
             </section>
 
-            <div class="inline-actions">
-              <input class="guest-input" data-action="new-event-guest-name" name="guestName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם אופליין חדש" value="${escapeAttribute(newEventDraft.guestName)}" />
-              <button class="secondary-button" data-action="new-event-add-guest">הוסף שם אופליין</button>
+            <div class="new-event-offline-add">
+              <div class="new-event-offline-copy">
+                <strong>הוסף שם אופליין</strong>
+                <small>לאדם שלא יתחבר לאפליקציה.</small>
+              </div>
+              <div class="inline-actions">
+                <input class="guest-input" data-action="new-event-guest-name" name="guestName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם מלא" value="${escapeAttribute(newEventDraft.guestName)}" />
+                <button class="secondary-button" data-action="new-event-add-guest">הוסף</button>
+              </div>
             </div>
+
+            <button
+              class="new-event-invite-after-create ${newEventDraft.inviteAfterCreate ? "is-active" : ""}"
+              type="button"
+              data-action="toggle-new-event-invite-after-create"
+              aria-pressed="${newEventDraft.inviteAfterCreate}"
+            >
+              ${renderCommandIcon("share")}
+              <span class="new-event-invite-after-create-copy">
+                <strong>הזמן בקישור או QR</strong>
+                <small>מסך השיתוף ייפתח מיד אחרי יצירת האירוע.</small>
+              </span>
+              <span class="new-event-invite-after-create-state" aria-hidden="true">
+                ${newEventDraft.inviteAfterCreate ? "נבחר" : "בחר"}
+              </span>
+            </button>
           </div>
         </details>
 
         <div class="actions section">
-          <button class="primary-button create-event-submit" data-action="create-event" ${newEventDraft.participantIds.length === 0 ? "disabled" : ""}>${escapeHtml(eventTypeConfig(newEventDraft.eventType).createLabel)}</button>
+          <button class="primary-button create-event-submit" data-action="create-event" ${newEventDraft.participantIds.length === 0 ? "disabled" : ""}>${escapeHtml(createLabel)}</button>
           <button class="secondary-button" data-action="home">ביטול</button>
         </div>
       </section>
@@ -4137,6 +4169,14 @@ function renderEventDialogShell({
             }
           </div>
         </div>
+        ${
+          routeMode
+            ? `<div class="event-route-sync-status" data-route-sync-status hidden role="status" aria-live="polite">
+                <span data-inline-sync-status hidden></span>
+                <button type="button" data-inline-sync-retry data-sync-retry hidden>נסה שוב</button>
+              </div>`
+            : ""
+        }
         <div class="event-modal-body">
           ${body}
         </div>
@@ -9686,6 +9726,9 @@ async function handleClick(event) {
     editingGroupDraft = null;
     mergeParticipantsDraft = null;
     render();
+    if (friendNetworkAvailable(runtimeConfig)) {
+      refreshFriendNetwork({ preserveNotice: true }).catch(() => {});
+    }
   }
 
   if (action === "new-event-type") {
@@ -9996,8 +10039,32 @@ async function handleClick(event) {
       if (participantDetails) participantDetails.open = true;
     }
     requestAnimationFrame(() => {
+      if (document.activeElement?.matches?.('[data-action="participant-search"]')) {
+        return;
+      }
       app.querySelector('[data-action="new-event-guest-name"]')?.focus();
     });
+  }
+
+  if (action === "toggle-new-event-invite-after-create") {
+    if (!newEventDraft) return;
+    const keepParticipantsOpen = Boolean(
+      app.querySelector(".new-event-participants")?.open
+    );
+    newEventDraft.inviteAfterCreate = !newEventDraft.inviteAfterCreate;
+    render();
+    if (keepParticipantsOpen) {
+      const participantDetails = app.querySelector(".new-event-participants");
+      if (participantDetails instanceof HTMLDetailsElement) {
+        participantDetails.open = true;
+      }
+    }
+    requestAnimationFrame(() => {
+      app
+        .querySelector('[data-action="toggle-new-event-invite-after-create"]')
+        ?.focus({ preventScroll: true });
+    });
+    return;
   }
 
   if (action === "group-add-member") {
@@ -10037,7 +10104,8 @@ async function handleClick(event) {
   }
 
   if (action === "create-event") {
-    createEventFromDraft();
+    await createEventFromDraft();
+    return;
   }
 
   if (action === "set-event-management-mode") {
@@ -11469,7 +11537,7 @@ async function handleChange(event) {
   replaceBrowserHistoryState();
 }
 
-function createEventFromDraft() {
+async function createEventFromDraft() {
   if (newEventDraft.participantIds.length === 0) {
     notice = "צריך לבחור לפחות משתתף אחד.";
     render();
@@ -11481,6 +11549,7 @@ function createEventFromDraft() {
     return;
   }
 
+  const inviteAfterCreate = newEventDraft.inviteAfterCreate === true;
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
   const event = appendEventActivity({
@@ -11518,7 +11587,7 @@ function createEventFromDraft() {
   });
 
   state.events.unshift(event);
-  persistState();
+  const saveRequest = persistState();
   emitProductMetric("event_created", {
     screen: "new_event",
     detail: normalizeEventType(event.eventType)
@@ -11529,6 +11598,27 @@ function createEventFromDraft() {
   appHistoryDepth = 0;
   lastNavigationViewKey = "";
   render();
+
+  if (!inviteAfterCreate) {
+    Promise.resolve(saveRequest).catch(() => {});
+    return;
+  }
+
+  try {
+    const saveResult = await saveRequest;
+    if (!saveResult?.ok) {
+      notice = "האירוע נוצר, אבל ההזמנה עדיין לא מוכנה. אפשר לנסות שוב דרך שיתוף.";
+      render();
+      return;
+    }
+    await openPreparedEventShare(
+      event.id,
+      app.querySelector('[data-action="open-event-share"]')
+    );
+  } catch {
+    notice = "האירוע נוצר, אבל לא הצלחנו להכין הזמנה כרגע. אפשר לנסות שוב דרך שיתוף.";
+    render();
+  }
 }
 
 async function joinExistingEventFromDraft() {
@@ -12194,6 +12284,25 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     screen.name === "friend-profile"
   ) {
     render();
+  } else if (screen.name === "new-event") {
+    const participantsOpen = Boolean(
+      app.querySelector(".new-event-participants")?.open
+    );
+    const focusedAction = document.activeElement?.dataset?.action ?? "";
+    render();
+    if (participantsOpen) {
+      const participantDetails = app.querySelector(".new-event-participants");
+      if (participantDetails instanceof HTMLDetailsElement) {
+        participantDetails.open = true;
+      }
+    }
+    if (focusedAction) {
+      requestAnimationFrame(() => {
+        app
+          .querySelector(`[data-action="${CSS.escape(focusedAction)}"]`)
+          ?.focus({ preventScroll: true });
+      });
+    }
   }
 }
 

@@ -1075,6 +1075,8 @@ test("event screen moves secondary management into focused windows", async () =>
   assert.match(app, /data-action="close-event-dialog"/);
   assert.match(app, /class="icon-button modal-back-button modal-close-button"/);
   assert.match(app, /data-event-route-dialog="true"/);
+  assert.match(app, /data-route-sync-status hidden role="status" aria-live="polite"/);
+  assert.match(app, /data-inline-sync-retry data-sync-retry hidden/);
   assert.match(app, /showClose: false/);
   assert.match(app, /event-participant-add-route-modal/);
   assert.doesNotMatch(app, />סיום ההוספה</);

@@ -2431,6 +2431,19 @@ function injectStyle() {
       height: 20px;
     }
 
+    .account-email-toggle {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 16px;
+      border: 1px solid #cfdbd5;
+      border-radius: 8px;
+      color: #075e55;
+      background: #ffffff;
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
     .account-apple-button {
       border-color: #171b19;
       color: #ffffff;

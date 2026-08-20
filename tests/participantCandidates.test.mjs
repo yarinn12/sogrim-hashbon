@@ -110,6 +110,18 @@ test("participant search never triggers a state re-render", () => {
   assert.match(searchBranch, /filterParticipantChecks\(target\);\s*\n\s*return;/);
 });
 
+test("adding an offline name never steals focus from participant search", () => {
+  const handler = app.slice(
+    app.indexOf('if (action === "new-event-add-guest")'),
+    app.indexOf('if (action === "toggle-new-event-invite-after-create")')
+  );
+
+  assert.match(
+    handler,
+    /document\.activeElement\?\.matches\?\.\('\[data-action="participant-search"\]'\)[\s\S]*?return;/
+  );
+});
+
 test("toggling a participant keeps the open dialog and any active search", () => {
   const toggle = app.slice(
     app.indexOf("async function toggleEventParticipant(eventId, participantId, checked)"),
