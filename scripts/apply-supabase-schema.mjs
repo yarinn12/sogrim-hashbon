@@ -40,7 +40,19 @@ try {
           where trigger.tgname = 'guard_personal_snapshot_write'
             and trigger.tgrelid = 'public.app_snapshots'::regclass
             and not trigger.tgisinternal
-        ) as personal_snapshot_guard_ready,
+        )
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'private.guard_personal_snapshot_write()'::regprocedure
+          ),
+          'is_safe_account_deletion_anonymization'
+        ) > 0
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'private.guard_personal_snapshot_write()'::regprocedure
+          ),
+          'pg_trigger_depth() > 1'
+        ) > 0 as personal_snapshot_guard_ready,
       to_regprocedure(
         'private.has_valid_shared_event_transfer_totals(jsonb)'
       ) is not null

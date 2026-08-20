@@ -284,6 +284,8 @@ test("schema deployment verifies workspace claim and pair-lock hardening", async
   assert.match(deployScript, /signup_claims_private/);
   assert.match(deployScript, /signup_claim_trigger_ready/);
   assert.match(deployScript, /signup_claim_function_private/);
+  assert.match(deployScript, /personal_snapshot_guard_ready/);
+  assert.match(deployScript, /is_safe_account_deletion_anonymization/);
   assert.match(deployScript, /shared_snapshot_policy_ready/);
   assert.match(deployScript, /friendship_pair_lock_ready/);
 });

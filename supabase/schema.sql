@@ -210,6 +210,11 @@ begin
     return new;
   end if;
   if actor_id is null or actor_id <> new.owner_user_id then
+    if tg_op = 'UPDATE'
+      and pg_catalog.pg_trigger_depth() > 1
+      and private.is_safe_account_deletion_anonymization(old.state, new.state) then
+      return new;
+    end if;
     raise exception 'Personal workspace ownership is invalid'
       using errcode = '42501';
   end if;

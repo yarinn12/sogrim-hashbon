@@ -112,6 +112,14 @@ const deletionCompatibilityVerification = await readFile(
   "supabase/verification/verify_20260812185000_account_deletion_compatibility.sql",
   "utf8"
 );
+const personalDeletionCompatibilityMigration = await readFile(
+  "supabase/migrations/20260820025646_allow_safe_account_deletion_anonymization.sql",
+  "utf8"
+);
+const personalDeletionCompatibilityVerification = await readFile(
+  "supabase/verification/verify_20260820025646_safe_account_deletion_anonymization.sql",
+  "utf8"
+);
 
 test("signup metadata cannot claim an unregistered ownerless snapshot", () => {
   const claimFunction = sqlFunction("private.claim_signup_workspace");
@@ -522,6 +530,24 @@ test("account deletion compatibility allows only the nested participant anonymiz
     /shared event guard does not preserve account deletion/
   );
   assert.match(deletionCompatibilityVerification, /'ready' as verification_status/);
+  assert.match(personalDeletionCompatibilityMigration, /^begin;/);
+  assert.match(
+    personalDeletionCompatibilityMigration,
+    /create or replace function private\.guard_personal_snapshot_write\(\)/
+  );
+  assert.match(
+    personalDeletionCompatibilityMigration,
+    /pg_catalog\.pg_trigger_depth\(\) > 1[\s\S]*?private\.is_safe_account_deletion_anonymization/
+  );
+  assert.match(personalDeletionCompatibilityMigration, /commit;\s*$/);
+  assert.match(
+    personalDeletionCompatibilityVerification,
+    /personal workspace guard does not preserve account deletion/
+  );
+  assert.match(
+    personalDeletionCompatibilityVerification,
+    /'ready' as verification_status/
+  );
 });
 
 test("shared membership migration, verification and rollback are deployment-safe", () => {

@@ -10,6 +10,7 @@ import {
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
 import { parseInviteEventId, parseInviteToken } from "../src/domain/inviteLinks.mjs";
+import { calculateSettlement } from "../src/domain/settlement.mjs";
 import { ensureNamedParticipant } from "../src/domain/userProfile.mjs";
 import {
   loadNotificationInbox,
@@ -109,25 +110,6 @@ try {
   );
   sharedSnapshotCreated = true;
 
-  const invitationBeforeFriendship = await sendEventActivityNotification(
-    notificationConfig(sender),
-    {
-      eventId,
-      activityId: recipientParticipantId,
-      kind: "event-invite"
-    }
-  );
-  assert.equal(invitationBeforeFriendship.ok, false);
-  assert.equal(invitationBeforeFriendship.reason, "no-eligible-recipients");
-
-  await adminRequest("/rest/v1/friendships", {
-    method: "POST",
-    body: {
-      requester_id: sender.userId,
-      addressee_id: recipient.userId,
-      status: "accepted"
-    }
-  });
   const invitationDelivery = await sendEventActivityNotification(
     notificationConfig(sender),
     {
@@ -204,25 +186,6 @@ try {
     { method: "DELETE" }
   );
 
-  await adminRequest(
-    `/rest/v1/friendships?requester_id=eq.${encodeURIComponent(sender.userId)}&addressee_id=eq.${encodeURIComponent(recipient.userId)}`,
-    { method: "DELETE" }
-  );
-  const invitationAfterFriendshipRemoval =
-    await sendEventActivityNotification(
-      notificationConfig(sender),
-      {
-        eventId,
-        activityId: recipientParticipantId,
-        kind: "event-invite"
-      }
-    );
-  assert.equal(invitationAfterFriendshipRemoval.ok, false);
-  assert.equal(
-    invitationAfterFriendshipRemoval.reason,
-    "no-eligible-recipients"
-  );
-
   await saveBothAccountStates({ participants, expenses });
 
   const firstDelivery = await notifyExpense(sender, firstExpenseId);
@@ -283,9 +246,7 @@ try {
     ok: true,
     checks: {
       temporaryAccounts: true,
-      nonFriendInvitationBlocked: true,
-      acceptedFriendInvitation: true,
-      revokedFriendshipBlocksNewInvitation: true,
+      activeParticipantInvitationWithoutFriendship: true,
       secureInvitationLink: true,
       invitationJoinsRecipientAccount: true,
       sharedEventVerification: true,
@@ -360,6 +321,12 @@ function expense(id, payerId, participantId, total) {
 }
 
 async function saveBothAccountStates({ participants, expenses }) {
+  const authoritativeState = accountState(accounts[0], participants, expenses);
+  await saveSharedEventState(
+    accountCloudConfig(accounts[0]),
+    authoritativeState,
+    eventId
+  );
   for (const account of accounts) {
     await saveCloudState(
       accountCloudConfig(account),
@@ -369,6 +336,7 @@ async function saveBothAccountStates({ participants, expenses }) {
 }
 
 function accountState(account, participants, expenses, includeEvent = true) {
+  const transfers = calculateSettlement(participants, expenses).transfers;
   const event = {
     id: eventId,
     name: "בדיקת התראות חיה",
@@ -391,7 +359,7 @@ function accountState(account, participants, expenses, includeEvent = true) {
     expenses,
     deletedExpenses: [],
     activityLog: [],
-    transfers: []
+    transfers
   };
   return {
     currentParticipantId: `account-${account.userId}`,

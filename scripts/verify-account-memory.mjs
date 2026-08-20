@@ -114,6 +114,7 @@ try {
         adminIds: [ownerId],
         createdByParticipantId: ownerId,
         adminsCanEditOnly: false,
+        roundSettlementTransfers: false,
         locked: false,
         createdAt: new Date().toISOString(),
         sharedSpaceId: eventWorkspace.id,

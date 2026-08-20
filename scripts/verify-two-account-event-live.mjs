@@ -198,7 +198,8 @@ try {
   joinerState = updateTransferStatus(joinerState, eventId, transferId, {
     status: "paid",
     participantId: joinerProfile.participantId,
-    markedAt: "2026-08-03T12:10:00.000Z"
+    // Payment-status writes are intentionally freshness-checked by Supabase.
+    markedAt: new Date().toISOString()
   });
   joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
