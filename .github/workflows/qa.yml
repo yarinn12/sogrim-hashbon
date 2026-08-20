@@ -71,6 +71,11 @@ jobs:
           docker run --detach --rm \
             --name sogrim-hashbon-backup \
             --publish 4173:4173 \
+            --env APP_PUBLIC_URL=https://backup-ci.example.com \
+            --env SUPABASE_URL=https://backup-ci.supabase.co \
+            --env SUPABASE_ANON_KEY=ci-public-anon-key \
+            --env SUPABASE_SERVICE_ROLE_KEY=ci-private-service-key \
+            --env GOOGLE_CLIENT_ID=ci-google-client-id \
             sogrim-hashbon-backup:ci
 
       - name: Verify backup health
