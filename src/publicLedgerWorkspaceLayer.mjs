@@ -7160,11 +7160,17 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .new-event-participant-picker .participant-pill:has(input:checked) {
-    border-color: rgba(14, 110, 101, 0.52) !important;
-    background: #eaf7f4 !important;
-    box-shadow:
-      0 0 0 2px rgba(14, 110, 101, 0.08),
-      inset 3px 0 0 #0e6e65 !important;
+    border-color: #cbd6d3 !important;
+    background: #ffffff !important;
+    box-shadow: 0 3px 10px -8px rgba(12, 27, 32, 0.42) !important;
+  }
+
+  html.ledger-workspace-v1
+    .new-event-participant-picker
+    .participant-identity-group.is-account
+    .participant-identity-group-count {
+    color: #53645f !important;
+    background: #f0f3f2 !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-picker .participant-membership-status {
@@ -7177,8 +7183,8 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .new-event-participant-picker .participant-membership-status[data-membership-state="active"] {
-    color: #075d55 !important;
-    background: rgba(14, 110, 101, 0.1) !important;
+    color: #344843 !important;
+    background: #f0f3f2 !important;
   }
 
   @media (max-width: 390px) {
