@@ -1,17 +1,17 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibility.mjs";
-import {
-  PUBLIC_ORIGIN,
-  RECOVERY_PUBLIC_ORIGIN
-} from "../src/domain/publicOrigin.mjs";
+import { PUBLIC_ORIGIN } from "../src/domain/publicOrigin.mjs";
 
 const PRIMARY_ORIGIN = normalizedOrigin(
   process.env.PRIMARY_PRODUCTION_ORIGIN || PUBLIC_ORIGIN
 );
-const RECOVERY_ORIGIN = normalizedOrigin(
-  process.env.RECOVERY_PRODUCTION_ORIGIN || RECOVERY_PUBLIC_ORIGIN
-);
+const recoveryOriginValue = String(process.env.RECOVERY_PRODUCTION_ORIGIN ?? "").trim();
+if (!recoveryOriginValue) {
+  console.log("SKIP  Production failover parity - no recovery origin is configured.");
+  process.exit(0);
+}
+const RECOVERY_ORIGIN = normalizedOrigin(recoveryOriginValue);
 const REQUEST_TIMEOUT_MS = 30_000;
 const androidBuild = await readAndroidBuildCode();
 const localAppHash = sourceSha256(await readFile("src/app.mjs"));

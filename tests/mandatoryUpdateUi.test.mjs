@@ -27,6 +27,11 @@ test("mandatory update gate blocks only native Android and has no dismiss action
   assert.doesNotMatch(layer, /mandatory-update-(?:close|dismiss|skip)/);
   assert.match(localStore, /export async function refreshRuntimeConfigNow/);
   assert.match(layer, /INITIAL_UPDATE_CHECK_BUDGET_MS = 1_200/);
+  assert.match(layer, /initialPolicyKnown = toBuildNumber/);
+  assert.match(
+    layer,
+    /if \(initialPolicyKnown\) \{[\s\S]*?releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/
+  );
   assert.match(layer, /Promise\.race/);
   assert.match(layer, /releaseUpdateCheck\(\);[\s\S]*?await freshConfigRequest/);
   assert.match(splash, /mandatory-update-checking/);

@@ -149,7 +149,7 @@ test("native runtime config identifies the Android app build without user data",
   }
 });
 
-test("native runtime config fails over to the recovery API without changing shared links", async () => {
+test("native runtime config never contacts a retired recovery API", async () => {
   const storage = memoryStorage();
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
@@ -177,20 +177,7 @@ test("native runtime config fails over to the recovery API without changing shar
   };
   globalThis.fetch = async (url) => {
     requestedUrls.push(String(url));
-    if (requestedUrls.length === 1) throw new Error("primary unavailable");
-    return {
-      ok: true,
-      async json() {
-        return {
-          publicUrl: "https://sogrim-hashbon-recovery.onrender.com",
-          storage: {
-            mode: "supabase",
-            url: "https://project.supabase.co",
-            anonKey: "anon-key"
-          }
-        };
-      }
-    };
+    throw new Error("primary unavailable");
   };
 
   try {
@@ -200,12 +187,9 @@ test("native runtime config fails over to the recovery API without changing shar
     const config = await localStore.loadRuntimeConfig();
 
     assert.deepEqual(requestedUrls, [
-      "https://sogrim-hesbon-app.vercel.app/api/config",
-      "https://sogrim-hashbon-recovery.onrender.com/api/config"
+      "https://sogrim-hesbon-app.vercel.app/api/config"
     ]);
-    assert.equal(config.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
-    assert.equal(config.publicUrl, "https://sogrim-hashbon-recovery.onrender.com");
-    assert.equal(config.storage.mode, "supabase");
+    assert.equal(config.storage.mode, "local");
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
@@ -215,7 +199,7 @@ test("native runtime config fails over to the recovery API without changing shar
   }
 });
 
-test("native recovery keeps the bundled public link while moving server calls", async () => {
+test("native bootstrap remains usable when the current API is temporarily unavailable", async () => {
   const storage = memoryStorage();
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
@@ -252,20 +236,7 @@ test("native recovery keeps the bundled public link while moving server calls", 
   };
   globalThis.fetch = async (url) => {
     requestedUrls.push(String(url));
-    if (requestedUrls.length === 1) throw new Error("primary unavailable");
-    return {
-      ok: true,
-      async json() {
-        return {
-          publicUrl: "https://sogrim-hashbon-recovery.onrender.com",
-          storage: {
-            mode: "supabase",
-            url: "https://project.supabase.co",
-            anonKey: "recovery-anon-key"
-          }
-        };
-      }
-    };
+    throw new Error("primary unavailable");
   };
 
   try {
@@ -275,19 +246,15 @@ test("native recovery keeps the bundled public link while moving server calls", 
     const initialConfig = await localStore.loadRuntimeConfig();
     assert.equal(initialConfig.apiBaseUrl, "https://sogrim-hesbon-app.vercel.app");
 
-    for (let attempt = 0; attempt < 20 && requestedUrls.length < 2; attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
     const recoveredConfig = await localStore.loadRuntimeConfig();
 
     assert.deepEqual(requestedUrls, [
-      "https://sogrim-hesbon-app.vercel.app/api/config",
-      "https://sogrim-hashbon-recovery.onrender.com/api/config"
+      "https://sogrim-hesbon-app.vercel.app/api/config"
     ]);
-    assert.equal(recoveredConfig.apiBaseUrl, "https://sogrim-hashbon-recovery.onrender.com");
+    assert.equal(recoveredConfig.apiBaseUrl, "https://sogrim-hesbon-app.vercel.app");
     assert.equal(recoveredConfig.publicUrl, "https://sogrim-hesbon-app.vercel.app");
-    assert.equal(recoveredConfig.storage.anonKey, "recovery-anon-key");
+    assert.equal(recoveredConfig.storage.anonKey, "native-anon-key");
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);

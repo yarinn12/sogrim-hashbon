@@ -1,5 +1,4 @@
 export const PUBLIC_ORIGIN = "https://sogrim-hesbon-app.vercel.app";
-export const RECOVERY_PUBLIC_ORIGIN = "https://sogrim-hashbon-recovery.onrender.com";
 
 export function normalizePublicOrigin(value, fallback = "") {
   try {
@@ -24,15 +23,13 @@ export function runtimePublicOrigin(config = globalThis.SogrimNativeRuntimeConfi
 export function runtimeApiOrigins(config = globalThis.SogrimNativeRuntimeConfig) {
   return [...new Set([
     normalizePublicOrigin(config?.apiBaseUrl),
-    runtimePublicOrigin(config),
-    RECOVERY_PUBLIC_ORIGIN
+    runtimePublicOrigin(config)
   ].filter(Boolean))];
 }
 
 export function allowedPublicHosts(publicUrl = "") {
   const origins = [
     PUBLIC_ORIGIN,
-    RECOVERY_PUBLIC_ORIGIN,
     normalizePublicOrigin(publicUrl),
     runtimePublicOrigin()
   ].filter(Boolean);

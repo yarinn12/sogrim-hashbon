@@ -11,7 +11,7 @@ const publicOrigin = String(process.env.STORE_PUBLIC_ORIGIN ?? "https://sogrim-h
 const androidStoreOrigin = String(
   process.env.STORE_ANDROID_ORIGIN ??
   process.env.STORE_PUBLIC_ORIGIN ??
-  "https://sogrim-hashbon-recovery.onrender.com"
+  publicOrigin
 ).replace(/\/+$/, "");
 const localChecks = [];
 const liveChecks = [];

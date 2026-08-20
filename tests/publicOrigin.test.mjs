@@ -6,7 +6,6 @@ import {
   isAllowedPublicUrl,
   PUBLIC_ORIGIN,
   normalizePublicOrigin,
-  RECOVERY_PUBLIC_ORIGIN,
   runtimeApiOrigins,
   runtimePublicOrigin
 } from "../src/domain/publicOrigin.mjs";
@@ -28,28 +27,30 @@ test("runtime public origin keeps the live host as a safe migration fallback", (
   );
 });
 
-test("native API origins keep the public host first and add the recovery host", () => {
+test("native API origins use only the configured current host", () => {
   assert.deepEqual(runtimeApiOrigins({ publicUrl: "https://app.sogrim.example" }), [
-    "https://app.sogrim.example",
-    RECOVERY_PUBLIC_ORIGIN
+    "https://app.sogrim.example"
   ]);
 });
 
 test("native API origins keep a verified bootstrap API ahead of the public host", () => {
   assert.deepEqual(runtimeApiOrigins({
-    apiBaseUrl: RECOVERY_PUBLIC_ORIGIN,
+    apiBaseUrl: "https://api.sogrim.example",
     publicUrl: PUBLIC_ORIGIN
   }), [
-    RECOVERY_PUBLIC_ORIGIN,
+    "https://api.sogrim.example",
     PUBLIC_ORIGIN
   ]);
 });
 
-test("public URL validation accepts the configured and legacy hosts only", () => {
+test("public URL validation accepts the configured and current live hosts only", () => {
   const publicUrl = "https://app.sogrim.example";
   assert.ok(allowedPublicHosts(publicUrl).has("app.sogrim.example"));
-  assert.ok(allowedPublicHosts(publicUrl).has(new URL(RECOVERY_PUBLIC_ORIGIN).hostname));
   assert.equal(isAllowedPublicUrl(`${publicUrl}/i/event/t/token`, publicUrl), true);
   assert.equal(isAllowedPublicUrl(`${PUBLIC_ORIGIN}/privacy`, publicUrl), true);
+  assert.equal(
+    isAllowedPublicUrl("https://sogrim-hashbon-recovery.onrender.com/i/event/t/token", publicUrl),
+    false
+  );
   assert.equal(isAllowedPublicUrl("https://evil.example/i/event/t/token", publicUrl), false);
 });

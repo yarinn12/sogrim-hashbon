@@ -7,10 +7,11 @@ import {
 } from "../src/domain/nativeDeepLinks.mjs";
 
 test("Capacitor store projects use a stable app id and local web bundle", async () => {
-  const [config, packageJson, buildScript, finalizer, nativeSmoke, nativeBenchmark, androidQaMetrics] = await Promise.all([
+  const [config, packageJson, buildScript, publicOrigin, finalizer, nativeSmoke, nativeBenchmark, androidQaMetrics] = await Promise.all([
     readFile("capacitor.config.json", "utf8").then(JSON.parse),
     readFile("package.json", "utf8").then(JSON.parse),
     readFile("scripts/build-native-web.mjs", "utf8"),
+    readFile("src/domain/publicOrigin.mjs", "utf8"),
     readFile("scripts/finalize-native-projects.mjs", "utf8"),
     readFile("scripts/verify-android-native-smoke.mjs", "utf8"),
     readFile("scripts/benchmark-android-startup.mjs", "utf8"),
@@ -70,6 +71,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /native-account\.mjs/);
   assert.match(buildScript, /native-experience\.mjs/);
   assert.match(buildScript, /moduleScripts\.filter/);
+  assert.match(publicOrigin, /https:\/\/sogrim-hesbon-app\.vercel\.app/);
+  assert.doesNotMatch(publicOrigin, /onrender\.com/);
   assert.match(finalizer, /replaceAll\("\\\\", "\/"\)/);
   assert.match(nativeSmoke, /webview_devtools_remote_/);
   assert.match(nativeSmoke, /Runtime\.evaluate/);

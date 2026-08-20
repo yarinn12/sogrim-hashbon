@@ -32,8 +32,8 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(splashLayer, /VIDEO_PROGRESS_TIMEOUT_MS = 4500/);
   assert.match(splashLayer, /VIDEO_STALL_TIMEOUT_MS = 2400/);
   assert.match(splashLayer, /VIDEO_WATCHDOG_INTERVAL_MS = 800/);
-  assert.match(splashLayer, /APP_READY_VIDEO_GRACE_MS = 200/);
-  assert.match(splashLayer, /MIN_VISIBLE_VIDEO_MS = 300/);
+  assert.doesNotMatch(splashLayer, /APP_READY_VIDEO_GRACE_MS/);
+  assert.doesNotMatch(splashLayer, /MIN_VISIBLE_VIDEO_MS/);
   assert.match(splashLayer, /MAX_SPLASH_WAIT_MS = 5500/);
   assert.match(splashLayer, /MAX_SPLASH_RENDER_RETRY_MS = 750/);
   assert.match(splashLayer, /SPLASH_EXIT_MS = 100/);
@@ -82,15 +82,22 @@ test("the app shows one branded splash only while the first real screen loads", 
   );
   assert.match(
     splashLayer,
-    /if \(dismissed \|\| !applicationIsReady\(\)\) return;[\s\S]*?if \(fallbackMode\) \{[\s\S]*?dismiss\(\)/
+    /if \(dismissed \|\| !applicationIsReady\(\)\) return;[\s\S]*?dismiss\(\);/
   );
   assert.match(splashLayer, /account-auth-pending/);
   assert.match(splashLayer, /account-auth-ready/);
   assert.match(
     splashLayer,
-    /appReadyGraceId = window\.setTimeout\(useFallback, APP_READY_VIDEO_GRACE_MS\)/
+    /addEventListener\("settle-friends:screen-rendered", dismissWhenReady\)/
   );
-  assert.match(splashLayer, /MIN_VISIBLE_VIDEO_MS - \(Date\.now\(\) - videoStartedAt\)/);
+  assert.match(
+    splashLayer,
+    /removeEventListener\("settle-friends:screen-rendered", dismissWhenReady\)/
+  );
+  assert.match(
+    splashLayer,
+    /Never keep the user waiting once[\s\S]*?dismiss\(\);/
+  );
   assert.match(
     splashLayer,
     /function dismissAfterMaximumWait\(\)[\s\S]*?app\.classList\.contains\("app-boot"\)[\s\S]*?dismiss\(\)/

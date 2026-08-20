@@ -9,8 +9,6 @@ const VIDEO_LOAD_TIMEOUT_MS = 6000;
 const VIDEO_PROGRESS_TIMEOUT_MS = 4500;
 const VIDEO_STALL_TIMEOUT_MS = 2400;
 const VIDEO_WATCHDOG_INTERVAL_MS = 800;
-const APP_READY_VIDEO_GRACE_MS = 200;
-const MIN_VISIBLE_VIDEO_MS = 300;
 const MAX_SPLASH_WAIT_MS = 5500;
 const MAX_SPLASH_RENDER_RETRY_MS = 750;
 const SPLASH_EXIT_MS = 100;
@@ -30,12 +28,9 @@ function installSplash({ showPosterOnly = false } = {}) {
   let dismissed = false;
   let loadTimeoutId = 0;
   let progressTimeoutId = 0;
-  let appReadyGraceId = 0;
-  let minimumVisibleId = 0;
   let maximumWaitId = 0;
   let watchdogIntervalId = 0;
   let videoReady = false;
-  let videoStartedAt = 0;
   let lastProgressAt = 0;
   let lastVideoTime = 0;
   let frameRevealPending = false;
@@ -54,6 +49,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     subtree: true
   });
   document.addEventListener("account-auth-ready", dismissWhenReady);
+  document.addEventListener("settle-friends:screen-rendered", dismissWhenReady);
   document.addEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
   maximumWaitId = window.setTimeout(
     dismissAfterMaximumWait,
@@ -136,10 +132,7 @@ function installSplash({ showPosterOnly = false } = {}) {
   function revealVideo() {
     if (dismissed || fallbackMode) return;
     window.clearTimeout(progressTimeoutId);
-    window.clearTimeout(appReadyGraceId);
-    appReadyGraceId = 0;
     lastProgressAt = Date.now();
-    if (!videoStartedAt) videoStartedAt = Date.now();
     splash.classList.add("is-video-ready");
     startPlaybackWatchdog();
     dismissWhenReady();
@@ -188,11 +181,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     fallbackMode = true;
     window.clearTimeout(loadTimeoutId);
     window.clearTimeout(progressTimeoutId);
-    window.clearTimeout(appReadyGraceId);
-    window.clearTimeout(minimumVisibleId);
     window.clearInterval(watchdogIntervalId);
-    appReadyGraceId = 0;
-    minimumVisibleId = 0;
     watchdogIntervalId = 0;
     splash.classList.add("is-fallback");
     video?.pause();
@@ -218,30 +207,8 @@ function installSplash({ showPosterOnly = false } = {}) {
   function dismissWhenReady() {
     if (dismissed || !applicationIsReady()) return;
 
-    if (fallbackMode) {
-      dismiss();
-      return;
-    }
-
-    if (!videoStartedAt) {
-      if (!appReadyGraceId) {
-        appReadyGraceId = window.setTimeout(useFallback, APP_READY_VIDEO_GRACE_MS);
-      }
-      return;
-    }
-
-    const remainingVisibleMs =
-      MIN_VISIBLE_VIDEO_MS - (Date.now() - videoStartedAt);
-    if (remainingVisibleMs > 0) {
-      if (!minimumVisibleId) {
-        minimumVisibleId = window.setTimeout(() => {
-          minimumVisibleId = 0;
-          dismissWhenReady();
-        }, remainingVisibleMs);
-      }
-      return;
-    }
-
+    // The splash is only a loading surface. Never keep the user waiting once
+    // authentication, update policy, and the first application screen are ready.
     dismiss();
   }
 
@@ -251,12 +218,11 @@ function installSplash({ showPosterOnly = false } = {}) {
     markStartupMilestone("splash-dismissed");
     window.clearTimeout(loadTimeoutId);
     window.clearTimeout(progressTimeoutId);
-    window.clearTimeout(appReadyGraceId);
-    window.clearTimeout(minimumVisibleId);
     window.clearTimeout(maximumWaitId);
     window.clearInterval(watchdogIntervalId);
     appObserver.disconnect();
     document.removeEventListener("account-auth-ready", dismissWhenReady);
+    document.removeEventListener("settle-friends:screen-rendered", dismissWhenReady);
     document.removeEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     video?.removeEventListener("playing", handleVideoPlaying);

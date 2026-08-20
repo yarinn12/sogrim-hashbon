@@ -210,8 +210,12 @@ function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
 async function performUpdateCheck() {
   let initialConfig = null;
   let initialPolicyRequired = false;
+  let initialPolicyKnown = false;
   try {
     initialConfig = await loadRuntimeConfig();
+    initialPolicyKnown = toBuildNumber(
+      initialConfig?.updates?.android?.currentBuild
+    ) > 0;
     initialPolicyRequired = applyUpdatePolicy(
       initialConfig?.updates?.android,
       { final: false }
@@ -225,6 +229,19 @@ async function performUpdateCheck() {
       applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
     } catch {
       // A locally known mandatory update remains blocking while offline.
+    }
+    return;
+  }
+
+  if (initialPolicyKnown) {
+    // Native store builds embed a validated policy. Let the first screen open
+    // immediately, while the network refresh can still present a newer gate.
+    releaseUpdateCheck();
+    try {
+      const freshConfig = await freshConfigRequest;
+      applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
+    } catch {
+      releaseUpdateCheck();
     }
     return;
   }
