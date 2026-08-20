@@ -16738,10 +16738,24 @@ async function setEventRepaymentMode(eventId, mode) {
   if (usesDirectSettlementTransfers(event) === direct) return;
 
   const previousState = state;
+  const previousTransfers = eventSettlementTransfers(event);
   state = setEventDirectSettlementTransfers(state, eventId, direct);
+  const nextEvent = getEvent(eventId);
+  const nextTransfers = eventSettlementTransfers(nextEvent);
+  const transferPlanChanged = settlementTransferPlanKey(previousTransfers) !==
+    settlementTransferPlanKey(nextTransfers);
   notice = direct
-    ? "החזר לפי מי ששילם הופעל. כל אחד יחזיר ישירות למי שמימן יותר."
-    : "קיזוז חכם הופעל. כולם ישלמו ויקבלו בדיוק את היתרה שלהם, בפחות העברות.";
+    ? transferPlanChanged
+      ? "החזר לפי מי ששילם הופעל וההעברות עודכנו."
+      : "החזר לפי מי ששילם הופעל. במקרה הזה סכומי ההעברות כבר היו זהים."
+    : transferPlanChanged
+      ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
+      : "קיזוז חכם הופעל. במקרה הזה כבר לא ניתן לצמצם עוד העברות.";
+  render();
+  reactivateDialogAfterRender(
+    ".event-modal",
+    `[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`
+  );
   const result = await persistState();
   if (!result?.ok) {
     state = previousState;
@@ -16763,6 +16777,20 @@ async function setEventRepaymentMode(eventId, mode) {
       )
       ?.focus({ preventScroll: true });
   });
+}
+
+function settlementTransferPlanKey(transfers) {
+  return (transfers ?? [])
+    .filter((transfer) => transfer?.status !== "paid")
+    .map((transfer) =>
+      [
+        transfer.fromParticipantId,
+        transfer.toParticipantId,
+        transfer.amount
+      ].join(":")
+    )
+    .sort()
+    .join("|");
 }
 
 function refreshStartupSharedState(refreshRequest) {

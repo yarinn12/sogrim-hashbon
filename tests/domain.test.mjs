@@ -627,6 +627,41 @@ test("direct settlement never makes a net funder send money", () => {
   );
 });
 
+test("direct settlement prefers the people who actually funded each expense", () => {
+  const people = [
+    { id: "a", displayName: "A" },
+    { id: "b", displayName: "B" },
+    { id: "c", displayName: "C" },
+    { id: "d", displayName: "D" }
+  ];
+  const expenses = [
+    {
+      id: "a-paid-for-d",
+      total: 1000,
+      payers: [{ participantId: "a", amount: 1000 }],
+      sharedByParticipantIds: ["a", "d"]
+    },
+    {
+      id: "b-paid-for-c",
+      total: 1000,
+      payers: [{ participantId: "b", amount: 1000 }],
+      sharedByParticipantIds: ["b", "c"]
+    }
+  ];
+
+  const optimized = calculateSettlement(people, expenses);
+  const direct = calculateSettlement(people, expenses, {
+    directTransfers: true
+  });
+  const routes = (settlement) => settlement.transfers.map(
+    ({ fromParticipantId, toParticipantId, amount }) =>
+      `${fromParticipantId}->${toParticipantId}:${amount}`
+  );
+
+  assert.deepEqual(routes(optimized), ["c->a:500", "d->b:500"]);
+  assert.deepEqual(routes(direct), ["d->a:500", "c->b:500"]);
+});
+
 test("direct settlement has no duplicate or reciprocal routes", () => {
   const people = [
     { id: "a", displayName: "A" },

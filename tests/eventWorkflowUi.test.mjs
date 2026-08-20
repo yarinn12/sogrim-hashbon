@@ -1265,6 +1265,13 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
   assert.match(app, /לא יוצגו העברות נגדיות או כפולות/);
   assert.match(repaymentHandler, /const previousState = state/);
+  assert.match(repaymentHandler, /const previousTransfers = eventSettlementTransfers\(event\)/);
+  assert.match(repaymentHandler, /const transferPlanChanged = settlementTransferPlanKey\(previousTransfers\)/);
+  assert.ok(
+    repaymentHandler.indexOf("render();") < repaymentHandler.indexOf("await persistState()"),
+    "the selected repayment mode should render before waiting for cloud persistence"
+  );
+  assert.match(repaymentHandler, /במקרה הזה סכומי ההעברות כבר היו זהים/);
   assert.match(repaymentHandler, /const result = await persistState\(\)/);
   assert.match(repaymentHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
 });

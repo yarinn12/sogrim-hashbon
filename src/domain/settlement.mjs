@@ -46,7 +46,11 @@ export function calculateSettlement(
     ? roundSettlementBalances(balances)
     : balances;
   const transfers = directTransfers
-    ? buildDirectTransfersFromBalances(transferBalances)
+    ? buildDirectTransfersFromBalances(
+        transferBalances,
+        buildDirectRoutePreferences(validParticipants, expenses),
+        roundTransfers ? WHOLE_CURRENCY_UNIT : 1
+      )
     : buildTransfersFromBalances(transferBalances);
 
   return { balances, transfers, issues };
@@ -105,10 +109,15 @@ export function reconcileSettlementTransfers(
   const pendingBalances = roundTransfers
     ? roundSettlementBalances(outstandingBalances)
     : outstandingBalances;
+  const directRoutePreferences = directTransfers
+    ? buildDirectRoutePreferences(participants, expenses)
+    : new Map();
   const pendingTransfers = buildOutstandingTransfers(
     pendingBalances,
     paidTransfers,
-    directTransfers
+    directTransfers,
+    directRoutePreferences,
+    roundTransfers ? WHOLE_CURRENCY_UNIT : 1
   ).map(
     (transfer) => ({
       ...transfer,
@@ -257,16 +266,134 @@ function buildTransfersFromBalances(balances) {
   return optimalGroups.flatMap((group) => buildGreedyTransfers(group));
 }
 
-function buildDirectTransfersFromBalances(balances) {
-  const entries = Object.entries(balances ?? {})
-    .filter(([, balance]) => balance !== 0)
-    .map(([participantId, balance]) => ({ participantId, balance }));
-  return buildGreedyTransfers(entries);
+function buildDirectTransfersFromBalances(
+  balances,
+  routePreferences = new Map(),
+  unit = 1
+) {
+  const debtors = new Map(
+    Object.entries(balances ?? {})
+      .filter(([, balance]) => balance < 0)
+      .map(([participantId, balance]) => [participantId, Math.abs(balance)])
+  );
+  const creditors = new Map(
+    Object.entries(balances ?? {})
+      .filter(([, balance]) => balance > 0)
+      .map(([participantId, balance]) => [participantId, balance])
+  );
+  const preferredTransfers = [];
+
+  for (const [route, preferredAmount] of [...routePreferences.entries()].sort(
+    (first, second) => second[1] - first[1]
+  )) {
+    const [fromParticipantId, toParticipantId] = route.split("\u0000");
+    const debtorAmount = debtors.get(fromParticipantId) ?? 0;
+    const creditorAmount = creditors.get(toParticipantId) ?? 0;
+    const usablePreference = Math.floor(preferredAmount / unit) * unit;
+    const amount = Math.min(debtorAmount, creditorAmount, usablePreference);
+    if (!isPositiveAgoraAmount(amount)) continue;
+
+    preferredTransfers.push({
+      id: transferIdFor({ fromParticipantId, toParticipantId, amount }),
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status: "pending"
+    });
+    debtors.set(fromParticipantId, debtorAmount - amount);
+    creditors.set(toParticipantId, creditorAmount - amount);
+  }
+
+  const remainingEntries = [
+    ...[...debtors.entries()]
+      .filter(([, amount]) => amount > 0)
+      .map(([participantId, amount]) => ({ participantId, balance: -amount })),
+    ...[...creditors.entries()]
+      .filter(([, amount]) => amount > 0)
+      .map(([participantId, amount]) => ({ participantId, balance: amount }))
+  ];
+
+  return combineTransfersByRoute([
+    ...preferredTransfers,
+    ...buildGreedyTransfers(remainingEntries)
+  ]);
 }
 
-function buildOutstandingTransfers(balances, paidTransfers, directTransfers) {
+function buildDirectRoutePreferences(participants, expenses) {
+  const knownParticipantIds = new Set(
+    (participants ?? []).map((participant) => participant?.id).filter(Boolean)
+  );
+  const routeAmounts = new Map();
+
+  for (const expense of expenses ?? []) {
+    const normalizedExpense = normalizeExpenseForSettlement(
+      expense,
+      knownParticipantIds
+    );
+    if (normalizedExpense.issue) continue;
+
+    const expenseBalances = Object.fromEntries(
+      [...knownParticipantIds].map((participantId) => [participantId, 0])
+    );
+    const shares = splitEvenly(
+      normalizedExpense.total,
+      normalizedExpense.sharedByParticipantIds
+    );
+    for (const [participantId, share] of Object.entries(shares)) {
+      expenseBalances[participantId] -= share;
+    }
+    for (const payer of normalizedExpense.payers) {
+      expenseBalances[payer.participantId] += payer.amount;
+    }
+
+    for (const transfer of buildGreedyTransfers(
+      Object.entries(expenseBalances)
+        .filter(([, balance]) => balance !== 0)
+        .map(([participantId, balance]) => ({ participantId, balance }))
+    )) {
+      addNettedRoutePreference(routeAmounts, transfer);
+    }
+  }
+
+  return routeAmounts;
+}
+
+function addNettedRoutePreference(routeAmounts, transfer) {
+  const route = settlementTransferRoute(transfer);
+  if (!route || !isPositiveAgoraAmount(transfer.amount)) return;
+  const reverseRoute = `${transfer.toParticipantId}\u0000${transfer.fromParticipantId}`;
+  const reverseAmount = routeAmounts.get(reverseRoute) ?? 0;
+  const canceledAmount = Math.min(reverseAmount, transfer.amount);
+
+  if (canceledAmount > 0) {
+    const remainingReverseAmount = reverseAmount - canceledAmount;
+    if (remainingReverseAmount > 0) {
+      routeAmounts.set(reverseRoute, remainingReverseAmount);
+    } else {
+      routeAmounts.delete(reverseRoute);
+    }
+  }
+
+  const remainingAmount = transfer.amount - canceledAmount;
+  if (remainingAmount > 0) {
+    routeAmounts.set(route, (routeAmounts.get(route) ?? 0) + remainingAmount);
+  }
+}
+
+function buildOutstandingTransfers(
+  balances,
+  paidTransfers,
+  directTransfers,
+  directRoutePreferences = new Map(),
+  directTransferUnit = 1
+) {
   const buildTransfers = directTransfers
-    ? buildDirectTransfersFromBalances
+    ? (candidateBalances) =>
+        buildDirectTransfersFromBalances(
+          candidateBalances,
+          directRoutePreferences,
+          directTransferUnit
+        )
     : buildTransfersFromBalances;
   const baseline = buildTransfers(balances);
   const blockedRoutes = new Set(
