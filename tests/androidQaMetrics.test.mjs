@@ -71,3 +71,18 @@ test("Android font-scale screenshots wait for the branded splash to finish", asy
   assert.match(fontScaleQa, /!document\.querySelector\('#app-splash'\)/);
   assert.match(fontScaleQa, /requestAnimationFrame\(\(\) => requestAnimationFrame\(resolve\)\)/);
 });
+
+test("Android WebView QA ignores ad pages and selects the Capacitor app", async () => {
+  const scripts = await Promise.all([
+    readFile("scripts/verify-android-native-smoke.mjs", "utf8"),
+    readFile("scripts/verify-android-user-journey.mjs", "utf8"),
+    readFile("scripts/verify-android-font-scale.mjs", "utf8")
+  ]);
+
+  for (const source of scripts) {
+    assert.match(source, /findInspectableAppPage\(pages\)/);
+    assert.match(source, /\^https:\\\/\\\/localhost/);
+    assert.match(source, /googleads\\\.g\\\.doubleclick\\\.net\|about:blank/);
+    assert.doesNotMatch(source, /pages\.find\(\(item\) => item\.type === "page"\)/);
+  }
+});

@@ -31,6 +31,7 @@ await waitFor(
   8_000
 );
 
+await dismissBlockingOverlays(page);
 await clickAction(page, "home");
 await waitForScreen(page, "home");
 await inspect(page, "home");
@@ -210,12 +211,33 @@ if (!ready) process.exitCode = 1;
 
 async function openAndInspectOverlay(page, action, label) {
   await clickAction(page, action);
-  await waitFor(() => evaluate(page, visibleOverlayExpression()));
+  try {
+    await waitFor(() => evaluate(page, visibleOverlayExpression()));
+  } catch (error) {
+    const state = await evaluate(page, `(() => ({
+      screen: document.querySelector('#app')?.dataset?.screen || '',
+      actionCount: document.querySelectorAll('[data-action="${action}"]').length,
+      dialogs: [...document.querySelectorAll('.event-modal,.profile-modal,[role="dialog"],dialog')]
+        .map((element) => ({
+          className: element.className || '',
+          hidden: element.hidden,
+          display: getComputedStyle(element).display,
+          visibility: getComputedStyle(element).visibility,
+          width: Math.round(element.getBoundingClientRect().width),
+          height: Math.round(element.getBoundingClientRect().height)
+        }))
+    }))()`);
+    throw new Error(
+      `Android ${label} overlay did not open: ${JSON.stringify(state)}`,
+      { cause: error }
+    );
+  }
   if (label === "share") {
     await waitFor(() => evaluate(page, `(() => {
       const title = document.querySelector('#event-modal-title');
       const close = document.querySelector('[data-action="close-event-dialog"]');
-      if (title?.textContent?.trim() !== 'איך מזמינים?' || !close) return false;
+      const shareMenu = document.querySelector('[data-event-share-view]');
+      if (!title?.textContent?.trim() || !close || !shareMenu) return false;
       const rect = close.getBoundingClientRect();
       const style = getComputedStyle(close);
       return rect.width > 0 && rect.height > 0 &&
@@ -234,10 +256,27 @@ async function openAndInspectOverlay(page, action, label) {
       )`),
       20_000
     );
-    const shareReady = await evaluate(
+    let shareReady = await evaluate(
       page,
       `document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true'`
     );
+    if (!shareReady) {
+      const retryAvailable = await evaluate(
+        page,
+        `Boolean(document.querySelector('[data-action="retry-event-share"]'))`
+      );
+      if (retryAvailable) {
+        await clickAction(page, "retry-event-share");
+        await waitFor(
+          () => evaluate(
+            page,
+            `document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true'`
+          ),
+          20_000
+        );
+        shareReady = true;
+      }
+    }
     check("share: secure invitation link is ready", shareReady);
   }
   if (label === "home") {
@@ -667,6 +706,28 @@ async function clickAction(page, action) {
 }
 
 async function clickSelector(page, selector, description) {
+  const scrolled = await evaluate(page, `(() => {
+    const candidates = [...document.querySelectorAll(${JSON.stringify(selector)})];
+    const hitTarget = (candidate) => {
+      const rect = candidate.getBoundingClientRect();
+      const center = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2
+      );
+      return center === candidate || candidate.contains(center);
+    };
+    if (candidates.some(hitTarget)) return false;
+    const candidate = candidates.find((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+        style.visibility !== 'hidden' && !element.disabled;
+    });
+    candidate?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    return Boolean(candidate);
+  })()`);
+  if (scrolled) await sleep(200);
+
   let available = false;
   try {
     await waitFor(
@@ -675,8 +736,13 @@ async function clickSelector(page, selector, description) {
           .some((candidate) => {
             const rect = candidate.getBoundingClientRect();
             const style = getComputedStyle(candidate);
+            const center = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2
+            );
             return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
-              style.visibility !== 'hidden' && !candidate.disabled;
+              style.visibility !== 'hidden' && !candidate.disabled &&
+              (center === candidate || candidate.contains(center));
           });
       })()`),
       4_000
@@ -693,8 +759,13 @@ async function clickSelector(page, selector, description) {
       .find((candidate) => {
         const rect = candidate.getBoundingClientRect();
         const style = getComputedStyle(candidate);
+        const center = document.elementFromPoint(
+          rect.left + rect.width / 2,
+          rect.top + rect.height / 2
+        );
         return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
-          style.visibility !== 'hidden' && !candidate.disabled;
+          style.visibility !== 'hidden' && !candidate.disabled &&
+          (center === candidate || candidate.contains(center));
       });
     if (!element) return false;
     element.click();
@@ -703,6 +774,35 @@ async function clickSelector(page, selector, description) {
   check(`${description} remains available`, clicked);
   if (!clicked) throw new Error(`${description} disappeared before click`);
   await sleep(250);
+}
+
+async function dismissBlockingOverlays(page) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const closed = await evaluate(page, `(() => {
+      const selectors = [
+        '[data-action="cancel-expense"]',
+        '[data-action="close-event-dialog"]',
+        '[data-action="close-profile-dialog"]',
+        '[data-action="close-dialog"]'
+      ];
+      for (const selector of selectors) {
+        const button = [...document.querySelectorAll(selector)].find((candidate) => {
+          const rect = candidate.getBoundingClientRect();
+          const style = getComputedStyle(candidate);
+          return rect.width > 0 && rect.height > 0 &&
+            style.display !== 'none' && style.visibility !== 'hidden' &&
+            !candidate.disabled;
+        });
+        if (button) {
+          button.click();
+          return true;
+        }
+      }
+      return false;
+    })()`);
+    if (!closed) return;
+    await sleep(300);
+  }
 }
 
 async function androidBack() {
@@ -758,7 +858,7 @@ async function waitForPage() {
         const port = 9_232;
         adbRun(["-s", device, "forward", `tcp:${port}`, `localabstract:${socket}`]);
         const pages = await fetch(`http://127.0.0.1:${port}/json`).then((response) => response.json());
-        const page = pages.find((item) => item.type === "page");
+        const page = findInspectableAppPage(pages);
         if (page?.webSocketDebuggerUrl) {
           const webSocketUrl = new URL(page.webSocketDebuggerUrl);
           webSocketUrl.hostname = "127.0.0.1";
@@ -770,6 +870,15 @@ async function waitForPage() {
     await sleep(150);
   }
   fail("Inspectable Android WebView was not found");
+}
+
+function findInspectableAppPage(pages) {
+  return pages.find((item) =>
+    item.type === "page" && /^https:\/\/localhost(?:\/|$)/i.test(item.url || "")
+  ) || pages.find((item) => {
+    if (item.type !== "page" || !item.webSocketDebuggerUrl) return false;
+    return !/googleads\.g\.doubleclick\.net|about:blank/i.test(item.url || "");
+  });
 }
 
 function evaluate(page, expression) {

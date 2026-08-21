@@ -201,7 +201,7 @@ async function readWebViewState(socket) {
   const port = 9_231;
   adbRun(["-s", device, "forward", `tcp:${port}`, `localabstract:${socket}`]);
   const pages = await fetch(`http://127.0.0.1:${port}/json`).then((response) => response.json());
-  const page = pages.find((item) => item.type === "page");
+  const page = findInspectableAppPage(pages);
   if (!page?.webSocketDebuggerUrl) throw new Error("No inspectable WebView page");
 
   const webSocketUrl = new URL(page.webSocketDebuggerUrl);
@@ -333,6 +333,15 @@ async function readWebViewState(socket) {
         })
   })`);
   return result;
+}
+
+function findInspectableAppPage(pages) {
+  return pages.find((item) =>
+    item.type === "page" && /^https:\/\/localhost(?:\/|$)/i.test(item.url || "")
+  ) || pages.find((item) => {
+    if (item.type !== "page" || !item.webSocketDebuggerUrl) return false;
+    return !/googleads\.g\.doubleclick\.net|about:blank/i.test(item.url || "");
+  });
 }
 
 function startupElapsedMs(state, startedAt) {
