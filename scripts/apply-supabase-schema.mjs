@@ -522,12 +522,53 @@ try {
         'public.notification_inbox',
         'delete'
       ) as notification_inbox_client_access_ready,
+      to_regclass('private.shared_snapshot_tombstone_recipients') is not null
+        and exists (
+          select 1
+          from pg_catalog.pg_attribute
+          where attrelid = 'private.shared_snapshot_members'::regclass
+            and attname = 'pending_join_until'
+            and not attisdropped
+        )
+        and exists (
+          select 1
+          from pg_catalog.pg_trigger
+          where tgname = 'capture_shared_snapshot_tombstone_recipients'
+            and tgrelid = 'public.app_snapshots'::regclass
+            and not tgisinternal
+        ) as shared_tombstone_join_protection_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_trigger
+        where tgname = 'guard_initial_paid_transfer_attribution'
+          and tgrelid = 'public.app_snapshots'::regclass
+          and not tgisinternal
+      ) as initial_transfer_attribution_guard_ready,
+      to_regclass('private.api_rate_limit_buckets') is not null
+        and to_regprocedure(
+          'public.reserve_sensitive_api_capacity(text,text[],integer,integer,integer)'
+        ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.reserve_sensitive_api_capacity(text,text[],integer,integer,integer)',
+          'execute'
+        )
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.reserve_sensitive_api_capacity(text,text[],integer,integer,integer)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'service_role',
+          'public.reserve_sensitive_api_capacity(text,text[],integer,integer,integer)',
+          'execute'
+        ) as sensitive_api_rate_limit_ready,
       (
         select relation.relrowsecurity and relation.relforcerowsecurity
         from pg_catalog.pg_class as relation
         where relation.oid = 'public.app_feedback'::regclass
       ) as app_feedback_rls_ready,
-      pg_catalog.has_table_privilege(
+      not pg_catalog.has_table_privilege(
         'authenticated',
         'public.app_feedback',
         'insert'
@@ -543,7 +584,67 @@ try {
         'authenticated',
         'public.app_feedback',
         'delete'
-      ) as app_feedback_client_access_ready,
+      )
+        and to_regprocedure('public.submit_app_feedback(text,text,jsonb)') is not null
+        and not pg_catalog.has_function_privilege(
+          'anon', 'public.submit_app_feedback(text,text,jsonb)', 'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'authenticated', 'public.submit_app_feedback(text,text,jsonb)', 'execute'
+        ) as app_feedback_client_access_ready,
+      to_regclass('private.friend_request_attempts') is not null
+        and to_regprocedure(
+          'private.reserve_friend_request_capacity(uuid,uuid)'
+        ) is not null
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'public.request_friendship(text)'::regprocedure
+          ),
+          'reserve_friend_request_capacity'
+        ) > 0 as friend_request_abuse_protection_ready,
+      to_regprocedure(
+        'public.verify_shared_event_invitation_parties(text,uuid,uuid)'
+      ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'public.verify_shared_event_invitation_parties(text,uuid,uuid)',
+          'execute'
+        )
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'public.verify_shared_event_invitation_parties(text,uuid,uuid)',
+          'execute'
+        )
+        and pg_catalog.has_function_privilege(
+          'service_role',
+          'public.verify_shared_event_invitation_parties(text,uuid,uuid)',
+          'execute'
+        ) as invitation_party_verification_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_indexes
+        where schemaname = 'public'
+          and indexname = 'event_invite_tokens_one_open_link_idx'
+          and indexdef like '%(space_id, event_id)%'
+      ) and exists (
+        select 1
+        from pg_catalog.pg_indexes
+        where schemaname = 'public'
+          and indexname = 'event_invite_tokens_one_private_link_idx'
+          and indexdef like '%(space_id, event_id, created_by, recipient_user_id)%'
+      ) as invite_namespace_ready,
+      pg_catalog.strpos(
+        pg_catalog.pg_get_functiondef(
+          'public.register_push_device(text,text,jsonb,text)'::regprocedure
+        ),
+        'offset 8'
+      ) > 0
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'private.prune_revoked_event_invites()'::regprocedure
+          ),
+          'offset 200'
+        ) > 0 as bounded_push_and_invite_retention_ready,
       (
         select relation.relrowsecurity and relation.relforcerowsecurity
         from pg_catalog.pg_class as relation
@@ -795,8 +896,15 @@ try {
     !result?.event_activity_notification_function_locked ||
     !result?.notification_inbox_rls_ready ||
     !result?.notification_inbox_client_access_ready ||
+    !result?.shared_tombstone_join_protection_ready ||
+    !result?.initial_transfer_attribution_guard_ready ||
+    !result?.sensitive_api_rate_limit_ready ||
     !result?.app_feedback_rls_ready ||
     !result?.app_feedback_client_access_ready ||
+    !result?.friend_request_abuse_protection_ready ||
+    !result?.invitation_party_verification_ready ||
+    !result?.invite_namespace_ready ||
+    !result?.bounded_push_and_invite_retention_ready ||
     !result?.product_metrics_rls_ready ||
     !result?.product_metrics_client_locked ||
     !result?.product_metrics_anonymous_ready ||

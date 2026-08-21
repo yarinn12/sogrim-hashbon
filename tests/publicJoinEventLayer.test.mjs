@@ -33,14 +33,15 @@ test("public join layer adds existing event entry points", async () => {
   assert.doesNotMatch(layer, /replaceChildren/);
   assert.match(layer, /setTextIfChanged/);
   assert.match(layer, /parseInviteEventId/);
-  assert.match(layer, /parseInviteSnapshot/);
+  assert.doesNotMatch(layer, /parseInviteSnapshot/);
   assert.match(layer, /resolveEventInviteCredentials/);
   assert.match(layer, /readSharedEventState/);
   assert.match(layer, /mergeSharedEventIntoState/);
   assert.doesNotMatch(layer, /CLIENT_SPACE_STORAGE_KEY/);
   assert.doesNotMatch(layer, /CLIENT_SPACE_KEY_STORAGE_PREFIX/);
   assert.doesNotMatch(layer, /rememberInviteCloudSpace/);
-  assert.match(layer, /mergeInviteSnapshotIntoState/);
+  assert.doesNotMatch(layer, /mergeInviteSnapshotIntoState/);
+  assert.doesNotMatch(layer, /attachSharedEventCredentials/);
   assert.match(layer, /loadSharedState/);
   assert.match(layer, /ensureNamedParticipant/);
   assert.match(layer, /\.join-event-panel/);

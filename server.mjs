@@ -1,4 +1,5 @@
 import { createReadStream, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { isIP } from "node:net";
@@ -99,6 +100,11 @@ const GOOGLE_PLAY_RATE_LIMIT = {
   globalLimit: 300,
   windowMs: 60_000
 };
+const SENSITIVE_API_RATE_LIMIT = {
+  limit: 60,
+  globalLimit: 2_000,
+  windowMs: 60_000
+};
 
 export function createAppHandler({
   root = defaultRoot,
@@ -116,6 +122,8 @@ export function createAppHandler({
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite,
   requestRateLimiter = createRequestRateLimiter(),
+  durableApiRateLimitService = reserveDurableApiRateLimit,
+  durableRateLimitRequired = isDeployedRuntime(env),
   cdnCacheAppShell = isDeployedRuntime(env)
 } = {}) {
   const resolvedRoot = resolve(root);
@@ -140,6 +148,51 @@ export function createAppHandler({
       response.writeHead(204);
       response.end();
       return;
+    }
+
+    const sensitiveNamespace = sensitiveApiRateLimitNamespace(
+      url.pathname,
+      request.method
+    );
+    if (sensitiveNamespace && !consumeVerificationCapacity({
+      request,
+      response,
+      env,
+      limiter: requestRateLimiter,
+      namespace: sensitiveNamespace,
+      policy: SENSITIVE_API_RATE_LIMIT,
+      errorMessage: "Too many requests"
+    })) return;
+
+    if (sensitiveNamespace && durableRateLimitRequired) {
+      const durableResult = await durableApiRateLimitService({
+        env,
+        namespace: sensitiveNamespace,
+        subjectHashes: durableRateLimitSubjectHashes(request, env),
+        policy: SENSITIVE_API_RATE_LIMIT
+      });
+      if (!durableResult?.available) {
+        sendJson(response, 503, {
+          ok: false,
+          error: "Request protection is temporarily unavailable",
+          code: "RATE_LIMIT_UNAVAILABLE",
+          retryable: true
+        });
+        return;
+      }
+      if (!durableResult.allowed) {
+        response.setHeader(
+          "retry-after",
+          String(Math.max(1, durableResult.retryAfterSeconds || 1))
+        );
+        sendJson(response, 429, {
+          ok: false,
+          error: "Too many requests",
+          code: "RATE_LIMITED",
+          retryable: true
+        });
+        return;
+      }
     }
 
     if (url.pathname === "/api/state" && request.method === "GET") {
@@ -823,7 +876,8 @@ function consumeVerificationCapacity({
   env,
   limiter,
   namespace,
-  policy
+  policy,
+  errorMessage = "Too many verification requests"
 }) {
   const clientResults = requestRateLimitKeys(request, env).map((key) => limiter.consume(
     `${namespace}:client:${key}`,
@@ -840,15 +894,88 @@ function consumeVerificationCapacity({
   response.setHeader("retry-after", String(result.retryAfterSeconds));
   sendJson(response, 429, {
     ok: false,
-    error: "Too many verification requests",
+    error: errorMessage,
     code: "RATE_LIMITED",
     retryable: true
   });
   return false;
 }
 
+function sensitiveApiRateLimitNamespace(pathname, method) {
+  const route = `${String(method ?? "GET").toUpperCase()} ${pathname}`;
+  const sensitiveRoutes = new Set([
+    "DELETE /api/account",
+    "POST /api/product-metrics",
+    "GET /api/maintenance/retention",
+    "GET /api/admin/overview",
+    "POST /api/notifications/payment-reminder",
+    "POST /api/notifications/event-activity",
+    "POST /api/event-invites/open-link",
+    "POST /api/event-invites/redeem"
+  ]);
+  if (!sensitiveRoutes.has(route)) return "";
+  return `sensitive-api:${route.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-")}`;
+}
+
 function requestRateLimitKeys(request, env) {
   return [`ip:${requestClientAddress(request, env)}`];
+}
+
+function durableRateLimitSubjectHashes(request, env) {
+  const subjects = [`ip:${requestClientAddress(request, env)}`];
+  const authorization = String(request.headers.authorization ?? "").trim();
+  if (authorization) subjects.push(`session:${authorization.slice(0, 8192)}`);
+  return [...new Set(subjects)].map((subject) =>
+    createHash("sha256").update(subject).digest("hex")
+  );
+}
+
+async function reserveDurableApiRateLimit({
+  env,
+  namespace,
+  subjectHashes,
+  policy,
+  fetchImpl = fetch
+}) {
+  const supabaseUrl = String(env.SUPABASE_URL ?? "").replace(/\/+$/, "");
+  const serviceRoleKey = String(
+    env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY || ""
+  ).trim();
+  if (!supabaseUrl || !serviceRoleKey) {
+    return { available: false, allowed: false, retryAfterSeconds: 1 };
+  }
+
+  try {
+    const response = await fetchImpl(
+      `${supabaseUrl}/rest/v1/rpc/reserve_sensitive_api_capacity`,
+      {
+        method: "POST",
+        headers: {
+          apikey: serviceRoleKey,
+          authorization: `Bearer ${serviceRoleKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          p_namespace: namespace,
+          p_subject_hashes: subjectHashes,
+          p_client_limit: policy.limit,
+          p_global_limit: policy.globalLimit,
+          p_window_seconds: Math.ceil(policy.windowMs / 1000)
+        })
+      }
+    );
+    if (!response.ok) {
+      return { available: false, allowed: false, retryAfterSeconds: 1 };
+    }
+    const payload = await response.json().catch(() => null);
+    return {
+      available: true,
+      allowed: payload?.allowed === true,
+      retryAfterSeconds: Number(payload?.retryAfterSeconds ?? 0) || 0
+    };
+  } catch {
+    return { available: false, allowed: false, retryAfterSeconds: 1 };
+  }
 }
 
 function requestClientAddress(request, env) {

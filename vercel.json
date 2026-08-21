@@ -8,7 +8,7 @@
     },
     { "src": "*.html", "use": "@vercel/static" },
     { "src": "*.css", "use": "@vercel/static" },
-    { "src": "*.mjs", "use": "@vercel/static" },
+    { "src": "legal.mjs", "use": "@vercel/static" },
     { "src": "*.webmanifest", "use": "@vercel/static" },
     { "src": "*.svg", "use": "@vercel/static" },
     { "src": "*.png", "use": "@vercel/static" },

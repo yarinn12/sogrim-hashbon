@@ -1,5 +1,6 @@
 .env
 .vercel/
+supabase/.temp/
 node_modules/
 www/
 build/

@@ -109,16 +109,34 @@ export async function sendEventActivityNotification({
         (userId) => userId && userId !== sender.id
       )
     : [
-        ...new Set(
-          (senderEvent.participantIds ?? [])
-            .map(accountUserId)
-            .filter((userId) => userId && userId !== sender.id)
-        )
+         ...new Set(
+           (senderEvent.participantIds ?? [])
+            .filter(
+              (participantId) =>
+                !(senderEvent.inactiveParticipantIds ?? []).includes(participantId)
+            )
+             .map(accountUserId)
+             .filter((userId) => userId && userId !== sender.id)
+         )
       ];
   const notification = activityMessage(senderEvent, normalizedKind);
   const eligibleRecipients = [];
   let inboxRecipients = 0;
   for (const recipientUserId of recipientUserIds) {
+    const canonicallyActive = await (
+      normalizedKind === "event-invite"
+        ? verifyCanonicalInvitationTarget
+        : verifyCanonicalNotificationMembership
+    )({
+      supabaseUrl,
+      serviceRoleKey,
+      snapshotId: senderEvent.sharedSpaceId,
+      senderUserId: sender.id,
+      recipientUserId,
+      fetchImpl
+    });
+    if (!canonicallyActive) continue;
+
     let needsRecoveryInvite = false;
     if (normalizedKind !== "event-invite") {
       const recipientState = await loadAccountState({
@@ -565,7 +583,9 @@ async function loadEventUpdateDevices({
   const params = new URLSearchParams({
     user_id: `eq.${userId}`,
     enabled: "eq.true",
-    select: "token,preferences"
+    select: "token,preferences",
+    order: "last_seen_at.desc",
+    limit: "8"
   });
   const response = await fetchImpl(
     `${supabaseUrl}/rest/v1/push_devices?${params}`,
@@ -719,6 +739,66 @@ function secureHashEquals(left, right) {
     leftBuffer.length === rightBuffer.length &&
     timingSafeEqual(leftBuffer, rightBuffer)
   );
+}
+
+async function verifyCanonicalNotificationMembership({
+  supabaseUrl,
+  serviceRoleKey,
+  snapshotId,
+  senderUserId,
+  recipientUserId,
+  fetchImpl
+}) {
+  if (
+    !isSafeSharedIdentifier(snapshotId) ||
+    !UUID_PATTERN.test(String(senderUserId ?? "")) ||
+    !UUID_PATTERN.test(String(recipientUserId ?? ""))
+  ) return false;
+
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/verify_shared_event_notification_parties`,
+    {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
+      body: JSON.stringify({
+        p_snapshot_id: snapshotId,
+        p_sender_user_id: senderUserId,
+        p_recipient_user_id: recipientUserId
+      })
+    }
+  );
+  if (!response.ok) return false;
+  return (await response.json().catch(() => false)) === true;
+}
+
+async function verifyCanonicalInvitationTarget({
+  supabaseUrl,
+  serviceRoleKey,
+  snapshotId,
+  senderUserId,
+  recipientUserId,
+  fetchImpl
+}) {
+  if (
+    !isSafeSharedIdentifier(snapshotId) ||
+    !UUID_PATTERN.test(String(senderUserId ?? "")) ||
+    !UUID_PATTERN.test(String(recipientUserId ?? ""))
+  ) return false;
+
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/verify_shared_event_invitation_parties`,
+    {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
+      body: JSON.stringify({
+        p_snapshot_id: snapshotId,
+        p_sender_user_id: senderUserId,
+        p_recipient_user_id: recipientUserId
+      })
+    }
+  );
+  if (!response.ok) return false;
+  return (await response.json().catch(() => false)) === true;
 }
 
 function serviceHeaders(serviceRoleKey) {

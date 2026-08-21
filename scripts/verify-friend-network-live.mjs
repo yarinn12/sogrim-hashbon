@@ -72,11 +72,11 @@ try {
   assert.equal((await loadFriendNetwork(peerConfig)).friendships.length, 0);
 
   const reversePending = await requestFriendship(
-    ownerConfig,
-    peerInitial.friendCode
+    peerConfig,
+    ownerInitial.friendCode
   );
   assert.equal(reversePending.status, "pending");
-  const mutual = await requestFriendshipByUsername(peerConfig, ownerUsername);
+  const mutual = await requestFriendshipByUsername(ownerConfig, peerUsername);
   assert.equal(mutual.status, "accepted");
   await assertAcceptedFriendship(ownerConfig, owner.userId, peer.userId);
   await assertAcceptedFriendship(peerConfig, owner.userId, peer.userId);

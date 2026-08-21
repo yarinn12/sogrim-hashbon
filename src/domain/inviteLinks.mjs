@@ -179,46 +179,11 @@ export function buildEventInviteSnapshot(state, eventId) {
 }
 
 export function mergeInviteSnapshotIntoState(state, inviteSnapshot) {
-  const snapshot = normalizeInviteSnapshot(inviteSnapshot);
-  if (!snapshot) return state;
-  if ((state.deletedEvents ?? []).some((item) => item.id === snapshot.event.id)) {
-    return state;
-  }
-
-  const existingParticipantIds = new Set((state.participants ?? []).map((participant) => participant.id));
-  const existingGroupIds = new Set((state.groups ?? []).map((group) => group.id));
-  const eventExists = (state.events ?? []).some((event) => event.id === snapshot.event.id);
-
-  return {
-    ...state,
-    participants: [
-      ...(state.participants ?? []),
-      ...snapshot.participants.filter((participant) => !existingParticipantIds.has(participant.id))
-    ],
-    groups: [
-      ...(state.groups ?? []),
-      ...snapshot.groups.filter((group) => !existingGroupIds.has(group.id))
-    ],
-    events: eventExists
-      ? state.events.map((event) =>
-          event.id === snapshot.event.id ? mergeInviteEvent(event, snapshot.event) : event
-        )
-      : [snapshot.event, ...(state.events ?? [])]
-  };
-}
-
-function mergeInviteEvent(existingEvent, snapshotEvent) {
-  return {
-    ...existingEvent,
-    participantIds: uniqueIds([...(existingEvent.participantIds ?? []), ...snapshotEvent.participantIds]),
-    membershipUpdatedAtByParticipant: {
-      ...(snapshotEvent.membershipUpdatedAtByParticipant ?? {}),
-      ...(existingEvent.membershipUpdatedAtByParticipant ?? {})
-    },
-    adminIds: existingEvent.adminIds ?? [],
-    expenses: existingEvent.expenses ?? [],
-    transfers: existingEvent.transfers ?? []
-  };
+  // URL snapshots are untrusted previews. Keep this compatibility boundary as a
+  // no-op so legacy layers cannot accidentally persist them; verified events
+  // are imported through mergeSharedEventIntoState after a successful read.
+  void inviteSnapshot;
+  return state;
 }
 
 function normalizeInviteSnapshot(snapshot) {

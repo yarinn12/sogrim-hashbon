@@ -15,6 +15,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "SogrimContactPicker")
 public class SogrimContactPickerPlugin extends Plugin {
+    private static final int MAX_DISPLAY_NAME_CODE_POINTS = 48;
+    private static final int MAX_RAW_DISPLAY_NAME_CHARS = 256;
 
     @PluginMethod
     public void pickContact(PluginCall call) {
@@ -61,18 +63,33 @@ public class SogrimContactPickerPlugin extends Plugin {
                 call.reject("Selected contact is unavailable", "CONTACT_MISSING");
                 return;
             }
-            String displayName = cursor.getString(0);
-            if (displayName == null || displayName.trim().isEmpty()) {
+            String displayName = normalizeDisplayName(cursor.getString(0));
+            if (displayName.isEmpty()) {
                 call.reject("Selected contact has no name", "CONTACT_NAME_MISSING");
                 return;
             }
 
             JSObject payload = new JSObject();
             payload.put("cancelled", false);
-            payload.put("displayName", displayName.trim());
+            payload.put("displayName", displayName);
             call.resolve(payload);
         } catch (Exception error) {
             call.reject("Selected contact could not be read", "CONTACT_READ_FAILED", error);
         }
+    }
+
+    private String normalizeDisplayName(String value) {
+        if (value == null) return "";
+        String bounded = value.length() > MAX_RAW_DISPLAY_NAME_CHARS
+            ? value.substring(0, MAX_RAW_DISPLAY_NAME_CHARS)
+            : value;
+        String normalized = bounded
+            .replaceAll("[\\p{Cc}\\p{Cf}]", "")
+            .trim()
+            .replaceAll("\\s+", " ");
+        int codePointCount = normalized.codePointCount(0, normalized.length());
+        if (codePointCount <= MAX_DISPLAY_NAME_CODE_POINTS) return normalized;
+        int endIndex = normalized.offsetByCodePoints(0, MAX_DISPLAY_NAME_CODE_POINTS);
+        return normalized.substring(0, endIndex).trim();
     }
 }

@@ -117,6 +117,20 @@ export async function sendPaymentReminder({
     });
   }
 
+  const canonicalMembers = await verifyCanonicalNotificationMembership({
+    supabaseUrl,
+    serviceRoleKey,
+    snapshotId: senderWorkspaceEvent?.sharedSpaceId,
+    senderUserId: sender.id,
+    recipientUserId,
+    fetchImpl
+  });
+  if (!canonicalMembers) {
+    return failure(403, "The reminder participants are no longer active", {
+      code: "REMINDER_NOT_ALLOWED"
+    });
+  }
+
   const reservation = await reserveReminder({
     supabaseUrl,
     serviceRoleKey,
@@ -414,7 +428,9 @@ async function loadPaymentReminderDevices({
   const params = new URLSearchParams({
     user_id: `eq.${userId}`,
     enabled: "eq.true",
-    select: "token,preferences"
+    select: "token,preferences",
+    order: "last_seen_at.desc",
+    limit: "8"
   });
   const response = await fetchImpl(
     `${supabaseUrl}/rest/v1/push_devices?${params}`,
@@ -454,6 +470,36 @@ async function reserveReminder({
   );
   if (!response.ok) return null;
   return response.json().catch(() => null);
+}
+
+async function verifyCanonicalNotificationMembership({
+  supabaseUrl,
+  serviceRoleKey,
+  snapshotId,
+  senderUserId,
+  recipientUserId,
+  fetchImpl
+}) {
+  if (
+    !isSafeSharedIdentifier(snapshotId) ||
+    !UUID_PATTERN.test(String(senderUserId ?? "")) ||
+    !UUID_PATTERN.test(String(recipientUserId ?? ""))
+  ) return false;
+
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/verify_shared_event_notification_parties`,
+    {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
+      body: JSON.stringify({
+        p_snapshot_id: snapshotId,
+        p_sender_user_id: senderUserId,
+        p_recipient_user_id: recipientUserId
+      })
+    }
+  );
+  if (!response.ok) return false;
+  return (await response.json().catch(() => false)) === true;
 }
 
 async function completeReminderReservation({

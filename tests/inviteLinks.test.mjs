@@ -9,6 +9,7 @@ import {
   parseInviteSnapshot,
   parseInviteToken
 } from "../src/domain/inviteLinks.mjs";
+import { mergeSharedEventIntoState } from "../src/data/sharedEventStore.mjs";
 
 test("buildEventInviteUrl creates a clean event invite URL", () => {
   const url = buildEventInviteUrl("http://127.0.0.1:4173/?event=old", "event-123");
@@ -371,7 +372,7 @@ test("buildEventInviteSnapshot includes active members without money, admin, or 
   assert.equal(snapshot.participants[0].avatarPreset, "avatar-4");
 });
 
-test("mergeInviteSnapshotIntoState imports a missing invited event", () => {
+test("an unsigned invite snapshot cannot persist a missing event", () => {
   const state = {
     currentParticipantId: "guest",
     participants: [{ id: "guest", displayName: "Guest User", kind: "user" }],
@@ -396,12 +397,10 @@ test("mergeInviteSnapshotIntoState imports a missing invited event", () => {
 
   const nextState = mergeInviteSnapshotIntoState(state, snapshot);
 
-  assert.equal(nextState.currentParticipantId, "guest");
-  assert.deepEqual(nextState.participants.map((participant) => participant.id), ["guest", "yarin"]);
-  assert.deepEqual(nextState.groups.map((group) => group.id), ["friends"]);
-  assert.deepEqual(nextState.events.map((event) => event.id), ["event-123"]);
-  assert.deepEqual(nextState.events[0].adminIds, []);
-  assert.equal(nextState.events[0].locked, true);
+  assert.equal(nextState, state);
+  assert.deepEqual(nextState.participants.map((participant) => participant.id), ["guest"]);
+  assert.deepEqual(nextState.groups, []);
+  assert.deepEqual(nextState.events, []);
 });
 
 test("a deleted event cannot be restored by an old invite snapshot", () => {
@@ -428,7 +427,7 @@ test("a deleted event cannot be restored by an old invite snapshot", () => {
   assert.equal(mergeInviteSnapshotIntoState(state, snapshot), state);
 });
 
-test("mergeInviteSnapshotIntoState never elevates permissions or imports money from a link", () => {
+test("an unsigned invite snapshot cannot collide with an existing event", () => {
   const state = {
     currentParticipantId: "guest",
     participants: [{ id: "guest", displayName: "Guest User", kind: "user" }],
@@ -465,14 +464,56 @@ test("mergeInviteSnapshotIntoState never elevates permissions or imports money f
   const nextState = mergeInviteSnapshotIntoState(state, snapshot);
   const event = nextState.events[0];
 
-  assert.deepEqual(nextState.participants.map((participant) => participant.id), ["guest", "yarin"]);
-  assert.deepEqual(nextState.groups.map((group) => group.id), ["friends"]);
-  assert.deepEqual(event.participantIds, ["guest", "yarin"]);
+  assert.equal(nextState, state);
+  assert.deepEqual(nextState.participants.map((participant) => participant.id), ["guest"]);
+  assert.deepEqual(nextState.groups, []);
+  assert.deepEqual(event.participantIds, ["guest"]);
   assert.deepEqual(event.adminIds, []);
   assert.equal(event.groupId, "");
   assert.equal(event.createdByParticipantId, "");
   assert.deepEqual(event.expenses, []);
   assert.deepEqual(event.transfers, []);
+});
+
+test("a server-read verified invite still imports the shared event", () => {
+  const state = {
+    currentParticipantId: "guest",
+    participants: [{ id: "guest", displayName: "Guest User", kind: "user" }],
+    groups: [],
+    events: []
+  };
+  const credentials = {
+    id: "space-friends-night",
+    key: "abcdefghijklmnopqrstuvwxyz_123456"
+  };
+  const verifiedSharedState = {
+    currentParticipantId: "",
+    participants: [{ id: "yarin", displayName: "Yarin Cohen", kind: "user" }],
+    groups: [],
+    events: [{
+      id: "event-123",
+      name: "Verified taxi",
+      participantIds: ["yarin"],
+      adminIds: ["yarin"],
+      expenses: [],
+      transfers: []
+    }]
+  };
+
+  const nextState = mergeSharedEventIntoState(
+    state,
+    verifiedSharedState,
+    credentials
+  );
+
+  assert.deepEqual(nextState.events.map((event) => event.id), ["event-123"]);
+  assert.equal(nextState.events[0].name, "Verified taxi");
+  assert.equal(nextState.events[0].sharedSpaceId, credentials.id);
+  assert.equal(nextState.events[0].sharedSpaceKey, credentials.key);
+  assert.deepEqual(
+    new Set(nextState.participants.map((participant) => participant.id)),
+    new Set(["guest", "yarin"])
+  );
 });
 
 test("mergeInviteSnapshotIntoState refuses an invalid snapshot without changing state", () => {

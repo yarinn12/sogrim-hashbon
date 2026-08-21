@@ -145,7 +145,21 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     accountConnection,
-    /nextState\.events\.some\(\(event\) => event\.id === invitedEventId\) &&\s*\(saveResult\?\.ok \|\| saveResult\?\.partial\)[\s\S]*?clearPendingInviteUrl\(\)/
+    /nextState\.events\.some\(\(event\) => event\.id === verifiedInvitedEventId\)[\s\S]*?\(saveResult\?\.ok \|\| saveResult\?\.partial\)[\s\S]*?clearPendingInviteUrl\(\)/
+  );
+  assert.doesNotMatch(accountConnection, /mergeInviteSnapshotIntoState/);
+  assert.doesNotMatch(accountConnection, /attachSharedEventCredentials/);
+  assert.ok(
+    accountConnection.indexOf("resolveEventInviteCredentials(runtimeConfig") <
+      accountConnection.indexOf("readSharedEventState(")
+  );
+  assert.ok(
+    accountConnection.indexOf("readSharedEventState(") <
+      accountConnection.indexOf("mergeSharedEventIntoState(")
+  );
+  assert.ok(
+    accountConnection.indexOf("mergeSharedEventIntoState(") <
+      accountConnection.indexOf("saveSharedState(nextState)")
   );
   const connectAccountSource = layer.slice(
     layer.indexOf("async function connectAccountToApp"),

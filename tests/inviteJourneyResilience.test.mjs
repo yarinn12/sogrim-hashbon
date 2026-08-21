@@ -76,19 +76,21 @@ test("a resolved cloud config produces a revocable token invite", () => {
   assert.equal(parseInviteSpaceKey(url), null);
 });
 
-test("every invite entry path attaches retry credentials before its cloud read", () => {
+test("invite entry paths read the verified event before merging durable state", () => {
   for (const file of [
     "src/app.mjs",
-    "src/publicInviteSnapshotLayer.mjs",
     "src/publicJoinEventLayer.mjs",
+    "src/publicInviteSnapshotLayer.mjs",
     "src/publicAccountAuthLayer.mjs"
   ]) {
     const source = readFileSync(file, "utf8");
-    const attachIndex = source.indexOf("attachSharedEventCredentials(");
-    const readIndex = source.indexOf("readSharedEventState(", attachIndex);
+    const resolveIndex = source.indexOf("resolveEventInviteCredentials(");
+    const readIndex = source.indexOf("readSharedEventState(", resolveIndex);
+    const mergeIndex = source.indexOf("mergeSharedEventIntoState(", readIndex);
 
-    assert.ok(attachIndex >= 0, `${file} must attach invite credentials`);
-    assert.ok(readIndex > attachIndex, `${file} must attach before its cloud read`);
+    assert.ok(resolveIndex >= 0, `${file} must resolve invite credentials`);
+    assert.ok(readIndex > resolveIndex, `${file} must read after resolving credentials`);
+    assert.ok(mergeIndex > readIndex, `${file} must merge only after its cloud read`);
   }
 });
 
@@ -351,26 +353,22 @@ test("a URL without invite evidence is never remembered as pending", () => {
   assert.equal(store.size, 0);
 });
 
-test("reopening the same invite does not duplicate the participant", () => {
+test("reopening an unsigned snapshot never imports or duplicates its data", () => {
   const snapshot = buildEventInviteSnapshot(shareState(), "e1");
-  let joined = {
+  const state = {
     currentParticipantId: "guest",
     participants: [{ id: "guest", displayName: "אורח", kind: "user" }],
     groups: [],
     events: []
   };
 
-  joined = mergeInviteSnapshotIntoState(joined, snapshot);
-  const afterFirst = joined.participants.length;
-  joined = mergeInviteSnapshotIntoState(joined, snapshot);
+  const afterFirst = mergeInviteSnapshotIntoState(state, snapshot);
+  const afterSecond = mergeInviteSnapshotIntoState(afterFirst, snapshot);
 
-  assert.equal(joined.participants.length, afterFirst, "no duplicate participants");
-  assert.equal(joined.events.filter((event) => event.id === "e1").length, 1);
-  assert.equal(
-    new Set(joined.events[0].participantIds).size,
-    joined.events[0].participantIds.length,
-    "participant ids stay unique"
-  );
+  assert.equal(afterFirst, state);
+  assert.equal(afterSecond, state);
+  assert.deepEqual(afterSecond.participants.map((participant) => participant.id), ["guest"]);
+  assert.deepEqual(afterSecond.events, []);
 });
 
 test("invite notifications distinguish a first join, an active member, and a returning member", () => {

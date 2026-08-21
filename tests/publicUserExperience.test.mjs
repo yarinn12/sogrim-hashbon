@@ -109,20 +109,18 @@ test("public account gate supports password and Google login with one cloud iden
   assert.match(auth, /account_space_key/);
 });
 
-test("public Google login keeps invite snapshots before joining the visitor", async () => {
+test("account login keeps invite context visible but persists only a verified event", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 
   assert.match(layer, /parseInviteSnapshot/);
-  assert.match(layer, /mergeInviteSnapshotIntoState/);
   assert.match(layer, /const inviteUrl = pendingInviteUrl\(window\.location\.href\)/);
-  assert.match(layer, /const inviteSnapshot = parseInviteSnapshot\(inviteUrl\)/);
   assert.match(
     layer,
     /const startupState = await loadSharedStateForStartup\(\{ maxWaitMs: 0 \}\)/
   );
-  assert.match(layer, /mergeInviteSnapshotIntoState\(\s*startupState\.state,\s*inviteSnapshot/);
   assert.match(layer, /readSharedEventState/);
   assert.match(layer, /mergeSharedEventIntoState/);
+  assert.doesNotMatch(layer, /mergeInviteSnapshotIntoState/);
   assert.match(layer, /clearPendingInviteUrl/);
   assert.match(layer, /accountInviteMarkup/);
 });
@@ -273,7 +271,7 @@ test("public sync keeps Google identity fields when refreshing shared state", as
   const syncLocalProfile = sourceBetween(
     app,
     "function syncLocalProfile(nextState)",
-    "function applyInviteSnapshot"
+    "async function hydrateIncomingSharedEvent"
   );
 
   assert.match(syncLocalProfile, /authProvider: localProfile\.authProvider/);

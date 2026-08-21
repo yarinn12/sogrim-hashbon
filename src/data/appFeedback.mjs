@@ -18,7 +18,7 @@ export async function submitAppFeedback(
   const normalizedMessage = normalizeFeedbackMessage(message);
   const normalizedContext = normalizeFeedbackContext(context);
   const response = await fetchImpl(
-    `${identity.url}/rest/v1/app_feedback`,
+    `${identity.url}/rest/v1/rpc/submit_app_feedback`,
     {
       method: "POST",
       headers: {
@@ -28,10 +28,9 @@ export async function submitAppFeedback(
         prefer: "return=minimal"
       },
       body: JSON.stringify({
-        user_id: identity.userId,
-        category: normalizedCategory,
-        message: normalizedMessage,
-        context: normalizedContext
+        p_category: normalizedCategory,
+        p_message: normalizedMessage,
+        p_context: normalizedContext
       })
     }
   );

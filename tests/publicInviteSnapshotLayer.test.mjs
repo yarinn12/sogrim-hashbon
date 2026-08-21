@@ -26,13 +26,11 @@ test("public invite snapshot layer loads after join helpers", async () => {
   assert.match(sw, /publicInviteSnapshotLayer\.mjs/);
 });
 
-test("public invite snapshot layer upgrades copied links and incoming links", async () => {
+test("public invite snapshot layer upgrades links but imports only verified events", async () => {
   const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
 
   assert.match(layer, /buildEventInviteSnapshot/);
-  assert.match(layer, /mergeInviteSnapshotIntoState/);
   assert.match(layer, /parseInviteSnapshot/);
-  assert.match(layer, /sessionStorage\.getItem\(marker\) === "1"/);
   assert.match(layer, /rememberPendingInviteUrl/);
   assert.match(layer, /startInviteImportAfterAccountReady/);
   assert.match(
@@ -60,31 +58,15 @@ test("public invite snapshot layer upgrades copied links and incoming links", as
   assert.match(layer, /searchParams\.delete\("t"\)/);
   assert.match(layer, /history\.replaceState/);
   assert.match(layer, /window\.location\.replace/);
-  assert.doesNotMatch(
-    sourceBetween(layer, "function importIncomingInviteSnapshot()", "function reloadOnceForImportedInvite"),
-    /saveSharedState/
-  );
-  const importFlow = sourceBetween(
-    layer,
-    "function importIncomingInviteSnapshot()",
-    "function reloadOnceForImportedInvite"
-  );
-  assert.doesNotMatch(importFlow, /cleanInviteAddress\(\)/);
-  assert.match(importFlow, /reloadOnceForImportedInvite\(eventId\)/);
   const initializeFlow = sourceBetween(
     layer,
     "async function initializeInviteImport()",
-    "function importIncomingInviteSnapshot()"
+    "function scheduleInviteSnapshotEnhancement()"
   );
   assert.match(initializeFlow, /const imported = await importIncomingSharedEvent\(config\)/);
   assert.match(initializeFlow, /if \(imported\) cleanInviteAddress\(\)/);
-  const reloadFlow = sourceBetween(
-    layer,
-    "function reloadOnceForImportedInvite",
-    "function scheduleInviteSnapshotEnhancement"
-  );
-  assert.doesNotMatch(reloadFlow, /catch \{\s*return;/);
-  assert.match(reloadFlow, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(layer, /function importIncomingInviteSnapshot/);
+  assert.doesNotMatch(layer, /mergeInviteSnapshotIntoState/);
 });
 
 test("snapshot joining refreshes the account token before reading the event cloud", async () => {
@@ -99,11 +81,67 @@ test("snapshot joining refreshes the account token before reading the event clou
   assert.match(joinFlow, /runtimeConfig = joinRuntimeConfig/);
   assert.match(joinFlow, /readSharedEventState\(\s*joinRuntimeConfig,/);
   assert.match(joinFlow, /resolveEventInviteCredentials\(/);
+  assert.match(joinFlow, /const sharedEventState = await readSharedEventState|sharedEventState = await readSharedEventState/);
+  assert.match(joinFlow, /mergeSharedEventIntoState\(/);
+  assert.doesNotMatch(joinFlow, /mergeInviteSnapshotIntoState/);
+  assert.doesNotMatch(joinFlow, /attachSharedEventCredentials/);
+  assert.ok(
+    joinFlow.indexOf("resolveEventInviteCredentials(") <
+      joinFlow.indexOf("readSharedEventState(")
+  );
+  assert.ok(
+    joinFlow.indexOf("readSharedEventState(") <
+      joinFlow.indexOf("mergeSharedEventIntoState(")
+  );
+  assert.ok(
+    joinFlow.indexOf("mergeSharedEventIntoState(") <
+      joinFlow.indexOf("saveState(state)")
+  );
   assert.match(joinFlow, /if \(inviteJoinBusy\) return/);
   assert.match(joinFlow, /inviteJoinBusy = true/);
   assert.match(joinFlow, /button\.disabled = true/);
   assert.match(joinFlow, /finally \{[\s\S]*?inviteJoinBusy = false/);
   assert.match(joinFlow, /if \(button\.isConnected\) button\.disabled = false/);
+});
+
+test("the public join panel persists only a server-verified event", async () => {
+  const layer = await readFile("src/publicJoinEventLayer.mjs", "utf8");
+  const joinFlow = sourceBetween(
+    layer,
+    "async function joinExistingEventFromPublicPanel()",
+    "function parseEventId(value)"
+  );
+
+  assert.doesNotMatch(layer, /mergeInviteSnapshotIntoState|attachSharedEventCredentials/);
+  assert.doesNotMatch(joinFlow, /parseInviteSnapshot/);
+  assert.match(joinFlow, /resolveEventInviteCredentials\(/);
+  assert.match(joinFlow, /readSharedEventState\(/);
+  assert.match(joinFlow, /mergeSharedEventIntoState\(/);
+  assert.ok(
+    joinFlow.indexOf("resolveEventInviteCredentials(") <
+      joinFlow.indexOf("readSharedEventState(")
+  );
+  assert.ok(
+    joinFlow.indexOf("readSharedEventState(") <
+      joinFlow.indexOf("mergeSharedEventIntoState(")
+  );
+  assert.ok(
+    joinFlow.indexOf("mergeSharedEventIntoState(") <
+      joinFlow.indexOf("saveState(state)")
+  );
+});
+
+test("offline invite fallback opens only an already verified cached event", async () => {
+  const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const cachedFlow = sourceBetween(
+    layer,
+    "function openVerifiedCachedEvent(eventId)",
+    "function recoverPendingInviteAfterReconnect()"
+  );
+
+  assert.match(cachedFlow, /eventShareCredentials\(cachedEvent\)/);
+  assert.match(cachedFlow, /window\.location\.replace\(/);
+  assert.doesNotMatch(cachedFlow, /saveState|saveSharedState|mergeInviteSnapshotIntoState/);
 });
 
 test("reconnecting refreshes config once while retaining compact invite credentials", async () => {
@@ -171,14 +209,22 @@ test("invite context is retained until the participant save reaches the shared e
   );
 });
 
-test("public profile gate keeps invite snapshot while saving a new visitor", async () => {
+test("legacy profile gates cannot persist unsigned snapshots through the compatibility helper", async () => {
   const overlay = await readFile("src/publicProfileOverlay.mjs", "utf8");
+  const inviteLinks = await readFile("src/domain/inviteLinks.mjs", "utf8");
 
   assert.match(overlay, /parseInviteSnapshot/);
   assert.match(overlay, /mergeCurrentInviteSnapshot/);
   assert.match(overlay, /mergeInviteSnapshotIntoState/);
   assert.match(overlay, /saveState/);
   assert.match(overlay, /mergeCurrentInviteSnapshot\(await loadSharedState\(\)\)/);
+  const mergeBoundary = sourceBetween(
+    inviteLinks,
+    "export function mergeInviteSnapshotIntoState",
+    "function normalizeInviteSnapshot"
+  );
+  assert.match(mergeBoundary, /return state;/);
+  assert.doesNotMatch(mergeBoundary, /participants:|groups:|events:/);
 });
 
 test("public invite join fix connects a new visitor before the old profile save runs", async () => {

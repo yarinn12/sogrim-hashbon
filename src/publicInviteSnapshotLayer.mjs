@@ -8,7 +8,6 @@ import {
 import {
   buildEventInviteSnapshot,
   buildEventInviteUrl,
-  mergeInviteSnapshotIntoState,
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
@@ -17,7 +16,7 @@ import { normalizeReferralCode } from "./domain/referralCodes.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 import { isActiveEventParticipant } from "./domain/eventMembership.mjs";
 import {
-  attachSharedEventCredentials,
+  eventShareCredentials,
   mergeSharedEventIntoState,
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
@@ -66,48 +65,11 @@ function startInviteImportAfterAccountReady() {
 }
 
 async function initializeInviteImport() {
-  importIncomingInviteSnapshot();
   const config = await loadRuntimeConfig();
   runtimeConfig = config;
   const imported = await importIncomingSharedEvent(config);
   if (imported) cleanInviteAddress();
   scheduleInviteSnapshotEnhancement();
-}
-
-function importIncomingInviteSnapshot() {
-  const inviteSnapshot = parseInviteSnapshot(window.location.href);
-  const eventId = parseInviteEventId(window.location.href);
-  if (!inviteSnapshot || !eventId || inviteSnapshot.event.id !== eventId) return;
-
-  let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
-  const profile = loadLocalProfile();
-  if (profile) {
-    state = ensureNamedParticipant(
-      state,
-      {
-        ...profile,
-        id: profile.participantId,
-        displayName: profile.displayName
-      },
-      eventId,
-      { reactivateInactive: false }
-    );
-  }
-
-  saveState(state);
-  reloadOnceForImportedInvite(eventId);
-}
-
-function reloadOnceForImportedInvite(eventId) {
-  const marker = `sogrimInviteImported:${eventId}`;
-  try {
-    if (sessionStorage.getItem(marker) === "1") return;
-    sessionStorage.setItem(marker, "1");
-  } catch {
-    // The invite URL was already cleaned, so one reload cannot loop.
-  }
-
-  window.location.reload();
 }
 
 function scheduleInviteSnapshotEnhancement() {
@@ -200,28 +162,33 @@ async function handleInviteSnapshotJoinClick(event) {
   button.disabled = true;
 
   try {
-    let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
     const joinRuntimeConfig = await loadRuntimeConfig();
     runtimeConfig = joinRuntimeConfig;
     const credentials = await resolveEventInviteCredentials(
       joinRuntimeConfig,
       link
     );
-    if (credentials) {
-      state = attachSharedEventCredentials(state, eventId, credentials);
-      try {
-        const sharedEventState = await readSharedEventState(
-          joinRuntimeConfig,
-          credentials,
-          eventId
-        );
-        if (sharedEventState) {
-          state = mergeSharedEventIntoState(state, sharedEventState, credentials);
-        }
-      } catch {
-        // The safe preview remains available when cloud sync is temporarily unavailable.
-      }
+    if (!credentials) return;
+    let sharedEventState = null;
+    try {
+      sharedEventState = await readSharedEventState(
+        joinRuntimeConfig,
+        credentials,
+        eventId
+      );
+    } catch (error) {
+      if (openVerifiedCachedEvent(eventId)) return;
+      throw error;
     }
+    if (!sharedEventState) {
+      openVerifiedCachedEvent(eventId);
+      return;
+    }
+    let state = mergeSharedEventIntoState(
+      loadState(),
+      sharedEventState,
+      credentials
+    );
     const profile = loadLocalProfile();
     const wasAlreadyParticipant = profile
       ? isActiveEventParticipant(
@@ -261,6 +228,13 @@ async function handleInviteSnapshotJoinClick(event) {
     inviteJoinBusy = false;
     if (button.isConnected) button.disabled = false;
   }
+}
+
+function openVerifiedCachedEvent(eventId) {
+  const cachedEvent = loadState().events?.find((event) => event.id === eventId);
+  if (!cachedEvent || !eventShareCredentials(cachedEvent)) return false;
+  window.location.replace(buildEventInviteUrl(window.location.href, eventId));
+  return true;
 }
 
 function recoverPendingInviteAfterReconnect() {

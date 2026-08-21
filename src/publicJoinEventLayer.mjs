@@ -8,14 +8,11 @@ import {
 } from "./data/localStore.mjs";
 import {
   buildEventInviteUrl,
-  mergeInviteSnapshotIntoState,
-  parseInviteSnapshot,
   parseInviteEventId
 } from "./domain/inviteLinks.mjs";
 import { resolveEventInviteCredentials } from "./data/eventInvites.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 import {
-  attachSharedEventCredentials,
   mergeSharedEventIntoState,
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
@@ -367,32 +364,45 @@ async function joinExistingEventFromPublicPanel() {
     return;
   }
 
-  const inviteSnapshot = parseInviteSnapshot(link);
   const joinRuntimeConfig = await loadRuntimeConfig();
   const inviteCredentials = await resolveEventInviteCredentials(
     joinRuntimeConfig,
     link
   );
-  let state = mergeInviteSnapshotIntoState(loadState(), inviteSnapshot);
-  if (inviteCredentials?.id && inviteCredentials?.key) {
-    state = attachSharedEventCredentials(state, eventId, inviteCredentials);
-    try {
-      const sharedEventState = await readSharedEventState(
-        joinRuntimeConfig,
-        inviteCredentials,
-        eventId
-      );
-      if (sharedEventState) {
-        state = mergeSharedEventIntoState(state, sharedEventState, inviteCredentials);
-      }
-    } catch {
-      // Continue with the safe preview if the shared event is temporarily offline.
-    }
+  if (!inviteCredentials?.id || !inviteCredentials?.key) {
+    setJoinError(error, "הקישור לא תקין או שכבר בוטל. בקשו קישור חדש ממנהל האירוע.");
+    return;
   }
+
+  let sharedEventState;
+  try {
+    sharedEventState = await readSharedEventState(
+      joinRuntimeConfig,
+      inviteCredentials,
+      eventId
+    );
+  } catch {
+    setJoinError(error, "לא הצלחנו לאמת את ההזמנה כרגע. בדקו את החיבור ונסו שוב.");
+    return;
+  }
+  if (!sharedEventState) {
+    setJoinError(error, "האירוע כבר לא זמין או שהקישור בוטל.");
+    return;
+  }
+
+  let state = mergeSharedEventIntoState(
+    loadState(),
+    sharedEventState,
+    inviteCredentials
+  );
   saveState(state);
   let targetEvent = findEvent(state, eventId);
   if (!targetEvent) {
-    state = mergeInviteSnapshotIntoState(await loadSharedState(), inviteSnapshot);
+    state = mergeSharedEventIntoState(
+      await loadSharedState(),
+      sharedEventState,
+      inviteCredentials
+    );
     saveState(state);
     targetEvent = findEvent(state, eventId);
   }

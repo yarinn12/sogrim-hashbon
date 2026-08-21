@@ -97,6 +97,7 @@ function createReminderFetch({
   actorId = CREDITOR_USER_ID,
   recipientState = accountState(),
   authoritativeState = accountState(),
+  canonicalMembership = true,
   reservation = { allowed: true, reminder_id: REMINDER_ID }
 } = {}) {
   const requests = [];
@@ -133,6 +134,9 @@ function createReminderFetch({
     }
     if (address.endsWith("/rest/v1/rpc/reserve_payment_reminder")) {
       return jsonResponse(reservation);
+    }
+    if (address.endsWith("/rest/v1/rpc/verify_shared_event_notification_parties")) {
+      return jsonResponse(canonicalMembership);
     }
     if (
       address.includes("/rest/v1/notification_inbox?") &&
@@ -252,6 +256,33 @@ test("server fails closed when the authoritative shared transfer is already paid
 
   assert.equal(result.status, 403);
   assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
+});
+
+test("server rejects a reminder when canonical shared membership is missing", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    canonicalMembership: false
+  });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl
+  });
+
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
+  assert.equal(
+    requests.some((request) =>
+      request.url.endsWith("/rest/v1/rpc/reserve_payment_reminder")
+    ),
+    false
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false
+  );
 });
 
 test("server enforces the reminder cooldown before contacting Firebase", async () => {

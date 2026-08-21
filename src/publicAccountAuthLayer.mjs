@@ -55,7 +55,6 @@ import {
   rememberPendingInviteUrl
 } from "./data/pendingInvite.mjs";
 import {
-  mergeInviteSnapshotIntoState,
   parseInviteEventId,
   parseInviteSnapshot
 } from "./domain/inviteLinks.mjs";
@@ -64,7 +63,6 @@ import {
   resolveEventInviteCredentials
 } from "./data/eventInvites.mjs";
 import {
-  attachSharedEventCredentials,
   mergeSharedEventIntoState,
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
@@ -375,21 +373,13 @@ async function connectAccountToApp(
 
   const inviteUrl = ignoreInvite ? "" : pendingInviteUrl(window.location.href);
   const invitedEventId = parseInviteEventId(inviteUrl);
-  const inviteSnapshot = parseInviteSnapshot(inviteUrl);
   const startupState = await loadSharedStateForStartup({ maxWaitMs: 0 });
-  let sharedState = mergeInviteSnapshotIntoState(
-    startupState.state,
-    inviteSnapshot
-  );
+  let sharedState = startupState.state;
+  let verifiedInvitedEventId = "";
   const inviteCredentials = invitedEventId
     ? await resolveEventInviteCredentials(runtimeConfig, inviteUrl)
     : null;
   if (invitedEventId && inviteCredentials) {
-    sharedState = attachSharedEventCredentials(
-      sharedState,
-      invitedEventId,
-      inviteCredentials
-    );
     try {
       const remoteEvent = await readSharedEventState(
         runtimeConfig,
@@ -402,9 +392,10 @@ async function connectAccountToApp(
           remoteEvent,
           inviteCredentials
         );
+        verifiedInvitedEventId = invitedEventId;
       }
     } catch {
-      // A copied invite still carries a safe event preview for temporary network failures.
+      // Keep the invite URL available until connectivity returns.
     }
   }
   const nextState = ensureNamedParticipant(
@@ -416,7 +407,7 @@ async function connectAccountToApp(
       authSubject: accountProfile.authSubject,
       email: accountProfile.email
     },
-    invitedEventId,
+    verifiedInvitedEventId,
     { reactivateInactive: false }
   );
   const participant = nextState.participants.find(
@@ -439,13 +430,16 @@ async function connectAccountToApp(
     : Promise.resolve({ ok: true, mode: "unchanged" });
   const saveResult = await saveRequest;
   const invitedEventWasDeleted = nextState.deletedEvents?.some(
-    (item) => item.id === invitedEventId
+    (item) => item.id === verifiedInvitedEventId
   );
   if (
     !invitedEventId ||
-    invitedEventWasDeleted ||
-    nextState.events.some((event) => event.id === invitedEventId) &&
-    (saveResult?.ok || saveResult?.partial)
+    verifiedInvitedEventId &&
+      (
+        invitedEventWasDeleted ||
+        nextState.events.some((event) => event.id === verifiedInvitedEventId)
+      ) &&
+      (saveResult?.ok || saveResult?.partial)
   ) {
     clearPendingInviteUrl();
   }

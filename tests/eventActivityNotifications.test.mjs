@@ -100,6 +100,8 @@ function createActivityFetch({
   preferences = { eventUpdates: true },
   devices = ["device-token-that-is-long-enough"],
   acceptedFriend = true,
+  canonicalMembership = true,
+  canonicalInvitation = true,
   reservation = {
     allowed: true,
     notification_id: NOTIFICATION_ID
@@ -142,6 +144,20 @@ function createActivityFetch({
     }
     if (address.includes("/rest/v1/friendships?")) {
       return jsonResponse(acceptedFriend ? [{ id: "friendship-1" }] : []);
+    }
+    if (
+      address.endsWith(
+        "/rest/v1/rpc/verify_shared_event_notification_parties"
+      )
+    ) {
+      return jsonResponse(canonicalMembership);
+    }
+    if (
+      address.endsWith(
+        "/rest/v1/rpc/verify_shared_event_invitation_parties"
+      )
+    ) {
+      return jsonResponse(canonicalInvitation);
     }
     if (
       address.includes("/rest/v1/event_invite_tokens?") &&
@@ -359,6 +375,31 @@ test("server rejects an expense forged in the caller's editable workspace", asyn
       request.url.includes("reserve_event_activity_notification") ||
       request.url.includes("/rest/v1/notification_inbox?") ||
       request.url.includes("fcm.googleapis.com/")
+    ),
+    false
+  );
+});
+
+test("server suppresses delivery when canonical membership was removed", async () => {
+  const { fetchImpl, requests } = createActivityFetch({
+    canonicalMembership: false
+  });
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.reason, "no-eligible-recipients");
+  assert.equal(result.payload.recipients, 0);
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/notification_inbox?")
     ),
     false
   );

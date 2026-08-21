@@ -23,8 +23,17 @@ test("Android contact selection uses the system picker without broad contacts pe
   assert.match(plugin, /CommonDataKinds\.Phone\.CONTENT_URI/);
   assert.doesNotMatch(plugin, /CommonDataKinds\.Phone\.NUMBER/);
   assert.match(plugin, /@ActivityCallback/);
+  assert.match(plugin, /MAX_DISPLAY_NAME_CODE_POINTS = 48/);
+  assert.match(plugin, /MAX_RAW_DISPLAY_NAME_CHARS = 256/);
+  assert.match(plugin, /substring\(0, MAX_RAW_DISPLAY_NAME_CHARS\)/);
+  assert.equal(plugin.includes("\\\\p{Cc}\\\\p{Cf}"), true);
+  assert.match(plugin, /offsetByCodePoints\(0, MAX_DISPLAY_NAME_CODE_POINTS\)/);
   assert.match(bridge, /contacts:\s*\{/);
   assert.match(bridge, /contactPickerPlugin\.pickContact/);
+  assert.match(bridge, /normalizeNativeContactName\(result\?\.displayName\)/);
+  assert.match(bridge, /\.slice\(0, 256\)/);
+  assert.match(bridge, /\\p\{Cc\}\\p\{Cf\}/);
+  assert.match(bridge, /\.slice\(0, 48\)/);
   assert.match(app, /data-action="pick-event-contact"/);
   assert.match(app, /\[contacts\] Contact selection failed/);
   assert.doesNotMatch(app, /\[contacts\] Contact selection failed[^;]+(?:message|stack)/s);

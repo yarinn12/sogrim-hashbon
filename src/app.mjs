@@ -64,8 +64,6 @@ import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteSnapshot,
   buildEventInviteUrl,
-  mergeInviteSnapshotIntoState,
-  parseInviteSnapshot,
   parseInviteEventId
 } from "./domain/inviteLinks.mjs";
 import {
@@ -109,7 +107,6 @@ import {
   loadLocalProfile,
   resetSharedState,
   saveLocalProfile,
-  saveState,
   saveSharedState
 } from "./data/localStore.mjs";
 import {
@@ -161,7 +158,6 @@ import { normalizeReferralCode } from "./domain/referralCodes.mjs";
 import {
   EVENT_SPACE_ID_FIELD,
   EVENT_SPACE_KEY_FIELD,
-  attachSharedEventCredentials,
   ensureEventShareCredentials,
   eventShareCredentials,
   mergeSharedEventIntoState,
@@ -299,7 +295,7 @@ let profileAvatarDraft =
 let profileError = "";
 let profileUsernameDraft = "";
 let profileUsernameError = "";
-let state = syncLocalProfile(applyInviteSnapshot(loadState()));
+let state = syncLocalProfile(loadState());
 profileAvatarDraft =
   normalizeAvatarPreset(localProfile?.avatarPreset) || profileAvatarDraft;
 let screen = initialScreenFromLaunchAction();
@@ -11650,27 +11646,26 @@ async function joinExistingEventFromDraft() {
       joinRuntimeConfig,
       inviteLink
     );
-    const inviteSnapshot = parseInviteSnapshot(inviteLink);
-    state = applyInviteSnapshot(state, inviteLink, inviteSnapshot);
-    if (inviteCredentials?.id && inviteCredentials?.key) {
-      state = attachSharedEventCredentials(state, eventId, inviteCredentials);
-      try {
-        const sharedEventState = await readSharedEventState(
-          joinRuntimeConfig,
-          inviteCredentials,
-          eventId
-        );
-        if (sharedEventState) {
-          state = mergeSharedEventIntoState(state, sharedEventState, inviteCredentials);
-        }
-      } catch {
-        // The safe invite preview still lets the user enter and retry syncing later.
-      }
+    if (!inviteCredentials?.id || !inviteCredentials?.key) {
+      throw new Error("Invite credentials are unavailable");
     }
+    const sharedEventState = await readSharedEventState(
+      joinRuntimeConfig,
+      inviteCredentials,
+      eventId
+    );
+    if (!sharedEventState) {
+      throw new Error("Verified invite event is unavailable");
+    }
+    state = mergeSharedEventIntoState(state, sharedEventState, inviteCredentials);
     let event = getEvent(eventId);
     if (!event) {
       state = syncLocalProfile(
-        applyInviteSnapshot(await loadSharedState(), inviteLink, inviteSnapshot)
+        mergeSharedEventIntoState(
+          await loadSharedState(),
+          sharedEventState,
+          inviteCredentials
+        )
       );
       event = getEvent(eventId);
     }
@@ -14254,7 +14249,6 @@ async function saveProfileFromDraft() {
   }
 
   const invitedEventId = parseInviteEventId(window.location.href);
-  state = applyInviteSnapshot(state);
   const nextState = ensureNamedParticipant(
     state,
     {
@@ -16076,14 +16070,6 @@ function syncLocalProfile(nextState) {
   return stateWithProfile;
 }
 
-function applyInviteSnapshot(nextState, urlValue = window.location.href, inviteSnapshot = parseInviteSnapshot(urlValue)) {
-  if (!inviteSnapshot) return nextState;
-
-  const stateWithInvite = mergeInviteSnapshotIntoState(nextState, inviteSnapshot);
-  saveState(stateWithInvite);
-  return stateWithInvite;
-}
-
 async function hydrateIncomingSharedEvent(nextState) {
   const inviteUrl = window.location.href;
   const eventId = parseInviteEventId(inviteUrl);
@@ -16799,7 +16785,7 @@ async function hydrateAppForActiveAccount() {
   const startupState = await loadSharedStateForStartup({ maxWaitMs: 0 });
   const sharedState = startupState.state;
   const hydratedState = await hydrateIncomingSharedEvent(sharedState);
-  const nextState = syncLocalProfile(applyInviteSnapshot(hydratedState));
+  const nextState = syncLocalProfile(hydratedState);
   const shouldSaveJoinedProfile = Boolean(
     localProfile && hasSharedStateChanged(sharedState, nextState)
   );
@@ -16912,7 +16898,7 @@ function refreshStartupSharedState(refreshRequest) {
   refreshRequest
     .then((sharedState) => {
       if (!appBootHydrated) return;
-      const nextState = syncLocalProfile(applyInviteSnapshot(sharedState));
+      const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) return;
       state = nextState;
       render();
@@ -16926,7 +16912,7 @@ function renderScopedLocalFallback() {
   profileNameDraft = localProfile?.displayName ?? "";
   profileAvatarDraft =
     normalizeAvatarPreset(localProfile?.avatarPreset) || AVATAR_PRESETS[0].id;
-  state = syncLocalProfile(applyInviteSnapshot(loadState()));
+  state = syncLocalProfile(loadState());
   appBootHydrated = true;
   render();
 }
@@ -16940,7 +16926,7 @@ function requestResumeSync({ force = false } = {}) {
   lastResumeSyncAt = Date.now();
   resumeSyncRequest = loadSharedState()
     .then((sharedState) => {
-      const nextState = syncLocalProfile(applyInviteSnapshot(sharedState));
+      const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) return;
       state = nextState;
       render();

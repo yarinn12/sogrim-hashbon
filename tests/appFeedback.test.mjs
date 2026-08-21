@@ -78,15 +78,15 @@ test("feedback is inserted as the signed-in user without a read response", async
   assert.equal(result, true);
   assert.equal(
     request.url,
-    "https://example.supabase.co/rest/v1/app_feedback"
+    "https://example.supabase.co/rest/v1/rpc/submit_app_feedback"
   );
   assert.equal(request.options.method, "POST");
   assert.equal(request.options.headers.prefer, "return=minimal");
   assert.equal(request.options.headers.authorization, "Bearer access-token");
   const body = JSON.parse(request.options.body);
-  assert.equal(body.user_id, config.storage.account.userId);
-  assert.equal(body.category, "clarity");
-  assert.equal(body.context.email, undefined);
+  assert.equal(body.user_id, undefined);
+  assert.equal(body.p_category, "clarity");
+  assert.equal(body.p_context.email, undefined);
 });
 
 test("feedback storage is write-only and account scoped", async () => {
@@ -102,12 +102,17 @@ test("feedback storage is write-only and account scoped", async () => {
 
   assert.match(schema, /create table if not exists public\.app_feedback/);
   assert.match(schema, /alter table public\.app_feedback force row level security/);
-  assert.match(schema, /grant insert on table public\.app_feedback to authenticated/);
+  assert.match(schema, /create or replace function public\.submit_app_feedback/);
+  assert.match(schema, /revoke insert on table public\.app_feedback from authenticated/);
+  assert.match(
+    schema,
+    /grant execute on function public\.submit_app_feedback\(text, text, jsonb\)[\s\S]+to authenticated, service_role/
+  );
   assert.doesNotMatch(
     schema,
     /grant select[^;]+public\.app_feedback[^;]+authenticated/
   );
-  assert.match(schema, /with check \(\(select auth\.uid\(\)\) = user_id\)/);
+  assert.match(schema, /Too many feedback submissions/);
   assert.match(applySchema, /app_feedback_client_access_ready/);
   assert.match(accountLayer, /data-account-action="feedback-open"/);
   assert.match(accountLayer, /data-account-feedback-form/);

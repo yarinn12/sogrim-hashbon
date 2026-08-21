@@ -94,6 +94,7 @@ export async function manageOpenEventInvite({
   const inviteAnchor = await loadInviteEventAnchor({
     ...context,
     eventId: normalizedEventId,
+    spaceId,
     fetchImpl
   });
   if (
@@ -109,6 +110,7 @@ export async function manageOpenEventInvite({
     const active = await loadActiveInviteByToken({
       ...context,
       eventId: normalizedEventId,
+      spaceId,
       token: normalizedCandidate,
       kind: "open",
       fetchImpl
@@ -131,6 +133,7 @@ export async function manageOpenEventInvite({
     const active = await loadActiveOpenInvite({
       ...context,
       eventId: normalizedEventId,
+      spaceId,
       fetchImpl
     });
     if (active) {
@@ -359,6 +362,7 @@ export async function createPrivateEventInvite({
     supabaseUrl,
     serviceRoleKey,
     eventId,
+    spaceId,
     fetchImpl
   });
   if (
@@ -454,6 +458,7 @@ async function loadActiveInviteByToken({
   supabaseUrl,
   serviceRoleKey,
   eventId,
+  spaceId = "",
   token,
   kind = "",
   fetchImpl
@@ -467,6 +472,7 @@ async function loadActiveInviteByToken({
     limit: "1"
   });
   if (kind) params.set("kind", `eq.${kind}`);
+  if (spaceId) params.set("space_id", `eq.${spaceId}`);
   const response = await fetchImpl(
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
     { headers: serviceHeaders(serviceRoleKey) }
@@ -480,10 +486,12 @@ async function loadActiveOpenInvite({
   supabaseUrl,
   serviceRoleKey,
   eventId,
+  spaceId,
   fetchImpl
 }) {
   const params = new URLSearchParams({
     event_id: `eq.${eventId}`,
+    space_id: `eq.${spaceId}`,
     kind: "eq.open",
     revoked_at: "is.null",
     select: "id,event_id,space_id,space_key,created_by,created_at",
@@ -502,10 +510,12 @@ async function loadInviteEventAnchor({
   supabaseUrl,
   serviceRoleKey,
   eventId,
+  spaceId,
   fetchImpl
 }) {
   const params = new URLSearchParams({
     event_id: `eq.${eventId}`,
+    space_id: `eq.${spaceId}`,
     select: "space_id,space_key",
     order: "created_at.asc",
     limit: "1"
