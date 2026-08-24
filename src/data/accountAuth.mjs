@@ -7,6 +7,8 @@ import {
   normalizeSpaceKey
 } from "../domain/cloudSpace.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
+import { normalizeUsername } from "../domain/usernames.mjs";
 
 export const ACCOUNT_SESSION_STORAGE_KEY = "settle-friends-account-session";
 export const ACCOUNT_RETURN_URL_STORAGE_KEY = "settle-friends-account-return-url";
@@ -157,10 +159,14 @@ export function accountProfileFromUser(user) {
     metadata.full_name ?? metadata.name ?? metadata.display_name ?? ""
   ).trim();
   const provider = normalizeAccountProvider(user.app_metadata?.provider);
+  const username = normalizeUsername(metadata.username);
+  const avatarImage = normalizeAvatarImage(metadata.avatar_image);
 
   return {
     participantId: `account-${user.id}`,
     displayName,
+    ...(username ? { username } : {}),
+    ...(avatarImage ? { avatarImage } : {}),
     authProvider: provider,
     authSubject: String(user.id),
     email: String(user.email ?? "").trim().toLowerCase()
@@ -187,10 +193,15 @@ export async function signUpWithPassword(config, options, fetchImpl = fetch) {
     email,
     password,
     displayName,
+    username,
     redirectTo,
     workspace,
     storage = globalThis.localStorage
   } = options;
+  const normalizedUsername = normalizeUsername(username);
+  if (!normalizedUsername) {
+    throw new Error("username required");
+  }
   const signupWorkspace = workspace ?? createSignupWorkspace({ storage });
   const signupPath = redirectTo
     ? `/signup?redirect_to=${encodeURIComponent(redirectTo)}`
@@ -202,6 +213,7 @@ export async function signUpWithPassword(config, options, fetchImpl = fetch) {
       password,
       data: {
         full_name: displayName,
+        username: normalizedUsername,
         account_space_id: signupWorkspace.id,
         account_space_key: signupWorkspace.key
       }
@@ -354,7 +366,17 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
     return session;
   }
 
-  const workspace = createAccountWorkspace(options);
+  // Never reuse the globally active space when repairing an authenticated
+  // account. It may belong to a different user from an earlier session on the
+  // same browser. Signup has its own explicit legacy-state claim flow.
+  const workspace = {
+    id: createClientSpaceId(),
+    key: createClientSpaceKey()
+  };
+  activateAccountWorkspace(workspace, {
+    storage: options.storage,
+    currentUrl: options.currentUrl
+  });
   const currentMetadata = session?.user?.user_metadata ?? {};
   const nextSession = await updateAccountUser(config, session, {
     ...currentMetadata,
@@ -654,6 +676,13 @@ export function accountAuthErrorMessage(error, mode = "login") {
   if (message.includes("email not confirmed")) return "צריך לאשר את המייל לפני ההתחברות.";
   if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
   if (message.includes("user already registered")) return "כבר קיים חשבון עם האימייל הזה.";
+  if (
+    message.includes("username is already taken") ||
+    message.includes("user_profiles_username_unique") ||
+    (mode === "signup" && message.includes("database error"))
+  ) {
+    return "שם המשתמש הזה כבר תפוס. נסה שם אחר.";
+  }
   if (message.includes("password")) return "הסיסמה צריכה להכיל לפחות 8 תווים.";
   if (message.includes("rate limit") || status === 429) {
     return "בוצעו יותר מדי ניסיונות. אפשר לנסות שוב בעוד כמה דקות.";

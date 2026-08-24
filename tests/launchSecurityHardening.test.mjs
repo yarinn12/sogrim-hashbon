@@ -19,6 +19,14 @@ const financialIntegrityVerification = await readFile(
   "supabase/verification/verify_20260820120000_harden_shared_financial_integrity.sql",
   "utf8"
 );
+const pairwiseSettlementMigration = await readFile(
+  "supabase/migrations/20260823193000_allow_pairwise_direct_reimbursements.sql",
+  "utf8"
+);
+const pairwiseSettlementVerification = await readFile(
+  "supabase/verification/verify_20260823193000_allow_pairwise_direct_reimbursements.sql",
+  "utf8"
+);
 const app = await readFile("src/app.mjs", "utf8");
 
 test("launch hardening binds personal snapshots to one authenticated account", () => {
@@ -128,12 +136,19 @@ test("forward shared financial hardening closes synthetic settlement and referra
   for (const name of [
     "private.is_account_linked_shared_participant",
     "private.is_valid_shared_event_financials",
-    "private.has_valid_shared_event_transfer_totals",
     "private.has_authorized_transfer_status_changes",
     "private.guard_shared_event_financial_integrity"
   ]) {
     assert.equal(functionSource(schema, name), functionSource(financialIntegrityMigration, name));
   }
+  assert.equal(
+    functionSource(schema, "private.has_valid_shared_event_transfer_totals"),
+    functionSource(pairwiseSettlementMigration, "private.has_valid_shared_event_transfer_totals")
+  );
+  assert.match(pairwiseSettlementMigration, /directSettlementTransfers/);
+  assert.match(pairwiseSettlementVerification, /balanced pairwise direct reimbursement/);
+  assert.match(pairwiseSettlementVerification, /crossing route is accepted in optimized mode/);
+  assert.match(pairwiseSettlementVerification, /unbalanced direct reimbursement/);
 
   assert.match(financialIntegrityVerification, /synthetic reverse settlement route/);
   assert.match(financialIntegrityVerification, /cyclic settlement route/);

@@ -144,6 +144,46 @@ function injectDynamicTypeStyles(document) {
       line-height: 1.18 !important;
     }
 
+    /*
+     * Home feedback belongs in the document flow. Older visual layers made
+     * notices fixed overlays, which allowed them to hide behind the floating
+     * new-event action and left part of the message unreadable.
+     */
+    html.${ACTIVE_CLASS} #app
+      .screen[data-screen-kind="home"]
+      > .notice,
+    html.dynamic-type-preview #app
+      .screen[data-screen-kind="home"]
+      > .notice {
+      position: relative !important;
+      inset: auto !important;
+      z-index: 1 !important;
+      width: 100% !important;
+      max-width: none !important;
+      margin: 0 0 8px !important;
+      box-sizing: border-box !important;
+      transform: none !important;
+    }
+
+    html.${ACTIVE_CLASS} #app
+      .screen[data-screen-kind="home"]
+      .home-quick-actions,
+    html.dynamic-type-preview #app
+      .screen[data-screen-kind="home"]
+      .home-quick-actions {
+      margin-block: 0 6px !important;
+    }
+
+    html.${ACTIVE_CLASS} #app
+      .screen[data-screen-kind="home"]
+      .home-quick-action.is-primary,
+    html.dynamic-type-preview #app
+      .screen[data-screen-kind="home"]
+      .home-quick-action.is-primary {
+      min-height: 50px !important;
+      padding-block: 3px !important;
+    }
+
     html.${ACTIVE_CLASS} #app :where(h2),
     html.dynamic-type-preview #app :where(h2) {
       font-size: var(--dynamic-text-24, 1.5rem) !important;

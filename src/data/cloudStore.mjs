@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
 
 const snapshotVersions = new Map();
+export const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 
 export class CloudStateConflictError extends Error {
   constructor() {
@@ -24,6 +25,18 @@ export async function loadCloudState(config, fallbackState, fetchImpl = fetch) {
 
   const state = await readCloudState(config, fetchImpl);
   if (state) return state;
+
+  // A newly authenticated account can reach the cloud loader before the
+  // account participant has been added to its fresh local state. The server
+  // correctly rejects that empty personal snapshot. Do not keep retrying an
+  // invalid insert; the account connection flow will add the participant and
+  // persist the first valid snapshot immediately afterwards.
+  if (
+    isAccountOwnedSpace(config) &&
+    !isValidPersonalWorkspaceState(config, fallbackState)
+  ) {
+    return fallbackState;
+  }
 
   await saveCloudState(config, fallbackState, fetchImpl);
   return fallbackState;
@@ -109,6 +122,42 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
   rememberSnapshotVersion(config, rows?.[0]?.updated_at ?? nextVersion);
 }
 
+export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch) {
+  if (
+    config.storage?.mode !== "supabase" ||
+    !config.storage.account?.accessToken
+  ) return [];
+
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    `${config.storage.url}/rest/v1/${encodeURIComponent(config.storage.table)}` +
+      `?snapshot_kind=eq.shared_event&select=id,state,updated_at&order=updated_at.desc`,
+    { headers: cloudHeaders(config) }
+  );
+  if (!response.ok) {
+    throw cloudResponseError(response, "Shared event recovery unavailable");
+  }
+
+  const rows = await response.json();
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => row?.id && row?.state)
+    .map((row) => {
+      rememberSnapshotVersion(
+        {
+          ...config,
+          storage: {
+            ...config.storage,
+            spaceId: row.id,
+            spaceKey: RECOVERED_MEMBER_SPACE_KEY,
+            snapshotKind: "shared_event"
+          }
+        },
+        row.updated_at
+      );
+      return row;
+    });
+}
+
 async function saveSharedEventStateAtomically(
   config,
   state,
@@ -167,6 +216,18 @@ function isAccountOwnedSpace(config) {
     account?.userId &&
     account?.accessToken &&
     account?.spaceId === config?.storage?.spaceId
+  );
+}
+
+function isValidPersonalWorkspaceState(config, state) {
+  const expectedParticipantId = `account-${config.storage.account.userId}`;
+  return Boolean(
+    state &&
+      state.currentParticipantId === expectedParticipantId &&
+      Array.isArray(state.participants) &&
+      state.participants.some(
+        (participant) => participant?.id === expectedParticipantId
+      )
   );
 }
 

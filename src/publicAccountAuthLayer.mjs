@@ -42,6 +42,7 @@ import {
   getActiveCloudSpaceId,
   loadLocalProfile,
   loadRuntimeConfig,
+  loadState,
   loadSharedStateForStartup,
   retryRuntimeConfig,
   runtimeConfigUsesFallback,
@@ -67,6 +68,7 @@ import {
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
 import { submitAppFeedback } from "./data/appFeedback.mjs";
+import { setFriendUsername } from "./data/friendsStore.mjs";
 import { markStartupMilestone } from "./data/startupMetrics.mjs";
 import { emitOperationFailure } from "./data/productMetrics.mjs";
 import {
@@ -74,6 +76,11 @@ import {
   isFullProfileName,
   normalizeProfileName
 } from "./domain/userProfile.mjs";
+import { normalizeAvatarImage } from "./domain/avatarPresets.mjs";
+import {
+  normalizeUsername,
+  usernameValidationMessage
+} from "./domain/usernames.mjs";
 
 const GATE_ID = "public-account-auth-gate";
 const STYLE_ID = "public-account-auth-style";
@@ -89,6 +96,7 @@ const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const ACCOUNT_REFRESH_MARGIN_SECONDS = 5 * 60;
 const ACCOUNT_REFRESH_RETRY_MS = 60_000;
 const ACCOUNT_CONFIG_RETRY_MS = 5_000;
+const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000;
 const OAUTH_PKCE_VERIFIER_KEY = "settle-friends-oauth-pkce-verifier";
 
 let runtimeConfig = null;
@@ -114,7 +122,8 @@ let accountSyncReloadScheduled = false;
 let nativeGoogleLoginPromise = null;
 
 globalThis.SogrimAccountProfile = Object.freeze({
-  updateDisplayName: updateSignedInAccountDisplayName
+  updateDisplayName: updateSignedInAccountDisplayName,
+  updateProfile: updateSignedInAccountProfile
 });
 globalThis.SogrimAccountSession = Object.freeze({
   refresh: refreshActiveAccountSession
@@ -150,8 +159,12 @@ document.addEventListener("visibilitychange", () => {
 function handleAccountSetupFailure() {
   emitOperationFailure("auth", { screen: "auth" });
   if (runtimeConfig?.storage?.mode === "supabase") {
-    clearAccountSession();
-    accountSession = null;
+    const storedSession = accountSession ?? loadStoredAccountSession();
+    if (storedSession) {
+      accountSession = storedSession;
+      renderAccountRecoveryGate();
+      return;
+    }
     renderAccountGate({
       error: "לא הצלחנו להתחבר לשירות החשבון כרגע. כדאי לבדוק את החיבור ולנסות שוב."
     });
@@ -239,11 +252,12 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
     } catch (error) {
       if (
         accountSession?.user &&
-        String(error?.message ?? "").includes("full name")
+        accountProfileNeedsCompletion(error)
       ) {
+        const accountProfile = accountProfileFromUser(accountSession.user);
         renderAccountNameCompletionGate({
-          displayName:
-            accountProfileFromUser(accountSession.user)?.displayName ?? ""
+          displayName: accountProfile?.displayName ?? "",
+          username: accountProfile?.username ?? ""
         });
         return;
       }
@@ -259,10 +273,37 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         return;
       }
       if (canResumeOffline(accountSession, error)) {
-        await connectAccountToApp(accountSession);
+        resumeAccountLocally(accountSession);
         watchAccountControls();
         enhanceAccountControls();
         return;
+      }
+      if (accountSession && isTransientAccountError(error)) {
+        saveAccountSession(accountSession);
+        renderAccountRecoveryGate();
+        return;
+      }
+      if (
+        accountSession?.refresh_token &&
+        isUnauthorizedAccountError(error)
+      ) {
+        try {
+          accountSession = await refreshAccountSession(runtimeConfig, accountSession);
+          accountSession = saveAccountSession(accountSession);
+          scheduleAccountSessionRefresh();
+          await connectAccountToApp(accountSession, {
+            forceReload: Boolean(callbackSession)
+          });
+          watchAccountControls();
+          enhanceAccountControls();
+          return;
+        } catch (refreshError) {
+          if (accountSession && isTransientAccountError(refreshError)) {
+            saveAccountSession(accountSession);
+            renderAccountRecoveryGate();
+            return;
+          }
+        }
       }
       if (
         callbackSession &&
@@ -315,10 +356,11 @@ async function restoreAccountSession(
   if (isExpiring(session)) {
     nextSession = await refreshAccountSession(runtimeConfig, session);
   }
-  if (!nextSession?.user) {
-    const user = await loadAccountUser(runtimeConfig, nextSession);
-    nextSession = { ...nextSession, user };
-  }
+  // User metadata can be repaired server-side while an installed PWA still
+  // holds an older session object. Always refresh the authenticated user so a
+  // corrected workspace becomes active without requiring sign-out.
+  const user = await loadAccountUser(runtimeConfig, nextSession);
+  nextSession = { ...nextSession, user };
   const normalizedExpectedEmail = String(expectedEmail).trim().toLowerCase();
   const normalizedSessionEmail = String(nextSession?.user?.email ?? "")
     .trim()
@@ -359,6 +401,11 @@ function clearPreviousAccountAfterSwitch(previousSession, nextSession) {
   return true;
 }
 
+function accountProfileNeedsCompletion(error) {
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("full name") || message.includes("username");
+}
+
 async function connectAccountToApp(
   session,
   { forceReload = false, ignoreInvite = false } = {}
@@ -370,10 +417,22 @@ async function connectAccountToApp(
   if (!accountProfile || !isFullProfileName(displayName)) {
     throw new Error("Account profile needs a full name");
   }
+  if (!normalizeUsername(accountProfile.username)) {
+    throw new Error("Account profile needs a username");
+  }
+  await setFriendUsername(runtimeConfig, accountProfile.username);
 
   const inviteUrl = ignoreInvite ? "" : pendingInviteUrl(window.location.href);
   const invitedEventId = parseInviteEventId(inviteUrl);
-  const startupState = await loadSharedStateForStartup({ maxWaitMs: 0 });
+  const localAccountState = loadState();
+  const localAccountHasHistory = Boolean(
+    localAccountState.events?.length ||
+    localAccountState.groups?.length ||
+    localAccountState.friendContacts?.length
+  );
+  const startupState = await loadSharedStateForStartup({
+    maxWaitMs: localAccountHasHistory ? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS
+  });
   let sharedState = startupState.state;
   let verifiedInvitedEventId = "";
   const inviteCredentials = invitedEventId
@@ -398,11 +457,21 @@ async function connectAccountToApp(
       // Keep the invite URL available until connectivity returns.
     }
   }
+  const storedProfile = loadLocalProfile();
+  const storedAvatarImage =
+    storedProfile?.participantId === accountProfile.participantId
+      ? normalizeAvatarImage(storedProfile.avatarImage)
+      : "";
+  const resolvedAvatarImage =
+    normalizeAvatarImage(accountProfile.avatarImage) || storedAvatarImage;
   const nextState = ensureNamedParticipant(
     sharedState,
     {
       id: accountProfile.participantId,
       displayName,
+      ...(resolvedAvatarImage
+        ? { avatarImage: resolvedAvatarImage }
+        : {}),
       authProvider: accountProfile.authProvider,
       authSubject: accountProfile.authSubject,
       email: accountProfile.email
@@ -417,6 +486,7 @@ async function connectAccountToApp(
   saveLocalProfile({
     participantId: nextState.currentParticipantId,
     displayName: participant?.displayName ?? displayName,
+    avatarImage: participant?.avatarImage ?? resolvedAvatarImage,
     authProvider: accountProfile.authProvider,
     authSubject: accountProfile.authSubject,
     email: accountProfile.email
@@ -536,6 +606,39 @@ function handleAccountSessionStorageSync(event) {
   lockForAccountSessionChange();
 }
 
+function resumeAccountLocally(session) {
+  const accountProfile = accountProfileFromUser(session?.user);
+  if (
+    !accountProfile?.participantId ||
+    !isFullProfileName(accountProfile.displayName) ||
+    !normalizeUsername(accountProfile.username)
+  ) {
+    renderAccountNameCompletionGate({
+      displayName: accountProfile?.displayName ?? "",
+      username: accountProfile?.username ?? ""
+    });
+    return;
+  }
+
+  saveAccountSession(session);
+  const storedProfile = loadLocalProfile();
+  const storedAvatarImage =
+    storedProfile?.participantId === accountProfile.participantId
+      ? normalizeAvatarImage(storedProfile.avatarImage)
+      : "";
+  saveLocalProfile({
+    participantId: accountProfile.participantId,
+    displayName: accountProfile.displayName,
+    avatarImage:
+      normalizeAvatarImage(accountProfile.avatarImage) || storedAvatarImage,
+    authProvider: accountProfile.authProvider,
+    authSubject: accountProfile.authSubject,
+    email: accountProfile.email
+  });
+  unlockAccountGate();
+  publishAccountSessionSync(session);
+}
+
 function lockForAccountSessionChange() {
   if (accountSyncReloadScheduled) return;
   clearPendingInviteUrl();
@@ -553,6 +656,14 @@ function lockForAccountSessionChange() {
 }
 
 async function updateSignedInAccountDisplayName(value) {
+  return updateSignedInAccountProfile({ displayName: value });
+}
+
+async function updateSignedInAccountProfile({
+  displayName: value,
+  username,
+  avatarImage
+} = {}) {
   const displayName = normalizeProfileName(value);
   if (
     !isFullProfileName(displayName) ||
@@ -563,12 +674,26 @@ async function updateSignedInAccountDisplayName(value) {
   }
 
   const currentMetadata = accountSession.user.user_metadata ?? {};
+  const normalizedAvatarImage = normalizeAvatarImage(
+    avatarImage ?? currentMetadata.avatar_image
+  );
+  // A gallery image is a large data URL. Keeping it in auth metadata bloats every
+  // refreshed JWT and can make an otherwise valid sign-in/profile update fail.
+  // Gallery avatars are persisted in the shared state and user_profiles instead.
+  const accountMetadataAvatarImage = normalizedAvatarImage.startsWith("https://")
+    ? normalizedAvatarImage
+    : null;
+  const normalizedUsername = normalizeUsername(
+    username ?? currentMetadata.username
+  );
   accountSession = saveAccountSession(
     await updateAccountUser(runtimeConfig, accountSession, {
       ...currentMetadata,
       full_name: displayName,
       name: displayName,
-      display_name: displayName
+      display_name: displayName,
+      username: normalizedUsername || null,
+      avatar_image: accountMetadataAvatarImage
     })
   );
   scheduleAccountSessionRefresh();
@@ -609,7 +734,7 @@ function renderAccountGate({
   const headingDescription = inviteContext
     ? "נכנסים או נרשמים, ומיד ממשיכים לאירוע שקיבלת."
     : mode === "signup"
-      ? "שם מלא ומייל מספיקים כדי לשמור את ההיסטוריה שלך."
+      ? "שם מלא, שם משתמש ומייל שומרים את ההיסטוריה שלך ומאפשרים לחברים למצוא אותך."
       : "נכנסים וממשיכים בדיוק מהמקום שבו עצרת.";
   const providerAvailable = googleEnabled || appleEnabled;
   const showEmailAuth =
@@ -680,6 +805,10 @@ function renderAccountGate({
                 ? `<label>
                     <span>שם פרטי ושם משפחה</span>
                     <input name="displayName" autocomplete="name" value="${escapeAttribute(values.displayName ?? "")}" ${fieldErrorAttributes("displayName")} required />
+                  </label>
+                  <label>
+                    <span>שם משתמש</span>
+                    <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(values.username ?? "")}" ${fieldErrorAttributes("username")} required />
                   </label>`
                 : ""
             }
@@ -689,7 +818,10 @@ function renderAccountGate({
             </label>
             <label>
               <span>סיסמה</span>
-              <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" ${fieldErrorAttributes("password")} required />
+              <span class="account-password-input">
+                <input name="password" type="password" autocomplete="${mode === "signup" ? "new-password" : "current-password"}" minlength="8" ${fieldErrorAttributes("password")} required />
+                <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
+              </span>
             </label>
             ${
               mode === "login"
@@ -788,10 +920,17 @@ function retryAccountSetup() {
   return accountConfigRetryPromise;
 }
 
-function renderAccountNameCompletionGate({ displayName = "", error = "" } = {}) {
+function renderAccountNameCompletionGate({
+  displayName = "",
+  username = "",
+  error = "",
+  errorFieldName = ""
+} = {}) {
   document.querySelector(".public-profile-gate")?.remove();
   document.getElementById(GATE_ID)?.remove();
   document.querySelector("#app")?.setAttribute("inert", "");
+  const hasSavedFullName = isFullProfileName(normalizeProfileName(displayName));
+  const inviteContext = accountInviteContext();
 
   const gate = document.createElement("section");
   gate.id = GATE_ID;
@@ -803,19 +942,25 @@ function renderAccountNameCompletionGate({ displayName = "", error = "" } = {}) 
         <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
-          <h1>עוד פרט קטן</h1>
-          <p>שם מלא עוזר לחברים לזהות אותך ומונע בלבול בין אנשים עם אותו שם.</p>
+          <h1>${inviteContext ? "עוד רגע מצטרפים לאירוע" : "משלימים את החשבון"}</h1>
+          <p>${hasSavedFullName ? "נשאר לבחור שם משתמש חד־פעמי כדי שחברים יוכלו לזהות אותך." : "שם מלא ושם משתמש עוזרים לחברים לזהות ולמצוא אותך."}</p>
         </div>
       </section>
       <section class="account-auth-form-panel">
         <div class="account-auth-heading">
-          <h2>איך לקרוא לך?</h2>
-          <p>מזינים שם פרטי ושם משפחה וממשיכים לחשבון.</p>
+          <h2>${hasSavedFullName ? "בחירת שם משתמש" : "איך לקרוא לך?"}</h2>
+          <p>${inviteContext ? "אחרי השמירה נמשיך אוטומטית לאירוע מהקישור." : "זהו שלב חד־פעמי, ואחריו ממשיכים לחשבון."}</p>
         </div>
         <form class="account-auth-form" data-account-form data-mode="complete-profile" novalidate>
+          ${hasSavedFullName
+            ? `<input name="displayName" type="hidden" value="${escapeAttribute(displayName)}" />`
+            : `<label>
+                <span>שם פרטי ושם משפחה</span>
+                <input name="displayName" autocomplete="name" value="${escapeAttribute(displayName)}" />
+              </label>`}
           <label>
-            <span>שם פרטי ושם משפחה</span>
-            <input name="displayName" autocomplete="name" value="${escapeAttribute(displayName)}" />
+            <span>שם משתמש</span>
+            <input name="username" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" value="${escapeAttribute(username)}" ${errorFieldName === "username" ? 'aria-invalid="true" aria-describedby="account-auth-feedback"' : ""} required />
           </label>
           ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
           <button class="primary-button account-auth-submit" type="submit">שמור והמשך</button>
@@ -828,7 +973,7 @@ function renderAccountNameCompletionGate({ displayName = "", error = "" } = {}) 
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
-  focusAccountInput(gate);
+  focusAccountInput(gate, { includeMobile: true, fieldName: "username" });
 }
 
 async function handleAccountSubmit(event) {
@@ -840,11 +985,13 @@ async function handleAccountSubmit(event) {
   const values = new FormData(form);
   const email = String(values.get("email") ?? "").trim().toLowerCase();
   const password = String(values.get("password") ?? "");
+  const usernameValue = String(values.get("username") ?? "");
   const validationError = accountFormValidationError(form, {
     mode,
     email,
     password,
     displayName: String(values.get("displayName") ?? ""),
+    username: usernameValue,
     passwordConfirmation: String(values.get("passwordConfirmation") ?? "")
   });
   if (validationError) {
@@ -852,14 +999,16 @@ async function handleAccountSubmit(event) {
     if (mode === "complete-profile") {
       renderAccountNameCompletionGate({
         displayName,
-        error: validationError.message
+        username: usernameValue,
+        error: validationError.message,
+        errorFieldName: validationError.fieldName
       });
     } else if (mode === "reset-password") {
       renderPasswordResetGate(validationError.message);
     } else {
       renderAccountGate({
         mode,
-        values: { email, displayName },
+        values: { email, displayName, username: usernameValue },
         error: validationError.message,
         errorFieldName: validationError.fieldName
       });
@@ -883,15 +1032,22 @@ async function handleAccountSubmit(event) {
       );
     } else if (mode === "complete-profile") {
       const displayName = normalizeProfileName(values.get("displayName"));
+      const username = normalizeUsername(usernameValue);
+      runtimeConfig = await loadRuntimeConfig();
+      await setFriendUsername(runtimeConfig, username);
+      const currentMetadata = accountSession.user.user_metadata ?? {};
       accountSession = saveAccountSession(
         await updateAccountUser(runtimeConfig, accountSession, {
+          ...currentMetadata,
           full_name: displayName,
           name: displayName,
-          display_name: displayName
+          display_name: displayName,
+          username
         })
       );
     } else if (mode === "signup") {
       const displayName = normalizeProfileName(values.get("displayName"));
+      const username = normalizeUsername(usernameValue);
       if (!isFullProfileName(displayName)) {
         throw new Error("full name required");
       }
@@ -900,6 +1056,7 @@ async function handleAccountSubmit(event) {
         email,
         password,
         displayName,
+        username,
         redirectTo: authRedirectUrl()
       });
       if (!result.session) {
@@ -923,7 +1080,19 @@ async function handleAccountSubmit(event) {
     await connectAccountToApp(accountSession, { forceReload: true });
   } catch (error) {
     emitOperationFailure("auth", { screen: "auth" });
+    if (accountSession?.user && accountProfileNeedsCompletion(error)) {
+      const accountProfile = accountProfileFromUser(accountSession.user);
+      renderAccountNameCompletionGate({
+        displayName: accountProfile?.displayName ?? "",
+        username: accountProfile?.username ?? ""
+      });
+      return;
+    }
     const fullNameError = String(error?.message ?? "").includes("full name");
+    const usernameError =
+      String(error?.message ?? "").toLowerCase().includes("username is already taken") ||
+      String(error?.message ?? "").includes("user_profiles_username_unique") ||
+      error?.code === "23505";
     const confirmationError = String(error?.message ?? "").includes("password confirmation");
     if (mode === "reset-password") {
       renderPasswordResetGate(
@@ -936,13 +1105,17 @@ async function handleAccountSubmit(event) {
     if (mode === "complete-profile") {
       renderAccountNameCompletionGate({
         displayName: String(values.get("displayName") ?? ""),
+        username: usernameValue,
         error: fullNameError
           ? "צריך להזין שם פרטי ושם משפחה."
-          : accountAuthErrorMessage(error)
+          : usernameError
+            ? "שם המשתמש הזה כבר תפוס. נסה שם אחר."
+            : accountAuthErrorMessage(error),
+        errorFieldName: usernameError ? "username" : "displayName"
       });
       focusAccountInput(document.getElementById(GATE_ID), {
         includeMobile: true,
-        fieldName: "displayName"
+        fieldName: usernameError ? "username" : "displayName"
       });
       return;
     }
@@ -950,7 +1123,8 @@ async function handleAccountSubmit(event) {
       mode,
       values: {
         email,
-        displayName: String(values.get("displayName") ?? "")
+        displayName: String(values.get("displayName") ?? ""),
+        username: usernameValue
       },
       error: fullNameError
         ? "צריך להזין שם פרטי ושם משפחה."
@@ -965,7 +1139,7 @@ async function handleAccountSubmit(event) {
 
 function accountFormValidationError(
   form,
-  { mode, email, password, displayName, passwordConfirmation }
+  { mode, email, password, displayName, username, passwordConfirmation }
 ) {
   if (mode === "login" || mode === "signup") {
     if (!email) {
@@ -983,6 +1157,16 @@ function accountFormValidationError(
     return {
       fieldName: "displayName",
       message: "צריך להזין שם פרטי ושם משפחה."
+    };
+  }
+
+  if (
+    (mode === "signup" || mode === "complete-profile") &&
+    !normalizeUsername(username)
+  ) {
+    return {
+      fieldName: "username",
+      message: usernameValidationMessage(username)
     };
   }
 
@@ -1014,19 +1198,33 @@ async function handleAccountClick(event) {
       mode: modeButton.dataset.accountMode,
       values: {
         email: document.querySelector('[data-account-form] input[name="email"]')?.value ?? "",
-        displayName: document.querySelector('[data-account-form] input[name="displayName"]')?.value ?? ""
+        displayName: document.querySelector('[data-account-form] input[name="displayName"]')?.value ?? "",
+        username: document.querySelector('[data-account-form] input[name="username"]')?.value ?? ""
       }
     });
     return;
   }
 
   const action = event.target.closest("[data-account-action]")?.dataset.accountAction;
+  if (action === "toggle-password") {
+    const button = event.target.closest('[data-account-action="toggle-password"]');
+    const input = button?.closest(".account-password-input")?.querySelector("input");
+    if (!(input instanceof HTMLInputElement)) return;
+    const reveal = input.type === "password";
+    input.type = reveal ? "text" : "password";
+    button.setAttribute("aria-pressed", String(reveal));
+    button.setAttribute("aria-label", reveal ? "הסתר סיסמה" : "הצג סיסמה");
+    button.innerHTML = iconSvg(reveal ? "eye-off" : "eye");
+    input.focus({ preventScroll: true });
+    return;
+  }
   if (action === "toggle-email") {
     const currentForm = document.querySelector("[data-account-form]");
     const mode = currentForm?.dataset.mode ?? "login";
     const values = {
       email: currentForm?.querySelector('input[name="email"]')?.value ?? "",
-      displayName: currentForm?.querySelector('input[name="displayName"]')?.value ?? ""
+      displayName: currentForm?.querySelector('input[name="displayName"]')?.value ?? "",
+      username: currentForm?.querySelector('input[name="username"]')?.value ?? ""
     };
     emailAuthExpanded = !emailAuthExpanded;
     renderAccountGate({ mode, values });
@@ -1052,11 +1250,12 @@ async function handleAccountClick(event) {
     } catch (error) {
       if (
         accountSession?.user &&
-        String(error?.message ?? "").includes("full name")
+        accountProfileNeedsCompletion(error)
       ) {
+        const accountProfile = accountProfileFromUser(accountSession.user);
         renderAccountNameCompletionGate({
-          displayName:
-            accountProfileFromUser(accountSession.user)?.displayName ?? ""
+          displayName: accountProfile?.displayName ?? "",
+          username: accountProfile?.username ?? ""
         });
         return;
       }
@@ -1096,6 +1295,10 @@ async function handleAccountClick(event) {
         error: "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
         values: { email }
       });
+      focusAccountInput(document.getElementById(GATE_ID), {
+        includeMobile: true,
+        fieldName: "email"
+      });
       return;
     }
     setAuthBusy(true);
@@ -1132,6 +1335,10 @@ async function handleAccountClick(event) {
         mode: "login",
         error: accountAuthErrorMessage(error),
         values: { email }
+      });
+      focusAccountInput(document.getElementById(GATE_ID), {
+        includeMobile: true,
+        fieldName: "email"
       });
     } finally {
       setAuthBusy(false);
@@ -1322,7 +1529,8 @@ function collapseAccountEmailAuth() {
   const values = {
     email: currentForm?.querySelector('input[name="email"]')?.value ?? "",
     displayName:
-      currentForm?.querySelector('input[name="displayName"]')?.value ?? ""
+      currentForm?.querySelector('input[name="displayName"]')?.value ?? "",
+    username: currentForm?.querySelector('input[name="username"]')?.value ?? ""
   };
   emailAuthExpanded = false;
   renderAccountGate({ mode: "login", values });
@@ -1813,11 +2021,17 @@ function renderPasswordResetGate(error = "") {
         <form class="account-auth-form" data-account-form data-mode="reset-password" novalidate>
           <label>
             <span>סיסמה חדשה</span>
-            <input name="password" type="password" autocomplete="new-password" minlength="8" required />
+            <span class="account-password-input">
+              <input name="password" type="password" autocomplete="new-password" minlength="8" required />
+              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
+            </span>
           </label>
           <label>
             <span>אימות סיסמה</span>
-            <input name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" required />
+            <span class="account-password-input">
+              <input name="passwordConfirmation" type="password" autocomplete="new-password" minlength="8" required />
+              <button class="account-password-toggle" type="button" data-account-action="toggle-password" aria-label="הצג סיסמה" aria-pressed="false">${iconSvg("eye")}</button>
+            </span>
           </label>
           ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
           <button class="primary-button account-auth-submit" type="submit">שמור סיסמה</button>
@@ -1910,6 +2124,19 @@ function canResumeOffline(session, error) {
 function isTransientAccountError(error) {
   const status = Number(error?.status);
   return !status || status >= 500;
+}
+
+function isUnauthorizedAccountError(error) {
+  const status = Number(error?.status);
+  if (status === 401) return true;
+  if (status !== 403) return false;
+  const message = String(error?.message ?? "").toLowerCase();
+  return (
+    message.includes("invalid jwt") ||
+    message.includes("jwt expired") ||
+    message.includes("token is malformed") ||
+    message.includes("bad_jwt")
+  );
 }
 
 function rememberAccountReturnUrl() {
@@ -2495,6 +2722,40 @@ function injectStyle() {
       box-shadow: 0 0 0 1px #087c78;
       outline: 3px solid #087c78;
       outline-offset: 2px;
+    }
+
+    .account-password-input {
+      position: relative;
+      display: block;
+    }
+
+    .account-password-input > input {
+      padding-inline-end: 56px;
+    }
+
+    .account-password-toggle {
+      position: absolute;
+      inset-inline-end: 4px;
+      inset-block-start: 50%;
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      color: #49615a;
+      background: transparent;
+      transform: translateY(-50%);
+    }
+
+    .account-password-toggle:active {
+      transform: translateY(-50%) scale(0.96);
+    }
+
+    .account-password-toggle .ui-icon-svg {
+      width: 21px;
+      height: 21px;
     }
 
     #public-account-auth-gate button:focus-visible,

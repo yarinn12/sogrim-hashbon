@@ -107,6 +107,9 @@ if (hasEvent) {
   await inspect(page, "event");
 
   await openAndInspectOverlay(page, "open-event-participants", "participants");
+  await clickAction(page, "open-event-participant-add");
+  await waitFor(() => evaluate(page, visibleOverlayExpression()));
+  await inspect(page, "participant-add");
   await openAndInspectOverlay(page, "open-event-share", "share");
   await inspectEventSettingsJourney(page);
 
@@ -177,6 +180,51 @@ if (hasEvent) {
   await clickSelector(page, '[data-action="new-event-type"]', "First event type");
   await waitForCreationStep(page, "details");
   await inspect(page, "new-event-details");
+
+  await clickAction(page, "open-new-event-settlement");
+  await waitForCreationStep(page, "settlement");
+  await inspect(page, "new-event-settlement");
+
+  await clickAction(page, "open-new-event-participants");
+  await waitForCreationStep(page, "participants");
+  await inspect(page, "new-event-participants");
+
+  await clickSelector(
+    page,
+    '[data-action="set-new-event-participant-view"][data-participant-view="friends"]',
+    "Choose friends route"
+  );
+  await inspect(page, "new-event-participants-friends");
+
+  await clickAction(page, "close-new-event-participant-view");
+  await waitFor(() => evaluate(
+    page,
+    `!document.querySelector('[data-new-event-participant-subview]')`
+  ));
+  await inspect(page, "new-event-participants-after-friends");
+
+  await clickSelector(
+    page,
+    '[data-action="set-new-event-participant-view"][data-participant-view="manual"]',
+    "Manual participant route"
+  );
+  await waitFor(() => evaluate(
+    page,
+    `document.activeElement?.dataset?.action === 'new-event-guest-name'`
+  ));
+  await inspect(page, "new-event-participants-manual");
+
+  await androidBack();
+  await waitForCreationStep(page, "participants");
+  await inspect(page, "new-event-participants-after-editor");
+
+  await androidBack();
+  await waitForCreationStep(page, "settlement");
+  await inspect(page, "new-event-settlement-after-participants");
+
+  await androidBack();
+  await waitForCreationStep(page, "details");
+  await inspect(page, "new-event-details-after-settlement");
 
   await androidBack();
   await waitForCreationStep(page, "type");
@@ -304,6 +352,19 @@ async function openAndInspectOverlay(page, action, label) {
     ));
     check("share: Android back returns to the share method menu", true);
     await androidBack();
+    await waitFor(() => evaluate(page, `(() => {
+      if (document.querySelector('.event-participant-add-routes')) return 'participant-add';
+      return (${visibleOverlayExpression()}) ? '' : 'closed';
+    })()`));
+    const returnedToParticipantAdd = await evaluate(
+      page,
+      `Boolean(document.querySelector('.event-participant-add-routes'))`
+    );
+    if (returnedToParticipantAdd) {
+      check("share: Android back returns to participant-add choices", true);
+      await inspect(page, "participant-add-return");
+      await androidBack();
+    }
   }
   await waitFor(() => evaluate(page, `!(${visibleOverlayExpression()})`));
   await waitForScreen(page, "event");
@@ -364,9 +425,19 @@ async function createAcceptanceFixture(page) {
   );
   await waitForCreationStep(page, "details");
   await fillSelector(page, '[data-action="new-event-name"]', "QA acceptance event");
-  await clickSelector(page, ".new-event-participants > summary", "Participants section");
+  await clickAction(page, "open-new-event-settlement");
+  await waitForCreationStep(page, "settlement");
+  await clickAction(page, "open-new-event-participants");
+  await waitForCreationStep(page, "participants");
+  await clickSelector(
+    page,
+    '[data-action="set-new-event-participant-view"][data-participant-view="manual"]',
+    "Manual participant route"
+  );
   await fillSelector(page, '[data-action="new-event-guest-name"]', "QA Guest");
   await clickAction(page, "new-event-add-guest");
+  await clickAction(page, "close-new-event-participant-view");
+  await waitForCreationStep(page, "participants");
   await waitFor(
     () => evaluate(page, `document.querySelector('[data-new-event-participant-count]')?.textContent?.includes('2')`)
   );
@@ -669,7 +740,7 @@ function inspectionExpression() {
         .filter(Boolean),
       visibleInviteUrl: inviteInput?.value || '',
       bottomContentClearance,
-      productHeaderVisible: [...document.querySelectorAll('.product-header-profile-avatar')]
+      productHeaderVisible: [...document.querySelectorAll('.product-app-identity,.product-header-profile-avatar')]
         .some((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)),
       bottomNavigationVisible: [...document.querySelectorAll('.product-nav-button')]
         .filter((element) => visible(element) && fullyWithinViewport(element) && hitTarget(element)).length >= 3,

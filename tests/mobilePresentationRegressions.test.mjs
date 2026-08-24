@@ -8,11 +8,11 @@ const [homeLayer, coherenceLayer, dynamicTypeLayer] = await Promise.all([
   readFile("src/publicDynamicTypeLayer.mjs", "utf8")
 ]);
 
-test("mobile participant management hides and inerts global route chrome", () => {
+test("mobile participant management keeps global route chrome available", () => {
   assert.match(homeLayer, /\[data-event-route-dialog="true"\]/);
-  assert.match(homeLayer, /publicParticipantTaskInert/);
-  assert.match(homeLayer, /chrome\.inert = true/);
-  assert.match(homeLayer, /chrome\.setAttribute\("aria-hidden", "true"\)/);
+  assert.match(homeLayer, /participantTaskOpen/);
+  assert.match(homeLayer, /chrome\.inert = false/);
+  assert.match(homeLayer, /chrome\.removeAttribute\("aria-hidden"\)/);
   assert.match(
     coherenceLayer,
     /\.screen:has\(\.event-participant-route-backdrop\)[\s\S]*?> \.product-app-identity \{[\s\S]*?display: none !important;/

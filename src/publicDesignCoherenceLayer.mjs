@@ -2328,6 +2328,13 @@ const CSS = `
       padding-inline: 18px !important;
       padding-block-end: calc(34px + env(safe-area-inset-bottom)) !important;
     }
+
+    html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).design-coherence-v1
+      .event-participant-route-modal
+      > .event-modal-body {
+      padding-block-end: calc(180px + env(safe-area-inset-bottom)) !important;
+      scroll-padding-block-end: calc(180px + env(safe-area-inset-bottom)) !important;
+    }
   }
 
   @media (max-width: 360px) {
@@ -3217,10 +3224,331 @@ const CSS = `
     padding-inline: 18px !important;
   }
 
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-panel.is-account-pending {
+    overflow: visible !important;
+    padding-top: 28px !important;
+    border: 0 !important;
+    border-top: 1px solid var(--app-line) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .notification-inbox-empty.is-account-pending {
+    min-height: 0 !important;
+    gap: 18px !important;
+    padding: 18px 16px 8px !important;
+    background: transparent !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .notification-account-pending-heading {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .notification-account-pending-heading
+    .notification-inbox-empty-icon {
+    flex: 0 0 auto !important;
+    width: 30px !important;
+    height: 30px !important;
+    margin: 0 !important;
+    color: var(--app-brand) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .notification-account-pending-heading
+    h2 {
+    margin: 0 !important;
+    color: var(--app-ink) !important;
+    font-size: 18px !important;
+    font-weight: 650 !important;
+    line-height: 1.4 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .notification-inbox-empty.is-account-pending
+    .primary-button {
+    min-width: 132px !important;
+    margin: 0 !important;
+  }
+
   html.design-coherence-v1 body #app
     .friends-empty-state {
     min-height: 210px !important;
     padding: 28px 22px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-edit-screen
+    .profile-avatar-picker-shell {
+    min-width: 0 !important;
+    margin: 2px 0 4px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-card) !important;
+    background: var(--app-surface) !important;
+    box-shadow: var(--app-shadow-card) !important;
+    overflow: hidden !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-picker-shell
+    > summary {
+    min-height: 82px !important;
+    display: grid !important;
+    grid-template-columns: 56px minmax(0, 1fr) 24px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface) !important;
+    cursor: pointer !important;
+    list-style: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-picker-shell
+    > summary::-webkit-details-marker {
+    display: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-picker-shell
+    > summary:focus-visible {
+    position: relative !important;
+    z-index: 1 !important;
+    outline: 2px solid rgba(22, 78, 63, 0.38) !important;
+    outline-offset: -3px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-preview {
+    width: 56px !important;
+    height: 56px !important;
+    display: block !important;
+    overflow: hidden !important;
+    border: 2px solid var(--app-brand) !important;
+    border-radius: 50% !important;
+    background: var(--app-accent-soft) !important;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-preview
+    > img {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-copy
+    strong {
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-copy
+    small {
+    color: var(--app-brand) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-chevron {
+    width: 22px !important;
+    height: 22px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: var(--app-muted) !important;
+    transition: transform var(--app-motion) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-summary-chevron
+    svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-picker-shell[open]
+    .profile-avatar-summary-chevron {
+    transform: rotate(-90deg) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-avatar-picker-shell
+    > .profile-avatar-picker {
+    margin: 0 !important;
+    padding: 14px !important;
+    border-top: 1px solid var(--app-line) !important;
+    background: var(--app-surface-soft) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcuts {
+    min-width: 0 !important;
+    display: grid !important;
+    margin: 2px 0 4px !important;
+    overflow: hidden !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-card) !important;
+    background: var(--app-surface) !important;
+    box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcuts
+    > .secondary-button {
+    width: 100% !important;
+    min-height: 60px !important;
+    display: grid !important;
+    grid-template-columns: 24px minmax(0, 1fr) 22px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    margin: 0 !important;
+    padding: 12px 14px !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--app-line) !important;
+    border-radius: 0 !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface) !important;
+    box-shadow: none !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcuts
+    > .secondary-button:last-child {
+    border-bottom: 0 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcuts
+    > .secondary-button:is(:hover, :focus-visible) {
+    background: var(--app-surface-soft) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcut-icon,
+  html.design-coherence-v1 body #app
+    .profile-shortcut-chevron {
+    width: 22px !important;
+    height: 22px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: var(--app-muted) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcut-icon
+    svg,
+  html.design-coherence-v1 body #app
+    .profile-shortcut-chevron
+    svg {
+    width: 21px !important;
+    height: 21px !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .profile-shortcut-label {
+    min-width: 0 !important;
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+  }
+
+  @media (max-width: 720px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .profile-avatar-options {
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+
+    html.design-coherence-v1 body #app
+      [data-screen-kind="home"]
+      .home-quick-action.is-primary
+      button.home-quick-action-icon {
+      width: 44px !important;
+      height: 44px !important;
+      min-width: 44px !important;
+      min-height: 44px !important;
+      display: grid !important;
+      place-items: center !important;
+      padding: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      > .settlement-hero {
+      margin-bottom: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      > .top {
+      min-height: 0 !important;
+      margin-block: 4px 8px !important;
+      padding: 10px 14px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      > .top
+      .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      > .top
+      h1 {
+      font-size: clamp(20px, 6vw, 24px) !important;
+      line-height: 1.15 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      > .settlement-stage {
+      margin-top: 0 !important;
+      padding-top: 2px !important;
+    }
+  }
+
+  @media (max-width: 260px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .profile-avatar-options {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .profile-avatar-option {
+      min-width: 0 !important;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

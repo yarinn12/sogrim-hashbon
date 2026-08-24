@@ -106,7 +106,7 @@ test("friend network reads only the signed-in user's visible relationships", asy
   );
   assert.match(
     profileRequest.url,
-    /select=user_id%2Cusername%2Cusername_customized%2Cdisplay_name%2Cavatar_preset%2Cupdated_at/
+    /select=user_id%2Cusername%2Cusername_customized%2Cdisplay_name%2Cavatar_preset%2Cavatar_image%2Cupdated_at/
   );
   assert.ok(!profileRequest.url.includes("email"));
 });
@@ -154,7 +154,11 @@ test("profile refresh patches the existing triggered row without inserting a nul
 
   const profile = await syncFriendProfile(
     accountConfig(),
-    { displayName: "Current User", avatarPreset: "avatar-3" },
+    {
+      displayName: "Current User",
+      avatarPreset: "avatar-3",
+      avatarImage: "https://images.example.com/avatar.jpg"
+    },
     fetchImpl
   );
 
@@ -166,6 +170,7 @@ test("profile refresh patches the existing triggered row without inserting a nul
   const body = JSON.parse(calls[0].options.body);
   assert.equal(body.display_name, "Current User");
   assert.equal(body.avatar_preset, "avatar-3");
+  assert.equal(body.avatar_image, "https://images.example.com/avatar.jpg");
   assert.ok(!("user_id" in body));
   assert.ok(!("username" in body));
 });

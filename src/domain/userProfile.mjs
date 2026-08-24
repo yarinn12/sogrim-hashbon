@@ -1,4 +1,7 @@
-import { normalizeAvatarPreset } from "./avatarPresets.mjs";
+import {
+  normalizeAvatarImage,
+  normalizeAvatarPreset
+} from "./avatarPresets.mjs";
 import { markParticipantMembershipChanges } from "./eventMembership.mjs";
 
 export function normalizeProfileName(value) {
@@ -97,6 +100,7 @@ function participantProfileChanged(previous, next) {
     "displayName",
     "kind",
     "avatarPreset",
+    "avatarImage",
     "authProvider",
     "authSubject",
     "email"
@@ -105,7 +109,15 @@ function participantProfileChanged(previous, next) {
 
 function avatarFields(profile) {
   const avatarPreset = normalizeAvatarPreset(profile?.avatarPreset);
-  return avatarPreset ? { avatarPreset } : {};
+  const avatarImage = normalizeAvatarImage(profile?.avatarImage);
+  return {
+    ...(avatarPreset ? { avatarPreset } : {}),
+    ...(Object.hasOwn(profile ?? {}, "avatarImage")
+      ? { avatarImage }
+      : avatarImage
+        ? { avatarImage }
+        : {})
+  };
 }
 
 function sameAuth(participant, profile) {

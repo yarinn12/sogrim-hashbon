@@ -232,6 +232,22 @@ test.beforeEach(async ({ page }) => {
     if (request.method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
     }
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: {
+          id: USER_ID,
+          email: "yarin@example.com",
+          app_metadata: { provider: "google" },
+          user_metadata: {
+            full_name: "ירין יצחק",
+            username: "yarin",
+            account_space_id: SPACE_ID,
+            account_space_key: SPACE_KEY
+          }
+        }
+      });
+    }
     if (url.pathname.includes("/friendships")) {
       return route.fulfill({ headers: corsHeaders, json: friendships });
     }
@@ -271,6 +287,7 @@ test.beforeEach(async ({ page }) => {
       JSON.stringify({
         participantId,
         displayName: "ירין יצחק",
+        username: "yarin",
         avatarPreset: "avatar-1",
         authProvider: "google",
         authSubject: userId,
@@ -290,6 +307,7 @@ test.beforeEach(async ({ page }) => {
           app_metadata: { provider: "google" },
           user_metadata: {
             full_name: "ירין יצחק",
+            username: "yarin",
             account_space_id: spaceId,
             account_space_key: spaceKey
           }

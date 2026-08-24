@@ -32,6 +32,10 @@ export default defineConfig({
       use: { ...devices["iPhone 13"] }
     },
     {
+      name: "ipad-webkit",
+      use: { ...devices["iPad Pro 11"] }
+    },
+    {
       name: "iphone-large-text",
       use: { ...devices["iPhone 13"] },
       metadata: { dynamicTypePreview: 28 }

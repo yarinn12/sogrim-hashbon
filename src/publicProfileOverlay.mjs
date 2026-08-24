@@ -207,7 +207,7 @@ function getScreenContext(screen, profile) {
       helper: "כאן רואים מי מעביר למי, מה נשאר פתוח ומה כבר שולם.",
       actions: [
         { label: "העתק סיכום", action: "copy-settlement", primary: true },
-        { label: "דוח מלא", action: "copy-event-report" },
+        { label: "פירוט הוצאות", action: "copy-event-report" },
         { label: "חזרה לאירוע", action: "back-to-event" }
       ]
     };

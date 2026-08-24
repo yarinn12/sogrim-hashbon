@@ -80,43 +80,36 @@ test("a new user completes the first useful loop without help", async ({ page })
     .click();
   await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
   await expect(page.locator('[data-action="new-event-name"]')).toBeFocused();
-  const currencySelect = page.locator('[data-action="new-event-currency"]');
-  await expect(currencySelect).toHaveValue("ILS");
-  await expect(currencySelect.locator("option")).toHaveCount(29);
-  await expect(currencySelect.locator('option[value="USD"]')).toHaveText(
-    "דולר אמריקאי (ארצות הברית) · $"
-  );
-  await expect(currencySelect.locator('option[value="JPY"]')).toHaveText(
-    "ין (יפן) · ¥"
-  );
-  await page
-    .locator('[data-choice-select-action="new-event-currency"]')
-    .click();
-  const currencySearch = page.locator(".app-choice-search-input");
-  await expect(currencySearch).toBeVisible();
-  await currencySearch.fill("יפן");
+  const currencyPicker = page.locator(".new-event-inline-picker").filter({
+    hasText: "מטבע האירוע"
+  });
+  await expect(currencyPicker.locator("summary")).toContainText("שקל ישראלי");
+  await currencyPicker.locator("summary").click();
   await expect(
-    page.locator(".app-choice-option:not([hidden])")
-  ).toHaveCount(1);
+    currencyPicker.locator('[data-action="new-event-currency-choice"]')
+  ).toHaveCount(29);
   await expect(
-    page.locator('.app-choice-option[data-choice-value="JPY"]')
+    currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="USD"]')
+  ).toContainText("דולר אמריקאי");
+  await expect(
+    currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="JPY"]')
   ).toContainText("יפן");
-  await currencySearch.fill("JPY");
-  await expect(
-    page.locator('.app-choice-option[data-choice-value="JPY"]')
-  ).toBeVisible();
-  await currencySearch.fill("מדינה שלא קיימת");
-  await expect(page.locator(".app-choice-search-empty")).toBeVisible();
-  await currencySearch.fill("");
-  await page
-    .locator('.app-choice-option[data-choice-value="ILS"]')
+  await currencyPicker
+    .locator('[data-action="new-event-currency-choice"][data-choice-value="ILS"]')
     .click();
-  await expect(currencySelect).toHaveValue("ILS");
+  await expect(currencyPicker.locator("summary")).toContainText("שקל ישראלי");
 
   await page.locator('[data-action="new-event-name"]').fill("ארוחת ערב");
-  await page.locator(".new-event-participants > summary").click();
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+  await page.locator('[data-action="open-new-event-participants"]').click();
+  await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
+  await page
+    .locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]')
+    .click();
   await page.locator('[data-action="new-event-guest-name"]').fill("נועה כהן");
   await page.locator('[data-action="new-event-add-guest"]').click();
+  await page.locator('[data-action="close-new-event-participant-view"]').click();
   await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
 
   await page.locator('[data-action="create-event"]').click();
@@ -201,6 +194,9 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(firstTransfer.locator(".transfer-participant-name strong > bdi")).toHaveCount(2);
   await expect(firstTransfer.locator('.transfer-amount bdi[dir="ltr"] > span.font-num')).toHaveCount(1);
   await expect(settlement.locator(".settlement-hero")).toBeVisible();
+  await expect(firstTransfer.locator('[data-action="mark-paid"]')).toHaveCount(0);
+  await settlement.locator('[data-action="close-event"]').first().click();
+  await settlement.locator('[data-action="confirm-close-event"]').click();
   await expect(
     firstTransfer.locator('[data-action="mark-paid"]')
   ).toBeVisible();
@@ -213,89 +209,60 @@ test("a new user completes the first useful loop without help", async ({ page })
     });
   }
 
+  // A closed event intentionally blocks adding participants. Reopen it before
+  // exercising the invitation journey so this test follows the real product flow.
+  await settlement.locator(".settlement-more-actions > summary").click();
+  await settlement.locator('[data-action="reopen-event"]').click();
+  await page.locator('[data-action="confirm-important-action"]').click();
+  await expect(settlement.locator('[data-action="close-event"]').first()).toBeVisible();
+
   const shareButton = page
-    .locator(`[data-action="open-event-share"][data-event-id="${eventId}"]`)
+    .locator(`[data-action="open-event-participant-add"][data-event-id="${eventId}"]`)
     .first();
   await shareButton.focus();
   await page.keyboard.press("Enter");
-  const shareDialog = page.locator('.event-modal[role="dialog"]');
+  const participantAddRoute = page.locator(".event-participant-add-route-modal");
+  await expect(participantAddRoute).toBeVisible();
+  await participantAddRoute.locator('[data-action="open-event-share"]').click();
+  const shareDialog = page.locator(".event-share-modal");
   await expect(shareDialog).toBeVisible();
   await expect(shareDialog).toBeFocused();
-  const shareMenu = shareDialog.locator('[data-event-share-view="menu"]');
-  await expect(shareMenu).toBeVisible();
-  await expect(shareMenu.locator('[data-action="event-share-view"]')).toHaveCount(2);
-  await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toHaveCount(0);
-  await expect(shareDialog.locator('[data-action="copy-invite"]')).toHaveCount(0);
-  await assertShareRouteChoicesDoNotOverlap(shareDialog);
-  await captureConsistencySurface(page, "17-event-invite");
-
-  await shareMenu.locator('[data-share-view="link"]').click();
+  // Participant sharing intentionally skips the redundant choice screen and
+  // opens the permanent link/QR route directly.
   await expect(shareDialog.locator('[data-event-share-view="link"]')).toBeVisible();
-  await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeEnabled();
-  await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeEnabled();
-  await expect(shareDialog.locator('[data-share-ready="true"]')).toHaveCount(1);
-  await expect(shareDialog.locator(".event-invite-link-preview")).toContainText(
-    "קישור ההזמנה מוכן"
-  );
-  const inviteQr = shareDialog.locator("details.public-invite-qr");
-  await expect(inviteQr).not.toHaveAttribute("open", "");
-  await inviteQr.locator("summary").click();
-  await expect(inviteQr).toHaveAttribute("open", "");
-  await expect(inviteQr.locator(".public-invite-qr-code svg")).toBeVisible();
-  await inviteQr.locator("summary").click();
-  await expect(inviteQr).not.toHaveAttribute("open", "");
+  // This isolated mobile fixture has no authenticated cloud. It must never
+  // expose a locally reconstructed or unsigned invite while preparation is
+  // unavailable; signed QR readiness is covered by the live invite gate.
+  await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeDisabled();
+  await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeDisabled();
+  await expect(shareDialog.locator('[data-share-ready="true"]')).toHaveCount(0);
   await assertNoHorizontalOverflow(page, "invite dialog");
   await assertCriticalSemantics(page, "invite dialog");
   await captureConsistencySurface(page, "17-event-invite-link");
 
   await page.keyboard.press("Escape");
-  await expect(shareMenu).toBeVisible();
-  await expect(shareMenu.locator('[data-share-view="link"]')).toBeFocused();
-  await shareMenu.locator('[data-share-view="friends"]').click();
-  await expect(shareDialog.locator('[data-event-share-view="friends"]')).toBeVisible();
-  await expect(shareDialog.locator('[data-action="copy-invite"]')).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(shareMenu).toBeVisible();
-  await expect(shareMenu.locator('[data-share-view="friends"]')).toBeFocused();
-  await page.keyboard.press("Escape");
   await expect(shareDialog).toBeHidden();
-  await expect(shareButton).toBeFocused();
+  await expect(participantAddRoute).toBeVisible();
 });
 
-test("currency search stays stable across repeated WebKit-style reopen cycles", async ({ page }) => {
+test("currency picker stays stable across repeated WebKit-style reopen cycles", async ({ page }) => {
   await page.locator('[data-action="new-event"]').first().click();
   await page
     .locator('[data-action="new-event-type"][data-event-type="standard"]')
     .click();
 
-  const currencySelect = page.locator('[data-action="new-event-currency"]');
-  const pickerTrigger = page.locator(
-    '[data-choice-select-action="new-event-currency"]'
-  );
+  const picker = page.locator(".new-event-inline-picker").filter({ hasText: "מטבע האירוע" });
+  const pickerTrigger = picker.locator("summary");
 
   for (let iteration = 0; iteration < 20; iteration += 1) {
     await pickerTrigger.click();
-    const currencySearch = page.locator(".app-choice-search-input");
-    await expect(currencySearch).toBeVisible();
-
-    await currencySearch.fill("יפן");
-    await expect(currencySearch, `Hebrew query on cycle ${iteration + 1}`).toHaveValue("יפן");
-    await expect(page.locator(".app-choice-option:not([hidden])")).toHaveCount(1);
     await expect(
-      page.locator('.app-choice-option[data-choice-value="JPY"]')
+      picker.locator('[data-action="new-event-currency-choice"][data-choice-value="JPY"]')
     ).toBeVisible();
-
-    await currencySearch.fill("JPY");
-    await expect(currencySearch).toHaveValue("JPY");
-    await expect(
-      page.locator('.app-choice-option[data-choice-value="JPY"]')
-    ).toBeVisible();
-
-    await currencySearch.fill("");
-    await page
-      .locator('.app-choice-option[data-choice-value="ILS"]')
+    await picker
+      .locator('[data-action="new-event-currency-choice"][data-choice-value="ILS"]')
       .click();
-    await expect(currencySelect).toHaveValue("ILS");
+    await expect(picker.locator("summary")).toContainText("שקל ישראלי");
   }
 });
 
@@ -306,19 +273,23 @@ test("event creation keeps its draft when the user goes back to change the type"
     .click();
 
   await page.locator('[data-action="new-event-name"]').fill("סוף שבוע בצפון");
-  await page
-    .locator('[data-choice-select-action="new-event-currency"]')
-    .click();
-  await page
-    .locator('.app-choice-option[data-choice-value="EUR"]')
+  const currencyPicker = page.locator(".new-event-inline-picker").filter({ hasText: "מטבע האירוע" });
+  await currencyPicker.locator("summary").click();
+  await currencyPicker
+    .locator('[data-action="new-event-currency-choice"][data-choice-value="EUR"]')
     .click();
 
-  await page.locator(".new-event-participants > summary").click();
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await page.locator('[data-action="open-new-event-participants"]').click();
+  await page
+    .locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]')
+    .click();
   await page.locator('[data-action="new-event-guest-name"]').fill("נועה כהן");
   await page.locator('[data-action="new-event-add-guest"]').click();
+  await page.locator('[data-action="close-new-event-participant-view"]').click();
   await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
 
-  await page.locator('[data-action="go-back"]').first().click();
+  await page.locator('[data-action="go-new-event-step"][data-new-event-step="type"]').click();
   await expect(page.locator('[data-event-creation-step="type"]')).toBeVisible();
   await page
     .locator('[data-action="new-event-type"][data-event-type="trip"]')
@@ -327,9 +298,12 @@ test("event creation keeps its draft when the user goes back to change the type"
   await expect(page.locator('[data-action="new-event-name"]')).toHaveValue(
     "סוף שבוע בצפון"
   );
-  await expect(page.locator('[data-action="new-event-currency"]')).toHaveValue("EUR");
+  await expect(
+    page.locator(".new-event-inline-picker").filter({ hasText: "מטבע האירוע" }).locator("summary")
+  ).toContainText("אירו");
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await page.locator('[data-action="open-new-event-participants"]').click();
   await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
-  await expect(page.locator(".new-event-participants")).not.toHaveAttribute("open", "");
 });
 
 test("a long saved-name list stays searchable while creating an event", async ({ page }) => {
@@ -337,7 +311,11 @@ test("a long saved-name list stays searchable while creating an event", async ({
   await page
     .locator('[data-action="new-event-type"][data-event-type="standard"]')
     .click();
-  await page.locator(".new-event-participants > summary").click();
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await page.locator('[data-action="open-new-event-participants"]').click();
+  await page
+    .locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]')
+    .click();
 
   for (let index = 1; index <= 16; index += 1) {
     await page
@@ -345,6 +323,10 @@ test("a long saved-name list stays searchable while creating an event", async ({
       .fill(`חבר שמור ${index}`);
     await page.locator('[data-action="new-event-add-guest"]').click();
   }
+  await page.locator('[data-action="close-new-event-participant-view"]').click();
+  await page
+    .locator('[data-action="set-new-event-participant-view"][data-participant-view="friends"]')
+    .click();
 
   const participantSearch = page.locator(
     '[data-participant-search-for="new-event-participant"]'

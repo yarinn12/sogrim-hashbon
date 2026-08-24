@@ -17,7 +17,7 @@ test("expense collections expose list semantics and an accessible heading", asyn
   assert.match(app, /id="event-expenses" aria-labelledby="event-expenses-title"/);
   assert.match(app, /<h2 id="event-expenses-title">הוצאות<\/h2>/);
   assert.match(app, /expense-day-group[^>]*role="list"/);
-  assert.match(app, /data-expense-id="\$\{escapeAttribute\(expense\.id\)\}" role="listitem"/);
+  assert.match(app, /data-expense-id="\$\{escapeAttribute\(expense\.id\)\}"[^>]*role="listitem"/);
 });
 
 test("large event rows defer participant DOM until the row is expanded", async () => {

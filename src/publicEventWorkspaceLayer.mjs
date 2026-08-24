@@ -142,7 +142,7 @@ function renderSettlementHero(state, event) {
     <div class="settlement-hero-actions">
       <button class="secondary-button" data-action="copy-settlement" data-event-id="${escapeAttribute(event.id)}">העתק סיכום</button>
       <button class="secondary-button whatsapp-button" data-action="share-whatsapp" data-event-id="${escapeAttribute(event.id)}">שלח בוואטסאפ</button>
-      <button class="secondary-button" data-action="copy-event-report" data-event-id="${escapeAttribute(event.id)}">העתק דוח מלא</button>
+      <button class="secondary-button" data-action="copy-event-report" data-event-id="${escapeAttribute(event.id)}">העתק פירוט הוצאות</button>
       ${
         isEventClosed(event)
           ? `<button class="secondary-button" data-action="reopen-event" data-event-id="${escapeAttribute(event.id)}">פתח לעריכה</button>`

@@ -106,9 +106,9 @@ function syncParticipantTaskChrome(screen, participantTaskOpen, modalDialogOpen)
   if (!chrome) return;
 
   if (participantTaskOpen) {
-    chrome.dataset.publicParticipantTaskInert = "true";
-    chrome.inert = true;
-    chrome.setAttribute("aria-hidden", "true");
+    delete chrome.dataset.publicParticipantTaskInert;
+    chrome.inert = false;
+    chrome.removeAttribute("aria-hidden");
     return;
   }
 

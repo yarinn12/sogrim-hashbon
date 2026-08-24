@@ -1,4 +1,4 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
 
@@ -6,6 +6,7 @@ const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRIVATE_INVITE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 
 export async function manageOpenEventInvite({
   runtimeConfig,
@@ -66,7 +67,7 @@ export async function manageOpenEventInvite({
   }
 
   const spaceId = String(event.sharedSpaceId ?? "").trim();
-  const spaceKey = String(event.sharedSpaceKey ?? "").trim();
+  let spaceKey = String(event.sharedSpaceKey ?? "").trim();
   if (
     !isSafeSharedIdentifier(spaceId) ||
     !isSafeSharedIdentifier(spaceKey)
@@ -76,13 +77,24 @@ export async function manageOpenEventInvite({
       retryable: true
     });
   }
-  const sharedEvent = await loadVerifiedSharedEvent({
+  let sharedEvent = await loadVerifiedSharedEvent({
     ...context,
     eventId: normalizedEventId,
     spaceId,
     spaceKey,
     fetchImpl
   });
+  if (!sharedEvent && spaceKey === RECOVERED_MEMBER_SPACE_KEY) {
+    const recovered = await loadMemberAccessibleSharedEvent({
+      ...context,
+      accessToken: accountToken,
+      eventId: normalizedEventId,
+      spaceId,
+      fetchImpl
+    });
+    sharedEvent = recovered?.event ?? null;
+    spaceKey = recovered?.spaceKey ?? spaceKey;
+  }
   if (
     !sharedEvent ||
     !canCreateOpenInvite({ groups: [] }, sharedEvent, participantId)
@@ -106,26 +118,34 @@ export async function manageOpenEventInvite({
     });
   }
 
-  if (normalizedOperation === "ensure" && normalizedCandidate) {
-    const active = await loadActiveInviteByToken({
-      ...context,
-      eventId: normalizedEventId,
-      spaceId,
-      token: normalizedCandidate,
-      kind: "open",
-      fetchImpl
-    });
-    if (
-      active &&
-      active.space_id === spaceId &&
-      active.space_key === spaceKey
-    ) {
-      return success({
+  const stableToken = createStableOpenInviteToken({
+    secret: context.serviceRoleKey,
+    eventId: normalizedEventId,
+    spaceId,
+    spaceKey
+  });
+  if (normalizedOperation === "ensure") {
+    for (const token of [normalizedCandidate, stableToken].filter(Boolean)) {
+      const active = await loadActiveInviteByToken({
+        ...context,
         eventId: normalizedEventId,
-        token: normalizedCandidate,
-        createdAt: String(active.created_at ?? ""),
-        rotated: false
+        spaceId,
+        token,
+        kind: "open",
+        fetchImpl
       });
+      if (
+        active &&
+        active.space_id === spaceId &&
+        active.space_key === spaceKey
+      ) {
+        return success({
+          eventId: normalizedEventId,
+          token,
+          createdAt: String(active.created_at ?? ""),
+          rotated: false
+        });
+      }
     }
   }
 
@@ -144,7 +164,7 @@ export async function manageOpenEventInvite({
     }
   }
 
-  const token = tokenFactory();
+  const token = normalizedOperation === "ensure" ? stableToken : tokenFactory();
   if (!normalizeInviteToken(token)) {
     return failure(500, "Unable to create an invitation token", {
       code: "EVENT_INVITE_TOKEN_FAILED"
@@ -174,6 +194,12 @@ export async function manageOpenEventInvite({
     createdAt,
     rotated: normalizedOperation === "rotate" || recoveredActiveInvite
   });
+}
+
+function createStableOpenInviteToken({ secret, eventId, spaceId, spaceKey }) {
+  return createHmac("sha256", secret)
+    .update(`open-event-invite\0${spaceId}\0${eventId}\0${spaceKey}`)
+    .digest("base64url");
 }
 
 export async function redeemEventInvite({
@@ -558,6 +584,54 @@ async function loadVerifiedSharedEvent({
   return eventFromState(snapshot.state, eventId);
 }
 
+async function loadMemberAccessibleSharedEvent({
+  supabaseUrl,
+  serviceRoleKey,
+  accessToken,
+  eventId,
+  spaceId,
+  fetchImpl
+}) {
+  const permissionResponse = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/can_write_shared_snapshot`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        apikey: serviceRoleKey,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ p_snapshot_id: spaceId })
+    }
+  );
+  if (!permissionResponse.ok) return null;
+  const allowed = await permissionResponse.json().catch(() => false);
+  if (allowed !== true) return null;
+
+  const params = new URLSearchParams({
+    id: `eq.${spaceId}`,
+    select: "state,access_key_hash",
+    limit: "1"
+  });
+  const snapshotResponse = await fetchImpl(
+    `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
+    { headers: serviceHeaders(serviceRoleKey) }
+  );
+  if (!snapshotResponse.ok) return null;
+  const rows = await snapshotResponse.json().catch(() => []);
+  const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
+  const event = eventFromState(snapshot?.state, eventId);
+  const canonicalSpaceKey = String(event?.sharedSpaceKey ?? "").trim();
+  if (
+    !event ||
+    !isSafeSharedIdentifier(canonicalSpaceKey) ||
+    !secureHashEquals(snapshot?.access_key_hash, hashInviteToken(canonicalSpaceKey))
+  ) {
+    return null;
+  }
+  return { event, spaceKey: canonicalSpaceKey };
+}
+
 async function rotateOpenInviteRow({
   supabaseUrl,
   serviceRoleKey,
@@ -614,6 +688,15 @@ async function activateInviteMembership({
       })
     }
   );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("Open event invite membership activation failed", {
+      status: response.status,
+      inviteId,
+      userId,
+      detail: detail.slice(0, 500)
+    });
+  }
   return response.ok;
 }
 

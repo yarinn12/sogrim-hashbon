@@ -29,7 +29,8 @@ test("public invite snapshot layer loads after join helpers", async () => {
 test("public invite snapshot layer upgrades links but imports only verified events", async () => {
   const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
 
-  assert.match(layer, /buildEventInviteSnapshot/);
+  assert.doesNotMatch(layer, /buildEventInviteSnapshot/);
+  assert.match(layer, /must never replace it with a locally reconstructed fallback/);
   assert.match(layer, /parseInviteSnapshot/);
   assert.match(layer, /rememberPendingInviteUrl/);
   assert.match(layer, /startInviteImportAfterAccountReady/);
@@ -37,11 +38,9 @@ test("public invite snapshot layer upgrades links but imports only verified even
     layer,
     /document\.addEventListener\("account-auth-ready", initializeInviteImport, \{\s*once: true/
   );
-  assert.match(layer, /eventOpenInviteToken/);
   assert.match(layer, /resolveEventInviteCredentials/);
-  assert.match(layer, /normalizeReferralCode/);
   assert.match(layer, /settle-friends:entitlements-changed/);
-  assert.match(layer, /referralCode/);
+  assert.match(layer, /parseInviteToken/);
   assert.match(layer, /readSharedEventState/);
   assert.match(layer, /mergeSharedEventIntoState/);
   assert.doesNotMatch(layer, /getActiveCloudSpaceId/);

@@ -165,7 +165,7 @@ let lastNoticeSignature = "";
 let lastParticipantDetailSignature = "";
 let lastParticipantAddSignature = "";
 let lastExpenseStepSignature = "";
-const animatedHomeHeroes = new WeakSet();
+let lastAnimatedHomeHeroSignature = "";
 const animatedFallbackRows = new WeakSet();
 
 activateMotionPolish();
@@ -207,9 +207,15 @@ function scheduleFramerMotionEnhancement() {
 
 async function animateHomeHero() {
   const target = document.querySelector(".product-home-screen .top");
-  if (!target || animatedHomeHeroes.has(target) || prefersReducedMotion()) return;
+  if (!target || prefersReducedMotion()) return;
 
-  animatedHomeHeroes.add(target);
+  const signature = [
+    target.querySelector("h1")?.textContent?.trim() ?? "",
+    ...[...target.querySelectorAll("button")].map((button) => button.textContent?.trim() ?? "")
+  ].join("|");
+  if (signature === lastAnimatedHomeHeroSignature) return;
+
+  lastAnimatedHomeHeroSignature = signature;
   const motion = globalThis.Motion;
   if (!motion?.animate || !document.contains(target)) return;
 

@@ -156,7 +156,7 @@ test("offline mode keeps shared event data read-only until sync access returns",
 
   await context.setOffline(true);
   await expect(page.locator("[data-sync-status]")).toContainText(
-    "אין חיבור. אפשר לצפות, אבל אי אפשר לשנות"
+    "אין רשת כרגע"
   );
   await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
   await adminToggle.click({ force: true });
@@ -175,6 +175,53 @@ test("offline mode keeps shared event data read-only until sync access returns",
   await expect(reconnectedAdminToggle).not.toHaveAttribute("aria-disabled", "true");
   await reconnectedAdminToggle.check();
   await expect(reconnectedAdminToggle).toBeChecked();
+});
+
+test("routine background sync never opens a sync surface", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const routeStatus = page.locator("[data-route-sync-status]");
+  await expect(routeStatus).toBeHidden();
+
+  for (const status of ["saving", "saved", "reconnecting", "unavailable"]) {
+    await page.evaluate((nextStatus) => {
+      window.dispatchEvent(new CustomEvent("sogrim:sync-status", {
+        detail: { status: nextStatus }
+      }));
+    }, status);
+    await expect(page.locator("[data-sync-status]")).toBeHidden();
+    await expect(routeStatus).toBeHidden();
+    await expect(page.locator("[data-inline-sync-status]")).toBeHidden();
+  }
+});
+
+test("expense notes save and close smoothly", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const expense = page.locator('[data-expense-id="expense-taxi"]');
+  await expense.locator(".expense-row-actions-menu summary").click();
+  await expense.locator('[data-action="edit-expense-notes"]').click();
+
+  const dialog = page.locator(".expense-notes-modal");
+  await expect(dialog).toBeVisible();
+  await dialog.locator('[data-action="expense-notes"]').fill("איסוף מטרמינל שלוש");
+  await dialog.locator('[data-action="save-expense"]').click();
+
+  await expect(dialog).toBeHidden();
+  await expense.locator('[data-action="toggle-expense-participants"]').click();
+  await expect(expense.locator(".expense-saved-notes")).toHaveText(
+    "איסוף מטרמינל שלוש"
+  );
 });
 
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {
@@ -326,30 +373,28 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   const addParticipantLaunch = participantsRoute.locator(
     '[data-action="open-event-participant-add"]'
   );
-  const inviteParticipantLaunch = participantsRoute.locator(
-    '[data-action="open-event-share"]'
-  );
   await expect(addParticipantLaunch).toBeVisible();
-  await expect(inviteParticipantLaunch).toBeVisible();
 
   await addParticipantLaunch.click();
   const participantAddRoute = page.locator(
     '.event-participant-add-route-modal[role="region"][aria-labelledby="event-modal-title"]'
   );
   await expect(participantAddRoute).toBeVisible();
+  await expect(
+    participantAddRoute.locator('[data-action="open-event-share"]')
+  ).toBeVisible();
   await assertLayoutHealth(page, "participant add route");
-  await page.goBack();
-  await expect(participantAddRoute).toBeHidden();
-  await expect(participantsRoute).toBeVisible();
-
-  await participantsRoute.locator('[data-action="open-event-share"]').click();
+  await participantAddRoute.locator('[data-action="open-event-share"]').click();
   const participantShareRoute = page.locator(
-    '.event-share-modal[role="dialog"][aria-labelledby="event-modal-title"]'
+    '.event-share-modal[role="region"][aria-labelledby="event-modal-title"]'
   );
   await expect(participantShareRoute).toBeVisible();
   await assertLayoutHealth(page, "participant share route");
   await page.goBack();
   await expect(participantShareRoute).toBeHidden();
+  await expect(participantAddRoute).toBeVisible();
+  await page.goBack();
+  await expect(participantAddRoute).toBeHidden();
   await expect(participantsRoute).toBeVisible();
 
   const connectedParticipantRow = participantsRoute.locator(
@@ -403,7 +448,9 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     .locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`)
     .first()
     .click();
-  const settingsDialog = page.locator('[role="dialog"][aria-modal="true"]');
+  const settingsDialog = page.locator(
+    '.event-settings-modal[role="region"][aria-labelledby="event-modal-title"]'
+  );
   await expect(settingsDialog).toBeVisible();
   await expect(page.locator(".event-action-dock")).toHaveCount(0);
   await assertLayoutHealth(page, "settings dialog");
@@ -458,6 +505,10 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   ).toBe(true);
   await profileNavigation.click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  const avatarPickerShell = page.locator(".profile-avatar-picker-shell");
+  if (await avatarPickerShell.count()) {
+    await avatarPickerShell.locator(":scope > summary").click();
+  }
   await expect(page.locator('.profile-avatar-option')).toHaveCount(6);
   const avatarPicker = await page.locator('.profile-avatar-options').evaluate((element) => ({
     clientWidth: element.clientWidth,
@@ -714,6 +765,8 @@ async function assertLayoutHealth(page, label) {
   ).evaluateAll((elements) => {
     const bottomNavigation = document.querySelector(".product-app-nav");
     const bottomNavigationTop = bottomNavigation?.getBoundingClientRect().top ?? innerHeight;
+    const eventWorkspaceNavigation = document.querySelector(".event-workspace-nav");
+    const eventWorkspaceNavigationRect = eventWorkspaceNavigation?.getBoundingClientRect();
     const routeControls = document.querySelector(".product-route-controls");
     const routeControlsBottom = routeControls?.getBoundingClientRect().bottom ?? 0;
     const activeDialog = document.querySelector('[role="dialog"][aria-modal="true"]');
@@ -742,6 +795,13 @@ async function assertLayoutHealth(page, label) {
       const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
       const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
       const blocker = document.elementFromPoint(x, y);
+      if (
+        blocker?.closest(".event-workspace-nav") &&
+        eventWorkspaceNavigationRect &&
+        rect.top < eventWorkspaceNavigationRect.bottom
+      ) {
+        return null;
+      }
       if (blocker?.closest(".product-route-controls") && rect.top < routeControlsBottom) {
         return null;
       }

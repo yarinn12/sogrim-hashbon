@@ -5,7 +5,12 @@ import {
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
-const HIDE_DELAY_MS = 1400;
+const ROUTINE_SYNC_STATUSES = new Set([
+  "saving",
+  "saved",
+  "reconnecting",
+  "unavailable"
+]);
 const ONLINE_MUTATION_ACTIONS = new Set([
   "accept-friend-request",
   "add-event-participant",
@@ -74,8 +79,9 @@ let hideTimer = null;
 let currentStatus = "";
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
-let mutationLockReason = navigator.onLine === false ? "offline" : "";
+let mutationLockReason = "";
 let reconnectPromise = null;
+let offlineProbePromise = null;
 const controlSnapshots = new WeakMap();
 
 injectStyles();
@@ -89,7 +95,7 @@ document.addEventListener("focusin", rememberControlSnapshot, true);
 document.addEventListener("pointerdown", rememberControlSnapshot, true);
 observeInlineStatusTargets();
 syncMutationControls();
-if (mutationLockReason) showStatus("offline");
+if (navigator.onLine === false) void handleOffline();
 
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
@@ -122,10 +128,47 @@ function handleSyncStatus(event) {
   if (status === "saved") activeSaveScreenSignature = "";
 }
 
-function handleOffline() {
-  mutationLockReason = "offline";
-  showStatus("offline");
-  syncMutationControls();
+async function handleOffline() {
+  if (offlineProbePromise || mutationLockReason === "conflict") {
+    return offlineProbePromise;
+  }
+
+  offlineProbePromise = confirmServerIsUnreachable()
+    .then((offline) => {
+      if (!offline) return;
+      mutationLockReason = "offline";
+      showStatus("offline");
+      syncMutationControls();
+    })
+    .finally(() => {
+      offlineProbePromise = null;
+    });
+  return offlineProbePromise;
+}
+
+async function confirmServerIsUnreachable() {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+  try {
+    const config = await loadRuntimeConfig();
+    const apiBaseUrl = String(config?.apiBaseUrl ?? "").replace(/\/$/, "");
+    const response = await fetch(`${apiBaseUrl}/api/health`, {
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller.signal
+    });
+    if (response.ok) {
+      mutationLockReason = "";
+      showStatus("");
+      syncMutationControls();
+      return false;
+    }
+  } catch {
+    // A failed health request confirms that online-only changes must wait.
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+  return true;
 }
 
 async function recoverOnlineMutationAccess() {
@@ -212,7 +255,9 @@ async function handleRetryClick(event) {
 function showStatus(status) {
   window.clearTimeout(hideTimer);
 
-  if (!status) {
+  // Saving, successful saves and reconnect checks are background work. They
+  // must never replace or expand the current screen with sync UI.
+  if (!status || ROUTINE_SYNC_STATUSES.has(status)) {
     currentStatus = "";
     const existingNode = document.querySelector("[data-sync-status]");
     if (existingNode) existingNode.hidden = true;
@@ -222,18 +267,6 @@ function showStatus(status) {
 
   currentStatus = status;
   const content = statusContent(status);
-
-  if (status === "saved") {
-    const existingNode = document.querySelector("[data-sync-status]");
-    if (existingNode) existingNode.hidden = true;
-    syncInlineStatusTargets();
-    hideTimer = window.setTimeout(() => {
-      if (currentStatus !== status) return;
-      currentStatus = "";
-      syncInlineStatusTargets();
-    }, HIDE_DELAY_MS);
-    return;
-  }
 
   let node = document.querySelector("[data-sync-status]");
   if (!node) {
@@ -254,14 +287,6 @@ function showStatus(status) {
   `;
   syncInlineStatusTargets();
 
-  if (content.autoHide) {
-    hideTimer = window.setTimeout(() => {
-      if (currentStatus !== status) return;
-      currentStatus = "";
-      node.hidden = true;
-      syncInlineStatusTargets();
-    }, HIDE_DELAY_MS);
-  }
 }
 
 function observeInlineStatusTargets() {
@@ -292,7 +317,6 @@ function screenSignature() {
 }
 
 function syncInlineStatusTargets() {
-  const content = inlineStatusContent(currentStatus);
   const hasEventActionDock = Boolean(document.querySelector(".event-action-dock"));
   const hasEventRouteDialog = Boolean(
     document.querySelector('[data-event-route-dialog="true"]')
@@ -304,15 +328,15 @@ function syncInlineStatusTargets() {
     target.className = `${target.className
       .split(/\s+/)
       .filter((name) => name && !name.startsWith("is-sync-"))
-      .join(" ")}${currentStatus ? ` is-sync-${currentStatus}` : ""}`;
-    target.textContent = content;
-    target.hidden = !content;
+      .join(" ")}`;
+    target.textContent = "";
+    target.hidden = true;
     const routeStatus = target.closest("[data-route-sync-status]");
-    if (routeStatus) routeStatus.hidden = !content;
+    if (routeStatus) routeStatus.hidden = true;
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
-    button.hidden = !["offline", "conflict"].includes(currentStatus);
+    button.hidden = true;
   });
   syncMutationControls();
 }
@@ -349,42 +373,25 @@ function syncMutationControls() {
   document.documentElement.classList.toggle("app-online-mutations-locked", locked);
 }
 
-function inlineStatusContent(status) {
-  if (status === "saving") return "שומר לענן...";
-  if (status === "saved") return "נשמר";
-  if (status === "conflict") return "המידע השתנה במכשיר אחר. צריך לרענן לפני שינוי נוסף.";
-  if (status === "unavailable") return "השיתוף בין מכשירים עדיין לא מחובר.";
-  if (status === "reconnecting") return "בודק חיבור...";
-  if (status === "offline") return "אין חיבור · צפייה בלבד";
-  return "";
-}
-
 function statusContent(status) {
-  if (status === "saving") return { message: "שומר שינויים…", autoHide: false };
-  if (status === "saved") return { message: "השינויים נשמרו", autoHide: true };
   if (status === "conflict") {
     return {
-      message: "המידע השתנה במקום אחר. נסה לסנכרן לפני שינוי נוסף.",
+      message: "המידע עודכן במכשיר אחר",
       retry: true,
       autoHide: false
     };
   }
+
   if (status === "unavailable") {
     return {
-      message: "השיתוף בין מכשירים עדיין לא מחובר.",
-      autoHide: false
-    };
-  }
-
-  if (status === "reconnecting") {
-    return {
-      message: "בודקים שהסנכרון חזר…",
+      message: "הסנכרון מתעכב כרגע",
+      retry: true,
       autoHide: false
     };
   }
 
   return {
-    message: "אין חיבור. אפשר לצפות, אבל אי אפשר לשנות עד שהסנכרון יחזור.",
+    message: "אין רשת כרגע",
     retry: true,
     autoHide: false
   };
@@ -402,17 +409,20 @@ function injectStyles() {
       inset-inline: 16px;
       bottom: calc(16px + env(safe-area-inset-bottom));
       width: fit-content;
-      max-width: min(440px, calc(100vw - 32px));
+      max-width: min(360px, calc(100vw - 32px));
       margin-inline: auto;
       display: flex;
       align-items: center;
       gap: 10px;
       min-height: 44px;
       padding: 10px 14px;
-      border-radius: 12px;
+      border-radius: 14px;
       background: #ffffff;
       color: #17332f;
-      border: 1px solid #cbd8d4;
+      border: 0;
+      box-shadow:
+        0 12px 32px rgba(7, 63, 57, 0.14),
+        0 2px 8px rgba(7, 63, 57, 0.08);
       font: 700 0.88rem/1.35 "Heebo", "Noto Sans Hebrew", system-ui, sans-serif;
       direction: rtl;
     }
@@ -420,18 +430,15 @@ function injectStyles() {
     .public-sync-status[hidden] { display: none; }
     body.app-dialog-open .public-sync-status {
       z-index: 160;
-      top: calc(14px + env(safe-area-inset-top));
-      bottom: auto;
+      top: auto;
+      bottom: calc(24px + env(safe-area-inset-bottom));
     }
-    body.app-dialog-open.has-event-route-dialog .public-sync-status {
-      display: none !important;
+    body.has-event-action-dock .public-sync-status {
+      z-index: 160;
+      top: auto;
+      bottom: calc(188px + env(safe-area-inset-bottom));
     }
-    body.has-event-action-dock .public-sync-status { display: none !important; }
     html.account-auth-locked .public-sync-status { display: none !important; }
-    .public-sync-status.is-offline,
-    .public-sync-status.is-unavailable { border-color: #d6b46b; }
-    .public-sync-status.is-conflict { border-color: #d98978; }
-
     .public-sync-dot {
       flex: 0 0 auto;
       width: 8px;
@@ -465,11 +472,15 @@ function injectStyles() {
       cursor: pointer;
       touch-action: manipulation;
       white-space: nowrap;
+      transition-property: transform, background-color, opacity;
+      transition-duration: 160ms;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
     }
 
     .public-sync-status button:hover { background: #d4ebe5; }
     .public-sync-status button:focus-visible { outline: 3px solid rgba(10, 123, 111, 0.28); }
     .public-sync-status button:disabled { cursor: wait; opacity: 0.6; }
+    .public-sync-status button:active:not(:disabled) { transform: scale(0.96); }
 
     [data-online-mutation-disabled="true"] {
       cursor: not-allowed !important;
@@ -491,10 +502,10 @@ function injectStyles() {
       min-height: 44px;
       margin: 0 20px 12px;
       padding: 8px 12px;
-      border: 1px solid #d6b46b;
+      border: 1px solid #cbd8d4;
       border-radius: 8px;
-      color: #493a1f;
-      background: #fffaf0;
+      color: #17332f;
+      background: #ffffff;
       font: 700 0.86rem/1.4 "Heebo", "Noto Sans Hebrew", system-ui, sans-serif;
       direction: rtl;
     }

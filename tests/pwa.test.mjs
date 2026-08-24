@@ -161,7 +161,7 @@ test("service worker leaves cross-origin and partial responses outside the app c
   assert.match(serviceWorker, /headers\.has\("range"\)/);
 });
 
-test("app updates the service worker without interrupting the active splash", async () => {
+test("app checks for a service worker update after the active splash", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const start = app.indexOf("function registerServiceWorker()");
   const end = app.indexOf("function persistState()", start);
@@ -172,8 +172,18 @@ test("app updates the service worker without interrupting the active splash", as
   assert.match(registration, /updateViaCache: "none"/);
   assert.match(registration, /registration\.update\(\)/);
   assert.match(registration, /document\.visibilityState !== "hidden"/);
-  assert.doesNotMatch(registration, /controllerchange/);
-  assert.doesNotMatch(registration, /window\.location\.reload\(\)/);
+});
+
+test("an installed app reloads once when a new service worker takes control", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const registration = app.slice(
+    app.indexOf("function registerServiceWorker()"),
+    app.indexOf("function persistState()")
+  );
+
+  assert.match(registration, /const hadActiveController = Boolean\(navigator\.serviceWorker\.controller\)/);
+  assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
+  assert.match(registration, /if \(reloadingForUpdate\) return/);
 });
 
 test("service worker activates complete updates and claims installed apps", async () => {

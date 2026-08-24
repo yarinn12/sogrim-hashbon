@@ -14,6 +14,9 @@ test("supported currencies format minor units with a clear symbol", () => {
   assert.equal(formatCurrency(2750, "USD"), "$27.50");
   assert.equal(formatCurrency(2750, "EUR"), "€27.50");
   assert.equal(formatCurrency(2750, "CHF"), "CHF 27.50");
+  assert.equal(formatCurrency(100000, "ILS"), "₪1,000.00");
+  assert.equal(formatCurrency(1250050, "USD"), "$12,500.50");
+  assert.equal(formatCurrency(-1250050, "CHF"), "-CHF 12,500.50");
 });
 
 test("unknown and missing currencies safely fall back to ILS", () => {

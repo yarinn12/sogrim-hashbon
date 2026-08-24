@@ -13,7 +13,10 @@ import {
   isFullProfileName,
   normalizeProfileName
 } from "../domain/userProfile.mjs";
-import { normalizeAvatarPreset } from "../domain/avatarPresets.mjs";
+import {
+  normalizeAvatarImage,
+  normalizeAvatarPreset
+} from "../domain/avatarPresets.mjs";
 import {
   applyClientSpaceToConfig,
   peekClientSpaceId,
@@ -31,6 +34,7 @@ import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
 import { emitOperationFailure } from "./productMetrics.mjs";
 import {
   buildSharedEventSyncSelection,
+  recoverAccessibleSharedEvents,
   refreshSharedEvents,
   syncSharedEvents
 } from "./sharedEventStore.mjs";
@@ -121,7 +125,7 @@ async function saveCloudStateWithRetry(config, state) {
   });
 }
 
-async function syncAndPersistCloudState(config, state, syncSelection = null) {
+async function syncAndPersistCloudStateOnce(config, state, syncSelection = null) {
   const prioritizeSharedEventWrite = Boolean(
     syncSelection &&
     (
@@ -170,6 +174,20 @@ async function syncAndPersistCloudState(config, state, syncSelection = null) {
     conflictCount: initialSave.conflictCount +
       (finalSave === initialSave ? 0 : finalSave.conflictCount)
   };
+}
+
+async function syncAndPersistCloudState(
+  config,
+  state,
+  syncSelection = null
+) {
+  try {
+    return await syncAndPersistCloudStateOnce(config, state, syncSelection);
+  } catch (error) {
+    if (!isTransientSyncFailure(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    return syncAndPersistCloudStateOnce(config, state, syncSelection);
+  }
 }
 
 async function withFreshCloudAccount(config, request) {
@@ -462,7 +480,7 @@ export async function loadSharedStateForStartup({
 }
 
 async function loadSharedStateOnce(requestScope) {
-  const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
+  let runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   const localState = loadState();
 
   if (runtimeConfig.storage?.mode === "supabase") {
@@ -472,6 +490,12 @@ async function loadSharedStateOnce(requestScope) {
         const remoteState = await loadCloudState(
           runtimeConfig,
           toCloudState(runtimeConfig, localState)
+        );
+        // loadCloudState may have refreshed an expired account session. Make
+        // every request that follows in this same load use that fresh token;
+        // otherwise recovery/sync can accidentally replay the expired token.
+        runtimeConfig = activateClientSpace(
+          attachStoredAccountIdentity(runtimeConfig)
         );
         const mergedState = mergeSharedStates(remoteState, pendingState);
         const syncedState = (await syncAndPersistCloudState(
@@ -506,7 +530,11 @@ async function loadSharedStateOnce(requestScope) {
         ),
         loadProtectedParticipantId()
       );
+      runtimeConfig = activateClientSpace(
+        attachStoredAccountIdentity(runtimeConfig)
+      );
       const accountState = state;
+      state = await recoverAccessibleSharedEvents(runtimeConfig, state);
       state = await refreshSharedEvents(runtimeConfig, state);
       if (hasCloudStateChanged(state, accountState)) {
         const saved = await saveCloudStateWithRetry(
@@ -624,6 +652,7 @@ export async function saveSharedState(state) {
           };
         } catch (error) {
           let reverted = false;
+          const transientFailure = isTransientSyncFailure(error);
           const partiallyPersistedState = error?.sharedEventPersisted
             ? error.persistedState ?? sharedState
             : null;
@@ -636,6 +665,10 @@ export async function saveSharedState(state) {
               Object.assign(state, partiallyPersistedState);
               saveState(partiallyPersistedState);
               savePendingSharedState(runtimeConfig, partiallyPersistedState);
+            } else if (transientFailure) {
+              // Keep locally saved changes queued during temporary outages.
+              // A background retry will persist them when the service recovers.
+              savePendingSharedState(runtimeConfig, sharedState);
             } else {
               if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
                 clearPendingSharedState(runtimeConfig);
@@ -652,6 +685,7 @@ export async function saveSharedState(state) {
             mode: "cloud",
             error,
             ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
+            ...(transientFailure && !partiallyPersistedState ? { pending: true } : {}),
             ...(reverted ? { reverted: true } : {})
           };
         }
@@ -664,7 +698,7 @@ export async function saveSharedState(state) {
     const pendingConfig = pendingSyncConfig(runtimeConfig);
     if (pendingConfig) {
       savePendingSharedState(pendingConfig, sharedState);
-      publishSyncStatus("offline");
+      publishSyncStatus(globalThis.navigator?.onLine === false ? "offline" : "unavailable");
       return localSaved
         ? { ok: true, mode: "local", pending: true }
         : {
@@ -796,6 +830,13 @@ export function saveLocalProfile(profile) {
         (
           previousProfile?.participantId === profile.participantId
             ? previousProfile.avatarPreset
+            : ""
+        ),
+      avatarImage:
+        profile.avatarImage ??
+        (
+          previousProfile?.participantId === profile.participantId
+            ? previousProfile.avatarImage
             : ""
         )
     }),
@@ -1032,7 +1073,51 @@ function clearPendingSharedState(config) {
 }
 
 function publishSyncFailure(error) {
-  publishSyncStatus(error?.code === "CLOUD_STATE_CONFLICT" ? "conflict" : "offline");
+  publishSyncStatus(syncFailureStatus(error));
+}
+
+export function syncFailureStatus(
+  error,
+  online = globalThis.navigator?.onLine !== false
+) {
+  const errors = flattenSyncErrors(error);
+  if (errors.some((item) => item?.code === "CLOUD_STATE_CONFLICT")) {
+    return "conflict";
+  }
+  if (!online) return "offline";
+  return "unavailable";
+}
+
+function flattenSyncErrors(error) {
+  const queue = [error];
+  const errors = [];
+  const seen = new Set();
+  while (queue.length) {
+    const next = queue.shift();
+    if (!next || seen.has(next)) continue;
+    seen.add(next);
+    errors.push(next);
+    if (next.cause) queue.push(next.cause);
+    if (Array.isArray(next.failures)) queue.push(...next.failures);
+  }
+  return errors;
+}
+
+function isNetworkFailure(error) {
+  if (!error) return false;
+  if (["NETWORK_TIMEOUT", "ERR_NETWORK"].includes(error.code)) return true;
+  if (error.name === "AbortError") return true;
+  if (Number(error.status ?? 0) > 0) return false;
+  return /(failed to fetch|fetch failed|network(?:error| request)|load failed|connection|internet)/i
+    .test(String(error.message ?? ""));
+}
+
+function isTransientSyncFailure(error) {
+  return flattenSyncErrors(error).some((item) => {
+    if (isNetworkFailure(item)) return true;
+    const status = Number(item?.status ?? 0);
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+  });
 }
 
 function publishSyncStatus(status) {
@@ -1157,7 +1242,11 @@ function profileAuthFields(profile) {
 
 function profileAvatarFields(profile) {
   const avatarPreset = normalizeAvatarPreset(profile?.avatarPreset);
-  return avatarPreset ? { avatarPreset } : {};
+  const avatarImage = normalizeAvatarImage(profile?.avatarImage);
+  return {
+    ...(avatarPreset ? { avatarPreset } : {}),
+    ...(avatarImage ? { avatarImage } : {})
+  };
 }
 
 function loadProtectedParticipantId() {

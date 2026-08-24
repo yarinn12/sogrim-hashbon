@@ -129,7 +129,7 @@ test("an offline name links to its connected account without losing money", asyn
   const identityDialog = page.locator('.event-modal[role="dialog"]');
   await expect(identityDialog).toContainText("אותו אדם?");
   await expect(identityDialog).toContainText("שם אופליין");
-  await expect(identityDialog).toContainText("משתמש מחובר");
+  await expect(identityDialog).toContainText("חבר באפליקציה");
 
   await page
     .locator(`[data-action="connect-duplicate-participant"][data-source-participant-id="${OFFLINE_ID}"][data-target-participant-id="${ACCOUNT_ID}"]`)

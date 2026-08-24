@@ -8,7 +8,7 @@ import { participantEventDisplayName } from "./participantIdentity.mjs";
 const LEFT_TO_RIGHT_ISOLATE = "\u2066";
 const RIGHT_TO_LEFT_ISOLATE = "\u2067";
 const POP_DIRECTIONAL_ISOLATE = "\u2069";
-const SETTLEMENT_HEADING = "*העברות פתוחות*";
+const SETTLEMENT_HEADING = "*מי מעביר למי:*";
 
 export function formatSettlementSummary({
   eventName,
@@ -22,36 +22,22 @@ export function formatSettlementSummary({
     preferFullNameAliases: true
   });
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
-  const header = ["*סוגרים חשבון*", `אירוע: ${isolateText(eventName)}`];
+  const header = [`*סוגרים חשבון — ${isolateText(eventName)}*`];
   const eventCurrency = normalizeCurrency(currency);
 
   if (pendingTransfers.length === 0) {
     return [...header, "", "הכול סגור. אין העברות פתוחות."].join("\n");
   }
 
-  const transfersByRecipient = new Map();
-  for (const transfer of pendingTransfers) {
-    const recipientTransfers = transfersByRecipient.get(transfer.toParticipantId) ?? [];
-    recipientTransfers.push(transfer);
-    transfersByRecipient.set(transfer.toParticipantId, recipientTransfers);
-  }
-
-  const lines = [];
-  for (const [recipientId, recipientTransfers] of transfersByRecipient) {
-    const recipient = participantNames.get(recipientId) ?? "משתתף";
-    if (lines.length) lines.push("");
-    lines.push(`*אל ${isolateText(recipient)}*`);
-    for (const transfer of recipientTransfers) {
-      const sender = participantNames.get(transfer.fromParticipantId) ?? "משתתף";
-      lines.push(
-        `• ${isolateText(sender)} — ${isolateText(formatMessageCurrency(transfer.amount, eventCurrency))}`
-      );
-    }
-  }
+  const lines = pendingTransfers.map((transfer) => {
+    const sender = participantNames.get(transfer.fromParticipantId) ?? "משתתף";
+    const recipient = participantNames.get(transfer.toParticipantId) ?? "משתתף";
+    return `• ${isolateText(sender)} צריך להעביר ל־${isolateText(recipient)}: ${isolateText(formatMessageCurrency(transfer.amount, eventCurrency))}`;
+  });
 
   const methodExplanation = directSettlementTransfers
-    ? "ההחזרים הם ישירות למי שמימן יותר."
-    : "הסכומים כוללים קיזוז בין כל הוצאות הקבוצה. לכן המקבל לא תמיד מי ששילם ישירות.";
+    ? "הסכומים מחזירים כסף ישירות למי ששילם."
+    : "הסכומים חושבו כך שיהיו כמה שפחות העברות בקבוצה.";
 
   return [
     ...header,

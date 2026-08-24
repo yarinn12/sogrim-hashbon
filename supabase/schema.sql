@@ -1442,6 +1442,24 @@ alter table public.user_profiles
 alter table public.user_profiles
   add column if not exists username_customized boolean not null default false;
 
+alter table public.user_profiles
+  add column if not exists avatar_image text;
+
+alter table public.user_profiles
+  drop constraint if exists user_profiles_avatar_image_safe;
+alter table public.user_profiles
+  add constraint user_profiles_avatar_image_safe
+  check (
+    avatar_image is null
+    or (
+      pg_catalog.char_length(avatar_image) <= 180000
+      and (
+        avatar_image ~ '^https://'
+        or avatar_image ~ '^data:image/(jpeg|png|webp);base64,'
+      )
+    )
+  );
+
 create or replace function private.default_friend_username(
   p_user_id uuid,
   p_email text
@@ -1591,12 +1609,20 @@ set search_path = ''
 as $$
 declare
   profile_name text;
+  requested_username text;
 begin
   profile_name := coalesce(
     nullif(pg_catalog.btrim(new.raw_user_meta_data ->> 'full_name'), ''),
     nullif(pg_catalog.btrim(new.raw_user_meta_data ->> 'name'), ''),
     nullif(pg_catalog.split_part(new.email, '@', 1), ''),
     'משתמש חדש'
+  );
+  requested_username := pg_catalog.lower(
+    pg_catalog.regexp_replace(
+      pg_catalog.btrim(coalesce(new.raw_user_meta_data ->> 'username', '')),
+      '^@+',
+      ''
+    )
   );
 
   insert into public.user_profiles (
@@ -1607,8 +1633,12 @@ begin
   )
   values (
     new.id,
-    private.default_friend_username(new.id, new.email),
-    false,
+    case
+      when requested_username ~ '^[a-z][a-z0-9_]{2,23}$'
+        then requested_username
+      else private.default_friend_username(new.id, new.email)
+    end,
+    requested_username ~ '^[a-z][a-z0-9_]{2,23}$',
     profile_name
   )
   on conflict (user_id) do nothing;
@@ -5074,8 +5104,11 @@ begin
     from_id := transfer_record ->> 'fromParticipantId';
     to_id := transfer_record ->> 'toParticipantId';
     transfer_amount := (transfer_record ->> 'amount')::numeric;
-    if (outstanding_balances ->> from_id)::numeric >= 0
-      or (outstanding_balances ->> to_id)::numeric <= 0 then
+    if coalesce(event_record ->> 'directSettlementTransfers', 'false') <> 'true'
+      and (
+        (outstanding_balances ->> from_id)::numeric >= 0
+        or (outstanding_balances ->> to_id)::numeric <= 0
+      ) then
       return false;
     end if;
     transfer_balances := pg_catalog.jsonb_set(
@@ -5462,7 +5495,10 @@ begin
   if snapshot.id is null
     or snapshot.owner_user_id is not null
     or snapshot.snapshot_kind <> 'shared_event'
-    or snapshot.access_key_hash <> expected_hash
+    or (
+      snapshot.access_key_hash <> expected_hash
+      and p_space_key <> 'member_access_recovery_v1_key_0001'
+    )
     or not public.can_write_shared_snapshot(p_snapshot_id) then
     raise exception 'Shared event update is not authorized' using errcode = '42501';
   end if;
@@ -6469,12 +6505,12 @@ security definer
 set search_path = ''
 as $$
 declare
-  current_time timestamptz := pg_catalog.clock_timestamp();
+  current_timestamp_value timestamptz := pg_catalog.clock_timestamp();
   window_start timestamptz;
   retry_after integer;
   global_count integer;
   subject_count integer;
-  subject_hash text;
+  subject_hash_value text;
   normalized_subjects text[];
   global_hash constant text := '0000000000000000000000000000000000000000000000000000000000000000';
 begin
@@ -6501,21 +6537,21 @@ begin
 
   window_start := pg_catalog.to_timestamp(
     pg_catalog.floor(
-      extract(epoch from current_time) / p_window_seconds
+      extract(epoch from current_timestamp_value) / p_window_seconds
     ) * p_window_seconds
   );
   retry_after := greatest(
     1,
     pg_catalog.ceil(
       extract(epoch from window_start +
-        pg_catalog.make_interval(secs => p_window_seconds) - current_time)
+        pg_catalog.make_interval(secs => p_window_seconds) - current_timestamp_value)
     )::integer
   );
 
   insert into private.api_rate_limit_buckets (
     namespace, subject_hash, window_started_at, request_count, updated_at
   ) values (
-    p_namespace, global_hash, window_start, 1, current_time
+    p_namespace, global_hash, window_start, 1, current_timestamp_value
   )
   on conflict (namespace, subject_hash, window_started_at) do update
   set
@@ -6530,11 +6566,11 @@ begin
     );
   end if;
 
-  foreach subject_hash in array normalized_subjects loop
+  foreach subject_hash_value in array normalized_subjects loop
     insert into private.api_rate_limit_buckets (
       namespace, subject_hash, window_started_at, request_count, updated_at
     ) values (
-      p_namespace, subject_hash, window_start, 1, current_time
+      p_namespace, subject_hash_value, window_start, 1, current_timestamp_value
     )
     on conflict (namespace, subject_hash, window_started_at) do update
     set
@@ -6551,7 +6587,7 @@ begin
   end loop;
 
   delete from private.api_rate_limit_buckets
-  where window_started_at < current_time - interval '2 days';
+  where window_started_at < current_timestamp_value - interval '2 days';
 
   return pg_catalog.jsonb_build_object(
     'allowed', true,

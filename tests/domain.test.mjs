@@ -662,7 +662,7 @@ test("direct settlement prefers the people who actually funded each expense", ()
   assert.deepEqual(routes(direct), ["d->a:500", "c->b:500"]);
 });
 
-test("direct settlement has no duplicate or reciprocal routes", () => {
+test("direct settlement keeps pairwise routes without duplicates or reciprocals", () => {
   const people = [
     { id: "a", displayName: "A" },
     { id: "b", displayName: "B" },
@@ -695,10 +695,15 @@ test("direct settlement has no duplicate or reciprocal routes", () => {
     }),
     false
   );
+  const balancesAfterTransfers = { ...result.balances };
   for (const transfer of result.transfers) {
-    assert.ok(result.balances[transfer.fromParticipantId] < 0);
-    assert.ok(result.balances[transfer.toParticipantId] > 0);
+    balancesAfterTransfers[transfer.fromParticipantId] += transfer.amount;
+    balancesAfterTransfers[transfer.toParticipantId] -= transfer.amount;
   }
+  assert.deepEqual(
+    balancesAfterTransfers,
+    Object.fromEntries(people.map(({ id }) => [id, 0]))
+  );
 });
 
 test("direct settlement reimburses multiple payers according to their net contribution", () => {
@@ -779,6 +784,105 @@ test("direct settlement combines repeated repayments on the same route", () => {
       amount
     })),
     [{ fromParticipantId: "b", toParticipantId: "a", amount: 4000 }]
+  );
+});
+
+test("direct settlement nets reciprocal reimbursements into one transfer", () => {
+  const people = [
+    { id: "maor", displayName: "Maor" },
+    { id: "yarin", displayName: "Yarin" }
+  ];
+  const expenses = [
+    {
+      id: "maor-paid-for-yarin",
+      total: 100000,
+      payers: [{ participantId: "maor", amount: 100000 }],
+      sharedByParticipantIds: ["yarin"]
+    },
+    {
+      id: "yarin-paid-for-maor",
+      total: 20000,
+      payers: [{ participantId: "yarin", amount: 20000 }],
+      sharedByParticipantIds: ["maor"]
+    }
+  ];
+
+  const result = calculateSettlement(people, expenses, {
+    directTransfers: true
+  });
+
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount
+    })),
+    [
+      {
+        fromParticipantId: "yarin",
+        toParticipantId: "maor",
+        amount: 80000
+      }
+    ]
+  );
+});
+
+test("direct settlement keeps the Korea event reimbursement between Yarin and Maor", () => {
+  const people = [
+    { id: "yarin", displayName: "Yarin" },
+    { id: "maor", displayName: "Maor" },
+    { id: "liron", displayName: "Liron" },
+    { id: "nizri", displayName: "Nizri" }
+  ];
+  const expenses = [
+    {
+      id: "seoul-apartment",
+      total: 403600,
+      payers: [{ participantId: "yarin", amount: 403600 }],
+      sharedByParticipantIds: ["yarin", "maor", "liron", "nizri"]
+    },
+    {
+      id: "seoul-manila-flight",
+      total: 128500,
+      payers: [{ participantId: "maor", amount: 128500 }],
+      sharedByParticipantIds: ["yarin", "maor", "liron"]
+    },
+    {
+      id: "yarin-flight",
+      total: 230000,
+      payers: [{ participantId: "maor", amount: 230000 }],
+      sharedByParticipantIds: ["yarin"]
+    }
+  ];
+  const paid = {
+    id: "paid-nizri-yarin-29800",
+    fromParticipantId: "nizri",
+    toParticipantId: "yarin",
+    amount: 29800,
+    status: "paid"
+  };
+
+  const result = reconcileSettlementTransfers(people, expenses, [paid], {
+    directTransfers: true,
+    roundTransfers: true
+  });
+
+  assert.equal(result.issues.length, 0);
+  assert.deepEqual(
+    result.transfers
+      .filter((transfer) => transfer.status !== "paid")
+      .find(
+        (transfer) =>
+          transfer.fromParticipantId === "yarin" &&
+          transfer.toParticipantId === "maor"
+      ),
+    {
+      id: "transfer-yarin-maor-172000",
+      fromParticipantId: "yarin",
+      toParticipantId: "maor",
+      amount: 172000,
+      status: "pending"
+    }
   );
 });
 

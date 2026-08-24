@@ -277,7 +277,7 @@ test("server recovers an active open link during ensure when this device lost it
         );
       }
       if (address.includes("/rest/v1/event_invite_tokens?")) {
-        return address.includes("select=space_id%2Cspace_key")
+        return address.includes("token_hash=eq.")
           ? jsonResponse([])
           : jsonResponse([
               {
@@ -302,6 +302,197 @@ test("server recovers an active open link during ensure when this device lost it
   assert.equal(result.status, 200);
   assert.equal(result.payload.rotated, true);
   assert.equal(rotationAttempted, true);
+});
+
+test("server recreates the same open link on another device without rotating it", async () => {
+  const tokenHashes = [];
+  let activeHash = "";
+  let rotations = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) return jsonResponse({ id: USER_ID });
+    if (address.includes("/rest/v1/app_snapshots?")) {
+      return jsonResponse(
+        address.includes("owner_user_id")
+          ? [{ state: serverState() }]
+          : [sharedSnapshot()]
+      );
+    }
+    if (address.includes("/rest/v1/event_invite_tokens?")) {
+      const requestedHash = new URL(address).searchParams
+        .get("token_hash")
+        ?.replace(/^eq\./, "");
+      tokenHashes.push(requestedHash ?? "");
+      if (requestedHash && requestedHash === activeHash) {
+        return jsonResponse([{
+          id: "33333333-3333-4333-8333-333333333333",
+          event_id: EVENT_ID,
+          kind: "open",
+          created_by: USER_ID,
+          space_id: SPACE_ID,
+          space_key: SPACE_KEY,
+          created_at: "2026-08-24T10:00:00.000Z"
+        }]);
+      }
+      return jsonResponse([]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      rotations += 1;
+      activeHash = JSON.parse(options.body).p_token_hash;
+      return jsonResponse("44444444-4444-4444-8444-444444444444");
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+  };
+  const input = {
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl
+  };
+
+  const first = await manageOpenEventInvite(input);
+  const second = await manageOpenEventInvite(input);
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(second.payload.token, first.payload.token);
+  assert.equal(rotations, 1);
+  assert.equal(tokenHashes.at(-1), activeHash);
+});
+
+test("a recovered event member can recreate the stable open link without the raw space key", async () => {
+  const recoveredState = serverState();
+  recoveredState.events[0].sharedSpaceKey = "member_access_recovery_v1_key_0001";
+  let membershipChecked = false;
+  let rotations = 0;
+  let rotationBody = null;
+
+  const result = await manageOpenEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl: async (url, options = {}) => {
+      const address = String(url);
+      if (address.endsWith("/auth/v1/user")) return jsonResponse({ id: USER_ID });
+      if (address.includes("/rest/v1/rpc/can_write_shared_snapshot")) {
+        membershipChecked = true;
+        assert.equal(options.headers.authorization, "Bearer account-token");
+        assert.deepEqual(JSON.parse(options.body), { p_snapshot_id: SPACE_ID });
+        return jsonResponse(true);
+      }
+      if (address.includes("/rest/v1/app_snapshots?")) {
+        if (address.includes("owner_user_id")) return jsonResponse([{ state: recoveredState }]);
+        if (address.includes("access_key_hash")) {
+          return jsonResponse([sharedSnapshot()]);
+        }
+        return jsonResponse([sharedSnapshot()]);
+      }
+      if (address.includes("/rest/v1/event_invite_tokens?")) return jsonResponse([]);
+      if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+        rotations += 1;
+        rotationBody = JSON.parse(options.body);
+        return jsonResponse("44444444-4444-4444-8444-444444444444");
+      }
+      throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(membershipChecked, true);
+  assert.equal(rotations, 1);
+  assert.equal(rotationBody.p_space_key, SPACE_KEY);
+  assert.match(result.payload.token, /^[A-Za-z0-9_-]{32,128}$/);
+});
+
+test("a recovered member replaces an existing invite with canonical credentials and the new link redeems", async () => {
+  const recoveredState = serverState();
+  recoveredState.events[0].sharedSpaceKey = "member_access_recovery_v1_key_0001";
+  let activeTokenHash = createHash("sha256").update(TOKEN).digest("hex");
+  let activeCreatedAt = "2026-08-23T10:00:00.000Z";
+  let authenticatedUserId = USER_ID;
+  let membershipActivated = false;
+
+  const fetchImpl = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) {
+      return jsonResponse({ id: authenticatedUserId });
+    }
+    if (address.includes("/rest/v1/rpc/can_write_shared_snapshot")) {
+      assert.equal(options.headers.authorization, "Bearer creator-token");
+      return jsonResponse(true);
+    }
+    if (address.includes("/rest/v1/app_snapshots?")) {
+      return jsonResponse(
+        address.includes("owner_user_id")
+          ? [{ state: recoveredState }]
+          : [sharedSnapshot()]
+      );
+    }
+    if (address.includes("/rest/v1/event_invite_tokens?")) {
+      const params = new URL(address).searchParams;
+      const requestedHash = params.get("token_hash")?.replace(/^eq\./, "");
+      const row = {
+        id: "33333333-3333-4333-8333-333333333333",
+        event_id: EVENT_ID,
+        kind: "open",
+        created_by: USER_ID,
+        recipient_user_id: null,
+        space_id: SPACE_ID,
+        space_key: SPACE_KEY,
+        created_at: activeCreatedAt,
+        expires_at: null
+      };
+      if (requestedHash) {
+        return jsonResponse(requestedHash === activeTokenHash ? [row] : []);
+      }
+      return jsonResponse([row]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.p_space_key, SPACE_KEY);
+      activeTokenHash = body.p_token_hash;
+      activeCreatedAt = body.p_created_at;
+      return jsonResponse("33333333-3333-4333-8333-333333333333");
+    }
+    if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.p_token_hash, activeTokenHash);
+      assert.equal(body.p_user_id, OTHER_USER_ID);
+      membershipActivated = true;
+      return jsonResponse(true);
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+  };
+
+  const created = await manageOpenEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer creator-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl
+  });
+  assert.equal(created.status, 200);
+  assert.equal(created.payload.rotated, true);
+
+  authenticatedUserId = OTHER_USER_ID;
+  const redeemed = await redeemEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer recipient-token",
+    eventId: EVENT_ID,
+    token: created.payload.token,
+    fetchImpl
+  });
+
+  assert.equal(redeemed.status, 200);
+  assert.equal(redeemed.payload.spaceId, SPACE_ID);
+  assert.equal(redeemed.payload.spaceKey, SPACE_KEY);
+  assert.equal(membershipActivated, true);
 });
 
 test("collaborative participants reuse the event open link instead of creating parallel links", async () => {

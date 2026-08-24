@@ -5,6 +5,8 @@ import {
   AVATAR_PRESETS,
   avatarPresetForParticipant,
   avatarPresetSource,
+  avatarSourceForParticipant,
+  normalizeAvatarImage,
   normalizeAvatarPreset
 } from "../src/domain/avatarPresets.mjs";
 
@@ -17,6 +19,20 @@ test("the app exposes six safe branded avatar presets", () => {
   assert.equal(normalizeAvatarPreset("avatar-4"), "avatar-4");
   assert.equal(normalizeAvatarPreset("../../private"), "");
   assert.equal(avatarPresetSource("avatar-4"), "./assets/avatars/avatar-4.png");
+});
+
+test("profile images accept only bounded gallery data or secure internet URLs", () => {
+  const secureUrl = "https://images.example.com/profile.jpg";
+  const dataUrl = "data:image/jpeg;base64,YWJjZA==";
+
+  assert.equal(normalizeAvatarImage(secureUrl), secureUrl);
+  assert.equal(normalizeAvatarImage(dataUrl), dataUrl);
+  assert.equal(normalizeAvatarImage("http://images.example.com/profile.jpg"), "");
+  assert.equal(normalizeAvatarImage("data:image/svg+xml;base64,PHN2Zz4="), "");
+  assert.equal(
+    avatarSourceForParticipant({ avatarImage: secureUrl, avatarPreset: "avatar-4" }),
+    secureUrl
+  );
 });
 
 test("legacy participants receive one stable picture without changing their data", () => {

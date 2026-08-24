@@ -1,23 +1,13 @@
 import { loadLocalProfile } from "./data/localStore.mjs";
 import {
-  avatarPresetForParticipant,
-  avatarPresetSource
+  avatarSourceForParticipant
 } from "./domain/avatarPresets.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
 
 const STYLE_ID = "public-brand-layer-style";
 const APP_NAME = "סוגרים חשבון";
 const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
-const PRIMARY_NAV_SCREENS = new Set([
-  "home",
-  "profile",
-  "admin",
-  "notifications",
-  "groups",
-  "event",
-  "settlement"
-]);
-
 let scheduledBranding = false;
 let preferredHomeDestination = "home";
 
@@ -71,7 +61,7 @@ function enhanceAppScreenBrand() {
   const html = `
     <header class="product-app-identity">
       ${renderBrandLockup("product-app-lockup")}
-      ${PRIMARY_NAV_SCREENS.has(kind) ? renderHeaderNav() : ""}
+      ${shouldShowPrimaryNav(screen) ? renderHeaderNav() : ""}
     </header>
   `;
 
@@ -98,6 +88,7 @@ function syncHeaderIdentity(screen, identity, kind) {
   if (!identity) return;
 
   const isHome = kind === "home";
+  syncIdentityRouteControls(screen, identity);
   const profileIdentity = resolveHeaderProfileIdentity(screen);
   identity.classList.toggle("is-home-context", isHome);
   syncHeaderProfileAvatar(identity, profileIdentity.avatarSource);
@@ -125,15 +116,14 @@ function resolveHeaderProfileIdentity(screen) {
   const avatarParticipant = {
     id: participantId,
     displayName,
-    avatarPreset: profile?.avatarPreset
+    avatarPreset: profile?.avatarPreset,
+    avatarImage: profile?.avatarImage
   };
   return {
     displayName,
     avatarSource:
       screen.dataset.profileAvatarSrc?.trim() ||
-      avatarPresetSource(
-        avatarPresetForParticipant(avatarParticipant, participantId || displayName)
-      )
+      avatarSourceForParticipant(avatarParticipant, participantId || displayName)
   };
 }
 
@@ -198,27 +188,7 @@ function renderBrandLockup(extraClass = "") {
 }
 
 function renderHeaderNav() {
-  return `
-    <nav class="product-app-nav" aria-label="&#1504;&#1497;&#1493;&#1493;&#1496; &#1512;&#1488;&#1513;&#1497;">
-      <button class="product-nav-button" data-action="home" data-nav-destination="home" type="button">
-        ${iconSvg("home")}
-        <span>&#1489;&#1497;&#1514;</span>
-      </button>
-      <button class="product-nav-button" data-action="home" data-nav-destination="events" type="button">
-        ${iconSvg("calendar")}
-        <span>&#1488;&#1497;&#1512;&#1493;&#1506;&#1497;&#1501;</span>
-      </button>
-      <button class="product-nav-button" data-action="open-notifications" data-nav-destination="notifications" type="button" aria-label="&#1492;&#1514;&#1512;&#1488;&#1493;&#1514;">
-        ${iconSvg("bell")}
-        <span>&#1492;&#1514;&#1512;&#1488;&#1493;&#1514;</span>
-        <span class="product-nav-badge" hidden aria-hidden="true"></span>
-      </button>
-      <button class="product-nav-button" data-action="edit-profile" data-nav-destination="profile" type="button">
-        ${iconSvg("user")}
-        <span>&#1508;&#1512;&#1493;&#1508;&#1497;&#1500;</span>
-      </button>
-    </nav>
-  `;
+  return renderPrimaryNavigation();
 }
 
 function syncHeaderNavState() {
@@ -227,7 +197,7 @@ function syncHeaderNavState() {
   if (!screen || !identity) return;
 
   const kind = detectBrandScreenKind(screen);
-  const showPrimaryNav = PRIMARY_NAV_SCREENS.has(kind);
+  const showPrimaryNav = shouldShowPrimaryNav(screen);
   let nav = identity.querySelector(":scope > .product-app-nav");
   if (!showPrimaryNav) {
     nav?.remove();
@@ -255,6 +225,33 @@ function syncHeaderNavState() {
 
   syncNotificationNavBadge(nav);
   setPrimaryNavigationActiveDestination(nav, activeDestination);
+}
+
+function syncIdentityRouteControls(screen, identity) {
+  let controls = identity.querySelector(":scope > .product-route-controls");
+  if (!controls) {
+    controls = document.createElement("div");
+    controls.className = "product-route-controls";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", "ניווט מהיר");
+    identity.append(controls);
+  }
+
+  let backButton = screen.querySelector('[data-action="go-back"]');
+  if (!backButton) {
+    backButton = document.createElement("button");
+    backButton.type = "button";
+    backButton.className = "icon-button app-back-button";
+    backButton.dataset.action = "go-back";
+    backButton.setAttribute("aria-label", "חזרה למסך הקודם");
+    backButton.title = "חזרה למסך הקודם";
+    backButton.innerHTML = `<span class="app-back-button-glyph" aria-hidden="true">${iconSvg("chevron-left")}</span>`;
+  }
+  controls.prepend(backButton);
+}
+
+function shouldShowPrimaryNav(screen) {
+  return Boolean(screen && !screen.classList.contains("profile-first-run-screen"));
 }
 
 function syncNotificationNavBadge(nav) {

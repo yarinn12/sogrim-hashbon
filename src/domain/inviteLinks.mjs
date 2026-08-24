@@ -9,7 +9,10 @@ import {
   parseCompactInviteUrl
 } from "./compactInvite.mjs";
 import { sanitizeParticipantAlias } from "./participantIdentity.mjs";
-import { normalizeAvatarPreset } from "./avatarPresets.mjs";
+import {
+  normalizeAvatarImage,
+  normalizeAvatarPreset
+} from "./avatarPresets.mjs";
 import { normalizeReferralCode } from "./referralCodes.mjs";
 
 const INVITE_SNAPSHOT_PARAM = "invite";
@@ -144,11 +147,13 @@ export function buildEventInviteSnapshot(state, eventId) {
     .filter((participant) => referencedParticipantIds.has(participant.id))
     .map((participant) => {
       const avatarPreset = normalizeAvatarPreset(participant.avatarPreset);
+      const avatarImage = normalizeAvatarImage(participant.avatarImage);
       return {
         id: String(participant.id),
         displayName: String(participant.displayName),
         kind: participant.kind === "guest" ? "guest" : "user",
         ...(avatarPreset ? { avatarPreset } : {}),
+        ...(avatarImage ? { avatarImage } : {}),
         accountLinked:
           participant.accountLinked === true ||
           (
@@ -271,12 +276,14 @@ function sanitizeParticipantAliases(aliases, participantIds) {
 function normalizeParticipant(participant) {
   if (!isSafeSharedIdentifier(participant?.id) || !participant?.displayName) return null;
   const avatarPreset = normalizeAvatarPreset(participant.avatarPreset);
+  const avatarImage = normalizeAvatarImage(participant.avatarImage);
 
   return {
     id: participant.id,
     displayName: String(participant.displayName),
     kind: participant.kind === "guest" ? "guest" : "user",
     ...(avatarPreset ? { avatarPreset } : {}),
+    ...(avatarImage ? { avatarImage } : {}),
     accountLinked: false
   };
 }

@@ -6,13 +6,12 @@ import {
   saveState
 } from "./data/localStore.mjs";
 import {
-  buildEventInviteSnapshot,
   buildEventInviteUrl,
   parseInviteEventId,
-  parseInviteSnapshot
+  parseInviteSnapshot,
+  parseInviteToken
 } from "./domain/inviteLinks.mjs";
 import { parseCompactInviteUrl } from "./domain/compactInvite.mjs";
-import { normalizeReferralCode } from "./domain/referralCodes.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
 import { isActiveEventParticipant } from "./domain/eventMembership.mjs";
 import {
@@ -21,7 +20,6 @@ import {
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
 import {
-  eventOpenInviteToken,
   resolveEventInviteCredentials
 } from "./data/eventInvites.mjs";
 import {
@@ -88,12 +86,9 @@ function enhanceInviteLinks() {
   );
   if (buttons.length && !runtimeConfig) ensureRuntimeConfigForInvites();
 
-  buttons.forEach((button) => {
-    const input = button.closest(".invite-link-row")?.querySelector("input");
-    if (input?.dataset.shareReady !== "true") return;
-    const inviteUrl = smartInviteUrl(button.dataset.eventId);
-    if (input && input.value !== inviteUrl) input.value = inviteUrl;
-  });
+  // The app owns preparation of the server-issued URL. This compatibility
+  // layer must never replace it with a locally reconstructed fallback: doing
+  // so can silently remove the open-invite token from copy and QR actions.
 }
 
 let runtimeConfigRequest = null;
@@ -121,22 +116,21 @@ function handleInviteCopyClick(event) {
   );
   if (!button) return;
 
+  const input = button.closest(".invite-link-row")?.querySelector("input");
+  const inviteUrl = input?.value?.trim() ?? "";
+  if (
+    input?.dataset.shareReady !== "true" ||
+    parseInviteEventId(inviteUrl) !== button.dataset.eventId ||
+    !parseInviteToken(inviteUrl)
+  ) return;
+
   event.preventDefault();
   event.stopImmediatePropagation();
 
-  copyResolvedInviteUrl(button);
+  copyResolvedInviteUrl(button, inviteUrl);
 }
 
-async function copyResolvedInviteUrl(button) {
-  if (!runtimeConfig) {
-    try {
-      runtimeConfig = await loadRuntimeConfig();
-    } catch {
-      // The snapshot link stays usable when the runtime config is unavailable.
-    }
-  }
-
-  const inviteUrl = smartInviteUrl(button.dataset.eventId);
+async function copyResolvedInviteUrl(button, inviteUrl) {
   copyText(inviteUrl);
   button.textContent = "הועתק";
   window.setTimeout(() => {
@@ -355,29 +349,6 @@ function findJoinLink() {
     document.querySelector("[data-public-join-event-link]")?.value?.trim() ||
     document.querySelector('[data-action="join-event-link"]')?.value?.trim() ||
     ""
-  );
-}
-
-function smartInviteUrl(eventId) {
-  const state = loadState();
-  const event = state.events?.find((item) => item.id === eventId);
-  const cloudInvite = runtimeConfig?.storage?.mode === "supabase";
-  const inviteToken = cloudInvite
-    ? eventOpenInviteToken(event)
-    : null;
-  const referralCode = normalizeReferralCode(
-    globalThis.SogrimMonetization?.status?.referralCode
-  );
-  return buildEventInviteUrl(
-    runtimeConfig?.publicUrl || window.location.href,
-    eventId,
-    cloudInvite ? null : buildEventInviteSnapshot(state, eventId),
-    inviteToken
-      ? {
-          inviteToken,
-          referralCode
-        }
-      : { referralCode }
   );
 }
 

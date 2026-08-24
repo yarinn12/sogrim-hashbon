@@ -63,7 +63,7 @@ test("app bootstraps only after render-time constants are initialized", async ()
   );
   assert.match(
     app,
-    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const startupState = await loadSharedStateForStartup\(\{ maxWaitMs: 0 \}\);\s*const sharedState = startupState\.state;/
+    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\);\s*const sharedState = startupState\.state;/
   );
 });
 
@@ -336,9 +336,13 @@ test("expense participant step keeps additions in a focused sub-screen", async (
     "function normalizeExpenseFlowStep(step)"
   );
 
-  assert.match(expenseForm, /renderExpenseParticipantToolbar\(event, participants\)/);
+  assert.match(
+    expenseForm,
+    /renderParticipantChecks\(expenseDraft\.sharedByParticipantIds, "expense-shared", event\)[\s\S]*?renderExpenseParticipantToolbar\(event, participants\)/
+  );
   assert.match(expenseForm, /data-action="expense-select-all"/);
-  assert.match(expenseForm, /data-action="expense-select-current"/);
+  assert.doesNotMatch(expenseForm, /data-action="expense-select-current"/);
+  assert.doesNotMatch(expenseForm, />רק אני</);
   assert.match(expenseForm, /data-expense-participant-toolbar/);
   assert.match(
     expenseForm,
@@ -361,13 +365,14 @@ test("expense participant step keeps additions in a focused sub-screen", async (
   assert.match(app, /function applyExpenseParticipantPreset\(mode, trigger\)/);
   assert.match(
     app,
-    /action === "expense-select-all"[\s\S]*?action === "expense-select-current"[\s\S]*?applyExpenseParticipantPreset/
+    /action === "expense-select-all"[\s\S]*?applyExpenseParticipantPreset\("all", target\)/
   );
   assert.match(design, /\.expense-participant-toolbar \{/);
   assert.match(
     design,
-    /\.expense-participant-presets > button\.is-active \{[\s\S]*?background: #ffffff !important/
+    /\.expense-participant-toolbar\[hidden\] \{[\s\S]*?display: none !important/
   );
+  assert.match(design, /\.expense-select-all-compact \{[\s\S]*?min-height: 44px !important/);
   assert.match(app, /function renderExpenseParticipantRow\(/);
   assert.match(app, /class="expense-participant-list"/);
   assert.match(design, /\.expense-participant-row \{/);
@@ -456,7 +461,7 @@ test("participant manager distinguishes connected accounts from manually added n
 
   assert.match(app, /function participantConnectionStatus\(participant\)/);
   assert.match(app, /\["google", "apple", "email"\]\.includes\(authProvider\)/);
-  assert.match(app, /label: "משתמש מחובר"/);
+  assert.match(app, /label: isCurrentParticipant \? "אתה" : "חבר באפליקציה"/);
   assert.match(app, /label: "שם אופליין"/);
   assert.match(app, /class="participant-connection-badge/);
   assert.match(app, /data-participant-identity="\$\{identity\.connected \? "account" : "offline"\}"/);
@@ -528,9 +533,12 @@ test("inviting from participant management returns to the participant roster", a
     shareDialog,
     /\["participants", "participants-add"\]\.includes\(\s*eventDialog\?\.returnKind/
   );
-  assert.match(shareDialog, /\? "event-share-view-back"/);
+  assert.match(shareDialog, /backAction: returnsToParticipants/);
   assert.match(shareDialog, /\? "event-share-back"/);
-  assert.match(shareDialog, /backLabel: isShareRoute \? "חזרה לדרכי ההזמנה" : "חזרה למשתתפים"/);
+  assert.match(shareDialog, /\? "event-share-view-back"/);
+  assert.match(shareDialog, /backLabel: returnsToParticipants/);
+  assert.match(shareDialog, /\? "חזרה למשתתפים"/);
+  assert.match(shareDialog, /: "חזרה לדרכי ההזמנה"/);
   assert.match(openDialog, /\["participants", "participants-add"\]\.includes\(eventDialog\.kind\)/);
   assert.match(openDialog, /returnKind,/);
   assert.match(goBack, /eventDialog\?\.kind === "share"/);
@@ -562,13 +570,12 @@ test("event sharing reveals one invitation path at a time", async () => {
   assert.match(shareDialog, /data-event-share-view="friends"/);
   assert.match(shareDialog, /data-event-share-view="link"/);
   assert.match(shareDialog, /activeFriendParticipantIds\(state\)/);
-  assert.match(shareDialog, /renderInviteStatus\(event, shareReady, shareAvailable\)/);
-  assert.match(shareDialog, /class="event-invite-link-preview"/);
-  assert.match(shareDialog, /קישור ההזמנה מוכן/);
+  assert.match(shareDialog, /event-share-link-status/);
+  assert.doesNotMatch(shareDialog, /class="event-invite-link-preview"/);
+  assert.match(shareDialog, /הקישור מוכן/);
   assert.match(shareDialog, /type="hidden"\s+name="eventInviteUrl"/);
-  assert.match(shareDialog, /class="secondary-button event-invite-rotate-button"/);
-  assert.match(inviteStatus, /ready\s*\? ""/);
-  assert.doesNotMatch(inviteStatus, /<i aria-hidden="true"><\/i>/);
+  assert.doesNotMatch(shareDialog, /event-invite-rotate-button/);
+  assert.match(shareDialog, /event-invite-retry-button/);
   assert.match(app, /shareView: dialog\.shareView \?\? ""/);
 });
 
@@ -639,10 +646,10 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(dialog, /renderInactiveEventParticipants/);
   assert.match(dialog, /data-action="open-event-participant-add"/);
   assert.doesNotMatch(dialog, /renderAvailableEventParticipants/);
-  assert.match(addDialog, /renderAvailableEventParticipants/);
+  assert.match(addDialog, /renderEventParticipantAddRoutes/);
   assert.doesNotMatch(addDialog, /expanded: true/);
-  assert.match(addDialog, /data-action="open-event-share"/);
-  assert.match(addDialog, /class="event-participant-offline-entry participant-add-manual"/);
+  assert.match(app, /data-action="open-event-share"/);
+  assert.match(app, /function renderEventParticipantAddEditor/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /backAction: "event-participants-back"/);
   assert.match(addDialog, /backLabel: "חזרה למשתתפים"/);
@@ -760,21 +767,26 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   );
 
   assert.match(rosterDialog, /data-action="open-event-participant-add"/);
-  assert.match(rosterDialog, />הוסף משתתף</);
+  assert.match(rosterDialog, />הוסף משתתפים</);
   assert.match(rosterDialog, /class="event-participant-primary-actions"/);
-  assert.match(rosterDialog, /data-action="open-event-share"/);
-  assert.match(rosterDialog, />הזמן בקישור</);
+  assert.doesNotMatch(rosterDialog, /data-action="open-event-share"/);
+  assert.doesNotMatch(rosterDialog, /event-participant-invite-launch/);
   assert.doesNotMatch(rosterDialog, /event-participant-add-options/);
-  assert.match(addDialog, /title: "מי מצטרף לאירוע\?"/);
-  assert.match(addDialog, /אחרי ההוספה חוזרים ישר לרשימת המשתתפים/);
+  assert.match(addDialog, /title: routeTitle/);
+  assert.match(addDialog, /: "מי מצטרף לאירוע\?"/);
+  assert.match(addDialog, /event-participant-add-view-back/);
+  assert.match(addDialog, /description: ""/);
   assert.match(addDialog, /routeMode: true/);
   assert.match(addDialog, /showClose: false/);
-  assert.match(addDialog, /data-action="open-event-share"/);
-  assert.match(addDialog, /data-action="event-add-guest"/);
-  assert.match(addDialog, /renderAvailableEventParticipants/);
-  assert.match(addDialog, /הזמן חבר לאפליקציה/);
-  assert.match(addDialog, /הוסף ידנית/);
-  assert.match(addDialog, /participant-add-privacy-note/);
+  assert.match(app, /data-action="open-event-share"/);
+  assert.match(app, /data-action="event-add-guest"/);
+  assert.match(addDialog, /renderEventParticipantAddRoutes/);
+  assert.match(app, /new-event-participant-actions/);
+  assert.match(app, /new-event-participant-route-action \$\{className\}/);
+  assert.match(app, /הזמן בקישור/);
+  assert.match(app, /הוסף שם ידנית/);
+  assert.match(app, /participant-add-privacy-note/);
+  assert.doesNotMatch(addDialog, /בחר מאנשי הקשר/);
   assert.match(
     app,
     /if \(action === "open-event-participant-add"\)[\s\S]*?kind: "participants-add"/
@@ -785,15 +797,7 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   );
   assert.match(design, /\.event-participant-add-launch/);
   assert.match(design, /\.event-participant-primary-actions/);
-  assert.match(design, /\.event-participant-invite-launch/);
-  assert.match(
-    design,
-    /\.event-participant-primary-actions[\s\S]*?grid-template-columns: minmax\(0, 3fr\) minmax\(136px, 2fr\)/
-  );
-  assert.match(
-    design,
-    /\.event-participant-invite-launch[\s\S]*?min-width: 136px/
-  );
+  assert.match(design, /\.event-participant-add-screen \.new-event-participant-actions/);
   assert.match(
     design,
     /@media \(max-width: 350px\)[\s\S]*?\.event-participant-primary-actions[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/
@@ -970,14 +974,12 @@ test("participant manager offers a clear group link without leaving the event", 
     "function renderEventShareDialog(event)"
   );
 
-  assert.match(dialog, /class="event-participant-add-zone"/);
-  assert.match(dialog, /הזמן חבר לאפליקציה/);
-  assert.match(dialog, /שלח קישור אישי בוואטסאפ או העתק אותו/);
-  assert.match(dialog, /data-action="open-event-share"/);
-  assert.match(dialog, /class="event-participant-offline-entry participant-add-manual"/);
-  assert.match(dialog, /data-action="focus-event-offline-name"/);
-  assert.match(dialog, /aria-label="שם חדש להוספה ידנית"/);
-  assert.match(dialog, /הוסף ידנית/);
+  assert.match(app, /event-participant-add-routes/);
+  assert.match(app, /הזמן בקישור/);
+  assert.match(app, /data-action="open-event-share"/);
+  assert.match(app, /set-event-participant-add-view/);
+  assert.match(app, /aria-label="שם חדש להוספה ידנית"/);
+  assert.match(app, /הוסף שם ידנית/);
 });
 
 test("single-participant events name the existing share action as an invitation", async () => {
@@ -989,7 +991,8 @@ test("single-participant events name the existing share action as an invitation"
   );
 
   assert.match(header, /participants\.length === 1 \? "הזמנת חברים" : "שיתוף"/);
-  assert.match(header, /data-action="open-event-share"/);
+  assert.match(header, /data-action="open-event-participant-add"/);
+  assert.match(header, /button-action-icon[^>]*aria-hidden="true">\$\{iconSvg\("share"\)\}/);
   assert.doesNotMatch(header, /data-action="invite-first"/);
 });
 
@@ -1167,23 +1170,16 @@ test("event sharing uses a dedicated invite pass instead of a generic status chi
     "function renderEventShareDialog(event)",
     "function renderEventSettingsDialog(event)"
   );
-  const inviteStatus = sourceBetween(
-    app,
-    "function renderInviteStatus(event, ready, available = ready)",
-    "function eventInviteUrl(eventId)"
-  );
-
   assert.match(
     shareDialog,
-    /renderInviteStatus\(event, shareReady, shareAvailable\)/
+    /event-share-link-status/
   );
   assert.match(shareDialog, /event-invite-link-field/);
   assert.match(shareDialog, /event-invite-link-actions/);
-  assert.match(inviteStatus, /event-invite-pass/);
-  assert.match(inviteStatus, /\$\{escapeHtml\(event\.name\)\}/);
-  assert.doesNotMatch(inviteStatus, /status-chip/);
-  assert.match(ledgerStyles, /\.event-invite-pass \{/);
-  assert.match(ledgerStyles, /ledger-invite-pass-sheen/);
+  assert.match(shareDialog, /הקישור מוכן/);
+  assert.match(shareDialog, /הזמנה ל\$\{escapeHtml\(event\.name\)\}/);
+  assert.doesNotMatch(shareDialog, /status-chip/);
+  assert.match(ledgerStyles, /\.event-share-link-status \{/);
   assert.match(ledgerStyles, /\.event-invite-link-actions/);
 });
 
@@ -1250,23 +1246,47 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(roundingHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
 });
 
+test("event cover supports reliable gallery and camera replacement", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const settings = sourceBetween(
+    app,
+    "function renderEventSettingsDialog(event)",
+    "function renderEventSettingsManagementDialog(event)"
+  );
+
+  assert.match(settings, /data-action="event-cover-image"[^>]*accept="image\/\*"/);
+  assert.match(settings, /data-action="event-cover-image"[^>]*capture="environment"/);
+  assert.doesNotMatch(settings, /תמונה מהאינטרנט/);
+  assert.doesNotMatch(settings, /data-action="event-cover-url"/);
+  assert.match(app, /function encodeCanvasJpegWithinLimit\(/);
+  assert.match(app, /maxLength: 240_000/);
+  assert.match(app, /await updateEventCoverImage\(eventId, coverImage\)/);
+  assert.match(app, /const result = await persistState\(\)/);
+  assert.match(app, /state = previousState/);
+  assert.match(app, /settingsFieldUpdatedAt: \{[\s\S]*coverImage: updatedAt/);
+});
+
 test("event settings let managers choose direct payer reimbursements", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const ledgerWorkspace = await readFile(
+    "src/publicLedgerWorkspaceLayer.mjs",
+    "utf8"
+  );
   const repaymentHandler = sourceBetween(
     app,
     "async function setEventRepaymentMode(eventId, mode)",
     "function refreshStartupSharedState(refreshRequest)"
   );
 
-  assert.match(app, /directSettlementTransfers: false/);
+  assert.match(app, /directSettlementTransfers: true/);
   assert.match(app, /title: "חלוקת ההחזרים"/);
-  assert.match(app, /title: "קיזוז חכם"/);
+  assert.match(app, /title: "קיזוז חכם \(מומלץ\)"/);
   assert.match(app, /title: "החזר לפי מי ששילם"/);
   assert.match(app, /data-action="set-event-repayment-mode"/);
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
   assert.match(app, /לא יוצגו העברות נגדיות או כפולות/);
-  assert.match(repaymentHandler, /const previousState = state/);
+  assert.match(repaymentHandler, /const previousDirect = usesDirectSettlementTransfers\(event\)/);
   assert.match(repaymentHandler, /const previousTransfers = eventSettlementTransfers\(event\)/);
   assert.match(repaymentHandler, /const transferPlanChanged = settlementTransferPlanKey\(previousTransfers\)/);
   assert.ok(
@@ -1275,7 +1295,26 @@ test("event settings let managers choose direct payer reimbursements", async () 
   );
   assert.match(repaymentHandler, /במקרה הזה סכומי ההעברות כבר היו זהים/);
   assert.match(repaymentHandler, /const result = await persistState\(\)/);
-  assert.match(repaymentHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
+  assert.match(
+    repaymentHandler,
+    /if \(eventRepaymentModeRequestVersions\.get\(eventId\) !== requestVersion\) return;/
+  );
+  assert.match(
+    repaymentHandler,
+    /if \(!result\?\.ok\) \{\s*state = setEventDirectSettlementTransfers\(/
+  );
+  assert.doesNotMatch(
+    repaymentHandler,
+    /if \(!result\?\.ok\)[\s\S]*?return;\s*}\s*render\(\);/
+  );
+  assert.match(
+    ledgerWorkspace,
+    /\.event-repayment-field \.event-management-option \{[\s\S]*?transition-property: background-color, border-color, box-shadow, color, scale/
+  );
+  assert.match(
+    ledgerWorkspace,
+    /\.event-repayment-field \.event-management-option:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96/
+  );
 });
 
 test("settlement exposes the active repayment mode without burying it in settings", async () => {
@@ -1398,12 +1437,16 @@ test("home dashboard only renders for actionable balances or pending transfers",
   assert.match(dashboard, /אליך · \$\{totals\.groupPendingTransfers\} בקבוצה/);
 });
 
-test("home screen keeps creation and events focused without the manual join hub", async () => {
+test("home screen keeps creation primary and exposes a secondary friends entry", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
 
   assert.equal([...home.matchAll(/data-action="new-event"/g)].length, 1);
-  assert.doesNotMatch(home, /renderHomeEventTools|data-action="groups"/);
+  assert.match(home, /<button class="home-quick-action is-primary" data-action="new-event"/);
+  assert.match(home, /<span class="home-quick-action-icon" aria-hidden="true">/);
+  assert.match(home, /<section class="home-benefit-actions" aria-label="הטבות וחברים">/);
+  assert.doesNotMatch(home, /renderHomeEventTools/);
+  assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
   assert.doesNotMatch(home, /data-action="join-event-link"/);
   assert.doesNotMatch(home, /data-action="join-existing-event"/);
   assert.doesNotMatch(home, /data-action="join-event-screen"/);
@@ -1476,6 +1519,26 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(styles, /\.settlement-hero/);
 });
 
+test("empty expenses and empty summary share one add-expense pattern", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const sharedEmptyState = sourceBetween(
+    app,
+    "function renderEventEmptyExpenseState",
+    "function renderEventTypeGuide"
+  );
+  const settlementHero = sourceBetween(
+    app,
+    "function renderSettlementHero",
+    "function renderFeaturedSettlementHero"
+  );
+
+  assert.match(sharedEmptyState, /event-empty-expense-state/);
+  assert.match(sharedEmptyState, /renderCommandIcon\("expense"\)/);
+  assert.match(sharedEmptyState, /data-action="show-expense-form"/);
+  assert.match(settlementHero, /renderEventEmptyExpenseState\(event/);
+  assert.match(settlementHero, /context: "summary"/);
+});
+
 test("new event creation makes a one-person roster explicit", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
@@ -1500,11 +1563,12 @@ test("transient action menus close when the user taps elsewhere or presses Escap
 
   assert.match(
     clickHandler,
-    /closest\?\.\(\s*"\.expense-row-actions-menu, \.settlement-more-actions"/
+    /closest\?\.\(\s*"\.expense-row-actions-menu, \.settlement-more-actions, \.event-cover-actions-menu"/
   );
   assert.match(clickHandler, /closeOpenTransientMenus\(clickedTransientMenu\)/);
   assert.match(closeMenus, /\.expense-row-actions-menu\[open\]/);
   assert.match(closeMenus, /\.settlement-more-actions\[open\]/);
+  assert.match(closeMenus, /\.event-cover-actions-menu\[open\]/);
   assert.match(closeMenus, /menu\.open = false/);
   assert.match(app, /function hasOpenTransientMenu\(\)/);
   assert.match(app, /function goBackInApp\(\) \{\s*if \(closeOpenTransientMenus\(\)\) return;/);
@@ -1563,4 +1627,39 @@ test("merge selectors update one another without rerendering the active native p
   assert.match(targetChange, /syncMergeParticipantControls\("merge-target"\)/);
   assert.doesNotMatch(sourceChange, /\brender\(\)/);
   assert.doesNotMatch(targetChange, /\brender\(\)/);
+});
+
+test("focused event routes reuse the shared accessibility control", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(
+    app,
+    /class="accessibility-entry-button accessibility-entry-header event-settings-accessibility-button"/
+  );
+  assert.doesNotMatch(
+    app,
+    /class="icon-button event-settings-accessibility-button"/
+  );
+});
+
+test("expense action menus choose a safe direction above app navigation", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /app\.addEventListener\("toggle", handleTransientMenuToggle, true\)/);
+  assert.match(app, /const safeBottom = Math\.min\(/);
+  assert.match(app, /menu\.classList\.toggle\("opens-upward", opensDownPastSafeArea && hasRoomAbove\)/);
+});
+
+test("the focused expense notes dialog saves back to its event", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const dialog = sourceBetween(
+    app,
+    "function renderExpenseNotesDialog(event, canEdit)",
+    "function expenseAvailableFriendParticipants(event)"
+  );
+
+  assert.match(
+    dialog,
+    /data-action="save-expense" data-event-id="\$\{escapeAttribute\(event\.id\)\}"/
+  );
 });

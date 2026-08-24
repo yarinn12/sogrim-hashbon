@@ -62,18 +62,26 @@ function enhanceInstallSurface() {
     return;
   }
 
-  const actions = document.querySelector(".account-profile-actions");
-  if (!actions || actions.querySelector(INSTALL_BUTTON_SELECTOR)) return;
+  const label = isIosDevice() ? "הוספה למסך הבית" : "התקנה בטלפון";
+  const buttonHtml = `
+    <button class="secondary-button account-install-button" data-public-install-app type="button">
+      ${iconSvg("download")}
+      <span>${label}</span>
+    </button>
+  `;
 
-  actions.insertAdjacentHTML(
-    "afterbegin",
-    `
-      <button class="secondary-button account-install-button" data-public-install-app type="button">
-        ${iconSvg("download")}
-        <span>${isIosDevice() ? "הוספה למסך הבית" : "התקנה בטלפון"}</span>
-      </button>
-    `
-  );
+  const profileActions = document.querySelector(".account-profile-actions");
+  if (profileActions && !profileActions.querySelector(INSTALL_BUTTON_SELECTOR)) {
+    profileActions.insertAdjacentHTML("afterbegin", buttonHtml);
+  }
+
+  const authPanel = document.querySelector("#public-account-auth-gate .account-auth-form-panel");
+  if (authPanel && !authPanel.querySelector(INSTALL_BUTTON_SELECTOR)) {
+    authPanel.insertAdjacentHTML(
+      "beforeend",
+      `<div class="account-auth-install-action">${buttonHtml}</div>`
+    );
+  }
 }
 
 async function handleInstallClick(event) {
@@ -145,6 +153,7 @@ function openInstallDialog() {
 
   document.documentElement.classList.add("install-app-open");
   document.querySelector("#app")?.setAttribute("inert", "");
+  document.querySelector("#public-account-auth-gate")?.setAttribute("inert", "");
   pushInstallHistoryState();
   document.querySelector(".install-app-dialog")?.focus();
 }
@@ -166,6 +175,7 @@ function closeInstallDialog({ fromHistory = false } = {}) {
   if (!document.querySelector("[data-account-delete-dialog]")) {
     document.querySelector("#app")?.removeAttribute("inert");
   }
+  document.querySelector("#public-account-auth-gate")?.removeAttribute("inert");
   installDialogReturnFocus?.focus();
   installDialogReturnFocus = null;
 }
@@ -262,6 +272,17 @@ function injectInstallStyles() {
       stroke-linejoin: round;
     }
 
+    .account-auth-install-action {
+      display: flex;
+      justify-content: center;
+      margin-top: 12px;
+    }
+
+    .account-auth-install-action .account-install-button {
+      width: 100%;
+      justify-content: center;
+    }
+
     html.install-app-open,
     html.install-app-open body {
       overflow: hidden;
@@ -270,7 +291,7 @@ function injectInstallStyles() {
     .install-app-backdrop {
       position: fixed;
       inset: 0;
-      z-index: 90;
+      z-index: 1200;
       display: grid;
       place-items: center;
       padding: 18px;

@@ -69,6 +69,9 @@ test("expense rows reveal every shared participant from the uncluttered row", as
   assert.match(expenseRow, /class="expense-participants-details"/);
   assert.match(expenseRow, /data-action="toggle-expense-participants"/);
   assert.match(expenseRow, /aria-expanded="false"/);
+  assert.match(app, /openExpenseParticipantIds:[\s\S]*?expense-participants-details\[open\]/);
+  assert.match(app, /for \(const expenseId of snapshot\.openExpenseParticipantIds \?\? \[\]\)/);
+  assert.match(app, /hydrateExpenseParticipants\(details, event, expense\);[\s\S]*?details\.open = true;/);
   assert.match(expenseRow, /aria-controls="expense-participants-/);
   assert.match(expenseRow, /הצג את כל השותפים/);
   assert.match(expenseRow, /sharedParticipantIds[\s\S]*?renderExpenseParticipant/);

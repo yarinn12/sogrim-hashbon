@@ -5,9 +5,32 @@ import {
   CloudStateAuthError,
   CloudStateConflictError,
   loadCloudState,
+  readAccessibleSharedCloudStates,
   readCloudState,
   saveCloudState
 } from "../src/data/cloudStore.mjs";
+
+test("a signed-in account can rediscover shared events after its local index is lost", async () => {
+  const config = createConfig("personal-account-space");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "personal-account-space"
+  };
+  const requests = [];
+  const rows = await readAccessibleSharedCloudStates(config, async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse([{
+      id: "shared-event-korea",
+      state: { events: [{ id: "event-korea", name: "קוריאה" }] },
+      updated_at: "2026-08-24T10:00:00.000Z"
+    }]);
+  });
+
+  assert.equal(rows.length, 1);
+  assert.match(requests[0].url, /snapshot_kind=eq\.shared_event/);
+  assert.equal(requests[0].options.headers.authorization, "Bearer account-access-token");
+});
 
 function createConfig(spaceId) {
   return {
@@ -95,6 +118,62 @@ test("loadCloudState creates a snapshot when the space does not exist yet", asyn
   assert.equal(body.id, "friends-create");
   assert.deepEqual(body.state, state);
   assert.match(body.access_key_hash, /^[a-f0-9]{64}$/);
+});
+
+test("a fresh account waits for its participant before creating a personal snapshot", async () => {
+  const config = createConfig("fresh-account-space");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "fresh-account-space"
+  };
+  const emptyState = {
+    currentParticipantId: "",
+    participants: [],
+    groups: [],
+    events: []
+  };
+  const requests = [];
+
+  const loaded = await loadCloudState(config, emptyState, async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse([]);
+  });
+
+  assert.deepEqual(loaded, emptyState);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.method, undefined);
+});
+
+test("a fresh account creates its personal snapshot after its participant exists", async () => {
+  const config = createConfig("fresh-valid-account-space");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "fresh-valid-account-space"
+  };
+  const personalState = {
+    ...state,
+    currentParticipantId: "account-user-one",
+    participants: [
+      { id: "account-user-one", displayName: "Owner", kind: "user" }
+    ]
+  };
+  const requests = [];
+
+  await loadCloudState(config, personalState, async (url, options) => {
+    requests.push({ url, options });
+    return requests.length === 1
+      ? jsonResponse([])
+      : jsonResponse([{ updated_at: "2026-07-17T10:00:00.000Z" }]);
+  });
+
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].options.method, "POST");
+  assert.equal(
+    JSON.parse(requests[1].options.body).state.currentParticipantId,
+    "account-user-one"
+  );
 });
 
 test("saveCloudState upserts the latest app snapshot", async () => {

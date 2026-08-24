@@ -14,20 +14,18 @@ test("public invite QR layer loads after invite snapshot links", async () => {
   assert.match(sw, /publicInviteQrLayer\.mjs/);
 });
 
-test("public invite QR layer renders a QR code from the smart event invite link", async () => {
+test("public invite QR layer renders only the exact prepared event invite link", async () => {
   const layer = await readFile("src/publicInviteQrLayer.mjs", "utf8");
 
   assert.match(layer, /createQrSvg/);
-  assert.match(layer, /input\?\.value\?\.trim\(\) \|\| smartInviteUrl/);
-  assert.match(layer, /buildEventInviteSnapshot/);
-  assert.match(layer, /buildEventInviteUrl/);
-  assert.match(layer, /eventOpenInviteToken/);
-  assert.match(layer, /normalizeReferralCode/);
+  assert.match(layer, /const inviteUrl = input\?\.value\?\.trim\(\)/);
+  assert.match(layer, /parseInviteEventId\(inviteUrl\)/);
+  assert.match(layer, /parseInviteToken\(inviteUrl\)/);
+  assert.match(layer, /exactEventId !== eventId/);
+  assert.match(layer, /!exactInviteToken/);
+  assert.doesNotMatch(layer, /smartInviteUrl/);
   assert.match(layer, /settle-friends:entitlements-changed/);
-  assert.match(layer, /referralCode/);
-  assert.match(layer, /runtimeConfig\?\.storage\?\.mode === "supabase"/);
-  assert.match(layer, /runtimeConfig\?\.publicUrl \|\| window\.location\.href/);
-  assert.match(layer, /inviteToken/);
+  assert.doesNotMatch(layer, /buildEventInviteUrl/);
   assert.doesNotMatch(layer, /getActiveCloudSpaceId/);
   assert.match(layer, /data-action="copy-invite"/);
   assert.match(layer, /data-open-link="true"/);

@@ -14,10 +14,50 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /updateTransferStatus/);
   assert.match(app, /"מחכה שתעביר"/);
   assert.match(app, /"מחכה שיגיע"/);
-  assert.match(app, /"טרם הושלם"/);
+  assert.match(app, /"יתרה זמנית"/);
+  assert.match(app, /"ממתין להעברה"/);
+  assert.match(app, /paymentActionsEnabled = isEventClosed\(event\)/);
+  assert.doesNotMatch(app, /אפשר לסמן אחרי סגירת האירוע/);
+  assert.match(app, /const transferRow = event\.target\.closest\?\.\("\.transfer-row"\)/);
+  assert.match(app, /explanation\.open = !explanation\.open/);
+  assert.match(app, /data-transfer-id="\$\{escapeAttribute\(transfer\.id\)\}"/);
+  assert.match(app, /openTransferIds:[\s\S]*?transfer-explanation\[open\]/);
+  assert.match(app, /for \(const transferId of snapshot\.openTransferIds \?\? \[\]\)/);
+  assert.match(app, /pageScrollY: window\.scrollY/);
+  assert.match(app, /const openSettlementTransferIds = loadOpenSettlementTransferIds\(\)/);
+  assert.match(app, /openSettlementTransferIds\.add\(transferId\)/);
+  assert.match(app, /persistOpenSettlementTransferIds\(\)/);
+  assert.match(app, /renderTransferExplanation\(event, transfer, \{ open: explanationOpen \}\)/);
   assert.match(app, /class="secondary-button transfer-complete-button"/);
-  assert.match(app, /<span aria-hidden="true">✓<\/span> הושלם/);
+  assert.match(app, /<span aria-hidden="true">✓<\/span> הועבר/);
   assert.match(app, /reconcileEventTransfers\(updatedEvent, updatedEvent\?\.transfers \?\? \[\]\)/);
+});
+
+test("reopening asks whether to keep or reset recorded payments", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /function requestReopenCurrentEvent\(eventId, trigger\)/);
+  assert.match(app, /לשמור תשלומים שבוצעו/);
+  assert.match(app, /לאפס את כל התשלומים/);
+  assert.match(app, /paymentMode: "keep"/);
+  assert.match(app, /resetPayments: action\.payload\.paymentMode === "reset"/);
+  assert.match(app, /event\.transfers = \(event\.transfers \?\? \[\]\)\.map/);
+});
+
+test("settlement transfer identity and disclosure stay platform-neutral", async () => {
+  const app = await readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
+  const transferRow = app.slice(
+    app.indexOf("function renderTransferRow("),
+    app.indexOf("function renderDirectFeaturedSettlementBreakdown(")
+  );
+
+  assert.doesNotMatch(transferRow, /transfer-current-user/);
+  assert.doesNotMatch(transferRow, />אתה</);
+  assert.match(
+    transferRow,
+    /transfer-expand-indicator[\s\S]*transfer-status/,
+    "the disclosure arrow remains on the leading RTL side of the status on every platform"
+  );
 });
 
 test("the final paid transfer opens one completion celebration with a history action", async () => {
@@ -99,10 +139,7 @@ test("a single personal transfer leads with its amount and a compact explanation
 
   assert.match(app, /const featuredPersonalTransfer = singlePersonalPayment \?\? singlePersonalReceipt/);
   assert.match(app, /const hasPersonalPendingTransfers =/);
-  assert.match(
-    app,
-    /!hasTransfers \|\| calculated\.issues\.length \|\| hasPersonalPendingTransfers/
-  );
+  assert.match(app, /renderSettlementHero\(event, transfers, pendingTotal, calculated\.issues\)/);
   assert.match(app, /function renderFeaturedSettlementHero/);
   assert.match(app, /class="panel settlement-hero is-pending is-personal-pending is-explained"/);
   assert.match(app, /class="settlement-featured-route"/);

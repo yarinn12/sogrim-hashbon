@@ -72,7 +72,11 @@ test("an expired cloud token refreshes once and retries with the same account", 
     );
     const loaded = await localStore.loadSharedState();
 
-    assert.deepEqual(cloudTokens, ["Bearer expired-token", "Bearer fresh-token"]);
+    assert.deepEqual(cloudTokens, [
+      "Bearer expired-token",
+      "Bearer fresh-token",
+      "Bearer fresh-token"
+    ]);
     assert.equal(refreshCount, 1);
     assert.deepEqual(loaded.events, []);
     assert.equal(loaded.currentParticipantId, "account-user-one");

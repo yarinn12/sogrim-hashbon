@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
 
 const FRIEND_CODE_PATTERN = /^[a-f0-9]{20}$/;
 const SHARED_SPACE_ID_PATTERN = /^[a-zA-Z0-9_-]{3,80}$/;
@@ -11,6 +12,10 @@ const REPORT_CATEGORIES = new Set([
   "spam",
   "other"
 ]);
+const PROFILE_SELECT =
+  "user_id,username,username_customized,display_name,avatar_preset,avatar_image,updated_at";
+const LEGACY_PROFILE_SELECT =
+  "user_id,username,username_customized,display_name,avatar_preset,updated_at";
 
 export function friendNetworkAvailable(config) {
   return Boolean(
@@ -29,28 +34,19 @@ export async function syncFriendProfile(
 ) {
   if (!friendNetworkAvailable(config) || !profile?.displayName) return null;
 
-  const response = await fetchWithTimeout(
-    fetchImpl,
-    restUrl(config, "user_profiles", {
-      user_id: `eq.${config.storage.account.userId}`,
-      select: "user_id,username,username_customized,display_name,avatar_preset,updated_at"
-    }),
-    {
-      method: "PATCH",
-      headers: {
-        ...friendHeaders(config),
-        prefer: "return=representation"
-      },
-      body: JSON.stringify({
-        display_name: String(profile.displayName).trim(),
-        avatar_preset: String(profile.avatarPreset ?? "").trim() || null,
-        updated_at: new Date().toISOString()
-      })
-    }
-  );
-  const rows = await responseJson(response);
-  if (!response.ok) throw friendStoreError(rows, "Profile sync failed");
-  return Array.isArray(rows) ? rows[0] ?? null : rows;
+  const body = {
+    display_name: String(profile.displayName).trim(),
+    avatar_preset: String(profile.avatarPreset ?? "").trim() || null,
+    avatar_image: normalizeAvatarImage(profile.avatarImage) || null,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    return await patchFriendProfile(config, body, PROFILE_SELECT, fetchImpl);
+  } catch (error) {
+    if (!missingAvatarImageColumn(error)) throw error;
+    const { avatar_image: _avatarImage, ...legacyBody } = body;
+    return patchFriendProfile(config, legacyBody, LEGACY_PROFILE_SELECT, fetchImpl);
+  }
 }
 
 export async function loadFriendNetwork(config, fetchImpl = fetch) {
@@ -103,15 +99,7 @@ export async function loadFriendNetwork(config, fetchImpl = fetch) {
     ])
   ].filter(Boolean);
   const profiles = visibleUserIds.length
-    ? await readRows(
-        config,
-        "user_profiles",
-        {
-          user_id: `in.(${visibleUserIds.join(",")})`,
-          select: "user_id,username,username_customized,display_name,avatar_preset,updated_at"
-        },
-        fetchImpl
-      )
+    ? await readFriendProfiles(config, visibleUserIds, fetchImpl)
     : [];
 
   return {
@@ -122,6 +110,52 @@ export async function loadFriendNetwork(config, fetchImpl = fetch) {
     blockedUsers,
     profiles
   };
+}
+
+async function patchFriendProfile(config, body, select, fetchImpl) {
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    restUrl(config, "user_profiles", {
+      user_id: `eq.${config.storage.account.userId}`,
+      select
+    }),
+    {
+      method: "PATCH",
+      headers: {
+        ...friendHeaders(config),
+        prefer: "return=representation"
+      },
+      body: JSON.stringify(body)
+    }
+  );
+  const rows = await responseJson(response);
+  if (!response.ok) throw friendStoreError(rows, "Profile sync failed");
+  return Array.isArray(rows) ? rows[0] ?? null : rows;
+}
+
+async function readFriendProfiles(config, userIds, fetchImpl) {
+  const query = { user_id: `in.(${userIds.join(",")})` };
+  try {
+    return await readRows(
+      config,
+      "user_profiles",
+      { ...query, select: PROFILE_SELECT },
+      fetchImpl
+    );
+  } catch (error) {
+    if (!missingAvatarImageColumn(error)) throw error;
+    return readRows(
+      config,
+      "user_profiles",
+      { ...query, select: LEGACY_PROFILE_SELECT },
+      fetchImpl
+    );
+  }
+}
+
+function missingAvatarImageColumn(error) {
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("avatar_image") && message.includes("column");
 }
 
 export async function requestFriendship(

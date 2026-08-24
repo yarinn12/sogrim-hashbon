@@ -2,15 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("primary navigation remains available in event, settlement, and notification flows", async () => {
+test("primary navigation remains available throughout every signed-in flow", async () => {
   const [styles, brand] = await Promise.all([
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
     readFile("src/publicBrandLayer.mjs", "utf8")
   ]);
 
   assert.match(styles, /\.product-app-nav\[hidden\] \{[\s\S]*?display: none !important/);
-  assert.match(brand, /const PRIMARY_NAV_SCREENS = new Set\(\[[\s\S]*?"event",[\s\S]*?"settlement"[\s\S]*?\]\)/);
-  assert.match(brand, /const PRIMARY_NAV_SCREENS = new Set\(\[[\s\S]*?"notifications"/);
+  assert.match(brand, /function shouldShowPrimaryNav\(screen\)/);
+  assert.match(brand, /!screen\.classList\.contains\("profile-first-run-screen"\)/);
+  assert.match(brand, /function syncIdentityRouteControls\(screen, identity\)/);
+  assert.match(brand, /controls\.prepend\(backButton\)/);
   assert.match(
     brand,
     /kind === "notifications"[\s\S]*?\? "notifications"[\s\S]*?kind === "profile"[\s\S]*?\? "profile"/
@@ -25,9 +27,8 @@ test("primary navigation remains available in event, settlement, and notificatio
     brand,
     /\["home", "event", "settlement", "join-event", "new-event", "groups", "notifications"\]\.includes\(explicitKind\)/
   );
-  assert.match(brand, /PRIMARY_NAV_SCREENS\.has\(kind\) \? renderHeaderNav\(\) : ""/);
-  assert.doesNotMatch(brand, /PRIMARY_NAV_SCREENS = new Set\([^\n]*"join-event"/);
-  assert.doesNotMatch(brand, /PRIMARY_NAV_SCREENS = new Set\([^\n]*"new-event"/);
+  assert.match(brand, /shouldShowPrimaryNav\(screen\) \? renderHeaderNav\(\) : ""/);
+  assert.doesNotMatch(brand, /PRIMARY_NAV_SCREENS/);
 });
 
 test("studio layer fully styles the empty-state icon after retiring the brand stylesheet", async () => {

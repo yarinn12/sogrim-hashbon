@@ -8,9 +8,50 @@ import {
   ensureEventShareCredentials,
   eventShareCredentials,
   mergeSharedEventIntoState,
+  recoverAccessibleSharedEvents,
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
+
+test("membership recovery rebuilds a missing personal event index", async () => {
+  const runtimeConfig = {
+    storage: {
+      mode: "supabase",
+      url: "https://project.supabase.co",
+      table: "app_snapshots",
+      anonKey: "anon",
+      spaceId: "personal-space",
+      spaceKey: "personal_space_key_1234567890123456",
+      account: { userId: "user-one", accessToken: "account-token" }
+    }
+  };
+  const empty = { currentParticipantId: "account-user-one", participants: [], events: [] };
+  const recovered = await recoverAccessibleSharedEvents(
+    runtimeConfig,
+    empty,
+    async () => ({
+      ok: true,
+      json: async () => [{
+        id: "shared-event-korea",
+        updated_at: "2026-08-24T10:00:00.000Z",
+        state: {
+          currentParticipantId: "",
+          participants: [{ id: "account-user-one", displayName: "משתמש" }],
+          groups: [],
+          events: [{
+            id: "event-korea",
+            name: "קוריאה",
+            participantIds: ["account-user-one"],
+            expenses: []
+          }]
+        }
+      }]
+    })
+  );
+
+  assert.equal(recovered.events[0].name, "קוריאה");
+  assert.equal(recovered.events[0].sharedSpaceId, "shared-event-korea");
+});
 
 test("shared-event membership is verified with the signed-in account before writes", async () => {
   const requests = [];

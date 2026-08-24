@@ -146,7 +146,7 @@ test("event tools reuse compact app chrome instead of retired oversized modal st
     readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
   ]);
 
-  assert.match(app, /modalClass: "event-task-modal event-share-modal"/);
+  assert.match(app, /modalClass: "event-task-modal event-share-modal(?: [^"]+)?"/);
   assert.match(app, /modalClass: "event-task-modal event-settings-modal"/);
   assert.match(
     layer,

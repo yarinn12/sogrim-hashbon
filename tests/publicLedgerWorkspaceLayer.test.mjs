@@ -231,7 +231,7 @@ test("ledger workspace keeps task navigation and mobile modals production ready"
   );
   assert.match(
     layer,
-    /\.event-management-option\[aria-checked="true"\] \{[\s\S]*?box-shadow: 0 0 0 3px rgba\(34, 174, 178, 0\.12\) !important/
+    /\.event-management-option\[aria-checked="true"\] \{[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?box-shadow: inset -3px 0 0 #08745d !important/
   );
   assert.match(
     layer,
@@ -624,6 +624,22 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   assert.match(layer, /\.expense-row-actions-menu\[open\] > summary \{[\s\S]*?background: var\(--ledger-brand\) !important/);
   assert.match(layer, /\.expense-row:has\(\.expense-row-actions-menu\[open\]\) \{[\s\S]*?z-index: 24 !important/);
   assert.match(layer, /\.expense-row-actions-menu > div \{[\s\S]*?z-index: 25 !important/);
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="event"\] \.expense-row-actions-menu > div \{[\s\S]*?width: 166px !important;[\s\S]*?padding: 8px !important;[\s\S]*?border-radius: 14px !important/
+  );
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="event"\] \.expense-row-actions-menu button \{[\s\S]*?min-height: 42px !important;[\s\S]*?background: transparent !important;[\s\S]*?font-size: 13\.5px !important/
+  );
+  assert.match(
+    layer,
+    /\.expense-row:nth-last-child\(-n \+ 2\)[\s\S]*?\.expense-row-actions-menu > div \{[\s\S]*?inset-block-start: auto !important;[\s\S]*?inset-block-end: calc\(100% \+ 6px\) !important/
+  );
+  assert.match(
+    layer,
+    /\.expense-day-group:last-child[\s\S]*?\.expense-row:last-child[\s\S]*?\.expense-row-actions-menu > div \{[\s\S]*?inset-block-start: auto !important;[\s\S]*?inset-block-end: calc\(100% \+ 6px\) !important/
+  );
   assert.match(layer, /\.settlement-hero:has\(\.settlement-more-actions\[open\]\) \{[\s\S]*?z-index: 30 !important;[\s\S]*?overflow: visible !important/);
   assert.match(layer, /\.settlement-more-actions > div \{[\s\S]*?position: absolute !important/);
   assert.match(layer, /\.referral-reward-card\.is-home[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important/);
@@ -641,6 +657,18 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   assert.match(layer, /\.event-header-actions button \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /\.event-workspace-tab \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /\.expense-row-actions-menu > summary \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important/);
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="event"\] \.event-expenses-section \{[\s\S]*?padding-block-end: calc\(84px \+ env\(safe-area-inset-bottom\)\) !important/
+  );
+  assert.match(
+    layer,
+    /\.product-app-nav \{[\s\S]*?left: 50% !important;[\s\S]*?width: min\(360px, calc\(100% - 24px\)\) !important;[\s\S]*?transform: translateX\(-50%\) !important/
+  );
+  assert.doesNotMatch(
+    layer,
+    /\.event-route-primary-nav \{[\s\S]*?left: 10px !important;[\s\S]*?width: calc\(100% - 20px\) !important/
+  );
   assert.match(layer, /\.expense-participants-details > summary \{[\s\S]*?min-height: 44px !important/);
   assert.match(
     layer,
@@ -648,4 +676,62 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   );
   assert.match(layer, /\.referral-reward-card\.is-home > button \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
+});
+
+test("shared route and progress controls keep Android touch targets at least 44px", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /Final mobile touch-target guardrails[\s\S]*?\.product-route-controls > \.accessibility-entry-button,[\s\S]*?\.event-settings-accessibility-button \{[\s\S]*?min-width: 48px !important;[\s\S]*?min-height: 48px !important/
+  );
+  assert.match(
+    layer,
+    /Final mobile touch-target guardrails[\s\S]*?\.event-creation-progress li,[\s\S]*?\.event-creation-progress li > button \{[\s\S]*?min-height: 44px !important/
+  );
+  assert.match(
+    layer,
+    /Final mobile touch-target guardrails[\s\S]*?\.friend-row-profile-button \{[\s\S]*?min-height: 44px !important/
+  );
+});
+
+test("home makes the new-event action primary without separating it from the hero", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="home"\] > \.top,[\s\S]*?\.product-home-screen > \.top \{[\s\S]*?margin-block-end: 0 !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-quick-actions \{[\s\S]*?width: 100% !important;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?margin: -74px 0 16px !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-benefit-actions \{[\s\S]*?grid-template-columns: minmax\(0, 1\.48fr\) minmax\(126px, 0\.92fr\) !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-quick-action\.is-primary \{[\s\S]*?display: flex !important;[\s\S]*?justify-content: center !important;[\s\S]*?background: #ffffff !important;[\s\S]*?0 14px 32px rgba\(18, 58, 46, 0\.12\)/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-quick-action\.is-primary > span:nth-child\(2\) \{[\s\S]*?text-align: center !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-quick-action\.is-primary strong \{[\s\S]*?font-size: 16px !important;[\s\S]*?white-space: nowrap !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen \.home-quick-action\.is-primary \.home-quick-action-icon \{[\s\S]*?width: 44px !important;[\s\S]*?color: var\(--ledger-brand\) !important;[\s\S]*?background: transparent !important/
+  );
+  assert.match(
+    layer,
+    /\.product-home-screen button\.home-quick-action:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96 !important/
+  );
+  assert.match(
+    layer,
+    /\.home-quick-action\.is-primary \.home-quick-action-icon:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96 !important/
+  );
 });

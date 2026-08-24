@@ -30,6 +30,23 @@ test("a fresh signup never inherits the previous device owner's name", async () 
   assert.doesNotMatch(accountGate, /loadLocalProfile|previousProfile/);
 });
 
+test("signup requires a username and keeps it through validation and account completion", async () => {
+  const [layer, auth, schema] = await Promise.all([
+    readFile("src/publicAccountAuthLayer.mjs", "utf8"),
+    readFile("src/data/accountAuth.mjs", "utf8"),
+    readFile("supabase/schema.sql", "utf8")
+  ]);
+
+  assert.match(layer, /<span>שם משתמש<\/span>[\s\S]*?name="username"[\s\S]*?required/);
+  assert.doesNotMatch(layer, /שם משתמש ייחודי \(לא חובה\)/);
+  assert.match(layer, /!normalizeUsername\(username\)/);
+  assert.match(layer, /usernameValidationMessage\(username\)/);
+  assert.match(layer, /signUpWithPassword\(runtimeConfig, \{[\s\S]*?username,/);
+  assert.match(auth, /username: normalizedUsername/);
+  assert.match(schema, /new\.raw_user_meta_data ->> 'username'/);
+  assert.match(schema, /requested_username ~ '\^\[a-z\]\[a-z0-9_\]\{2,23\}\$'/);
+});
+
 test("account gate offers email registration, Google, Apple, sign out and deletion", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
 
@@ -46,6 +63,12 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /if \(isNativeAndroid\(\)\) \{\s*await signInWithNativeGoogle\(\)/);
   assert.match(layer, /accountAuthErrorMessage\(error, "google"\)/);
   assert.match(layer, /renderAccountNameCompletionGate\(\{\s*displayName:/);
+  assert.match(
+    layer,
+    /if \(accountSession\?\.user && accountProfileNeedsCompletion\(error\)\) \{[\s\S]*?renderAccountNameCompletionGate/
+  );
+  assert.match(layer, /אחרי השמירה נמשיך אוטומטית לאירוע מהקישור/);
+  assert.match(layer, /hasSavedFullName[\s\S]*type="hidden"/);
   assert.match(layer, /appleOAuthUrl/);
   assert.match(layer, /aria-label="המשך עם Apple"/);
   assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);
@@ -291,6 +314,8 @@ test("profile name edits update the authenticated cloud account", async () => {
   assert.match(app, /SogrimAccountProfile\?\.updateDisplayName\?\.\(displayName\)/);
   assert.match(app, /Promise\.allSettled/);
   assert.match(app, /עדכון החשבון יושלם כשהחיבור יחזור/);
+  assert.match(app, /תמונת הפרופיל נשמרה/);
+  assert.match(app, /תמונת הפרופיל נשמרה/);
 });
 
 test("account gate protects private content and preserves interrupted form work", async () => {
@@ -303,6 +328,22 @@ test("account gate protects private content and preserves interrupted form work"
   assert.doesNotMatch(layer, /renderAccountBootGate|account-auth-boot/);
   assert.match(layer, /account-auth-locked/);
   assert.match(layer, /canResumeOffline/);
+  assert.match(
+    layer,
+    /function handleAccountSetupFailure\(\)[\s\S]*?const storedSession = accountSession \?\? loadStoredAccountSession\(\)[\s\S]*?renderAccountRecoveryGate\(\)/
+  );
+  assert.match(
+    layer,
+    /if \(canResumeOffline\(accountSession, error\)\) \{[\s\S]*?resumeAccountLocally\(accountSession\)/
+  );
+  assert.match(
+    layer,
+    /if \(accountSession && isTransientAccountError\(error\)\) \{[\s\S]*?saveAccountSession\(accountSession\);[\s\S]*?renderAccountRecoveryGate\(\)/
+  );
+  assert.match(
+    layer,
+    /accountSession\?\.refresh_token &&[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\(runtimeConfig, accountSession\)[\s\S]*?saveAccountSession\(accountSession\)[\s\S]*?connectAccountToApp\(accountSession/
+  );
   assert.match(layer, /function isTransientAccountError\(error\)/);
   assert.match(
     layer,
@@ -394,6 +435,25 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(
     layer,
     /\.account-email-toggle \{[\s\S]*?min-height: 48px;[\s\S]*?font-weight: 800;/
+  );
+});
+
+test("a fresh device waits briefly for account history before showing an empty account", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const connection = layer.slice(
+    layer.indexOf("async function connectAccountToApp"),
+    layer.indexOf("function discardFailedInviteContext")
+  );
+
+  assert.match(layer, /const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000/);
+  assert.match(connection, /const localAccountState = loadState\(\)/);
+  assert.match(
+    connection,
+    /localAccountState\.events\?\.length[\s\S]*?localAccountState\.groups\?\.length[\s\S]*?localAccountState\.friendContacts\?\.length/
+  );
+  assert.match(
+    connection,
+    /maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS/
   );
 });
 
@@ -510,4 +570,17 @@ test("sign-out removes reusable local credentials before awaiting the network", 
   assert.ok(
     signOut.indexOf("clearAccountWorkspace(session?.user, storage)") < signOut.indexOf("await authRequest")
   );
+});
+
+test("password fields can reveal and hide their value accessibly", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const icons = await readFile("src/uiIcons.mjs", "utf8");
+
+  assert.match(layer, /class="account-password-toggle"/);
+  assert.match(layer, /data-account-action="toggle-password"/);
+  assert.match(layer, /input\.type = reveal \? "text" : "password"/);
+  assert.match(layer, /reveal \? "הסתר סיסמה" : "הצג סיסמה"/);
+  assert.match(layer, /\.account-password-toggle:active[\s\S]*?scale\(0\.96\)/);
+  assert.match(icons, /eye:/);
+  assert.match(icons, /"eye-off":/);
 });

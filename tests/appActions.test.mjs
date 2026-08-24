@@ -195,6 +195,97 @@ test("event repayment mode can switch between optimized and direct reimbursement
   );
 });
 
+test("rapid repayment mode changes always receive newer setting timestamps", () => {
+  const state = baseState();
+  state.events[0].settingsUpdatedAt = "2099-01-01T00:00:00.000Z";
+  state.events[0].settingsFieldUpdatedAt = {
+    directSettlementTransfers: "2099-01-01T00:00:00.000Z"
+  };
+
+  const direct = setEventDirectSettlementTransfers(state, "event-1", true);
+  const optimized = setEventDirectSettlementTransfers(direct, "event-1", false);
+
+  assert.equal(
+    direct.events[0].settingsFieldUpdatedAt.directSettlementTransfers,
+    "2099-01-01T00:00:00.001Z"
+  );
+  assert.equal(
+    optimized.events[0].settingsFieldUpdatedAt.directSettlementTransfers,
+    "2099-01-01T00:00:00.002Z"
+  );
+});
+
+test("reselecting direct repayment repairs reciprocal pending transfers", () => {
+  const state = {
+    currentParticipantId: "maor",
+    participants: [
+      { id: "maor", displayName: "Maor", kind: "user" },
+      { id: "yarin", displayName: "Yarin", kind: "user" }
+    ],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        name: "Reciprocal repayments",
+        participantIds: ["maor", "yarin"],
+        expenses: [
+          {
+            id: "maor-paid-for-yarin",
+            total: 100000,
+            payers: [{ participantId: "maor", amount: 100000 }],
+            sharedByParticipantIds: ["yarin"]
+          },
+          {
+            id: "yarin-paid-for-maor",
+            total: 20000,
+            payers: [{ participantId: "yarin", amount: 20000 }],
+            sharedByParticipantIds: ["maor"]
+          }
+        ],
+        transfers: [
+          {
+            id: "legacy-yarin-maor",
+            fromParticipantId: "yarin",
+            toParticipantId: "maor",
+            amount: 100000,
+            status: "pending"
+          },
+          {
+            id: "legacy-maor-yarin",
+            fromParticipantId: "maor",
+            toParticipantId: "yarin",
+            amount: 20000,
+            status: "pending"
+          }
+        ],
+        directSettlementTransfers: true,
+        roundSettlementTransfers: false
+      }
+    ]
+  };
+
+  const repaired = setEventDirectSettlementTransfers(state, "event-1", true);
+
+  assert.deepEqual(
+    repaired.events[0].transfers.map(
+      ({ fromParticipantId, toParticipantId, amount, status }) => ({
+        fromParticipantId,
+        toParticipantId,
+        amount,
+        status
+      })
+    ),
+    [
+      {
+        fromParticipantId: "yarin",
+        toParticipantId: "maor",
+        amount: 80000,
+        status: "pending"
+      }
+    ]
+  );
+});
+
 test("repayment mode changes avoid an unnecessary reverse route", () => {
   const state = {
     currentParticipantId: "harel",

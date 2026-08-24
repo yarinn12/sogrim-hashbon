@@ -40,10 +40,11 @@ test("mobile keyboard actions advance fields and submit safe inline actions", as
 });
 
 test("focused tasks keep back and home in quick controls", async () => {
-  const [app, layer, brand] = await Promise.all([
+  const [app, layer, brand, primaryNavigation] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicHomeButtonLayer.mjs", "utf8"),
-    readFile("src/publicBrandLayer.mjs", "utf8")
+    readFile("src/publicBrandLayer.mjs", "utf8"),
+    readFile("src/primaryNavigation.mjs", "utf8")
   ]);
 
   assert.match(app, /const persistentIdentity = app\.querySelector\(/);
@@ -58,11 +59,12 @@ test("focused tasks keep back and home in quick controls", async () => {
   assert.match(layer, /controls\.append\(homeButton\)/);
   assert.match(layer, /button\.dataset\.action = "home"/);
   assert.match(layer, /aria-label", "\\u05d7\\u05d6\\u05e8\\u05d4 \\u05dc\\u05de\\u05e1\\u05da \\u05d4\\u05d1\\u05d9\\u05ea"/);
-  assert.match(brand, /class="product-app-nav"/);
-  assert.match(brand, /data-action="home" data-nav-destination="home"/);
-  assert.match(brand, /data-nav-destination="events"/);
-  assert.match(brand, /data-action="open-notifications" data-nav-destination="notifications"/);
-  assert.match(brand, /data-nav-destination="profile"/);
+  assert.match(brand, /renderPrimaryNavigation/);
+  assert.match(primaryNavigation, /\["product-app-nav", extraClass\]/);
+  assert.match(primaryNavigation, /data-action="home" data-nav-destination="home"/);
+  assert.match(primaryNavigation, /data-nav-destination="events"/);
+  assert.match(primaryNavigation, /data-action="open-notifications" data-nav-destination="notifications"/);
+  assert.match(primaryNavigation, /data-nav-destination="profile"/);
   assert.match(layer, /controls\.hidden = false/);
   assert.match(layer, /controls\.dataset\.currentRoute = homeScreen \? "home" : "internal"/);
   assert.match(layer, /syncDialogRouteControls\(screen\)/);

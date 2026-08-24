@@ -66,13 +66,16 @@ test("native startup renders account-scoped local state while a slow cloud refre
   );
   assert.match(
     accountAuth,
-    /const startupState = await loadSharedStateForStartup\(\{ maxWaitMs: 0 \}\)/
+    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
   );
   assert.match(
     accountAuth,
     /const accountStateChanged = hasSharedStateChanged\([\s\S]*?startupState\.state,[\s\S]*?nextState[\s\S]*?\)/
   );
-  assert.match(app, /const startupState = await loadSharedStateForStartup\(\{ maxWaitMs: 0 \}\)/);
+  assert.match(
+    app,
+    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
+  );
   assert.match(app, /refreshStartupSharedState\(startupState\.refresh\)/);
   assert.match(
     app,

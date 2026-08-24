@@ -76,7 +76,7 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test("event settings save smoothly, return focus and survive reload", async ({ page }) => {
-  const settingsDialog = page.locator('.event-settings-modal[role="dialog"]');
+  const settingsDialog = page.locator('.event-settings-modal[role="region"]');
   await expect(settingsDialog).toBeVisible();
 
   const managementCard = page.locator('[data-settings-section="management"]');
@@ -110,9 +110,19 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
 
   const repaymentCard = page.locator('[data-settings-section="repayment"]');
   await repaymentCard.click();
+  const repaymentDialog = page.locator('.event-modal:has(.event-repayment-field)');
   const direct = page.locator(
     '[data-action="set-event-repayment-mode"][data-repayment-mode="direct"]'
   );
+  const optimized = page.locator(
+    '[data-action="set-event-repayment-mode"][data-repayment-mode="optimized"]'
+  );
+  await direct.click();
+  await expect(direct).toHaveAttribute("aria-checked", "true");
+  await expect(repaymentDialog).toContainText("נבחר כרגע: החזר לפי מי ששילם");
+  await optimized.click();
+  await expect(optimized).toHaveAttribute("aria-checked", "true");
+  await expect(repaymentDialog).toContainText("נבחר כרגע: קיזוז חכם");
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
   await expect(direct).toBeFocused();

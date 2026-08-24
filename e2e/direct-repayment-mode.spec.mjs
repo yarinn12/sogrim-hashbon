@@ -110,8 +110,8 @@ test("a manager can reimburse only net funders without reciprocal transfers", as
   await expect(rows.first()).toContainText("ירין יצחק");
   await expect(rows.first()).toContainText("30.00");
   await expect(rows.first()).not.toContainText("דני כהן");
-  await rows.first().locator(".transfer-explanation > summary").click();
-  await expect(rows.first().locator(".transfer-minimization-note")).toContainText(
-    "החזר ישיר למי ששילם"
-  );
+  await rows.first().click();
+  await expect(rows.first().locator(".transfer-debt-summary")).toContainText("אבי לוי");
+  await expect(rows.first().locator(".transfer-debt-summary")).toContainText("ירין יצחק");
+  await expect(rows.first().locator(".transfer-route-note")).toBeVisible();
 });

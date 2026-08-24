@@ -15,15 +15,12 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(sw, /publicSyncStatusLayer\.mjs/);
   assert.match(layer, /aria-live/);
   assert.match(layer, /body\.app-dialog-open \.public-sync-status/);
-  assert.match(
-    layer,
-    /body\.app-dialog-open\.has-event-route-dialog \.public-sync-status/
-  );
+  assert.doesNotMatch(layer, /body\.app-dialog-open\.has-event-route-dialog \.public-sync-status/);
   assert.match(layer, /data-inline-sync-status/);
   assert.match(layer, /data-inline-sync-retry/);
   assert.match(layer, /has-event-action-dock/);
   assert.match(layer, /html\.account-auth-locked \.public-sync-status/);
-  assert.match(layer, /אין חיבור · צפייה בלבד/);
+  assert.match(layer, /"saving",[\s\S]*?"saved",[\s\S]*?"reconnecting",[\s\S]*?"unavailable"/);
   assert.match(layer, /ONLINE_MUTATION_ACTIONS/);
   assert.match(layer, /ONLINE_MUTATION_CHANGE_ACTIONS/);
   assert.match(layer, /document\.addEventListener\("click", blockOfflineMutation, true\)/);
@@ -32,7 +29,11 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /restoreControlSnapshot\(target\)/);
   assert.match(layer, /window\.addEventListener\("offline", handleOffline\)/);
   assert.match(layer, /window\.addEventListener\("online", recoverOnlineMutationAccess\)/);
-  assert.match(layer, /אין חיבור\. אפשר לצפות, אבל אי אפשר לשנות עד שהסנכרון יחזור\./);
+  assert.match(layer, /confirmServerIsUnreachable\(\)/);
+  assert.match(layer, /fetch\(`\$\{apiBaseUrl\}\/api\/health`/);
+  assert.doesNotMatch(layer, /let mutationLockReason = navigator\.onLine === false/);
+  assert.match(layer, /message: "אין רשת כרגע"/);
+  assert.match(layer, /message: "הסנכרון מתעכב כרגע"/);
   assert.match(layer, /MutationObserver/);
   assert.match(layer, /let lastScreenSignature = screenSignature\(\)/);
   assert.match(layer, /let activeSaveScreenSignature = ""/);
@@ -48,10 +49,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     layer,
     /status === "saved" && !activeSaveScreenSignature[\s\S]*?showStatus\(""\)[\s\S]*?return/
   );
-  assert.match(
-    layer,
-    /if \(currentStatus !== status\) return;\s*currentStatus = "";\s*node\.hidden = true;\s*syncInlineStatusTargets\(\)/
-  );
+  assert.match(layer, /ROUTINE_SYNC_STATUSES\.has\(status\)/);
   assert.match(layer, /white-space: nowrap/);
   assert.match(
     layer,
@@ -65,14 +63,15 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /flushPendingSharedState/);
   assert.match(layer, /await flushPendingSharedState\(\)/);
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
-  assert.match(
-    layer,
-    /if \(status === "saved"\) \{[\s\S]*?existingNode\.hidden = true;[\s\S]*?syncInlineStatusTargets\(\);[\s\S]*?return;/
-  );
-  assert.match(layer, /if \(!status\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
-  assert.match(layer, /message: "המידע השתנה במקום אחר\. נסה לסנכרן לפני שינוי נוסף\."/);
+  assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
+  assert.match(layer, /target\.textContent = "";\s*target\.hidden = true;/);
+  assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = true;/);
+  assert.doesNotMatch(layer, /background: #fffaf0/);
+  assert.match(layer, /message: "המידע עודכן במכשיר אחר"/);
   assert.match(layer, /retry: true/);
   assert.match(layer, /prefers-reduced-motion/);
+  assert.match(layer, /transition-property: transform, background-color, opacity/);
+  assert.match(layer, /transform: scale\(0\.96\)/);
   assert.match(layer, /target\.closest\("\[data-route-sync-status\]"\)/);
   assert.match(layer, /classList\.toggle\("has-event-route-dialog", hasEventRouteDialog\)/);
   assert.match(layer, /\.event-route-sync-status\[hidden\]/);

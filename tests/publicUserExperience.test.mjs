@@ -22,12 +22,27 @@ test("public app asks each visitor for their own saved name", async () => {
   assert.match(app, /שם פרטי ושם משפחה/);
   assert.match(app, /const isEditingProfile = Boolean/);
   assert.match(app, /isEditingProfile[\s\S]*?"הפרופיל שלך"/);
-  assert.match(app, /isEditingProfile \? "שמור שינויים" : "המשך"/);
+  assert.match(app, /isEditingProfile[\s\S]*?data-action="edit-profile-name"/);
+  assert.match(app, /isEditingProfile[\s\S]*?data-action="edit-profile-username"/);
   assert.match(overlay, /שם פרטי ושם משפחה/);
   assert.match(localStore, /LOCAL_PROFILE_KEY/);
   assert.match(localStore, /saveLocalProfile/);
   assert.match(localStore, /isFullProfileName/);
   assert.match(localStore, /authProvider/);
+});
+
+test("existing profile identity is read-only until the user chooses edit", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(app, /class="profile-identity-grid"/);
+  assert.match(app, /data-action="edit-profile-name"/);
+  assert.match(app, /data-action="edit-profile-username"/);
+  assert.match(app, /aria-label="עריכת שם פרטי ושם משפחה"/);
+  assert.match(app, /aria-label="עריכת שם משתמש"/);
+  assert.match(app, /data-action="cancel-profile-name-edit"/);
+  assert.match(app, /data-action="cancel-profile-username-edit"/);
+  assert.match(app, /if \(action === "edit-profile-name"\)/);
+  assert.match(app, /if \(action === "edit-profile-username"\)/);
 });
 
 test("tester-facing forms use accessible names and polished loading copy", async () => {
@@ -65,7 +80,10 @@ test("participant validation stays inside the app and returns focus to the choic
   assert.doesNotMatch(app, /window\.alert\(/);
   assert.match(app, /function clearRenderedNotice\(\)/);
   assert.match(eventScreen, /renderNotice\(\)/);
-  assert.match(createEvent, /notice = [^;]+;[\s\S]*?render\(\)[\s\S]*?participantPicker\.open = true[\s\S]*?querySelector\("summary"\)\?\.focus/);
+  assert.match(
+    createEvent,
+    /notice = [^;]+;[\s\S]*?screen = \{ name: "new-event-participants" \}[\s\S]*?participantView = "friends"[\s\S]*?render\(\)[\s\S]*?data-participant-view="friends"[\s\S]*?\.focus/
+  );
   assert.match(saveGroup, /notice = [^;]+;[\s\S]*?render\(\)[\s\S]*?data-action="edit-group-member"/);
   assert.match(createGroup, /notice = [^;]+;[\s\S]*?render\(\)[\s\S]*?data-action="group-member"/);
 });
@@ -116,7 +134,7 @@ test("account login keeps invite context visible but persists only a verified ev
   assert.match(layer, /const inviteUrl = pendingInviteUrl\(window\.location\.href\)/);
   assert.match(
     layer,
-    /const startupState = await loadSharedStateForStartup\(\{ maxWaitMs: 0 \}\)/
+    /const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
   );
   assert.match(layer, /readSharedEventState/);
   assert.match(layer, /mergeSharedEventIntoState/);
@@ -170,7 +188,7 @@ test("public home screen focuses on event creation and the event list", async ()
   assert.doesNotMatch(homeMatch[0], /renderPersonalDashboard|renderPersonalActionList/);
 });
 
-test("public home keeps one primary action and a compact referral benefit", async () => {
+test("public home keeps one primary action, a secondary friends entry and a compact referral benefit", async () => {
   const [app, referralLayer] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicReferralRewardsLayer.mjs", "utf8")
@@ -178,9 +196,9 @@ test("public home keeps one primary action and a compact referral benefit", asyn
   const homeMatch = app.match(/function renderHome\(\) \{[\s\S]*?\nfunction renderRecentEventShortcut/);
 
   assert.ok(homeMatch);
-  assert.match(homeMatch[0], /<header class="top">[\s\S]*<div class="hero-actions /);
+  assert.match(homeMatch[0], /<header class="top">/);
   assert.match(homeMatch[0], /data-action="new-event"/);
-  assert.doesNotMatch(homeMatch[0], /data-action="groups"/);
+  assert.match(homeMatch[0], /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
   assert.doesNotMatch(homeMatch[0], /class="home-event-tools home-invite-hub"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-event-link"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-existing-event"/);

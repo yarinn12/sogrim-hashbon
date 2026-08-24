@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v284";
+const CACHE_NAME = "settle-friends-live-v326";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -33,6 +33,7 @@ const CACHE_FILES = [
   "/account-deletion.html",
   "/src/app.mjs",
   "/src/publicAppSplashLayer.mjs",
+  "/src/primaryNavigation.mjs",
   "/src/publicAccessibilityLayer.mjs",
   "/src/data/accessibilityPreferences.mjs",
   "/src/data/cloudStore.mjs",

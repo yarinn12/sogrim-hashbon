@@ -172,6 +172,25 @@ test("ensureNamedParticipant saves a valid selected avatar preset", () => {
   assert.equal(nextState.participants.at(-1).avatarPreset, "avatar-5");
 });
 
+test("ensureNamedParticipant saves and clears a safe custom profile image", () => {
+  const avatarImage = "https://images.example.com/yarin.jpg";
+  const withImage = ensureNamedParticipant(baseState, {
+    id: "yarin",
+    displayName: "Yarin Cohen",
+    avatarPreset: "avatar-2",
+    avatarImage
+  });
+  assert.equal(withImage.participants[0].avatarImage, avatarImage);
+
+  const withoutImage = ensureNamedParticipant(withImage, {
+    id: "yarin",
+    displayName: "Yarin Cohen",
+    avatarPreset: "avatar-2",
+    avatarImage: ""
+  });
+  assert.equal(withoutImage.participants[0].avatarImage, "");
+});
+
 test("ensureNamedParticipant rejects an unknown avatar preset", () => {
   const nextState = ensureNamedParticipant(
     baseState,

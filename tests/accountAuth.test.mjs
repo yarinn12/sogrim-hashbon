@@ -25,6 +25,7 @@ import {
   saveAccountSession,
   deleteAccount,
   exchangeOAuthCode,
+  ensureAccountWorkspace,
   googleOAuthUrl,
   LEGACY_STATE_CLAIM_PREFIX,
   loadAccountOAuthFlow,
@@ -215,6 +216,38 @@ test("Google login always asks which account to use on a shared device", () => {
 
   assert.equal(googleUrl.searchParams.get("prompt"), "select_account");
   assert.equal(appleUrl.searchParams.has("prompt"), false);
+});
+
+test("workspace repair for an authenticated account never reuses another user's active space", async () => {
+  const storage = memoryStorage();
+  storage.setItem(CLIENT_SPACE_STORAGE_KEY, "space-previous-account");
+  storage.setItem(
+    `${CLIENT_SPACE_KEY_STORAGE_PREFIX}space-previous-account`,
+    "abcdefghijklmnopqrstuvwxyzABCDEF"
+  );
+  let updateBody = null;
+  const session = {
+    access_token: "access-token",
+    refresh_token: "refresh-token",
+    user: { id: "new-user", user_metadata: {} }
+  };
+
+  const repaired = await ensureAccountWorkspace(config, session, {
+    storage,
+    fetchImpl: async (_url, request) => {
+      updateBody = JSON.parse(request.body);
+      return new Response(JSON.stringify({
+        ...session.user,
+        user_metadata: updateBody.data
+      }), { status: 200 });
+    }
+  });
+
+  assert.notEqual(repaired.user.user_metadata.account_space_id, "space-previous-account");
+  assert.equal(
+    storage.getItem(CLIENT_SPACE_STORAGE_KEY),
+    repaired.user.user_metadata.account_space_id
+  );
 });
 
 test("account cleanup removes abandoned OAuth flows without touching other data", () => {
@@ -472,6 +505,7 @@ test("password signup attaches the existing workspace to the new account", async
       email: "user@example.com",
       password: "long-password",
       displayName: "ירין יצחק",
+      username: "yarin_test",
       redirectTo: "https://app.example.com/",
       workspace: {
         id: "space-existing",
@@ -488,6 +522,7 @@ test("password signup attaches the existing workspace to the new account", async
   assert.match(request.url, /\/auth\/v1\/signup\?redirect_to=/);
   const body = JSON.parse(request.options.body);
   assert.equal(body.data.full_name, "ירין יצחק");
+  assert.equal(body.data.username, "yarin_test");
   assert.equal(body.data.account_space_id, "space-existing");
   assert.equal(body.data.account_space_key, "abcdefghijklmnopqrstuvwxyzABCDEF");
 });
@@ -511,6 +546,7 @@ test("separate pending signups on one device never share a workspace", async () 
       email: "first@example.com",
       password: "long-password",
       displayName: "First Account",
+      username: "first_account",
       storage
     },
     fetchSignup
@@ -521,6 +557,7 @@ test("separate pending signups on one device never share a workspace", async () 
       email: "second@example.com",
       password: "long-password",
       displayName: "Second Account",
+      username: "second_account",
       storage
     },
     fetchSignup

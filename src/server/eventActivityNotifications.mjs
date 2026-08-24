@@ -14,7 +14,8 @@ const UUID_PATTERN =
 const ACTIVITY_KINDS = new Set([
   "expense-created",
   "participant-joined",
-  "event-invite"
+  "event-invite",
+  "event-closed"
 ]);
 const EXPENSE_COOLDOWN_SECONDS = 45;
 
@@ -203,7 +204,7 @@ export async function sendEventActivityNotification({
       kind: normalizedKind,
       title: notification.title,
       body: notification.body,
-      view: "event",
+      view: normalizedKind === "event-closed" ? "settlement" : "event",
       actionUrl,
       publicUrl: runtimeConfig?.publicUrl,
       fetchImpl
@@ -312,7 +313,7 @@ export async function sendEventActivityNotification({
                 eventId: normalizedEventId,
                 activityId: normalizedActivityId,
                 kind: normalizedKind,
-                view: "event",
+                view: normalizedKind === "event-closed" ? "settlement" : "event",
                 actionUrl: recipient.actionUrl
               },
               android: {
@@ -396,6 +397,14 @@ function activityBelongsToSender({
   if (kind === "participant-joined") {
     return activityId === senderParticipantId;
   }
+  if (kind === "event-closed") {
+    return (event.activityLog ?? []).some(
+      (entry) =>
+        entry?.id === activityId &&
+        entry?.kind === kind &&
+        entry?.actorParticipantId === senderParticipantId
+    );
+  }
   const expense = (event.expenses ?? []).find((item) => item?.id === activityId);
   return expense?.createdByParticipantId === senderParticipantId;
 }
@@ -424,6 +433,12 @@ function sameSharedEvent(expected, actual) {
 
 function activityMessage(event, kind) {
   const eventName = String(event?.name ?? "האירוע").trim().slice(0, 60);
+  if (kind === "event-closed") {
+    return {
+      title: "האירוע נסגר — הגיע הזמן לשלם",
+      body: `הסכומים באירוע "${eventName}" סופיים. אפשר לראות עכשיו מי מעביר למי.`
+    };
+  }
   if (kind === "event-invite") {
     return {
       title: "הזמנה לאירוע",
@@ -549,7 +564,6 @@ async function loadAuthoritativeSharedEvent({
   ) {
     return null;
   }
-
   const params = new URLSearchParams({
     id: `eq.${spaceId}`,
     owner_user_id: "is.null",

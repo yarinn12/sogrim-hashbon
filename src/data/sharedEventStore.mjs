@@ -1,4 +1,9 @@
-import { readCloudState, saveCloudState } from "./cloudStore.mjs";
+import {
+  readAccessibleSharedCloudStates,
+  readCloudState,
+  RECOVERED_MEMBER_SPACE_KEY,
+  saveCloudState
+} from "./cloudStore.mjs";
 import {
   applyClientSpaceToConfig,
   createClientSpaceId,
@@ -7,7 +12,10 @@ import {
   normalizeSpaceKey
 } from "../domain/cloudSpace.mjs";
 import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
-import { normalizeAvatarPreset } from "../domain/avatarPresets.mjs";
+import {
+  normalizeAvatarImage,
+  normalizeAvatarPreset
+} from "../domain/avatarPresets.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
@@ -456,6 +464,25 @@ export async function refreshSharedEvents(runtimeConfig, state, fetchImpl = fetc
   return nextState;
 }
 
+export async function recoverAccessibleSharedEvents(
+  runtimeConfig,
+  state,
+  fetchImpl = fetch
+) {
+  if (runtimeConfig?.storage?.mode !== "supabase") return state;
+  const rows = await readAccessibleSharedCloudStates(runtimeConfig, fetchImpl);
+  let nextState = state;
+  for (const row of rows) {
+    const eventId = row.state?.events?.[0]?.id;
+    if (!eventId) continue;
+    nextState = mergeSharedEventIntoState(nextState, row.state, {
+      id: row.id,
+      key: RECOVERED_MEMBER_SPACE_KEY
+    });
+  }
+  return nextState;
+}
+
 export function revokeSharedEventAccess(state, eventId, runtimeConfig = null) {
   const accountParticipantId = runtimeConfig?.storage?.account?.userId
     ? `account-${runtimeConfig.storage.account.userId}`
@@ -605,11 +632,13 @@ function eventCloudConfig(runtimeConfig, credentials) {
 
 function sanitizeParticipant(participant) {
   const avatarPreset = normalizeAvatarPreset(participant?.avatarPreset);
+  const avatarImage = normalizeAvatarImage(participant?.avatarImage);
   return {
     id: String(participant.id),
     displayName: String(participant.displayName ?? ""),
     kind: participant.kind === "guest" ? "guest" : "user",
     ...(avatarPreset ? { avatarPreset } : {}),
+    ...(avatarImage ? { avatarImage } : {}),
     accountLinked:
       participant.accountLinked === true ||
       (

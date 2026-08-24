@@ -6,6 +6,8 @@ const migrationPath =
   "supabase/migrations/20260821183052_finalize_launch_security.sql";
 const friendshipFlowMigrationPath =
   "supabase/migrations/20260821184836_friend_request_rate_limit_flow_fix.sql";
+const rateLimitClockMigrationPath =
+  "supabase/migrations/20260823203000_fix_sensitive_api_rate_limit_clock.sql";
 
 test("final launch migration closes shared-event lifecycle gaps", async () => {
   const [migration, schema, verification] = await Promise.all([
@@ -62,6 +64,23 @@ test("friend request limits preserve idempotent and mutual request flows", async
     migration,
     /if normalized_username !~[\s\S]{0,300}reserve_friend_request_capacity\(actor_id, null\)[\s\S]{0,300}select invite\.code/
   );
+});
+
+test("sensitive API rate limiting uses an unambiguous timestamp value", async () => {
+  const [migration, verification] = await Promise.all([
+    readFile(rateLimitClockMigrationPath, "utf8"),
+    readFile(
+      "supabase/verification/verify_20260823203000_fix_sensitive_api_rate_limit_clock.sql",
+      "utf8"
+    )
+  ]);
+
+  assert.match(migration, /current_timestamp_value timestamptz/);
+  assert.match(migration, /subject_hash_value text/);
+  assert.doesNotMatch(migration, /\bcurrent_time timestamptz/);
+  assert.doesNotMatch(migration, /\bsubject_hash text/);
+  assert.match(verification, /The first sensitive API reservation was not allowed/);
+  assert.match(verification, /The sensitive API client limit was not enforced/);
 });
 
 test("server and native boundaries use the hardened contracts", async () => {

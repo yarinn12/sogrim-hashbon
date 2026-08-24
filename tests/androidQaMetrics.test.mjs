@@ -63,6 +63,10 @@ test("Android journey verifies settlement content above the fixed navigation", a
   assert.match(journey, /QA Ride/);
   assert.match(journey, /removeAcceptanceFixture\(page\)/);
   assert.match(journey, /data-settings-section=\"danger\"/);
+  assert.match(
+    journey,
+    /querySelectorAll\('\.product-app-identity,\.product-header-profile-avatar'\)/
+  );
 });
 
 test("Android font-scale screenshots wait for the branded splash to finish", async () => {

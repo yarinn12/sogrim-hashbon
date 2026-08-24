@@ -62,5 +62,6 @@ export function formatCurrency(amount, currency = DEFAULT_CURRENCY) {
 function formatDecimal(amount) {
   const whole = Math.floor(amount / 100);
   const cents = String(amount % 100).padStart(2, "0");
-  return `${whole}.${cents}`;
+  const groupedWhole = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${groupedWhole}.${cents}`;
 }

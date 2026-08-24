@@ -47,7 +47,7 @@ test("the active event keeps one primary expense action and two focused internal
   assert.match(event, /event-header-actions/);
   assert.match(event, /data-action="show-expense-form"/);
   assert.match(event, /data-action="open-event-participants"/);
-  assert.match(event, /data-action="open-event-share"/);
+  assert.match(event, /data-action="open-event-participant-add"/);
   assert.match(event, /data-action="open-event-settings"/);
   assert.match(navigation, /data-active-event-view/);
   assert.match(navigation, /data-action="back-to-event"/);
@@ -87,7 +87,7 @@ test("opening an event always lands on expenses before settlement", async () => 
   );
 });
 
-test("adding several event guests keeps the participant list open and returns focus", async () => {
+test("adding several event guests keeps the manual participant editor active and returns focus", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const addGuestHandler = sourceBetween(
     app,
@@ -95,8 +95,8 @@ test("adding several event guests keeps the participant list open and returns fo
     'if (action === "group-add-member")'
   );
 
-  assert.match(addGuestHandler, /keepParticipantsOpen/);
-  assert.match(addGuestHandler, /participantDetails\.open = true/);
+  assert.match(addGuestHandler, /newEventDraft\.participantView = "manual"/);
+  assert.doesNotMatch(addGuestHandler, /participantDetails\.open/);
   assert.match(addGuestHandler, /requestAnimationFrame/);
   assert.match(addGuestHandler, /data-action="new-event-guest-name"/);
   assert.match(addGuestHandler, /\.focus\(\)/);
@@ -121,7 +121,7 @@ test("settlement stays inside the event shell and only switches the active works
   assert.match(settlement, /renderEventWorkspaceNav\(event, "summary"\)/);
   assert.match(settlement, /renderEventDialog\(event\)/);
   assert.match(header, /data-action="open-event-participants"/);
-  assert.match(header, /data-action="open-event-share"/);
+  assert.match(header, /data-action="open-event-participant-add"/);
   assert.match(header, /data-action="open-event-settings"/);
 });
 
@@ -137,19 +137,20 @@ test("legacy overlays do not merge event creation and joining back together", as
   );
 
   assert.doesNotMatch(joinEnhancement, /enhanceNewEventScreen|applyNewEventMode|reduceNewEventChromeRepetition/);
-  assert.match(brandLayer, /const PRIMARY_NAV_SCREENS = new Set\(\[[\s\S]*?"event",[\s\S]*?"settlement"[\s\S]*?\]\)/);
-  assert.match(brandLayer, /const showPrimaryNav = PRIMARY_NAV_SCREENS\.has\(kind\)/);
+  assert.match(brandLayer, /function shouldShowPrimaryNav\(screen\)/);
+  assert.match(brandLayer, /const showPrimaryNav = shouldShowPrimaryNav\(screen\)/);
   assert.match(brandLayer, /if \(!showPrimaryNav\) \{\s*nav\?\.remove\(\);\s*return;/);
   assert.match(brandLayer, /identity\.insertAdjacentHTML\("beforeend", renderHeaderNav\(\)\)/);
   assert.match(brandLayer, /\.product-app-nav\[hidden\]/);
 });
 
 test("primary navigation exposes home, events, notifications and profile as distinct destinations", async () => {
-  const [app, brandLayer] = await Promise.all([
+  const [app, brandLayer, primaryNavigation] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
-    readFile("src/publicBrandLayer.mjs", "utf8")
+    readFile("src/publicBrandLayer.mjs", "utf8"),
+    readFile("src/primaryNavigation.mjs", "utf8")
   ]);
-  const navigation = sourceBetween(brandLayer, "function renderHeaderNav()", "function syncHeaderNavState()");
+  const navigation = primaryNavigation;
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
 
   assert.equal([...navigation.matchAll(/class="product-nav-button"/g)].length, 4);
@@ -158,7 +159,7 @@ test("primary navigation exposes home, events, notifications and profile as dist
   assert.match(navigation, /data-action="open-notifications" data-nav-destination="notifications"/);
   assert.match(navigation, /class="product-nav-badge" hidden/);
   assert.match(navigation, /data-nav-destination="profile"/);
-  assert.match(navigation, /aria-label="&#1504;&#1497;&#1493;&#1493;&#1496; &#1512;&#1488;&#1513;&#1497;"/);
+  assert.match(navigation, /aria-label="ניווט ראשי"/);
   assert.doesNotMatch(navigation, /data-public-action="go-home"/);
   assert.doesNotMatch(navigation, /data-action="join-event-screen"|data-action="groups"/);
   assert.match(brandLayer, /function focusHomeEvents\(\)/);
@@ -167,5 +168,5 @@ test("primary navigation exposes home, events, notifications and profile as dist
   assert.doesNotMatch(home, /data-action="join-event-link"/);
   assert.doesNotMatch(home, /data-action="join-existing-event"/);
   assert.doesNotMatch(home, /data-action="join-event-screen"/);
-  assert.doesNotMatch(home, /data-action="groups"/);
+  assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
 });

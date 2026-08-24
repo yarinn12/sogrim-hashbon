@@ -159,6 +159,24 @@ test("friends hub keeps friend creation on a focused screen", async () => {
   assert.match(app, /data-action="remove-offline-friend"/);
 });
 
+test("first group creation uses the shared app task hierarchy", async () => {
+  const [app, layer] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+  ]);
+  const start = app.indexOf("function renderGroupCreate()");
+  const end = app.indexOf("function renderGroupEdit()", start);
+  const screen = app.slice(start, end);
+
+  assert.match(screen, /group-create-section group-create-details/);
+  assert.match(screen, /group-create-section group-create-members/);
+  assert.match(screen, /group-create-section-icon/);
+  assert.match(screen, /group-create-footer/);
+  assert.match(layer, /\.group-create-panel \{[\s\S]*?var\(--ledger-surface\)/);
+  assert.match(layer, /\.group-create-section \{/);
+  assert.match(layer, /\.group-create-footer \.primary-button:active:not\(:disabled\)[\s\S]*?scale: 0\.96/);
+});
+
 test("friends and groups keep destructive actions compact without hiding them", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const commandIcons = await readFile("src/publicCommandIconLayer.mjs", "utf8");
@@ -197,7 +215,8 @@ test("online friends use unique usernames without changing offline names", async
   assert.match(app, /requestFriendshipByUsername/);
   assert.match(app, /setFriendUsername/);
   assert.match(app, /data-action="profile-username"/);
-  assert.match(app, /placeholder="בחר שם משתמש"/);
+  assert.match(app, /placeholder="שם משתמש"/);
+  assert.match(app, /<span>שם משתמש<\/span>/);
   assert.doesNotMatch(app, /placeholder="@yarin"/);
   assert.doesNotMatch(app, /placeholder="לדוגמה: דני כהן"/);
   assert.match(app, /data-action="friend-code"[\s\S]+placeholder="@username"/);

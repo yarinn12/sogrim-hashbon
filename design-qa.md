@@ -33,6 +33,97 @@
 
 final result: passed
 
+## Summary Expansion and Refresh QA - 2026-08-24
+
+- Transfer calculation details now open as one continuous inline section; the nested expense disclosure was removed.
+- Verified the same open transfer before and after sending the Android app to the background and reopening it.
+- The open transfer and viewport position remained stable after the resume-triggered refresh.
+- Render-time refreshes preserve open transfer IDs, page scroll, open expense participants, dialog scroll, and focus.
+- Focused ledger, event workflow, and transfer status suites passed before the Android release build and installation.
+
+final result: passed
+
+## Summary Transfer List Coherence QA - 2026-08-24
+
+- Reference pattern: the flat event list on the home/events screen.
+- Verified target: `emulator-summary-unified-transfers-v294.png` at the same Android viewport.
+- Transfer entries now share one continuous surface with divider lines; individual rounded cards and shadows were removed.
+- Personal and temporary transfer states retain their labels and interaction without changing the common row geometry.
+- Tapping a transfer still opens its calculation details.
+- Focused ledger, workflow, and transfer-status tests passed before the Android release build and installation.
+
+final result: passed
+
+## Settlement Lifecycle Summary QA - 2026-08-24
+
+**Comparison Target**
+
+- Source visual truth: `C:\Users\A\.codex\generated_images\01a02b11-4c4a-7ae3-8e2d-edc38729aae8\exec-66f44c19-c7e1-409f-857a-50146de383de.png`.
+- Android implementation: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\emulator-summary-simplified.png`.
+- Same-canvas comparison: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\design-qa-summary-comparison.png`.
+- Source pixels: 853 x 1844. Android capture: 1080 x 2400. Comparison normalized both columns to 600 px width.
+- State: open event with calculated interim transfers before settlement is finalized.
+
+**Full-View Comparison Evidence**
+
+- The event lifecycle is now the first summary section, followed by the transfer list, matching the selected concept's hierarchy.
+- The production event header and workspace tabs remain intentionally visible to preserve the app's established navigation language.
+- The open-state card now contains only a status chip, one short title, and the close-event action; explanatory copy and the group total were removed from this card.
+- The transfer list is a separate bordered surface and retains real participants, real amounts, the selected settlement mode, and the persistent bottom navigation.
+
+**Focused Region Comparison Evidence**
+
+- Typography: the open-state title uses the existing Rubik display weight and no longer wraps into competing message blocks.
+- Spacing: the lifecycle card was reduced to 18 px internal padding with a 14 px action gap, eliminating the previous stacked density.
+- Colors: amber communicates an interim state while the established emerald remains reserved for primary actions and finalized settlement states.
+- Images: existing product logos and real participant avatars are preserved; no mock identities or generated assets were introduced.
+- Copy: the open state is reduced to “אירוע בתהליך” and “הסכומים עדיין זמניים”; the CTA states the next action directly.
+
+**Interaction Verification**
+
+- The close-event action remains wired to the protected confirmation flow.
+- Tapping a transfer card opens its calculation details; the explanation uses compact rows without the previous nested colored boxes.
+- JavaScript syntax check passed.
+- Focused summary and design-layer tests: 31 passed, 0 failed.
+- Android release build completed, synced, installed over the existing app, and was visually inspected in the emulator.
+
+**Comparison History**
+
+- Initial P1: the lifecycle state was conditional, so many summaries jumped directly to transfers and did not resemble the selected concept. Fixed by rendering lifecycle state consistently.
+- Initial P2: the open-state card contained a long heading, description, group total, WhatsApp, and More actions. Fixed by retaining only status, title, and close CTA.
+- Initial P2: the calculation disclosure used multiple outlined and tinted subcards. Fixed with a compact three-row calculation and secondary notes without nested surfaces.
+- Post-fix capture has no remaining actionable P0, P1, or P2 findings. The taller production header is an intentional product constraint.
+
+final result: passed
+
+## New Event Participant Step QA - 2026-08-22
+
+**Comparison Target**
+
+- Approved mockup: `C:\Users\A\.codex\generated_images\019e555f-0a8f-7b92-8986-55acca29a092\exec-e48c70f7-3b62-48ca-8d64-285807e6e91f.png`.
+- Android implementation: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\artifacts\android-qa\journey\new-event-participants.png`.
+- Friends state: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\artifacts\android-qa\journey\new-event-participants-friends.png`.
+- Manual-name state: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\artifacts\android-qa\journey\new-event-participants-manual.png`.
+
+**Implemented Experience**
+
+- Event details now open participant selection as a focused full-screen step instead of expanding a crowded inline section.
+- Invite link, saved friends and groups, and manual offline names are presented as three clear one-column actions.
+- The selected roster remains visible below the active editor and uses the established connected/offline identity treatment.
+- `Finish` and `Cancel` remove the participant route from browser and Android history; the next back action returns to event type rather than reopening participant selection.
+- The manual full-name input receives focus immediately and the route returns focus to the participant entry after completion.
+
+**Verification**
+
+- Android 16 emulator journey passed on `com.sogrimhashbon.app.debug` using the packaged Capacitor build.
+- Verified base, friends, manual-name, completed-details, and Android-back states.
+- No horizontal overflow, duplicate IDs, unnamed controls, blocked controls, clipped headers, or touch targets below 44 px were found.
+- JavaScript syntax check passed.
+- Full automated suite: 1214 passed, 0 failed.
+- Android debug build completed and installed successfully.
+
+final result: passed
+
 **Comparison Target**
 
 - Approved reference: `C:\Users\A\AppData\Local\Temp\codex-clipboard-c6748b50-8da8-41ac-b0a9-a8464afc5942.png`

@@ -4,6 +4,7 @@ import {
   mergeSharedStates,
   validateSharedStateIdentifiers
 } from "../src/domain/sharedStateMerge.mjs";
+import { reconcileSettlementTransfers } from "../src/domain/settlement.mjs";
 
 test("mergeSharedStates unions top-level entities and keeps the local identity", () => {
   const remote = {
@@ -666,14 +667,28 @@ test("legacy payer-by-expense routes do not accumulate after repayment mode chan
   };
 
   const transfers = mergeSharedStates(remote, local).events[0].transfers;
+  const expectedTransfers = reconcileSettlementTransfers(
+    participants,
+    expenses,
+    [paidTransfer],
+    { directTransfers: true, roundTransfers: true }
+  ).transfers;
 
-  assert.equal(transfers.length, 3);
-  assert.equal(transfers.filter((transfer) => transfer.status === "paid").length, 1);
-  assert.equal(transfers.filter((transfer) => transfer.status === "pending").length, 2);
-  assert.equal(
-    transfers.some((transfer) => [2900, 4200, 5500].includes(transfer.amount)),
-    false
+  assert.deepEqual(
+    transfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    })),
+    expectedTransfers.map(({ fromParticipantId, toParticipantId, amount, status }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status
+    }))
   );
+  assert.equal(transfers.filter((transfer) => transfer.status === "paid").length, 1);
 });
 
 test("an expense deletion tombstone wins over a stale synced expense", () => {

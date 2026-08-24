@@ -1,22 +1,10 @@
-import { loadRuntimeConfig, loadState } from "./data/localStore.mjs";
-import { eventOpenInviteToken } from "./data/eventInvites.mjs";
-import {
-  buildEventInviteSnapshot,
-  buildEventInviteUrl
-} from "./domain/inviteLinks.mjs";
-import { normalizeReferralCode } from "./domain/referralCodes.mjs";
 import { compactQrInviteUrl, createQrSvg } from "./domain/qrCode.mjs";
+import { parseInviteEventId, parseInviteToken } from "./domain/inviteLinks.mjs";
 
 const STYLE_ID = "public-invite-qr-layer-style";
 
 let inviteQrScheduled = false;
-let runtimeConfig = null;
-
 injectInviteQrStyles();
-loadRuntimeConfig().then((config) => {
-  runtimeConfig = config;
-  scheduleInviteQrEnhancement();
-});
 document.addEventListener(
   "settle-friends:entitlements-changed",
   scheduleInviteQrEnhancement
@@ -52,8 +40,21 @@ function renderInviteQr(copyButton) {
   if (!eventId || !row || !host) return;
 
   const input = row.querySelector("input");
-  const inviteUrl = input?.value?.trim() || smartInviteUrl(eventId);
-  if (!inviteUrl || copyButton.disabled) return;
+  // The QR must use the exact server-issued link shown by the share screen.
+  // Building a fallback before the open token arrives can create a scannable
+  // but unusable event-only URL for a new device.
+  const inviteUrl = input?.value?.trim();
+  const exactEventId = parseInviteEventId(inviteUrl);
+  const exactInviteToken = parseInviteToken(inviteUrl);
+  if (
+    !inviteUrl ||
+    copyButton.disabled ||
+    exactEventId !== eventId ||
+    !exactInviteToken
+  ) {
+    host.querySelector(`[data-public-invite-qr][data-event-id="${CSS.escape(eventId)}"]`)?.remove();
+    return;
+  }
   const qrUrl = compactQrInviteUrl(inviteUrl);
   if (input && input.value !== inviteUrl) input.value = inviteUrl;
 
@@ -101,29 +102,6 @@ function renderInviteQrContent(inviteUrl) {
       </div>
     `;
   }
-}
-
-function smartInviteUrl(eventId) {
-  const state = loadState();
-  const event = state.events?.find((item) => item.id === eventId);
-  const cloudInvite = runtimeConfig?.storage?.mode === "supabase";
-  const inviteToken = cloudInvite
-    ? eventOpenInviteToken(event)
-    : null;
-  const referralCode = normalizeReferralCode(
-    globalThis.SogrimMonetization?.status?.referralCode
-  );
-  return buildEventInviteUrl(
-    runtimeConfig?.publicUrl || window.location.href,
-    eventId,
-    cloudInvite ? null : buildEventInviteSnapshot(state, eventId),
-    inviteToken
-      ? {
-          inviteToken,
-          referralCode
-        }
-      : { referralCode }
-  );
 }
 
 function injectInviteQrStyles() {

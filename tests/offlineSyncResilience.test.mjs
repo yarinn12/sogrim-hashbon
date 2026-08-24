@@ -418,10 +418,15 @@ test("a cloud read for the wrong event is rejected instead of merged", () => {
 
 test("sync failures surface a status rather than failing silently", () => {
   assert.match(localStore, /function publishSyncFailure\(error\) \{/);
+  assert.match(localStore, /publishSyncStatus\(syncFailureStatus\(error\)\)/);
+  assert.match(localStore, /export function syncFailureStatus\(/);
   assert.match(
     localStore,
-    /publishSyncStatus\(error\?\.code === "CLOUD_STATE_CONFLICT" \? "conflict" : "offline"\)/
+    /if \(!online\) return "offline";/
   );
+  assert.match(localStore, /return "unavailable";/);
+  assert.match(localStore, /syncAndPersistCloudStateOnce/);
+  assert.match(localStore, /isTransientSyncFailure\(error\)/);
   assert.match(localStore, /const SYNC_STATUS_EVENT = "sogrim:sync-status";/);
 });
 
@@ -461,7 +466,7 @@ test("shared-event mutations reach the canonical event before the personal works
   );
 });
 
-test("a failed shared-event request restores the actual persisted snapshot and clears its queue", async () => {
+test("a temporary shared-event failure keeps the local change queued without a false rollback", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -529,14 +534,16 @@ test("a failed shared-event request restores the actual persisted snapshot and c
     const result = await store.saveSharedState(changedState);
 
     assert.equal(result.ok, false);
-    assert.equal(result.reverted, true);
+    assert.equal(result.reverted, undefined);
+    assert.equal(result.pending, true);
     assert.deepEqual(
       JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`)),
-      durableState
+      changedState
     );
-    assert.equal(storage.getItem(`settle-friends-pending-sync:${spaceId}`), null);
-    assert.ok(
-      dispatched.some((event) => event.type === "sogrim:shared-save-reverted")
+    assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
+    assert.equal(
+      dispatched.some((event) => event.type === "sogrim:shared-save-reverted"),
+      false
     );
   } finally {
     restoreGlobal("window", previousWindow);

@@ -46,10 +46,10 @@ test("settings command icon uses a clean sliders mark instead of an uneven gear"
 });
 
 test("shared icon source owns navigation, dialog and destructive action marks", async () => {
-  const [icons, app, brand, commandLayer, backLayer, pickerLayer, referralLayer, premiumLayer, coherence] = await Promise.all([
+  const [icons, app, primaryNavigation, commandLayer, backLayer, pickerLayer, referralLayer, premiumLayer, coherence] = await Promise.all([
     readFile("src/uiIcons.mjs", "utf8"),
     readFile("src/app.mjs", "utf8"),
-    readFile("src/publicBrandLayer.mjs", "utf8"),
+    readFile("src/primaryNavigation.mjs", "utf8"),
     readFile("src/publicCommandIconLayer.mjs", "utf8"),
     readFile("src/publicBackNavigationLayer.mjs", "utf8"),
     readFile("src/publicChoicePickerLayer.mjs", "utf8"),
@@ -63,7 +63,7 @@ test("shared icon source owns navigation, dialog and destructive action marks", 
   assert.match(icons, /"user-minus":/);
   assert.match(app, /iconSvg\("x"\)/);
   assert.match(app, /iconSvg\("user-minus"\)/);
-  assert.match(brand, /iconSvg\("home"\)/);
+  assert.match(primaryNavigation, /iconSvg\("home"\)/);
   assert.match(commandLayer, /"delete-event": "trash"/);
   assert.match(commandLayer, /"remove-event-participant": "user-minus"/);
   assert.match(backLayer, /iconSvg\("chevron-left"\)/);

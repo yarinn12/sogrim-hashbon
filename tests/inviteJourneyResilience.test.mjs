@@ -103,27 +103,16 @@ test("an unresolved config downgrades the invite to a snapshot-only link", () =>
   assert.ok(parseInviteSnapshot(late), "the snapshot fallback stays usable");
 });
 
-test("copy-invite resolves the runtime config before building the link", () => {
+test("copy-invite preserves the exact prepared server invite", () => {
   const layer = readFileSync("src/publicInviteSnapshotLayer.mjs", "utf8");
 
-  assert.match(layer, /async function copyResolvedInviteUrl\(button\)/);
-  assert.match(
-    layer,
-    /if \(!runtimeConfig\) \{\s*try \{\s*runtimeConfig = await loadRuntimeConfig\(\);/,
-    "the copy handler waits for a config before emitting a link"
-  );
-  const copyHandler = layer.slice(
-    layer.indexOf("async function copyResolvedInviteUrl"),
-    layer.indexOf("async function importIncomingSharedEvent")
-  );
-  assert.ok(
-    copyHandler.indexOf("await loadRuntimeConfig") <
-      copyHandler.indexOf("smartInviteUrl(button.dataset.eventId)"),
-    "config resolution happens before the URL is built"
-  );
+  assert.match(layer, /async function copyResolvedInviteUrl\(button, inviteUrl\)/);
+  assert.match(layer, /parseInviteEventId\(inviteUrl\) !== button\.dataset\.eventId/);
+  assert.match(layer, /!parseInviteToken\(inviteUrl\)/);
+  assert.doesNotMatch(layer, /smartInviteUrl/);
 });
 
-test("a late config refreshes already rendered invite inputs", () => {
+test("a late config never overwrites an already prepared invite input", () => {
   const layer = readFileSync("src/publicInviteSnapshotLayer.mjs", "utf8");
 
   assert.match(layer, /function ensureRuntimeConfigForInvites\(\)/);
@@ -132,8 +121,12 @@ test("a late config refreshes already rendered invite inputs", () => {
     layer,
     /if \(buttons\.length && !runtimeConfig\) ensureRuntimeConfigForInvites\(\);/
   );
-  assert.match(layer, /input\?\.dataset\.shareReady !== "true"/);
-  assert.match(layer, /runtimeConfig\?\.publicUrl \|\| window\.location\.href/);
+  const enhance = layer.slice(
+    layer.indexOf("function enhanceInviteLinks()"),
+    layer.indexOf("let runtimeConfigRequest")
+  );
+  assert.doesNotMatch(enhance, /input\.value\s*=/);
+  assert.match(enhance, /must never replace it/);
 });
 
 test("invite enhancement stays synchronous so mutation ticks are never awaited", () => {
@@ -184,6 +177,23 @@ test("concurrent share preparations reuse a single in-flight promise", () => {
   assert.match(prepare, /if \(activePreparation\) return activePreparation;/);
 });
 
+test("invite preparation cannot remain busy forever and waits for referral attribution", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const prepare = app.slice(
+    app.indexOf("function prepareEventShare(eventId)"),
+    app.indexOf("function preparePrivateEventInvitation")
+  );
+  const referral = app.slice(
+    app.indexOf("async function prepareReferralForEventInvite"),
+    app.indexOf("function renderExpenseForm")
+  );
+
+  assert.match(prepare, /settleEventSharePreparation\(/);
+  assert.match(prepare, /EVENT_INVITE_TIMEOUT/);
+  assert.match(prepare, /Promise\.race\(\[task, timeout\]\)/);
+  assert.match(referral, /await monetization\.refresh\(\)/);
+});
+
 test("native sharing waits until the shared event is actually published", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const nativeBridge = readFileSync("src/publicNativeBridgeLayer.mjs", "utf8");
@@ -193,6 +203,20 @@ test("native sharing waits until the shared event is actually published", () => 
   assert.match(app, /type="hidden"\s+name="eventInviteUrl"/);
   assert.match(app, /\$\{shareReady \? "" : 'disabled aria-disabled="true" aria-busy="true"'\}/);
   assert.match(app, /eventSharePreparationErrors/);
+  const publishBeforeInvite = app.slice(
+    app.indexOf("async function prepareSharedEventForInvitation"),
+    app.indexOf("async function rotateCurrentEventInvite")
+  );
+  assert.match(
+    publishBeforeInvite,
+    /state = await saveSharedEventState\(shareRuntimeConfig, state, eventId\);/,
+    "every event is published before an invite is created, including events with stale local credentials"
+  );
+  assert.doesNotMatch(
+    publishBeforeInvite,
+    /if \(!existingCredentials\) \{\s*try \{\s*state = await saveSharedEventState/,
+    "stale local credentials must not skip cloud publication"
+  );
   assert.match(app, /delete event\[EVENT_SPACE_ID_FIELD\]/);
   assert.match(nativeBridge, /async share\(options\)/);
   assert.match(app, /typeof globalThis\.SogrimNative\?\.share === "function"/);
@@ -216,8 +240,8 @@ test("a failed invite preparation explains the problem and retries in place", ()
   );
 
   assert.match(dialog, /const shareFailed = eventSharePreparationErrors\.has\(event\.id\)/);
-  assert.match(dialog, /הקישור עדיין לא מוכן/);
-  assert.match(dialog, /האירוע נשמר ולא צריך להתחיל מחדש/);
+  assert.match(dialog, /לא הצלחנו לשמור את הקישור/);
+  assert.match(dialog, /האירוע נשמר\. אפשר לנסות שוב בלי ליצור אירוע חדש/);
   assert.match(dialog, /data-action="retry-event-share"/);
   assert.match(retry, /const sharePreparation = prepareEventShare\(eventId\)/);
   assert.match(retry, /reactivateDialogAfterRender\("\.event-modal"\)/);

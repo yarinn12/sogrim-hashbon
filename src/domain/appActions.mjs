@@ -702,6 +702,7 @@ function eventSettingTimestampUpdate(event, field, updatedAt) {
     "eventType",
     "currency",
     "groupId",
+    "coverImage",
     "adminsCanEditOnly",
     "roundSettlementTransfers",
     "directSettlementTransfers"
@@ -719,9 +720,20 @@ function eventSettingTimestampUpdate(event, field, updatedAt) {
       settingsFieldUpdatedAt[settingField] = previousTimestamp;
     }
   }
-  settingsFieldUpdatedAt[field] = updatedAt;
+  const previousFieldTimestamp =
+    settingsFieldUpdatedAt[field] ?? previousTimestamp;
+  const previousFieldTime = Date.parse(previousFieldTimestamp);
+  const requestedTime = Date.parse(updatedAt);
+  const resolvedUpdatedAt = Number.isFinite(previousFieldTime) &&
+    (!Number.isFinite(requestedTime) || requestedTime <= previousFieldTime)
+    ? new Date(previousFieldTime + 1).toISOString()
+    : updatedAt;
+  settingsFieldUpdatedAt[field] = resolvedUpdatedAt;
 
-  return { settingsUpdatedAt: updatedAt, settingsFieldUpdatedAt };
+  return {
+    settingsUpdatedAt: resolvedUpdatedAt,
+    settingsFieldUpdatedAt
+  };
 }
 
 export function canLinkParticipantAccountInEvent(

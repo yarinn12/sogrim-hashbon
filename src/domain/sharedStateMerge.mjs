@@ -444,6 +444,7 @@ function mergeEventSettings(remoteEvent, localEvent) {
     "eventType",
     "currency",
     "groupId",
+    "coverImage",
     "adminsCanEditOnly",
     "roundSettlementTransfers",
     "directSettlementTransfers"
@@ -1218,6 +1219,7 @@ function mergeParticipant(remoteParticipant, localParticipant) {
     "displayName",
     "kind",
     "avatarPreset",
+    "avatarImage",
     "authProvider",
     "authSubject",
     "email",

@@ -110,7 +110,10 @@ export function reconcileSettlementTransfers(
     ? roundSettlementBalances(outstandingBalances)
     : outstandingBalances;
   const directRoutePreferences = directTransfers
-    ? buildDirectRoutePreferences(participants, expenses)
+    ? remainingDirectRoutePreferences(
+        buildDirectRoutePreferences(participants, expenses),
+        paidTransfers
+      )
     : new Map();
   const pendingTransfers = buildOutstandingTransfers(
     pendingBalances,
@@ -271,26 +274,14 @@ function buildDirectTransfersFromBalances(
   routePreferences = new Map(),
   unit = 1
 ) {
-  const debtors = new Map(
-    Object.entries(balances ?? {})
-      .filter(([, balance]) => balance < 0)
-      .map(([participantId, balance]) => [participantId, Math.abs(balance)])
-  );
-  const creditors = new Map(
-    Object.entries(balances ?? {})
-      .filter(([, balance]) => balance > 0)
-      .map(([participantId, balance]) => [participantId, balance])
-  );
+  const remainingBalances = { ...(balances ?? {}) };
   const preferredTransfers = [];
 
   for (const [route, preferredAmount] of [...routePreferences.entries()].sort(
     (first, second) => second[1] - first[1]
   )) {
     const [fromParticipantId, toParticipantId] = route.split("\u0000");
-    const debtorAmount = debtors.get(fromParticipantId) ?? 0;
-    const creditorAmount = creditors.get(toParticipantId) ?? 0;
-    const usablePreference = Math.floor(preferredAmount / unit) * unit;
-    const amount = Math.min(debtorAmount, creditorAmount, usablePreference);
+    const amount = Math.floor(preferredAmount / unit) * unit;
     if (!isPositiveAgoraAmount(amount)) continue;
 
     preferredTransfers.push({
@@ -300,23 +291,35 @@ function buildDirectTransfersFromBalances(
       amount,
       status: "pending"
     });
-    debtors.set(fromParticipantId, debtorAmount - amount);
-    creditors.set(toParticipantId, creditorAmount - amount);
+    remainingBalances[fromParticipantId] =
+      (remainingBalances[fromParticipantId] ?? 0) + amount;
+    remainingBalances[toParticipantId] =
+      (remainingBalances[toParticipantId] ?? 0) - amount;
   }
 
-  const remainingEntries = [
-    ...[...debtors.entries()]
-      .filter(([, amount]) => amount > 0)
-      .map(([participantId, amount]) => ({ participantId, balance: -amount })),
-    ...[...creditors.entries()]
-      .filter(([, amount]) => amount > 0)
-      .map(([participantId, amount]) => ({ participantId, balance: amount }))
-  ];
+  const remainingEntries = Object.entries(remainingBalances)
+    .filter(([, balance]) => balance !== 0)
+    .map(([participantId, balance]) => ({ participantId, balance }));
 
-  return combineTransfersByRoute([
+  return netTransfersByRoute([
     ...preferredTransfers,
     ...buildGreedyTransfers(remainingEntries)
   ]);
+}
+
+function remainingDirectRoutePreferences(routePreferences, paidTransfers) {
+  const remaining = new Map(routePreferences ?? []);
+  for (const transfer of paidTransfers ?? []) {
+    if (!settlementTransferRoute(transfer) || !isPositiveAgoraAmount(transfer.amount)) {
+      continue;
+    }
+    const route = settlementTransferRoute(transfer);
+    const preferredAmount = remaining.get(route) ?? 0;
+    const nextAmount = Math.max(0, preferredAmount - transfer.amount);
+    if (nextAmount > 0) remaining.set(route, nextAmount);
+    else remaining.delete(route);
+  }
+  return remaining;
 }
 
 function buildDirectRoutePreferences(participants, expenses) {
@@ -558,6 +561,23 @@ function combineTransfersByRoute(transfers) {
     combined.set(route, { ...transfer });
   }
   return [...combined.values()];
+}
+
+function netTransfersByRoute(transfers) {
+  const routeAmounts = new Map();
+  for (const transfer of transfers ?? []) {
+    addNettedRoutePreference(routeAmounts, transfer);
+  }
+  return [...routeAmounts.entries()].map(([route, amount]) => {
+    const [fromParticipantId, toParticipantId] = route.split("\u0000");
+    return {
+      id: transferIdFor({ fromParticipantId, toParticipantId, amount }),
+      fromParticipantId,
+      toParticipantId,
+      amount,
+      status: "pending"
+    };
+  });
 }
 
 function amountOnRoutes(transfers, routes) {

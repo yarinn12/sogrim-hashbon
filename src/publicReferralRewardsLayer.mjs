@@ -230,9 +230,16 @@ function enhanceReferralEntryPoints() {
     screen.matches('[data-screen-kind="home"]')
       ? screen.querySelector(":scope > .section")
       : null;
-  if (homeSection) {
+  const homeBenefitActions = screen.matches('[data-screen-kind="home"]')
+    ? screen.querySelector(":scope > .home-benefit-actions")
+    : null;
+  if (homeBenefitActions || homeSection) {
     syncReferralRewardCard(screen, "home", () => {
-      homeSection.insertAdjacentHTML("beforebegin", referralRewardCard("home"));
+      if (homeBenefitActions) {
+        homeBenefitActions.insertAdjacentHTML("afterbegin", referralRewardCard("home"));
+      } else {
+        homeSection.insertAdjacentHTML("beforebegin", referralRewardCard("home"));
+      }
     });
   }
 
@@ -303,8 +310,12 @@ function referralRewardCard(context = "friends") {
   const buttonAriaLabel = active
     ? `${buttonLabel}: ${daysRemaining} ימים ללא פרסומות נותרו`
     : `${buttonLabel}: חודש ללא פרסומות`;
+  const cardTag = isHome ? "button" : "section";
+  const homeActionAttributes = isHome
+    ? `data-open-referral-rewards data-referral-context="${context}" type="button" aria-label="${buttonAriaLabel}"`
+    : "";
   return `
-    <section id="referral-reward-card-${context}" class="referral-reward-card is-${context}" data-referral-reward-card data-referral-context="${context}" aria-labelledby="referral-reward-title-${context}">
+    <${cardTag} id="referral-reward-card-${context}" class="referral-reward-card is-${context}" data-referral-reward-card data-referral-context="${context}" aria-labelledby="referral-reward-title-${context}" ${homeActionAttributes}>
       <span class="referral-reward-icon" aria-hidden="true">${giftIcon()}</span>
       <span class="referral-reward-copy">
         <small class="referral-reward-eyebrow">${eyebrow}</small>
@@ -318,11 +329,14 @@ function referralRewardCard(context = "friends") {
               : ""
         }
       </span>
-      <button class="primary-button referral-reward-action" data-open-referral-rewards data-referral-context="${context}" type="button" aria-label="${buttonAriaLabel}">
-        ${isHome ? shareIcon() : ""}
-        <span>${buttonLabel}</span>
-      </button>
-    </section>
+      ${
+        isHome
+          ? ""
+          : `<button class="primary-button referral-reward-action" data-open-referral-rewards data-referral-context="${context}" type="button" aria-label="${buttonAriaLabel}">
+              <span>${buttonLabel}</span>
+            </button>`
+      }
+    </${cardTag}>
   `;
 }
 

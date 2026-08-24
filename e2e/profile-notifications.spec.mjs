@@ -104,6 +104,22 @@ test.beforeEach(async ({ page }) => {
     if (route.request().method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
     }
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: {
+          id: USER_ID,
+          email: "yarin@example.com",
+          app_metadata: { provider: "google" },
+          user_metadata: {
+            full_name: "ירין יצחק",
+            username: "yarin",
+            account_space_id: SPACE_ID,
+            account_space_key: SPACE_KEY
+          }
+        }
+      });
+    }
     if (url.pathname.includes("notification_inbox")) {
       if (route.request().method() === "GET") {
         return route.fulfill({ headers: corsHeaders, json: inboxItems });
@@ -123,14 +139,17 @@ test.beforeEach(async ({ page }) => {
   });
 
   await page.addInitScript(({ participantId, state, userId, spaceId, spaceKey }) => {
-    localStorage.clear();
-    sessionStorage.clear();
+    if (localStorage.getItem("settle-friends-account-session")) {
+      sessionStorage.setItem("settle-friends-skip-next-splash", "1");
+      return;
+    }
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
     localStorage.setItem(
       "settle-friends-local-profile",
       JSON.stringify({
         participantId,
         displayName: "ירין יצחק",
+        username: "yarin",
         avatarPreset: "avatar-1",
         authProvider: "google",
         authSubject: userId,
@@ -150,6 +169,7 @@ test.beforeEach(async ({ page }) => {
           app_metadata: { provider: "google" },
           user_metadata: {
             full_name: "ירין יצחק",
+            username: "yarin",
             account_space_id: spaceId,
             account_space_key: spaceKey
           }
@@ -190,6 +210,26 @@ test("profile keeps sensitive account actions behind one clear disclosure", asyn
   await expect(accountDetails.locator('[data-account-action="delete-account-open"]')).toBeVisible();
   await expect(accountDetails.locator('a[href="./privacy.html"]')).toBeVisible();
   await assertNoHorizontalOverflow(page);
+});
+
+test("a gallery profile image persists after reload without a false sync warning", async ({ page }) => {
+  await page.locator('[data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  const picker = page.locator(".profile-avatar-picker-shell");
+  await picker.locator(":scope > summary").click();
+  await picker
+    .locator('[data-action="profile-avatar-image"][data-image-source="gallery"]')
+    .setInputFiles("icon-192.png");
+  await expect(page.locator(".notice")).toHaveText("תמונת הפרופיל נשמרה.");
+  const uploadedSource = await page
+    .locator(".product-header-profile-avatar img")
+    .getAttribute("src");
+  expect(uploadedSource).toMatch(/^data:image\/jpeg;base64,/);
+
+  await page.reload();
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await expect(page.locator(".product-header-profile-avatar img"))
+    .toHaveAttribute("src", uploadedSource);
 });
 
 test("notification inbox stays readable and completes its main mobile actions", async ({ page }) => {

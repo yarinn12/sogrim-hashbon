@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { devices, webkit } from "@playwright/test";
 
 import {
   accountProfileFromUser,
   signInWithPassword
 } from "../src/data/accountAuth.mjs";
-import { loadCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
 import {
-  mergeSharedEventIntoState,
-  readSharedEventState,
+  loadCloudState,
+  RECOVERED_MEMBER_SPACE_KEY,
+  saveCloudState
+} from "../src/data/cloudStore.mjs";
+import {
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
@@ -19,7 +22,6 @@ import {
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
-import { ensureNamedParticipant } from "../src/domain/userProfile.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
 import {
   manageOpenEventInvite,
@@ -43,7 +45,11 @@ const createdSpaceIds = new Set([eventCredentials.id]);
 
 try {
   const owner = await createTemporaryAccount("owner", "בעל אירוע בדיקה");
-  const joiner = await createTemporaryAccount("joiner", "חבר מצטרף בדיקה");
+  const joiner = await createTemporaryAccount(
+    "joiner",
+    "חבר מצטרף בדיקה",
+    { includeUsername: false }
+  );
   const ownerConfig = runtimeConfig(owner);
   const joinerConfig = runtimeConfig(joiner);
   const ownerProfile = accountProfileFromUser(owner.session.user);
@@ -81,6 +87,18 @@ try {
   await saveCloudState(ownerConfig, ownerState);
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
 
+  const initialInvite = await manageOpenEventInvite({
+    runtimeConfig: ownerConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
+    authorization: `Bearer ${owner.session.access_token}`,
+    eventId,
+    operation: "rotate"
+  });
+  assert.equal(initialInvite.ok, true);
+  assert.match(String(initialInvite.payload?.token ?? ""), /^[A-Za-z0-9_-]{32,128}$/);
+
+  // Reproduce the exact user action: generating a new link must revoke the
+  // previous one and make the replacement immediately redeemable.
   const openInvite = await manageOpenEventInvite({
     runtimeConfig: ownerConfig,
     env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
@@ -90,42 +108,43 @@ try {
   });
   assert.equal(openInvite.ok, true);
   assert.match(String(openInvite.payload?.token ?? ""), /^[A-Za-z0-9_-]{32,128}$/);
+  assert.notEqual(openInvite.payload.token, initialInvite.payload.token);
 
-  const redeemedInvite = await redeemEventInvite({
+  const supersededInvite = await redeemEventInvite({
     runtimeConfig: joinerConfig,
     env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
     authorization: `Bearer ${joiner.session.access_token}`,
     eventId,
+    token: initialInvite.payload.token
+  });
+  assert.equal(supersededInvite.ok, false);
+  assert.equal(supersededInvite.payload?.code, "EVENT_INVITE_REVOKED");
+
+  await joinThroughProductionBrowser({
+    email: joiner.email,
+    password: joiner.password,
+    username: joiner.username,
+    eventId,
+    eventName: "בדיקת שני חשבונות",
     token: openInvite.payload.token
   });
-  assert.equal(redeemedInvite.ok, true);
-  const redeemedCredentials = {
-    id: redeemedInvite.payload.spaceId,
-    key: redeemedInvite.payload.spaceKey
-  };
-  assert.deepEqual(redeemedCredentials, eventCredentials);
-
-  const inviteSnapshot = await readSharedEventState(
+  let joinerState = await loadCloudState(
     joinerConfig,
-    redeemedCredentials,
-    eventId
+    baseAccountState(joinerProfile)
   );
-  assert.equal(inviteSnapshot?.events?.[0]?.id, eventId);
-
-  let joinerState = mergeSharedEventIntoState(
-    baseAccountState(joinerProfile),
-    inviteSnapshot,
-    redeemedCredentials
+  assert.equal(joinerState.events?.some((event) => event.id === eventId), true);
+  const joinedEvent = joinerState.events.find((event) => event.id === eventId);
+  assert.equal(joinedEvent?.sharedSpaceId, eventCredentials.id);
+  // A freshly redeemed invite can still carry the event credential, while a
+  // device that rebuilt its missing index uses the membership-scoped recovery
+  // capability. Both must keep syncing; the writes below prove the exact
+  // capability returned by this run remains usable while membership is active.
+  assert.ok(
+    [eventCredentials.key, RECOVERED_MEMBER_SPACE_KEY].includes(
+      joinedEvent?.sharedSpaceKey
+    )
   );
-  joinerState = ensureNamedParticipant(joinerState, {
-    id: joinerProfile.participantId,
-    displayName: joinerProfile.displayName,
-    authProvider: joinerProfile.authProvider,
-    authSubject: joinerProfile.authSubject,
-    email: joinerProfile.email
-  }, eventId);
-  await saveCloudState(joinerConfig, joinerState);
-  joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
+  joinedEvent.sharedSpaceKey = RECOVERED_MEMBER_SPACE_KEY;
 
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.deepEqual(
@@ -297,6 +316,9 @@ try {
     checks: {
       separateAccountIdentities: true,
       authenticatedInviteRedeemed: true,
+      replacementInviteRevokesPreviousLink: true,
+      newlyGeneratedInviteRedeemed: true,
+      productionIphoneLoginJoinedFromNewLink: true,
       connectedParticipantJoined: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
       concurrentExpensesMerged: true,
@@ -336,13 +358,18 @@ try {
   }
 }
 
-async function createTemporaryAccount(role, displayName) {
+async function createTemporaryAccount(
+  role,
+  displayName,
+  { includeUsername = true } = {}
+) {
   const workspace = {
     id: `space-two-account-${role}-${suffix}`,
     key: randomBytes(32).toString("base64url")
   };
   const email = `qa-two-account-${role}-${suffix}@example.test`;
   const password = `${randomBytes(18).toString("base64url")}Aa1!`;
+  const username = `qa_${role}_${randomBytes(5).toString("hex")}`;
   const user = await adminRequest("/auth/v1/admin/users", {
     method: "POST",
     body: {
@@ -351,6 +378,7 @@ async function createTemporaryAccount(role, displayName) {
       email_confirm: true,
       user_metadata: {
         full_name: displayName,
+        ...(includeUsername ? { username } : {}),
         account_space_id: workspace.id,
         account_space_key: workspace.key
       }
@@ -363,7 +391,73 @@ async function createTemporaryAccount(role, displayName) {
     { email, password }
   );
   assert.equal(session.user.id, user.id);
-  return { session, workspace };
+  return { session, workspace, email, password, username };
+}
+
+async function joinThroughProductionBrowser({
+  email,
+  password,
+  username,
+  eventId,
+  eventName,
+  token
+}) {
+  const browser = await webkit.launch({ headless: true });
+  try {
+    const context = await browser.newContext({ ...devices["iPhone 15"] });
+    const page = await context.newPage();
+    const failedResponses = [];
+    const authDiagnostics = [];
+    page.on("response", async (response) => {
+      const url = new URL(response.url());
+      const isRelevant =
+        url.pathname.startsWith("/auth/v1/") ||
+        url.pathname.includes("/rest/v1/rpc/set_friend_username") ||
+        url.pathname.includes("/rest/v1/app_snapshots");
+      if (!isRelevant) return;
+      const entry = {
+        path: url.pathname,
+        status: response.status(),
+        method: response.request().method(),
+        requestBody: String(response.request().postData() ?? "").slice(0, 1_200),
+        body: (await response.text().catch(() => "")).slice(0, 400)
+      };
+      authDiagnostics.push(entry);
+      if (response.status() >= 400) failedResponses.push(entry);
+    });
+    const inviteUrl = `https://sogrim-hesbon-app.vercel.app/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(token)}`;
+    await page.goto(inviteUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    const gate = page.locator("#public-account-auth-gate");
+    await gate.waitFor({ timeout: 20_000 });
+    const emailToggle = gate.locator('[data-account-action="toggle-email"]');
+    if (await emailToggle.isVisible()) await emailToggle.click();
+    await gate.locator('input[name="email"]').fill(email);
+    await gate.locator('input[name="password"]').fill(password);
+    await gate.locator('button[type="submit"]').click();
+    const completionForm = page.locator('[data-account-form][data-mode="complete-profile"]');
+    if (await completionForm.waitFor({ state: "visible", timeout: 8_000 }).then(() => true).catch(() => false)) {
+      await completionForm.locator('input[name="username"]').fill(username);
+      await completionForm.locator('button[type="submit"]').click();
+    }
+    try {
+      await gate.waitFor({ state: "detached", timeout: 40_000 });
+    } catch (error) {
+      console.log(JSON.stringify({
+        diagnostic: "legacy-profile-completion-stuck",
+        gateText: (await gate.innerText().catch(() => "")).slice(0, 800),
+        formMode: await gate.locator("[data-account-form]").getAttribute("data-mode").catch(() => ""),
+        currentUrl: page.url(),
+        failedResponses,
+        authDiagnostics
+      }));
+      throw error;
+    }
+    await page.getByText(eventName, { exact: true }).first().waitFor({ timeout: 30_000 });
+    assert.equal(await page.locator("#app").getAttribute("inert"), null);
+    await context.close();
+  } finally {
+    await browser.close();
+  }
 }
 
 function runtimeConfig(account) {

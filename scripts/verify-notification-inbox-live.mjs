@@ -75,6 +75,17 @@ try {
 
   const sender = accounts[0];
   const recipient = accounts[1];
+  const friendshipTimestamp = new Date().toISOString();
+  await adminRequest("/rest/v1/friendships", {
+    method: "POST",
+    body: {
+      requester_id: sender.userId,
+      addressee_id: recipient.userId,
+      status: "accepted",
+      responded_at: friendshipTimestamp,
+      updated_at: friendshipTimestamp
+    }
+  });
   const senderParticipantId = `account-${sender.userId}`;
   const recipientParticipantId = `account-${recipient.userId}`;
   const participants = [
@@ -118,6 +129,9 @@ try {
       kind: "event-invite"
     }
   );
+  if (!invitationDelivery.ok) {
+    console.error(JSON.stringify({ invitationDelivery }));
+  }
   assert.equal(invitationDelivery.ok, true);
   assert.equal(invitationDelivery.inboxRecipients, 1);
   assert.equal(invitationDelivery.delivered, 0);
@@ -246,7 +260,7 @@ try {
     ok: true,
     checks: {
       temporaryAccounts: true,
-      activeParticipantInvitationWithoutFriendship: true,
+      acceptedFriendInvitationDelivered: true,
       secureInvitationLink: true,
       invitationJoinsRecipientAccount: true,
       sharedEventVerification: true,

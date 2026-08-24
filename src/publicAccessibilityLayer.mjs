@@ -11,6 +11,7 @@ const BACKDROP_SELECTOR = ".accessibility-center-backdrop";
 const HISTORY_KEY = "settleFriendsAccessibilityCenter";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const CENTER_CHANGED_EVENT = "settle-friends:accessibility-center-changed";
+const RETURN_FOCUS_STORAGE_KEY = "settle-friends-accessibility-return-focus";
 const MANUAL_TEXT_CLASS = "dynamic-type-preview";
 const TEXT_SIZE_PIXELS = Object.freeze({
   large: 18,
@@ -23,19 +24,31 @@ let backgroundState = [];
 let historyActive = false;
 let historyClosing = false;
 let enhancementScheduled = false;
+let focusReturnGuardCleanup = null;
 
 applyAccessibilityPreferences(preferences);
 injectAccessibilityStyles();
 enhanceAccessibilityEntryPoints();
 watchAccessibilityEntryPoints();
+window.setTimeout(restoreAccessibilityEntryFocusAfterNavigation, 250);
 
 document.addEventListener("click", handleAccessibilityClick, true);
+document.addEventListener("pointerdown", handleAccessibilityPointerDown, true);
 document.addEventListener("change", handleAccessibilityChange, true);
 document.addEventListener("keydown", handleAccessibilityKeydown, true);
 document.addEventListener("settle-friends:screen-rendered", scheduleEnhancement);
+document.addEventListener(
+  "settle-friends:screen-rendered",
+  restoreAccessibilityEntryFocusAfterNavigation
+);
 window.addEventListener("popstate", handleAccessibilityHistoryBack, true);
 window.addEventListener(NATIVE_BACK_EVENT, handleAccessibilityNativeBack, true);
-window.addEventListener("pageshow", reloadAccessibilityPreferences);
+window.addEventListener("pageshow", () => {
+  reloadAccessibilityPreferences();
+  for (const delay of [0, 250, 1_000, 2_500]) {
+    window.setTimeout(restoreAccessibilityEntryFocusAfterNavigation, delay);
+  }
+});
 window.addEventListener("storage", handleAccessibilityStorageChange);
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) reloadAccessibilityPreferences();
@@ -65,6 +78,7 @@ function scheduleEnhancement() {
   requestAnimationFrame(() => {
     enhancementScheduled = false;
     enhanceAccessibilityEntryPoints();
+    restoreAccessibilityEntryFocusAfterNavigation();
   });
 }
 
@@ -82,6 +96,15 @@ function enhanceAccessibilityEntryPoints() {
     if (routeControls && entry?.parentElement !== routeControls) {
       routeControls.append(entry);
     }
+    if (routeControls && entry) {
+      const backButton = routeControls.querySelector(":scope > .app-back-button");
+      if (backButton) {
+        routeControls.prepend(backButton);
+        backButton.insertAdjacentElement("afterend", entry);
+      } else {
+        routeControls.prepend(entry);
+      }
+    }
   });
 
   document
@@ -92,6 +115,25 @@ function enhanceAccessibilityEntryPoints() {
       if (surface.querySelector(`:scope > ${ENTRY_SELECTOR}`)) return;
       surface.insertAdjacentHTML("afterbegin", renderAccessibilityButton("auth"));
     });
+
+  document.querySelectorAll(ENTRY_SELECTOR).forEach((entry) => {
+    if (!(entry instanceof HTMLElement) || entry.dataset.accessibilityBound === "1") return;
+    entry.dataset.accessibilityBound = "1";
+    entry.addEventListener("click", handleDirectAccessibilityEntryClick);
+  });
+}
+
+function handleDirectAccessibilityEntryClick(event) {
+  event.preventDefault();
+  openAccessibilityCenter(event.currentTarget);
+}
+
+function handleAccessibilityPointerDown(event) {
+  const entry = event.target.closest?.(ENTRY_SELECTOR);
+  if (!entry || event.button > 0) return;
+  // Open on contact so a concurrent auth/profile render cannot replace the
+  // entry between pointer-down and click and silently lose the interaction.
+  openAccessibilityCenter(entry);
 }
 
 function renderAccessibilityButton(context = "header") {
@@ -174,6 +216,11 @@ function handleAccessibilityChange(event) {
 function openAccessibilityCenter(trigger = document.activeElement) {
   if (document.querySelector(BACKDROP_SELECTOR)) return;
   returnFocus = trigger instanceof HTMLElement ? trigger : null;
+  try {
+    window.sessionStorage.setItem(RETURN_FOCUS_STORAGE_KEY, "1");
+  } catch {
+    // Focus restoration still works without session storage on the same page.
+  }
 
   document.body.insertAdjacentHTML(
     "beforeend",
@@ -271,7 +318,18 @@ function openAccessibilityCenter(trigger = document.activeElement) {
   publishAccessibilityCenterState(true);
   syncAccessibilityControls();
   pushAccessibilityHistoryState();
-  document.querySelector(".accessibility-center")?.focus();
+  const center = document.querySelector(".accessibility-center");
+  const focusCenterIfNeeded = () => {
+    if (!(center instanceof HTMLElement) || !center.isConnected) return;
+    if (center.contains(document.activeElement)) return;
+    center.focus({ preventScroll: true });
+  };
+  focusCenterIfNeeded();
+  // Opening the center publishes a route-state event. The app shell may
+  // finish one render immediately afterwards, so restore focus after that
+  // render as well without stealing it once the user moved inside the dialog.
+  requestAnimationFrame(() => requestAnimationFrame(focusCenterIfNeeded));
+  window.setTimeout(focusCenterIfNeeded, 120);
 }
 
 function renderTextSizeOption(value, label) {
@@ -363,13 +421,88 @@ function closeAccessibilityCenter({ fromHistory = false } = {}) {
   publishAccessibilityCenterState(false);
   const target = returnFocus;
   returnFocus = null;
-  if (target?.isConnected && !target.inert) target.focus();
+  const restoreFocus = () => {
+    const visibleEntry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
+      .find((entry) => entry.getClientRects().length > 0 && !entry.closest("[inert]"));
+    const focusTarget =
+      target?.isConnected && target.getClientRects().length > 0
+        ? target
+        : visibleEntry;
+    if (focusTarget instanceof HTMLElement && !focusTarget.closest("[inert]")) {
+      focusTarget.focus({ preventScroll: true });
+      try {
+        window.sessionStorage.removeItem(RETURN_FOCUS_STORAGE_KEY);
+      } catch {
+        // Focus has already been restored.
+      }
+    }
+  };
+  requestAnimationFrame(() => requestAnimationFrame(restoreFocus));
+  // A history back can cause the app shell to render after the dialog closes.
+  // Restore focus once more after that render so keyboard users never land on body.
+  for (const delay of [120, 400, 1_000, 1_800, 3_000]) {
+    window.setTimeout(restoreFocus, delay);
+  }
+  maintainAccessibilityReturnFocus(target);
+}
+
+function maintainAccessibilityReturnFocus(preferredTarget) {
+  focusReturnGuardCleanup?.();
+  let stopped = false;
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    window.clearInterval(intervalId);
+    window.clearTimeout(timeoutId);
+    document.removeEventListener("pointerdown", stop, true);
+    document.removeEventListener("touchstart", stop, true);
+    document.removeEventListener("keydown", stop, true);
+    focusReturnGuardCleanup = null;
+  };
+  const restore = () => {
+    if (stopped || document.querySelector(BACKDROP_SELECTOR)) return;
+    const visibleEntry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
+      .find((entry) => entry.getClientRects().length > 0 && !entry.closest("[inert]"));
+    const focusTarget =
+      preferredTarget?.isConnected && preferredTarget.getClientRects().length > 0
+        ? preferredTarget
+        : visibleEntry;
+    if (!(focusTarget instanceof HTMLElement) || focusTarget.closest("[inert]")) return;
+    if (document.activeElement !== focusTarget) focusTarget.focus();
+  };
+  document.addEventListener("pointerdown", stop, true);
+  document.addEventListener("touchstart", stop, true);
+  document.addEventListener("keydown", stop, true);
+  const intervalId = window.setInterval(restore, 100);
+  const timeoutId = window.setTimeout(stop, 8_000);
+  focusReturnGuardCleanup = stop;
+  restore();
 }
 
 function publishAccessibilityCenterState(open) {
   document.dispatchEvent(
     new CustomEvent(CENTER_CHANGED_EVENT, { detail: { open } })
   );
+}
+
+function restoreAccessibilityEntryFocusAfterNavigation() {
+  if (document.querySelector(BACKDROP_SELECTOR)) return;
+  try {
+    if (window.sessionStorage.getItem(RETURN_FOCUS_STORAGE_KEY) !== "1") return;
+  } catch {
+    return;
+  }
+  window.setTimeout(() => {
+    const entry = [...document.querySelectorAll(`${ENTRY_SELECTOR}:not([disabled])`)]
+      .find((item) => item.getClientRects().length > 0 && !item.closest("[inert]"));
+    if (!(entry instanceof HTMLElement)) return;
+    entry.focus({ preventScroll: true });
+    try {
+      window.sessionStorage.removeItem(RETURN_FOCUS_STORAGE_KEY);
+    } catch {
+      // Nothing else is required after focus is restored.
+    }
+  }, 0);
 }
 
 function setBackgroundInert(value) {
@@ -404,7 +537,10 @@ function pushAccessibilityHistoryState() {
 }
 
 function handleAccessibilityHistoryBack(event) {
-  if (!historyActive) return;
+  // Other screen layers may replace the current history state while the center
+  // is open. The visible dialog is the authoritative signal that Back belongs
+  // to accessibility, even if our marker was removed by that replacement.
+  if (!document.querySelector(BACKDROP_SELECTOR)) return;
   event.stopImmediatePropagation();
   closeAccessibilityCenter({ fromHistory: true });
 }
@@ -504,7 +640,8 @@ function injectAccessibilityStyles() {
     .accessibility-entry-auth {
       position: absolute;
       inset-block-start: calc(14px + env(safe-area-inset-top));
-      inset-inline-start: 14px;
+      left: 14px;
+      right: auto;
       z-index: 3;
     }
 
