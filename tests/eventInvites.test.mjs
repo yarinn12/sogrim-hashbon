@@ -95,6 +95,12 @@ function sharedSnapshot(state = serverState()) {
   };
 }
 
+function redactedSharedSnapshot(state = serverState()) {
+  const redactedState = structuredClone(state);
+  delete redactedState.events[0].sharedSpaceKey;
+  return sharedSnapshot(redactedState);
+}
+
 test("client creates an authenticated open invite without sending event credentials", async () => {
   let request = null;
   const result = await ensureOpenEventInvite(
@@ -387,11 +393,16 @@ test("a recovered event member can recreate the stable open link without the raw
       if (address.includes("/rest/v1/app_snapshots?")) {
         if (address.includes("owner_user_id")) return jsonResponse([{ state: recoveredState }]);
         if (address.includes("access_key_hash")) {
-          return jsonResponse([sharedSnapshot()]);
+          return jsonResponse([redactedSharedSnapshot()]);
         }
-        return jsonResponse([sharedSnapshot()]);
+        return jsonResponse([redactedSharedSnapshot()]);
       }
-      if (address.includes("/rest/v1/event_invite_tokens?")) return jsonResponse([]);
+      if (address.includes("/rest/v1/event_invite_tokens?")) {
+        const select = new URL(address).searchParams.get("select");
+        return select === "space_id,space_key"
+          ? jsonResponse([{ space_id: SPACE_ID, space_key: SPACE_KEY }])
+          : jsonResponse([]);
+      }
       if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
         rotations += 1;
         rotationBody = JSON.parse(options.body);
@@ -429,7 +440,7 @@ test("a recovered member replaces an existing invite with canonical credentials 
       return jsonResponse(
         address.includes("owner_user_id")
           ? [{ state: recoveredState }]
-          : [sharedSnapshot()]
+          : [redactedSharedSnapshot()]
       );
     }
     if (address.includes("/rest/v1/event_invite_tokens?")) {

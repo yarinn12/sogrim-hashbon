@@ -621,7 +621,19 @@ async function loadMemberAccessibleSharedEvent({
   const rows = await snapshotResponse.json().catch(() => []);
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
   const event = eventFromState(snapshot?.state, eventId);
-  const canonicalSpaceKey = String(event?.sharedSpaceKey ?? "").trim();
+  // Shared snapshots intentionally omit the raw space key. A recovered device
+  // therefore carries only RECOVERED_MEMBER_SPACE_KEY and cannot validate the
+  // snapshot directly. After the caller proves live membership, recover the
+  // canonical key from the server-only invite history and bind it back to the
+  // snapshot hash before allowing any new invite to be created.
+  const inviteAnchor = await loadInviteEventAnchor({
+    supabaseUrl,
+    serviceRoleKey,
+    eventId,
+    spaceId,
+    fetchImpl
+  });
+  const canonicalSpaceKey = String(inviteAnchor?.space_key ?? "").trim();
   if (
     !event ||
     !isSafeSharedIdentifier(canonicalSpaceKey) ||

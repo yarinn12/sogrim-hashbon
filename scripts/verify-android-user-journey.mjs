@@ -351,9 +351,8 @@ async function openAndInspectOverlay(page, action, label) {
         );
         shareReady = true;
       }
-      if (permissionDenied) shareReady = true;
     }
-    check("share: secure invitation state is resolved", shareReady);
+    check("share: authenticated participant receives a working invitation link", shareReady);
   }
   if (label === "home") {
     const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
