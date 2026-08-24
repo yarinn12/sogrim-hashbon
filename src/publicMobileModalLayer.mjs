@@ -10,7 +10,7 @@ const CSS = `
     pointer-events: none !important;
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
     .expense-modal-backdrop,
     .event-modal-backdrop,
     html.product-v1 .expense-modal-backdrop,
@@ -22,7 +22,9 @@ const CSS = `
     html.fintech-design-v2 .expense-modal-backdrop,
     html.fintech-design-v2 .event-modal-backdrop,
     html.premium-visual-v1 .expense-modal-backdrop,
-    html.premium-visual-v1 .event-modal-backdrop {
+    html.premium-visual-v1 .event-modal-backdrop,
+    html.ledger-workspace-v1 body #app .expense-modal-backdrop,
+    html.ledger-workspace-v1 body #app .event-modal-backdrop {
       position: fixed !important;
       inset: 0 !important;
       z-index: 80 !important;
@@ -48,14 +50,24 @@ const CSS = `
     html.fintech-design-v2 .expense-modal,
     html.fintech-design-v2 .event-modal,
     html.premium-visual-v1 .expense-modal,
-    html.premium-visual-v1 .event-modal {
+    html.premium-visual-v1 .event-modal,
+    html.ledger-workspace-v1 body #app .expense-modal,
+    html.ledger-workspace-v1 body #app .event-modal {
+      box-sizing: border-box !important;
       width: 100vw !important;
       max-width: none !important;
+      min-width: 0 !important;
       height: 100vh !important;
       height: 100svh !important;
       height: 100dvh !important;
+      min-height: 100vh !important;
+      min-height: 100svh !important;
+      min-height: 100dvh !important;
       max-height: none !important;
+      align-self: stretch !important;
+      justify-self: stretch !important;
       margin: 0 !important;
+      padding: 0 !important;
       border: 0 !important;
       border-radius: 0 !important;
       overflow-y: auto !important;
@@ -96,9 +108,9 @@ const CSS = `
     html.premium-visual-v1 .expense-modal-header,
     html.premium-visual-v1 .event-modal-header {
       position: sticky !important;
-      top: 0 !important;
+      top: 1px !important;
       z-index: 5 !important;
-      margin: -20px -20px 16px !important;
+      margin: 0 0 16px !important;
       padding: calc(14px + env(safe-area-inset-top)) 20px 14px !important;
       border-bottom: 1px solid rgba(17, 21, 19, 0.1) !important;
       background: #ffffff !important;

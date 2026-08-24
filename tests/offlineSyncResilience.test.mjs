@@ -553,6 +553,92 @@ test("a temporary shared-event failure keeps the local change queued without a f
   }
 });
 
+test("a transient cloud failure is never reported as pending when durable storage also fails", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const backingStorage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const spaceId = "space-no-durable-copy";
+  saveTestAccount(backingStorage, {
+    userId: "user-a",
+    accessToken: "token-no-durable-copy",
+    spaceId,
+    spaceKey: "no-durable-copy-secret-that-is-long-enough"
+  });
+  const failingStorage = {
+    getItem: backingStorage.getItem,
+    removeItem: backingStorage.removeItem,
+    setItem(key, value) {
+      if (
+        String(key).startsWith("settle-friends-state:") ||
+        String(key).startsWith("settle-friends-pending-sync:")
+      ) {
+        throw new Error("storage unavailable");
+      }
+      backingStorage.setItem(key, value);
+    }
+  };
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: failingStorage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = failingStorage;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    return { ok: false, status: 503 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?no-durable-pending=${Date.now()}`
+    );
+    const changedState = queueTestState("No Durable Copy");
+    changedState.events = [{
+      id: "event-not-durable",
+      name: "Must stay in draft",
+      eventType: "standard",
+      currency: "ILS",
+      participantIds: ["account-user-a"],
+      adminIds: ["account-user-a"],
+      createdByParticipantId: "account-user-a",
+      expenses: [],
+      transfers: []
+    }];
+    const result = await store.saveSharedState(changedState);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.pending, undefined);
+    assert.equal(backingStorage.getItem(`settle-friends-state:${spaceId}`), null);
+    assert.equal(
+      backingStorage.getItem(`settle-friends-pending-sync:${spaceId}`),
+      null
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("a workspace failure after canonical persistence keeps the same expense queued", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;

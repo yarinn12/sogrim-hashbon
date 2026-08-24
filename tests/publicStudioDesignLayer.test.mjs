@@ -9,7 +9,7 @@ test("circle design layer loads after the studio foundation and is available off
   ]);
 
   assert.match(index, /publicStudioDesignLayer\.mjs/);
-  assert.ok(index.indexOf("publicStudioDesignLayer.mjs") > index.indexOf("publicMobileModalLayer.mjs"));
+  assert.ok(index.indexOf("publicStudioDesignLayer.mjs") < index.indexOf("publicMobileModalLayer.mjs"));
   assert.match(index, /publicCircleDesignLayer\.mjs/);
   assert.ok(index.indexOf("publicCircleDesignLayer.mjs") > index.indexOf("publicStudioDesignLayer.mjs"));
   assert.match(sw, /const CACHE_NAME = "settle-friends-live-v\d+"/);

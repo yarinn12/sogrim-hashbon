@@ -9430,11 +9430,27 @@ const CSS = `
     width: 100% !important;
   }
 
-  @media (max-width: 720px) {
+  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+    html.ledger-workspace-v1 .expense-modal-backdrop,
+    html.ledger-workspace-v1 .event-modal-backdrop {
+      align-items: stretch !important;
+      justify-items: stretch !important;
+      padding: 0 !important;
+    }
+
     html.ledger-workspace-v1 .expense-step-modal {
+      width: 100vw !important;
+      max-width: none !important;
       height: 100vh !important;
       height: 100dvh !important;
+      max-height: none !important;
+      margin: 0 !important;
+      border-radius: 0 !important;
     }
+
+  }
+
+  @media (max-width: 720px) {
 
     html.ledger-workspace-v1 .expense-flow-progress {
       padding: 14px 16px 0 !important;
@@ -14031,6 +14047,14 @@ const CSS = `
   @media (min-width: 520px) {
     html.ledger-workspace-v1 .profile-avatar-options {
       grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+      padding-inline: 0 !important;
+      overflow: hidden !important;
+    }
+
+    html.ledger-workspace-v1 .profile-avatar-preview {
+      width: 46px !important;
+      height: 46px !important;
     }
   }
 

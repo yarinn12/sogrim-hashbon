@@ -4382,6 +4382,35 @@ const CSS = `
     }
   }
 
+  /* Touch tablets use the same focused, edge-to-edge editing flow as phones. */
+  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+    html.product-studio-v3 .expense-modal-backdrop,
+    html.product-studio-v3 .event-modal-backdrop {
+      position: fixed !important;
+      inset: 0 !important;
+      display: grid !important;
+      place-items: stretch !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      background: var(--studio-surface) !important;
+      backdrop-filter: none !important;
+    }
+
+    html.product-studio-v3 .expense-modal,
+    html.product-studio-v3 .event-modal {
+      width: 100vw !important;
+      max-width: none !important;
+      min-height: 100dvh !important;
+      height: 100dvh !important;
+      max-height: none !important;
+      margin: 0 !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      overflow-y: auto !important;
+      box-shadow: none !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html.product-studio-v3 *,
     html.product-studio-v3 *::before,

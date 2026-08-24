@@ -609,7 +609,7 @@ export async function saveSharedState(state) {
   }
 
   if (runtimeConfig.storage?.mode === "supabase") {
-    savePendingSharedState(runtimeConfig, sharedState);
+    let pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
     publishSyncStatus("saving");
 
     const pendingPayload = JSON.stringify(sharedState);
@@ -664,19 +664,27 @@ export async function saveSharedState(state) {
             if (partiallyPersistedState) {
               Object.assign(state, partiallyPersistedState);
               saveState(partiallyPersistedState);
-              savePendingSharedState(runtimeConfig, partiallyPersistedState);
+              pendingStateSaved = savePendingSharedState(
+                runtimeConfig,
+                partiallyPersistedState
+              );
             } else if (transientFailure) {
               // Keep locally saved changes queued during temporary outages.
               // A background retry will persist them when the service recovers.
-              savePendingSharedState(runtimeConfig, sharedState);
+              pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
             } else {
-              if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
-                clearPendingSharedState(runtimeConfig);
-              }
               saveState(previousState);
               publishSharedSaveReverted(syncSelection);
               reverted = true;
             }
+          }
+          if (
+            !transientFailure &&
+            !partiallyPersistedState &&
+            pendingPayload === pendingSharedStateRaw(runtimeConfig)
+          ) {
+            clearPendingSharedState(runtimeConfig);
+            pendingStateSaved = false;
           }
           publishSyncFailure(error);
           emitOperationFailure("state_save");
@@ -685,7 +693,9 @@ export async function saveSharedState(state) {
             mode: "cloud",
             error,
             ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
-            ...(transientFailure && !partiallyPersistedState ? { pending: true } : {}),
+            ...(transientFailure && !partiallyPersistedState && pendingStateSaved
+              ? { pending: true }
+              : {}),
             ...(reverted ? { reverted: true } : {})
           };
         }
@@ -697,14 +707,13 @@ export async function saveSharedState(state) {
   if (runtimeConfigUsedFallback) {
     const pendingConfig = pendingSyncConfig(runtimeConfig);
     if (pendingConfig) {
-      savePendingSharedState(pendingConfig, sharedState);
+      const pendingStateSaved = savePendingSharedState(pendingConfig, sharedState);
       publishSyncStatus(globalThis.navigator?.onLine === false ? "offline" : "unavailable");
-      return localSaved
+      return localSaved && pendingStateSaved
         ? { ok: true, mode: "local", pending: true }
         : {
             ok: false,
             mode: "local",
-            pending: true,
             error: new Error("Local storage is unavailable")
           };
     }
@@ -1063,7 +1072,10 @@ function loadPendingSharedState(config) {
 function savePendingSharedState(config, sharedState) {
   try {
     window.localStorage.setItem(pendingSyncStorageKey(config), JSON.stringify(sharedState));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function clearPendingSharedState(config) {

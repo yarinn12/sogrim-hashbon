@@ -142,6 +142,11 @@ test("event details open settlement before participant management", async () => 
   );
   assert.match(app, /createButton\.disabled = count === 0/);
   assert.match(app, /screen = \{ name: "new-event-participants" \}/);
+  assert.match(app, /function syncNewEventDraftFromRenderedDetails\(\)/);
+  assert.match(
+    app,
+    /if \(action === "open-new-event-settlement"\) \{[\s\S]*?syncNewEventDraftFromRenderedDetails\(\)/
+  );
 });
 
 test("new event participants offer friends, offline names, and an invite link or QR", async () => {
@@ -187,6 +192,23 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.doesNotMatch(inviteToggleAction, /participantDetails\.open/);
   assert.match(createFlow, /const inviteAfterCreate = newEventDraft\.inviteAfterCreate === true/);
   assert.match(createFlow, /const saveRequest = persistState\(\)/);
+  assert.match(createFlow, /const submittedDraft = structuredClone\(newEventDraft\)/);
+  assert.match(createFlow, /const stateBeforeCreate = structuredClone\(state\)/);
+  assert.match(createFlow, /const saveResult = await saveRequest/);
+  assert.match(createFlow, /if \(!saveResult\?\.ok && !saveResult\?\.pending\)/);
+  assert.match(createFlow, /newEventDraft = submittedDraft/);
+  assert.match(
+    createFlow,
+    /state = stateBeforeCreate;\s+saveState\(stateBeforeCreate\);\s+newEventDraft = submittedDraft/
+  );
+  assert.match(createFlow, /if \(!inviteAfterCreate \|\| saveResult\?\.pending\) return/);
+  assert.ok(
+    createFlow.indexOf("const saveResult = await saveRequest") <
+      createFlow.indexOf('screen = { name: "event", eventId: event.id }')
+  );
+  assert.match(createFlow, /if \(createEventBusy\) return/);
+  assert.match(createFlow, /finally \{[\s\S]*?createEventBusy = false/);
+  assert.doesNotMatch(createFlow, /Promise\.resolve\(saveRequest\)\.catch/);
   assert.match(createFlow, /await openPreparedEventShare/);
   assert.match(ledgerStyles, /\.new-event-invite-after-create/);
   assert.match(ledgerStyles, /min-height: 72px/);

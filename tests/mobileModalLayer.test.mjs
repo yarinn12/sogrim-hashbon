@@ -13,13 +13,14 @@ test("mobile modal layer loads last so phone dialogs open full screen", async ()
   assert.match(index, /publicMobileModalLayer\.mjs/);
   assert.ok(
     index.lastIndexOf("publicMobileModalLayer.mjs") >
-      index.lastIndexOf("publicProductV1Layer.mjs")
+      index.lastIndexOf("publicDynamicTypeLayer.mjs")
   );
   assert.match(sw, /publicMobileModalLayer\.mjs/);
-  assert.match(layer, /@media \(max-width: 760px\)/);
+  assert.match(layer, /@media \(max-width: 1024px\), \(hover: none\) and \(pointer: coarse\)/);
   assert.match(layer, /\.expense-modal-backdrop/);
   assert.match(layer, /\.event-modal-backdrop/);
   assert.match(layer, /html\.product-v1-live \.expense-modal/);
+  assert.match(layer, /html\.ledger-workspace-v1 body #app \.expense-modal/);
   assert.match(layer, /height:\s*100dvh/);
   assert.match(layer, /max-height:\s*none !important/);
   assert.match(layer, /border-radius:\s*0 !important/);

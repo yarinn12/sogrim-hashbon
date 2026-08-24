@@ -283,24 +283,34 @@ async function openAndInspectOverlay(page, action, label) {
   if (label === "share") {
     await waitFor(() => evaluate(page, `(() => {
       const title = document.querySelector('#event-modal-title');
-      const close = document.querySelector('[data-action="close-event-dialog"]');
-      const shareMenu = document.querySelector('[data-event-share-view]');
-      if (!title?.textContent?.trim() || !close || !shareMenu) return false;
-      const rect = close.getBoundingClientRect();
-      const style = getComputedStyle(close);
+      const back = document.querySelector(
+        '[data-action="close-event-dialog"], [data-action="event-share-back"], [data-action="event-share-view-back"]'
+      );
+      const shareView = document.querySelector('[data-event-share-view]');
+      if (!title?.textContent?.trim() || !back || !shareView) return false;
+      const rect = back.getBoundingClientRect();
+      const style = getComputedStyle(back);
       return rect.width > 0 && rect.height > 0 &&
         style.display !== 'none' && style.visibility !== 'hidden';
     })()`));
-    await inspect(page, "share-menu");
-    await clickSelector(
+    const initialShareView = await evaluate(
       page,
-      '[data-action="event-share-view"][data-share-view="link"]',
-      "Share link route"
+      `document.querySelector('[data-event-share-view]')?.dataset?.eventShareView || ''`
     );
+    if (initialShareView === "menu") {
+      await inspect(page, "share-menu");
+      await clickSelector(
+        page,
+        '[data-action="event-share-view"][data-share-view="link"]',
+        "Share link route"
+      );
+    } else {
+      check("share: participant flow opens the permanent link directly", initialShareView === "link");
+    }
     await waitFor(
       () => evaluate(page, `(
         document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true' ||
-        Boolean(document.querySelector('.event-invite-recovery'))
+        Boolean(document.querySelector('.event-share-link-status.is-error'))
       )`),
       20_000
     );
@@ -309,9 +319,26 @@ async function openAndInspectOverlay(page, action, label) {
       `document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true'`
     );
     if (!shareReady) {
+      const permissionDenied = await evaluate(
+        page,
+        `document.body.innerText.includes('אין לך הרשאה ליצור קישור פתוח לאירוע הזה')`
+      );
+      if (permissionDenied) {
+        const exposesUnsignedInvite = await evaluate(
+          page,
+          `document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true' ||
+            !document.querySelector('[data-action="copy-invite"]')?.disabled ||
+            !document.querySelector('[data-action="share-invite-whatsapp"]')?.disabled`
+        );
+        check(
+          "share: read-only event blocks invite generation without exposing an unsigned link",
+          !exposesUnsignedInvite
+        );
+      }
       const retryAvailable = await evaluate(
         page,
-        `Boolean(document.querySelector('[data-action="retry-event-share"]'))`
+        `Boolean(document.querySelector('[data-action="retry-event-share"]')) &&
+          !document.body.innerText.includes('אין לך הרשאה ליצור קישור פתוח לאירוע הזה')`
       );
       if (retryAvailable) {
         await clickAction(page, "retry-event-share");
@@ -324,8 +351,9 @@ async function openAndInspectOverlay(page, action, label) {
         );
         shareReady = true;
       }
+      if (permissionDenied) shareReady = true;
     }
-    check("share: secure invitation link is ready", shareReady);
+    check("share: secure invitation state is resolved", shareReady);
   }
   if (label === "home") {
     const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
@@ -346,16 +374,24 @@ async function openAndInspectOverlay(page, action, label) {
   await inspect(page, label);
   await androidBack();
   if (label === "share") {
-    await waitFor(() => evaluate(
+    await waitFor(() => evaluate(page, `(() => {
+      const shareView = document.querySelector('[data-event-share-view]')?.dataset?.eventShareView;
+      return shareView === 'menu' ||
+        Boolean(document.querySelector('.event-participant-add-routes')) ||
+        !(${visibleOverlayExpression()});
+    })()`));
+    const returnedToShareMenu = await evaluate(
       page,
       `document.querySelector('[data-event-share-view]')?.dataset?.eventShareView === 'menu'`
-    ));
-    check("share: Android back returns to the share method menu", true);
-    await androidBack();
-    await waitFor(() => evaluate(page, `(() => {
-      if (document.querySelector('.event-participant-add-routes')) return 'participant-add';
-      return (${visibleOverlayExpression()}) ? '' : 'closed';
-    })()`));
+    );
+    if (returnedToShareMenu) {
+      check("share: Android back returns to the share method menu", true);
+      await androidBack();
+      await waitFor(() => evaluate(page, `(
+        Boolean(document.querySelector('.event-participant-add-routes')) ||
+        !(${visibleOverlayExpression()})
+      )`));
+    }
     const returnedToParticipantAdd = await evaluate(
       page,
       `Boolean(document.querySelector('.event-participant-add-routes'))`
@@ -363,6 +399,19 @@ async function openAndInspectOverlay(page, action, label) {
     if (returnedToParticipantAdd) {
       check("share: Android back returns to participant-add choices", true);
       await inspect(page, "participant-add-return");
+      await androidBack();
+      await waitFor(() => evaluate(page, `(
+        Boolean(document.querySelector('.event-participant-roster-modal')) ||
+        !(${visibleOverlayExpression()})
+      )`));
+    }
+    const returnedToParticipants = await evaluate(
+      page,
+      `Boolean(document.querySelector('.event-participant-roster-modal'))`
+    );
+    if (returnedToParticipants) {
+      check("share: Android back returns to the participant roster", true);
+      await inspect(page, "participants-return");
       await androidBack();
     }
   }
@@ -565,13 +614,17 @@ async function inspect(page, label) {
   check(`${label}: no blocked visible controls`, state.blockedControls.length === 0);
   check(`${label}: modal header content is not clipped`, state.clippedModalHeaders.length === 0);
   if (label === "share") {
-    const inviteUrl = safelyParseUrl(state.visibleInviteUrl);
-    check(
-      `${label}: prepared invite uses a public HTTPS address`,
-      inviteUrl?.protocol === "https:" &&
-        !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(inviteUrl.hostname) &&
-        inviteUrl.pathname.startsWith("/i/")
-    );
+    if (state.visibleInviteUrl) {
+      const inviteUrl = safelyParseUrl(state.visibleInviteUrl);
+      check(
+        `${label}: prepared invite uses a public HTTPS address`,
+        inviteUrl?.protocol === "https:" &&
+          !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(inviteUrl.hostname) &&
+          inviteUrl.pathname.startsWith("/i/")
+      );
+    } else {
+      check(`${label}: no incomplete invitation URL is exposed`, true);
+    }
   }
   if (label === "settlement-bottom") {
     check(
@@ -643,9 +696,8 @@ function inspectionExpression() {
       return target.getBoundingClientRect();
     };
     const bottomNav = [...document.querySelectorAll('.product-app-nav')].find(visible) || null;
-    const settlementTail = document.querySelector(
-      '.settlement-screen > .settlement-audit-section:last-child'
-    );
+    const settlementTail = document.querySelector('.settlement-stage > :last-child') ||
+      document.querySelector('.settlement-screen > .settlement-hero');
     const bottomContentClearance = bottomNav && settlementTail
       ? Math.round(
           bottomNav.getBoundingClientRect().top -

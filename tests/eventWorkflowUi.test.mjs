@@ -1577,6 +1577,11 @@ test("transient action menus close when the user taps elsewhere or presses Escap
     app,
     /event\.key === "Escape" && closeOpenTransientMenus\(\)/
   );
+  assert.match(app, /settlementMoreActionsOpen:\s*Boolean\(/);
+  assert.match(
+    app,
+    /if \(snapshot\.settlementMoreActionsOpen\)[\s\S]*?\.settlement-more-actions[\s\S]*?menu\.open = true/
+  );
 });
 
 test("small action dialogs dismiss only when their actual backdrop is tapped", async () => {

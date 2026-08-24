@@ -28,6 +28,8 @@ test.beforeEach(async ({ page }) => {
 
 test("touching the login fields focuses them on iPad and opens the software-input path", async ({ page }) => {
   await page.goto("/");
+  const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+  test.skip(!hasTouch, "the software-input path only exists in touch contexts");
   const gate = page.locator("#public-account-auth-gate");
   const email = gate.locator('input[name="email"]');
   const password = gate.locator('input[name="password"]');

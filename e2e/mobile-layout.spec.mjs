@@ -224,6 +224,37 @@ test("expense notes save and close smoothly", async ({ page }) => {
   );
 });
 
+test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "ipad-webkit", "iPad-specific landscape guard");
+  await page.setViewportSize({ width: 1194, height: 834 });
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="show-expense-form"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const dialog = page.locator(".expense-step-modal");
+  await expect(dialog).toBeVisible();
+  const rect = await dialog.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return {
+      top: Math.round(bounds.top),
+      left: Math.round(bounds.left),
+      right: Math.round(bounds.right),
+      bottom: Math.round(bounds.bottom),
+      radius: getComputedStyle(element).borderRadius
+    };
+  });
+  expect(rect.top).toBeLessThanOrEqual(4);
+  expect(rect.left).toBeLessThanOrEqual(4);
+  expect(rect.right).toBeGreaterThanOrEqual(1190);
+  expect(rect.bottom).toBeGreaterThanOrEqual(830);
+  expect(rect.radius).toBe("0px");
+});
+
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {
   await assertDocumentDirection(page);
   await assertLayoutHealth(page, "home");

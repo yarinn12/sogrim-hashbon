@@ -107,6 +107,7 @@ import {
   loadSharedStateForStartup,
   loadLocalProfile,
   resetSharedState,
+  saveState,
   saveLocalProfile,
   saveSharedState
 } from "./data/localStore.mjs";
@@ -312,6 +313,7 @@ profileAvatarDraft =
 profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
 let screen = initialScreenFromLaunchAction();
 let newEventDraft = null;
+let createEventBusy = false;
 let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
@@ -401,6 +403,7 @@ let eventStatusFilter = "open";
 let appHistoryDepth = 0;
 let lastNavigationViewKey = "";
 let lastRenderedScreenKey = "";
+let renderGeneration = 0;
 let restoringBrowserHistory = false;
 let pendingSettingsReturnFocusSection = "";
 let eventLongPressTimer = null;
@@ -596,6 +599,7 @@ function render() {
 function commitRenderedScreen(html) {
   const nextScreenKey = `${screen.name}:${screen.eventId ?? ""}`;
   const screenChanged = nextScreenKey !== lastRenderedScreenKey;
+  const currentRenderGeneration = ++renderGeneration;
   const interactionSnapshot = captureRenderInteractionState();
   const persistentIdentity = app.querySelector(
     ":scope > .screen > .product-app-identity"
@@ -616,11 +620,14 @@ function commitRenderedScreen(html) {
   document.dispatchEvent(new CustomEvent("settle-friends:screen-rendered"));
   markStartupMilestone("first-screen-rendered");
   lastRenderedScreenKey = nextScreenKey;
-  if (!screenChanged) restoreRenderInteractionState(interactionSnapshot);
+  if (!screenChanged) {
+    restoreRenderInteractionState(interactionSnapshot, currentRenderGeneration);
+  }
 
   if (!screenChanged) return;
 
   queueMicrotask(() => {
+    if (currentRenderGeneration !== renderGeneration) return;
     window.scrollTo?.(0, 0);
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
@@ -1045,6 +1052,9 @@ function captureRenderInteractionState() {
     ]
       .map((menu) => menu.dataset.eventId)
       .filter(Boolean),
+    settlementMoreActionsOpen: Boolean(
+      app.querySelector(".settlement-more-actions[open]")
+    ),
     openTransferIds: [
       ...app.querySelectorAll(".transfer-row:has(.transfer-explanation[open])")
     ]
@@ -1054,7 +1064,7 @@ function captureRenderInteractionState() {
   };
 }
 
-function restoreRenderInteractionState(snapshot) {
+function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
   if (!snapshot) return;
   const dialog = snapshot.dialogSelector
     ? app.querySelector(snapshot.dialogSelector)
@@ -1066,6 +1076,7 @@ function restoreRenderInteractionState(snapshot) {
   }
 
   requestAnimationFrame(() => {
+    if (expectedRenderGeneration !== renderGeneration) return;
     const currentDialog = snapshot.dialogSelector
       ? app.querySelector(snapshot.dialogSelector)
       : null;
@@ -1100,6 +1111,11 @@ function restoreRenderInteractionState(snapshot) {
       const menu = app.querySelector(
         `.event-cover-actions-menu[data-event-id="${CSS.escape(eventId)}"]`
       );
+      if (menu instanceof HTMLDetailsElement) menu.open = true;
+    }
+
+    if (snapshot.settlementMoreActionsOpen) {
+      const menu = app.querySelector(".settlement-more-actions");
       if (menu instanceof HTMLDetailsElement) menu.open = true;
     }
 
@@ -6136,7 +6152,7 @@ function renderNewEventParticipants() {
       </section>
 
       <div class="new-event-participant-footer">
-        <button class="primary-button" type="button" data-action="create-event" ${selectedParticipants.length ? "" : "disabled"}>${escapeHtml(createLabel)}</button>
+        <button class="primary-button" type="button" data-action="create-event" ${selectedParticipants.length && !createEventBusy ? "" : "disabled"}>${escapeHtml(createEventBusy ? "שומר…" : createLabel)}</button>
         <button class="secondary-button" type="button" data-action="cancel-new-event-participants">חזרה לפרטים</button>
       </div>
     </section>
@@ -10716,6 +10732,7 @@ async function handleClick(event) {
     };
     const destination = destinations[step];
     if (!destination || (step !== "type" && !newEventDraft?.eventType)) return;
+    syncNewEventDraftFromRenderedDetails();
     if (newEventDraft) newEventDraft.participantView = "";
     screen = { name: destination };
     render();
@@ -10724,6 +10741,7 @@ async function handleClick(event) {
 
   if (action === "open-new-event-settlement") {
     if (!newEventDraft) return;
+    syncNewEventDraftFromRenderedDetails();
     newEventDraft.settlementChoiceOpen = "";
     screen = { name: "new-event-settlement" };
     render();
@@ -12807,6 +12825,7 @@ async function handleChange(event) {
 }
 
 async function createEventFromDraft() {
+  if (createEventBusy) return;
   if (newEventDraft.participantIds.length === 0) {
     notice = "צריך לבחור לפחות משתתף אחד.";
     screen = { name: "new-event-participants" };
@@ -12820,6 +12839,8 @@ async function createEventFromDraft() {
     return;
   }
 
+  const submittedDraft = structuredClone(newEventDraft);
+  const stateBeforeCreate = structuredClone(state);
   const inviteAfterCreate = newEventDraft.inviteAfterCreate === true;
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
@@ -12858,38 +12879,55 @@ async function createEventFromDraft() {
   });
 
   state.events.unshift(event);
+  createEventBusy = true;
   const saveRequest = persistState();
-  emitProductMetric("event_created", {
-    screen: "new_event",
-    detail: normalizeEventType(event.eventType)
-  });
-  newEventDraft = null;
-  joinEventDraft = null;
-  screen = { name: "event", eventId: event.id };
-  notice = "";
-  appHistoryDepth = 0;
-  lastNavigationViewKey = "";
   render();
-
-  if (!inviteAfterCreate) {
-    Promise.resolve(saveRequest).catch(() => {});
-    return;
-  }
 
   try {
     const saveResult = await saveRequest;
-    if (!saveResult?.ok) {
-      notice = "האירוע נוצר, אבל ההזמנה עדיין לא מוכנה. אפשר לנסות שוב דרך שיתוף.";
+    if (!saveResult?.ok && !saveResult?.pending) {
+      state = stateBeforeCreate;
+      saveState(stateBeforeCreate);
+      newEventDraft = submittedDraft;
+      screen = { name: "new-event-settlement" };
+      notice = "לא הצלחנו לשמור את האירוע. הפרטים נשארו כאן ואפשר לנסות שוב.";
       render();
       return;
     }
+    emitProductMetric("event_created", {
+      screen: "new_event",
+      detail: normalizeEventType(event.eventType)
+    });
+    newEventDraft = null;
+    joinEventDraft = null;
+    screen = { name: "event", eventId: event.id };
+    notice = "";
+    appHistoryDepth = 0;
+    lastNavigationViewKey = "";
+    render();
+    if (!inviteAfterCreate || saveResult?.pending) return;
     await openPreparedEventShare(
       event.id,
       app.querySelector('[data-action="open-event-share"]')
     );
   } catch {
-    notice = "האירוע נוצר, אבל לא הצלחנו להכין הזמנה כרגע. אפשר לנסות שוב דרך שיתוף.";
+    state = stateBeforeCreate;
+    saveState(stateBeforeCreate);
+    newEventDraft = submittedDraft;
+    screen = { name: "new-event-settlement" };
+    notice = "לא הצלחנו לשמור את האירוע. הפרטים נשארו כאן ואפשר לנסות שוב.";
     render();
+  } finally {
+    createEventBusy = false;
+    if (newEventDraft) render();
+  }
+}
+
+function syncNewEventDraftFromRenderedDetails() {
+  if (!newEventDraft) return;
+  const nameInput = app.querySelector('[data-action="new-event-name"]');
+  if (nameInput instanceof HTMLInputElement) {
+    newEventDraft.name = nameInput.value;
   }
 }
 

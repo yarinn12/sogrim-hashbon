@@ -102,6 +102,25 @@ test("adding several event guests keeps the manual participant editor active and
   assert.match(addGuestHandler, /\.focus\(\)/);
 });
 
+test("stale render callbacks cannot restore focus into a newer screen", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const commit = sourceBetween(
+    app,
+    "function commitRenderedScreen(html)",
+    "function focusRenderedScreen()"
+  );
+  const restore = sourceBetween(
+    app,
+    "function restoreRenderInteractionState(snapshot, expectedRenderGeneration)",
+    "function dialogRenderSelector(dialog)"
+  );
+
+  assert.match(commit, /const currentRenderGeneration = \+\+renderGeneration/);
+  assert.match(commit, /restoreRenderInteractionState\(interactionSnapshot, currentRenderGeneration\)/);
+  assert.match(commit, /if \(currentRenderGeneration !== renderGeneration\) return/);
+  assert.match(restore, /if \(expectedRenderGeneration !== renderGeneration\) return/);
+});
+
 test("settlement stays inside the event shell and only switches the active workspace view", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const settlement = sourceBetween(
