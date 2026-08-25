@@ -371,6 +371,7 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(referralLayer, /QR להזמנת חברים לסוגרים חשבון/);
   assert.match(referralLayer, /data-referral-action="profile"/);
   assert.match(referralLayer, /data-action="edit-profile"/);
+  assert.match(referralLayer, /signedOut \? "is-signin-state" : ""/);
   assert.match(referralLayer, /navigator\.share/);
   assert.match(adLayer, /syncInFlight/);
   assert.match(adLayer, /syncRequestedAfterFlight/);

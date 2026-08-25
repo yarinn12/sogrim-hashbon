@@ -25,7 +25,7 @@ const seededState = {
   events: [
     {
       id: EVENT_ID,
-      name: "טיול לצפון עם החברים",
+      name: "סוף שבוע ארוך במיוחד בצפון עם כל החברים והמשפחה וחגיגת יום הולדת",
       currency: "ILS",
       participantIds: [PARTICIPANT_ID],
       adminIds: [PARTICIPANT_ID],
@@ -277,6 +277,37 @@ test("full name and username are full-width rows stacked in reading order", asyn
   await assertNoHorizontalOverflow(page);
 });
 
+test("long home event names wrap to two lines without colliding with status", async ({ page }) => {
+  const title = page.locator(".event-row-title strong:visible").first();
+  const status = page.locator(".event-status-toggle:visible").first();
+  await expect(title).toBeVisible();
+  await expect(status).toBeVisible();
+  await page.waitForTimeout(120);
+
+  const [rowBox, openBox, statusBox] = await Promise.all([
+    page.locator(".event-row:visible").first().boundingBox(),
+    page.locator(".event-row-open:visible").first().boundingBox(),
+    status.boundingBox()
+  ]);
+  expect(rowBox).not.toBeNull();
+  expect(openBox).not.toBeNull();
+  expect(statusBox).not.toBeNull();
+  const horizontalOverlap = Math.max(
+    0,
+    Math.min(openBox.x + openBox.width, statusBox.x + statusBox.width) -
+      Math.max(openBox.x, statusBox.x)
+  );
+
+  await expect(title).toContainText("סוף שבוע ארוך במיוחד");
+  expect(rowBox.height).toBeGreaterThanOrEqual(88);
+  expect(statusBox.y).toBeGreaterThanOrEqual(rowBox.y - 1);
+  expect(statusBox.y + statusBox.height).toBeLessThanOrEqual(
+    rowBox.y + rowBox.height + 1
+  );
+  expect(horizontalOverlap).toBeLessThanOrEqual(1);
+  await assertNoHorizontalOverflow(page);
+});
+
 test("ad-free gift opens as a focused share workspace with a working QR", async ({ page }) => {
   const entry = page.locator(
     '[data-open-referral-rewards][data-referral-context="home"]'
@@ -296,7 +327,7 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
     "QR להזמנת חברים לסוגרים חשבון"
   );
   await expect(dialog.locator(".referral-link-field input")).toHaveValue(
-    `http://127.0.0.1:4182/r/${REFERRAL_CODE}`
+    `https://sogrim-hesbon-app.vercel.app/r/${REFERRAL_CODE}`
   );
   await expect(dialog.locator(".referral-state-message.is-stale")).toHaveCount(0);
   await expect(dialog.locator(".referral-more-details")).not.toHaveAttribute("open", "");
@@ -362,6 +393,63 @@ test("ad-free gift opens as a focused share workspace with a working QR", async 
   await moreDetails.locator(":scope > summary").click();
   await expect(moreDetails).toHaveAttribute("open", "");
   await expect(moreDetails.locator(".referral-progress-section")).toBeVisible();
+  await assertNoHorizontalOverflow(page);
+});
+
+test("signed-out gift state uses the available mobile canvas instead of leaving a bottom void", async ({ page }) => {
+  await page
+    .locator('[data-open-referral-rewards][data-referral-context="home"]')
+    .click();
+  const dialog = page.locator("#public-referral-rewards-dialog");
+  await expect(dialog).toBeVisible();
+  await dialog.evaluate((element) => {
+    const shell = element.querySelector(".referral-dialog-shell");
+    const content = element.querySelector(".referral-dialog-content");
+    shell.classList.add("is-signin-state");
+    content.innerHTML = `
+      <div class="referral-state-message is-signin">
+        <strong>הקישור האישי מחכה לך</strong>
+        <span>מתחברים לחשבון כדי להזמין חברים ולשמור את החודש ללא פרסומות.</span>
+        <button class="primary-button" type="button">לפרופיל ולהתחברות</button>
+      </div>
+    `;
+  });
+
+  const layout = await dialog.evaluate((element) => {
+    const shellBox = element
+      .querySelector(".referral-dialog-shell")
+      .getBoundingClientRect();
+    const headerBox = element
+      .querySelector(".referral-dialog-header")
+      .getBoundingClientRect();
+    const cardBox = element
+      .querySelector(".referral-state-message.is-signin")
+      .getBoundingClientRect();
+    return {
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      shellHeight: shellBox.height,
+      availableCenter: (headerBox.bottom + shellBox.bottom) / 2,
+      cardCenter: (cardBox.top + cardBox.bottom) / 2,
+      cardLeft: cardBox.left,
+      cardRight: cardBox.right
+    };
+  });
+
+  if (layout.viewportWidth <= 640) {
+    expect(Math.abs(layout.cardCenter - layout.availableCenter)).toBeLessThanOrEqual(28);
+    expect(layout.shellHeight).toBeGreaterThanOrEqual(layout.viewportHeight - 16);
+  } else {
+    expect(layout.shellHeight).toBeLessThan(layout.viewportHeight * 0.75);
+  }
+  expect(layout.cardLeft).toBeGreaterThanOrEqual(0);
+  expect(layout.cardRight).toBeLessThanOrEqual(layout.viewportWidth + 1);
+  if (process.env.CAPTURE_FIGMA_APPROVED === "1") {
+    await dialog.screenshot({
+      path: "work/referral-signin-centered.png",
+      animations: "disabled"
+    });
+  }
   await assertNoHorizontalOverflow(page);
 });
 

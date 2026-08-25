@@ -19181,6 +19181,47 @@ const CSS = `
       clip: rect(0 0 0 0) !important;
     }
   }
+
+  /* Approved QA decision: long home-event names remain readable without growing unbounded. */
+  html.ledger-workspace-v1 .event-row-title {
+    align-items: flex-start !important;
+  }
+
+  html.ledger-workspace-v1 .event-row-title strong {
+    flex: 1 1 auto !important;
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+    text-overflow: clip !important;
+    -webkit-box-orient: vertical !important;
+    -webkit-line-clamp: 2 !important;
+  }
+
+  html.ledger-workspace-v1 .event-row-attention {
+    margin-block-start: 1px !important;
+  }
+
+  /* Approved QA decision: the signed-out gift state uses the full mobile canvas intentionally. */
+  @media (max-width: 760px) {
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-dialog-shell.is-signin-state
+      .referral-dialog-content {
+      align-content: center !important;
+      justify-items: center !important;
+      overflow-y: hidden !important;
+      padding-block: clamp(28px, 9dvh, 76px)
+        calc(28px + env(safe-area-inset-bottom)) !important;
+    }
+
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-dialog-shell.is-signin-state
+      .referral-state-message {
+      width: min(100%, 420px) !important;
+    }
+  }
 `;
 
 const RETIRED_ROOT_CLASSES = [

@@ -152,6 +152,34 @@ test("approved mobile reference drives the home hero, shortcuts, event ledger, a
   assert.match(brand, /syncHeaderIdentity/);
 });
 
+test("long home event names use a bounded readable two-line title", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const approvedRule = layer.slice(
+    layer.indexOf("Approved QA decision: long home-event names")
+  );
+
+  assert.match(
+    approvedRule,
+    /\.event-row-title strong \{[\s\S]*?display: -webkit-box !important;[\s\S]*?white-space: normal !important;[\s\S]*?overflow-wrap: anywhere !important;[\s\S]*?-webkit-line-clamp: 2 !important;/
+  );
+});
+
+test("signed-out referral state centers its only task on the mobile canvas", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const approvedRule = layer.slice(
+    layer.indexOf("Approved QA decision: the signed-out gift state")
+  );
+
+  assert.match(
+    approvedRule,
+    /@media \(max-width: 760px\)[\s\S]*?\.referral-dialog-shell\.is-signin-state[\s\S]*?\.referral-dialog-content \{[\s\S]*?align-content: center !important;[\s\S]*?justify-items: center !important;[\s\S]*?overflow-y: hidden !important;/
+  );
+  assert.match(
+    approvedRule,
+    /\.referral-dialog-shell\.is-signin-state[\s\S]*?\.referral-state-message \{[\s\S]*?width: min\(100%, 420px\) !important;/
+  );
+});
+
 test("ledger workspace keeps task navigation and mobile modals production ready", async () => {
   const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 

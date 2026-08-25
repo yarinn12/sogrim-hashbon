@@ -543,9 +543,10 @@ function referralDialogMarkup() {
   const loading = referralStatus.status === "loading";
   const signedOut = referralStatus.status === "signed-out";
   const blockingError = Boolean(referralError && !referralStatus.referralCode);
+  const dialogStateClass = signedOut ? "is-signin-state" : "";
 
   return `
-    <div class="referral-dialog-shell">
+    <div class="referral-dialog-shell ${dialogStateClass}">
       <header class="referral-dialog-header">
         <button
           class="referral-close-button"

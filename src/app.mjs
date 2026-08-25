@@ -3,7 +3,6 @@ import { iconSvg } from "./uiIcons.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
 import {
   formatClockTime,
-  formatDateInputLabel,
   formatPreciseClockTime,
   formatRelativeCalendarDate
 } from "./domain/dateLabels.mjs";
@@ -7671,12 +7670,10 @@ function syncExpenseFlowActionState() {
 }
 
 function renderExpenseDateField(extraClass = "", label = "תאריך ההוצאה") {
-  const selectedDateLabel = formatDateInputLabel(expenseDraft.occurredOn ?? "");
   return `
     <label class="field expense-date-field ${extraClass}">
       <span>${escapeHtml(label)}</span>
       <input data-action="expense-date" name="expenseDate" type="date" lang="he-IL" value="${escapeAttribute(expenseDraft.occurredOn ?? "")}" />
-      ${selectedDateLabel ? `<small class="expense-date-selected" aria-live="polite">${escapeHtml(selectedDateLabel)}</small>` : ""}
     </label>
   `;
 }

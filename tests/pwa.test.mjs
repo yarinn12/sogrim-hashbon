@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=339");
+  assert.equal(manifest.start_url, "./?pwa_release=340");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=339&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=340&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -59,7 +59,7 @@ test("index links the manifest and mobile app metadata", async () => {
 
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=339"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=340"/
   );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
