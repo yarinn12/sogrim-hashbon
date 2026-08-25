@@ -441,8 +441,11 @@ test("pending conflicts retry automatically with a short bounded backoff", () =>
   );
   assert.match(
     localStore,
-    /if \(pendingStateSaved\) schedulePendingSharedStateRetry\(\);/
+    /if \(transientFailure && pendingStateSaved\) \{\s*schedulePendingSharedStateRetry\(\);/
   );
+  assert.match(localStore, /const acceptedPending = Boolean\(/);
+  assert.match(localStore, /ok: acceptedPending/);
+  assert.match(localStore, /mode: acceptedPending \? "queued" : "cloud"/);
   assert.match(
     localStore,
     /const result = await flushPendingSharedState\(\)/
@@ -487,7 +490,7 @@ test("shared-event mutations reach the canonical event before the personal works
   );
 });
 
-test("a temporary shared-event failure keeps the local change queued without a false rollback", async () => {
+test("a temporary shared-event failure is accepted when the local change is durably queued", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -554,7 +557,8 @@ test("a temporary shared-event failure keeps the local change queued without a f
     );
     const result = await store.saveSharedState(changedState);
 
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "queued");
     assert.equal(result.reverted, undefined);
     assert.equal(result.pending, true);
     assert.deepEqual(
@@ -566,6 +570,80 @@ test("a temporary shared-event failure keeps the local change queued without a f
       dispatched.some((event) => event.type === "sogrim:shared-save-reverted"),
       false
     );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a temporary workspace-only failure is accepted and schedules an automatic retry", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const spaceId = "space-account-profile";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyzABCDEF";
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const durableState = queueTestState("Before Profile Save");
+  const changedState = queueTestState("After Profile Save");
+  let scheduledDelay = 0;
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId,
+    spaceKey
+  });
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(durableState));
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    setTimeout(_callback, delay) {
+      scheduledDelay = delay;
+      return 1;
+    },
+    clearTimeout() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    return { ok: false, status: 503 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?workspace-only-queued=${Date.now()}`
+    );
+    const result = await store.saveSharedState(changedState);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "queued");
+    assert.equal(result.pending, true);
+    assert.equal(scheduledDelay, 1_200);
+    assert.deepEqual(
+      JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`)),
+      changedState
+    );
+    assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
@@ -751,7 +829,8 @@ test("a workspace failure after canonical persistence keeps the same expense que
       storage.getItem(`settle-friends-pending-sync:${spaceId}`)
     );
 
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "queued");
     assert.equal(result.partial, true);
     assert.equal(result.pending, true);
     assert.equal(result.reverted, undefined);

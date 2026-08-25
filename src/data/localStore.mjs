@@ -680,7 +680,6 @@ export async function saveSharedState(state) {
               // Keep locally saved changes queued during temporary outages.
               // A background retry will persist them when the service recovers.
               pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
-              if (pendingStateSaved) schedulePendingSharedStateRetry();
             } else {
               saveState(previousState);
               publishSharedSaveReverted(syncSelection, error);
@@ -695,17 +694,31 @@ export async function saveSharedState(state) {
             clearPendingSharedState(runtimeConfig);
             pendingStateSaved = false;
           }
-          publishSyncFailure(error);
-          logSyncFailure(error, {
+          const acceptedPending = Boolean(
+            pendingStateSaved && (transientFailure || partiallyPersistedState)
+          );
+          if (transientFailure && pendingStateSaved) {
+            schedulePendingSharedStateRetry();
+          }
+          const syncOutcome = {
             sharedEventMutation: hasSharedEventMutation,
             pending: Boolean(pendingStateSaved),
             partial: Boolean(partiallyPersistedState),
             reverted
-          });
-          emitOperationFailure("state_save");
+          };
+          if (acceptedPending) {
+            // A durable local snapshot is a successful user save. Cloud delivery
+            // continues in the background and must not trigger false failure UI.
+            publishSyncStatus("reconnecting");
+            logQueuedSync(error, syncOutcome);
+          } else {
+            publishSyncFailure(error);
+            logSyncFailure(error, syncOutcome);
+            emitOperationFailure("state_save");
+          }
           return {
-            ok: false,
-            mode: "cloud",
+            ok: acceptedPending,
+            mode: acceptedPending ? "queued" : "cloud",
             error,
             ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
             ...(transientFailure && !partiallyPersistedState && pendingStateSaved
@@ -1205,6 +1218,18 @@ function logSyncFailure(error, outcome) {
     codes,
     statuses,
     transient: isTransientSyncFailure(error),
+    online: globalThis.navigator?.onLine !== false,
+    ...outcome
+  });
+}
+
+function logQueuedSync(error, outcome) {
+  const errors = flattenSyncErrors(error);
+  const codes = [...new Set(errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean))];
+  const statuses = [...new Set(errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0))];
+  console.info("[sync] State save queued for retry", {
+    codes,
+    statuses,
     online: globalThis.navigator?.onLine !== false,
     ...outcome
   });

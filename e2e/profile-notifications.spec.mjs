@@ -473,6 +473,51 @@ test("a gallery profile image persists after reload without a false sync warning
     .toHaveAttribute("src", uploadedSource);
 });
 
+test("a temporary cloud outage queues the save without a false failure notice", async ({ page }) => {
+  await page.route(
+    "https://profile-notifications.supabase.co/rest/v1/app_snapshots*",
+    async (route) => {
+      if (["GET", "HEAD", "OPTIONS"].includes(route.request().method())) {
+        return route.fallback();
+      }
+      return route.fulfill({
+        status: 503,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers": "authorization, apikey, content-type, prefer"
+        },
+        json: { message: "temporary outage" }
+      });
+    }
+  );
+
+  const result = await page.evaluate(async (participantId) => {
+    const store = await import(`./src/data/localStore.mjs?queued-save-e2e=${Date.now()}`);
+    const state = store.loadState();
+    const participant = state.participants.find((item) => item.id === participantId);
+    participant.displayName = "ירין יצחק מעודכן";
+    const saveResult = await store.saveSharedState(state);
+    return {
+      ok: saveResult.ok,
+      mode: saveResult.mode,
+      pending: saveResult.pending,
+      queuedLocally: Boolean(
+        localStorage.getItem("settle-friends-pending-sync:space-profile-notifications")
+      )
+    };
+  }, PARTICIPANT_ID);
+
+  expect(result).toEqual({
+    ok: true,
+    mode: "queued",
+    pending: true,
+    queuedLocally: true
+  });
+  await expect(page.locator("[data-sync-status]")).toBeHidden();
+  const notices = await page.locator(".notice").allTextContents();
+  expect(notices.join(" ")).not.toMatch(/לא (?:הצלחנו )?לשמור|הסנכרון לא זמין/);
+});
+
 test("notification inbox stays readable and completes its main mobile actions", async ({ page }) => {
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
   await page.locator('[data-nav-destination="notifications"]').click();
