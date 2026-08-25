@@ -33,6 +33,52 @@
 
 final result: passed
 
+## Unified Floating Alerts QA - 2026-08-25
+
+**Comparison Target**
+
+- Source visual truth: `C:\Users\A\AppData\Local\Temp\codex-clipboard-a23f56ec-a3a3-473f-ac9a-92cfe9140641.png`.
+- Browser-rendered implementation: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\work\toast-unification-qa\toast-iphone-final.png`.
+- Focused normalized crop: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\work\toast-unification-qa\toast-iphone-crop.png`.
+- Side-by-side evidence: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\work\toast-unification-qa\toast-reference-comparison.png`.
+- iPad landscape evidence: `C:\Users\A\Documents\Codex\2026-05-23\new-chat\work\toast-unification-qa\toast-ipad-landscape.png`.
+- State: a visible floating sync/conflict alert rendered through the same `app-toast` component contract as every general app notice, followed by its dismissed state.
+
+**Viewport And Normalization**
+
+- Source pixels: 362 x 65. The supplied screenshot is a tight crop whose lower edge includes a few pixels of the underlying screen.
+- iPhone CSS viewport and screenshot: 390 x 844 at density 1. The rendered toast measured 362 x 68 CSS pixels; its focused comparison crop is 362 x 68 pixels.
+- iPad portrait metric pass: 1024 x 1366 CSS pixels at density 1; the toast measured 520 x 68 with a 96 px safe-area-aware bottom offset and no horizontal overflow.
+- iPad landscape visual pass: 1194 x 834 CSS pixels at density 1; the toast measured 520 x 68 and remained centered with no horizontal overflow.
+- The focused comparison preserves the source width at 1:1 scale. The three-pixel height difference is the complete implementation frame versus the source's clipped lower edge, not layout drift.
+
+**Findings**
+
+- No remaining actionable P0, P1, or P2 differences.
+- Fonts and typography: the implementation retains the app's Hebrew font stack, 14 px copy, 650 weight, 1.45 line height, RTL ordering, and natural multi-line wrapping. The shorter sync message is intentionally one line; the component expands for longer notice copy.
+- Spacing and layout rhythm: the 44 px bell tile, flexible copy column, 44 px close tile, 10 px gaps, 11 x 12 px padding, 12 px frame radius, and 10 px control radii match the source pattern. All tap targets meet the 44 x 44 px mobile floor.
+- Colors and tokens: the pale `rgb(251, 254, 253)` surface, dark teal bell tile, pale teal close tile, dark copy, mint border, and elevation match the visual reference and existing app tokens.
+- Image and icon fidelity: both bell and close marks use the existing production icon library; no generated, placeholder, emoji, handcrafted, or CSS-drawn asset was introduced.
+- Copy and content: all standard notices continue to escape and render their app-specific text. Sync states retain their existing Hebrew messages while adopting the same visual shell and close affordance.
+- Focused region comparison was the correct review level because the supplied source is already a component crop; a second smaller crop would not reveal additional detail.
+
+**Comparison History**
+
+- Initial P1: the close handler set the sync alert's `hidden` attribute, but the shared `display: grid !important` style overrode the browser's hidden presentation. Fixed with an explicit shared `[hidden] { display: none !important; }` rule. Post-fix browser evidence confirmed visible before the tap and hidden immediately after it.
+- Initial P2: legacy sync-button CSS left a 4 px logical margin and a second set of colors/radii on the new close button. Removed the legacy floating-alert visual rules so the shared toast component is the single visual source of truth. Post-fix measurements confirmed a zero margin, exact 44 x 44 controls, 10 px grid gaps, and the reference-aligned layout.
+- Post-fix side-by-side evidence found no remaining actionable P0, P1, or P2 visual difference.
+
+**Primary Interactions Tested**
+
+- Rendered a real sync conflict through `publicSyncStatusLayer.mjs` and verified the shared bell/copy/close structure.
+- Clicked the close button and verified the alert becomes hidden while the underlying sync safety state remains independent.
+- Verified iPhone and iPad portrait/landscape sizing, centering, bottom clearance, and zero horizontal overflow.
+- Browser console warnings and errors: none.
+- Focused automated checks: 25 passed, 0 failed.
+- Full automated suite: 1,285 passed, 0 failed.
+
+final result: passed
+
 ## Summary Expansion and Refresh QA - 2026-08-24
 
 - Transfer calculation details now open as one continuous inline section; the nested expense disclosure was removed.

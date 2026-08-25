@@ -155,11 +155,25 @@ test("offline mode keeps shared event data read-only until sync access returns",
   await expect(adminToggle).not.toBeChecked();
 
   await context.setOffline(true);
-  await expect(page.locator("[data-sync-status]")).toContainText(
+  const syncToast = page.locator("[data-sync-status]");
+  await expect(syncToast).toContainText(
     "אין רשת כרגע"
   );
+  await expect(syncToast).toHaveClass(/app-toast/);
+  await expect(syncToast.locator(".app-toast-icon")).toBeVisible();
+  const syncDismissButton = syncToast.locator("[data-sync-dismiss]");
+  await expect(syncDismissButton).toHaveAttribute("aria-label", "סגירת ההודעה");
+  const syncDismissSize = await syncDismissButton.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  expect(syncDismissSize).toEqual({ width: 44, height: 44 });
+  await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
+  await syncDismissButton.click();
+  await expect(syncToast).toBeHidden();
   await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
   await adminToggle.click({ force: true });
+  await expect(syncToast).toBeVisible();
   await expect(adminToggle).not.toBeChecked();
 
   await page.goBack();

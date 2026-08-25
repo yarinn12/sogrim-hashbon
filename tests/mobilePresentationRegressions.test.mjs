@@ -75,6 +75,18 @@ test("settlement completion feedback stays roomy and branded across mobile sizes
   );
   assert.match(
     coherenceLayer,
+    /body > \.public-sync-status\.app-toast \{[\s\S]*?grid-template-columns: 44px minmax\(0, 1fr\) 44px !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.public-sync-status\.app-toast button\.app-toast-close \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.public-sync-status\.app-toast\[hidden\] \{[\s\S]*?display: none !important;/
+  );
+  assert.match(
+    coherenceLayer,
     /\.settlement-close-primary \{[\s\S]*?grid-column: 1 \/ -1 !important;[\s\S]*?width: 100% !important;[\s\S]*?min-height: 56px !important;[\s\S]*?white-space: normal !important;/
   );
   assert.match(

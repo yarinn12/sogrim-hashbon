@@ -2,6 +2,7 @@ import {
   flushPendingSharedState,
   loadRuntimeConfig
 } from "./data/localStore.mjs";
+import { iconSvg } from "./uiIcons.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
@@ -75,7 +76,6 @@ const ONLINE_MUTATION_CHANGE_ACTIONS = new Set([
   "toggle-event-participant-admin"
 ]);
 
-let hideTimer = null;
 let currentStatus = "";
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
@@ -89,6 +89,7 @@ window.addEventListener(STATUS_EVENT, handleSyncStatus);
 window.addEventListener("offline", handleOffline);
 window.addEventListener("online", recoverOnlineMutationAccess);
 document.addEventListener("click", handleRetryClick);
+document.addEventListener("click", handleDismissClick);
 document.addEventListener("click", blockOfflineMutation, true);
 document.addEventListener("change", blockOfflineMutation, true);
 document.addEventListener("focusin", rememberControlSnapshot, true);
@@ -252,9 +253,17 @@ async function handleRetryClick(event) {
   }
 }
 
-function showStatus(status) {
-  window.clearTimeout(hideTimer);
+function handleDismissClick(event) {
+  const button = event.target.closest("[data-sync-dismiss]");
+  if (!button) return;
 
+  const node = button.closest("[data-sync-status]");
+  if (node) node.hidden = true;
+  currentStatus = "";
+  syncInlineStatusTargets();
+}
+
+function showStatus(status) {
   // Saving, successful saves and reconnect checks are background work. They
   // must never replace or expand the current screen with sync UI.
   if (!status || ROUTINE_SYNC_STATUSES.has(status)) {
@@ -266,24 +275,27 @@ function showStatus(status) {
   }
 
   currentStatus = status;
-  const content = statusContent(status);
+  const message = statusMessage(status);
 
   let node = document.querySelector("[data-sync-status]");
   if (!node) {
     node = document.createElement("div");
-    node.className = "public-sync-status";
+    node.className = "public-sync-status app-toast";
     node.dataset.syncStatus = "";
     node.setAttribute("role", "status");
     node.setAttribute("aria-live", "polite");
+    node.setAttribute("aria-atomic", "true");
     document.body.append(node);
   }
 
-  node.className = `public-sync-status is-${status}`;
+  node.className = `public-sync-status app-toast is-${status}`;
   node.hidden = false;
   node.innerHTML = `
-    <span class="public-sync-dot" aria-hidden="true"></span>
-    <span>${content.message}</span>
-    ${content.retry ? '<button type="button" data-sync-retry>נסה שוב</button>' : ""}
+    <span class="app-toast-icon" aria-hidden="true">${iconSvg("bell")}</span>
+    <span class="app-toast-copy">${message}</span>
+    <button class="app-toast-close" type="button" data-sync-dismiss aria-label="סגירת ההודעה" title="סגירת ההודעה">
+      ${iconSvg("x")}
+    </button>
   `;
   syncInlineStatusTargets();
 
@@ -373,28 +385,16 @@ function syncMutationControls() {
   document.documentElement.classList.toggle("app-online-mutations-locked", locked);
 }
 
-function statusContent(status) {
+function statusMessage(status) {
   if (status === "conflict") {
-    return {
-      message: "המידע עודכן במכשיר אחר",
-      retry: true,
-      autoHide: false
-    };
+    return "המידע עודכן במכשיר אחר";
   }
 
   if (status === "unavailable") {
-    return {
-      message: "הסנכרון מתעכב כרגע",
-      retry: true,
-      autoHide: false
-    };
+    return "הסנכרון מתעכב כרגע";
   }
 
-  return {
-    message: "אין רשת כרגע",
-    retry: true,
-    autoHide: false
-  };
+  return "אין רשת כרגע";
 }
 
 function injectStyles() {
@@ -405,91 +405,28 @@ function injectStyles() {
   style.textContent = `
     .public-sync-status {
       position: fixed;
-      z-index: 70;
-      inset-inline: 16px;
-      bottom: calc(16px + env(safe-area-inset-bottom));
-      width: fit-content;
-      max-width: min(360px, calc(100vw - 32px));
+      z-index: 180;
+      inset-inline: 14px;
+      bottom: calc(96px + env(safe-area-inset-bottom));
       margin-inline: auto;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-height: 44px;
-      padding: 10px 14px;
-      border-radius: 14px;
-      background: #ffffff;
-      color: #17332f;
-      border: 0;
-      box-shadow:
-        0 12px 32px rgba(7, 63, 57, 0.14),
-        0 2px 8px rgba(7, 63, 57, 0.08);
-      font: 700 0.88rem/1.35 "Heebo", "Noto Sans Hebrew", system-ui, sans-serif;
       direction: rtl;
     }
 
-    .public-sync-status[hidden] { display: none; }
+    .public-sync-status[hidden] { display: none !important; }
     body.app-dialog-open .public-sync-status {
-      z-index: 160;
+      z-index: 200;
       top: auto;
-      bottom: calc(24px + env(safe-area-inset-bottom));
+      bottom: calc(96px + env(safe-area-inset-bottom));
     }
     body.has-event-action-dock .public-sync-status {
-      z-index: 160;
+      z-index: 200;
       top: auto;
       bottom: calc(188px + env(safe-area-inset-bottom));
     }
     html.account-auth-locked .public-sync-status { display: none !important; }
-    .public-sync-dot {
-      flex: 0 0 auto;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #0a7b6f;
-    }
-
-    .public-sync-status > span:not(.public-sync-dot) {
-      flex: 1 1 auto;
-      min-width: 0;
-    }
-
-    .is-saving .public-sync-dot { animation: public-sync-pulse 900ms ease-in-out infinite alternate; }
-    .is-offline .public-sync-dot,
-    .is-unavailable .public-sync-dot { background: #b7791f; }
-    .is-conflict .public-sync-dot { background: #c44f3f; }
-
-    .public-sync-status button {
-      flex: 0 0 auto;
-      min-width: 44px;
-      min-height: 44px;
-      margin-inline-start: 4px;
-      padding: 8px 12px;
-      box-sizing: border-box;
-      border: 0;
-      border-radius: 8px;
-      background: #e5f3ef;
-      color: #075f57;
-      font: inherit;
-      cursor: pointer;
-      touch-action: manipulation;
-      white-space: nowrap;
-      transition-property: transform, background-color, opacity;
-      transition-duration: 160ms;
-      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-    }
-
-    .public-sync-status button:hover { background: #d4ebe5; }
-    .public-sync-status button:focus-visible { outline: 3px solid rgba(10, 123, 111, 0.28); }
-    .public-sync-status button:disabled { cursor: wait; opacity: 0.6; }
-    .public-sync-status button:active:not(:disabled) { transform: scale(0.96); }
 
     [data-online-mutation-disabled="true"] {
       cursor: not-allowed !important;
-    }
-
-    @media (max-width: 720px) {
-      .public-sync-status {
-        bottom: calc(94px + env(safe-area-inset-bottom));
-      }
     }
 
     [data-inline-sync-status][hidden] { display: none !important; }
@@ -529,14 +466,6 @@ function injectStyles() {
       font: inherit;
     }
 
-    @keyframes public-sync-pulse {
-      from { opacity: 0.45; transform: scale(0.82); }
-      to { opacity: 1; transform: scale(1); }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .is-saving .public-sync-dot { animation: none; }
-    }
   `;
   document.head.append(style);
 }

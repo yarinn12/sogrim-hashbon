@@ -3560,7 +3560,8 @@ const CSS = `
   }
 
   /* Branded feedback floats above the current task without borrowing warning yellow. */
-  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast {
     position: fixed !important;
     inset-block-start: auto !important;
     inset-block-end: calc(env(safe-area-inset-bottom) + 96px) !important;
@@ -3586,9 +3587,15 @@ const CSS = `
     font-size: 14px !important;
     font-weight: 650 !important;
     line-height: 1.45 !important;
+    direction: rtl !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon {
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast[hidden] {
+    display: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast .app-toast-icon {
     width: 44px !important;
     height: 44px !important;
     display: grid !important;
@@ -3599,18 +3606,21 @@ const CSS = `
     box-shadow: 0 7px 16px rgba(6, 75, 67, 0.18) !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon .ui-icon-svg {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon .ui-icon-svg,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast .app-toast-icon .ui-icon-svg {
     width: 21px !important;
     height: 21px !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-copy {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-copy,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast .app-toast-copy {
     min-width: 0 !important;
     overflow-wrap: anywhere !important;
     text-align: start !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close {
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast button.app-toast-close {
     width: 44px !important;
     min-width: 44px !important;
     height: 44px !important;
@@ -3625,18 +3635,32 @@ const CSS = `
     box-shadow: none !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:hover {
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:hover,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast button.app-toast-close:hover {
     color: var(--app-brand) !important;
     background: rgba(6, 75, 67, 0.11) !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:active {
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:active,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast button.app-toast-close:active {
     transform: scale(0.96) !important;
   }
 
-  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-close .ui-icon-svg {
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-close .ui-icon-svg,
+  html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast .app-toast-close .ui-icon-svg {
     width: 19px !important;
     height: 19px !important;
+  }
+
+  /* Every floating alert clears the event action dock in exactly the same way. */
+  html.design-coherence-v1.ledger-workspace-v1 body.has-event-action-dock #app .app-toast,
+  html.design-coherence-v1.ledger-workspace-v1 body.has-event-action-dock > .public-sync-status.app-toast {
+    inset-block-end: calc(env(safe-area-inset-bottom) + 188px) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body.app-dialog-open #app .app-toast,
+  html.design-coherence-v1.ledger-workspace-v1 body.app-dialog-open > .public-sync-status.app-toast {
+    z-index: 200 !important;
   }
 
   /* The close-event label stays roomy and readable on phones and iPads. */
