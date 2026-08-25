@@ -599,7 +599,8 @@ async function loadSharedStateOnce(requestScope) {
 export async function saveSharedState(state) {
   const {
     forceSharedParticipantIds = [],
-    suppressRevertNotice = false
+    suppressRevertNotice = false,
+    awaitCloud = false
   } = arguments[1] ?? {};
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
@@ -768,10 +769,12 @@ export async function saveSharedState(state) {
         }
       });
 
-    return settleSaveWithinUiBudget(
-      cloudWriteQueue,
-      Boolean(localSaved && pendingStateSaved)
-    );
+    return awaitCloud
+      ? cloudWriteQueue
+      : settleSaveWithinUiBudget(
+          cloudWriteQueue,
+          Boolean(localSaved && pendingStateSaved)
+        );
   }
 
   if (runtimeConfigUsedFallback) {

@@ -368,6 +368,68 @@ test("server recreates the same open link on another device without rotating it"
   assert.equal(tokenHashes.at(-1), activeHash);
 });
 
+test("a deliberately rotated link stays identical when another device prepares it", async () => {
+  let activeInvite = null;
+  let rotations = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) return jsonResponse({ id: USER_ID });
+    if (address.includes("/rest/v1/app_snapshots?")) {
+      return jsonResponse(
+        address.includes("owner_user_id")
+          ? [{ state: serverState() }]
+          : [sharedSnapshot()]
+      );
+    }
+    if (address.includes("/rest/v1/event_invite_tokens?")) {
+      const params = new URL(address).searchParams;
+      const requestedHash = params.get("token_hash")?.replace(/^eq\./, "");
+      if (params.get("select") === "space_id,space_key") {
+        return jsonResponse(activeInvite
+          ? [{ space_id: SPACE_ID, space_key: SPACE_KEY }]
+          : []);
+      }
+      if (!activeInvite) return jsonResponse([]);
+      if (requestedHash && requestedHash !== activeInvite.token_hash) {
+        return jsonResponse([]);
+      }
+      return jsonResponse([activeInvite]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      const body = JSON.parse(options.body);
+      rotations += 1;
+      activeInvite = {
+        id: "33333333-3333-4333-8333-333333333333",
+        event_id: EVENT_ID,
+        kind: "open",
+        created_by: USER_ID,
+        space_id: SPACE_ID,
+        space_key: SPACE_KEY,
+        token_hash: body.p_token_hash,
+        created_at: body.p_created_at
+      };
+      return jsonResponse(activeInvite.id);
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+  };
+  const common = {
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    fetchImpl
+  };
+
+  const rotated = await manageOpenEventInvite({ ...common, operation: "rotate" });
+  const recovered = await manageOpenEventInvite({ ...common, operation: "ensure" });
+
+  assert.equal(rotated.status, 200);
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.payload.token, rotated.payload.token);
+  assert.equal(recovered.payload.rotated, false);
+  assert.equal(rotations, 1);
+});
+
 test("a recovered event member can recreate the stable open link without the raw space key", async () => {
   const recoveredState = serverState();
   recoveredState.events[0].sharedSpaceKey = "member_access_recovery_v1_key_0001";
@@ -417,6 +479,102 @@ test("a recovered event member can recreate the stable open link without the raw
   assert.equal(rotations, 1);
   assert.equal(rotationBody.p_space_key, SPACE_KEY);
   assert.match(result.payload.token, /^[A-Za-z0-9_-]{32,128}$/);
+});
+
+test("a recovered member can create and redeem the first stable invite without prior invite history", async () => {
+  const recoveryKey = "member_access_recovery_v1_key_0001";
+  const recoveredState = serverState();
+  recoveredState.events[0].sharedSpaceKey = recoveryKey;
+  let authenticatedUserId = USER_ID;
+  let activeInvite = null;
+  let rotations = 0;
+  let membershipActivated = false;
+
+  const fetchImpl = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) {
+      return jsonResponse({ id: authenticatedUserId });
+    }
+    if (address.includes("/rest/v1/rpc/can_write_shared_snapshot")) {
+      return jsonResponse(true);
+    }
+    if (address.includes("/rest/v1/app_snapshots?")) {
+      return jsonResponse(
+        address.includes("owner_user_id")
+          ? [{ state: recoveredState }]
+          : [redactedSharedSnapshot()]
+      );
+    }
+    if (address.includes("/rest/v1/event_invite_tokens?")) {
+      const params = new URL(address).searchParams;
+      const requestedHash = params.get("token_hash")?.replace(/^eq\./, "");
+      const select = params.get("select");
+      if (select === "space_id,space_key") {
+        return jsonResponse(activeInvite
+          ? [{ space_id: SPACE_ID, space_key: recoveryKey }]
+          : []);
+      }
+      if (!activeInvite) return jsonResponse([]);
+      if (requestedHash && requestedHash !== activeInvite.token_hash) {
+        return jsonResponse([]);
+      }
+      return jsonResponse([activeInvite]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      const body = JSON.parse(options.body);
+      rotations += 1;
+      assert.equal(body.p_space_key, recoveryKey);
+      activeInvite = {
+        id: "33333333-3333-4333-8333-333333333333",
+        event_id: EVENT_ID,
+        kind: "open",
+        created_by: USER_ID,
+        recipient_user_id: null,
+        space_id: SPACE_ID,
+        space_key: recoveryKey,
+        token_hash: body.p_token_hash,
+        created_at: body.p_created_at,
+        expires_at: null
+      };
+      return jsonResponse(activeInvite.id);
+    }
+    if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
+      membershipActivated = true;
+      return jsonResponse(true);
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+  };
+
+  const input = {
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer creator-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl
+  };
+  const first = await manageOpenEventInvite(input);
+  const second = await manageOpenEventInvite(input);
+
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(second.payload.token, first.payload.token);
+  assert.equal(rotations, 1);
+
+  authenticatedUserId = OTHER_USER_ID;
+  const redeemed = await redeemEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer recipient-token",
+    eventId: EVENT_ID,
+    token: first.payload.token,
+    fetchImpl
+  });
+
+  assert.equal(redeemed.status, 200);
+  assert.equal(redeemed.payload.spaceId, SPACE_ID);
+  assert.equal(redeemed.payload.spaceKey, recoveryKey);
+  assert.equal(membershipActivated, true);
 });
 
 test("a recovered member replaces an existing invite with canonical credentials and the new link redeems", async () => {

@@ -484,9 +484,17 @@ export async function recoverAccessibleSharedEvents(
   for (const row of rows) {
     const eventId = row.state?.events?.[0]?.id;
     if (!eventId) continue;
+    const existingEvent = nextState.events?.find((event) => event?.id === eventId);
+    const existingCredentials = eventShareCredentials(existingEvent);
+    // Membership recovery is an index repair, not a credential rotation. A
+    // device that already owns the raw event key must keep it; replacing it
+    // with the recovery sentinel makes the first invite impossible to issue.
+    // Older duplicate snapshots for the same event must not replace the
+    // namespace that is already attached to the personal event either.
+    if (existingCredentials && existingCredentials.id !== row.id) continue;
     nextState = mergeSharedEventIntoState(nextState, row.state, {
-      id: row.id,
-      key: RECOVERED_MEMBER_SPACE_KEY
+      id: existingCredentials?.id ?? row.id,
+      key: existingCredentials?.key ?? RECOVERED_MEMBER_SPACE_KEY
     });
   }
   return nextState;

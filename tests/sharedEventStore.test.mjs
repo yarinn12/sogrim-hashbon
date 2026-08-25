@@ -55,6 +55,62 @@ test("membership recovery rebuilds a missing personal event index", async () => 
   assert.equal(recovered.events[0].sharedSpaceId, "shared-event-korea");
 });
 
+test("membership recovery never replaces an event's existing raw credentials", async () => {
+  const rawCredentials = {
+    id: "shared-event-owned",
+    key: "owned_event_key_123456789012345678901234"
+  };
+  const state = {
+    currentParticipantId: "account-user-one",
+    participants: [{ id: "account-user-one", displayName: "משתמש" }],
+    groups: [],
+    events: [{
+      id: "event-owned",
+      name: "אירוע מקומי",
+      participantIds: ["account-user-one"],
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: rawCredentials.id,
+      sharedSpaceKey: rawCredentials.key
+    }]
+  };
+  const rows = [
+    {
+      id: rawCredentials.id,
+      state: {
+        participants: state.participants,
+        groups: [],
+        events: [{ ...state.events[0], name: "אירוע מעודכן" }]
+      }
+    },
+    {
+      id: "stale-duplicate-space",
+      state: {
+        participants: state.participants,
+        groups: [],
+        events: [{ ...state.events[0], name: "עותק ישן" }]
+      }
+    }
+  ];
+
+  const recovered = await recoverAccessibleSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: "user-one", accessToken: "account-token" }
+      }
+    },
+    state,
+    async () => ({ ok: true, json: async () => rows })
+  );
+
+  assert.equal(recovered.events[0].name, "אירוע מעודכן");
+  assert.deepEqual(eventShareCredentials(recovered.events[0]), rawCredentials);
+});
+
 test("shared-event membership is verified with the signed-in account before writes", async () => {
   const requests = [];
   const runtimeConfig = {

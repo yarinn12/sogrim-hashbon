@@ -279,6 +279,12 @@ test("prepareEventShareNow always reloads the runtime config", () => {
     prepare.indexOf("await loadRuntimeConfig") < prepare.indexOf("saveSharedEventState"),
     "a fresh config is loaded before the cloud write"
   );
+  assert.match(prepare, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.doesNotMatch(
+    prepare,
+    /if \(\s*currentEventOpenInviteToken\(/,
+    "a cached token must be verified by the server before it is reused"
+  );
 });
 
 test("invite sharing self-recovers when an older server cannot return an active token", () => {

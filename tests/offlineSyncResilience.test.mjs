@@ -455,7 +455,7 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(localStore, /Math\.min\(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS\.length - 1\)/);
   assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);
   assert.match(localStore, /const FOREGROUND_SAVE_BUDGET_MS = 1_500;/);
-  assert.match(localStore, /return settleSaveWithinUiBudget\(/);
+  assert.match(localStore, /awaitCloud\s*\? cloudWriteQueue\s*:\s*settleSaveWithinUiBudget\(/);
   assert.match(localStore, /resetPendingSharedStateRetry\(\);/);
 });
 

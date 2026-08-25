@@ -15418,7 +15418,6 @@ async function retryEventShare(eventId) {
 }
 
 async function prepareEventShareNow(eventId) {
-  const existingEvent = getEvent(eventId);
   const initialRuntimeConfig = await loadRuntimeConfig();
   runtimeConfig = initialRuntimeConfig;
   if (initialRuntimeConfig.storage?.mode !== "supabase") {
@@ -15426,14 +15425,6 @@ async function prepareEventShareNow(eventId) {
     error.code = "EVENT_INVITE_CLOUD_REQUIRED";
     throw error;
   }
-  if (
-    currentEventOpenInviteToken(existingEvent)
-  ) {
-    // The invite belongs to the event. Reopening the share screen must reuse
-    // the stored token without another save, rotation, or network round trip.
-    return eventInviteUrl(eventId);
-  }
-
   const shareRuntimeConfig = await prepareSharedEventForInvitation(eventId);
   if (shareRuntimeConfig.storage?.mode === "supabase") {
     const sharedEvent = getEvent(eventId);
@@ -15482,7 +15473,13 @@ async function prepareSharedEventForInvitation(eventId) {
       throw error;
     }
   }
-  await saveSharedState(state);
+  const accountSave = await saveSharedState(state, { awaitCloud: true });
+  if (!accountSave?.ok || accountSave?.pending) {
+    const error = new Error("האירוע עדיין מסתנכרן. כדאי לנסות שוב בעוד רגע.");
+    error.code = "EVENT_INVITE_NOT_READY";
+    error.retryable = true;
+    throw error;
+  }
   return shareRuntimeConfig;
 }
 

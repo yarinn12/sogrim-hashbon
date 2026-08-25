@@ -23,8 +23,8 @@ android {
         applicationId "com.sogrimhashbon.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 102
-        versionName "3.75"
+        versionCode 103
+        versionName "3.76"
         buildConfigField "boolean", "FIREBASE_PUSH_CONFIGURED", firebasePushConfigured.toString()
         buildConfigField "boolean", "NATIVE_QA_WEBVIEW", "false"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"

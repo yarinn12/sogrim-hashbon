@@ -16,7 +16,7 @@ export async function manageOpenEventInvite({
   candidateToken = "",
   operation = "ensure",
   fetchImpl = fetch,
-  tokenFactory = createInviteToken
+  tokenFactory = null
 }) {
   const context = serverContext(runtimeConfig, env);
   const normalizedEventId = String(eventId ?? "").trim();
@@ -157,20 +157,48 @@ export async function manageOpenEventInvite({
       fetchImpl
     });
     if (active) {
+      const recoverableToken = createRotatedOpenInviteToken({
+        secret: context.serviceRoleKey,
+        eventId: normalizedEventId,
+        spaceId,
+        spaceKey,
+        createdAt: String(active.created_at ?? "")
+      });
+      if (
+        sameInviteCredentials(active, { spaceId, spaceKey }) &&
+        secureHashEquals(active.token_hash, hashInviteToken(recoverableToken))
+      ) {
+        return success({
+          eventId: normalizedEventId,
+          token: recoverableToken,
+          createdAt: String(active.created_at ?? ""),
+          rotated: false
+        });
+      }
       // Tokens are stored only as hashes, so a newly signed-in device cannot
-      // recover an existing raw token. Replace that unreachable link when an
-      // authorized member explicitly asks to share the event again.
+      // recover historical random tokens. Replace only that legacy case; all
+      // newly rotated tokens are deterministic and recoverable on every device.
       recoveredActiveInvite = true;
     }
   }
 
-  const token = normalizedOperation === "ensure" ? stableToken : tokenFactory();
+  const createdAt = new Date().toISOString();
+  const token = normalizedOperation === "ensure"
+    ? stableToken
+    : typeof tokenFactory === "function"
+      ? tokenFactory()
+      : createRotatedOpenInviteToken({
+          secret: context.serviceRoleKey,
+          eventId: normalizedEventId,
+          spaceId,
+          spaceKey,
+          createdAt
+        });
   if (!normalizeInviteToken(token)) {
     return failure(500, "Unable to create an invitation token", {
       code: "EVENT_INVITE_TOKEN_FAILED"
     });
   }
-  const createdAt = new Date().toISOString();
   const rotated = await rotateOpenInviteRow({
     ...context,
     eventId: normalizedEventId,
@@ -199,6 +227,18 @@ export async function manageOpenEventInvite({
 function createStableOpenInviteToken({ secret, eventId, spaceId, spaceKey }) {
   return createHmac("sha256", secret)
     .update(`open-event-invite\0${spaceId}\0${eventId}\0${spaceKey}`)
+    .digest("base64url");
+}
+
+function createRotatedOpenInviteToken({
+  secret,
+  eventId,
+  spaceId,
+  spaceKey,
+  createdAt
+}) {
+  return createHmac("sha256", secret)
+    .update(`rotated-open-event-invite\0${spaceId}\0${eventId}\0${spaceKey}\0${createdAt}`)
     .digest("base64url");
 }
 
@@ -279,13 +319,20 @@ export async function redeemEventInvite({
       code: "EVENT_INVITE_INVALIDATED"
     });
   }
-  const sharedEvent = await loadVerifiedSharedEvent({
-    ...context,
-    eventId: normalizedEventId,
-    spaceId,
-    spaceKey,
-    fetchImpl
-  });
+  const sharedEvent = spaceKey === RECOVERED_MEMBER_SPACE_KEY
+    ? await loadSharedEventById({
+        ...context,
+        eventId: normalizedEventId,
+        spaceId,
+        fetchImpl
+      })
+    : await loadVerifiedSharedEvent({
+        ...context,
+        eventId: normalizedEventId,
+        spaceId,
+        spaceKey,
+        fetchImpl
+      });
   if (!sharedEvent) {
     return failure(410, "This invitation can no longer open the event", {
       code: "EVENT_INVITE_INVALIDATED"
@@ -520,7 +567,7 @@ async function loadActiveOpenInvite({
     space_id: `eq.${spaceId}`,
     kind: "eq.open",
     revoked_at: "is.null",
-    select: "id,event_id,space_id,space_key,created_by,created_at",
+    select: "id,event_id,space_id,space_key,created_by,created_at,token_hash",
     limit: "1"
   });
   const response = await fetchImpl(
@@ -563,6 +610,43 @@ async function loadVerifiedSharedEvent({
   spaceKey,
   fetchImpl
 }) {
+  const snapshot = await loadSharedEventSnapshot({
+    supabaseUrl,
+    serviceRoleKey,
+    spaceId,
+    fetchImpl
+  });
+  if (
+    !snapshot ||
+    !secureHashEquals(snapshot.access_key_hash, hashInviteToken(spaceKey))
+  ) {
+    return null;
+  }
+  return eventFromState(snapshot.state, eventId);
+}
+
+async function loadSharedEventById({
+  supabaseUrl,
+  serviceRoleKey,
+  eventId,
+  spaceId,
+  fetchImpl
+}) {
+  const snapshot = await loadSharedEventSnapshot({
+    supabaseUrl,
+    serviceRoleKey,
+    spaceId,
+    fetchImpl
+  });
+  return eventFromState(snapshot?.state, eventId);
+}
+
+async function loadSharedEventSnapshot({
+  supabaseUrl,
+  serviceRoleKey,
+  spaceId,
+  fetchImpl
+}) {
   const params = new URLSearchParams({
     id: `eq.${spaceId}`,
     select: "state,access_key_hash",
@@ -574,14 +658,7 @@ async function loadVerifiedSharedEvent({
   );
   if (!response.ok) return null;
   const rows = await response.json().catch(() => []);
-  const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
-  if (
-    !snapshot ||
-    !secureHashEquals(snapshot.access_key_hash, hashInviteToken(spaceKey))
-  ) {
-    return null;
-  }
-  return eventFromState(snapshot.state, eventId);
+  return Array.isArray(rows) ? rows[0] ?? null : null;
 }
 
 async function loadMemberAccessibleSharedEvent({
@@ -634,13 +711,19 @@ async function loadMemberAccessibleSharedEvent({
     fetchImpl
   });
   const canonicalSpaceKey = String(inviteAnchor?.space_key ?? "").trim();
-  if (
-    !event ||
-    !isSafeSharedIdentifier(canonicalSpaceKey) ||
-    !secureHashEquals(snapshot?.access_key_hash, hashInviteToken(canonicalSpaceKey))
-  ) {
+  if (!event) {
     return null;
   }
+  if (!inviteAnchor) {
+    return { event, spaceKey: RECOVERED_MEMBER_SPACE_KEY };
+  }
+  if (canonicalSpaceKey === RECOVERED_MEMBER_SPACE_KEY) {
+    return { event, spaceKey: canonicalSpaceKey };
+  }
+  if (
+    !isSafeSharedIdentifier(canonicalSpaceKey) ||
+    !secureHashEquals(snapshot?.access_key_hash, hashInviteToken(canonicalSpaceKey))
+  ) return null;
   return { event, spaceKey: canonicalSpaceKey };
 }
 
