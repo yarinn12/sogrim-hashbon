@@ -234,7 +234,7 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=357"/);
   assert.match(recovery, /const PWA_RELEASE = "357"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
