@@ -102,8 +102,8 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(accessibility, /Larger Text/);
   assert.match(reviewNotes, /does not hold funds/);
   assert.doesNotMatch(project, /com\.apple\.Push/);
-  assert.match(project, /MARKETING_VERSION = 3\.38/);
-  assert.match(project, /CURRENT_PROJECT_VERSION = 61/);
+  assert.match(project, new RegExp(`MARKETING_VERSION = ${metadata.version.number.replaceAll(".", "\\.")}`));
+  assert.match(project, new RegExp(`CURRENT_PROJECT_VERSION = ${metadata.version.build}`));
   assert.match(info, /UISupportedInterfaceOrientations<\/key>\s*<array>\s*<string>UIInterfaceOrientationPortrait<\/string>\s*<\/array>/);
   assert.match(launchScreen, /contentMode="scaleAspectFit"/);
   assert.doesNotMatch(launchScreen, /contentMode="scaleAspectFill"/);
