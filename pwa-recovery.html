@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="robots" content="noindex" />
+    <meta http-equiv="Cache-Control" content="no-store, max-age=0" />
+    <title>מעדכנים את סוגרים חשבון</title>
+    <style>
+      :root { color-scheme: light; font-family: Rubik, Arial, sans-serif; background: #f5f8f7; color: #102d29; }
+      body { margin: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+      main { width: min(100%, 360px); padding: 28px; border: 1px solid #dce9e5; border-radius: 24px; background: #fff; box-shadow: 0 18px 45px #10312b1a; text-align: center; }
+      h1 { margin: 0 0 10px; font-size: 22px; }
+      p { margin: 0; color: #55706a; line-height: 1.55; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>מעדכנים את האפליקציה</h1>
+      <p>מנקים את הגרסה הקודמת ומעלים את הגרסה העדכנית.</p>
+    </main>
+    <script>
+      (async () => {
+        try {
+          const registrations = await navigator.serviceWorker?.getRegistrations?.();
+          await Promise.allSettled((registrations ?? []).map((registration) => registration.unregister()));
+          const cacheNames = await globalThis.caches?.keys?.();
+          await Promise.allSettled((cacheNames ?? []).map((name) => caches.delete(name)));
+        } finally {
+          location.replace("/?pwa_release=356&pwa_recovered=1");
+        }
+      })();
+    </script>
+  </body>
+</html>
