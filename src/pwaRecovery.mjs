@@ -1,4 +1,4 @@
-const PWA_RELEASE = "357";
+const PWA_RELEASE = "358";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 
 try {

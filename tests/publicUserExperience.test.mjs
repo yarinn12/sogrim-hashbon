@@ -119,7 +119,8 @@ test("public account gate supports password and Google login with one cloud iden
   assert.match(index, /publicAccountAuthLayer\.mjs/);
   assert.match(layer, /signInWithPassword/);
   assert.match(layer, /signUpWithPassword/);
-  assert.match(layer, /googleOAuthUrl/);
+  assert.match(layer, /handleWebGoogleCredential/);
+  assert.match(layer, /signInWithIdToken/);
   assert.match(layer, /saveLocalProfile/);
   assert.match(layer, /ensureNamedParticipant/);
   assert.match(auth, /participantId: `account-\$\{user\.id\}`/);

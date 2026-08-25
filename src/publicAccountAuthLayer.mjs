@@ -19,7 +19,6 @@ import {
   deleteAccount,
   ensureAccountWorkspace,
   exchangeOAuthCode,
-  googleOAuthUrl,
   loadAccountOAuthFlow,
   loadAccountUser,
   loadStoredAccountSession,
@@ -101,6 +100,7 @@ const ACCOUNT_REFRESH_RETRY_MS = 60_000;
 const ACCOUNT_CONFIG_RETRY_MS = 5_000;
 const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000;
 const OAUTH_PKCE_VERIFIER_KEY = "settle-friends-oauth-pkce-verifier";
+const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 
 let runtimeConfig = null;
 let accountSession = null;
@@ -123,6 +123,10 @@ let accountConfigRetryTimer = null;
 let accountConfigRetryPromise = null;
 let accountSyncReloadScheduled = false;
 let nativeGoogleLoginPromise = null;
+let webGoogleScriptPromise = null;
+let webGoogleInitialized = false;
+let webGoogleClientId = "";
+let webGoogleNonce = "";
 
 globalThis.SogrimAccountProfile = Object.freeze({
   updateDisplayName: updateSignedInAccountDisplayName,
@@ -908,6 +912,7 @@ function renderAccountGate({
   document.body.append(gate);
   gate.querySelector("form")?.addEventListener("submit", handleAccountSubmit);
   markAccountAuthReady();
+  renderWebGoogleButton().catch(() => {});
   if (showEmailAuth) focusAccountInput(gate);
 }
 
@@ -1305,29 +1310,10 @@ async function handleAccountClick(event) {
       if (isNativeAndroid()) {
         await signInWithNativeGoogle();
       } else {
-        await openOAuthUrl(
-          await secureOAuthUrl(googleOAuthUrl)
-        );
+        await promptWebGoogleSignIn();
       }
     } catch (error) {
-      if (
-        accountSession?.user &&
-        accountProfileNeedsCompletion(error)
-      ) {
-        const accountProfile = accountProfileFromUser(accountSession.user);
-        renderAccountNameCompletionGate({
-          displayName: accountProfile?.displayName ?? "",
-          username: accountProfile?.username ?? ""
-        });
-        return;
-      }
-      if (!isCancelledNativeGoogleLogin(error)) {
-        emitOperationFailure("auth", { screen: "auth" });
-        renderAccountGate({
-          mode: "login",
-          error: accountAuthErrorMessage(error, "google")
-        });
-      }
+      handleGoogleSignInError(error);
     } finally {
       setAuthBusy(false);
     }
@@ -1552,6 +1538,130 @@ function isNativeAndroid() {
   );
 }
 
+async function renderWebGoogleButton() {
+  const control = document.querySelector("[data-account-google-control]");
+  const target = control?.querySelector("[data-account-google-button]");
+  if (!control || !target || isNativeAndroid()) return;
+
+  try {
+    await initializeWebGoogleIdentity();
+    if (!target.isConnected) return;
+    target.replaceChildren();
+    const width = Math.max(
+      200,
+      Math.min(400, Math.round(control.getBoundingClientRect().width || 320))
+    );
+    window.google.accounts.id.renderButton(target, {
+      type: "standard",
+      theme: "outline",
+      size: "large",
+      shape: "rectangular",
+      text: "continue_with",
+      locale: "he",
+      width
+    });
+    control.classList.add("is-google-ready");
+  } catch {
+    control.classList.remove("is-google-ready");
+  }
+}
+
+async function promptWebGoogleSignIn() {
+  await initializeWebGoogleIdentity();
+  await renderWebGoogleButton();
+  window.google.accounts.id.prompt();
+}
+
+async function initializeWebGoogleIdentity() {
+  const clientId = String(runtimeConfig?.auth?.googleClientId ?? "").trim();
+  if (!clientId) throw new Error("Google client is unavailable");
+  await loadWebGoogleScript();
+  if (webGoogleInitialized && webGoogleClientId === clientId) return;
+
+  const nonce = await createWebGoogleNonce();
+  webGoogleNonce = nonce.raw;
+  webGoogleClientId = clientId;
+  window.google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleWebGoogleCredential,
+    auto_select: false,
+    cancel_on_tap_outside: true,
+    ux_mode: "popup",
+    nonce: nonce.hashed
+  });
+  webGoogleInitialized = true;
+}
+
+function loadWebGoogleScript() {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  if (webGoogleScriptPromise) return webGoogleScriptPromise;
+
+  webGoogleScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = GOOGLE_IDENTITY_SCRIPT_SRC;
+    script.async = true;
+    script.defer = true;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Google sign-in is unavailable"));
+    document.head.append(script);
+  }).catch((error) => {
+    webGoogleScriptPromise = null;
+    throw error;
+  });
+  return webGoogleScriptPromise;
+}
+
+async function createWebGoogleNonce() {
+  const bytes = new Uint8Array(32);
+  window.crypto.getRandomValues(bytes);
+  const raw = btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+  const digest = await window.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(raw)
+  );
+  const hashed = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return { raw, hashed };
+}
+
+async function handleWebGoogleCredential(response) {
+  if (authBusy) return;
+  setAuthBusy(true);
+  try {
+    const idToken = String(response?.credential ?? "").trim();
+    if (!idToken) throw new Error("Google identity token is unavailable");
+    await completeGoogleIdTokenSignIn({
+      idToken,
+      nonce: webGoogleNonce
+    });
+  } catch (error) {
+    handleGoogleSignInError(error);
+  } finally {
+    setAuthBusy(false);
+  }
+}
+
+function handleGoogleSignInError(error) {
+  if (accountSession?.user && accountProfileNeedsCompletion(error)) {
+    const accountProfile = accountProfileFromUser(accountSession.user);
+    renderAccountNameCompletionGate({
+      displayName: accountProfile?.displayName ?? "",
+      username: accountProfile?.username ?? ""
+    });
+    return;
+  }
+  if (isCancelledNativeGoogleLogin(error)) return;
+  emitOperationFailure("auth", { screen: "auth" });
+  renderAccountGate({
+    mode: "login",
+    error: accountAuthErrorMessage(error, "google")
+  });
+}
+
 async function signInWithNativeGoogle() {
   if (!nativeGoogleLoginPromise) {
     nativeGoogleLoginPromise = import("@capgo/capacitor-social-login")
@@ -1583,11 +1693,20 @@ async function signInWithNativeGoogle() {
   const accessToken = String(result?.accessToken?.token ?? "").trim();
   if (!idToken) throw new Error("Google identity token is unavailable");
 
+  await completeGoogleIdTokenSignIn({ idToken, accessToken });
+}
+
+async function completeGoogleIdTokenSignIn({
+  idToken,
+  accessToken = "",
+  nonce = ""
+}) {
   const previousSession = loadStoredAccountSession();
   accountSession = await signInWithIdToken(runtimeConfig, {
     provider: "google",
     token: idToken,
-    accessToken
+    accessToken,
+    nonce
   });
   accountSession = await restoreAccountSession(accountSession, {
     previousSession
@@ -2200,15 +2319,19 @@ function enableProviderOptions() {
   const slot = document.querySelector("[data-google-auth-slot]");
   if (!slot) return;
   slot.innerHTML = providerOptionsMarkup();
+  renderWebGoogleButton().catch(() => {});
 }
 
 function providerOptionsMarkup() {
   const buttons = [
     googleEnabled
-      ? `<button class="account-google-button" type="button" data-account-action="google">
-          ${googleIcon()}
-          <span>המשך עם Google</span>
-        </button>`
+      ? `<div class="account-google-control" data-account-google-control>
+          <div class="account-google-official" data-account-google-button aria-label="המשך עם Google"></div>
+          <button class="account-google-button account-google-fallback" type="button" data-account-action="google">
+            ${googleIcon()}
+            <span>המשך עם Google</span>
+          </button>
+        </div>`
       : "",
     appleEnabled
       ? `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
@@ -2735,6 +2858,37 @@ function injectStyle() {
     .account-google-slot:not(:empty) {
       display: grid;
       gap: 20px;
+    }
+
+    .account-google-control {
+      min-height: 48px;
+      display: grid;
+      place-items: stretch;
+    }
+
+    .account-google-control > * {
+      grid-area: 1 / 1;
+    }
+
+    .account-google-official {
+      min-height: 48px;
+      display: none;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+
+    .account-google-control.is-google-ready .account-google-official {
+      display: grid;
+    }
+
+    .account-google-control.is-google-ready .account-google-fallback {
+      display: none;
+    }
+
+    .account-google-official > div,
+    .account-google-official iframe {
+      max-width: 100% !important;
     }
 
     .account-google-button {

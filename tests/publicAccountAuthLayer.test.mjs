@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=357"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=358"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -56,9 +56,15 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /signUpWithPassword/);
   assert.match(layer, /resendSignupConfirmation/);
   assert.match(layer, /data-account-action="resend-verification"/);
-  assert.match(layer, /googleOAuthUrl/);
+  assert.match(layer, /https:\/\/accounts\.google\.com\/gsi\/client/);
   assert.match(layer, /@capgo\/capacitor-social-login/);
   assert.match(layer, /signInWithIdToken/);
+  assert.match(layer, /window\.google\.accounts\.id\.renderButton/);
+  assert.match(layer, /callback: handleWebGoogleCredential/);
+  assert.match(layer, /nonce: nonce\.hashed/);
+  assert.match(layer, /nonce: webGoogleNonce/);
+  assert.match(layer, /await promptWebGoogleSignIn\(\)/);
+  assert.doesNotMatch(layer, /secureOAuthUrl\(googleOAuthUrl\)/);
   assert.doesNotMatch(layer, /scopes: \["openid", "email", "profile"\]/);
   assert.match(layer, /filterByAuthorizedAccounts: false/);
   assert.match(layer, /autoSelectEnabled: false/);
