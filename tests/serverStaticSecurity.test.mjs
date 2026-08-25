@@ -94,6 +94,50 @@ test("malformed Host headers fail inside the async request boundary", async () =
   assert.equal(JSON.parse(response.body).code, "INVALID_HOST");
 });
 
+test("unexpected server failures carry a safe correlation id and structured log", async () => {
+  const logs = [];
+  const handler = createAppHandler({
+    root: process.cwd(),
+    port: 4173,
+    env: {},
+    adminAnalyticsService: async () => {
+      throw new Error("admin overview exploded");
+    },
+    serverErrorLogger: (...entry) => logs.push(entry)
+  });
+  const response = responseRecorder();
+  await handler({
+    url: "/api/admin/overview?days=30&token=must-not-be-logged",
+    method: "GET",
+    headers: {
+      host: "127.0.0.1:4173",
+      "x-sogrim-request-id": "qa-request-1234"
+    },
+    socket: { remoteAddress: "127.0.0.1" }
+  }, response);
+
+  assert.equal(response.statusCode, 500);
+  assert.equal(response.headers["x-sogrim-request-id"], "qa-request-1234");
+  assert.equal(JSON.parse(response.body).requestId, "qa-request-1234");
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], "[server] Unhandled request failure");
+  assert.deepEqual(
+    {
+      requestId: logs[0][1].requestId,
+      method: logs[0][1].method,
+      path: logs[0][1].path,
+      message: logs[0][1].error.message
+    },
+    {
+      requestId: "qa-request-1234",
+      method: "GET",
+      path: "/api/admin/overview",
+      message: "admin overview exploded"
+    }
+  );
+  assert.doesNotMatch(JSON.stringify(logs), /must-not-be-logged/);
+});
+
 test("production public config and invite metadata never derive from Host", async () => {
   const handler = createAppHandler({
     root: process.cwd(),

@@ -322,6 +322,30 @@ test("a newer profile image crosses the shared-event snapshot and wins on anothe
   );
 });
 
+test("an expired account session is not treated as revoked event membership", async () => {
+  await assert.rejects(
+    ensureSharedEventMembership(
+      {
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon",
+          account: {
+            userId: "00000000-0000-4000-8000-000000000001",
+            accessToken: "expired-account-token"
+          }
+        }
+      },
+      {
+        id: "event-space-one",
+        key: "event_share_key_12345678901234567890"
+      },
+      async () => ({ ok: false, status: 401 })
+    ),
+    (error) => error.code === "CLOUD_STATE_AUTH_EXPIRED" && error.status === 401
+  );
+});
+
 test("a one-time profile repair republishes every shared event that references the account", () => {
   const event = {
     id: "event-profile-repair",
@@ -744,6 +768,46 @@ test("refresh removes retained credentials when server membership was revoked", 
   assert.deepEqual(event.inactiveParticipantIds, [participantId]);
   assert.equal(event.sharedSpaceId, undefined);
   assert.equal(event.sharedSpaceKey, undefined);
+});
+
+test("refresh preserves event membership when verification needs a fresh account token", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000011";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Active member" }],
+    groups: [],
+    events: [{
+      id: "event-auth-expired",
+      name: "Still active event",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: "event-space-auth-expired",
+      sharedSpaceKey: "event-share-key-auth-expired-1234567890"
+    }]
+  };
+  const refreshed = await refreshSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "expired-account-token" }
+      }
+    },
+    state,
+    async (url) => url.includes("/rpc/join_shared_event")
+      ? { ok: false, status: 401 }
+      : { ok: true, status: 200, async json() { return []; } }
+  );
+
+  const event = refreshed.events[0];
+  assert.deepEqual(event.inactiveParticipantIds, []);
+  assert.equal(event.sharedSpaceId, "event-space-auth-expired");
+  assert.equal(event.sharedSpaceKey, "event-share-key-auth-expired-1234567890");
 });
 
 test("an empty shared read does not revoke a membership the server still verifies", async () => {

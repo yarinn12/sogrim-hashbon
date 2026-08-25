@@ -1,5 +1,5 @@
-const PWA_RELEASE = "348";
-const CACHE_NAME = "settle-friends-live-v348";
+const PWA_RELEASE = "349";
+const CACHE_NAME = "settle-friends-live-v349";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -161,6 +161,14 @@ const LAZY_MEDIA_FILES = new Set([
   "/assets/sogrim-logo-intro-hold.jpg"
 ]);
 const PRECACHE_FILES = CACHE_FILES.filter((path) => !LAZY_MEDIA_FILES.has(path));
+const CRITICAL_PRECACHE_FILES = new Set([
+  "/",
+  "/index.html",
+  "/styles.css",
+  "/src/app.mjs",
+  "/src/pwaBootstrap.mjs",
+  "/src/publicAccountAuthLayer.mjs"
+]);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -216,7 +224,8 @@ self.addEventListener("fetch", (event) => {
         const response = await fetch(event.request, { cache: "no-store" });
         if (
           response.status === 200 &&
-          !event.request.headers.has("range")
+          !event.request.headers.has("range") &&
+          isExpectedAssetResponse(url.pathname, response)
         ) {
           try {
             const cache = await caches.open(CACHE_NAME);
@@ -239,15 +248,45 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function precacheFreshFiles(cache) {
-  await Promise.all(
-    PRECACHE_FILES.map(async (path) => {
-      const url = new URL(path, self.location.origin);
-      url.searchParams.set("pwa_release", PWA_RELEASE);
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Precache failed: ${path}`);
-      await cache.put(path, response);
-    })
+  const criticalFiles = PRECACHE_FILES.filter((path) =>
+    CRITICAL_PRECACHE_FILES.has(path)
   );
+  const optionalFiles = PRECACHE_FILES.filter((path) =>
+    !CRITICAL_PRECACHE_FILES.has(path)
+  );
+
+  await Promise.all(criticalFiles.map((path) => precacheFreshFile(cache, path)));
+  await Promise.allSettled(optionalFiles.map((path) => precacheFreshFile(cache, path)));
+}
+
+async function precacheFreshFile(cache, path) {
+  const url = new URL(path, self.location.origin);
+  url.searchParams.set("pwa_release", PWA_RELEASE);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok || !isExpectedAssetResponse(path, response)) {
+    throw new Error(`Precache failed: ${path}`);
+  }
+  await cache.put(path, response);
+}
+
+function isExpectedAssetResponse(path, response) {
+  const contentType = String(response.headers?.get?.("content-type") ?? "")
+    .toLowerCase();
+  if (/\.(?:mjs|js)$/.test(path)) {
+    return contentType.includes("javascript");
+  }
+  if (path.endsWith(".css")) return contentType.includes("text/css");
+  if (path.endsWith(".webmanifest")) {
+    return contentType.includes("json") || contentType.includes("manifest");
+  }
+  if (/\.(?:png|jpg|jpeg|webp|svg)$/.test(path)) {
+    return contentType.startsWith("image/");
+  }
+  if (path.endsWith(".mp4")) return contentType.startsWith("video/");
+  if (path === "/" || path.endsWith(".html")) {
+    return contentType.includes("text/html");
+  }
+  return true;
 }
 
 async function fetchCachedMedia(request) {
@@ -256,7 +295,12 @@ async function fetchCachedMedia(request) {
 
   try {
     const response = await fetch(request);
-    if (response.status === 200 && !request.headers.has("range")) {
+    const requestPath = new URL(request.url).pathname;
+    if (
+      response.status === 200 &&
+      !request.headers.has("range") &&
+      isExpectedAssetResponse(requestPath, response)
+    ) {
       try {
         const cache = await caches.open(CACHE_NAME);
         await cache.put(request, response.clone());

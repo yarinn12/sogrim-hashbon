@@ -55,3 +55,21 @@ test("a blank device without an avatar decision never requests a cloud clear", (
   assert.equal(result.avatarImageUpdatedAt, "");
   assert.equal(result.needsRemoteSync, false);
 });
+
+test("equal avatar timestamps converge on the remote canonical image", () => {
+  const updatedAt = "2026-08-25T10:00:00.000Z";
+  const result = resolveProfileAvatar(
+    {
+      avatarImage: "https://images.example.com/old.webp",
+      avatarImageUpdatedAt: updatedAt
+    },
+    {
+      avatarImage: chosenAvatar,
+      avatarImageUpdatedAt: updatedAt
+    }
+  );
+
+  assert.equal(result.avatarImage, chosenAvatar);
+  assert.equal(result.source, "remote");
+  assert.equal(result.needsRemoteSync, false);
+});

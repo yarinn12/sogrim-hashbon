@@ -44,7 +44,13 @@ export function resolveProfileAvatar(localProfile = {}, remoteProfile = {}) {
 
   const localTime = Date.parse(localAvatarImageUpdatedAt || "1970-01-01");
   const remoteTime = Date.parse(remoteAvatarImageUpdatedAt || "1970-01-01");
-  if (remoteTime > localTime) {
+  if (
+    remoteTime > localTime ||
+    (
+      remoteTime === localTime &&
+      remoteAvatarImage !== localAvatarImage
+    )
+  ) {
     return avatarResolution(
       remoteAvatarImage,
       remoteAvatarImageUpdatedAt,

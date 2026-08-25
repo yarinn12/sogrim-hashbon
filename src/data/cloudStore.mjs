@@ -89,9 +89,7 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
       method: isUpdate ? "PATCH" : "POST",
       headers: {
         ...cloudHeaders(config),
-        prefer: isUpdate
-          ? "return=representation"
-          : "resolution=merge-duplicates,return=representation"
+        prefer: "return=representation"
       },
       body: JSON.stringify({
         id: config.storage.spaceId,
@@ -246,6 +244,7 @@ function rememberSnapshotVersion(config, version) {
 
 function cloudResponseError(response, message) {
   if (response?.status === 401) return new CloudStateAuthError();
+  if (response?.status === 409) return new CloudStateConflictError();
   const error = new Error(message);
   error.status = Number(response?.status ?? 0) || 0;
   return error;

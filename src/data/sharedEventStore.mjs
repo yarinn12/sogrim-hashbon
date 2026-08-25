@@ -1,4 +1,5 @@
 import {
+  CloudStateAuthError,
   readAccessibleSharedCloudStates,
   readCloudState,
   RECOVERED_MEMBER_SPACE_KEY,
@@ -368,13 +369,14 @@ export async function ensureSharedEventMembership(
   );
 
   if (!response.ok) {
+    if (response.status === 401) throw new CloudStateAuthError();
     const error = new Error(
-      response.status === 401 || response.status === 403
+      response.status === 403
         ? "Shared event membership is no longer active"
         : "Shared event membership could not be verified"
     );
     error.code =
-      response.status === 401 || response.status === 403
+      response.status === 403
         ? "SHARED_EVENT_MEMBERSHIP_REVOKED"
         : "SHARED_EVENT_MEMBERSHIP_FAILED";
     error.status = Number(response.status ?? 0) || 0;

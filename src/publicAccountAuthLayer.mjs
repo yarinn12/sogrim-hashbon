@@ -317,13 +317,10 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         renderAccountRecoveryGate();
         return;
       }
-      const invalidSession = accountSession;
-      const invalidSpaceId = getActiveCloudSpaceId(runtimeConfig);
-      const invalidUser = invalidSession?.user ?? sessionBeforeCallback?.user;
-      const invalidUserId = String(invalidUser?.id ?? "").trim();
+      // A terminal session failure invalidates credentials, not the user's
+      // durable local outbox. Keep the account-scoped state and pending sync
+      // so signing back into the same account can safely reconcile it.
       clearAccountSession();
-      clearLocalAccountData(invalidSpaceId, invalidUserId);
-      clearAccountWorkspace(invalidUser);
       accountSession = null;
     }
   }

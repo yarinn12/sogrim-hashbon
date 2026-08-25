@@ -1,5 +1,5 @@
 import { createReadStream, existsSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { isIP } from "node:net";
@@ -121,6 +121,7 @@ export function createAppHandler({
   adminAnalyticsService = getAdminAnalyticsOverview,
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite,
+  serverErrorLogger = console.error,
   requestRateLimiter = createRequestRateLimiter(),
   durableApiRateLimitService = reserveDurableApiRateLimit,
   durableRateLimitRequired = isDeployedRuntime(env),
@@ -628,9 +629,14 @@ export function createAppHandler({
   }
 
   return function appHandler(request, response) {
+    const requestId = requestCorrelationId(request);
+    response.setHeader?.("x-sogrim-request-id", requestId);
     return handleRequest(request, response).catch((error) => {
       try {
-        handleRequestFailure(response, error);
+        if (error?.code !== "INVALID_HOST") {
+          logUnhandledRequestFailure(serverErrorLogger, request, requestId, error);
+        }
+        handleRequestFailure(response, error, requestId);
       } catch {
         try {
           response.destroy?.();
@@ -807,7 +813,7 @@ function canonicalRequestUrl(baseUrl, requestUrl) {
   }
 }
 
-function handleRequestFailure(response, error) {
+function handleRequestFailure(response, error, requestId = "") {
   if (response.headersSent) {
     response.destroy?.();
     return;
@@ -816,7 +822,32 @@ function handleRequestFailure(response, error) {
   sendJson(response, invalidHost ? 400 : 500, {
     ok: false,
     error: invalidHost ? "Invalid Host header" : "Internal server error",
-    code: invalidHost ? "INVALID_HOST" : "INTERNAL_SERVER_ERROR"
+    code: invalidHost ? "INVALID_HOST" : "INTERNAL_SERVER_ERROR",
+    ...(requestId ? { requestId } : {})
+  });
+}
+
+function requestCorrelationId(request) {
+  const supplied = String(request?.headers?.["x-sogrim-request-id"] ?? "").trim();
+  return /^[a-zA-Z0-9._:-]{8,128}$/.test(supplied)
+    ? supplied
+    : randomUUID();
+}
+
+function logUnhandledRequestFailure(logger, request, requestId, error) {
+  if (typeof logger !== "function") return;
+  const requestPath = String(request?.url ?? "/").split("?", 1)[0].slice(0, 512);
+  logger("[server] Unhandled request failure", {
+    requestId,
+    method: String(request?.method ?? "GET").toUpperCase().slice(0, 16),
+    path: requestPath || "/",
+    error: {
+      name: String(error?.name ?? "Error").slice(0, 120),
+      code: String(error?.code ?? "").slice(0, 120),
+      status: Number(error?.status ?? 0) || 0,
+      message: String(error?.message ?? "Unknown server error").slice(0, 500),
+      stack: String(error?.stack ?? "").slice(0, 2_000)
+    }
   });
 }
 

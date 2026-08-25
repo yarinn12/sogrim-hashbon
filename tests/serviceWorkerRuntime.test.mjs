@@ -37,7 +37,7 @@ async function createWorker({
   };
   const fetch = (...args) => {
     fetchCalls.push(args);
-    return fetchImpl?.(...args) ?? Promise.resolve(new Response("fresh", { status: 200 }));
+    return fetchImpl?.(...args) ?? Promise.resolve(assetResponse(args[0]));
   };
 
   vm.runInNewContext(source, {
@@ -89,6 +89,21 @@ async function createWorker({
   };
 }
 
+function assetResponse(input, body = "fresh") {
+  const pathname = new URL(
+    typeof input === "string" || input instanceof URL ? String(input) : input.url
+  ).pathname;
+  let contentType = "application/octet-stream";
+  if (pathname === "/" || pathname.endsWith(".html")) contentType = "text/html";
+  else if (/\.(?:mjs|js)$/.test(pathname)) contentType = "text/javascript";
+  else if (pathname.endsWith(".css")) contentType = "text/css";
+  else if (pathname.endsWith(".webmanifest")) contentType = "application/manifest+json";
+  else if (pathname.endsWith(".svg")) contentType = "image/svg+xml";
+  else if (/\.(?:png|jpg|jpeg|webp)$/.test(pathname)) contentType = "image/png";
+  else if (pathname.endsWith(".mp4")) contentType = "video/mp4";
+  return new Response(body, { status: 200, headers: { "content-type": contentType } });
+}
+
 test("a new service worker bypasses stale HTTP caches while rebuilding its app shell", async () => {
   const worker = await createWorker();
 
@@ -97,7 +112,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "348" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "349" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -106,7 +121,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=348",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=349",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -173,7 +188,10 @@ test("service worker never stores range responses used by the intro video", asyn
 
 test("a cache write failure never hides a valid network response", async () => {
   const worker = await createWorker({
-    fetchImpl: async () => new Response("latest app", { status: 200 }),
+    fetchImpl: async () => new Response("latest app", {
+      status: 200,
+      headers: { "content-type": "text/javascript" }
+    }),
     cachePut: async () => {
       throw new Error("quota exceeded");
     }
@@ -185,6 +203,40 @@ test("a cache write failure never hides a valid network response", async () => {
   assert.equal(response.status, 200);
   assert.equal(await response.text(), "latest app");
   assert.equal(worker.cacheWrites.length, 1);
+});
+
+test("one optional precache failure does not strand an installed app on the old worker", async () => {
+  const worker = await createWorker({
+    fetchImpl: async (input) => {
+      const pathname = new URL(String(input)).pathname;
+      if (pathname === "/support.html") {
+        return new Response("unavailable", { status: 503 });
+      }
+      return assetResponse(input);
+    }
+  });
+
+  await worker.dispatchInstall();
+
+  assert.equal(worker.skipWaitingCalls, 1);
+  assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
+  assert.ok(!worker.cacheWrites.some(({ request }) => request === "/support.html"));
+});
+
+test("service worker never caches an HTML fallback under a JavaScript module URL", async () => {
+  const worker = await createWorker({
+    fetchImpl: async () => new Response("<!doctype html><title>fallback</title>", {
+      status: 200,
+      headers: { "content-type": "text/html" }
+    })
+  });
+
+  const response = await worker.dispatchFetch(
+    new Request("https://sogrim-hesbon-app.vercel.app/src/missing.mjs")
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(worker.cacheWrites.length, 0);
 });
 
 test("private query and compact invites use no-store and fall back to the shell offline", async () => {

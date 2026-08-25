@@ -123,9 +123,14 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     restoreSession,
     /previousUserId === nextUserId[\s\S]*?return false;[\s\S]*?clearLocalAccountData\([\s\S]*?previousUserId[\s\S]*?clearAccountWorkspace\(previousSession\.user\)/
   );
-  assert.match(
-    layer,
-    /const invalidUser = invalidSession\?\.user \?\? sessionBeforeCallback\?\.user;[\s\S]*?clearAccountSession\(\);[\s\S]*?clearLocalAccountData\(invalidSpaceId, invalidUserId\);[\s\S]*?clearAccountWorkspace\(invalidUser\)/
+  const terminalSessionFailure = layer.slice(
+    layer.indexOf("// A terminal session failure invalidates credentials"),
+    layer.indexOf("removeSessionValue(AUTH_CHANGED_MARKER)")
+  );
+  assert.match(terminalSessionFailure, /clearAccountSession\(\);[\s\S]*?accountSession = null;/);
+  assert.doesNotMatch(
+    terminalSessionFailure,
+    /clearLocalAccountData|clearAccountWorkspace/
   );
   assert.match(layer, /data-account-action="ad-privacy">העדפות פרסום/);
   assert.match(layer, /SogrimAds\?\.showPrivacyOptions/);
@@ -351,7 +356,7 @@ test("account gate protects private content and preserves interrupted form work"
   );
   assert.ok(
     layer.indexOf("callbackSession &&") <
-      layer.indexOf("const invalidSession = accountSession"),
+      layer.indexOf("// A terminal session failure invalidates credentials"),
     "a transient OAuth callback must be retained before invalid-session cleanup"
   );
   assert.match(layer, /values\.email/);
@@ -393,7 +398,7 @@ test("a failed event invite never signs out the connected account", async () => 
   assert.ok(accountCatch.indexOf("isEventInviteError(error)") >= 0);
   assert.ok(
     accountCatch.indexOf("isEventInviteError(error)") <
-      accountCatch.indexOf("const invalidSession = accountSession")
+      accountCatch.indexOf("// A terminal session failure invalidates credentials")
   );
   assert.match(inviteFailureBranch, /discardFailedInviteContext\(\)/);
   assert.match(inviteFailureBranch, /ignoreInvite: true/);

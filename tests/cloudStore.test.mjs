@@ -9,6 +9,7 @@ import {
   readCloudState,
   saveCloudState
 } from "../src/data/cloudStore.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 
 test("a signed-in account can rediscover shared events after its local index is lost", async () => {
   const config = createConfig("personal-account-space");
@@ -113,7 +114,7 @@ test("loadCloudState creates a snapshot when the space does not exist yet", asyn
 
   assert.deepEqual(loaded, state);
   assert.equal(requests[1].options.method, "POST");
-  assert.equal(requests[1].options.headers.prefer, "resolution=merge-duplicates,return=representation");
+  assert.equal(requests[1].options.headers.prefer, "return=representation");
   const body = JSON.parse(requests[1].options.body);
   assert.equal(body.id, "friends-create");
   assert.deepEqual(body.state, state);
@@ -176,7 +177,7 @@ test("a fresh account creates its personal snapshot after its participant exists
   );
 });
 
-test("saveCloudState upserts the latest app snapshot", async () => {
+test("saveCloudState inserts a missing app snapshot without merging duplicates", async () => {
   const isolatedConfig = {
     ...createConfig("friends-new")
   };
@@ -191,7 +192,45 @@ test("saveCloudState upserts the latest app snapshot", async () => {
     "https://demo.supabase.co/rest/v1/app_snapshots"
   );
   assert.equal(requests[0].options.method, "POST");
-  assert.equal(requests[0].options.headers.prefer, "resolution=merge-duplicates,return=representation");
+  assert.equal(requests[0].options.headers.prefer, "return=representation");
+});
+
+test("an account snapshot create conflict reloads, merges, and retries as an update", async () => {
+  const accountConfig = createConfig("account-create-conflict-retry");
+  accountConfig.storage.account = {
+    userId: "user-conflict",
+    accessToken: "account-access-token",
+    spaceId: "account-create-conflict-retry"
+  };
+  const remoteState = {
+    ...state,
+    groups: [{ id: "remote-group", name: "Remote group", memberIds: ["owner"] }]
+  };
+  const requests = [];
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options });
+    if (requests.length === 1) return { ok: false, status: 409 };
+    if (requests.length === 2) {
+      return jsonResponse([{
+        state: remoteState,
+        updated_at: "2026-07-17T10:00:00.000Z"
+      }]);
+    }
+    return jsonResponse([{ updated_at: "2026-07-17T10:00:01.000Z" }]);
+  };
+
+  const result = await saveCloudStateWithConflictRetry({
+    state,
+    loadLatest: () => readCloudState(accountConfig, fetchImpl),
+    save: (candidate) => saveCloudState(accountConfig, candidate, fetchImpl),
+    retryDelay: () => 0
+  });
+
+  assert.equal(result.conflictCount, 1);
+  assert.deepEqual(requests.map(({ options }) => options.method), ["POST", undefined, "PATCH"]);
+  assert.equal(requests[0].options.headers.prefer, "return=representation");
+  assert.match(requests[2].url, /updated_at=eq\./);
+  assert.deepEqual(JSON.parse(requests[2].options.body).state.groups, remoteState.groups);
 });
 
 test("shared snapshot updates use the atomic server-validated RPC", async () => {
