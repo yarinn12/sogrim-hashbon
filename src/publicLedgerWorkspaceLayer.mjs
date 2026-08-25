@@ -13425,90 +13425,99 @@ const CSS = `
     margin: 0 16px 16px !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-shell {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-shell {
     overflow: hidden auto !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-header {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header {
     position: relative !important;
-    grid-template-columns: 50px minmax(0, 1fr) !important;
-    gap: 14px !important;
-    min-height: 156px !important;
-    padding-inline-end: 76px !important;
+    grid-template-columns: 46px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    min-height: 92px !important;
+    padding: 14px 18px 14px 72px !important;
     overflow: hidden !important;
-    background:
-      linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+    border-block-end: 1px solid var(--ledger-line) !important;
+    color: var(--ledger-ink) !important;
+    background: rgba(255, 255, 255, 0.96) !important;
+    box-shadow: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-header::before,
-  html.ledger-workspace-v1 .referral-dialog-header::after {
-    content: "" !important;
-    position: absolute !important;
-    pointer-events: none !important;
-    border: 1px solid rgba(169, 221, 210, 0.2) !important;
-    border-radius: 50% !important;
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header::before,
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header::after {
+    display: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-header::before {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header::before {
     width: 170px !important;
     height: 170px !important;
     inset-block-start: -102px !important;
     inset-inline-start: -46px !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-header::after {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header::after {
     width: 112px !important;
     height: 112px !important;
     inset-block-end: -74px !important;
     inset-inline-end: 58px !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-header-copy,
-  html.ledger-workspace-v1 .referral-dialog-mark {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header-copy,
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-mark {
     position: relative !important;
     z-index: 1 !important;
   }
 
-  html.ledger-workspace-v1 .referral-close-button {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-close-button {
     z-index: 1 !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-lead {
-    max-width: 48ch !important;
-    margin: 8px 0 0 !important;
-    color: rgba(255, 255, 255, 0.76) !important;
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-lead {
+    max-width: 44ch !important;
+    margin: 3px 0 0 !important;
+    color: var(--ledger-muted) !important;
     font-size: 12px !important;
     font-weight: 560 !important;
-    line-height: 1.48 !important;
+    line-height: 1.4 !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-mark {
-    width: 50px !important;
-    height: 50px !important;
-    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header h2 {
+    max-width: 22ch !important;
+    color: var(--ledger-ink) !important;
+    font-size: clamp(20px, 5.4vw, 24px) !important;
+  }
+
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header small {
+    margin: 0 0 2px !important;
+    color: var(--ledger-accent) !important;
+    font-size: 11px !important;
+  }
+
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-mark {
+    width: 46px !important;
+    height: 46px !important;
+    border: 1px solid rgba(11, 74, 56, 0.1) !important;
     border-radius: 14px !important;
-    background: rgba(255, 255, 255, 0.1) !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-accent-soft) !important;
   }
 
-  html.ledger-workspace-v1 .referral-close-button {
-    inset-block-start: 20px !important;
-    inset-inline-end: 20px !important;
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-close-button {
+    inset-block-start: 23px !important;
+    inset-inline-end: 18px !important;
+    border-color: rgba(11, 74, 56, 0.1) !important;
+    background: var(--ledger-surface-soft) !important;
   }
 
-  html.ledger-workspace-v1 .referral-dialog-content {
+  html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-content {
     align-content: start !important;
+    grid-auto-rows: max-content !important;
     gap: 14px !important;
     padding: 16px !important;
     background: var(--ledger-canvas) !important;
   }
 
   html.ledger-workspace-v1
-    :is(
-      .referral-benefit-card,
-      .referral-share-section,
-      .referral-progress-section,
-      .referral-state-message
-    ) {
+    :is(.referral-gift-card, .referral-more-details, .referral-state-message) {
     border-color: var(--ledger-line) !important;
     border-radius: var(--ledger-task-radius) !important;
     background: var(--ledger-surface) !important;
@@ -13652,32 +13661,33 @@ const CSS = `
       margin: 0 14px calc(14px + env(safe-area-inset-bottom)) !important;
     }
 
-    html.ledger-workspace-v1 .referral-dialog-shell {
+    html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-shell {
       display: grid !important;
       grid-template-rows: auto minmax(0, 1fr) !important;
       overflow: hidden !important;
     }
 
-    html.ledger-workspace-v1 .referral-dialog-header {
+    html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-header {
       grid-template-columns: 44px minmax(0, 1fr) !important;
-      min-height: calc(164px + env(safe-area-inset-top)) !important;
-      padding-inline-end: 72px !important;
+      min-height: calc(90px + env(safe-area-inset-top)) !important;
+      padding: calc(12px + env(safe-area-inset-top)) 14px 12px 66px !important;
     }
 
-    html.ledger-workspace-v1 .referral-dialog-mark {
+    html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-mark {
       width: 44px !important;
       height: 44px !important;
     }
 
-    html.ledger-workspace-v1 .referral-close-button {
-      inset-block-start: calc(18px + env(safe-area-inset-top)) !important;
-      inset-inline-end: 16px !important;
+    html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-close-button {
+      inset-block-start: calc(14px + env(safe-area-inset-top)) !important;
+      inset-inline-end: 14px !important;
     }
 
-    html.ledger-workspace-v1 .referral-dialog-content {
+    html.ledger-workspace-v1 #public-referral-rewards-dialog .referral-dialog-content {
       min-height: 0 !important;
       overflow-y: auto !important;
-      padding: 14px 14px calc(24px + env(safe-area-inset-bottom)) !important;
+      gap: 10px !important;
+      padding: 10px 12px calc(22px + env(safe-area-inset-bottom)) !important;
     }
 
     html.ledger-workspace-v1 .referral-share-workspace {
@@ -13685,8 +13695,18 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .referral-qr-card {
-      width: min(100%, 212px) !important;
+      width: min(100%, 176px) !important;
       justify-self: center !important;
+    }
+
+    html.ledger-workspace-v1 .referral-benefit-card {
+      min-height: 128px !important;
+      padding: 18px !important;
+    }
+
+    html.ledger-workspace-v1 .referral-share-section {
+      gap: 12px !important;
+      padding: 14px !important;
     }
   }
 
@@ -17678,11 +17698,11 @@ const CSS = `
 
   html.ledger-workspace-v1 .referral-benefit-card {
     position: relative !important;
-    min-height: 150px !important;
+    min-height: 136px !important;
     align-content: center !important;
-    gap: 8px !important;
+    gap: 6px !important;
     overflow: hidden !important;
-    padding: 22px !important;
+    padding: 20px !important;
     border: 0 !important;
     color: #ffffff !important;
     background:
@@ -17718,13 +17738,13 @@ const CSS = `
     align-items: baseline !important;
     gap: 10px !important;
     color: #ffffff !important;
-    font-size: 21px !important;
+    font-size: 20px !important;
     line-height: 1 !important;
   }
 
   html.ledger-workspace-v1 .referral-benefit-card > strong .font-num {
     color: #ffffff !important;
-    font-size: clamp(46px, 11vw, 60px) !important;
+    font-size: clamp(46px, 11vw, 56px) !important;
     line-height: 0.88 !important;
   }
 
@@ -17739,11 +17759,12 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .referral-share-section {
-    gap: 16px !important;
-    padding: 20px !important;
-    box-shadow:
-      0 0 0 1px rgba(7, 27, 24, 0.055),
-      0 14px 30px -24px rgba(4, 35, 29, 0.42) !important;
+    gap: 14px !important;
+    padding: 16px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: none !important;
   }
 
   html.ledger-workspace-v1 .referral-section-heading > small {
@@ -17753,7 +17774,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .referral-share-workspace {
-    grid-template-columns: 176px minmax(0, 1fr) !important;
+    grid-template-columns: 180px minmax(0, 1fr) !important;
     gap: 16px !important;
   }
 
@@ -17783,6 +17804,74 @@ const CSS = `
 
   html.ledger-workspace-v1 .referral-share-actions button {
     min-height: 48px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-share-actions {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  html.ledger-workspace-v1 .referral-share-actions .secondary-button {
+    min-width: 104px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-link-details summary,
+  html.ledger-workspace-v1 .referral-more-details > summary {
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-more-details > summary {
+    background: var(--ledger-surface) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-more-details > summary strong {
+    color: var(--ledger-ink) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-more-details-content {
+    border-color: var(--ledger-line) !important;
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-progress-section {
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  @media (max-width: 760px) {
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-share-workspace {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-qr-card {
+      grid-row: 2 !important;
+      width: min(100%, 176px) !important;
+      justify-self: center !important;
+    }
+
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-share-controls {
+      grid-row: 1 !important;
+    }
+
+    html.ledger-workspace-v1
+      #public-referral-rewards-dialog
+      .referral-share-section {
+      gap: 12px !important;
+      padding: 14px !important;
+    }
+  }
+
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+    #public-referral-rewards-dialog
+    .referral-share-actions {
+    grid-template-columns: minmax(0, 1fr) !important;
   }
 
   html.ledger-workspace-v1 .group-create-panel::before,

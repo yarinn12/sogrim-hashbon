@@ -509,7 +509,7 @@ function trapReferralDialogFocus(event) {
   if (!dialog) return;
   const focusable = Array.from(
     dialog.querySelectorAll(
-      'button:not(:disabled), a[href], input:not(:disabled), [tabindex]:not([tabindex="-1"])'
+      'button:not(:disabled), a[href], input:not(:disabled), summary, [tabindex]:not([tabindex="-1"])'
     )
   ).filter((element) => !element.hidden && element.getAttribute("aria-hidden") !== "true");
   if (!focusable.length) {
@@ -555,8 +555,8 @@ function referralDialogMarkup() {
         <span class="referral-dialog-mark" aria-hidden="true">${giftIcon()}</span>
         <span class="referral-dialog-header-copy">
           <small>סוגרים חשבון · הטבת חברים</small>
-          <h2 id="referral-dialog-title">מזמינים חברים. סוגרים בלי פרסומות.</h2>
-          <p class="referral-dialog-lead">משתפים קישור אישי או QR; כשהחבר מתחיל להשתמש, החודש נפתח.</p>
+          <h2 id="referral-dialog-title">המתנה שלך</h2>
+          <p class="referral-dialog-lead">חודש שקט מפרסומות, בכל פעם שחבר חדש מצטרף ומשתמש.</p>
         </span>
       </header>
 
@@ -590,71 +590,86 @@ function referralDialogMarkup() {
                       `
                       : ""
                   }
-                  <section class="referral-benefit-card" aria-labelledby="referral-benefit-title">
-                    <span class="referral-benefit-label">${active ? "ההטבה שלך פעילה" : "התגמול שלך"}</span>
-                    <strong id="referral-benefit-title"><span class="font-num">${referralStatus.rewardDays}</span><span>ימים ללא פרסומות</span></strong>
-                    <p>על כל חבר חדש שנרשם מהקישור ומשלים פעולה אמיתית באירוע.</p>
-                    ${
-                      active
-                        ? `<span class="referral-active-until">פעיל עד ${formatDate(referralStatus.adFreeUntil)}</span>`
-                        : ""
-                    }
-                  </section>
+                  <section class="referral-gift-card" aria-label="המתנה שלך">
+                    <section class="referral-benefit-card" aria-labelledby="referral-benefit-title">
+                      <span class="referral-benefit-label">${active ? "ההטבה שלך פעילה" : "מתנה על כל חבר שמצטרף"}</span>
+                      <strong id="referral-benefit-title"><span class="font-num">${referralStatus.rewardDays}</span><span>ימים בלי פרסומות</span></strong>
+                      <p>החבר נרשם, נכנס לאירוע ומשלים פעולה — והחודש נפתח.</p>
+                      ${
+                        active
+                          ? `<span class="referral-active-until">פעיל עד ${formatDate(referralStatus.adFreeUntil)}</span>`
+                          : ""
+                      }
+                    </section>
 
-                  <section class="referral-share-section" aria-labelledby="referral-share-title">
-                    <span class="referral-section-heading">
-                      <small>הזמנה אישית</small>
-                      <h3 id="referral-share-title">הקישור האישי שלך</h3>
-                      <p>הקישור גם שולח בקשת חברות, בלי לחשוף כתובת מייל.</p>
-                    </span>
-                    <div class="referral-share-workspace">
-                      ${referralQrMarkup(inviteUrl)}
-                      <div class="referral-share-controls">
-                        <label class="referral-link-field">
-                          <span>קישור לשיתוף</span>
-                          <input value="${escapeAttribute(inviteUrl)}" readonly dir="ltr" />
-                        </label>
-                        <div class="referral-share-actions">
-                          <button class="primary-button" data-referral-action="share" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
-                            ${shareIcon()}
-                            <span>שתף הזמנה</span>
-                          </button>
-                          <button class="secondary-button" data-referral-action="copy" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
-                            ${copyIcon()}
-                            <span>העתק קישור</span>
-                          </button>
+                    <section class="referral-share-section" aria-labelledby="referral-share-title">
+                      <span class="referral-section-heading">
+                        <small>הזמנה אישית</small>
+                        <h3 id="referral-share-title">נותנים לחבר לסרוק</h3>
+                        <p>או שולחים לו את ההזמנה בלחיצה אחת.</p>
+                      </span>
+                      <div class="referral-share-workspace">
+                        ${referralQrMarkup(inviteUrl)}
+                        <div class="referral-share-controls">
+                          <div class="referral-share-actions">
+                            <button class="primary-button" data-referral-action="share" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
+                              ${shareIcon()}
+                              <span>שתף את המתנה</span>
+                            </button>
+                            <button class="secondary-button" data-referral-action="copy" type="button" ${inviteUrl && !referralBusy ? "" : "disabled"} ${referralBusy ? 'aria-busy="true"' : ""}>
+                              ${copyIcon()}
+                              <span>העתק</span>
+                            </button>
+                          </div>
+                          <details class="referral-link-details">
+                            <summary>הצגת הקישור</summary>
+                            <label class="referral-link-field">
+                              <span>קישור לשיתוף</span>
+                              <input value="${escapeAttribute(inviteUrl)}" readonly dir="ltr" />
+                            </label>
+                          </details>
                         </div>
                       </div>
-                    </div>
-                    ${referralNotice ? `<p class="referral-notice" role="status">${referralNotice}</p>` : ""}
+                      ${referralNotice ? `<p class="referral-notice" role="status">${referralNotice}</p>` : ""}
+                    </section>
                   </section>
 
-                  <section class="referral-progress-section" aria-labelledby="referral-progress-title">
-                    <div class="referral-progress-heading">
+                  <details class="referral-more-details">
+                    <summary>
                       <span>
-                        <h3 id="referral-progress-title">ההתקדמות שלך השנה</h3>
-                        <p>${progress.rewarded} חברים השלימו שימוש${referralStatus.pendingReferrals ? ` · ${referralStatus.pendingReferrals} בדרך` : ""}</p>
+                        <strong>איך זה עובד ומה צברתי?</strong>
+                        <small>${progress.rewarded} חברים השלימו שימוש · <span class="font-num">${referralStatus.daysEarned}</span> ימים נצברו</small>
                       </span>
-                      <strong><span class="font-num">${referralStatus.daysEarned}</span> ימים</strong>
-                    </div>
-                    <div
-                      class="referral-progress-track"
-                      role="progressbar"
-                      aria-valuemin="0"
-                      aria-valuemax="${progress.limit}"
-                      aria-valuenow="${progress.rewarded}"
-                      aria-label="מספר ההטבות שנצברו השנה"
-                    >
-                      <span style="width:${progress.percentage}%"></span>
-                    </div>
-                    <small>${progress.remaining} הטבות נוספות זמינות ב-12 החודשים הקרובים.</small>
-                  </section>
+                    </summary>
+                    <div class="referral-more-details-content">
+                      <section class="referral-progress-section" aria-labelledby="referral-progress-title">
+                        <div class="referral-progress-heading">
+                          <span>
+                            <h3 id="referral-progress-title">ההתקדמות שלך השנה</h3>
+                            <p>${progress.rewarded} חברים השלימו שימוש${referralStatus.pendingReferrals ? ` · ${referralStatus.pendingReferrals} בדרך` : ""}</p>
+                          </span>
+                          <strong><span class="font-num">${referralStatus.daysEarned}</span> ימים</strong>
+                        </div>
+                        <div
+                          class="referral-progress-track"
+                          role="progressbar"
+                          aria-valuemin="0"
+                          aria-valuemax="${progress.limit}"
+                          aria-valuenow="${progress.rewarded}"
+                          aria-label="מספר ההטבות שנצברו השנה"
+                        >
+                          <span style="width:${progress.percentage}%"></span>
+                        </div>
+                        <small>${progress.remaining} הטבות נוספות זמינות ב-12 החודשים הקרובים.</small>
+                      </section>
 
-                  <ol class="referral-steps">
-                    <li><span>1</span><strong>משתפים את הקישור</strong></li>
-                    <li><span>2</span><strong>החבר נרשם ומאמת מייל</strong></li>
-                    <li><span>3</span><strong>הוא משתמש באירוע אמיתי</strong></li>
-                  </ol>
+                      <ol class="referral-steps">
+                        <li><span>1</span><strong>משתפים</strong><small>קישור או QR</small></li>
+                        <li><span>2</span><strong>החבר מצטרף</strong><small>ונכנס לאירוע</small></li>
+                        <li><span>3</span><strong>המתנה נפתחת</strong><small>אחרי שימוש אמיתי</small></li>
+                      </ol>
+                    </div>
+                  </details>
                 `
         }
       </div>
@@ -674,8 +689,8 @@ function referralQrMarkup(inviteUrl) {
       <figure class="referral-qr-card" data-referral-qr>
         <div class="referral-qr-code">${qrSvg}</div>
         <figcaption>
-          <strong>סורקים ומצטרפים</strong>
-          <small>אפשר לפתוח את המצלמה ולסרוק ישירות מהמסך.</small>
+          <strong>סריקה מהירה</strong>
+          <small>מכוונים את המצלמה לקוד</small>
         </figcaption>
       </figure>
     `;
@@ -984,7 +999,7 @@ function injectReferralStyles() {
     }
 
     .referral-dialog-shell {
-      width: min(100%, 620px);
+      width: min(100%, 580px);
       max-height: min(88dvh, 820px);
       overflow: auto;
       overscroll-behavior: contain;
@@ -1000,51 +1015,53 @@ function injectReferralStyles() {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
-      gap: 14px;
-      padding: 28px 28px 24px 72px;
-      color: #fff;
-      background:
-        linear-gradient(135deg, rgba(33, 189, 173, 0.12), transparent 48%),
-        #0a4f40;
+      gap: 12px;
+      min-height: 92px;
+      padding: 16px 18px 16px 72px;
+      color: #102c25;
+      border-block-end: 1px solid rgba(9, 77, 63, 0.08);
+      background: rgba(255, 255, 255, 0.94);
     }
 
     .referral-dialog-header small {
       display: block;
-      margin-block-end: 4px;
-      color: #a9ddd2;
-      font-weight: 700;
+      margin-block-end: 2px;
+      color: #0b806a;
+      font-size: 0.72rem;
+      font-weight: 850;
     }
 
     .referral-dialog-lead {
-      max-width: 46ch;
-      margin: 8px 0 0;
-      color: rgba(255, 255, 255, 0.76);
-      font-size: 0.82rem;
-      line-height: 1.45;
+      max-width: 44ch;
+      margin: 3px 0 0;
+      color: #61736e;
+      font-size: 0.76rem;
+      line-height: 1.4;
     }
 
     #public-referral-rewards-dialog .referral-dialog-header h2 {
       max-width: 430px;
       margin: 0;
-      color: #fff !important;
-      font-size: clamp(1.45rem, 4.8vw, 2rem);
-      line-height: 1.15;
+      color: #102c25 !important;
+      font-size: clamp(1.24rem, 4.8vw, 1.52rem);
+      line-height: 1.12;
       letter-spacing: 0;
     }
 
     .referral-dialog-mark {
-      width: 54px;
-      height: 54px;
+      width: 46px;
+      height: 46px;
       display: grid;
       place-items: center;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 17px;
-      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(9, 77, 63, 0.1);
+      border-radius: 14px;
+      color: #0b584a;
+      background: #e7f4f0;
     }
 
     .referral-dialog-mark svg {
-      width: 28px;
-      height: 28px;
+      width: 24px;
+      height: 24px;
     }
 
     .referral-close-button {
@@ -1056,61 +1073,90 @@ function injectReferralStyles() {
       display: grid;
       place-items: center;
       padding: 0;
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 50%;
-      color: #fff;
-      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(9, 77, 63, 0.1);
+      border-radius: 13px;
+      color: #0b584a;
+      background: #f0f6f4;
       cursor: pointer;
     }
 
     .referral-close-button:hover {
-      background: rgba(255, 255, 255, 0.18);
+      background: #e5f1ed;
     }
 
     .referral-close-button:focus-visible {
-      outline: 3px solid rgba(133, 225, 214, 0.5);
+      outline: 3px solid rgba(33, 170, 166, 0.34);
       outline-offset: 2px;
     }
 
     .referral-dialog-content {
       display: grid;
-      gap: 18px;
-      padding: 22px;
+      grid-auto-rows: max-content;
+      gap: 12px;
+      padding: 14px;
     }
 
-    .referral-benefit-card,
-    .referral-share-section,
-    .referral-progress-section {
-      border: 1px solid rgba(20, 47, 40, 0.1);
-      border-radius: 18px;
+    .referral-gift-card,
+    .referral-more-details,
+    .referral-state-message {
+      overflow: hidden;
+      border: 1px solid rgba(20, 47, 40, 0.08);
+      border-radius: 22px;
       background: #fff;
-      box-shadow: 0 10px 28px rgba(12, 57, 47, 0.06);
+      box-shadow: 0 14px 34px rgba(12, 57, 47, 0.08);
+    }
+
+    .referral-gift-card {
+      display: grid;
     }
 
     .referral-benefit-card {
+      position: relative;
       display: grid;
-      gap: 7px;
-      padding: 22px;
+      align-content: center;
+      gap: 6px;
+      min-height: 136px;
+      overflow: hidden;
+      padding: 20px;
+      color: #fff;
+      background: linear-gradient(136deg, #071f18 0%, #0b4a38 60%, #0f6b50 100%);
+    }
+
+    .referral-benefit-card::after {
+      content: "";
+      position: absolute;
+      width: 124px;
+      height: 124px;
+      inset-block-start: -68px;
+      inset-inline-end: -38px;
+      border: 20px solid rgba(33, 170, 166, 0.16);
+      border-radius: 50%;
+      pointer-events: none;
+    }
+
+    .referral-benefit-card > * {
+      position: relative;
+      z-index: 1;
     }
 
     .referral-benefit-label {
-      color: #0b806a;
-      font-size: 0.8rem;
-      font-weight: 800;
+      color: #9ce2d7;
+      font-size: 0.74rem;
+      font-weight: 850;
     }
 
     .referral-benefit-card > strong {
       display: flex;
       align-items: baseline;
       gap: 9px;
-      color: #10221e;
-      font-size: 1.55rem;
+      color: #fff;
+      font-size: 1.24rem;
       font-weight: 900;
     }
 
     .referral-benefit-card > strong .font-num {
-      font-size: 2.8rem;
-      line-height: 0.95;
+      font-size: 3.15rem;
+      line-height: 0.88;
     }
 
     .referral-benefit-card p,
@@ -1119,6 +1165,12 @@ function injectReferralStyles() {
       margin: 0;
       color: #63736f;
       line-height: 1.5;
+    }
+
+    .referral-benefit-card p {
+      max-width: 44ch;
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 0.78rem;
     }
 
     .referral-active-until {
@@ -1132,11 +1184,10 @@ function injectReferralStyles() {
       font-weight: 800;
     }
 
-    .referral-share-section,
-    .referral-progress-section {
+    .referral-share-section {
       display: grid;
       gap: 14px;
-      padding: 18px;
+      padding: 16px;
     }
 
     .referral-share-section h3,
@@ -1160,7 +1211,7 @@ function injectReferralStyles() {
 
     .referral-share-workspace {
       display: grid;
-      grid-template-columns: 176px minmax(0, 1fr);
+      grid-template-columns: 180px minmax(0, 1fr);
       align-items: stretch;
       gap: 16px;
     }
@@ -1176,6 +1227,7 @@ function injectReferralStyles() {
       min-width: 0;
       display: grid;
       gap: 6px;
+      padding-block-start: 10px;
     }
 
     .referral-link-field > span {
@@ -1199,12 +1251,66 @@ function injectReferralStyles() {
 
     .referral-share-actions {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
     }
 
     .referral-share-actions button {
       gap: 8px;
+      min-height: 48px;
+      scale: 1;
+      transition-property: background-color, border-color, box-shadow, color, scale;
+      transition-duration: 180ms;
+      transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .referral-share-actions .secondary-button {
+      min-width: 104px;
+    }
+
+    .referral-share-actions button:active:not(:disabled) {
+      scale: 0.96;
+    }
+
+    .referral-link-details {
+      min-width: 0;
+    }
+
+    .referral-link-details summary {
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 0;
+      color: #5e706b;
+      font-size: 0.76rem;
+      font-weight: 750;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .referral-link-details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .referral-link-details summary::after {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-inline-end: 1.5px solid currentColor;
+      border-block-end: 1.5px solid currentColor;
+      rotate: 45deg;
+      transition: rotate 180ms cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .referral-link-details[open] summary::after {
+      rotate: 225deg;
+    }
+
+    .referral-link-details summary:focus-visible,
+    .referral-more-details > summary:focus-visible {
+      outline: 3px solid rgba(33, 170, 166, 0.3);
+      outline-offset: 3px;
     }
 
     .referral-qr-card {
@@ -1294,6 +1400,71 @@ function injectReferralStyles() {
       color: #7a8985;
     }
 
+    .referral-more-details > summary {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      color: #173c33;
+      background: #fff;
+      cursor: pointer;
+      list-style: none;
+    }
+
+    .referral-more-details > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .referral-more-details > summary::after {
+      content: "+";
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      margin-inline-start: auto;
+      border-radius: 10px;
+      color: #0b6f5a;
+      background: #e7f4f0;
+      font-family: Inter, Rubik, sans-serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1;
+    }
+
+    .referral-more-details[open] > summary::after {
+      content: "−";
+    }
+
+    .referral-more-details > summary > span {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+
+    .referral-more-details > summary strong {
+      font-size: 0.9rem;
+      font-weight: 850;
+    }
+
+    .referral-more-details > summary small {
+      color: #6d7c78;
+      font-size: 0.74rem;
+    }
+
+    .referral-more-details-content {
+      display: grid;
+      gap: 14px;
+      padding: 0 14px 14px;
+      border-block-start: 1px solid rgba(20, 47, 40, 0.08);
+      background: #fbfdfc;
+    }
+
+    .referral-progress-section {
+      display: grid;
+      gap: 12px;
+      padding: 16px 2px 2px;
+    }
+
     .referral-steps {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -1332,6 +1503,12 @@ function injectReferralStyles() {
     .referral-steps li strong {
       font-size: 0.78rem;
       line-height: 1.35;
+    }
+
+    .referral-steps li small {
+      color: #74837f;
+      font-size: 0.68rem;
+      line-height: 1.3;
     }
 
     .referral-state-message {
@@ -1420,17 +1597,18 @@ function injectReferralStyles() {
       }
 
       .referral-dialog-header {
-        min-height: 164px;
-        padding: calc(24px + env(safe-area-inset-top)) 20px 24px 68px;
+        min-height: calc(90px + env(safe-area-inset-top));
+        padding: calc(12px + env(safe-area-inset-top)) 16px 12px 66px;
       }
 
       .referral-close-button {
-        inset-block-start: calc(18px + env(safe-area-inset-top));
-        inset-inline-end: 16px;
+        inset-block-start: calc(14px + env(safe-area-inset-top));
+        inset-inline-end: 14px;
       }
 
       .referral-dialog-content {
-        padding: 16px 14px calc(28px + env(safe-area-inset-bottom));
+        gap: 10px;
+        padding: 10px 12px calc(22px + env(safe-area-inset-bottom));
       }
 
       .referral-reward-card {
@@ -1456,7 +1634,7 @@ function injectReferralStyles() {
       }
 
       .referral-share-actions {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr) auto;
       }
 
       .referral-share-workspace {
@@ -1464,8 +1642,31 @@ function injectReferralStyles() {
       }
 
       .referral-qr-card {
-        width: min(100%, 210px);
+        width: min(100%, 176px);
         justify-self: center;
+      }
+
+      .referral-benefit-card {
+        min-height: 128px;
+        padding: 18px;
+      }
+
+      .referral-share-section {
+        gap: 12px;
+        padding: 14px;
+      }
+
+      .referral-share-controls {
+        grid-row: 1;
+        gap: 8px;
+      }
+
+      .referral-qr-card {
+        grid-row: 2;
+      }
+
+      .referral-link-details summary {
+        margin-inline: auto;
       }
 
       .referral-steps {
@@ -1474,8 +1675,18 @@ function injectReferralStyles() {
 
       .referral-steps li {
         grid-template-columns: auto 1fr;
+        grid-template-rows: auto auto;
+        align-items: center;
         justify-items: start;
         text-align: start;
+      }
+
+      .referral-steps li > span {
+        grid-row: 1 / 3;
+      }
+
+      .referral-steps li > :is(strong, small) {
+        grid-column: 2;
       }
     }
 

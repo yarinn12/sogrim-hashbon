@@ -277,7 +277,7 @@ test("full name and username are full-width rows stacked in reading order", asyn
   await assertNoHorizontalOverflow(page);
 });
 
-test("ad-free month opens as a branded share workspace with a working QR", async ({ page }) => {
+test("ad-free gift opens as a focused share workspace with a working QR", async ({ page }) => {
   const entry = page.locator(
     '[data-open-referral-rewards][data-referral-context="home"]'
   );
@@ -286,9 +286,10 @@ test("ad-free month opens as a branded share workspace with a working QR", async
 
   const dialog = page.locator("#public-referral-rewards-dialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".referral-dialog-lead")).toContainText("QR");
+  await expect(dialog.locator(".referral-dialog-lead")).toContainText("חודש שקט");
+  await expect(dialog.locator(".referral-gift-card")).toBeVisible();
   await expect(dialog.locator(".referral-benefit-card")).toContainText(
-    "30ימים ללא פרסומות"
+    "30ימים בלי פרסומות"
   );
   await expect(dialog.locator('[data-referral-qr] svg')).toHaveAttribute(
     "aria-label",
@@ -298,6 +299,13 @@ test("ad-free month opens as a branded share workspace with a working QR", async
     `http://127.0.0.1:4182/r/${REFERRAL_CODE}`
   );
   await expect(dialog.locator(".referral-state-message.is-stale")).toHaveCount(0);
+  await expect(dialog.locator(".referral-more-details")).not.toHaveAttribute("open", "");
+  if (process.env.CAPTURE_REFERRAL_GIFT === "1") {
+    await dialog.screenshot({
+      path: "work/referral-gift-mobile.png",
+      animations: "disabled"
+    });
+  }
 
   const visualState = await dialog.evaluate((element) => {
     const header = element.querySelector(".referral-dialog-header");
@@ -305,26 +313,55 @@ test("ad-free month opens as a branded share workspace with a working QR", async
     const qr = element.querySelector("[data-referral-qr] svg");
     const shareWorkspace = element.querySelector(".referral-share-workspace");
     const shareButton = element.querySelector('[data-referral-action="share"]');
+    const content = element.querySelector(".referral-dialog-content");
+    const giftCard = element.querySelector(".referral-gift-card");
+    const shareSection = element.querySelector(".referral-share-section");
     return {
       headerBackgroundColor: getComputedStyle(header).backgroundColor,
-      headerOrbit: getComputedStyle(header, "::before").content,
+      headerDecorationDisplay: getComputedStyle(header, "::before").display,
       benefitBackground: getComputedStyle(benefit).backgroundImage,
       qrWidth: qr.getBoundingClientRect().width,
+      qrTop: qr.closest("[data-referral-qr]").getBoundingClientRect().top,
+      shareButtonTop: shareButton.getBoundingClientRect().top,
+      shareButtonBottom: shareButton.getBoundingClientRect().bottom,
       shareButtonHeight: shareButton.getBoundingClientRect().height,
+      giftCardBottom: giftCard.getBoundingClientRect().bottom,
+      shareSectionBottom: shareSection.getBoundingClientRect().bottom,
+      contentTop: content.getBoundingClientRect().top,
+      headerBottom: header.getBoundingClientRect().bottom,
       shareColumns: getComputedStyle(shareWorkspace).gridTemplateColumns,
-      viewportWidth: window.innerWidth
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
     };
   });
-  expect(visualState.headerBackgroundColor).toMatch(
-    /rgb\((?:6, 75, 67|10, 79, 64|11, 74, 56)\)/
-  );
-  expect(visualState.headerOrbit).not.toBe("none");
+  expect(visualState.headerBackgroundColor).toMatch(/rgba?\(255, 255, 255/);
+  expect(visualState.headerDecorationDisplay).toBe("none");
   expect(visualState.benefitBackground).toContain("linear-gradient");
   expect(
     visualState.qrWidth,
     `viewport=${visualState.viewportWidth}, columns=${visualState.shareColumns}`
   ).toBeGreaterThanOrEqual(140);
   expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(44);
+  if (visualState.viewportWidth <= 760) {
+    expect(visualState.shareButtonTop).toBeLessThan(visualState.qrTop);
+    expect(visualState.contentTop).toBeLessThan(160);
+  }
+  expect(visualState.shareButtonBottom).toBeLessThanOrEqual(visualState.viewportHeight + 1);
+  expect(visualState.contentTop).toBeLessThanOrEqual(visualState.headerBottom + 2);
+  expect(visualState.giftCardBottom).toBeGreaterThanOrEqual(visualState.shareSectionBottom - 1);
+  await assertNoHorizontalOverflow(page);
+
+  const linkDetails = dialog.locator(".referral-link-details");
+  await expect(linkDetails.locator("input")).not.toBeVisible();
+  await linkDetails.locator(":scope > summary").click();
+  await expect(linkDetails).toHaveAttribute("open", "");
+  await expect(linkDetails.locator("input")).toBeVisible();
+
+  const moreDetails = dialog.locator(".referral-more-details");
+  await moreDetails.scrollIntoViewIfNeeded();
+  await moreDetails.locator(":scope > summary").click();
+  await expect(moreDetails).toHaveAttribute("open", "");
+  await expect(moreDetails.locator(".referral-progress-section")).toBeVisible();
   await assertNoHorizontalOverflow(page);
 });
 

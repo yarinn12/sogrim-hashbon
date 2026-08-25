@@ -696,7 +696,7 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });
 
-test("referral rewards reuse the branded hero and expose a polished QR workspace", async () => {
+test("referral rewards present one focused gift card with progressive details", async () => {
   const [referralLayer, ledgerLayer, coherenceLayer] = await Promise.all([
     readFile("src/publicReferralRewardsLayer.mjs", "utf8"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
@@ -704,11 +704,14 @@ test("referral rewards reuse the branded hero and expose a polished QR workspace
   ]);
 
   assert.match(referralLayer, /class="referral-dialog-lead"/);
+  assert.match(referralLayer, /class="referral-gift-card"/);
   assert.match(referralLayer, /class="referral-share-workspace"/);
   assert.match(referralLayer, /class="referral-qr-card" data-referral-qr/);
+  assert.match(referralLayer, /class="referral-more-details"/);
+  assert.match(referralLayer, /class="referral-link-details"/);
   assert.match(
     ledgerLayer,
-    /\.referral-dialog-header \{[\s\S]*?linear-gradient\(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%\) !important/
+    /\.referral-dialog-header \{[\s\S]*?min-height: 92px !important;[\s\S]*?background: rgba\(255, 255, 255, 0\.96\) !important/
   );
   assert.match(
     ledgerLayer,
