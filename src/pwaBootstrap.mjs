@@ -1,4 +1,4 @@
-const PWA_RELEASE = "342";
+const PWA_RELEASE = "343";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const UPDATE_RELOAD_STORAGE_KEY = "settle-friends-pwa-update-reload";
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");

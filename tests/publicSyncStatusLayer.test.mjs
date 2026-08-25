@@ -32,6 +32,14 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /window\.addEventListener\("online", recoverOnlineMutationAccess\)/);
   assert.match(layer, /confirmServerIsUnreachable\(\)/);
   assert.match(layer, /fetch\(`\$\{apiBaseUrl\}\/api\/health`/);
+  assert.match(
+    layer,
+    /async function handleOffline\(\)[\s\S]*?mutationLockReason = "offline";\s*showStatus\(""\);\s*syncMutationControls\(\)/
+  );
+  assert.match(
+    layer,
+    /function blockOfflineMutation\(event\)[\s\S]*?showStatus\(mutationLockReason === "conflict" \? "conflict" : "offline"\)/
+  );
   assert.doesNotMatch(layer, /let mutationLockReason = navigator\.onLine === false/);
   assert.match(layer, /return "אין רשת כרגע"/);
   assert.match(layer, /return "הסנכרון מתעכב כרגע"/);

@@ -55,7 +55,16 @@ const ACCOUNT_STORAGE_KEY_SEGMENT = "account";
 const PENDING_SYNC_KEY_PREFIX = "settle-friends-pending-sync:";
 const SYNC_STATUS_EVENT = "sogrim:sync-status";
 const SHARED_SAVE_REVERTED_EVENT = "sogrim:shared-save-reverted";
-const PENDING_SYNC_RETRY_DELAYS_MS = [1_200, 3_500, 8_000];
+const FOREGROUND_SAVE_BUDGET_MS = 1_500;
+const PENDING_SYNC_RETRY_DELAYS_MS = [
+  1_200,
+  3_500,
+  8_000,
+  15_000,
+  30_000,
+  60_000,
+  120_000
+];
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
   auth: { googleClientId: "" },
@@ -107,6 +116,7 @@ let sharedStateSaveGeneration = 0;
 let pendingSyncFlushPromise = null;
 let pendingSyncRetryTimer = 0;
 let pendingSyncRetryAttempt = 0;
+let pendingSyncRetryNotBefore = 0;
 let activeAccountStorageScope = "";
 
 async function loadCloudState(config, fallbackState) {
@@ -217,6 +227,7 @@ if (typeof window !== "undefined") {
 
 if (typeof window !== "undefined" && window.addEventListener) {
   window.addEventListener("online", () => {
+    resetPendingSharedStateRetry();
     recoverOnlineSync().catch(() => {});
   });
 }
@@ -490,6 +501,12 @@ async function loadSharedStateOnce(requestScope) {
   if (runtimeConfig.storage?.mode === "supabase") {
     const pendingState = loadPendingSharedState(runtimeConfig);
     if (pendingState) {
+      if (shouldDeferPendingSharedStateRetry()) {
+        return applyLocalParticipantId(
+          cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
+          loadLocalParticipantId()
+        );
+      }
       try {
         const remoteState = await loadCloudState(
           runtimeConfig,
@@ -516,7 +533,24 @@ async function loadSharedStateOnce(requestScope) {
         return syncedStateWithIdentity;
       } catch (error) {
         // Keep the pending local snapshot available for a later retry.
-        publishSyncFailure(error);
+        if (isTransientSyncFailure(error)) {
+          publishSyncStatus("reconnecting");
+          schedulePendingSharedStateRetry();
+          logQueuedSync(error, {
+            sharedEventMutation: true,
+            pending: true,
+            partial: false,
+            reverted: false
+          });
+        } else {
+          publishSyncFailure(error);
+          logSyncFailure(error, {
+            sharedEventMutation: true,
+            pending: true,
+            partial: false,
+            reverted: false
+          });
+        }
         emitOperationFailure("state_load");
       }
 
@@ -729,21 +763,30 @@ export async function saveSharedState(state) {
         }
       });
 
-    return cloudWriteQueue;
+    return settleSaveWithinUiBudget(
+      cloudWriteQueue,
+      Boolean(localSaved && pendingStateSaved)
+    );
   }
 
   if (runtimeConfigUsedFallback) {
     const pendingConfig = pendingSyncConfig(runtimeConfig);
     if (pendingConfig) {
       const pendingStateSaved = savePendingSharedState(pendingConfig, sharedState);
-      publishSyncStatus(globalThis.navigator?.onLine === false ? "offline" : "unavailable");
-      return localSaved && pendingStateSaved
-        ? { ok: true, mode: "local", pending: true }
-        : {
-            ok: false,
-            mode: "local",
-            error: new Error("Local storage is unavailable")
-          };
+      if (localSaved && pendingStateSaved) {
+        publishSyncStatus("reconnecting");
+        schedulePendingSharedStateRetry();
+        return { ok: true, mode: "local", pending: true };
+      }
+      publishSyncStatus(
+        globalThis.navigator?.onLine === false ? "offline" : "unavailable"
+      );
+      emitOperationFailure("state_save");
+      return {
+        ok: false,
+        mode: "local",
+        error: new Error("Local storage is unavailable")
+      };
     }
   }
 
@@ -772,8 +815,27 @@ export async function flushPendingSharedState() {
 
 
 async function flushPendingSharedStateOnce() {
-  const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
-  if (runtimeConfig.storage?.mode !== "supabase") return { ok: false };
+  let runtimeConfig = activateClientSpace(await loadRuntimeConfig());
+  if (runtimeConfigUsedFallback) {
+    runtimeConfigPromise = null;
+    runtimeConfigUsedFallback = false;
+    runtimeConfig = activateClientSpace(await loadRuntimeConfig());
+  }
+  if (runtimeConfig.storage?.mode !== "supabase") {
+    const pendingConfig = pendingSyncConfig(runtimeConfig);
+    const pendingState = pendingConfig
+      ? loadPendingSharedState(pendingConfig)
+      : null;
+    if (!pendingState) {
+      resetPendingSharedStateRetry();
+      return { ok: true, empty: true };
+    }
+    const error = new Error("Runtime config unavailable");
+    error.code = "ERR_NETWORK";
+    publishSyncStatus("reconnecting");
+    schedulePendingSharedStateRetry();
+    return { ok: false, error };
+  }
 
   const pendingPayload = pendingSharedStateRaw(runtimeConfig);
   const pendingState = loadPendingSharedState(runtimeConfig);
@@ -791,14 +853,25 @@ async function flushPendingSharedStateOnce() {
     publishSyncStatus("saved");
     return { ok: true };
   } catch (error) {
-    publishSyncFailure(error);
-    if (isTransientSyncFailure(error)) schedulePendingSharedStateRetry();
-    logSyncFailure(error, {
-      sharedEventMutation: true,
-      pending: true,
-      partial: false,
-      reverted: false
-    });
+    const transientFailure = isTransientSyncFailure(error);
+    if (transientFailure) {
+      publishSyncStatus("reconnecting");
+      schedulePendingSharedStateRetry();
+      logQueuedSync(error, {
+        sharedEventMutation: true,
+        pending: true,
+        partial: false,
+        reverted: false
+      });
+    } else {
+      publishSyncFailure(error);
+      logSyncFailure(error, {
+        sharedEventMutation: true,
+        pending: true,
+        partial: false,
+        reverted: false
+      });
+    }
     emitOperationFailure("state_save");
     return { ok: false, error };
   }
@@ -1180,14 +1253,16 @@ export function isTransientSyncFailure(error) {
 function schedulePendingSharedStateRetry() {
   if (
     pendingSyncRetryTimer ||
-    pendingSyncRetryAttempt >= PENDING_SYNC_RETRY_DELAYS_MS.length ||
     globalThis.navigator?.onLine === false ||
     typeof globalThis.window?.setTimeout !== "function"
   ) {
     return;
   }
-  const delay = PENDING_SYNC_RETRY_DELAYS_MS[pendingSyncRetryAttempt];
+  const delay = PENDING_SYNC_RETRY_DELAYS_MS[
+    Math.min(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS.length - 1)
+  ];
   pendingSyncRetryAttempt += 1;
+  pendingSyncRetryNotBefore = Date.now() + delay;
   pendingSyncRetryTimer = globalThis.window.setTimeout(async () => {
     pendingSyncRetryTimer = 0;
     const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
@@ -1208,6 +1283,33 @@ function resetPendingSharedStateRetry() {
   }
   pendingSyncRetryTimer = 0;
   pendingSyncRetryAttempt = 0;
+  pendingSyncRetryNotBefore = 0;
+}
+
+function shouldDeferPendingSharedStateRetry() {
+  return Boolean(
+    pendingSyncRetryTimer ||
+    (pendingSyncRetryNotBefore && Date.now() < pendingSyncRetryNotBefore)
+  );
+}
+
+async function settleSaveWithinUiBudget(saveRequest, durablePendingSaved) {
+  if (!durablePendingSaved || typeof globalThis.setTimeout !== "function") {
+    return saveRequest;
+  }
+
+  let timeoutId = 0;
+  const queuedResult = new Promise((resolve) => {
+    timeoutId = globalThis.setTimeout(() => {
+      publishSyncStatus("reconnecting");
+      resolve({ ok: true, mode: "queued", pending: true });
+    }, FOREGROUND_SAVE_BUDGET_MS);
+  });
+  try {
+    return await Promise.race([saveRequest, queuedResult]);
+  } finally {
+    globalThis.clearTimeout?.(timeoutId);
+  }
 }
 
 function logSyncFailure(error, outcome) {

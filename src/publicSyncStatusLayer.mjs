@@ -138,7 +138,7 @@ async function handleOffline() {
     .then((offline) => {
       if (!offline) return;
       mutationLockReason = "offline";
-      showStatus("offline");
+      showStatus("");
       syncMutationControls();
     })
     .finally(() => {
@@ -191,8 +191,10 @@ async function recoverOnlineMutationAccess() {
       return result;
     })
     .catch(() => {
-      mutationLockReason = "offline";
-      showStatus("offline");
+      if (mutationLockReason !== "conflict") {
+        mutationLockReason = "offline";
+        showStatus("");
+      }
       return { ok: false };
     })
     .finally(() => {

@@ -306,7 +306,7 @@ test("one broken shared event does not block the rest but prevents false success
 test("returning online flushes whatever was queued", () => {
   assert.match(
     localStore,
-    /window\.addEventListener\("online", \(\) => \{\s*\n\s*recoverOnlineSync\(\)/
+    /window\.addEventListener\("online", \(\) => \{\s*\n\s*resetPendingSharedStateRetry\(\);\s*\n\s*recoverOnlineSync\(\)/
   );
   assert.match(
     localStore,
@@ -384,11 +384,13 @@ test("a recovered pending-state conflict is reported as saved instead of remaini
   );
   const recoveryCall = load.indexOf("syncAndPersistCloudState(");
   const recoverySave = load.indexOf('publishSyncStatus("saved")', recoveryCall);
-  const recoveryFailure = load.indexOf("publishSyncFailure(error)", recoveryCall);
+  const quietRecovery = load.indexOf('publishSyncStatus("reconnecting")', recoveryCall);
+  const recoveryFailure = load.indexOf("publishSyncFailure(error)", quietRecovery);
 
   assert.ok(recoveryCall >= 0, "pending state uses bounded conflict recovery");
   assert.ok(recoverySave > recoveryCall, "successful recovery clears the warning");
-  assert.ok(recoveryFailure > recoverySave, "only a failed recovery surfaces the conflict");
+  assert.ok(quietRecovery > recoverySave, "temporary recovery failures stay quiet");
+  assert.ok(recoveryFailure > quietRecovery, "only a non-transient recovery failure surfaces");
 });
 
 test("shared event writes also retry through a merge on conflict", () => {
@@ -430,10 +432,10 @@ test("sync failures surface a status rather than failing silently", () => {
   assert.match(localStore, /const SYNC_STATUS_EVENT = "sogrim:sync-status";/);
 });
 
-test("pending conflicts retry automatically with a short bounded backoff", () => {
+test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(
     localStore,
-    /const PENDING_SYNC_RETRY_DELAYS_MS = \[1_200, 3_500, 8_000\]/
+    /const PENDING_SYNC_RETRY_DELAYS_MS = \[[\s\S]*?1_200,[\s\S]*?120_000[\s\S]*?\]/
   );
   assert.match(
     localStore,
@@ -450,6 +452,10 @@ test("pending conflicts retry automatically with a short bounded backoff", () =>
     localStore,
     /const result = await flushPendingSharedState\(\)/
   );
+  assert.match(localStore, /Math\.min\(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS\.length - 1\)/);
+  assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);
+  assert.match(localStore, /const FOREGROUND_SAVE_BUDGET_MS = 1_500;/);
+  assert.match(localStore, /return settleSaveWithinUiBudget\(/);
   assert.match(localStore, /resetPendingSharedStateRetry\(\);/);
 });
 
@@ -644,6 +650,90 @@ test("a temporary workspace-only failure is accepted and schedules an automatic 
       changedState
     );
     assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a stalled cloud write returns control after the foreground budget without a failure", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const dispatched = [];
+  const spaceId = "space-account-stalled";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyzABCDEF";
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const changedState = queueTestState("Saved While Cloud Is Stalled");
+  let releaseStalledRequest = null;
+  let cloudRequestIsStalled = true;
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId,
+    spaceKey
+  });
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent(event) {
+      dispatched.push(event);
+    },
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    if (cloudRequestIsStalled) {
+      return new Promise((resolve) => {
+        releaseStalledRequest = () => resolve({ ok: false, status: 503 });
+      });
+    }
+    return { ok: false, status: 503 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?stalled-cloud-write=${Date.now()}`
+    );
+    const startedAt = Date.now();
+    const result = await store.saveSharedState(changedState);
+    const elapsedMs = Date.now() - startedAt;
+
+    assert.deepEqual(result, { ok: true, mode: "queued", pending: true });
+    assert.ok(elapsedMs >= 1_000, `foreground budget returned too early (${elapsedMs}ms)`);
+    assert.ok(elapsedMs < 3_000, `foreground budget blocked too long (${elapsedMs}ms)`);
+    assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
+    assert.equal(
+      dispatched.some((event) => event.detail?.status === "reconnecting"),
+      true
+    );
+    assert.equal(
+      dispatched.some((event) => ["offline", "conflict", "unavailable"].includes(event.detail?.status)),
+      false
+    );
+    cloudRequestIsStalled = false;
+    releaseStalledRequest?.();
+    await new Promise((resolve) => setTimeout(resolve, 500));
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
