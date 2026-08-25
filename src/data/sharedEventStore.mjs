@@ -195,13 +195,16 @@ export async function saveSharedEventState(
   }
 
   await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
+  const mergeForWrite = (latest, candidate) =>
+    mergeSharedEventWriteState(latest, candidate, runtimeConfig);
   const mergedPayload = buildSharedEventState(
-    mergeSharedStates(remote, payload),
+    mergeForWrite(remote, payload),
     eventId
   );
   const saved = await saveCloudStateWithConflictRetry({
     state: mergedPayload,
     loadLatest: () => readCloudState(config, fetchImpl),
+    mergeStates: mergeForWrite,
     save: (candidate) => saveCloudState(
       config,
       buildSharedEventState(candidate, eventId),
@@ -210,6 +213,39 @@ export async function saveSharedEventState(
   });
 
   return mergeSharedEventIntoState(state, saved.state, credentials);
+}
+
+function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
+  const merged = mergeSharedStates(remoteState, localState);
+  const actorParticipantId = runtimeConfig?.storage?.account?.userId
+    ? `account-${runtimeConfig.storage.account.userId}`
+    : "";
+  const remoteEvent = remoteState?.events?.[0];
+  const adminIds = remoteEvent?.adminIds?.length
+    ? remoteEvent.adminIds
+    : remoteEvent?.createdByParticipantId
+      ? [remoteEvent.createdByParticipantId]
+      : [];
+
+  if (actorParticipantId && adminIds.includes(actorParticipantId)) {
+    return merged;
+  }
+
+  // A regular member may publish their own profile (and add a new offline
+  // guest), but must never relay a stale or forged profile for somebody else.
+  // The database enforces the same boundary; keeping it here also prevents a
+  // harmless profile timestamp from blocking an otherwise valid event save.
+  const remoteParticipants = new Map(
+    (remoteState?.participants ?? []).map((participant) => [participant?.id, participant])
+  );
+  return {
+    ...merged,
+    participants: (merged.participants ?? []).map((participant) => {
+      if (participant?.id === actorParticipantId) return participant;
+      const remoteParticipant = remoteParticipants.get(participant?.id);
+      return remoteParticipant ? clone(remoteParticipant) : participant;
+    })
+  };
 }
 
 export async function syncSharedEvents(

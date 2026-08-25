@@ -647,6 +647,226 @@ begin
 end;
 $$;
 
+create or replace function private.is_safe_self_profile_update(
+  p_old_state jsonb,
+  p_new_state jsonb,
+  p_actor_participant_id text
+)
+returns boolean
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  old_participants jsonb := p_old_state -> 'participants';
+  new_participants jsonb := p_new_state -> 'participants';
+  old_actor jsonb;
+  new_actor jsonb;
+  old_profile_updated_at timestamptz;
+  new_profile_updated_at timestamptz;
+  old_avatar_updated_at timestamptz;
+  new_avatar_updated_at timestamptz;
+  normalized_display_name text;
+  avatar_image text;
+begin
+  if coalesce(p_actor_participant_id, '') !~
+      '^account-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    or pg_catalog.jsonb_typeof(old_participants) <> 'array'
+    or pg_catalog.jsonb_typeof(new_participants) <> 'array'
+    or pg_catalog.jsonb_array_length(old_participants) <>
+      pg_catalog.jsonb_array_length(new_participants)
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(old_participants) as item(value)
+      where pg_catalog.jsonb_typeof(item.value) <> 'object'
+        or coalesce(item.value ->> 'id', '') = ''
+    )
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(new_participants) as item(value)
+      where pg_catalog.jsonb_typeof(item.value) <> 'object'
+        or coalesce(item.value ->> 'id', '') = ''
+    )
+    or (
+      select pg_catalog.count(*) <> pg_catalog.count(distinct item.value ->> 'id')
+      from pg_catalog.jsonb_array_elements(old_participants) as item(value)
+    )
+    or (
+      select pg_catalog.count(*) <> pg_catalog.count(distinct item.value ->> 'id')
+      from pg_catalog.jsonb_array_elements(new_participants) as item(value)
+    ) then
+    return false;
+  end if;
+
+  select item.value
+  into old_actor
+  from pg_catalog.jsonb_array_elements(old_participants) as item(value)
+  where item.value ->> 'id' = p_actor_participant_id;
+
+  select item.value
+  into new_actor
+  from pg_catalog.jsonb_array_elements(new_participants) as item(value)
+  where item.value ->> 'id' = p_actor_participant_id;
+
+  if old_actor is null
+    or new_actor is null
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(old_participants) as old_item(value)
+      where old_item.value ->> 'id' <> p_actor_participant_id
+        and not exists (
+          select 1
+          from pg_catalog.jsonb_array_elements(new_participants) as new_item(value)
+          where new_item.value = old_item.value
+        )
+    )
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(new_participants) as new_item(value)
+      where new_item.value ->> 'id' <> p_actor_participant_id
+        and not exists (
+          select 1
+          from pg_catalog.jsonb_array_elements(old_participants) as old_item(value)
+          where old_item.value = new_item.value
+        )
+    )
+    or old_actor - array[
+        'displayName',
+        'avatarPreset',
+        'avatarImage',
+        'avatarImageUpdatedAt',
+        'profileUpdatedAt'
+      ] is distinct from new_actor - array[
+        'displayName',
+        'avatarPreset',
+        'avatarImage',
+        'avatarImageUpdatedAt',
+        'profileUpdatedAt'
+      ] then
+    return false;
+  end if;
+
+  if old_actor -> 'displayName' is distinct from new_actor -> 'displayName' then
+    if pg_catalog.jsonb_typeof(new_actor -> 'displayName') <> 'string' then
+      return false;
+    end if;
+    normalized_display_name := pg_catalog.regexp_replace(
+      pg_catalog.btrim(new_actor ->> 'displayName'),
+      '[[:space:]]+',
+      ' ',
+      'g'
+    );
+    if normalized_display_name is distinct from new_actor ->> 'displayName'
+      or pg_catalog.char_length(normalized_display_name) not between 2 and 80
+      or normalized_display_name !~ '^[^[:space:]]+ [^[:space:]]+( [^[:space:]]+)*$' then
+      return false;
+    end if;
+  end if;
+
+  if old_actor -> 'avatarPreset' is distinct from new_actor -> 'avatarPreset'
+    and (
+      new_actor ? 'avatarPreset'
+      and (
+        pg_catalog.jsonb_typeof(new_actor -> 'avatarPreset') <> 'string'
+        or new_actor ->> 'avatarPreset' !~ '^avatar-[1-6]$'
+      )
+    ) then
+    return false;
+  end if;
+
+  if old_actor -> 'avatarImage' is distinct from new_actor -> 'avatarImage'
+    and new_actor ? 'avatarImage' then
+    if pg_catalog.jsonb_typeof(new_actor -> 'avatarImage') <> 'string' then
+      return false;
+    end if;
+    avatar_image := new_actor ->> 'avatarImage';
+    if not (
+      pg_catalog.char_length(avatar_image) <= 180000
+      and avatar_image ~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'
+    ) and not (
+      pg_catalog.char_length(avatar_image) <= 2048
+      and avatar_image ~ '^https://[^[:space:]]+$'
+    ) then
+      return false;
+    end if;
+  end if;
+
+  if new_actor ? 'profileUpdatedAt' then
+    if pg_catalog.jsonb_typeof(new_actor -> 'profileUpdatedAt') <> 'string' then
+      return false;
+    end if;
+    new_profile_updated_at := (new_actor ->> 'profileUpdatedAt')::timestamptz;
+  end if;
+  if old_actor ? 'profileUpdatedAt' then
+    old_profile_updated_at := (old_actor ->> 'profileUpdatedAt')::timestamptz;
+  end if;
+  if old_actor -> 'profileUpdatedAt' is distinct from
+      new_actor -> 'profileUpdatedAt'
+    and (
+      new_profile_updated_at is null
+      or new_profile_updated_at <= coalesce(
+        old_profile_updated_at,
+        '-infinity'::timestamptz
+      )
+      or new_profile_updated_at > pg_catalog.statement_timestamp() + interval '5 minutes'
+    ) then
+    return false;
+  end if;
+
+  if new_actor ? 'avatarImageUpdatedAt' then
+    if pg_catalog.jsonb_typeof(new_actor -> 'avatarImageUpdatedAt') <> 'string' then
+      return false;
+    end if;
+    new_avatar_updated_at := (new_actor ->> 'avatarImageUpdatedAt')::timestamptz;
+  end if;
+  if old_actor ? 'avatarImageUpdatedAt' then
+    old_avatar_updated_at := (old_actor ->> 'avatarImageUpdatedAt')::timestamptz;
+  end if;
+  if old_actor -> 'avatarImageUpdatedAt' is distinct from
+      new_actor -> 'avatarImageUpdatedAt'
+    and (
+      new_avatar_updated_at is null
+      or new_avatar_updated_at <= coalesce(
+        old_avatar_updated_at,
+        '-infinity'::timestamptz
+      )
+      or new_avatar_updated_at > pg_catalog.statement_timestamp() + interval '5 minutes'
+    ) then
+    return false;
+  end if;
+
+  if (
+      old_actor -> 'displayName' is distinct from new_actor -> 'displayName'
+      or old_actor -> 'avatarPreset' is distinct from new_actor -> 'avatarPreset'
+      or old_actor -> 'avatarImage' is distinct from new_actor -> 'avatarImage'
+    ) and (
+      new_profile_updated_at is null
+      or new_profile_updated_at <= coalesce(
+        old_profile_updated_at,
+        '-infinity'::timestamptz
+      )
+    ) then
+    return false;
+  end if;
+
+  if old_actor -> 'avatarImage' is distinct from new_actor -> 'avatarImage'
+    and (
+      new_avatar_updated_at is null
+      or new_avatar_updated_at <= coalesce(
+        old_avatar_updated_at,
+        '-infinity'::timestamptz
+      )
+    ) then
+    return false;
+  end if;
+
+  return old_participants is distinct from new_participants;
+exception
+  when others then
+    return false;
+end;
+$$;
+
 create or replace function private.guard_shared_snapshot_update()
 returns trigger
 language plpgsql
@@ -670,6 +890,7 @@ declare
   actor_is_joining boolean;
   actor_is_leaving boolean;
   actor_is_adding_offline_guests boolean;
+  actor_is_updating_own_profile boolean;
 begin
   if old.snapshot_kind <> new.snapshot_kind then
     raise exception 'Snapshot kind cannot be changed'
@@ -758,6 +979,14 @@ begin
   actor_is_adding_offline_guests :=
     actor_participant_id = any(old_active_ids)
     and private.is_safe_offline_guest_addition(old.state, new.state);
+
+  actor_is_updating_own_profile :=
+    actor_participant_id = any(old_active_ids)
+    and private.is_safe_self_profile_update(
+      old.state,
+      new.state,
+      actor_participant_id
+    );
 
   if (
     old_participant_ids is distinct from new_participant_ids
@@ -879,6 +1108,7 @@ begin
       end if;
 
       if not actor_is_adding_offline_guests
+        and not actor_is_updating_own_profile
         and old.state -> 'participants' is distinct from
           new.state -> 'participants' then
         raise exception 'Only an event admin can change participant profiles'
@@ -948,6 +1178,11 @@ begin
     and not actor_is_admin
     and not actor_is_leaving
     and not actor_is_joining
+    and not (
+      actor_is_updating_own_profile
+      and old.state - 'participants' is not distinct from
+        new.state - 'participants'
+    )
     and old.state is distinct from new.state then
     raise exception 'Only an event admin can edit this event'
       using errcode = '42501';
@@ -1298,6 +1533,8 @@ revoke all on function private.event_text_ids(jsonb, text) from public, anon, au
 revoke all on function private.is_shared_event_state(jsonb) from public, anon, authenticated;
 revoke all on function private.classify_snapshot_kind() from public, anon, authenticated;
 revoke all on function private.is_safe_offline_guest_addition(jsonb, jsonb)
+  from public, anon, authenticated;
+revoke all on function private.is_safe_self_profile_update(jsonb, jsonb, text)
   from public, anon, authenticated;
 revoke all on function private.active_event_participant_ids(jsonb) from public, anon, authenticated;
 revoke all on function private.event_admin_ids(jsonb) from public, anon, authenticated;

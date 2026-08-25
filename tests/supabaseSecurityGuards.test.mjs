@@ -92,6 +92,18 @@ const transferStatusRollback = await readFile(
   "supabase/rollbacks/20260816145622_allow_shared_transfer_status_updates_safe.sql",
   "utf8"
 );
+const selfProfileMigration = await readFile(
+  "supabase/migrations/20260826110000_allow_member_self_profile_updates.sql",
+  "utf8"
+);
+const selfProfileVerification = await readFile(
+  "supabase/verification/verify_20260826110000_member_self_profile_updates.sql",
+  "utf8"
+);
+const selfProfileRollback = await readFile(
+  "supabase/rollbacks/20260826110000_allow_member_self_profile_updates_safe.sql",
+  "utf8"
+);
 const interactionHardeningMigration = await readFile(
   "supabase/migrations/20260816090759_harden_user_interactions_and_metrics.sql",
   "utf8"
@@ -491,6 +503,42 @@ test("shared transfer status histories are validated and member-updatable", () =
   assert.match(transferStatusVerification, /A valid transfer status history is rejected/);
   assert.match(transferStatusVerification, /unknown participant can mark a transfer as paid/i);
   assert.match(transferStatusRollback, /Rollback refused/);
+});
+
+test("members can update only their own bounded shared-event profile", () => {
+  const helper = sqlFunction("private.is_safe_self_profile_update");
+  const guard = sqlFunction("private.guard_shared_snapshot_update");
+
+  assert.match(helper, /pg_catalog\.count\(\*\) <> pg_catalog\.count\(distinct/);
+  assert.match(helper, /old_item\.value ->> 'id' <> p_actor_participant_id/);
+  assert.match(helper, /old_actor - array\[/);
+  assert.match(helper, /'displayName',[\s\S]*'avatarPreset',[\s\S]*'avatarImage'/);
+  assert.match(helper, /profileUpdatedAt/);
+  assert.match(helper, /avatarImageUpdatedAt/);
+  assert.match(helper, /interval '5 minutes'/);
+  assert.match(helper, /180000/);
+  assert.match(helper, /2048/);
+  assert.match(helper, /when others then[\s\S]*return false/);
+  assert.match(guard, /actor_is_updating_own_profile/);
+  assert.match(guard, /private\.is_safe_self_profile_update/);
+  assert.match(
+    guard,
+    /actor_is_updating_own_profile[\s\S]*old\.state - 'participants' is not distinct from/
+  );
+  assert.match(
+    schema,
+    /revoke all on function private\.is_safe_self_profile_update\(jsonb, jsonb, text\)[\s\S]*from public, anon, authenticated/
+  );
+
+  assert.match(selfProfileMigration, /^begin;/);
+  assert.match(selfProfileMigration, /set local lock_timeout = '5s'/);
+  assert.match(selfProfileMigration, /create or replace function private\.guard_shared_snapshot_update/);
+  assert.match(selfProfileMigration, /commit;\s*$/);
+  assert.match(selfProfileVerification, /A valid member self-profile update is rejected/);
+  assert.match(selfProfileVerification, /change another participant profile timestamp/);
+  assert.match(selfProfileVerification, /future profile version/);
+  assert.match(selfProfileVerification, /'ready' as verification_status/);
+  assert.match(selfProfileRollback, /select false/);
 });
 
 test("interaction hardening bounds metrics, profile access and stale invitations", () => {

@@ -378,7 +378,8 @@ test("a write conflict is resolved by merging rather than overwriting", () => {
 
   assert.match(save, /syncAndPersistCloudState\([\s\S]*?runtimeConfig,[\s\S]*?sharedState,[\s\S]*?syncSelection/);
   assert.match(conflictRetry, /error\?\.code !== "CLOUD_STATE_CONFLICT"/);
-  assert.match(conflictRetry, /candidate = latest \? mergeSharedStates\(latest, candidate\) : candidate/);
+  assert.match(conflictRetry, /mergeStates = mergeSharedStates/);
+  assert.match(conflictRetry, /candidate = latest \? mergeStates\(latest, candidate\) : candidate/);
   assert.match(conflictRetry, /conflictCount >= retryLimit/);
 });
 

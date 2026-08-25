@@ -7,6 +7,7 @@ export async function saveCloudStateWithConflictRetry({
   state,
   loadLatest,
   save,
+  mergeStates = mergeSharedStates,
   retryLimit = CLOUD_CONFLICT_RETRY_LIMIT,
   retryDelay = conflictRetryDelay,
   wait = delay
@@ -32,7 +33,7 @@ export async function saveCloudStateWithConflictRetry({
       const waitMs = Math.max(0, Number(retryDelay(conflictCount)) || 0);
       if (waitMs) await wait(waitMs);
       const latest = await loadLatest(candidate);
-      candidate = latest ? mergeSharedStates(latest, candidate) : candidate;
+      candidate = latest ? mergeStates(latest, candidate) : candidate;
     }
   }
 }

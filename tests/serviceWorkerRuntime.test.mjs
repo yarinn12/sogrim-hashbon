@@ -121,7 +121,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=354",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=355",
     method: "GET",
     mode: "navigate",
     headers: new Headers()

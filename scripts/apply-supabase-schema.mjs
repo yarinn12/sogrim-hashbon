@@ -203,6 +203,25 @@ try {
           'not actor_is_adding_offline_guests'
         ) > 0 as shared_member_content_ready,
       to_regprocedure(
+        'private.is_safe_self_profile_update(jsonb,jsonb,text)'
+      ) is not null
+        and not pg_catalog.has_function_privilege(
+          'anon',
+          'private.is_safe_self_profile_update(jsonb,jsonb,text)',
+          'execute'
+        )
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'private.is_safe_self_profile_update(jsonb,jsonb,text)',
+          'execute'
+        )
+        and pg_catalog.strpos(
+          pg_catalog.pg_get_functiondef(
+            'private.guard_shared_snapshot_update()'::regprocedure
+          ),
+          'actor_is_updating_own_profile'
+        ) > 0 as shared_self_profile_ready,
+      to_regprocedure(
         'public.redeem_event_invite_membership(uuid,text,uuid)'
       ) is not null
         and not pg_catalog.has_function_privilege(
@@ -862,6 +881,7 @@ try {
     !result?.shared_creation_ready ||
     !result?.shared_atomic_update_ready ||
     !result?.shared_member_content_ready ||
+    !result?.shared_self_profile_ready ||
     !result?.event_invite_membership_redeem_ready ||
     !result?.shared_membership_triggers_ready ||
     !result?.deletion_ready ||

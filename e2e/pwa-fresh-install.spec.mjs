@@ -11,8 +11,8 @@ test("a fresh iPhone or iPad home-screen install receives the current app shell"
   test.skip(browserName !== "webkit", "This regression targets iOS and iPadOS WebKit");
 
   const installUrl = installBaseUrl
-    ? new URL("/?pwa_release=354", installBaseUrl).toString()
-    : "/?pwa_release=354";
+    ? new URL("/?pwa_release=355", installBaseUrl).toString()
+    : "/?pwa_release=355";
   await page.goto(installUrl, { waitUntil: "load" });
   await expect(page).toHaveTitle("סוגרים חשבון");
 
@@ -34,13 +34,13 @@ test("a fresh iPhone or iPad home-screen install receives the current app shell"
     };
   });
 
-  expect(installedState.scriptUrl).toContain("/sw.js?pwa_release=354");
+  expect(installedState.scriptUrl).toContain("/sw.js?pwa_release=355");
   expect(installedState.cacheNames).toContain("settle-friends-live-v354");
-  expect(installedState.shell).toContain("manifest.webmanifest?pwa_release=354");
+  expect(installedState.shell).toContain("manifest.webmanifest?pwa_release=355");
   expect(installedState.shell).toContain("src/pwaBootstrap.mjs");
-  expect(installedState.manifest).toContain('"start_url": "./?pwa_release=354"');
+  expect(installedState.manifest).toContain('"start_url": "./?pwa_release=355"');
   expect(installedState.manifest).toContain('"display_override": ["standalone"]');
-  expect(installedState.bootstrap).toContain('const PWA_RELEASE = "354"');
+  expect(installedState.bootstrap).toContain('const PWA_RELEASE = "355"');
 });
 
 test("an iPhone home-screen launch receives native-feeling standalone chrome", async ({
@@ -57,8 +57,8 @@ test("an iPhone home-screen launch receives native-feeling standalone chrome", a
     });
   });
   const installUrl = installBaseUrl
-    ? new URL("/?pwa_release=354", installBaseUrl).toString()
-    : "/?pwa_release=354";
+    ? new URL("/?pwa_release=355", installBaseUrl).toString()
+    : "/?pwa_release=355";
   await page.goto(installUrl, { waitUntil: "load" });
 
   const appMode = await page.evaluate(() => ({

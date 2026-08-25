@@ -372,6 +372,132 @@ test("a one-time profile repair republishes every shared event that references t
   );
 });
 
+test("a regular member save never republishes another participant profile", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000022";
+  const actorId = `account-${accountUserId}`;
+  const ownerId = "account-00000000-0000-4000-8000-000000000021";
+  const credentials = {
+    id: "event-space-member-profile-boundary",
+    key: "event-share-key-member-profile-boundary-123456"
+  };
+  const event = {
+    id: "event-member-profile-boundary",
+    name: "Profile boundary",
+    participantIds: [ownerId, actorId],
+    inactiveParticipantIds: [],
+    adminIds: [ownerId],
+    createdByParticipantId: ownerId,
+    expenses: [],
+    transfers: []
+  };
+  const remote = {
+    currentParticipantId: "",
+    participants: [
+      {
+        id: ownerId,
+        displayName: "Remote Owner",
+        kind: "user",
+        avatarPreset: "avatar-1",
+        accountLinked: true
+      },
+      {
+        id: actorId,
+        displayName: "Member Name",
+        kind: "user",
+        avatarPreset: "avatar-2",
+        accountLinked: true
+      }
+    ],
+    groups: [],
+    events: [event],
+    deletedParticipants: []
+  };
+  const local = {
+    currentParticipantId: actorId,
+    participants: [
+      {
+        id: ownerId,
+        displayName: "Forged Owner",
+        kind: "user",
+        avatarPreset: "avatar-6",
+        accountLinked: true,
+        profileUpdatedAt: "2026-08-25T21:10:33.941Z"
+      },
+      {
+        id: actorId,
+        displayName: "Updated Member",
+        kind: "user",
+        avatarPreset: "avatar-3",
+        accountLinked: true,
+        profileUpdatedAt: "2026-08-26T08:00:00.000Z"
+      }
+    ],
+    groups: [],
+    events: [{
+      ...event,
+      sharedSpaceId: credentials.id,
+      sharedSpaceKey: credentials.key
+    }],
+    deletedParticipants: []
+  };
+  const latestRemote = structuredClone(remote);
+  latestRemote.participants[0] = {
+    ...latestRemote.participants[0],
+    displayName: "Remote Owner Latest",
+    profileUpdatedAt: "2026-08-26T07:59:30.000Z"
+  };
+  let writtenState = null;
+  let readCount = 0;
+  let updateCount = 0;
+
+  await saveSharedEventState(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    local,
+    event.id,
+    async (url, options = {}) => {
+      if (url.includes("/rpc/join_shared_event")) {
+        return jsonResponse({ status: "active" });
+      }
+      if (url.includes("/rpc/update_shared_event_snapshot")) {
+        updateCount += 1;
+        if (updateCount === 1) return jsonResponse({ status: "conflict" });
+        writtenState = JSON.parse(options.body).p_state;
+        return jsonResponse({
+          status: "updated",
+          updatedAt: "2026-08-26T08:00:01.000Z"
+        });
+      }
+      readCount += 1;
+      return jsonResponse([
+        {
+          state: readCount === 1 ? remote : latestRemote,
+          updated_at: readCount === 1
+            ? "2026-08-26T07:59:00.000Z"
+            : "2026-08-26T07:59:30.000Z"
+        }
+      ]);
+    }
+  );
+
+  assert.deepEqual(
+    writtenState.participants.find((participant) => participant.id === ownerId),
+    latestRemote.participants[0]
+  );
+  assert.deepEqual(
+    writtenState.participants.find((participant) => participant.id === actorId),
+    local.participants[1]
+  );
+  assert.equal(updateCount, 2);
+});
+
 test("a new shared event is created atomically with its authenticated owner", async () => {
   const accountUserId = "00000000-0000-4000-8000-000000000011";
   const participantId = `account-${accountUserId}`;
@@ -892,3 +1018,11 @@ test("an empty shared read does not revoke a membership the server still verifie
 
   assert.deepEqual(refreshed, state);
 });
+
+function jsonResponse(value, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    async json() { return value; }
+  };
+}
