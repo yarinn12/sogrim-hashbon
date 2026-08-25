@@ -2146,13 +2146,21 @@ function renderEventStatusFilter(events) {
 
 function renderNotice() {
   return notice
-    ? `<p class="notice" role="status" aria-live="polite">${escapeHtml(notice)}</p>`
+    ? `
+        <div class="notice app-toast" role="status" aria-live="polite" aria-atomic="true">
+          <span class="app-toast-icon" aria-hidden="true">${iconSvg("bell")}</span>
+          <span class="app-toast-copy">${escapeHtml(notice)}</span>
+          <button class="app-toast-close" type="button" data-action="dismiss-notice" aria-label="סגירת ההודעה" title="סגירת ההודעה">
+            ${iconSvg("x")}
+          </button>
+        </div>
+      `
     : "";
 }
 
 function clearRenderedNotice() {
   notice = "";
-  app.querySelector(".notice")?.remove();
+  app.querySelector(".app-toast")?.remove();
 }
 
 function renderAppBackButton() {
@@ -10421,6 +10429,12 @@ async function handleClick(event) {
   if (clickedTransientMenu) clickedTransientMenu.open = false;
 
   const action = target.dataset.action;
+
+  if (action === "dismiss-notice") {
+    event.preventDefault();
+    clearRenderedNotice();
+    return;
+  }
 
   if (action === "profile-avatar-image") {
     try {

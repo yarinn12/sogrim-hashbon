@@ -255,6 +255,88 @@ test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInf
   expect(rect.radius).toBe("0px");
 });
 
+test("close-event action and its floating feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const closeButton = page.locator(".settlement-close-primary").first();
+  await expect(closeButton).toBeVisible();
+  const closeButtonLayout = await closeButton.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const parent = element.parentElement;
+    const parentStyle = parent ? getComputedStyle(parent) : null;
+    const availableWidth = parent
+      ? parent.clientWidth
+        - Number.parseFloat(parentStyle?.paddingInlineStart || "0")
+        - Number.parseFloat(parentStyle?.paddingInlineEnd || "0")
+      : rect.width;
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+      whiteSpace: style.whiteSpace,
+      availableWidth: Math.round(availableWidth)
+    };
+  });
+  expect(closeButtonLayout.width).toBeGreaterThanOrEqual(closeButtonLayout.availableWidth - 2);
+  expect(closeButtonLayout.height).toBeGreaterThanOrEqual(56);
+  expect(closeButtonLayout.scrollHeight).toBeLessThanOrEqual(
+    closeButtonLayout.clientHeight + 1
+  );
+  expect(closeButtonLayout.whiteSpace).toBe("normal");
+
+  await closeButton.click();
+  await page.locator('[data-action="confirm-close-event"]').click();
+
+  const toast = page.locator(".app-toast");
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText("האירוע נסגר וננעל לעריכה");
+  const toastLayout = await toast.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return {
+      position: style.position,
+      left: Math.round(rect.left),
+      right: Math.round(rect.right),
+      top: Math.round(rect.top),
+      width: Math.round(rect.width),
+      backgroundColor: style.backgroundColor,
+      borderRadius: style.borderRadius,
+      viewportWidth: innerWidth
+    };
+  });
+  expect(toastLayout.position).toBe("fixed");
+  expect(toastLayout.left).toBeGreaterThanOrEqual(13);
+  expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth - 13);
+  expect(toastLayout.top).toBeGreaterThanOrEqual(72);
+  expect(toastLayout.width).toBeLessThanOrEqual(520);
+  expect(toastLayout.backgroundColor).toBe("rgb(251, 254, 253)");
+  expect(toastLayout.borderRadius).toBe("12px");
+
+  const dismissButton = toast.locator('[data-action="dismiss-notice"]');
+  const dismissSize = await dismissButton.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  expect(dismissSize).toEqual({ width: 44, height: 44 });
+  if (process.env.CAPTURE_CLOSE_TOAST === "1") {
+    await page.screenshot({
+      path: `audit/close-event-toast-${testInfo.project.name}.png`,
+      fullPage: false
+    });
+  }
+  await dismissButton.click();
+  await expect(toast).toHaveCount(0);
+});
+
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {
   await assertDocumentDirection(page);
   await assertLayoutHealth(page, "home");

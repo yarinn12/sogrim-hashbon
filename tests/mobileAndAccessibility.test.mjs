@@ -168,7 +168,11 @@ test("validation errors are announced, including the profile screen", () => {
 });
 
 test("status messages use a polite live region", () => {
-  assert.match(app, /<p class="notice" role="status" aria-live="polite">/);
+  assert.match(
+    app,
+    /class="notice app-toast" role="status" aria-live="polite" aria-atomic="true"/
+  );
+  assert.match(app, /data-action="dismiss-notice" aria-label="סגירת ההודעה"/);
   assert.match(app, /class="expense-loop-status" role="status" aria-live="polite"/);
 });
 

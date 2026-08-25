@@ -151,10 +151,10 @@ function injectDynamicTypeStyles(document) {
      */
     html.${ACTIVE_CLASS} #app
       .screen[data-screen-kind="home"]
-      > .notice,
+      > .notice:not(.app-toast),
     html.dynamic-type-preview #app
       .screen[data-screen-kind="home"]
-      > .notice {
+      > .notice:not(.app-toast) {
       position: relative !important;
       inset: auto !important;
       z-index: 1 !important;

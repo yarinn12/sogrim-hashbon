@@ -3040,7 +3040,7 @@ const CSS = `
     display: grid !important;
     align-items: start !important;
     gap: 5px !important;
-    padding: 9px 16px 7px !important;
+    padding: 7px 16px 5px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
@@ -3100,7 +3100,7 @@ const CSS = `
     .settlement-hero-actions {
     min-height: 0 !important;
     gap: 8px !important;
-    padding: 4px 8px !important;
+    padding: 0 8px !important;
     border-top: 1px solid var(--app-line) !important;
     background: var(--app-surface-soft) !important;
   }
@@ -3549,6 +3549,106 @@ const CSS = `
       .profile-avatar-option {
       min-width: 0 !important;
     }
+  }
+
+  /* Branded feedback floats above the current task without borrowing warning yellow. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast {
+    position: fixed !important;
+    inset-block-start: calc(env(safe-area-inset-top) + 72px) !important;
+    inset-block-end: auto !important;
+    inset-inline: 14px !important;
+    z-index: 180 !important;
+    width: min(520px, calc(100vw - 28px)) !important;
+    max-width: calc(100vw - 28px) !important;
+    min-height: 68px !important;
+    display: grid !important;
+    grid-template-columns: 44px minmax(0, 1fr) 44px !important;
+    align-items: center !important;
+    gap: 10px !important;
+    box-sizing: border-box !important;
+    margin-inline: auto !important;
+    padding: 11px 12px !important;
+    border: 1px solid rgba(6, 75, 67, 0.2) !important;
+    border-radius: 12px !important;
+    color: var(--app-ink) !important;
+    background: #fbfefd !important;
+    box-shadow:
+      0 18px 42px rgba(7, 27, 24, 0.17),
+      0 3px 10px rgba(7, 27, 24, 0.08) !important;
+    font-size: 14px !important;
+    font-weight: 650 !important;
+    line-height: 1.45 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon {
+    width: 44px !important;
+    height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    background: #064b43 !important;
+    box-shadow: 0 7px 16px rgba(6, 75, 67, 0.18) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-icon .ui-icon-svg {
+    width: 21px !important;
+    height: 21px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-copy {
+    min-width: 0 !important;
+    overflow-wrap: anywhere !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    color: var(--app-muted-strong) !important;
+    background: rgba(6, 75, 67, 0.06) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:hover {
+    color: var(--app-brand) !important;
+    background: rgba(6, 75, 67, 0.11) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:active {
+    transform: scale(0.96) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast-close .ui-icon-svg {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  /* The close-event label stays roomy and readable on phones and iPads. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    .settlement-close-primary {
+    grid-column: 1 / -1 !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    min-height: 56px !important;
+    height: auto !important;
+    padding: 12px 20px !important;
+    white-space: normal !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
+    text-wrap: balance !important;
+    text-align: center !important;
+    line-height: 1.35 !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
