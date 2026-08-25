@@ -194,7 +194,7 @@ test("invite preparation cannot remain busy forever and waits for referral attri
   assert.match(referral, /await monetization\.refresh\(\)/);
 });
 
-test("native sharing waits until the shared event is actually published", () => {
+test("native sharing publishes new events without rewriting established shared events", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const nativeBridge = readFileSync("src/publicNativeBridgeLayer.mjs", "utf8");
 
@@ -209,13 +209,13 @@ test("native sharing waits until the shared event is actually published", () => 
   );
   assert.match(
     publishBeforeInvite,
-    /state = await saveSharedEventState\(shareRuntimeConfig, state, eventId\);/,
-    "every event is published before an invite is created, including events with stale local credentials"
+    /if \(!existingCredentials \|\| publishExisting\) \{/,
+    "new events publish immediately while established events avoid an unrelated canonical rewrite"
   );
-  assert.doesNotMatch(
+  assert.match(
     publishBeforeInvite,
-    /if \(!existingCredentials\) \{\s*try \{\s*state = await saveSharedEventState/,
-    "stale local credentials must not skip cloud publication"
+    /state = await saveSharedEventState\(shareRuntimeConfig, state, eventId\);/,
+    "events without shared credentials are published before their first invitation"
   );
   assert.match(app, /delete event\[EVENT_SPACE_ID_FIELD\]/);
   assert.match(nativeBridge, /async share\(options\)/);
@@ -288,6 +288,31 @@ test("prepareEventShareNow always reloads the runtime config", () => {
   );
 });
 
+test("invite preparation refreshes an expired account session once and retries", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const prepare = app.slice(
+    app.indexOf("async function prepareEventShareNow"),
+    app.indexOf("async function prepareSharedEventForInvitation")
+  );
+
+  assert.match(prepare, /eventInviteAuthRefreshRequired\(error\)/);
+  assert.match(
+    prepare,
+    /globalThis\.SogrimAccountSession\?\.refresh\?\.\(\)/
+  );
+  assert.match(prepare, /currentParticipantId\.startsWith\("account-"\)/);
+  assert.match(prepare, /freshUserId !== expectedUserId/);
+  assert.equal(
+    prepare.match(
+      /return (?:await )?prepareEventShareWithCurrentSession\(eventId\)/g
+    )?.length,
+    2,
+    "the invite attempt is retried exactly once after a successful refresh"
+  );
+  assert.match(prepare, /CLOUD_STATE_AUTH_EXPIRED/);
+  assert.match(prepare, /SHARED_EVENT_ACCOUNT_REQUIRED/);
+});
+
 test("cached invite candidates cannot enable copy, WhatsApp or QR before verification", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const qrLayer = readFileSync("src/publicInviteQrLayer.mjs", "utf8");
@@ -334,18 +359,51 @@ test("legacy raw tokens are only server candidates and never UI-ready tokens", (
   assert.doesNotMatch(currentToken, /loadLegacyOpenInviteCandidate|eventOpenInviteToken\(event\)/);
   assert.match(candidate, /eventOpenInviteToken\(event\)/);
   assert.match(candidate, /loadLegacyOpenInviteCandidate\(event\)/);
-  assert.match(app, /eventOpenInviteCandidateForServer\(sharedEvent\)/);
+  assert.match(app, /eventOpenInviteCandidateForServer\(getEvent\(eventId\)\)/);
 });
 
 test("invite sharing self-recovers when an older server cannot return an active token", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const prepare = app.slice(
-    app.indexOf("async function prepareEventShareNow"),
-    app.indexOf("async function prepareSharedEventForInvitation")
+    app.indexOf("async function ensureCompatibleOpenEventInvite"),
+    app.indexOf("function eventInviteAuthRefreshRequired")
   );
 
   assert.match(prepare, /EVENT_INVITE_ACTIVE_REQUIRES_ROTATION/);
-  assert.match(prepare, /await rotateOpenEventInvite\(shareRuntimeConfig, eventId\)/);
+  assert.match(prepare, /return rotateOpenEventInvite\(config, eventId\)/);
+});
+
+test("existing shared events only republish after the invite server reports a missing snapshot", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const prepare = app.slice(
+    app.indexOf("async function prepareEventShareWithCurrentSession"),
+    app.indexOf("function eventInviteAuthRefreshRequired")
+  );
+
+  assert.match(prepare, /const hadSharedCredentials = Boolean\(/);
+  assert.match(
+    prepare,
+    /if \(!hadSharedCredentials\) \{\s*shareRuntimeConfig = await prepareSharedEventForInvitation\(eventId\);/
+  );
+  assert.match(prepare, /hadSharedCredentials &&/);
+  assert.match(prepare, /EVENT_INVITE_NOT_READY/);
+  assert.match(prepare, /EVENT_INVITE_NOT_ALLOWED/);
+  assert.match(prepare, /publishExisting: true/);
+  assert.equal(
+    prepare.match(/publishExisting: true/g)?.length,
+    1,
+    "only one explicit repair publication is possible per invite attempt"
+  );
+  assert.equal(
+    prepare.match(/await prepareSharedEventForInvitation\(eventId/g)?.length,
+    2,
+    "the existing-event publication fallback is bounded to one retry"
+  );
+  assert.ok(
+    prepare.indexOf("ensureCompatibleOpenEventInvite(") <
+      prepare.indexOf("publishExisting: true"),
+    "canonical publication is attempted only after server verification fails"
+  );
 });
 
 test("invite preparation surfaces safe Hebrew API errors instead of a generic dead end", () => {

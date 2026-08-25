@@ -15660,6 +15660,33 @@ async function retryEventShare(eventId) {
 }
 
 async function prepareEventShareNow(eventId) {
+  const initialConfig = await loadRuntimeConfig();
+  const configuredUserId = String(
+    initialConfig?.storage?.account?.userId ?? ""
+  ).trim();
+  const currentParticipantId = String(state?.currentParticipantId ?? "").trim();
+  const expectedUserId = configuredUserId || (
+    currentParticipantId.startsWith("account-")
+      ? currentParticipantId.slice("account-".length)
+      : ""
+  );
+  try {
+    return await prepareEventShareWithCurrentSession(eventId);
+  } catch (error) {
+    if (!eventInviteAuthRefreshRequired(error) || !expectedUserId) throw error;
+
+    const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+    if (!refreshedSession) throw error;
+    const freshRuntimeConfig = await loadRuntimeConfig();
+    const freshUserId = String(
+      freshRuntimeConfig?.storage?.account?.userId ?? ""
+    ).trim();
+    if (freshUserId !== expectedUserId) throw error;
+    return prepareEventShareWithCurrentSession(eventId);
+  }
+}
+
+async function prepareEventShareWithCurrentSession(eventId) {
   const initialRuntimeConfig = await loadRuntimeConfig();
   runtimeConfig = initialRuntimeConfig;
   reconcileEventInviteAccountBoundary(initialRuntimeConfig);
@@ -15668,22 +15695,42 @@ async function prepareEventShareNow(eventId) {
     error.code = "EVENT_INVITE_CLOUD_REQUIRED";
     throw error;
   }
-  const shareRuntimeConfig = await prepareSharedEventForInvitation(eventId);
+  const hadSharedCredentials = Boolean(
+    eventShareCredentials(getEvent(eventId))
+  );
+  let shareRuntimeConfig = initialRuntimeConfig;
+  if (!hadSharedCredentials) {
+    shareRuntimeConfig = await prepareSharedEventForInvitation(eventId);
+  }
   if (shareRuntimeConfig.storage?.mode === "supabase") {
-    const sharedEvent = getEvent(eventId);
     let openInvite;
     try {
-      openInvite = await ensureOpenEventInvite(
+      openInvite = await ensureCompatibleOpenEventInvite(
         shareRuntimeConfig,
-        eventId,
-        eventOpenInviteCandidateForServer(sharedEvent) ?? ""
+        eventId
       );
     } catch (error) {
-      // Compatibility with an older server: recover a valid share link when
-      // the active raw token was lost during a device or account transition.
-      if (error?.code !== "EVENT_INVITE_ACTIVE_REQUIRES_ROTATION") throw error;
-      openInvite = await rotateOpenEventInvite(shareRuntimeConfig, eventId);
+      if (
+        hadSharedCredentials &&
+        ["EVENT_INVITE_NOT_READY", "EVENT_INVITE_NOT_ALLOWED"].includes(
+          String(error?.code ?? "")
+        )
+      ) {
+        // Older personal copies can retain share credentials even when their
+        // canonical snapshot was never published. Repair that exceptional
+        // case once, after the invite server has confirmed it is necessary.
+        shareRuntimeConfig = await prepareSharedEventForInvitation(eventId, {
+          publishExisting: true
+        });
+        openInvite = await ensureCompatibleOpenEventInvite(
+          shareRuntimeConfig,
+          eventId
+        );
+      } else {
+        throw error;
+      }
     }
+    const sharedEvent = getEvent(eventId);
     rememberEventOpenInviteToken(eventId, openInvite.token);
     if (!attachOpenInviteToken(sharedEvent, openInvite.token)) {
       throw new Error("Open event invitation could not be attached");
@@ -15693,7 +15740,37 @@ async function prepareEventShareNow(eventId) {
   return eventInviteUrl(eventId);
 }
 
-async function prepareSharedEventForInvitation(eventId) {
+async function ensureCompatibleOpenEventInvite(config, eventId) {
+  try {
+    return await ensureOpenEventInvite(
+      config,
+      eventId,
+      eventOpenInviteCandidateForServer(getEvent(eventId)) ?? ""
+    );
+  } catch (error) {
+    // Compatibility with an older server: recover a valid share link when
+    // the active raw token was lost during a device or account transition.
+    if (error?.code !== "EVENT_INVITE_ACTIVE_REQUIRES_ROTATION") throw error;
+    return rotateOpenEventInvite(config, eventId);
+  }
+}
+
+function eventInviteAuthRefreshRequired(error) {
+  const code = String(error?.code ?? "").trim();
+  return Boolean(
+    Number(error?.status ?? 0) === 401 ||
+    [
+      "AUTH_REQUIRED",
+      "CLOUD_STATE_AUTH_EXPIRED",
+      "SHARED_EVENT_ACCOUNT_REQUIRED"
+    ].includes(code)
+  );
+}
+
+async function prepareSharedEventForInvitation(
+  eventId,
+  { publishExisting = false } = {}
+) {
   const event = getEvent(eventId);
   if (!event) throw new Error("Event not found");
   const shareRuntimeConfig = await loadRuntimeConfig();
@@ -15702,19 +15779,16 @@ async function prepareSharedEventForInvitation(eventId) {
   if (shareRuntimeConfig.storage?.mode === "supabase") {
     const existingCredentials = eventShareCredentials(event);
     ensureEventShareCredentials(event);
-    try {
-      // A device can retain valid-looking share credentials even when the
-      // corresponding shared snapshot was never created (or was recovered
-      // from an older personal copy). Publishing before every invite prepare
-      // makes the server snapshot the source of truth for every event, rather
-      // than only for events without local credentials.
-      state = await saveSharedEventState(shareRuntimeConfig, state, eventId);
-    } catch (error) {
-      if (!existingCredentials) {
-        delete event[EVENT_SPACE_ID_FIELD];
-        delete event[EVENT_SPACE_KEY_FIELD];
+    if (!existingCredentials || publishExisting) {
+      try {
+        state = await saveSharedEventState(shareRuntimeConfig, state, eventId);
+      } catch (error) {
+        if (!existingCredentials) {
+          delete event[EVENT_SPACE_ID_FIELD];
+          delete event[EVENT_SPACE_KEY_FIELD];
+        }
+        throw error;
       }
-      throw error;
     }
   }
   const accountSave = await saveSharedState(state, { awaitCloud: true });
@@ -15834,6 +15908,9 @@ function eventOpenInviteCandidateForServer(event) {
 }
 
 function eventInvitePreparationNotice(error, fallback) {
+  if (eventInviteAuthRefreshRequired(error)) {
+    return "החיבור לחשבון פג. התחברו מחדש ונסו שוב.";
+  }
   if (!isEventInviteError(error)) return fallback;
   const message = String(error?.message ?? "").trim();
   return message || fallback;

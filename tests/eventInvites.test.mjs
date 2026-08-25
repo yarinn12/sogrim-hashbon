@@ -35,7 +35,7 @@ test("invite failures are distinguishable from account session failures", () => 
     assert.equal(isEventInviteError({ code }), true, code);
   }
 
-  assert.equal(isEventInviteError({ code: "AUTH_REQUIRED" }), false);
+  assert.equal(isEventInviteError({ code: "AUTH_REQUIRED" }), true);
   assert.equal(isEventInviteError(new TypeError("Failed to fetch")), false);
 });
 

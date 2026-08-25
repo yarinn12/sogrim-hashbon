@@ -16,6 +16,7 @@ export const EVENT_OPEN_INVITE_TOKEN_FIELD = "openInviteToken";
 export function isEventInviteError(error) {
   const code = String(error?.code ?? "").trim();
   return Boolean(
+    code === "AUTH_REQUIRED" ||
     code === "INVALID_EVENT_INVITE" ||
     code === "INVALID_INVITE_RESPONSE" ||
     code === "LEGACY_INVITE_REPLACED" ||
