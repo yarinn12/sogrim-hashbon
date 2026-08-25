@@ -418,18 +418,19 @@ function injectDynamicTypeStyles(document) {
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .screen {
-        padding-bottom: calc(146px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: calc(184px + env(safe-area-inset-bottom)) !important;
+        scroll-padding-block-end: calc(184px + env(safe-area-inset-bottom)) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         #app
         .screen[data-screen-kind="home"] {
-        padding-bottom: calc(176px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: calc(196px + env(safe-area-inset-bottom)) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .screen.event-has-action-dock {
-        padding-bottom: calc(226px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: calc(236px + env(safe-area-inset-bottom)) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
@@ -475,7 +476,7 @@ function injectDynamicTypeStyles(document) {
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .screen.event-has-action-dock {
-        padding-bottom: calc(146px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: calc(184px + env(safe-area-inset-bottom)) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)

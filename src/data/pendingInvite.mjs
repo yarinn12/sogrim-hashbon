@@ -4,6 +4,7 @@ import {
   parseInviteSnapshot,
   parseInviteToken
 } from "../domain/inviteLinks.mjs";
+import { canonicalizePublicUrl } from "../domain/publicOrigin.mjs";
 
 export const PENDING_INVITE_URL_STORAGE_KEY = "sogrim-pending-invite-url";
 
@@ -52,5 +53,7 @@ function validInviteUrl(urlValue) {
   const hasSnapshot = snapshot?.event?.id === eventId;
   const hasCloudAccess = Boolean(parseInviteSpaceId(value) && parseInviteSpaceKey(value));
   const hasInviteToken = Boolean(parseInviteToken(value));
-  return hasSnapshot || hasCloudAccess || hasInviteToken ? value : null;
+  return hasSnapshot || hasCloudAccess || hasInviteToken
+    ? canonicalizePublicUrl(value, value)
+    : null;
 }

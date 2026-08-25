@@ -307,6 +307,7 @@ test("close-event action and its floating feedback stay polished on every mobile
       left: Math.round(rect.left),
       right: Math.round(rect.right),
       top: Math.round(rect.top),
+      bottom: Math.round(innerHeight - rect.bottom),
       width: Math.round(rect.width),
       backgroundColor: style.backgroundColor,
       borderRadius: style.borderRadius,
@@ -316,7 +317,8 @@ test("close-event action and its floating feedback stay polished on every mobile
   expect(toastLayout.position).toBe("fixed");
   expect(toastLayout.left).toBeGreaterThanOrEqual(13);
   expect(toastLayout.right).toBeLessThanOrEqual(toastLayout.viewportWidth - 13);
-  expect(toastLayout.top).toBeGreaterThanOrEqual(72);
+  expect(toastLayout.top).toBeGreaterThanOrEqual(0);
+  expect(toastLayout.bottom).toBeGreaterThanOrEqual(95);
   expect(toastLayout.width).toBeLessThanOrEqual(520);
   expect(toastLayout.backgroundColor).toBe("rgb(251, 254, 253)");
   expect(toastLayout.borderRadius).toBe("12px");

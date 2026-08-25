@@ -475,6 +475,21 @@ test("an unsigned invite snapshot cannot collide with an existing event", () => 
   assert.deepEqual(event.transfers, []);
 });
 
+test("event invite links migrate the retired production origin", () => {
+  const url = buildEventInviteUrl(
+    "https://sogrim-hashbon.vercel.app/dashboard?old=1",
+    "event-123",
+    null,
+    { inviteToken: "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456" }
+  );
+
+  assert.equal(new URL(url).origin, "https://sogrim-hesbon-app.vercel.app");
+  assert.equal(
+    new URL(url).pathname,
+    "/i/event-123/t/abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456"
+  );
+});
+
 test("a server-read verified invite still imports the shared event", () => {
   const state = {
     currentParticipantId: "guest",

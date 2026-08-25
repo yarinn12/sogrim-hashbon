@@ -99,7 +99,7 @@ test("large text mode releases rigid controls and protects fixed bottom navigati
   assert.match(layer, /height: auto !important/);
   assert.match(layer, /min-height: max\(48px, 2\.85rem\)/);
   assert.match(layer, /\.event-action-dock \{[\s\S]*?position: static !important/);
-  assert.match(layer, /\.screen\.event-has-action-dock \{[\s\S]*?padding-bottom: calc\(146px/);
+  assert.match(layer, /\.screen\.event-has-action-dock \{[\s\S]*?padding-bottom: calc\(184px/);
   assert.match(layer, /max-height: 100dvh !important/);
   assert.match(layer, /overflow-y: auto !important/);
   assert.match(

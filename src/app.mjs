@@ -157,6 +157,7 @@ import {
   usernameValidationMessage
 } from "./domain/usernames.mjs";
 import { normalizeReferralCode } from "./domain/referralCodes.mjs";
+import { runtimePublicOrigin } from "./domain/publicOrigin.mjs";
 import {
   EVENT_SPACE_ID_FIELD,
   EVENT_SPACE_KEY_FIELD,
@@ -2657,7 +2658,7 @@ function renderFriendProfileAvatar(profile) {
 
 function friendInviteUrl() {
   return buildFriendInviteUrl(
-    runtimeConfig.publicUrl || window.location.origin,
+    runtimePublicOrigin(runtimeConfig),
     friendNetwork.friendCode
   );
 }
@@ -6930,7 +6931,7 @@ function eventInviteUrl(eventId) {
     Boolean(inviteToken);
   const referralCode = currentReferralInviteCode();
   return buildEventInviteUrl(
-    runtimeConfig.publicUrl || window.location.href,
+    runtimePublicOrigin(runtimeConfig),
     eventId,
     cloudInvite ? null : buildEventInviteSnapshot(state, eventId),
     inviteToken
@@ -18044,10 +18045,13 @@ function setDialogBackgroundInert(dialog) {
   const keepsRouteChromeActive = backdrop.matches("[data-event-route-dialog]");
   const isRouteChrome = (element) =>
     Boolean(element.closest(".product-app-identity, .product-app-nav"));
+  const isDismissibleNotice = (element) =>
+    Boolean(element.closest(".app-toast"));
 
   const screen = backdrop.closest(".screen");
   screen?.querySelectorAll(":scope > *").forEach((element) => {
     if (element === backdrop) return;
+    if (isDismissibleNotice(element)) return;
     if (keepsRouteChromeActive && isRouteChrome(element)) return;
     element.dataset.appDialogInertContainer = "true";
     element.inert = true;
@@ -18062,6 +18066,7 @@ function setDialogBackgroundInert(dialog) {
     .querySelectorAll('button, input, select, textarea, a[href], [tabindex]')
     .forEach((element) => {
       if (backdrop.contains(element)) return;
+      if (isDismissibleNotice(element)) return;
       if (keepsRouteChromeActive && isRouteChrome(element)) return;
       element.dataset.appDialogInert = "true";
       element.inert = true;

@@ -151,6 +151,15 @@ test("client runtime config enables only an eligible Android build", () => {
   assert.equal(scoped.monetization.minimumAndroidBuild, 28);
 });
 
+test("getRuntimeConfig rewrites a retired public origin before clients receive it", () => {
+  const config = getRuntimeConfig({
+    APP_PUBLIC_URL: "https://sogrim-hashbon.vercel.app"
+  });
+
+  assert.equal(config.publicUrl, "https://sogrim-hesbon-app.vercel.app");
+  assert.equal(config.launch.publicUrlReady, true);
+});
+
 test("mandatory Android updates are disabled until a minimum build is configured", () => {
   const config = getRuntimeConfig({});
   const scoped = getClientRuntimeConfig(config, {

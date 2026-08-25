@@ -100,6 +100,18 @@ test("referral status normalizes cloud entitlement values", async () => {
   assert.deepEqual(status.activeEntitlementSources, ["subscription"]);
 });
 
+test("referral links never reuse the retired production origin", () => {
+  const link = buildReferralInviteUrl(
+    "https://sogrim-hashbon.vercel.app",
+    referralCode
+  );
+
+  assert.equal(
+    link,
+    `https://sogrim-hesbon-app.vercel.app/r/${referralCode}`
+  );
+});
+
 test("referral status preserves an expired-session response for one safe retry", async () => {
   await assert.rejects(
     loadReferralProgramStatus(

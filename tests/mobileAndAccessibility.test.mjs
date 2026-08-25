@@ -176,6 +176,19 @@ test("status messages use a polite live region", () => {
   assert.match(app, /class="expense-loop-status" role="status" aria-live="polite"/);
 });
 
+test("a floating notice stays dismissible while an event route dialog is open", () => {
+  const inertSetup = app.slice(
+    app.indexOf("function setDialogBackgroundInert"),
+    app.indexOf("function clearDialogBackgroundInert")
+  );
+
+  assert.match(inertSetup, /const isDismissibleNotice = \(element\) =>/);
+  assert.equal(
+    inertSetup.match(/if \(isDismissibleNotice\(element\)\) return;/g)?.length,
+    2
+  );
+});
+
 test("focus-visible remains a visible ring in the active layer", () => {
   assert.match(
     ledger,

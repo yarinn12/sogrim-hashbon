@@ -40,7 +40,7 @@ import {
   syncSharedEvents
 } from "./sharedEventStore.mjs";
 import {
-  normalizePublicOrigin,
+  canonicalPublicOrigin,
   runtimeApiOrigins,
   runtimePublicOrigin
 } from "../domain/publicOrigin.mjs";
@@ -338,7 +338,7 @@ function nativeBootstrapRuntimeConfig(nativeRuntime) {
 }
 
 function normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl = "") {
-  const bootstrapPublicUrl = normalizePublicOrigin(
+  const bootstrapPublicUrl = canonicalPublicOrigin(
     globalThis[NATIVE_RUNTIME_CONFIG_GLOBAL]?.publicUrl
   );
   const nativePublicUrl = nativeRuntime
@@ -348,7 +348,7 @@ function normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl = "") {
     ...config,
     publicUrl: nativePublicUrl,
     apiBaseUrl: nativeRuntime
-      ? normalizePublicOrigin(apiBaseUrl || config?.apiBaseUrl, runtimePublicOrigin(config))
+      ? canonicalPublicOrigin(apiBaseUrl || config?.apiBaseUrl, runtimePublicOrigin(config))
       : ""
   };
 }

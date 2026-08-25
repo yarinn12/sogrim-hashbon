@@ -8,8 +8,8 @@ import {
   getRuntimeConfig
 } from "../src/server/runtimeConfig.mjs";
 import {
+  canonicalPublicOrigin,
   PUBLIC_ORIGIN,
-  normalizePublicOrigin,
   runtimeApiOrigins
 } from "../src/domain/publicOrigin.mjs";
 import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibility.mjs";
@@ -19,7 +19,7 @@ const output = join(root, "www");
 const buildEnv = { ...process.env };
 loadEnvFile(join(root, ".env.local"), buildEnv);
 loadEnvFile(join(root, ".env"), buildEnv);
-const publicAppOrigin = normalizePublicOrigin(
+const publicAppOrigin = canonicalPublicOrigin(
   buildEnv.APP_PUBLIC_URL,
   PUBLIC_ORIGIN
 );

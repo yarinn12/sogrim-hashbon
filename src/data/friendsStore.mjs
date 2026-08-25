@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
 import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 
@@ -392,8 +393,7 @@ export function friendInviteCodeFromUrl(urlValue) {
 export function buildFriendInviteUrl(publicUrl, friendCode) {
   const code = normalizeFriendCode(friendCode);
   if (!code) return "";
-  const base = String(publicUrl ?? "").trim() || globalThis.location?.origin || "";
-  if (!base) return "";
+  const base = runtimePublicOrigin({ publicUrl });
   const url = new URL(base);
   url.searchParams.set("friend", code);
   return url.toString();

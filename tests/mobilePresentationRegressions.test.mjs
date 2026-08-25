@@ -26,7 +26,7 @@ test("mobile participant management keeps global route chrome available", () => 
 test("large-text home keeps dedicated clearance above fixed navigation", () => {
   assert.match(
     dynamicTypeLayer,
-    /#app[\s\S]*?\.screen\[data-screen-kind="home"\] \{[\s\S]*?padding-bottom: calc\(176px \+ env\(safe-area-inset-bottom\)\) !important;/
+    /#app[\s\S]*?\.screen\[data-screen-kind="home"\] \{[\s\S]*?padding-bottom: calc\(196px \+ env\(safe-area-inset-bottom\)\) !important;/
   );
 });
 
@@ -67,7 +67,7 @@ test("mobile share choices remain separate when text grows", () => {
 test("settlement completion feedback stays roomy and branded across mobile sizes", () => {
   assert.match(
     coherenceLayer,
-    /\.app-toast \{[\s\S]*?position: fixed !important;[\s\S]*?width: min\(520px, calc\(100vw - 28px\)\) !important;[\s\S]*?grid-template-columns: 44px minmax\(0, 1fr\) 44px !important;/
+    /\.app-toast \{[\s\S]*?position: fixed !important;[\s\S]*?inset-block-start: auto !important;[\s\S]*?inset-block-end: calc\(env\(safe-area-inset-bottom\) \+ 96px\) !important;[\s\S]*?width: min\(520px, calc\(100vw - 28px\)\) !important;[\s\S]*?grid-template-columns: 44px minmax\(0, 1fr\) 44px !important;/
   );
   assert.match(
     coherenceLayer,
@@ -80,5 +80,20 @@ test("settlement completion feedback stays roomy and branded across mobile sizes
   assert.match(
     dynamicTypeLayer,
     /> \.notice:not\(\.app-toast\)/
+  );
+});
+
+test("fixed navigation keeps a scrollable safe zone and large text cannot pan sideways", () => {
+  assert.match(
+    coherenceLayer,
+    /html\.design-coherence-v1 \.screen \{[\s\S]*?padding-bottom: calc\(168px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?scroll-padding-block-end: calc\(168px \+ env\(safe-area-inset-bottom\)\) !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /html\.design-coherence-v1,[\s\S]*?html\.design-coherence-v1 body \{[\s\S]*?overflow-x: clip !important;/
+  );
+  assert.match(
+    dynamicTypeLayer,
+    /\.screen \{[\s\S]*?padding-bottom: calc\(184px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?scroll-padding-block-end: calc\(184px \+ env\(safe-area-inset-bottom\)\) !important;/
   );
 });

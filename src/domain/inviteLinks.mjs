@@ -14,6 +14,7 @@ import {
   normalizeAvatarPreset
 } from "./avatarPresets.mjs";
 import { normalizeReferralCode } from "./referralCodes.mjs";
+import { canonicalizePublicUrl } from "./publicOrigin.mjs";
 
 const INVITE_SNAPSHOT_PARAM = "invite";
 const INVITE_SPACE_PARAM = "space";
@@ -23,13 +24,14 @@ const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
 export function buildEventInviteUrl(currentUrl, eventId, inviteSnapshot = null, options = {}) {
   assertSafeInviteIdentifier(eventId, "eventId");
+  const inviteBaseUrl = canonicalizePublicUrl(currentUrl) || currentUrl;
   const referralCode = normalizeReferralCode(options.referralCode);
   const inviteToken = normalizeInviteToken(options.inviteToken);
   if (options.inviteToken && !inviteToken) {
     throw new TypeError("inviteToken must be a safe token.");
   }
   if (inviteToken) {
-    const tokenUrl = new URL(currentUrl);
+    const tokenUrl = new URL(inviteBaseUrl);
     tokenUrl.pathname = `/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(inviteToken)}`;
     tokenUrl.search = "";
     tokenUrl.hash = "";
@@ -38,7 +40,7 @@ export function buildEventInviteUrl(currentUrl, eventId, inviteSnapshot = null, 
   }
 
   if (options.compact && options.spaceId && options.spaceKey) {
-    const compactBaseUrl = new URL(currentUrl);
+    const compactBaseUrl = new URL(inviteBaseUrl);
     if (referralCode) compactBaseUrl.searchParams.set("ref", referralCode);
     return buildCompactInviteUrl(
       compactBaseUrl,
@@ -48,7 +50,7 @@ export function buildEventInviteUrl(currentUrl, eventId, inviteSnapshot = null, 
     );
   }
 
-  const url = new URL(currentUrl);
+  const url = new URL(inviteBaseUrl);
   url.search = "";
   url.hash = "";
   url.searchParams.set("event", eventId);

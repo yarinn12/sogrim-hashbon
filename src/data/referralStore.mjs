@@ -3,6 +3,7 @@ import {
   normalizeReferralProgramStatus
 } from "../domain/entitlements.mjs";
 import { normalizeReferralCode } from "../domain/referralCodes.mjs";
+import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
 
 export { normalizeReferralCode };
 
@@ -31,8 +32,7 @@ export function referralCodeFromUrl(urlValue) {
 export function buildReferralInviteUrl(publicUrl, referralCode) {
   const code = normalizeReferralCode(referralCode);
   if (!code) return "";
-  const base = String(publicUrl ?? "").trim() || globalThis.location?.origin || "";
-  if (!base) return "";
+  const base = runtimePublicOrigin({ publicUrl });
 
   const url = new URL(base);
   url.pathname = `/r/${code}`;

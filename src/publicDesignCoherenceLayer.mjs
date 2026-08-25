@@ -60,11 +60,19 @@ const CSS = `
     background: var(--app-canvas) !important;
   }
 
+  html.design-coherence-v1,
+  html.design-coherence-v1 body {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+    overflow-x: clip !important;
+  }
+
   html.design-coherence-v1 .screen {
     width: min(100%, 448px) !important;
     margin-inline: auto !important;
     padding-inline: 20px !important;
-    padding-bottom: calc(140px + env(safe-area-inset-bottom)) !important;
+    padding-bottom: calc(168px + env(safe-area-inset-bottom)) !important;
+    scroll-padding-block-end: calc(168px + env(safe-area-inset-bottom)) !important;
   }
 
   html.design-coherence-v1 .product-app-identity {
@@ -3554,8 +3562,8 @@ const CSS = `
   /* Branded feedback floats above the current task without borrowing warning yellow. */
   html.design-coherence-v1.ledger-workspace-v1 body #app .app-toast {
     position: fixed !important;
-    inset-block-start: calc(env(safe-area-inset-top) + 72px) !important;
-    inset-block-end: auto !important;
+    inset-block-start: auto !important;
+    inset-block-end: calc(env(safe-area-inset-bottom) + 96px) !important;
     inset-inline: 14px !important;
     z-index: 180 !important;
     width: min(520px, calc(100vw - 28px)) !important;

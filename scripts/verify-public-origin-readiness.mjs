@@ -2,11 +2,11 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
 import {
-  PUBLIC_ORIGIN,
-  normalizePublicOrigin
+  canonicalPublicOrigin,
+  PUBLIC_ORIGIN
 } from "../src/domain/publicOrigin.mjs";
 
-const origin = normalizePublicOrigin(
+const origin = canonicalPublicOrigin(
   process.env.APP_PUBLIC_URL || process.env.PUBLIC_APP_ORIGIN,
   PUBLIC_ORIGIN
 );

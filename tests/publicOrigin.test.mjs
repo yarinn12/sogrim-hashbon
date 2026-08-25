@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 
 import {
   allowedPublicHosts,
+  canonicalizePublicUrl,
   isAllowedPublicUrl,
   PUBLIC_ORIGIN,
   normalizePublicOrigin,
   runtimeApiOrigins,
   runtimePublicOrigin
 } from "../src/domain/publicOrigin.mjs";
+
+const LEGACY_ORIGIN = "https://sogrim-hashbon.vercel.app";
 
 test("public origins accept HTTPS hosts without preserving paths or credentials", () => {
   assert.equal(
@@ -27,6 +30,15 @@ test("runtime public origin keeps the live host as a safe migration fallback", (
   );
 });
 
+test("legacy production URLs are migrated to the current app without losing their route", () => {
+  assert.equal(
+    canonicalizePublicUrl(`${LEGACY_ORIGIN}/r/0123456789abcdefabcd?source=gift#share`),
+    `${PUBLIC_ORIGIN}/r/0123456789abcdefabcd?source=gift#share`
+  );
+  assert.equal(runtimePublicOrigin({ publicUrl: LEGACY_ORIGIN }), PUBLIC_ORIGIN);
+  assert.equal(allowedPublicHosts(LEGACY_ORIGIN).has("sogrim-hashbon.vercel.app"), false);
+});
+
 test("native API origins use only the configured current host", () => {
   assert.deepEqual(runtimeApiOrigins({ publicUrl: "https://app.sogrim.example" }), [
     "https://app.sogrim.example"
@@ -41,6 +53,13 @@ test("native API origins keep a verified bootstrap API ahead of the public host"
     "https://api.sogrim.example",
     PUBLIC_ORIGIN
   ]);
+});
+
+test("native API origins also migrate the retired host", () => {
+  assert.deepEqual(runtimeApiOrigins({
+    apiBaseUrl: LEGACY_ORIGIN,
+    publicUrl: LEGACY_ORIGIN
+  }), [PUBLIC_ORIGIN]);
 });
 
 test("public URL validation accepts the configured and current live hosts only", () => {

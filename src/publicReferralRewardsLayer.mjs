@@ -18,6 +18,7 @@ import {
 } from "./domain/entitlements.mjs";
 import { createQrSvg } from "./domain/qrCode.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { runtimePublicOrigin } from "./domain/publicOrigin.mjs";
 
 const STYLE_ID = "public-referral-rewards-style";
 const DIALOG_ID = "public-referral-rewards-dialog";
@@ -535,7 +536,7 @@ function trapReferralDialogFocus(event) {
 function referralDialogMarkup() {
   const progress = referralAnnualProgress(referralStatus);
   const inviteUrl = buildReferralInviteUrl(
-    runtimeConfig?.publicUrl || window.location.origin,
+    runtimePublicOrigin(runtimeConfig),
     referralStatus.referralCode
   );
   const active = isAdFreeActive(referralStatus);
@@ -701,7 +702,7 @@ function referralQrMarkup(inviteUrl) {
 
 async function copyReferralLink() {
   const inviteUrl = buildReferralInviteUrl(
-    runtimeConfig?.publicUrl || window.location.origin,
+    runtimePublicOrigin(runtimeConfig),
     referralStatus.referralCode
   );
   if (!inviteUrl || referralBusy) return;
@@ -721,7 +722,7 @@ async function copyReferralLink() {
 
 async function shareReferralLink() {
   const inviteUrl = buildReferralInviteUrl(
-    runtimeConfig?.publicUrl || window.location.origin,
+    runtimePublicOrigin(runtimeConfig),
     referralStatus.referralCode
   );
   if (!inviteUrl || referralBusy) return;

@@ -72,6 +72,18 @@ test("revocable token invite is remembered through account sign-in", () => {
   );
 });
 
+test("a stored invite from the retired host is migrated before reuse", () => {
+  const storage = memoryStorage();
+  const token = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
+  const legacyInvite = `https://sogrim-hashbon.vercel.app/i/event-1/t/${token}`;
+  storage.setItem(PENDING_INVITE_URL_STORAGE_KEY, legacyInvite);
+
+  assert.equal(
+    pendingInviteUrl("https://sogrim-hesbon-app.vercel.app/", storage),
+    `https://sogrim-hesbon-app.vercel.app/i/event-1/t/${token}`
+  );
+});
+
 test("event-only links are not treated as reusable invite credentials", () => {
   const storage = memoryStorage();
   const eventOnly = "https://app.example.com/?event=event-1";

@@ -47,6 +47,16 @@ test("friend codes support a private link without exposing an email address", ()
   assert.ok(!link.includes("@"));
 });
 
+test("friend links migrate the retired production origin", () => {
+  const link = buildFriendInviteUrl(
+    "https://sogrim-hashbon.vercel.app",
+    friendCode
+  );
+
+  assert.equal(new URL(link).origin, "https://sogrim-hesbon-app.vercel.app");
+  assert.equal(new URL(link).searchParams.get("friend"), friendCode);
+});
+
 test("a compact referral path is also recognized as a friend invitation", () => {
   const link = `https://example.com/r/${friendCode}`;
 
