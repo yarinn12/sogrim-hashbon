@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { syncFailureStatus } from "../src/data/localStore.mjs";
+import {
+  isTransientSyncFailure,
+  syncFailureStatus
+} from "../src/data/localStore.mjs";
 
 test("sync failures distinguish the network from server and account errors", () => {
   assert.equal(syncFailureStatus(new Error("Failed to fetch"), true), "unavailable");
@@ -39,4 +42,20 @@ test("wrapped shared-event failures preserve their real cause", () => {
   });
   assert.equal(syncFailureStatus(serverFailure, true), "unavailable");
   assert.equal(syncFailureStatus(serverFailure, false), "offline");
+});
+
+test("write conflicts stay queued as transient failures instead of rolling back", () => {
+  const conflict = Object.assign(new Error("conflict"), {
+    code: "CLOUD_STATE_CONFLICT"
+  });
+  const wrappedConflict = Object.assign(new Error("shared event failed"), {
+    code: "SHARED_EVENT_SYNC_FAILED",
+    cause: conflict,
+    failures: [conflict]
+  });
+  const forbidden = Object.assign(new Error("forbidden"), { status: 403 });
+
+  assert.equal(isTransientSyncFailure(conflict), true);
+  assert.equal(isTransientSyncFailure(wrappedConflict), true);
+  assert.equal(isTransientSyncFailure(forbidden), false);
 });

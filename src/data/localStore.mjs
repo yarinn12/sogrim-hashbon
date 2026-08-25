@@ -54,6 +54,7 @@ const ACCOUNT_STORAGE_KEY_SEGMENT = "account";
 const PENDING_SYNC_KEY_PREFIX = "settle-friends-pending-sync:";
 const SYNC_STATUS_EVENT = "sogrim:sync-status";
 const SHARED_SAVE_REVERTED_EVENT = "sogrim:shared-save-reverted";
+const PENDING_SYNC_RETRY_DELAYS_MS = [1_200, 3_500, 8_000];
 const LOCAL_RUNTIME_CONFIG = {
   publicUrl: "",
   auth: { googleClientId: "" },
@@ -103,6 +104,8 @@ let cloudWriteQueue = Promise.resolve();
 let accountStorageGeneration = 0;
 let sharedStateSaveGeneration = 0;
 let pendingSyncFlushPromise = null;
+let pendingSyncRetryTimer = 0;
+let pendingSyncRetryAttempt = 0;
 let activeAccountStorageScope = "";
 
 async function loadCloudState(config, fallbackState) {
@@ -644,6 +647,7 @@ export async function saveSharedState(state) {
           if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
             clearPendingSharedState(runtimeConfig);
           }
+          resetPendingSharedStateRetry();
           publishSyncStatus("saved");
           return {
             ok: true,
@@ -672,9 +676,10 @@ export async function saveSharedState(state) {
               // Keep locally saved changes queued during temporary outages.
               // A background retry will persist them when the service recovers.
               pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
+              if (pendingStateSaved) schedulePendingSharedStateRetry();
             } else {
               saveState(previousState);
-              publishSharedSaveReverted(syncSelection);
+              publishSharedSaveReverted(syncSelection, error);
               reverted = true;
             }
           }
@@ -687,6 +692,12 @@ export async function saveSharedState(state) {
             pendingStateSaved = false;
           }
           publishSyncFailure(error);
+          logSyncFailure(error, {
+            sharedEventMutation: hasSharedEventMutation,
+            pending: Boolean(pendingStateSaved),
+            partial: Boolean(partiallyPersistedState),
+            reverted
+          });
           emitOperationFailure("state_save");
           return {
             ok: false,
@@ -759,10 +770,18 @@ async function flushPendingSharedStateOnce() {
     if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
       clearPendingSharedState(runtimeConfig);
     }
+    resetPendingSharedStateRetry();
     publishSyncStatus("saved");
     return { ok: true };
   } catch (error) {
     publishSyncFailure(error);
+    if (isTransientSyncFailure(error)) schedulePendingSharedStateRetry();
+    logSyncFailure(error, {
+      sharedEventMutation: true,
+      pending: true,
+      partial: false,
+      reverted: false
+    });
     emitOperationFailure("state_save");
     return { ok: false, error };
   }
@@ -1124,11 +1143,58 @@ function isNetworkFailure(error) {
     .test(String(error.message ?? ""));
 }
 
-function isTransientSyncFailure(error) {
+export function isTransientSyncFailure(error) {
   return flattenSyncErrors(error).some((item) => {
+    if (item?.code === "CLOUD_STATE_CONFLICT") return true;
     if (isNetworkFailure(item)) return true;
     const status = Number(item?.status ?? 0);
     return status === 408 || status === 425 || status === 429 || status >= 500;
+  });
+}
+
+function schedulePendingSharedStateRetry() {
+  if (
+    pendingSyncRetryTimer ||
+    pendingSyncRetryAttempt >= PENDING_SYNC_RETRY_DELAYS_MS.length ||
+    globalThis.navigator?.onLine === false ||
+    typeof globalThis.window?.setTimeout !== "function"
+  ) {
+    return;
+  }
+  const delay = PENDING_SYNC_RETRY_DELAYS_MS[pendingSyncRetryAttempt];
+  pendingSyncRetryAttempt += 1;
+  pendingSyncRetryTimer = globalThis.window.setTimeout(async () => {
+    pendingSyncRetryTimer = 0;
+    const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
+    if (result?.ok) {
+      resetPendingSharedStateRetry();
+    } else if (isTransientSyncFailure(result?.error)) {
+      schedulePendingSharedStateRetry();
+    }
+  }, delay);
+}
+
+function resetPendingSharedStateRetry() {
+  if (
+    pendingSyncRetryTimer &&
+    typeof globalThis.window?.clearTimeout === "function"
+  ) {
+    globalThis.window.clearTimeout(pendingSyncRetryTimer);
+  }
+  pendingSyncRetryTimer = 0;
+  pendingSyncRetryAttempt = 0;
+}
+
+function logSyncFailure(error, outcome) {
+  const errors = flattenSyncErrors(error);
+  const codes = [...new Set(errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean))];
+  const statuses = [...new Set(errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0))];
+  console.error("[sync] State save failed", {
+    codes,
+    statuses,
+    transient: isTransientSyncFailure(error),
+    online: globalThis.navigator?.onLine !== false,
+    ...outcome
   });
 }
 
@@ -1140,7 +1206,7 @@ function publishSyncStatus(status) {
   window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail: { status } }));
 }
 
-function publishSharedSaveReverted(syncSelection) {
+function publishSharedSaveReverted(syncSelection, error) {
   if (typeof window === "undefined" || !window.dispatchEvent) return;
 
   const EventConstructor = globalThis.CustomEvent;
@@ -1148,9 +1214,30 @@ function publishSharedSaveReverted(syncSelection) {
   window.dispatchEvent(new EventConstructor(SHARED_SAVE_REVERTED_EVENT, {
     detail: {
       eventIds: [...(syncSelection?.eventIds ?? [])],
-      deletedEventIds: [...(syncSelection?.deletedEventIds ?? [])]
+      deletedEventIds: [...(syncSelection?.deletedEventIds ?? [])],
+      failureKind: sharedSaveFailureKind(error)
     }
   }));
+}
+
+function sharedSaveFailureKind(error) {
+  const errors = flattenSyncErrors(error);
+  const codes = new Set(
+    errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean)
+  );
+  const statuses = new Set(
+    errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0)
+  );
+  if (statuses.has(401) || codes.has("CLOUD_STATE_AUTH_EXPIRED")) return "auth";
+  if (
+    statuses.has(403) ||
+    codes.has("SHARED_EVENT_MEMBERSHIP_REVOKED") ||
+    codes.has("SHARED_EVENT_CREATE_NOT_ALLOWED")
+  ) {
+    return "permission";
+  }
+  if ([400, 409, 422].some((status) => statuses.has(status))) return "rejected";
+  return "unavailable";
 }
 
 function saveLocalParticipantId(participantId) {

@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.73"
+        default: "3.74"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "100"
+        default: "101"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור מסך סגירת האירוע, התראות צפות ממותגות ומניעת לחיצות בזמן גלילה."
+        default: "שמירה בטוחה בקונפליקט בין מכשירים, ניסיונות סנכרון אוטומטיים והודעות שגיאה מדויקות יותר."
 
 permissions:
   contents: read

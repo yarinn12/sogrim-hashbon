@@ -430,6 +430,26 @@ test("sync failures surface a status rather than failing silently", () => {
   assert.match(localStore, /const SYNC_STATUS_EVENT = "sogrim:sync-status";/);
 });
 
+test("pending conflicts retry automatically with a short bounded backoff", () => {
+  assert.match(
+    localStore,
+    /const PENDING_SYNC_RETRY_DELAYS_MS = \[1_200, 3_500, 8_000\]/
+  );
+  assert.match(
+    localStore,
+    /if \(item\?\.code === "CLOUD_STATE_CONFLICT"\) return true;/
+  );
+  assert.match(
+    localStore,
+    /if \(pendingStateSaved\) schedulePendingSharedStateRetry\(\);/
+  );
+  assert.match(
+    localStore,
+    /const result = await flushPendingSharedState\(\)/
+  );
+  assert.match(localStore, /resetPendingSharedStateRetry\(\);/);
+});
+
 test("a failed shared-event write restores the last durable state instead of diverging offline", () => {
   const save = localStore.slice(
     localStore.indexOf("export async function saveSharedState(state)"),
@@ -439,7 +459,8 @@ test("a failed shared-event write restores the last durable state instead of div
   assert.match(save, /const hasSharedEventMutation = Boolean\(/);
   assert.match(save, /requestSaveGeneration === sharedStateSaveGeneration/);
   assert.match(save, /saveState\(previousState\);/);
-  assert.match(save, /publishSharedSaveReverted\(syncSelection\);/);
+  assert.match(save, /publishSharedSaveReverted\(syncSelection, error\);/);
+  assert.match(localStore, /failureKind: sharedSaveFailureKind\(error\)/);
   assert.match(localStore, /SHARED_SAVE_REVERTED_EVENT/);
 });
 

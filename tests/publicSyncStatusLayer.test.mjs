@@ -3,12 +3,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("public sync status reports cloud saves and recovery without cluttering screens", async () => {
-  const [index, sw, layer, localStore, circleDesign] = await Promise.all([
+  const [index, sw, layer, localStore, circleDesign, app] = await Promise.all([
     readFile("index.html", "utf8"),
     readFile("sw.js", "utf8"),
     readFile("src/publicSyncStatusLayer.mjs", "utf8"),
     readFile("src/data/localStore.mjs", "utf8"),
-    readFile("src/publicCircleDesignLayer.mjs", "utf8")
+    readFile("src/publicCircleDesignLayer.mjs", "utf8"),
+    readFile("src/app.mjs", "utf8")
   ]);
 
   assert.match(index, /publicSyncStatusLayer\.mjs/);
@@ -78,6 +79,10 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.doesNotMatch(layer, /checkInitialReadiness/);
   assert.match(localStore, /PENDING_SYNC_KEY_PREFIX/);
   assert.match(localStore, /CLOUD_STATE_CONFLICT/);
+  assert.match(localStore, /PENDING_SYNC_RETRY_DELAYS_MS/);
+  assert.doesNotMatch(app, /השינוי לא נשמר כי הסנכרון לא זמין/);
+  assert.match(app, /אין לחשבון הרשאה לבצע את השינוי הזה/);
+  assert.match(app, /השינוי לא התקבל בשרת/);
   assert.match(localStore, /window\.addEventListener\("online"/);
   assert.match(
     localStore,

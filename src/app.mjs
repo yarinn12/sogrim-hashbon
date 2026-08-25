@@ -445,9 +445,16 @@ document.addEventListener("settle-friends:push-status", (event) => {
   requestResumeSync({ force: true }).catch(() => {});
 });
 
-function handleSharedSaveReverted() {
+function handleSharedSaveReverted(event) {
   state = loadState();
-  notice = "השינוי לא נשמר כי הסנכרון לא זמין. המידע הוחזר לגרסה האחרונה שנשמרה.";
+  const failureKind = event?.detail?.failureKind ?? "unavailable";
+  notice = failureKind === "auth"
+    ? "השינוי לא נשמר כי החיבור לחשבון פג. התחברו מחדש ונסו שוב."
+    : failureKind === "permission"
+      ? "אין לחשבון הרשאה לבצע את השינוי הזה. המידע הוחזר לגרסה האחרונה שנשמרה."
+      : failureKind === "rejected"
+        ? "השינוי לא התקבל בשרת. המידע הוחזר לגרסה האחרונה שנשמרה."
+        : "לא הצלחנו לשמור את השינוי בשרת. המידע הוחזר לגרסה האחרונה שנשמרה.";
   render();
   if (expenseDraft) {
     expenseDraft.error = "השינוי לא נשמר. בדקו את החיבור ונסו שוב.";
