@@ -121,7 +121,7 @@ function openInstallDialog() {
           <li><span>1</span><div><strong>פתח את הקישור ב-Safari</strong><p>אם הגעת מוואטסאפ או מדפדפן אחר, בחר פתיחה ב-Safari.</p></div></li>
           <li><span>2</span><div><strong>פתח את כפתור השיתוף</strong><p>הכפתור נראה כמו ריבוע עם חץ כלפי מעלה.</p></div></li>
           <li><span>3</span><div><strong>בחר "הוספה למסך הבית"</strong><p>גלול ברשימת הפעולות אם האפשרות לא מופיעה מיד.</p></div></li>
-          <li><span>4</span><div><strong>הפעל "Open as Web App"</strong><p>לאחר הפעלת המתג לחץ "הוסף". כך האפליקציה תיפתח בלי שורת הדפדפן.</p></div></li>
+          <li class="install-app-required-step"><span>4</span><div><strong>חובה להפעיל "Open as Web App"</strong><p>אם המתג כבוי ייווצר קיצור דרך שמרגיש כמו דפדפן. הפעל אותו ורק אז לחץ "הוסף".</p></div></li>
         </ol>
       `
     : `
@@ -376,6 +376,14 @@ function injectInstallStyles() {
       color: #fff;
       background: #08776d;
       font-weight: 800;
+    }
+
+    .install-app-steps .install-app-required-step {
+      border-color: rgba(8, 119, 109, 0.34);
+      background: #e8f5f2;
+      box-shadow:
+        0 0 0 1px rgba(8, 119, 109, 0.08),
+        0 10px 24px -20px rgba(7, 85, 79, 0.44);
     }
 
     .install-app-steps strong {

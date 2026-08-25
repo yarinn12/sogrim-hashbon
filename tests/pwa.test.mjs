@@ -38,13 +38,13 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.equal(manifest.short_name, "סוגרים");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.id, "./");
-  assert.deepEqual(manifest.display_override, ["standalone", "minimal-ui"]);
+  assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=336");
+  assert.equal(manifest.start_url, "./?pwa_release=337");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=336&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=337&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -59,10 +59,14 @@ test("index links the manifest and mobile app metadata", async () => {
 
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=336"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=337"/
   );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
+  assert.match(html, /name="mobile-web-app-capable" content="yes"/);
+  assert.match(html, /name="apple-mobile-web-app-status-bar-style" content="black-translucent"/);
+  assert.match(html, /name="format-detection" content="telephone=no"/);
+  assert.match(html, /viewport-fit=cover, interactive-widget=resizes-content/);
   assert.match(html, /rel="icon" href="\.\/icon-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
   assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs"/);
@@ -179,6 +183,21 @@ test("the early PWA bootstrap checks for updates before the full app finishes lo
   assert.match(bootstrap, /addEventListener\("pageshow", checkForUpdate\)/);
   assert.match(bootstrap, /addEventListener\("focus", checkForUpdate\)/);
   assert.match(bootstrap, /addEventListener\("online", checkForUpdate\)/);
+});
+
+test("home-screen mode receives an app canvas instead of browser-like chrome behavior", async () => {
+  const [bootstrap, styles] = await Promise.all([
+    readFile("src/pwaBootstrap.mjs", "utf8"),
+    readFile("styles.css", "utf8")
+  ]);
+
+  assert.match(bootstrap, /navigator\.standalone === true/);
+  assert.match(bootstrap, /classList\.toggle\("pwa-standalone", standalone\)/);
+  assert.match(bootstrap, /dataset\.appDisplayMode = standalone \? "standalone" : "browser"/);
+  assert.match(styles, /html\.pwa-standalone \{[\s\S]*?overscroll-behavior: none/);
+  assert.match(styles, /html\.pwa-standalone body::before[\s\S]*?safe-area-inset-top/);
+  assert.match(styles, /html\.pwa-standalone :is\(button, a, \[role="button"\], summary\)[\s\S]*?-webkit-touch-callout: none/);
+  assert.match(styles, /html\.pwa-standalone #app \{[\s\S]*?min-height: 100dvh/);
 });
 
 test("an installed app reloads once when a new service worker takes control", async () => {

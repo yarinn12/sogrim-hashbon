@@ -405,6 +405,53 @@ body {
   line-height: 1.5;
 }
 
+/* Home-screen installs should behave like an app canvas, not a Safari tab. */
+html.pwa-standalone {
+  width: 100%;
+  min-height: 100%;
+  background: #10312b;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+html.pwa-standalone body {
+  width: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.pwa-standalone body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 2147483646;
+  height: env(safe-area-inset-top);
+  pointer-events: none;
+  background: #10312b;
+}
+
+html.pwa-standalone #app {
+  min-height: 100svh;
+  min-height: 100dvh;
+}
+
+html.pwa-standalone :is(button, a, [role="button"], summary) {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+html.pwa-standalone :is(input, textarea, select, [contenteditable="true"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .font-hebrew {
   font-family: var(--font-hebrew);
 }

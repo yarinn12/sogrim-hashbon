@@ -1,8 +1,25 @@
-const PWA_RELEASE = "336";
+const PWA_RELEASE = "337";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const UPDATE_RELOAD_STORAGE_KEY = "settle-friends-pwa-update-reload";
+const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 
+markStandaloneAppMode();
+watchStandaloneAppMode();
 startPwaLifecycle();
+
+function markStandaloneAppMode() {
+  const standalone = Boolean(standaloneQuery?.matches || navigator.standalone === true);
+  document.documentElement.classList.toggle("pwa-standalone", standalone);
+  document.documentElement.dataset.appDisplayMode = standalone ? "standalone" : "browser";
+}
+
+function watchStandaloneAppMode() {
+  if (standaloneQuery?.addEventListener) {
+    standaloneQuery.addEventListener("change", markStandaloneAppMode);
+    return;
+  }
+  standaloneQuery?.addListener?.(markStandaloneAppMode);
+}
 
 async function startPwaLifecycle() {
   if (!("serviceWorker" in navigator)) return;

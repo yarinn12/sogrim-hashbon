@@ -2,11 +2,11 @@
   "name": "סוגרים חשבון",
   "short_name": "סוגרים",
   "description": "ניהול הוצאות אירוע וסגירת חובות בין חברים.",
-  "start_url": "./?pwa_release=336",
+  "start_url": "./?pwa_release=337",
   "scope": "./",
   "id": "./",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": ["standalone"],
   "dir": "rtl",
   "lang": "he",
   "background_color": "#f3f7f6",
@@ -18,7 +18,7 @@
       "name": "אירוע חדש",
       "short_name": "אירוע",
       "description": "פתיחת אירוע חדש לחברים.",
-      "url": "./?pwa_release=336&action=new-event",
+      "url": "./?pwa_release=337&action=new-event",
       "icons": [
         {
           "src": "./icon-192.png",

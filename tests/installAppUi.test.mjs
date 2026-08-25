@@ -13,7 +13,9 @@ test("install layer offers native Android installation and iOS home screen guida
   assert.match(layer, /הוספה למסך הבית/);
   assert.match(layer, /פתח את הקישור ב-Safari/);
   assert.match(layer, /Open as Web App/);
-  assert.match(layer, /כך האפליקציה תיפתח בלי שורת הדפדפן/);
+  assert.match(layer, /חובה להפעיל "Open as Web App"/);
+  assert.match(layer, /קיצור דרך שמרגיש כמו דפדפן/);
+  assert.match(layer, /install-app-required-step/);
   assert.match(layer, /data-public-install-app/);
   assert.match(layer, /\.account-profile-actions/);
   assert.match(layer, /#public-account-auth-gate \.account-auth-form-panel/);
