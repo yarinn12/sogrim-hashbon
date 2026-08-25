@@ -87,3 +87,22 @@ test("noncritical native services initialize only after the first interactive sc
   assert.match(serviceWorker, /startupMetrics\.mjs/);
   assert.match(serviceWorker, /startupScheduler\.mjs/);
 });
+
+test("the current public avatar is reconciled before the first interactive render", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const hydration = app.slice(
+    app.indexOf("async function hydrateAppForActiveAccount()"),
+    app.indexOf("async function setEventRepaymentMode")
+  );
+  const avatarHydration = hydration.indexOf(
+    "await hydrateOwnPublicAvatarBeforeFirstRender()"
+  );
+  const firstRender = hydration.indexOf("appBootHydrated = true");
+
+  assert.ok(avatarHydration >= 0);
+  assert.ok(firstRender > avatarHydration);
+  assert.match(
+    hydration,
+    /const profilePublicationReady = startupState\.refresh[\s\S]*?then\(\(\) => startupState\.refresh\)[\s\S]*?publishCurrentProfileToSharedEventsOnce/
+  );
+});

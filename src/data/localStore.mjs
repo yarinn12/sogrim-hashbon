@@ -597,7 +597,10 @@ async function loadSharedStateOnce(requestScope) {
 }
 
 export async function saveSharedState(state) {
-  const { forceSharedParticipantIds = [] } = arguments[1] ?? {};
+  const {
+    forceSharedParticipantIds = [],
+    suppressRevertNotice = false
+  } = arguments[1] ?? {};
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
   const requestAccountParticipantId = requestAccountUserId
@@ -716,7 +719,9 @@ export async function saveSharedState(state) {
               pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
             } else {
               saveState(previousState);
-              publishSharedSaveReverted(syncSelection, error);
+              if (!suppressRevertNotice) {
+                publishSharedSaveReverted(syncSelection, error);
+              }
               reverted = true;
             }
           }

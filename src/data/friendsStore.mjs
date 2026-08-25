@@ -148,6 +148,22 @@ export async function loadFriendNetwork(config, fetchImpl = fetch) {
   };
 }
 
+export async function loadOwnFriendProfile(
+  config,
+  { fetchImpl = fetch, timeoutMs } = {}
+) {
+  if (!friendNetworkAvailable(config)) return null;
+
+  const userId = config.storage.account.userId;
+  const profiles = await readFriendProfiles(
+    config,
+    [userId],
+    fetchImpl,
+    timeoutMs
+  );
+  return profiles.find((profile) => profile.user_id === userId) ?? null;
+}
+
 async function patchFriendProfile(config, body, select, fetchImpl) {
   const response = await fetchWithTimeout(
     fetchImpl,
@@ -169,14 +185,15 @@ async function patchFriendProfile(config, body, select, fetchImpl) {
   return Array.isArray(rows) ? rows[0] ?? null : rows;
 }
 
-async function readFriendProfiles(config, userIds, fetchImpl) {
+async function readFriendProfiles(config, userIds, fetchImpl, timeoutMs) {
   const query = { user_id: `in.(${userIds.join(",")})` };
   try {
     return await readRows(
       config,
       "user_profiles",
       { ...query, select: PROFILE_SELECT },
-      fetchImpl
+      fetchImpl,
+      timeoutMs
     );
   } catch (error) {
     if (missingAvatarImageUpdatedAtColumn(error)) {
@@ -185,7 +202,8 @@ async function readFriendProfiles(config, userIds, fetchImpl) {
           config,
           "user_profiles",
           { ...query, select: AVATAR_IMAGE_PROFILE_SELECT },
-          fetchImpl
+          fetchImpl,
+          timeoutMs
         );
       } catch (imageError) {
         if (!missingAvatarImageColumn(imageError)) throw imageError;
@@ -197,7 +215,8 @@ async function readFriendProfiles(config, userIds, fetchImpl) {
       config,
       "user_profiles",
       { ...query, select: LEGACY_PROFILE_SELECT },
-      fetchImpl
+      fetchImpl,
+      timeoutMs
     );
   }
 }
@@ -467,13 +486,14 @@ function normalizeAccountUserId(value) {
   return ACCOUNT_USER_ID_PATTERN.test(userId) ? userId : "";
 }
 
-async function readRows(config, table, query, fetchImpl) {
+async function readRows(config, table, query, fetchImpl, timeoutMs) {
   const response = await fetchWithTimeout(
     fetchImpl,
     restUrl(config, table, query),
     {
       headers: friendHeaders(config)
-    }
+    },
+    timeoutMs
   );
   const rows = await responseJson(response);
   if (!response.ok) throw friendStoreError(rows, "Friend data unavailable");

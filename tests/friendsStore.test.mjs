@@ -6,6 +6,7 @@ import {
   buildFriendInviteUrl,
   friendInviteCodeFromUrl,
   loadFriendNetwork,
+  loadOwnFriendProfile,
   manageFriendship,
   normalizeFriendCode,
   requestFriendship,
@@ -184,6 +185,33 @@ test("profile refresh patches the existing triggered row without inserting a nul
   assert.ok(Number.isFinite(Date.parse(body.avatar_image_updated_at)));
   assert.ok(!("user_id" in body));
   assert.ok(!("username" in body));
+});
+
+test("startup can load only the signed-in user's public profile", async () => {
+  const requests = [];
+  const profile = await loadOwnFriendProfile(accountConfig(), {
+    fetchImpl: async (url, options = {}) => {
+      requests.push({ url, options });
+      return jsonResponse([
+        {
+          user_id: userId,
+          display_name: "Current User",
+          avatar_image: "data:image/png;base64,chosen-avatar",
+          avatar_image_updated_at: "2026-08-25T09:00:00.000Z"
+        }
+      ]);
+    },
+    timeoutMs: 3_000
+  });
+
+  assert.equal(profile.user_id, userId);
+  assert.equal(profile.avatar_image, "data:image/png;base64,chosen-avatar");
+  assert.equal(requests.length, 1);
+  assert.equal(
+    new URL(requests[0].url).searchParams.get("user_id"),
+    `in.(${userId})`
+  );
+  assert.equal(requests[0].options.headers.authorization, "Bearer private-user-token");
 });
 
 test("a fresh installation without avatar knowledge cannot clear the cloud avatar", async () => {

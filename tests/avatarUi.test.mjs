@@ -58,6 +58,10 @@ test("gallery avatars stay out of auth metadata while syncing to the public prof
   assert.match(app, /avatarImageUpdatedAt: profileUpdatedAt/);
   assert.match(app, /publishCurrentProfileToSharedEventsOnce/);
   assert.match(app, /forceSharedParticipantIds: \[participantId\]/);
+  assert.match(
+    app,
+    /forceSharedParticipantIds: \[participantId\],[\s\S]*?suppressRevertNotice: true/
+  );
   assert.match(app, /CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200/);
   assert.match(localStore, /profileUpdatedAtField\(profile\.profileUpdatedAt\)/);
   assert.match(

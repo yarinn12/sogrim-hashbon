@@ -139,6 +139,7 @@ import {
   friendInviteCodeFromUrl,
   friendNetworkAvailable,
   loadFriendNetwork,
+  loadOwnFriendProfile,
   manageFriendship,
   normalizeFriendCode,
   requestFriendship,
@@ -239,6 +240,7 @@ const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000;
 const CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200;
+const OWN_PROFILE_STARTUP_WAIT_MS = 3_000;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const DIALOG_OPEN_ACTIONS = new Set([
@@ -8822,7 +8824,8 @@ async function publishCurrentProfileToSharedEventsOnce() {
   if (window.localStorage.getItem(markerKey) === profileUpdatedAt) return false;
 
   const result = await saveSharedState(state, {
-    forceSharedParticipantIds: [participantId]
+    forceSharedParticipantIds: [participantId],
+    suppressRevertNotice: true
   });
   if (result?.ok && result?.pending !== true) {
     rememberPublishedSharedProfile(participantId);
@@ -13690,7 +13693,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     state = nextState;
     if (JSON.stringify(previousState) !== JSON.stringify(nextState)) {
       try {
-        await saveSharedState(state);
+        await saveSharedState(state, { suppressRevertNotice: true });
       } catch {
         console.warn("[friends] Local friend cache save deferred");
       }
@@ -13735,6 +13738,39 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     }
   }
   publishNotificationNavigationState();
+}
+
+async function hydrateOwnPublicAvatarBeforeFirstRender() {
+  if (!localProfile || !friendNetworkAvailable(runtimeConfig)) return;
+
+  try {
+    const ownNetworkProfile = await loadOwnFriendProfile(runtimeConfig, {
+      timeoutMs: OWN_PROFILE_STARTUP_WAIT_MS
+    });
+    if (!ownNetworkProfile) return;
+
+    const avatarResolution = resolveProfileAvatar(
+      {
+        avatarImage: localProfile.avatarImage,
+        avatarImageUpdatedAt: localProfile.avatarImageUpdatedAt
+      },
+      {
+        avatarImage: ownNetworkProfile.avatar_image,
+        avatarImageUpdatedAt: ownNetworkProfile.avatar_image_updated_at
+      }
+    );
+    if (avatarResolution.source !== "remote") return;
+
+    localProfile = saveLocalProfile({
+      ...localProfile,
+      participantId: state.currentParticipantId,
+      avatarImage: avatarResolution.avatarImage,
+      avatarImageUpdatedAt: avatarResolution.avatarImageUpdatedAt
+    });
+    state = syncLocalProfile(state);
+  } catch {
+    // Keep startup usable offline; the regular friend refresh retries later.
+  }
 }
 
 function requestVisibleFriendNetworkSync() {
@@ -18516,6 +18552,7 @@ async function hydrateAppForActiveAccount() {
     localProfile && hasSharedStateChanged(sharedState, nextState)
   );
   state = nextState;
+  await hydrateOwnPublicAvatarBeforeFirstRender();
   const startupProfileSaveRequest = shouldSaveJoinedProfile
     ? saveSharedState(state)
     : null;
@@ -18544,7 +18581,10 @@ async function hydrateAppForActiveAccount() {
   appBootHydrated = true;
   render();
   startupProfileSaveRequest?.catch(() => {});
-  Promise.resolve(startupProfileSaveRequest)
+  const profilePublicationReady = startupState.refresh
+    ? Promise.resolve(startupProfileSaveRequest).then(() => startupState.refresh)
+    : Promise.resolve(startupProfileSaveRequest);
+  profilePublicationReady
     .then(() => publishCurrentProfileToSharedEventsOnce())
     .catch(() => {});
   refreshStartupSharedState(startupState.refresh);

@@ -160,7 +160,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /const saveRequest = accountStateChanged[\s\S]*?saveSharedState\(nextState\)[\s\S]*?mode: "unchanged"/
+    /const saveRequest = accountStateChanged[\s\S]*?saveSharedState\(nextState, \{ suppressRevertNotice: true \}\)[\s\S]*?mode: "unchanged"/
   );
   assert.match(
     layer,
@@ -182,7 +182,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.ok(
     accountConnection.indexOf("mergeSharedEventIntoState(") <
-      accountConnection.indexOf("saveSharedState(nextState)")
+      accountConnection.indexOf("saveSharedState(nextState,")
   );
   const connectAccountSource = layer.slice(
     layer.indexOf("async function connectAccountToApp"),

@@ -549,7 +549,7 @@ async function connectAccountToApp(
     nextState
   );
   const saveRequest = accountStateChanged
-    ? saveSharedState(nextState)
+    ? saveSharedState(nextState, { suppressRevertNotice: true })
     : Promise.resolve({ ok: true, mode: "unchanged" });
   const saveResult = await saveRequest;
   const invitedEventWasDeleted = nextState.deletedEvents?.some(
