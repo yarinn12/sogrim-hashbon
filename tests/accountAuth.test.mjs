@@ -22,6 +22,7 @@ import {
   loadStoredAccountSession,
   parseAccountSessionSync,
   publishAccountSessionSync,
+  resendSignupConfirmation,
   saveAccountSession,
   deleteAccount,
   exchangeOAuthCode,
@@ -614,6 +615,26 @@ test("account auth errors stay helpful without exposing account existence", () =
     accountAuthErrorMessage(new Error("Failed to fetch"), "google"),
     "לא הצלחנו להגיע לשירות החשבון. כדאי לבדוק את החיבור ולנסות שוב."
   );
+});
+
+test("signup confirmation can be resent without revealing whether the email exists", async () => {
+  let request = null;
+  const result = await resendSignupConfirmation(
+    config,
+    "  USER@example.com ",
+    "https://app.example.com/auth/callback",
+    async (url, options) => {
+      request = { url, options };
+      return jsonResponse(200, {});
+    }
+  );
+
+  assert.equal(result, true);
+  assert.match(request.url, /\/auth\/v1\/resend\?redirect_to=/);
+  assert.deepEqual(JSON.parse(request.options.body), {
+    type: "signup",
+    email: "user@example.com"
+  });
 });
 
 function memoryStorage() {

@@ -101,6 +101,8 @@ test("participant search appears only above the threshold and filters in the DOM
   );
   assert.match(app, /data-action="participant-search"/);
   assert.match(app, /function filterParticipantChecks\(input\)/);
+  assert.match(app, /function setSearchResultHidden\(element, hidden\)/);
+  assert.match(app, /element\.style\.setProperty\("display", "none", "important"\)/);
   assert.match(app, /data-participant-name="\$\{escapeAttribute\(displayName\.toLowerCase\(\)\)\}"/);
 });
 

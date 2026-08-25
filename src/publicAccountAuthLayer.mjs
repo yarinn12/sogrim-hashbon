@@ -27,6 +27,7 @@ import {
   publishAccountSessionSync,
   refreshAccountSession,
   requestPasswordReset,
+  resendSignupConfirmation,
   saveAccountOAuthFlow,
   saveAccountSession,
   sessionFromOAuthHash,
@@ -768,6 +769,7 @@ function renderAccountGate({
   message = "",
   error = "",
   errorFieldName = "",
+  showVerificationResend = false,
   values = {}
 } = {}) {
   document.querySelector(".public-profile-gate")?.remove();
@@ -880,6 +882,11 @@ function renderAccountGate({
             }
             ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
             ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+            ${
+              showVerificationResend
+                ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
+                : ""
+            }
             <button class="primary-button account-auth-submit" type="submit">
               ${
                 inviteContext
@@ -1113,7 +1120,8 @@ async function handleAccountSubmit(event) {
         renderAccountGate({
           mode: "login",
           message: "שלחנו אליך קישור לאישור המייל. אחרי האישור אפשר להתחבר.",
-          values: { email }
+          values: { email },
+          showVerificationResend: true
         });
         return;
       }
@@ -1169,6 +1177,9 @@ async function handleAccountSubmit(event) {
       });
       return;
     }
+    const emailNotConfirmed = String(error?.message ?? "")
+      .toLowerCase()
+      .includes("email not confirmed");
     renderAccountGate({
       mode,
       values: {
@@ -1180,7 +1191,8 @@ async function handleAccountSubmit(event) {
         ? "צריך להזין שם פרטי ושם משפחה."
         : confirmationError
           ? "הסיסמאות אינן זהות או קצרות מדי."
-        : accountAuthErrorMessage(error, mode)
+        : accountAuthErrorMessage(error, mode),
+      showVerificationResend: emailNotConfirmed
     });
   } finally {
     setAuthBusy(false);
@@ -1389,6 +1401,46 @@ async function handleAccountClick(event) {
       focusAccountInput(document.getElementById(GATE_ID), {
         includeMobile: true,
         fieldName: "email"
+      });
+    } finally {
+      setAuthBusy(false);
+    }
+    return;
+  }
+
+  if (action === "resend-verification") {
+    const email = String(
+      document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
+    ).trim().toLowerCase();
+    if (!email || !email.includes("@")) {
+      renderAccountGate({
+        mode: "login",
+        error: "צריך להזין אימייל כדי לשלוח קישור אימות חדש.",
+        values: { email },
+        showVerificationResend: true
+      });
+      focusAccountInput(document.getElementById(GATE_ID), {
+        includeMobile: true,
+        fieldName: "email"
+      });
+      return;
+    }
+    setAuthBusy(true);
+    try {
+      await resendSignupConfirmation(runtimeConfig, email, authRedirectUrl());
+      renderAccountGate({
+        mode: "login",
+        message: "שלחנו קישור אימות חדש. כדאי לבדוק גם בתיקיית הספאם.",
+        values: { email },
+        showVerificationResend: true
+      });
+    } catch (error) {
+      emitOperationFailure("auth", { screen: "auth" });
+      renderAccountGate({
+        mode: "login",
+        error: accountAuthErrorMessage(error),
+        values: { email },
+        showVerificationResend: true
       });
     } finally {
       setAuthBusy(false);

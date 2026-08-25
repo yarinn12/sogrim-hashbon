@@ -9974,13 +9974,16 @@ function filterParticipantChecks(input) {
   checks.querySelectorAll("[data-participant-name]").forEach((row) => {
     const name = row.dataset.participantName ?? "";
     const matches = !query || name.includes(query);
-    row.hidden = !matches;
+    setSearchResultHidden(row, !matches);
     if (matches) visibleCount += 1;
   });
 
   checks.querySelectorAll("[data-participant-identity-group]").forEach((group) => {
-    group.hidden = ![...group.querySelectorAll("[data-participant-name]")].some(
-      (row) => !row.hidden
+    setSearchResultHidden(
+      group,
+      ![...group.querySelectorAll("[data-participant-name]")].some(
+        (row) => !row.hidden
+      )
     );
   });
 
@@ -9988,6 +9991,15 @@ function filterParticipantChecks(input) {
     '[data-participant-search-empty][role="status"]'
   );
   if (emptyNote) emptyNote.hidden = visibleCount > 0;
+}
+
+function setSearchResultHidden(element, hidden) {
+  element.hidden = hidden;
+  if (hidden) {
+    element.style.setProperty("display", "none", "important");
+  } else {
+    element.style.removeProperty("display");
+  }
 }
 
 function filterFriendRows(input) {
@@ -9999,13 +10011,16 @@ function filterFriendRows(input) {
   roster.querySelectorAll("[data-friend-name]").forEach((row) => {
     const name = row.dataset.friendName ?? "";
     const matches = !query || name.includes(query);
-    row.hidden = !matches;
+    setSearchResultHidden(row, !matches);
     if (matches) visibleCount += 1;
   });
 
   roster.querySelectorAll("[data-friend-identity-section]").forEach((section) => {
-    section.hidden = ![...section.querySelectorAll("[data-friend-name]")].some(
-      (row) => !row.hidden
+    setSearchResultHidden(
+      section,
+      ![...section.querySelectorAll("[data-friend-name]")].some(
+        (row) => !row.hidden
+      )
     );
   });
 
@@ -12534,8 +12549,16 @@ function handleInput(event) {
     profileNameDraft = target.value;
     profileError = "";
   }
-  if (action === "new-event-name") newEventDraft.name = target.value;
-  if (action === "new-event-guest-name") newEventDraft.guestName = target.value;
+  if (action === "new-event-name" && newEventDraft) {
+    newEventDraft.name = target.value;
+    replaceBrowserHistoryState();
+    return;
+  }
+  if (action === "new-event-guest-name" && newEventDraft) {
+    newEventDraft.guestName = target.value;
+    replaceBrowserHistoryState();
+    return;
+  }
   if (action === "join-event-link") {
     ensureJoinEventDraft();
     joinEventDraft.link = target.value;

@@ -846,7 +846,8 @@ test("participant search targets every current participant manager container", a
     /\.participant-checks-set, \[data-participant-checks-for\], \[data-event-participant-roster\]/
   );
   assert.match(filter, /\[data-participant-identity-group\]/);
-  assert.match(filter, /row\.hidden = !matches/);
+  assert.match(filter, /setSearchResultHidden\(row, !matches\)/);
+  assert.match(filter, /style\.setProperty\("display", "none", "important"\)/);
 });
 
 test("participant membership changes protect creators and admins while preserving money", async () => {

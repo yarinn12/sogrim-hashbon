@@ -356,6 +356,25 @@ export async function requestPasswordReset(
   return true;
 }
 
+export async function resendSignupConfirmation(
+  config,
+  email,
+  redirectTo,
+  fetchImpl = fetch
+) {
+  const path = redirectTo
+    ? `/resend?redirect_to=${encodeURIComponent(redirectTo)}`
+    : "/resend";
+  await authRequest(config, path, {
+    method: "POST",
+    body: {
+      type: "signup",
+      email: String(email ?? "").trim().toLowerCase()
+    }
+  }, fetchImpl);
+  return true;
+}
+
 export async function ensureAccountWorkspace(config, session, options = {}) {
   const existing = accountWorkspaceFromUser(session?.user);
   if (existing) {

@@ -79,6 +79,46 @@ test("password recovery keeps validation and success feedback visible", async ({
   expect(recoveryRequests).toBe(1);
 });
 
+test("an unconfirmed account can request a fresh verification email", async ({ page }) => {
+  let resendRequests = 0;
+  await page.route(`${AUTH_ORIGIN}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (route.request().method() === "OPTIONS") {
+      return route.fulfill({ status: 204, body: "" });
+    }
+    if (url.pathname.endsWith("/auth/v1/token")) {
+      return route.fulfill({
+        status: 400,
+        json: { message: "Email not confirmed" }
+      });
+    }
+    if (url.pathname.endsWith("/auth/v1/resend")) {
+      resendRequests += 1;
+      expect(route.request().postDataJSON()).toEqual({
+        type: "signup",
+        email: "qa@example.com"
+      });
+      return route.fulfill({ status: 200, json: {} });
+    }
+    return route.fulfill({ status: 200, json: [] });
+  });
+
+  await page.goto("/");
+  const gate = page.locator("#public-account-auth-gate");
+  await gate.locator('input[name="email"]').fill("qa@example.com");
+  await gate.locator('input[name="password"]').fill("correct-password");
+  await gate.getByRole("button", { name: "התחבר", exact: true }).click();
+
+  await expect(gate.locator("#account-auth-feedback")).toContainText(
+    "צריך לאשר את המייל"
+  );
+  await gate.getByRole("button", { name: "שלח שוב קישור אימות" }).click();
+  await expect(gate.locator("#account-auth-feedback")).toContainText(
+    "שלחנו קישור אימות חדש"
+  );
+  expect(resendRequests).toBe(1);
+});
+
 test("login and signup errors remain visible next to the relevant fields", async ({ page }) => {
   await page.route(`${AUTH_ORIGIN}/**`, async (route) => {
     const url = new URL(route.request().url());

@@ -52,7 +52,8 @@ test("participant search filters the DOM instead of re-rendering the dialog", ()
   );
 
   assert.doesNotMatch(filter, /\brender\(\)/, "a re-render would drop keyboard focus mid-typing");
-  assert.match(filter, /row\.hidden = !matches;/);
+  assert.match(filter, /setSearchResultHidden\(row, !matches\);/);
+  assert.match(filter, /style\.setProperty\("display", "none", "important"\);/);
   assert.match(filter, /querySelectorAll\("\[data-participant-name\]"\)/);
   assert.match(filter, /data-participant-search-empty/, "an empty result is announced");
   assert.match(filter, /role="status"/);

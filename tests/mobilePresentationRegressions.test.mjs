@@ -67,11 +67,11 @@ test("mobile share choices remain separate when text grows", () => {
 test("settlement completion feedback stays roomy and branded across mobile sizes", () => {
   assert.match(
     coherenceLayer,
-    /\.app-toast \{[\s\S]*?position: fixed !important;[\s\S]*?inset-block-start: auto !important;[\s\S]*?inset-block-end: calc\(env\(safe-area-inset-bottom\) \+ 96px\) !important;[\s\S]*?width: min\(520px, calc\(100vw - 28px\)\) !important;[\s\S]*?grid-template-columns: 44px minmax\(0, 1fr\) 44px !important;/
+    /\.app-toast \{[\s\S]*?position: fixed !important;[\s\S]*?inset-block-start: auto !important;[\s\S]*?inset-block-end: calc\(env\(safe-area-inset-bottom\) \+ 100px\) !important;[\s\S]*?width: min\(520px, calc\(100vw - 28px\)\) !important;[\s\S]*?grid-template-columns: 44px minmax\(0, 1fr\) 44px !important;[\s\S]*?pointer-events: none !important;/
   );
   assert.match(
     coherenceLayer,
-    /button\.app-toast-close \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important;/
+    /button\.app-toast-close \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important;[\s\S]*?pointer-events: auto !important;/
   );
   assert.match(
     coherenceLayer,

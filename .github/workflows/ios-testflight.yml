@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.78"
+        default: "3.79"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "105"
+        default: "106"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "סנכרון אמין בין מכשירים, שמירת נתוני אופליין, תמונת פרופיל אחידה וקישורי הזמנה קבועים."
+        default: "אימות מייל נגיש יותר, שחזור חשבון יציב והודעות שאינן חוסמות פעולות במסך."
 
 permissions:
   contents: read

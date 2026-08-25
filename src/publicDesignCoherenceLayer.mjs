@@ -3564,7 +3564,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast {
     position: fixed !important;
     inset-block-start: auto !important;
-    inset-block-end: calc(env(safe-area-inset-bottom) + 96px) !important;
+    inset-block-end: calc(env(safe-area-inset-bottom) + 100px) !important;
     inset-inline: 14px !important;
     z-index: 180 !important;
     width: min(520px, calc(100vw - 28px)) !important;
@@ -3588,6 +3588,7 @@ const CSS = `
     font-weight: 650 !important;
     line-height: 1.45 !important;
     direction: rtl !important;
+    pointer-events: none !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body > .public-sync-status.app-toast[hidden] {
@@ -3633,6 +3634,7 @@ const CSS = `
     color: var(--app-muted-strong) !important;
     background: rgba(6, 75, 67, 0.06) !important;
     box-shadow: none !important;
+    pointer-events: auto !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app button.app-toast-close:hover,

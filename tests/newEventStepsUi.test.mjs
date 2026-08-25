@@ -147,6 +147,10 @@ test("event details open settlement before participant management", async () => 
     app,
     /if \(action === "open-new-event-settlement"\) \{[\s\S]*?syncNewEventDraftFromRenderedDetails\(\)/
   );
+  assert.match(
+    app,
+    /if \(action === "new-event-name" && newEventDraft\) \{[\s\S]*?newEventDraft\.name = target\.value;[\s\S]*?replaceBrowserHistoryState\(\)/
+  );
 });
 
 test("new event participants offer friends, offline names, and an invite link or QR", async () => {

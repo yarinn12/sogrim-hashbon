@@ -54,6 +54,8 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /data-account-mode="signup"/);
   assert.match(layer, /signInWithPassword/);
   assert.match(layer, /signUpWithPassword/);
+  assert.match(layer, /resendSignupConfirmation/);
+  assert.match(layer, /data-account-action="resend-verification"/);
   assert.match(layer, /googleOAuthUrl/);
   assert.match(layer, /@capgo\/capacitor-social-login/);
   assert.match(layer, /signInWithIdToken/);

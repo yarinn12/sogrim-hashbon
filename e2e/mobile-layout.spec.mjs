@@ -92,11 +92,13 @@ test.beforeEach(async ({ page, request }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
+    const text = message.text();
     if (
       message.type() === "error" &&
-      !message.text().startsWith("Failed to load resource:")
+      !text.startsWith("Failed to load resource:") &&
+      text !== 'Viewport argument key "interactive-widget" not recognized and ignored.'
     ) {
-      runtimeIssues.push(`console: ${message.text()}`);
+      runtimeIssues.push(`console: ${text}`);
     }
   });
   page.on("response", (response) => {

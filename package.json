@@ -10,6 +10,7 @@
     "qa:coverage": "node scripts/run-tests.mjs --coverage",
     "qa:mobile": "playwright test",
     "qa:memory": "node scripts/verify-account-memory.mjs",
+    "qa:accounts-live": "node scripts/audit-account-integrity-live.mjs",
     "qa:two-account-live": "node scripts/verify-two-account-event-live.mjs",
     "qa:friends-live": "node scripts/verify-friend-network-live.mjs",
     "qa:notifications-live": "node scripts/verify-notification-inbox-live.mjs",
