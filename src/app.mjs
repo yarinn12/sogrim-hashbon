@@ -5754,6 +5754,7 @@ function renderAvailableEventParticipantRow(event, participant, canEdit) {
 }
 
 function renderEventShareDialog(event) {
+  const canEdit = canCurrentParticipantEdit(event);
   const shareView = ["friends", "link"].includes(eventDialog?.shareView)
     ? eventDialog.shareView
     : "menu";
@@ -5803,7 +5804,7 @@ function renderEventShareDialog(event) {
       ? "חזרה למשתתפים"
       : "חזרה לדרכי ההזמנה",
     body: shareView === "friends"
-      ? renderEventShareFriends(event, canManageInvite)
+      ? renderEventShareFriends(event, canEdit)
       : shareView === "link"
         ? `
       <div class="event-share-route" data-event-share-view="link">

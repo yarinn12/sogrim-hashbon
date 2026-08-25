@@ -234,3 +234,15 @@ test("browser back from an event invite restores focus to the participant invite
   );
   assert.match(focusSelector, /return '\[data-action="open-event-share"\]'/);
 });
+
+test("the friend share route uses the current participant edit permission", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const renderShareDialog = app.slice(
+    app.indexOf("function renderEventShareDialog(event)"),
+    app.indexOf("function renderEventShareFriends(event, canEdit)")
+  );
+
+  assert.match(renderShareDialog, /const canEdit = canCurrentParticipantEdit\(event\)/);
+  assert.match(renderShareDialog, /renderEventShareFriends\(event, canEdit\)/);
+  assert.doesNotMatch(renderShareDialog, /canManageInvite/);
+});
