@@ -343,7 +343,7 @@ function syncInlineStatusTargets() {
       .split(/\s+/)
       .filter((name) => name && !name.startsWith("is-sync-"))
       .join(" ")}`;
-    target.textContent = "";
+    if (target.textContent) target.textContent = "";
     target.hidden = true;
     const routeStatus = target.closest("[data-route-sync-status]");
     if (routeStatus) routeStatus.hidden = true;

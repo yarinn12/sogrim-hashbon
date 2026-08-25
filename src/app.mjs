@@ -410,7 +410,9 @@ let eventStatusFilter = "open";
 let appHistoryDepth = 0;
 let lastNavigationViewKey = "";
 let lastRenderedScreenKey = "";
+let lastCommittedScreenMarkup = "";
 let renderGeneration = 0;
+const participantSearchQueries = new Map();
 let restoringBrowserHistory = false;
 let pendingSettingsReturnFocusSection = "";
 let eventLongPressTimer = null;
@@ -613,6 +615,16 @@ function render() {
 function commitRenderedScreen(html) {
   const nextScreenKey = `${screen.name}:${screen.eventId ?? ""}`;
   const screenChanged = nextScreenKey !== lastRenderedScreenKey;
+  const nextMarkup = `${html}${renderSettlementCelebration()}${renderEventStatusMenu()}${renderImportantActionDialog()}`;
+
+  app.classList.remove("app-boot");
+  app.removeAttribute("aria-busy");
+  app.dataset.screen = productMetricScreen(screen.name);
+  if (!screenChanged && nextMarkup === lastCommittedScreenMarkup) {
+    publishNotificationNavigationState();
+    return;
+  }
+
   const currentRenderGeneration = ++renderGeneration;
   const interactionSnapshot = captureRenderInteractionState();
   const persistentIdentity = app.querySelector(
@@ -622,15 +634,14 @@ function commitRenderedScreen(html) {
     ?.querySelector(":scope > .product-route-controls")
     ?.remove();
 
-  app.classList.remove("app-boot");
-  app.removeAttribute("aria-busy");
-  app.dataset.screen = productMetricScreen(screen.name);
-  app.innerHTML = `${html}${renderSettlementCelebration()}${renderEventStatusMenu()}${renderImportantActionDialog()}`;
+  app.innerHTML = nextMarkup;
+  lastCommittedScreenMarkup = nextMarkup;
   publishNotificationNavigationState();
   const renderedScreen = app.querySelector(":scope > .screen");
   if (persistentIdentity && renderedScreen) {
     renderedScreen.prepend(persistentIdentity);
   }
+  restoreParticipantSearchFilters();
   document.dispatchEvent(new CustomEvent("settle-friends:screen-rendered"));
   markStartupMilestone("first-screen-rendered");
   lastRenderedScreenKey = nextScreenKey;
@@ -4484,6 +4495,21 @@ function renderNewEventSettlement() {
 
 function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint }) {
   return `<div class="field new-event-inline-picker"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}</div></details><small>${escapeHtml(hint)}</small></div>`;
+}
+
+function closeNewEventInlinePicker(target) {
+  const details = target.closest("details");
+  if (details instanceof HTMLDetailsElement) details.open = false;
+}
+
+function restoreNewEventInlinePickerFocus(action) {
+  requestAnimationFrame(() => {
+    app
+      .querySelector(`[data-action="${CSS.escape(action)}"]`)
+      ?.closest("details")
+      ?.querySelector("summary")
+      ?.focus({ preventScroll: true });
+  });
 }
 
 function renderNewEventSettlementOption({ action, value, selected, title, description }) {
@@ -9993,6 +10019,26 @@ function filterParticipantChecks(input) {
   if (emptyNote) emptyNote.hidden = visibleCount > 0;
 }
 
+function rememberParticipantSearch(input) {
+  const searchFor = input.dataset.participantSearchFor ?? "";
+  if (!searchFor) return;
+  const query = input.value.trim();
+  if (query) {
+    participantSearchQueries.set(searchFor, query);
+  } else {
+    participantSearchQueries.delete(searchFor);
+  }
+}
+
+function restoreParticipantSearchFilters() {
+  app.querySelectorAll('[data-action="participant-search"][data-participant-search-for]').forEach((input) => {
+    const query = participantSearchQueries.get(input.dataset.participantSearchFor) ?? "";
+    if (!query) return;
+    input.value = query;
+    filterParticipantChecks(input);
+  });
+}
+
 function setSearchResultHidden(element, hidden) {
   element.hidden = hidden;
   if (hidden) {
@@ -10839,6 +10885,7 @@ async function handleClick(event) {
 
   if (action === "open-new-event-participants") {
     if (!newEventDraft) return;
+    participantSearchQueries.delete("new-event-participant");
     newEventDraft.participantView = "";
     screen = { name: "new-event-participants" };
     render();
@@ -10858,6 +10905,7 @@ async function handleClick(event) {
     const nextView = ["friends", "manual"].includes(target.dataset.participantView)
       ? target.dataset.participantView
       : "";
+    participantSearchQueries.delete("new-event-participant");
     newEventDraft.participantView = nextView;
     render();
     if (newEventDraft.participantView === "manual") {
@@ -10871,6 +10919,7 @@ async function handleClick(event) {
   if (action === "close-new-event-participant-view") {
     if (!newEventDraft) return;
     const previousView = newEventDraft.participantView;
+    participantSearchQueries.delete("new-event-participant");
     newEventDraft.participantView = "";
     renderHistoryFallback();
     requestAnimationFrame(() => {
@@ -11247,21 +11296,27 @@ async function handleClick(event) {
   if (action === "new-event-currency-choice") {
     if (!newEventDraft) return;
     newEventDraft.currency = normalizeCurrency(target.dataset.choiceValue);
+    closeNewEventInlinePicker(target, action);
     render();
+    restoreNewEventInlinePickerFocus(action);
     return;
   }
 
   if (action === "new-event-rounding-choice") {
     if (!newEventDraft) return;
     newEventDraft.roundSettlementTransfers = target.dataset.choiceValue !== "exact";
+    closeNewEventInlinePicker(target, action);
     render();
+    restoreNewEventInlinePickerFocus(action);
     return;
   }
 
   if (action === "new-event-repayment-choice") {
     if (!newEventDraft) return;
     newEventDraft.directSettlementTransfers = target.dataset.choiceValue === "direct";
+    closeNewEventInlinePicker(target, action);
     render();
+    restoreNewEventInlinePickerFocus(action);
     return;
   }
 
@@ -12512,6 +12567,7 @@ function handleInput(event) {
   const action = target.dataset.action;
 
   if (action === "participant-search") {
+    rememberParticipantSearch(target);
     filterParticipantChecks(target);
     return;
   }
@@ -13606,11 +13662,18 @@ function requestOfflineFriendRemoval(participantId, trigger) {
 
 async function refreshFriendNetwork({ preserveNotice = false } = {}) {
   const previousNotice = notice;
+  const previousRenderKey = friendNetworkRenderKey();
   try {
     runtimeConfig = await loadRuntimeConfig();
     if (!friendNetworkAvailable(runtimeConfig)) {
       friendNetwork = emptyFriendNetwork("signed-out");
-      if (screen.name === "groups" && screen.tab !== "groups") render();
+      if (
+        screen.name === "groups" &&
+        screen.tab !== "groups" &&
+        previousRenderKey !== friendNetworkRenderKey()
+      ) {
+        render();
+      }
       return;
     }
 
@@ -13729,17 +13792,19 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       ? {
           ...friendNetwork,
           stale: true,
-          staleAt: new Date().toISOString()
+          staleAt: friendNetwork.staleAt || new Date().toISOString()
         }
       : emptyFriendNetwork("error");
     if (preserveNotice) notice = previousNotice || notice;
   }
 
+  const visibleFriendDataChanged = previousRenderKey !== friendNetworkRenderKey();
   const profileAvatarPickerIsOpen = Boolean(
     screen.name === "profile" &&
       app.querySelector(".profile-avatar-picker-shell[open]")
   );
   if (
+    visibleFriendDataChanged &&
     !profileAvatarPickerIsOpen &&
     (
       (screen.name === "groups" && screen.tab !== "groups") ||
@@ -13749,7 +13814,13 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     )
   ) {
     render();
-  } else if (["new-event", "new-event-settlement", "new-event-participants"].includes(screen.name) || eventDialog?.kind === "participant-add") {
+  } else if (
+    visibleFriendDataChanged &&
+    (
+      ["new-event", "new-event-settlement", "new-event-participants"].includes(screen.name) ||
+      eventDialog?.kind === "participant-add"
+    )
+  ) {
     const focusedAction = document.activeElement?.dataset?.action ?? "";
     render();
     if (focusedAction) {
@@ -13761,6 +13832,24 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     }
   }
   publishNotificationNavigationState();
+}
+
+function friendNetworkRenderKey() {
+  return JSON.stringify({
+    network: friendNetwork,
+    profile: localProfile
+      ? {
+          displayName: localProfile.displayName,
+          username: localProfile.username,
+          avatarPreset: localProfile.avatarPreset,
+          avatarImage: localProfile.avatarImage,
+          avatarImageUpdatedAt: localProfile.avatarImageUpdatedAt,
+          profileUpdatedAt: localProfile.profileUpdatedAt
+        }
+      : null,
+    participants: state.participants,
+    friendContacts: state.friendContacts
+  });
 }
 
 async function hydrateOwnPublicAvatarBeforeFirstRender() {
@@ -16977,12 +17066,17 @@ async function refreshNotificationInbox({ force = false } = {}) {
     });
   }
 
-  notificationInbox = {
-    ...notificationInbox,
-    status: "loading",
-    error: ""
-  };
-  if (["profile", "notifications"].includes(screen.name)) render();
+  const previousInbox = notificationInbox;
+  const previousRenderKey = notificationInboxRenderKey();
+  const hasUsableInbox = notificationInbox.status === "ready";
+  if (!hasUsableInbox) {
+    notificationInbox = {
+      ...notificationInbox,
+      status: "loading",
+      error: ""
+    };
+    if (["profile", "notifications"].includes(screen.name)) render();
+  }
 
   notificationInboxRequest = (async () => {
     try {
@@ -16996,19 +17090,30 @@ async function refreshNotificationInbox({ force = false } = {}) {
       };
     } catch {
       emitOperationFailure("notification_inbox", { screen: "notifications" });
-      notificationInbox = {
-        ...notificationInbox,
-        status: "error",
-        error: "load-failed"
-      };
+      notificationInbox = hasUsableInbox
+        ? previousInbox
+        : {
+            ...notificationInbox,
+            status: "error",
+            error: "load-failed"
+          };
     } finally {
       notificationInboxRequest = null;
       publishNotificationNavigationState();
-      if (["profile", "notifications"].includes(screen.name)) render();
+      if (
+        ["profile", "notifications"].includes(screen.name) &&
+        previousRenderKey !== notificationInboxRenderKey()
+      ) {
+        render();
+      }
     }
   })();
 
   return notificationInboxRequest;
+}
+
+function notificationInboxRenderKey() {
+  return JSON.stringify(notificationInbox);
 }
 
 function notificationUnreadCount() {

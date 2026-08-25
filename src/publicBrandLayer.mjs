@@ -247,7 +247,9 @@ function syncIdentityRouteControls(screen, identity) {
     backButton.title = "חזרה למסך הקודם";
     backButton.innerHTML = `<span class="app-back-button-glyph" aria-hidden="true">${iconSvg("chevron-left")}</span>`;
   }
-  controls.prepend(backButton);
+  if (backButton.parentElement !== controls || controls.firstElementChild !== backButton) {
+    controls.prepend(backButton);
+  }
 }
 
 function shouldShowPrimaryNav(screen) {
@@ -264,14 +266,16 @@ function syncNotificationNavBadge(nav) {
     10
   );
   const unread = Number.isFinite(rawUnread) ? Math.max(0, rawUnread) : 0;
-  badge.hidden = unread === 0;
-  badge.textContent = unread > 9 ? "9+" : String(unread);
-  button.setAttribute(
-    "aria-label",
-    unread
-      ? `\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea, ${unread} \u05d7\u05d3\u05e9\u05d5\u05ea`
-      : "\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea"
-  );
+  const nextHidden = unread === 0;
+  const nextText = unread > 9 ? "9+" : String(unread);
+  const nextLabel = unread
+    ? `\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea, ${unread} \u05d7\u05d3\u05e9\u05d5\u05ea`
+    : "\u05d4\u05ea\u05e8\u05d0\u05d5\u05ea";
+  if (badge.hidden !== nextHidden) badge.hidden = nextHidden;
+  if (badge.textContent !== nextText) badge.textContent = nextText;
+  if (button.getAttribute("aria-label") !== nextLabel) {
+    button.setAttribute("aria-label", nextLabel);
+  }
 }
 
 function setPrimaryNavigationActiveDestination(nav, activeDestination) {

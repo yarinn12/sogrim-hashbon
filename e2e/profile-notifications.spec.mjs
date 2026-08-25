@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import {
+  expectStrictSmoothness,
+  finishStrictSmoothnessProbe,
+  startStrictSmoothnessProbe
+} from "./helpers/strict-smoothness.mjs";
 
 test.use({ serviceWorkers: "block" });
 
@@ -275,6 +280,44 @@ test("full name and username are full-width rows stacked in reading order", asyn
   expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
   await assertNoHorizontalOverflow(page);
+});
+
+test("unchanged background sync stays visually and interactively silent", async ({ page }) => {
+  await page.locator('[data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+
+  const accountDetails = page.locator("[data-account-controls]");
+  await accountDetails.locator(":scope > summary").click();
+  await accountDetails.scrollIntoViewIfNeeded();
+  await accountDetails.locator(":scope > summary").focus();
+  await page.waitForTimeout(1_500);
+
+  await startStrictSmoothnessProbe(page);
+
+  // The polling cadence is 12 seconds. Waiting through a complete cycle proves
+  // that unchanged friend and notification payloads do not rebuild the screen.
+  await page.waitForTimeout(13_000);
+  expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
+
+  await page.locator('[data-nav-destination="home"]').click();
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  const eventButton = page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first();
+  await eventButton.scrollIntoViewIfNeeded();
+  await eventButton.focus();
+  await page.waitForTimeout(500);
+  await startStrictSmoothnessProbe(page);
+  await page.waitForTimeout(13_000);
+  expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
+
+  await eventButton.click();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  const settingsButton = page.locator('[data-action="open-event-settings"]').first();
+  await settingsButton.scrollIntoViewIfNeeded();
+  await settingsButton.focus();
+  await page.waitForTimeout(500);
+  await startStrictSmoothnessProbe(page);
+  await page.waitForTimeout(13_000);
+  expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
 });
 
 test("long home event names wrap to two lines without colliding with status", async ({ page }) => {

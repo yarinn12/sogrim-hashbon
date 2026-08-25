@@ -121,6 +121,40 @@ test("stale render callbacks cannot restore focus into a newer screen", async ()
   assert.match(restore, /if \(expectedRenderGeneration !== renderGeneration\) return/);
 });
 
+test("identical same-screen renders do not replace the interactive DOM", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const commit = sourceBetween(
+    app,
+    "function commitRenderedScreen(html)",
+    "function focusRenderedScreen()"
+  );
+
+  assert.match(app, /let lastCommittedScreenMarkup = ""/);
+  assert.match(commit, /const nextMarkup =/);
+  assert.match(
+    commit,
+    /if \(!screenChanged && nextMarkup === lastCommittedScreenMarkup\)/
+  );
+  assert.ok(
+    commit.indexOf("nextMarkup === lastCommittedScreenMarkup") <
+      commit.indexOf("app.innerHTML = nextMarkup")
+  );
+  assert.match(commit, /lastCommittedScreenMarkup = nextMarkup/);
+});
+
+test("reselecting an inline event choice closes the picker without a forced render", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const handler = sourceBetween(
+    app,
+    'if (action === "new-event-currency-choice")',
+    'if (action === "new-event-rounding-mode")'
+  );
+
+  assert.equal([...handler.matchAll(/closeNewEventInlinePicker\(target, action\)/g)].length, 3);
+  assert.equal([...handler.matchAll(/restoreNewEventInlinePickerFocus\(action\)/g)].length, 3);
+  assert.match(app, /details instanceof HTMLDetailsElement\) details\.open = false/);
+});
+
 test("settlement stays inside the event shell and only switches the active workspace view", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const settlement = sourceBetween(

@@ -109,7 +109,27 @@ test("participant search appears only above the threshold and filters in the DOM
 test("participant search never triggers a state re-render", () => {
   const handler = app.slice(app.indexOf("function handleInput(event)"));
   const searchBranch = handler.slice(0, handler.indexOf('if (action === "profile-name")'));
-  assert.match(searchBranch, /filterParticipantChecks\(target\);\s*\n\s*return;/);
+  assert.match(
+    searchBranch,
+    /rememberParticipantSearch\(target\);\s*\n\s*filterParticipantChecks\(target\);\s*\n\s*return;/
+  );
+  assert.doesNotMatch(searchBranch, /\brender\(\)/);
+});
+
+test("participant search survives an unrelated same-screen render", () => {
+  const commit = app.slice(
+    app.indexOf("function commitRenderedScreen(html)"),
+    app.indexOf("function focusRenderedScreen()")
+  );
+  const restore = app.slice(
+    app.indexOf("function restoreParticipantSearchFilters()"),
+    app.indexOf("function setSearchResultHidden")
+  );
+
+  assert.match(app, /const participantSearchQueries = new Map\(\)/);
+  assert.match(commit, /restoreParticipantSearchFilters\(\)/);
+  assert.match(restore, /input\.value = query/);
+  assert.match(restore, /filterParticipantChecks\(input\)/);
 });
 
 test("adding an offline name never steals focus from participant search", () => {

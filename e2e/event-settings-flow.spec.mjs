@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import {
+  expectStrictSmoothness,
+  finishStrictSmoothnessProbe,
+  startStrictSmoothnessProbe
+} from "./helpers/strict-smoothness.mjs";
 
 const EVENT_ID = "event-settings-flow";
 const OWNER_ID = "person-settings-owner";
@@ -73,6 +78,19 @@ test.beforeEach(async ({ page, request }) => {
   await page.goto("/");
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
+});
+
+test("event settings remain still while the user reads or scrolls", async ({ page }) => {
+  const settingsDialog = page.locator('.event-settings-modal[role="region"]');
+  await expect(settingsDialog).toBeVisible();
+  const dangerCard = page.locator('[data-settings-section="danger"]');
+  await dangerCard.scrollIntoViewIfNeeded();
+  await dangerCard.focus();
+  await page.waitForTimeout(500);
+
+  await startStrictSmoothnessProbe(page);
+  await page.waitForTimeout(2_000);
+  expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
 });
 
 test("event settings save smoothly, return focus and survive reload", async ({ page }) => {

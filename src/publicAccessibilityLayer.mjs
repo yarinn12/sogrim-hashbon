@@ -98,9 +98,13 @@ function enhanceAccessibilityEntryPoints() {
     if (routeControls && entry) {
       const backButton = routeControls.querySelector(":scope > .app-back-button");
       if (backButton) {
-        routeControls.prepend(backButton);
-        backButton.insertAdjacentElement("afterend", entry);
-      } else {
+        if (routeControls.firstElementChild !== backButton) {
+          routeControls.prepend(backButton);
+        }
+        if (backButton.nextElementSibling !== entry) {
+          backButton.insertAdjacentElement("afterend", entry);
+        }
+      } else if (routeControls.firstElementChild !== entry) {
         routeControls.prepend(entry);
       }
     }

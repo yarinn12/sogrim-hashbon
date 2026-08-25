@@ -86,7 +86,10 @@ function enhanceCommandCards() {
 
     const existingIcon = card.querySelector(".command-card-icon");
     if (existingIcon) {
-      existingIcon.innerHTML = icon;
+      if (existingIcon.dataset.commandIcon !== action) {
+        existingIcon.innerHTML = icon;
+        existingIcon.dataset.commandIcon = action;
+      }
       return;
     }
 
@@ -108,20 +111,27 @@ function enhanceActionButtons() {
 
     const existingCommandIcon = button.querySelector(".command-card-icon");
     if (existingCommandIcon) {
-      existingCommandIcon.innerHTML = icon;
+      if (existingCommandIcon.dataset.commandIcon !== action) {
+        existingCommandIcon.innerHTML = icon;
+        existingCommandIcon.dataset.commandIcon = action;
+      }
       button.querySelector(".button-action-icon")?.remove();
       return;
     }
 
     const existingIcon = button.querySelector(".button-action-icon");
     if (existingIcon) {
-      existingIcon.innerHTML = icon;
+      if (existingIcon.dataset.commandIcon !== action) {
+        existingIcon.innerHTML = icon;
+        existingIcon.dataset.commandIcon = action;
+      }
       return;
     }
 
     const iconElement = document.createElement("span");
     iconElement.className = "button-action-icon";
     iconElement.setAttribute("aria-hidden", "true");
+    iconElement.dataset.commandIcon = action;
     iconElement.innerHTML = icon;
     button.prepend(iconElement);
   });
