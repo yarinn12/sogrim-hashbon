@@ -24,13 +24,15 @@ test("createQrMatrix renders a deterministic QR matrix with finder patterns", ()
 test("createQrSvg returns a safe standalone SVG for an invite link", () => {
   const svg = createQrSvg("https://sogrim-hesbon-app.vercel.app/?event=event-123", {
     cellSize: 3,
-    quietZone: 3
+    quietZone: 3,
+    ariaLabel: 'QR להזמנה <אישית> "בטוחה"'
   });
 
   assert.match(svg, /^<svg /);
   assert.match(svg, /viewBox="0 0 \d+ \d+"/);
   assert.match(svg, /<path d="M\d+ \d+h3v3h-3z/);
   assert.equal((svg.match(/<path /g) ?? []).length, 1);
+  assert.match(svg, /aria-label="QR להזמנה &lt;אישית&gt; &quot;בטוחה&quot;"/);
   assert.doesNotMatch(svg, /<script/i);
 });
 

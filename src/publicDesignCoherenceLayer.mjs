@@ -335,12 +335,12 @@ const CSS = `
     box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12) !important;
   }
 
-  html.design-coherence-v1 :is(.event-modal-header, .expense-modal-header, .app-choice-picker-header, .referral-dialog-header) {
+  html.design-coherence-v1 :is(.event-modal-header, .expense-modal-header, .app-choice-picker-header) {
     border-bottom: 1px solid var(--app-line) !important;
     background: var(--app-surface) !important;
   }
 
-  html.design-coherence-v1 :is(.event-modal-header, .expense-modal-header, .app-choice-picker-header, .referral-dialog-header) h2 {
+  html.design-coherence-v1 :is(.event-modal-header, .expense-modal-header, .app-choice-picker-header) h2 {
     color: var(--app-ink) !important;
     font-family: var(--app-font-hebrew) !important;
     font-weight: 600 !important;

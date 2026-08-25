@@ -362,7 +362,13 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(referralLayer, /refreshReferralStatus\(\);/);
   assert.match(referralLayer, /\.\.\.referralStatus,\s*status: "error"/);
   assert.match(referralLayer, /class="referral-state-message is-stale"/);
-  assert.match(referralLayer, /הקישור השמור שלך עדיין זמין/);
+  assert.match(referralLayer, /הקישור האישי שלך ממשיך לעבוד/);
+  assert.match(referralLayer, /loadReferralStatusWithAccountRecovery/);
+  assert.match(referralLayer, /SogrimAccountSession\?\.refresh/);
+  assert.match(referralLayer, /Number\(error\?\.status\) === 401/);
+  assert.match(referralLayer, /createQrSvg/);
+  assert.match(referralLayer, /data-referral-qr/);
+  assert.match(referralLayer, /QR להזמנת חברים לסוגרים חשבון/);
   assert.match(referralLayer, /data-referral-action="profile"/);
   assert.match(referralLayer, /data-action="edit-profile"/);
   assert.match(referralLayer, /navigator\.share/);

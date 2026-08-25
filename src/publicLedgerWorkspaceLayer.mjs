@@ -13430,9 +13430,56 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .referral-dialog-header {
+    position: relative !important;
     grid-template-columns: 50px minmax(0, 1fr) !important;
     gap: 14px !important;
+    min-height: 156px !important;
     padding-inline-end: 76px !important;
+    overflow: hidden !important;
+    background:
+      linear-gradient(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-dialog-header::before,
+  html.ledger-workspace-v1 .referral-dialog-header::after {
+    content: "" !important;
+    position: absolute !important;
+    pointer-events: none !important;
+    border: 1px solid rgba(169, 221, 210, 0.2) !important;
+    border-radius: 50% !important;
+  }
+
+  html.ledger-workspace-v1 .referral-dialog-header::before {
+    width: 170px !important;
+    height: 170px !important;
+    inset-block-start: -102px !important;
+    inset-inline-start: -46px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-dialog-header::after {
+    width: 112px !important;
+    height: 112px !important;
+    inset-block-end: -74px !important;
+    inset-inline-end: 58px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-dialog-header-copy,
+  html.ledger-workspace-v1 .referral-dialog-mark {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-close-button {
+    z-index: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-dialog-lead {
+    max-width: 48ch !important;
+    margin: 8px 0 0 !important;
+    color: rgba(255, 255, 255, 0.76) !important;
+    font-size: 12px !important;
+    font-weight: 560 !important;
+    line-height: 1.48 !important;
   }
 
   html.ledger-workspace-v1 .referral-dialog-mark {
@@ -13613,6 +13660,7 @@ const CSS = `
 
     html.ledger-workspace-v1 .referral-dialog-header {
       grid-template-columns: 44px minmax(0, 1fr) !important;
+      min-height: calc(164px + env(safe-area-inset-top)) !important;
       padding-inline-end: 72px !important;
     }
 
@@ -13630,6 +13678,15 @@ const CSS = `
       min-height: 0 !important;
       overflow-y: auto !important;
       padding: 14px 14px calc(24px + env(safe-area-inset-bottom)) !important;
+    }
+
+    html.ledger-workspace-v1 .referral-share-workspace {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    html.ledger-workspace-v1 .referral-qr-card {
+      width: min(100%, 212px) !important;
+      justify-self: center !important;
     }
   }
 
@@ -17617,6 +17674,115 @@ const CSS = `
     border-radius: var(--ledger-task-radius) !important;
     background: var(--ledger-surface) !important;
     box-shadow: var(--ledger-task-shadow) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card {
+    position: relative !important;
+    min-height: 150px !important;
+    align-content: center !important;
+    gap: 8px !important;
+    overflow: hidden !important;
+    padding: 22px !important;
+    border: 0 !important;
+    color: #ffffff !important;
+    background:
+      linear-gradient(136deg, #071f18 0%, #0b4a38 60%, #0f6b50 100%) !important;
+    box-shadow: 0 18px 38px -24px rgba(3, 44, 35, 0.72) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card::after {
+    content: "" !important;
+    position: absolute !important;
+    width: 132px !important;
+    height: 132px !important;
+    inset-block-start: -68px !important;
+    inset-inline-end: -38px !important;
+    border: 22px solid rgba(33, 170, 166, 0.16) !important;
+    border-radius: 50% !important;
+    pointer-events: none !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card > * {
+    position: relative !important;
+    z-index: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-label {
+    color: #9ce2d7 !important;
+    font-size: 12px !important;
+    font-weight: 850 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card > strong {
+    display: flex !important;
+    align-items: baseline !important;
+    gap: 10px !important;
+    color: #ffffff !important;
+    font-size: 21px !important;
+    line-height: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card > strong .font-num {
+    color: #ffffff !important;
+    font-size: clamp(46px, 11vw, 60px) !important;
+    line-height: 0.88 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-benefit-card p {
+    max-width: 42ch !important;
+    color: rgba(255, 255, 255, 0.74) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-active-until {
+    color: #063f36 !important;
+    background: #bfe9df !important;
+  }
+
+  html.ledger-workspace-v1 .referral-share-section {
+    gap: 16px !important;
+    padding: 20px !important;
+    box-shadow:
+      0 0 0 1px rgba(7, 27, 24, 0.055),
+      0 14px 30px -24px rgba(4, 35, 29, 0.42) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-section-heading > small {
+    color: var(--ledger-accent) !important;
+    font-size: 11px !important;
+    font-weight: 850 !important;
+  }
+
+  html.ledger-workspace-v1 .referral-share-workspace {
+    grid-template-columns: 176px minmax(0, 1fr) !important;
+    gap: 16px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-card {
+    padding: 10px !important;
+    border-radius: 14px !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-accent-soft) !important;
+    box-shadow: inset 0 0 0 1px rgba(6, 75, 67, 0.09) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-code {
+    padding: 6px !important;
+    border-radius: 8px !important;
+    background: #ffffff !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-code svg {
+    outline: 1px solid oklch(0 0 0 / 0.1) !important;
+    outline-offset: -1px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-card figcaption small,
+  html.ledger-workspace-v1 .referral-link-field > span {
+    color: var(--ledger-muted) !important;
+  }
+
+  html.ledger-workspace-v1 .referral-share-actions button {
+    min-height: 48px !important;
   }
 
   html.ledger-workspace-v1 .group-create-panel::before,

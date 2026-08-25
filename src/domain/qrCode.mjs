@@ -43,6 +43,9 @@ export function compactQrInviteUrl(inviteUrl) {
 export function createQrSvg(text, options = {}) {
   const cellSize = Math.max(1, Math.floor(options.cellSize ?? 4));
   const quietZone = Math.max(0, Math.floor(options.quietZone ?? 4));
+  const ariaLabel = escapeSvgAttribute(
+    options.ariaLabel || "QR להצטרפות לאירוע"
+  );
   const { size, modules } = createQrMatrix(text);
   const svgSize = (size + quietZone * 2) * cellSize;
   const pathCommands = [];
@@ -56,7 +59,15 @@ export function createQrSvg(text, options = {}) {
     }
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR להצטרפות לאירוע" viewBox="0 0 ${svgSize} ${svgSize}" width="${svgSize}" height="${svgSize}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${pathCommands.join("")}"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${ariaLabel}" viewBox="0 0 ${svgSize} ${svgSize}" width="${svgSize}" height="${svgSize}" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${pathCommands.join("")}"/></svg>`;
+}
+
+function escapeSvgAttribute(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 export function createQrMatrix(text) {

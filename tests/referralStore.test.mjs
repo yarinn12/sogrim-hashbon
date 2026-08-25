@@ -100,9 +100,24 @@ test("referral status normalizes cloud entitlement values", async () => {
   assert.deepEqual(status.activeEntitlementSources, ["subscription"]);
 });
 
-function jsonResponse(payload, ok = true) {
+test("referral status preserves an expired-session response for one safe retry", async () => {
+  await assert.rejects(
+    loadReferralProgramStatus(
+      accountConfig(),
+      async () => jsonResponse({ code: "PGRST301", message: "JWT expired" }, false, 401)
+    ),
+    (error) => {
+      assert.equal(error.status, 401);
+      assert.equal(error.code, "PGRST301");
+      return true;
+    }
+  );
+});
+
+function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
   return {
     ok,
+    status,
     async json() {
       return payload;
     }

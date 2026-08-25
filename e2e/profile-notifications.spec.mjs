@@ -7,6 +7,7 @@ const PARTICIPANT_ID = `account-${USER_ID}`;
 const EVENT_ID = "profile-notifications-event";
 const SPACE_ID = "space-profile-notifications";
 const SPACE_KEY = "abcdefghijklmnopqrstuvwxyz_123456";
+const REFERRAL_CODE = "0123456789abcdefabcd";
 
 const seededState = {
   currentParticipantId: PARTICIPANT_ID,
@@ -41,6 +42,7 @@ const seededState = {
 };
 
 test.beforeEach(async ({ page }) => {
+  let referralStatusAttempts = 0;
   const corsHeaders = {
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, apikey, content-type, prefer",
@@ -104,6 +106,17 @@ test.beforeEach(async ({ page }) => {
     if (route.request().method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
     }
+    if (url.pathname.endsWith("/auth/v1/token")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: {
+          access_token: "refreshed-access-token",
+          refresh_token: "refreshed-refresh-token",
+          token_type: "bearer",
+          expires_in: 3600
+        }
+      });
+    }
     if (url.pathname.endsWith("/auth/v1/user")) {
       return route.fulfill({
         headers: corsHeaders,
@@ -117,6 +130,34 @@ test.beforeEach(async ({ page }) => {
             account_space_id: SPACE_ID,
             account_space_key: SPACE_KEY
           }
+        }
+      });
+    }
+    if (url.pathname.endsWith("/rest/v1/rpc/get_referral_program_status")) {
+      referralStatusAttempts += 1;
+      if (referralStatusAttempts === 1) {
+        return route.fulfill({
+          status: 401,
+          headers: corsHeaders,
+          json: { code: "PGRST301", message: "JWT expired" }
+        });
+      }
+      return route.fulfill({
+        headers: corsHeaders,
+        json: {
+          referral_code: REFERRAL_CODE,
+          reward_days: 30,
+          annual_reward_limit: 12,
+          rewarded_referrals: 2,
+          pending_referrals: 1,
+          rejected_referrals: 0,
+          days_earned: 60,
+          lifetime_rewarded_referrals: 2,
+          lifetime_days_earned: 60,
+          ad_free_until: null,
+          ad_free_active: false,
+          subscription_active: false,
+          active_entitlement_sources: []
         }
       });
     }
@@ -233,6 +274,57 @@ test("full name and username are full-width rows stacked in reading order", asyn
   expect(Math.abs(nameBox.x - usernameBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
+  await assertNoHorizontalOverflow(page);
+});
+
+test("ad-free month opens as a branded share workspace with a working QR", async ({ page }) => {
+  const entry = page.locator(
+    '[data-open-referral-rewards][data-referral-context="home"]'
+  );
+  await expect(entry).toBeVisible();
+  await entry.click();
+
+  const dialog = page.locator("#public-referral-rewards-dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".referral-dialog-lead")).toContainText("QR");
+  await expect(dialog.locator(".referral-benefit-card")).toContainText(
+    "30ימים ללא פרסומות"
+  );
+  await expect(dialog.locator('[data-referral-qr] svg')).toHaveAttribute(
+    "aria-label",
+    "QR להזמנת חברים לסוגרים חשבון"
+  );
+  await expect(dialog.locator(".referral-link-field input")).toHaveValue(
+    `http://127.0.0.1:4182/r/${REFERRAL_CODE}`
+  );
+  await expect(dialog.locator(".referral-state-message.is-stale")).toHaveCount(0);
+
+  const visualState = await dialog.evaluate((element) => {
+    const header = element.querySelector(".referral-dialog-header");
+    const benefit = element.querySelector(".referral-benefit-card");
+    const qr = element.querySelector("[data-referral-qr] svg");
+    const shareWorkspace = element.querySelector(".referral-share-workspace");
+    const shareButton = element.querySelector('[data-referral-action="share"]');
+    return {
+      headerBackgroundColor: getComputedStyle(header).backgroundColor,
+      headerOrbit: getComputedStyle(header, "::before").content,
+      benefitBackground: getComputedStyle(benefit).backgroundImage,
+      qrWidth: qr.getBoundingClientRect().width,
+      shareButtonHeight: shareButton.getBoundingClientRect().height,
+      shareColumns: getComputedStyle(shareWorkspace).gridTemplateColumns,
+      viewportWidth: window.innerWidth
+    };
+  });
+  expect(visualState.headerBackgroundColor).toMatch(
+    /rgb\((?:6, 75, 67|10, 79, 64|11, 74, 56)\)/
+  );
+  expect(visualState.headerOrbit).not.toBe("none");
+  expect(visualState.benefitBackground).toContain("linear-gradient");
+  expect(
+    visualState.qrWidth,
+    `viewport=${visualState.viewportWidth}, columns=${visualState.shareColumns}`
+  ).toBeGreaterThanOrEqual(140);
+  expect(visualState.shareButtonHeight).toBeGreaterThanOrEqual(44);
   await assertNoHorizontalOverflow(page);
 });
 

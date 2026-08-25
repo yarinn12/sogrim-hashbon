@@ -120,11 +120,11 @@ async function callReferralRpc(config, functionName, body, fetchImpl) {
     }
   );
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw referralStoreError(payload);
+  if (!response.ok) throw referralStoreError(payload, response.status);
   return payload;
 }
 
-function referralStoreError(payload) {
+function referralStoreError(payload, status) {
   const error = new Error(
     payload?.message ??
       payload?.details ??
@@ -133,5 +133,6 @@ function referralStoreError(payload) {
       "Referral service is unavailable"
   );
   error.code = payload?.code ?? "";
+  error.status = Number(status) || 0;
   return error;
 }

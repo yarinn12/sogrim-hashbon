@@ -696,6 +696,38 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });
 
+test("referral rewards reuse the branded hero and expose a polished QR workspace", async () => {
+  const [referralLayer, ledgerLayer, coherenceLayer] = await Promise.all([
+    readFile("src/publicReferralRewardsLayer.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+  ]);
+
+  assert.match(referralLayer, /class="referral-dialog-lead"/);
+  assert.match(referralLayer, /class="referral-share-workspace"/);
+  assert.match(referralLayer, /class="referral-qr-card" data-referral-qr/);
+  assert.match(
+    ledgerLayer,
+    /\.referral-dialog-header \{[\s\S]*?linear-gradient\(136deg, #071f18 0%, #0b4a38 58%, #0f6b50 100%\) !important/
+  );
+  assert.match(
+    ledgerLayer,
+    /\.referral-benefit-card \{[\s\S]*?linear-gradient\(136deg, #071f18 0%, #0b4a38 60%, #0f6b50 100%\) !important/
+  );
+  assert.match(
+    ledgerLayer,
+    /\.referral-qr-code svg \{[\s\S]*?outline: 1px solid oklch\(0 0 0 \/ 0\.1\) !important/
+  );
+  assert.match(
+    ledgerLayer,
+    /@media \(max-width: 760px\)[\s\S]*?\.referral-share-workspace \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+  );
+  assert.doesNotMatch(
+    coherenceLayer,
+    /:is\(\.event-modal-header, \.expense-modal-header, \.app-choice-picker-header, \.referral-dialog-header\)/
+  );
+});
+
 test("shared route and progress controls keep Android touch targets at least 44px", async () => {
   const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
