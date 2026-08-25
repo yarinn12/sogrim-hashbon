@@ -2309,6 +2309,16 @@ function focusAccountInput(
   if (!input) return;
 
   requestAnimationFrame(() => {
+    if (!input.isConnected) return;
+    const activeElement = document.activeElement;
+    if (
+      activeElement &&
+      activeElement !== document.body &&
+      activeElement !== document.documentElement &&
+      activeElement !== input
+    ) {
+      return;
+    }
     input.focus();
     const feedback = gate.querySelector("#account-auth-feedback");
     if (feedback) input.setAttribute("aria-describedby", feedback.id);
