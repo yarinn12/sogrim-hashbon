@@ -58,6 +58,15 @@ async function createWorker({
   return {
     fetchCalls,
     cacheWrites,
+    dispatchInstall() {
+      let installPromise;
+      listeners.get("install")({
+        waitUntil(value) {
+          installPromise = Promise.resolve(value);
+        }
+      });
+      return installPromise;
+    },
     dispatchFetch(request) {
       let responsePromise;
       listeners.get("fetch")({
@@ -70,6 +79,36 @@ async function createWorker({
     }
   };
 }
+
+test("a new service worker bypasses stale HTTP caches while rebuilding its app shell", async () => {
+  const worker = await createWorker();
+
+  await worker.dispatchInstall();
+
+  assert.ok(worker.fetchCalls.length > 20);
+  assert.ok(worker.fetchCalls.every(([url, init]) => {
+    const parsed = new URL(String(url));
+    return parsed.searchParams.get("pwa_release") === "336" && init?.cache === "no-store";
+  }));
+  assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
+  assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
+});
+
+test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
+  const worker = await createWorker();
+  const request = {
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=336",
+    method: "GET",
+    mode: "navigate",
+    headers: new Headers()
+  };
+
+  const response = await worker.dispatchFetch(request);
+
+  assert.equal(await response.text(), "fresh");
+  assert.equal(worker.fetchCalls.length, 1);
+  assert.equal(worker.fetchCalls[0][1]?.cache, "no-store");
+});
 
 test("service worker bypasses cross-origin resources and API calls", async () => {
   const worker = await createWorker();

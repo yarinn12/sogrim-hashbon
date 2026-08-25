@@ -53,8 +53,15 @@
       "src": "^/$",
       "dest": "/index.html",
       "headers": {
-        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+        "Cache-Control": "no-store, max-age=0"
       }
+    },
+    {
+      "src": "/(index\\.html|manifest\\.webmanifest|sw\\.js|src/pwaBootstrap\\.mjs)",
+      "headers": {
+        "Cache-Control": "no-store, max-age=0"
+      },
+      "continue": true
     },
     {
       "src": "/(i|r)/(.*)",

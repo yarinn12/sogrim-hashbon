@@ -1,4 +1,5 @@
-const CACHE_NAME = "settle-friends-live-v335";
+const PWA_RELEASE = "336";
+const CACHE_NAME = "settle-friends-live-v336";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -32,6 +33,7 @@ const CACHE_FILES = [
   "/accessibility.html",
   "/account-deletion.html",
   "/src/app.mjs",
+  "/src/pwaBootstrap.mjs",
   "/src/publicAppSplashLayer.mjs",
   "/src/primaryNavigation.mjs",
   "/src/publicAccessibilityLayer.mjs",
@@ -163,7 +165,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_FILES))
+      .then((cache) => precacheFreshFiles(cache))
       .then(() => self.skipWaiting())
   );
 });
@@ -206,7 +208,10 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       try {
-        const response = await fetch(event.request);
+        const response = await fetch(
+          event.request,
+          event.request.mode === "navigate" ? { cache: "no-store" } : undefined
+        );
         if (
           response.status === 200 &&
           !event.request.headers.has("range")
@@ -230,6 +235,18 @@ self.addEventListener("fetch", (event) => {
     })()
   );
 });
+
+async function precacheFreshFiles(cache) {
+  await Promise.all(
+    PRECACHE_FILES.map(async (path) => {
+      const url = new URL(path, self.location.origin);
+      url.searchParams.set("pwa_release", PWA_RELEASE);
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Precache failed: ${path}`);
+      await cache.put(path, response);
+    })
+  );
+}
 
 async function fetchCachedMedia(request) {
   const cached = await caches.match(request);

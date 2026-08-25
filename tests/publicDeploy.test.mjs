@@ -220,7 +220,12 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
     route.src === "^/$" &&
     route.dest === "/index.html" &&
     route.headers?.["Cache-Control"] ===
-      "public, max-age=0, s-maxage=60, stale-while-revalidate=300"
+      "no-store, max-age=0"
+  )));
+  assert.ok(config.routes.some((route) => (
+    route.src === "/(index\\.html|manifest\\.webmanifest|sw\\.js|src/pwaBootstrap\\.mjs)" &&
+    route.continue === true &&
+    route.headers?.["Cache-Control"] === "no-store, max-age=0"
   )));
   assert.ok(config.routes.some((route) => route.src === "/i/(.*)" && route.dest === "/index.html"));
   assert.ok(config.routes.some((route) => route.src === "/r/(.*)" && route.dest === "/index.html"));

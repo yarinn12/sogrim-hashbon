@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone", "minimal-ui"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./");
+  assert.equal(manifest.start_url, "./?pwa_release=336");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=336&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -57,11 +57,15 @@ test("web app manifest declares an installable mobile app", async () => {
 test("index links the manifest and mobile app metadata", async () => {
   const html = await readFile("index.html", "utf8");
 
-  assert.match(html, /rel="manifest" href="\.\/manifest\.webmanifest"/);
+  assert.match(
+    html,
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=336"/
+  );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /rel="icon" href="\.\/icon-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs"/);
   assert.match(html, /publicInstallAppLayer\.mjs/);
 });
 
@@ -88,6 +92,7 @@ test("service worker precaches the app shell", async () => {
   assert.match(sw, /"\/accessibility.html"/);
   assert.match(sw, /"\/account-deletion.html"/);
   assert.match(sw, /"\/src\/app.mjs"/);
+  assert.match(sw, /"\/src\/pwaBootstrap.mjs"/);
   assert.match(sw, /"\/src\/data\/cloudStore.mjs"/);
   assert.match(sw, /"\/src\/domain\/eventFilters.mjs"/);
   assert.match(sw, /"\/src\/domain\/usernames.mjs"/);
@@ -113,7 +118,9 @@ test("service worker loads heavy brand media on demand and reuses it", async () 
   assert.match(sw, /"\/assets\/sogrim-logo-intro\.mp4"/);
   assert.match(sw, /"\/sogrim-home-hero\.png"/);
   assert.match(sw, /const PRECACHE_FILES = CACHE_FILES\.filter/);
-  assert.match(sw, /cache\.addAll\(PRECACHE_FILES\)/);
+  assert.match(sw, /precacheFreshFiles\(cache\)/);
+  assert.match(sw, /url\.searchParams\.set\("pwa_release", PWA_RELEASE\)/);
+  assert.match(sw, /fetch\(url, \{ cache: "no-store" \}\)/);
   assert.match(sw, /if \(LAZY_MEDIA_FILES\.has\(url\.pathname\)\)/);
   assert.match(sw, /const cached = await caches\.match\(request\)/);
   assert.match(sw, /if \(cached\) return cached/);
@@ -161,31 +168,36 @@ test("service worker leaves cross-origin and partial responses outside the app c
   assert.match(serviceWorker, /headers\.has\("range"\)/);
 });
 
-test("app checks for a service worker update after startup and whenever an installed app returns", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
-  const start = app.indexOf("function registerServiceWorker()");
-  const end = app.indexOf("function persistState()", start);
-  const registration = app.slice(start, end);
+test("the early PWA bootstrap checks for updates before the full app finishes loading", async () => {
+  const bootstrap = await readFile("src/pwaBootstrap.mjs", "utf8");
 
-  assert.match(registration, /serviceWorker/);
-  assert.match(registration, /register\("\.\/sw\.js", \{/);
-  assert.match(registration, /updateViaCache: "none"/);
-  assert.match(registration, /checkForServiceWorkerUpdate = \(\) => registration\.update\(\)/);
-  assert.match(registration, /document\.visibilityState !== "visible"/);
-  assert.match(registration, /addEventListener\("pageshow", checkForServiceWorkerUpdate\)/);
-  assert.match(registration, /addEventListener\("online", checkForServiceWorkerUpdate\)/);
+  assert.match(bootstrap, /startPwaLifecycle\(\)/);
+  assert.match(bootstrap, /SERVICE_WORKER_URL = `\/sw\.js\?pwa_release=\$\{PWA_RELEASE\}`/);
+  assert.match(bootstrap, /updateViaCache: "none"/);
+  assert.match(bootstrap, /checkForUpdate = \(\) => registration\.update\(\)/);
+  assert.match(bootstrap, /document\.visibilityState !== "visible"/);
+  assert.match(bootstrap, /addEventListener\("pageshow", checkForUpdate\)/);
+  assert.match(bootstrap, /addEventListener\("focus", checkForUpdate\)/);
+  assert.match(bootstrap, /addEventListener\("online", checkForUpdate\)/);
 });
 
 test("an installed app reloads once when a new service worker takes control", async () => {
-  const app = await readFile("src/app.mjs", "utf8");
-  const registration = app.slice(
-    app.indexOf("function registerServiceWorker()"),
-    app.indexOf("function persistState()")
-  );
+  const registration = await readFile("src/pwaBootstrap.mjs", "utf8");
 
   assert.match(registration, /const hadActiveController = Boolean\(navigator\.serviceWorker\.controller\)/);
   assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
   assert.match(registration, /if \(reloadingForUpdate\) return/);
+  assert.match(registration, /sessionStorage\.setItem\(UPDATE_RELOAD_STORAGE_KEY, PWA_RELEASE\)/);
+});
+
+test("deployment never serves an install shell or PWA bootstrap from stale CDN cache", async () => {
+  const config = JSON.parse(await readFile("vercel.json", "utf8"));
+  const rootRoute = config.routes.find((route) => route.src === "^/$");
+  const pwaRoute = config.routes.find((route) => route.src.includes("manifest"));
+
+  assert.equal(rootRoute.headers["Cache-Control"], "no-store, max-age=0");
+  assert.equal(pwaRoute.headers["Cache-Control"], "no-store, max-age=0");
+  assert.equal(pwaRoute.continue, true);
 });
 
 test("service worker activates complete updates and claims installed apps", async () => {

@@ -1,0 +1,65 @@
+const PWA_RELEASE = "336";
+const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
+const UPDATE_RELOAD_STORAGE_KEY = "settle-friends-pwa-update-reload";
+
+startPwaLifecycle();
+
+async function startPwaLifecycle() {
+  if (!("serviceWorker" in navigator)) return;
+
+  if (isNativeRuntime()) {
+    await removeBrowserCachesFromNativeRuntime();
+    return;
+  }
+
+  try {
+    const hadActiveController = Boolean(navigator.serviceWorker.controller);
+    let reloadingForUpdate = false;
+    if (hadActiveController) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (reloadingForUpdate) return;
+        if (window.sessionStorage.getItem(UPDATE_RELOAD_STORAGE_KEY) === PWA_RELEASE) {
+          return;
+        }
+        reloadingForUpdate = true;
+        window.sessionStorage.setItem(UPDATE_RELOAD_STORAGE_KEY, PWA_RELEASE);
+        window.location.reload();
+      });
+    }
+
+    const registration = await navigator.serviceWorker.register(
+      SERVICE_WORKER_URL,
+      {
+        scope: "/",
+        updateViaCache: "none"
+      }
+    );
+    const checkForUpdate = () => registration.update().catch(() => {});
+
+    checkForUpdate();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      checkForUpdate();
+    });
+    window.addEventListener("pageshow", checkForUpdate);
+    window.addEventListener("focus", checkForUpdate);
+    window.addEventListener("online", checkForUpdate);
+  } catch {}
+}
+
+function isNativeRuntime() {
+  return (
+    ["capacitor:", "ionic:"].includes(window.location.protocol) ||
+    (window.location.protocol === "https:" && window.location.hostname === "localhost")
+  );
+}
+
+async function removeBrowserCachesFromNativeRuntime() {
+  await Promise.allSettled([
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((item) => item.unregister()))),
+    globalThis.caches?.keys?.()
+      .then((keys) => Promise.all(keys.map((key) => globalThis.caches.delete(key))))
+  ]);
+}

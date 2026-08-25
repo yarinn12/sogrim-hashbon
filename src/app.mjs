@@ -17879,56 +17879,6 @@ function handleNativeDestinationRequest(event) {
   render();
 }
 
-function registerServiceWorker() {
-  if (!("serviceWorker" in navigator)) return;
-
-  const nativeRuntime =
-    ["capacitor:", "ionic:"].includes(window.location.protocol) ||
-    (window.location.protocol === "https:" && window.location.hostname === "localhost");
-  if (nativeRuntime) {
-    // Native bundles ship their own assets. A browser service worker can keep
-    // serving an older web bundle after an APK update and trigger a surprise
-    // controller-change reload in the middle of an action.
-    navigator.serviceWorker.getRegistrations()
-      .then((registrations) => Promise.all(registrations.map((item) => item.unregister())))
-      .catch(() => {});
-    globalThis.caches?.keys?.()
-      .then((keys) => Promise.all(keys.map((key) => globalThis.caches.delete(key))))
-      .catch(() => {});
-    return;
-  }
-
-  window.addEventListener("load", async () => {
-    try {
-      const hadActiveController = Boolean(navigator.serviceWorker.controller);
-      let reloadingForUpdate = false;
-      if (hadActiveController) {
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          if (reloadingForUpdate) return;
-          reloadingForUpdate = true;
-          window.location.reload();
-        });
-      }
-      const registration = await navigator.serviceWorker.register("./sw.js", {
-        updateViaCache: "none"
-      });
-      const checkForServiceWorkerUpdate = () => registration.update().catch(() => {});
-
-      if (!window.location.hash.includes("access_token")) {
-        checkForServiceWorkerUpdate();
-      }
-
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "visible") return;
-        checkForServiceWorkerUpdate();
-      });
-
-      window.addEventListener("pageshow", checkForServiceWorkerUpdate);
-      window.addEventListener("online", checkForServiceWorkerUpdate);
-    } catch {}
-  });
-}
-
 function persistState() {
   return saveSharedState(state);
 }
@@ -18497,7 +18447,6 @@ function bootstrapApp() {
     runtimeConfig = config;
     if (appBootHydrated) render();
   });
-  registerServiceWorker();
 }
 
 function hydrateAppAfterAccountReady() {
