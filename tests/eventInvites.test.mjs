@@ -368,7 +368,7 @@ test("server recreates the same open link on another device without rotating it"
   assert.equal(tokenHashes.at(-1), activeHash);
 });
 
-test("a deliberately rotated link stays identical when another device prepares it", async () => {
+test("a deliberately rotated link survives Postgres timestamp reserialization on another device", async () => {
   let activeInvite = null;
   let rotations = 0;
   const fetchImpl = async (url, options = {}) => {
@@ -406,7 +406,9 @@ test("a deliberately rotated link stays identical when another device prepares i
         space_id: SPACE_ID,
         space_key: SPACE_KEY,
         token_hash: body.p_token_hash,
-        created_at: body.p_created_at
+        // PostgREST can return the same timestamptz with an explicit offset
+        // even though the creating device sent an ISO string ending in Z.
+        created_at: body.p_created_at.replace(/Z$/, "+00:00")
       };
       return jsonResponse(activeInvite.id);
     }

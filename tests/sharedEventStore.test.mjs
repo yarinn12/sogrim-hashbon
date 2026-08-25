@@ -454,6 +454,49 @@ test("a new shared event is created atomically with its authenticated owner", as
   );
 });
 
+test("shared event creation surfaces an expired account session", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000011";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Creator", accountLinked: true }],
+    groups: [],
+    events: [{
+      id: "event-create-auth-expired",
+      name: "Expired create",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      adminIds: [participantId],
+      createdByParticipantId: participantId,
+      expenses: [],
+      transfers: [],
+      sharedSpaceId: "event-space-create-auth-expired",
+      sharedSpaceKey: "event-share-key-create-auth-expired-123456"
+    }]
+  };
+
+  await assert.rejects(
+    saveSharedEventState(
+      {
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          table: "app_snapshots",
+          anonKey: "anon",
+          account: { userId: accountUserId, accessToken: "expired-token" }
+        }
+      },
+      state,
+      "event-create-auth-expired",
+      async (url) => url.includes("/rpc/create_shared_event_snapshot")
+        ? { ok: false, status: 401 }
+        : { ok: true, status: 200, async json() { return []; } }
+    ),
+    (error) =>
+      error?.code === "CLOUD_STATE_AUTH_EXPIRED" && error?.status === 401
+  );
+});
+
 test("shared event payload carries only participant merges relevant to that event", () => {
   const payload = buildSharedEventState(
     {
@@ -770,7 +813,7 @@ test("refresh removes retained credentials when server membership was revoked", 
   assert.equal(event.sharedSpaceKey, undefined);
 });
 
-test("refresh preserves event membership when verification needs a fresh account token", async () => {
+test("refresh surfaces an expired account session without revoking membership", async () => {
   const accountUserId = "00000000-0000-4000-8000-000000000011";
   const participantId = `account-${accountUserId}`;
   const state = {
@@ -788,23 +831,27 @@ test("refresh preserves event membership when verification needs a fresh account
       sharedSpaceKey: "event-share-key-auth-expired-1234567890"
     }]
   };
-  const refreshed = await refreshSharedEvents(
-    {
-      storage: {
-        mode: "supabase",
-        url: "https://project.supabase.co",
-        table: "app_snapshots",
-        anonKey: "anon",
-        account: { userId: accountUserId, accessToken: "expired-account-token" }
-      }
-    },
-    state,
-    async (url) => url.includes("/rpc/join_shared_event")
-      ? { ok: false, status: 401 }
-      : { ok: true, status: 200, async json() { return []; } }
+  await assert.rejects(
+    refreshSharedEvents(
+      {
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          table: "app_snapshots",
+          anonKey: "anon",
+          account: { userId: accountUserId, accessToken: "expired-account-token" }
+        }
+      },
+      state,
+      async (url) => url.includes("/rpc/join_shared_event")
+        ? { ok: false, status: 401 }
+        : { ok: true, status: 200, async json() { return []; } }
+    ),
+    (error) =>
+      error?.code === "CLOUD_STATE_AUTH_EXPIRED" && error?.status === 401
   );
 
-  const event = refreshed.events[0];
+  const event = state.events[0];
   assert.deepEqual(event.inactiveParticipantIds, []);
   assert.equal(event.sharedSpaceId, "event-space-auth-expired");
   assert.equal(event.sharedSpaceKey, "event-share-key-auth-expired-1234567890");

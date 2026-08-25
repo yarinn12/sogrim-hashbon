@@ -1,5 +1,5 @@
-const PWA_RELEASE = "352";
-const CACHE_NAME = "settle-friends-live-v352";
+const PWA_RELEASE = "353";
+const CACHE_NAME = "settle-friends-live-v353";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -50,6 +50,7 @@ const CACHE_FILES = [
   "/src/data/localStore.mjs",
   "/src/data/eventActivityNotifications.mjs",
   "/src/data/eventInvites.mjs",
+  "/src/data/openInviteTokenStore.mjs",
   "/src/data/notificationInbox.mjs",
   "/src/data/paymentReminders.mjs",
   "/src/data/productMetrics.mjs",
@@ -319,6 +320,8 @@ function isPrivateInviteUrl(url) {
     url.searchParams.has("t") ||
     url.searchParams.has("key") ||
     url.searchParams.has("invite") ||
+    url.searchParams.has("friend") ||
+    url.searchParams.has("ref") ||
     url.pathname.startsWith("/r/") ||
     /^\/i\/[^/]+\/[^/]+\/[^/]+\/?$/.test(url.pathname)
   );

@@ -202,7 +202,7 @@ test("native sharing waits until the shared event is actually published", () => 
   assert.match(app, /value="\$\{shareReady \? escapeAttribute\(inviteUrl\) : ""\}"/);
   assert.match(app, /type="hidden"\s+name="eventInviteUrl"/);
   assert.match(app, /\$\{shareReady \? "" : 'disabled aria-disabled="true" aria-busy="true"'\}/);
-  assert.match(app, /eventSharePreparationErrors/);
+  assert.match(app, /eventSharePreparationStates/);
   const publishBeforeInvite = app.slice(
     app.indexOf("async function prepareSharedEventForInvitation"),
     app.indexOf("async function rotateCurrentEventInvite")
@@ -239,7 +239,8 @@ test("a failed invite preparation explains the problem and retries in place", ()
     app.indexOf("async function prepareEventShareNow")
   );
 
-  assert.match(dialog, /const shareFailed = eventSharePreparationErrors\.has\(event\.id\)/);
+  assert.match(dialog, /preparationState\.status === "verified"/);
+  assert.match(dialog, /const shareFailed = preparationState\.status === "error"/);
   assert.match(dialog, /לא הצלחנו לשמור את הקישור/);
   assert.match(dialog, /האירוע נשמר\. אפשר לנסות שוב בלי ליצור אירוע חדש/);
   assert.match(dialog, /data-action="retry-event-share"/);
@@ -285,6 +286,55 @@ test("prepareEventShareNow always reloads the runtime config", () => {
     /if \(\s*currentEventOpenInviteToken\(/,
     "a cached token must be verified by the server before it is reused"
   );
+});
+
+test("cached invite candidates cannot enable copy, WhatsApp or QR before verification", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const qrLayer = readFileSync("src/publicInviteQrLayer.mjs", "utf8");
+  const snapshotLayer = readFileSync("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const dialog = app.slice(
+    app.indexOf("function renderEventShareDialog"),
+    app.indexOf("function renderEventSettingsDialog")
+  );
+  const preparation = app.slice(
+    app.indexOf("function prepareEventShare(eventId)"),
+    app.indexOf("function settleEventSharePreparation")
+  );
+
+  assert.doesNotMatch(dialog, /cloudInviteReady/);
+  assert.match(dialog, /preparationState\.status === "verified"/);
+  assert.match(dialog, /shareReady \? escapeAttribute\(inviteUrl\) : ""/);
+  assert.match(preparation, /markEventSharePreparing\(event\)/);
+  assert.ok(
+    preparation.indexOf("markEventSharePreparing(event)") <
+      preparation.indexOf("prepareEventShareNow(eventId)"),
+    "the dialog must enter preparing state synchronously before it renders"
+  );
+  assert.match(preparation, /navigator\.onLine === false && previouslyVerifiedToken/);
+  assert.match(preparation, /markEventShareVerified\(event, previouslyVerifiedToken, "offline-cache"\)/);
+  assert.match(preparation, /cachedInviteFallbackAllowed === true/);
+  assert.match(preparation, /runtimeConfigUsesFallback\(\)/);
+  assert.match(app, /error\.cachedInviteFallbackAllowed = Boolean\(/);
+  assert.match(qrLayer, /copyButton\.disabled/);
+  assert.match(snapshotLayer, /input\?\.dataset\.shareReady !== "true"/);
+});
+
+test("legacy raw tokens are only server candidates and never UI-ready tokens", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const currentToken = app.slice(
+    app.indexOf("function currentEventOpenInviteToken"),
+    app.indexOf("function rememberEventOpenInviteToken")
+  );
+  const candidate = app.slice(
+    app.indexOf("function eventOpenInviteCandidateForServer"),
+    app.indexOf("function eventInvitePreparationNotice")
+  );
+
+  assert.match(currentToken, /loadVerifiedOpenInviteToken\(runtimeConfig, event\)/);
+  assert.doesNotMatch(currentToken, /loadLegacyOpenInviteCandidate|eventOpenInviteToken\(event\)/);
+  assert.match(candidate, /eventOpenInviteToken\(event\)/);
+  assert.match(candidate, /loadLegacyOpenInviteCandidate\(event\)/);
+  assert.match(app, /eventOpenInviteCandidateForServer\(sharedEvent\)/);
 });
 
 test("invite sharing self-recovers when an older server cannot return an active token", () => {

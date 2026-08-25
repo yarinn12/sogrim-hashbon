@@ -322,6 +322,23 @@ function notifyJoinedEvent(
 
 function cleanInviteAddress() {
   const url = new URL(window.location.href);
+  const tokenInviteEventId = parseInviteEventId(url.toString());
+  const tokenInvite = parseInviteToken(url.toString());
+  if (
+    tokenInviteEventId &&
+    tokenInvite &&
+    /^\/i\/[^/]+\/t\/[^/]+\/?$/.test(url.pathname)
+  ) {
+    url.pathname = "/";
+    url.searchParams.set("event", tokenInviteEventId);
+    url.searchParams.delete("space");
+    url.searchParams.delete("key");
+    url.searchParams.delete("invite");
+    url.searchParams.delete("t");
+    window.history.replaceState(window.history.state, "", url);
+    return;
+  }
+
   const compactInvite = parseCompactInviteUrl(url);
   if (compactInvite) {
     url.pathname = "/";

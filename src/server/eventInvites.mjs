@@ -165,6 +165,7 @@ export async function manageOpenEventInvite({
         createdAt: String(active.created_at ?? "")
       });
       if (
+        recoverableToken &&
         sameInviteCredentials(active, { spaceId, spaceKey }) &&
         secureHashEquals(active.token_hash, hashInviteToken(recoverableToken))
       ) {
@@ -237,9 +238,16 @@ function createRotatedOpenInviteToken({
   spaceKey,
   createdAt
 }) {
+  const normalizedCreatedAt = normalizeInviteCreatedAt(createdAt);
+  if (!normalizedCreatedAt) return "";
   return createHmac("sha256", secret)
-    .update(`rotated-open-event-invite\0${spaceId}\0${eventId}\0${spaceKey}\0${createdAt}`)
+    .update(`rotated-open-event-invite\0${spaceId}\0${eventId}\0${spaceKey}\0${normalizedCreatedAt}`)
     .digest("base64url");
+}
+
+function normalizeInviteCreatedAt(value) {
+  const timestamp = Date.parse(String(value ?? ""));
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
 }
 
 export async function redeemEventInvite({

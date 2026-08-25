@@ -122,6 +122,20 @@ test("friend network reads only the signed-in user's visible relationships", asy
   assert.ok(!profileRequest.url.includes("email"));
 });
 
+test("friend network surfaces an expired account session consistently", async () => {
+  await assert.rejects(
+    loadFriendNetwork(accountConfig(), async () => ({
+      ok: false,
+      status: 401,
+      async json() {
+        return { message: "JWT expired" };
+      }
+    })),
+    (error) =>
+      error?.code === "CLOUD_STATE_AUTH_EXPIRED" && error?.status === 401
+  );
+});
+
 test("a stalled friend network load times out and allows a retry", async (t) => {
   const stalledSignals = [];
   t.mock.timers.enable({ apis: ["setTimeout"] });

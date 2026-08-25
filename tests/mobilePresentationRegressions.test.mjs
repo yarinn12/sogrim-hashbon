@@ -26,7 +26,11 @@ test("mobile participant management keeps global route chrome available", () => 
 test("large-text home keeps dedicated clearance above fixed navigation", () => {
   assert.match(
     dynamicTypeLayer,
-    /#app[\s\S]*?\.screen\[data-screen-kind="home"\] \{[\s\S]*?padding-bottom: calc\(196px \+ env\(safe-area-inset-bottom\)\) !important;/
+    /#app[\s\S]*?\.screen\[data-screen-kind="home"\] \{[\s\S]*?padding-bottom: var\(--dynamic-type-home-end-space\) !important;/
+  );
+  assert.match(
+    dynamicTypeLayer,
+    /--dynamic-type-home-end-space: calc\([\s\S]*?--dynamic-type-screen-end-space[\s\S]*?max\(12px, 0\.75rem\)/
   );
 });
 
@@ -106,6 +110,6 @@ test("fixed navigation keeps a scrollable safe zone and large text cannot pan si
   );
   assert.match(
     dynamicTypeLayer,
-    /\.screen \{[\s\S]*?padding-bottom: calc\(184px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?scroll-padding-block-end: calc\(184px \+ env\(safe-area-inset-bottom\)\) !important;/
+    /\.screen \{[\s\S]*?padding-bottom: var\(--dynamic-type-screen-end-space\) !important;[\s\S]*?scroll-padding-block-end: var\(--dynamic-type-screen-end-space\) !important;/
   );
 });

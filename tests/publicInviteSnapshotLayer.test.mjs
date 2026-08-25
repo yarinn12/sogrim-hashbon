@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { parseInviteEventId, parseInviteToken } from "../src/domain/inviteLinks.mjs";
+import { parseCompactInviteUrl } from "../src/domain/compactInvite.mjs";
 
 test("public invite snapshot layer loads after join helpers", async () => {
   const index = await readFile("index.html", "utf8");
@@ -192,6 +194,51 @@ test("a successful invite import cannot leak into the next account", async () =>
   );
 
   assert.match(importFlow, /clearPendingInviteUrl\(\);\s*return true;/);
+});
+
+test("a successful token-path import removes the raw token from browser history", async () => {
+  const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const cleanAddressSource = sourceBetween(
+    layer,
+    "function cleanInviteAddress()",
+    "function findJoinLink()"
+  );
+  const eventId = "event-secure";
+  const token = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ_123456";
+  let replacedUrl = null;
+  const window = {
+    location: {
+      href: `https://sogrim-hesbon-app.vercel.app/i/${eventId}/t/${token}?ref=0123456789abcdefabcd`
+    },
+    history: {
+      state: { joined: true },
+      replaceState(_state, _title, url) {
+        replacedUrl = new URL(String(url));
+      }
+    }
+  };
+  const run = new Function(
+    "window",
+    "URL",
+    "parseInviteEventId",
+    "parseInviteToken",
+    "parseCompactInviteUrl",
+    `${cleanAddressSource}\ncleanInviteAddress();`
+  );
+
+  run(
+    window,
+    URL,
+    parseInviteEventId,
+    parseInviteToken,
+    parseCompactInviteUrl
+  );
+
+  assert.equal(replacedUrl.pathname, "/");
+  assert.equal(replacedUrl.searchParams.get("event"), eventId);
+  assert.equal(replacedUrl.searchParams.get("ref"), "0123456789abcdefabcd");
+  assert.equal(replacedUrl.searchParams.has("t"), false);
+  assert.doesNotMatch(replacedUrl.toString(), new RegExp(token));
 });
 
 test("invite context is retained until the participant save reaches the shared event", async () => {

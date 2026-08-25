@@ -495,10 +495,13 @@ export async function loadSharedStateForStartup({
 }
 
 async function loadSharedStateOnce(requestScope) {
+  const requestAccountGeneration = accountStorageGeneration;
+  const requestSaveGeneration = sharedStateSaveGeneration;
   let runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   const localState = loadState();
 
   if (runtimeConfig.storage?.mode === "supabase") {
+    const pendingPayload = pendingSharedStateRaw(runtimeConfig);
     const pendingState = loadPendingSharedState(runtimeConfig);
     if (pendingState) {
       if (shouldDeferPendingSharedStateRetry()) {
@@ -523,7 +526,20 @@ async function loadSharedStateOnce(requestScope) {
           runtimeConfig,
           mergedState
         )).state;
+        if (!loadRequestIsCurrent(
+          requestScope,
+          requestAccountGeneration,
+          requestSaveGeneration
+        )) {
+          return loadState();
+        }
+        if (pendingPayload !== pendingSharedStateRaw(runtimeConfig)) {
+          publishSyncStatus("reconnecting");
+          schedulePendingSharedStateRetry();
+          return loadState();
+        }
         clearPendingSharedState(runtimeConfig);
+        resetPendingSharedStateRetry();
         publishSyncStatus("saved");
         const syncedStateWithIdentity = applyLocalParticipantId(
           cleanLegacyStarterData(syncedState, loadProtectedParticipantId()),
@@ -533,7 +549,7 @@ async function loadSharedStateOnce(requestScope) {
         return syncedStateWithIdentity;
       } catch (error) {
         // Keep the pending local snapshot available for a later retry.
-        if (isTransientSyncFailure(error)) {
+        if (isRetryablePendingSyncFailure(error)) {
           publishSyncStatus("reconnecting");
           schedulePendingSharedStateRetry();
           logQueuedSync(error, {
@@ -573,7 +589,12 @@ async function loadSharedStateOnce(requestScope) {
       );
       const accountState = state;
       state = await recoverAccessibleSharedEvents(runtimeConfig, state);
-      state = await refreshSharedEvents(runtimeConfig, state);
+      state = await withFreshCloudAccount(runtimeConfig, (freshConfig) =>
+        refreshSharedEvents(freshConfig, state)
+      );
+      runtimeConfig = activateClientSpace(
+        attachStoredAccountIdentity(runtimeConfig)
+      );
       if (hasCloudStateChanged(state, accountState)) {
         const saved = await saveCloudStateWithRetry(
           runtimeConfig,
@@ -585,6 +606,13 @@ async function loadSharedStateOnce(requestScope) {
         state,
         loadLocalParticipantId()
       );
+      if (!loadRequestIsCurrent(
+        requestScope,
+        requestAccountGeneration,
+        requestSaveGeneration
+      )) {
+        return loadState();
+      }
       saveStateForScope(localStateWithIdentity, requestScope);
       return localStateWithIdentity;
     } catch {
@@ -698,7 +726,7 @@ export async function saveSharedState(state) {
           };
         } catch (error) {
           let reverted = false;
-          const transientFailure = isTransientSyncFailure(error);
+          const retryablePendingFailure = isRetryablePendingSyncFailure(error);
           const partiallyPersistedState = error?.sharedEventPersisted
             ? error.persistedState ?? sharedState
             : null;
@@ -714,7 +742,7 @@ export async function saveSharedState(state) {
                 runtimeConfig,
                 partiallyPersistedState
               );
-            } else if (transientFailure) {
+            } else if (retryablePendingFailure) {
               // Keep locally saved changes queued during temporary outages.
               // A background retry will persist them when the service recovers.
               pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
@@ -727,7 +755,7 @@ export async function saveSharedState(state) {
             }
           }
           if (
-            !transientFailure &&
+            !retryablePendingFailure &&
             !partiallyPersistedState &&
             pendingPayload === pendingSharedStateRaw(runtimeConfig)
           ) {
@@ -735,9 +763,9 @@ export async function saveSharedState(state) {
             pendingStateSaved = false;
           }
           const acceptedPending = Boolean(
-            pendingStateSaved && (transientFailure || partiallyPersistedState)
+            pendingStateSaved && (retryablePendingFailure || partiallyPersistedState)
           );
-          if (transientFailure && pendingStateSaved) {
+          if (retryablePendingFailure && pendingStateSaved) {
             schedulePendingSharedStateRetry();
           }
           const syncOutcome = {
@@ -761,7 +789,7 @@ export async function saveSharedState(state) {
             mode: acceptedPending ? "queued" : "cloud",
             error,
             ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
-            ...(transientFailure && !partiallyPersistedState && pendingStateSaved
+            ...(retryablePendingFailure && !partiallyPersistedState && pendingStateSaved
               ? { pending: true }
               : {}),
             ...(reverted ? { reverted: true } : {})
@@ -823,6 +851,9 @@ export async function flushPendingSharedState() {
 
 
 async function flushPendingSharedStateOnce() {
+  const requestScope = synchronizeAccountStorageScope();
+  const requestAccountGeneration = accountStorageGeneration;
+  const requestSaveGeneration = sharedStateSaveGeneration;
   let runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   if (runtimeConfigUsedFallback) {
     runtimeConfigPromise = null;
@@ -853,16 +884,31 @@ async function flushPendingSharedStateOnce() {
   try {
     const remoteState = await loadCloudState(runtimeConfig, pendingState);
     const mergedState = mergeSharedStates(remoteState, pendingState);
-    await syncAndPersistCloudState(runtimeConfig, mergedState);
-    if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
-      clearPendingSharedState(runtimeConfig);
+    const saved = await syncAndPersistCloudState(runtimeConfig, mergedState);
+    if (
+      !loadRequestIsCurrent(
+        requestScope,
+        requestAccountGeneration,
+        requestSaveGeneration
+      ) ||
+      pendingPayload !== pendingSharedStateRaw(runtimeConfig)
+    ) {
+      publishSyncStatus("reconnecting");
+      schedulePendingSharedStateRetry();
+      return { ok: true, pending: true, superseded: true };
     }
+    const syncedStateWithIdentity = applyLocalParticipantId(
+      cleanLegacyStarterData(saved.state, loadProtectedParticipantId()),
+      loadLocalParticipantId()
+    );
+    saveStateForScope(syncedStateWithIdentity, requestScope);
+    clearPendingSharedState(runtimeConfig);
     resetPendingSharedStateRetry();
     publishSyncStatus("saved");
     return { ok: true };
   } catch (error) {
-    const transientFailure = isTransientSyncFailure(error);
-    if (transientFailure) {
+    const retryablePendingFailure = isRetryablePendingSyncFailure(error);
+    if (retryablePendingFailure) {
       publishSyncStatus("reconnecting");
       schedulePendingSharedStateRetry();
       logQueuedSync(error, {
@@ -1272,6 +1318,12 @@ export function isTransientSyncFailure(error) {
   });
 }
 
+function isRetryablePendingSyncFailure(error) {
+  return isTransientSyncFailure(error) || flattenSyncErrors(error).some((item) =>
+    item?.code === "CLOUD_STATE_AUTH_EXPIRED" || Number(item?.status ?? 0) === 401
+  );
+}
+
 function schedulePendingSharedStateRetry() {
   if (
     pendingSyncRetryTimer ||
@@ -1288,9 +1340,9 @@ function schedulePendingSharedStateRetry() {
   pendingSyncRetryTimer = globalThis.window.setTimeout(async () => {
     pendingSyncRetryTimer = 0;
     const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
-    if (result?.ok) {
+    if (result?.ok && !result?.pending) {
       resetPendingSharedStateRetry();
-    } else if (isTransientSyncFailure(result?.error)) {
+    } else if (result?.pending || isRetryablePendingSyncFailure(result?.error)) {
       schedulePendingSharedStateRetry();
     }
   }, delay);
@@ -1487,6 +1539,18 @@ function synchronizeAccountStorageScope() {
 function saveStateForScope(state, requestScope) {
   if (requestScope !== synchronizeAccountStorageScope()) return false;
   return saveState(state);
+}
+
+function loadRequestIsCurrent(
+  requestScope,
+  requestAccountGeneration,
+  requestSaveGeneration
+) {
+  return Boolean(
+    requestScope === synchronizeAccountStorageScope() &&
+      requestAccountGeneration === accountStorageGeneration &&
+      requestSaveGeneration === sharedStateSaveGeneration
+  );
 }
 
 function profileAuthFields(profile) {

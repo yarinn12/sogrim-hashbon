@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { CloudStateAuthError } from "./cloudStore.mjs";
 import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
 import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
@@ -181,7 +182,9 @@ async function patchFriendProfile(config, body, select, fetchImpl) {
     }
   );
   const rows = await responseJson(response);
-  if (!response.ok) throw friendStoreError(rows, "Profile sync failed");
+  if (!response.ok) {
+    throw friendStoreError(rows, "Profile sync failed", response.status);
+  }
   return Array.isArray(rows) ? rows[0] ?? null : rows;
 }
 
@@ -496,7 +499,9 @@ async function readRows(config, table, query, fetchImpl, timeoutMs) {
     timeoutMs
   );
   const rows = await responseJson(response);
-  if (!response.ok) throw friendStoreError(rows, "Friend data unavailable");
+  if (!response.ok) {
+    throw friendStoreError(rows, "Friend data unavailable", response.status);
+  }
   return Array.isArray(rows) ? rows : [];
 }
 
@@ -511,7 +516,9 @@ async function callFriendRpc(config, functionName, body, fetchImpl) {
     }
   );
   const payload = await responseJson(response);
-  if (!response.ok) throw friendStoreError(payload, "Friend request failed");
+  if (!response.ok) {
+    throw friendStoreError(payload, "Friend request failed", response.status);
+  }
   return payload;
 }
 
@@ -539,7 +546,8 @@ async function responseJson(response) {
   return response.json().catch(() => ({}));
 }
 
-function friendStoreError(payload, fallback) {
+function friendStoreError(payload, fallback, status = 0) {
+  if (Number(status) === 401) return new CloudStateAuthError();
   const error = new Error(
     payload?.message ??
       payload?.details ??
@@ -548,5 +556,6 @@ function friendStoreError(payload, fallback) {
       fallback
   );
   error.code = payload?.code ?? "";
+  error.status = Number(status) || 0;
   return error;
 }

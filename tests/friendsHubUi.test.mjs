@@ -310,3 +310,19 @@ test("a temporary friend network failure keeps the last successful roster visibl
   assert.match(refresh, /emptyFriendNetwork\("error"\)/);
   assert.match(app, /class="friend-network-stale" role="status"/);
 });
+
+test("friend refresh resolves avatar versions instead of restoring a stale snapshot image", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const start = app.indexOf("function applyFriendNetworkToState");
+  const end = app.indexOf("function friendRequestErrorMessage", start);
+  const applyNetwork = app.slice(start, end);
+
+  assert.ok(start >= 0 && end > start);
+  assert.match(applyNetwork, /const avatarResolution = resolveProfileAvatar/);
+  assert.match(applyNetwork, /\? avatarResolution\.avatarImage/);
+  assert.match(applyNetwork, /\? avatarResolution\.avatarImageUpdatedAt/);
+  assert.doesNotMatch(
+    applyNetwork,
+    /\? normalizeAvatarImage\(profile\.avatar_image\)/
+  );
+});

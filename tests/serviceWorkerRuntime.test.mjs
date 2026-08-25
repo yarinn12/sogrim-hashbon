@@ -112,7 +112,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "352" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "353" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -121,7 +121,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=352",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=353",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -245,7 +245,9 @@ test("private query and compact invites use no-store and fall back to the shell 
   });
   const privateUrls = [
     "https://sogrim-hesbon-app.vercel.app/?event=e1&key=" + "a".repeat(40),
-    "https://sogrim-hesbon-app.vercel.app/i/e1/space-safe/" + "b".repeat(40)
+    "https://sogrim-hesbon-app.vercel.app/i/e1/space-safe/" + "b".repeat(40),
+    "https://sogrim-hesbon-app.vercel.app/?friend=0123456789abcdefabcd",
+    "https://sogrim-hesbon-app.vercel.app/?ref=0123456789abcdefabcd"
   ];
 
   for (const url of privateUrls) {
@@ -254,6 +256,6 @@ test("private query and compact invites use no-store and fall back to the shell 
   }
 
   assert.equal(worker.cacheWrites.length, 0);
-  assert.equal(worker.fetchCalls.length, 2);
+  assert.equal(worker.fetchCalls.length, 4);
   assert.ok(worker.fetchCalls.every(([, init]) => init?.cache === "no-store"));
 });

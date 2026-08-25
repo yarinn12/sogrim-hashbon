@@ -220,11 +220,54 @@ function injectDynamicTypeStyles(document) {
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
       :where(h1, h2, h3, p, label, small, strong, button, summary, a, span:not([aria-hidden="true"])) {
       max-width: 100%;
+      max-height: none !important;
       overflow: visible !important;
       white-space: normal !important;
       overflow-wrap: anywhere;
       word-break: normal;
       text-overflow: clip !important;
+      -webkit-line-clamp: unset !important;
+      line-clamp: unset !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      :where(h1, h2, h3) {
+      text-wrap: balance;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      :where(p, label, small, strong, button, summary, a) {
+      text-wrap: pretty;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      .screen[data-screen-kind="event"]
+      > .top
+      .brand
+      h1 {
+      height: auto !important;
+      max-height: none !important;
+      overflow-wrap: break-word;
+      -webkit-line-clamp: unset !important;
+      line-clamp: unset !important;
+      text-wrap: balance;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      :is(#app, #public-account-auth-gate)
+      .account-profile-email {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+      white-space: normal !important;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      text-overflow: clip !important;
+      direction: ltr;
+      unicode-bidi: plaintext;
+      text-align: left;
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
@@ -374,6 +417,19 @@ function injectDynamicTypeStyles(document) {
     }
 
     @media (max-width: 720px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) {
+        --dynamic-type-bottom-nav-block: max(82px, 5rem);
+        --dynamic-type-bottom-gap: max(28px, 2rem);
+        --dynamic-type-screen-end-space: calc(
+          var(--dynamic-type-bottom-nav-block) +
+          var(--dynamic-type-bottom-gap) +
+          env(safe-area-inset-bottom)
+        );
+        --dynamic-type-home-end-space: calc(
+          var(--dynamic-type-screen-end-space) + max(12px, 0.75rem)
+        );
+      }
+
       html:is(.${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         #app
         .screen[data-screen-kind="home"]
@@ -393,14 +449,18 @@ function injectDynamicTypeStyles(document) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .product-app-nav {
         height: auto !important;
-        min-height: calc(82px + env(safe-area-inset-bottom)) !important;
+        max-height: none !important;
+        min-height: calc(
+          var(--dynamic-type-bottom-nav-block) + env(safe-area-inset-bottom)
+        ) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         #app
         .product-nav-button {
         height: auto !important;
-        min-height: 64px !important;
+        max-height: none !important;
+        min-height: max(64px, 4rem) !important;
         padding-block: 7px !important;
         font-size: var(--dynamic-text-11, 0.6875rem) !important;
         line-height: 1.2 !important;
@@ -418,19 +478,19 @@ function injectDynamicTypeStyles(document) {
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .screen {
-        padding-bottom: calc(184px + env(safe-area-inset-bottom)) !important;
-        scroll-padding-block-end: calc(184px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: var(--dynamic-type-screen-end-space) !important;
+        scroll-padding-block-end: var(--dynamic-type-screen-end-space) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         #app
         .screen[data-screen-kind="home"] {
-        padding-bottom: calc(196px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: var(--dynamic-type-home-end-space) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .screen.event-has-action-dock {
-        padding-bottom: calc(236px + env(safe-area-inset-bottom)) !important;
+        padding-bottom: var(--dynamic-type-screen-end-space) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
@@ -472,11 +532,6 @@ function injectDynamicTypeStyles(document) {
 
       body:has(.event-participant-route-backdrop) #app .event-action-dock {
         display: none !important;
-      }
-
-      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
-        .screen.event-has-action-dock {
-        padding-bottom: calc(184px + env(safe-area-inset-bottom)) !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)

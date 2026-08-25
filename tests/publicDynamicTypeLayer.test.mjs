@@ -99,7 +99,14 @@ test("large text mode releases rigid controls and protects fixed bottom navigati
   assert.match(layer, /height: auto !important/);
   assert.match(layer, /min-height: max\(48px, 2\.85rem\)/);
   assert.match(layer, /\.event-action-dock \{[\s\S]*?position: static !important/);
-  assert.match(layer, /\.screen\.event-has-action-dock \{[\s\S]*?padding-bottom: calc\(184px/);
+  assert.match(
+    layer,
+    /--dynamic-type-screen-end-space: calc\([\s\S]*?--dynamic-type-bottom-nav-block[\s\S]*?--dynamic-type-bottom-gap/
+  );
+  assert.match(
+    layer,
+    /\.screen\.event-has-action-dock \{[\s\S]*?padding-bottom: var\(--dynamic-type-screen-end-space\)/
+  );
   assert.match(layer, /max-height: 100dvh !important/);
   assert.match(layer, /overflow-y: auto !important/);
   assert.match(
@@ -160,6 +167,29 @@ test("large text mode releases rigid controls and protects fixed bottom navigati
     layer,
     /#public-account-auth-gate[\s\S]*?:where\(button, input, label, p, li, a\)/
   );
+});
+
+test("large text lets event titles and account copy wrap without clipping", () => {
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="event"\][\s\S]*?> \.top[\s\S]*?\.brand[\s\S]*?h1 \{[\s\S]*?max-height: none !important;[\s\S]*?-webkit-line-clamp: unset !important;[\s\S]*?text-wrap: balance;/
+  );
+  assert.match(
+    layer,
+    /\.account-profile-email \{[\s\S]*?max-width: 100% !important;[\s\S]*?white-space: normal !important;[\s\S]*?overflow-wrap: anywhere;[\s\S]*?unicode-bidi: plaintext;/
+  );
+  assert.match(layer, /:where\(h1, h2, h3\) \{[\s\S]*?text-wrap: balance;/);
+  assert.match(layer, /line-clamp: unset !important/);
+});
+
+test("large text reserves a rem-based safe area above bottom navigation", () => {
+  assert.match(layer, /--dynamic-type-bottom-nav-block: max\(82px, 5rem\)/);
+  assert.match(layer, /--dynamic-type-bottom-gap: max\(28px, 2rem\)/);
+  assert.match(
+    layer,
+    /\.screen \{[\s\S]*?padding-bottom: var\(--dynamic-type-screen-end-space\) !important;[\s\S]*?scroll-padding-block-end: var\(--dynamic-type-screen-end-space\) !important;/
+  );
+  assert.doesNotMatch(layer, /padding-bottom: calc\((?:184|196|236)px/);
 });
 
 test("large text keeps screen-reader-only copy clipped out of the visual layout", () => {

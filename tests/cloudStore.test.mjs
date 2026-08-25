@@ -195,6 +195,24 @@ test("saveCloudState inserts a missing app snapshot without merging duplicates",
   assert.equal(requests[0].options.headers.prefer, "return=representation");
 });
 
+test("an empty read forgets the cached snapshot version before recreation", async () => {
+  const config = createConfig("snapshot-recreated-after-empty-read");
+  await readCloudState(config, async () =>
+    jsonResponse([{ state, updated_at: "2026-07-17T10:00:00.000Z" }])
+  );
+  await readCloudState(config, async () => jsonResponse([]));
+
+  const requests = [];
+  await saveCloudState(config, state, async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse([{ updated_at: "2026-07-17T10:00:01.000Z" }]);
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.method, "POST");
+  assert.doesNotMatch(requests[0].url, /updated_at=eq\./);
+});
+
 test("an account snapshot create conflict reloads, merges, and retries as an update", async () => {
   const accountConfig = createConfig("account-create-conflict-retry");
   accountConfig.storage.account = {

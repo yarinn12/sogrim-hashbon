@@ -270,7 +270,12 @@ test("an online flush also keeps a newer pending snapshot", () => {
   assert.match(flush, /const pendingPayload = pendingSharedStateRaw\(runtimeConfig\);/);
   assert.match(
     flush,
-    /if \(pendingPayload === pendingSharedStateRaw\(runtimeConfig\)\) \{\s*\n\s*clearPendingSharedState\(runtimeConfig\);/
+    /pendingPayload !== pendingSharedStateRaw\(runtimeConfig\)[\s\S]*?return \{ ok: true, pending: true, superseded: true \};/
+  );
+  assert.ok(
+    flush.indexOf("clearPendingSharedState(runtimeConfig)") >
+      flush.indexOf("superseded: true"),
+    "only the payload that was actually flushed is cleared"
   );
 });
 
@@ -384,13 +389,14 @@ test("a recovered pending-state conflict is reported as saved instead of remaini
   );
   const recoveryCall = load.indexOf("syncAndPersistCloudState(");
   const recoverySave = load.indexOf('publishSyncStatus("saved")', recoveryCall);
-  const quietRecovery = load.indexOf('publishSyncStatus("reconnecting")', recoveryCall);
-  const recoveryFailure = load.indexOf("publishSyncFailure(error)", quietRecovery);
 
   assert.ok(recoveryCall >= 0, "pending state uses bounded conflict recovery");
   assert.ok(recoverySave > recoveryCall, "successful recovery clears the warning");
-  assert.ok(quietRecovery > recoverySave, "temporary recovery failures stay quiet");
-  assert.ok(recoveryFailure > quietRecovery, "only a non-transient recovery failure surfaces");
+  assert.match(
+    load,
+    /catch \(error\) \{[\s\S]*?if \(isRetryablePendingSyncFailure\(error\)\) \{[\s\S]*?publishSyncStatus\("reconnecting"\);[\s\S]*?\} else \{[\s\S]*?publishSyncFailure\(error\);/,
+    "retryable recovery failures stay queued while permanent failures surface"
+  );
 });
 
 test("shared event writes also retry through a merge on conflict", () => {
@@ -443,7 +449,7 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   );
   assert.match(
     localStore,
-    /if \(transientFailure && pendingStateSaved\) \{\s*schedulePendingSharedStateRetry\(\);/
+    /if \(retryablePendingFailure && pendingStateSaved\) \{\s*schedulePendingSharedStateRetry\(\);/
   );
   assert.match(localStore, /const acceptedPending = Boolean\(/);
   assert.match(localStore, /ok: acceptedPending/);
@@ -575,6 +581,263 @@ test("a temporary shared-event failure is accepted when the local change is dura
     assert.equal(
       dispatched.some((event) => event.type === "sogrim:shared-save-reverted"),
       false
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("an expired account session keeps the latest state in the durable outbox", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const previousAccountSession = globalThis.SogrimAccountSession;
+  const storage = memoryStorage();
+  const spaceId = "space-auth-expired-outbox";
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const changedState = queueTestState("Saved Through Expired Session");
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "expired-token-a",
+    spaceId,
+    spaceKey: "auth-expired-secret-that-is-long-enough-123"
+  });
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.SogrimAccountSession = { async refresh() { return null; } };
+  globalThis.fetch = async (url) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    return { ok: false, status: 401 };
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?auth-expired-outbox=${Date.now()}`
+    );
+    const result = await store.saveSharedState(changedState, { awaitCloud: true });
+    const pending = JSON.parse(
+      storage.getItem(`settle-friends-pending-sync:${spaceId}`)
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "queued");
+    assert.equal(result.pending, true);
+    assert.equal(result.error?.code, "CLOUD_STATE_AUTH_EXPIRED");
+    assert.equal(pending.participants[0].displayName, "Saved Through Expired Session");
+    assert.equal(
+      JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`))
+        .participants[0].displayName,
+      "Saved Through Expired Session"
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+    restoreGlobal("SogrimAccountSession", previousAccountSession);
+  }
+});
+
+test("a late same-account cloud load cannot overwrite a newer local edit", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const previousAccountSession = globalThis.SogrimAccountSession;
+  const storage = memoryStorage();
+  const spaceId = "space-late-load-same-account";
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const remoteState = queueTestState("Older Remote State");
+  const changedState = queueTestState("Newer Local Edit");
+  const readStarted = deferred();
+  const releaseRead = deferred();
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "expired-token-a",
+    spaceId,
+    spaceKey: "late-load-secret-that-is-long-enough-123"
+  });
+  storage.setItem(
+    `settle-friends-state:${spaceId}`,
+    JSON.stringify(remoteState)
+  );
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.SogrimAccountSession = { async refresh() { return null; } };
+  globalThis.fetch = async (url, options = {}) => {
+    const requestUrl = String(url);
+    if (requestUrl.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    if (options.method === "POST" || options.method === "PATCH") {
+      return { ok: false, status: 401 };
+    }
+    if (requestUrl.includes("snapshot_kind")) return jsonResponse([]);
+    readStarted.resolve();
+    await releaseRead.promise;
+    return jsonResponse([{
+      state: remoteState,
+      updated_at: "2026-08-24T09:00:00.000Z"
+    }]);
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?late-same-account-load=${Date.now()}`
+    );
+    const loadPromise = store.loadSharedState();
+    await readStarted.promise;
+    const saveResult = await store.saveSharedState(changedState, {
+      awaitCloud: true
+    });
+    releaseRead.resolve();
+    const loaded = await loadPromise;
+    const local = JSON.parse(
+      storage.getItem(`settle-friends-state:${spaceId}`)
+    );
+
+    assert.equal(saveResult.mode, "queued");
+    assert.equal(loaded.participants[0].displayName, "Newer Local Edit");
+    assert.equal(local.participants[0].displayName, "Newer Local Edit");
+    assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
+  } finally {
+    releaseRead.resolve();
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+    restoreGlobal("SogrimAccountSession", previousAccountSession);
+  }
+});
+
+test("a successful outbox flush projects the merged cloud state locally", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const spaceId = "space-flush-merged-state";
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  const pendingState = queueTestState("Pending Local State");
+  pendingState.groups = [{
+    id: "local-group",
+    name: "Local group",
+    memberIds: ["account-user-a"],
+    updatedAt: "2026-08-24T10:00:00.000Z"
+  }];
+  const remoteState = queueTestState("Remote State");
+  remoteState.groups = [{
+    id: "remote-group",
+    name: "Remote group",
+    memberIds: ["account-user-a"],
+    updatedAt: "2026-08-24T09:00:00.000Z"
+  }];
+
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId,
+    spaceKey: "flush-merge-secret-that-is-long-enough-123"
+  });
+  storage.setItem(
+    `settle-friends-state:${spaceId}`,
+    JSON.stringify(pendingState)
+  );
+  storage.setItem(
+    `settle-friends-pending-sync:${spaceId}`,
+    JSON.stringify(pendingState)
+  );
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://project.supabase.co",
+          anonKey: "anon-key",
+          table: "shared_state"
+        }
+      });
+    }
+    if (options.method === "PATCH") {
+      return jsonResponse([{ updated_at: "2026-08-24T10:01:00.000Z" }]);
+    }
+    return jsonResponse([{
+      state: remoteState,
+      updated_at: "2026-08-24T09:00:00.000Z"
+    }]);
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?flush-merged-projection=${Date.now()}`
+    );
+    const result = await store.flushPendingSharedState();
+    const local = JSON.parse(
+      storage.getItem(`settle-friends-state:${spaceId}`)
+    );
+
+    assert.deepEqual(result, { ok: true });
+    assert.deepEqual(
+      local.groups.map(({ id }) => id).sort(),
+      ["local-group", "remote-group"]
+    );
+    assert.equal(
+      storage.getItem(`settle-friends-pending-sync:${spaceId}`),
+      null
     );
   } finally {
     restoreGlobal("window", previousWindow);

@@ -422,8 +422,9 @@ async function createSharedEventSnapshot(
     }
   );
   if (!response.ok) {
+    if (response.status === 401) throw new CloudStateAuthError();
     const error = new Error("Shared event creation failed");
-    error.code = response.status === 401 || response.status === 403
+    error.code = response.status === 403
       ? "SHARED_EVENT_CREATE_NOT_ALLOWED"
       : "SHARED_EVENT_CREATE_FAILED";
     error.status = Number(response.status ?? 0) || 0;
@@ -460,6 +461,12 @@ export async function refreshSharedEvents(runtimeConfig, state, fetchImpl = fetc
     },
     SHARED_EVENT_READ_CONCURRENCY
   );
+
+  const authFailure = remoteEvents.find(
+    (result) => result.status === "rejected" &&
+      result.reason?.code === "CLOUD_STATE_AUTH_EXPIRED"
+  );
+  if (authFailure) throw authFailure.reason;
 
   let nextState = state;
   for (const result of remoteEvents) {
@@ -534,6 +541,7 @@ async function sharedEventMembershipWasRevoked(runtimeConfig, credentials, fetch
     await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
     return false;
   } catch (error) {
+    if (error?.code === "CLOUD_STATE_AUTH_EXPIRED") throw error;
     return error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED";
   }
 }

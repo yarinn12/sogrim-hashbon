@@ -58,6 +58,7 @@ export async function readCloudState(config, fetchImpl = fetch) {
     return state;
   }
 
+  forgetSnapshotVersion(config);
   return null;
 }
 
@@ -240,6 +241,10 @@ function snapshotVersionKey(config) {
 function rememberSnapshotVersion(config, version) {
   if (!version) return;
   snapshotVersions.set(snapshotVersionKey(config), String(version));
+}
+
+function forgetSnapshotVersion(config) {
+  snapshotVersions.delete(snapshotVersionKey(config));
 }
 
 function cloudResponseError(response, message) {

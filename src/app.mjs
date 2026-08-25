@@ -102,6 +102,7 @@ import {
 import {
   loadState,
   loadRuntimeConfig,
+  runtimeConfigUsesFallback,
   loadSharedState,
   loadSharedStateForStartup,
   loadLocalProfile,
@@ -125,6 +126,13 @@ import {
   resolveEventInviteCredentials,
   rotateOpenEventInvite
 } from "./data/eventInvites.mjs";
+import {
+  loadLegacyOpenInviteCandidate,
+  loadVerifiedOpenInviteToken,
+  openInviteTokenScope,
+  reconcileOpenInviteAccountScope,
+  saveVerifiedOpenInviteToken
+} from "./data/openInviteTokenStore.mjs";
 import {
   loadNotificationInbox,
   markAllNotificationsRead,
@@ -383,7 +391,7 @@ let eventStatusMenu = null;
 let settlementCelebration = null;
 let settlementCloseConfirmation = null;
 const eventSharePreparationPromises = new Map();
-const eventSharePreparationErrors = new Set();
+const eventSharePreparationStates = new Map();
 const eventOpenInviteRuntimeTokens = new Map();
 const eventRepaymentModeRequestVersions = new Map();
 const transferStatusRequestVersions = new Map();
@@ -5788,15 +5796,15 @@ function renderEventShareDialog(event) {
     ? eventDialog.shareView
     : "menu";
   const inviteUrl = eventInviteUrl(event.id);
-  // Public sharing is ready only when a server-issued token exists. A local
-  // event/snapshot URL may look valid and even render as QR, but a new device
-  // cannot safely join through it.
-  const cloudInviteReady = Boolean(currentEventOpenInviteToken(event));
-  // A previously reported preparation failure is stale as soon as a valid
-  // invite token exists. Keep the screen driven by the usable link, not by an
-  // old transient error retained in memory.
-  const shareFailed = eventSharePreparationErrors.has(event.id) && !cloudInviteReady;
-  const shareReady = cloudInviteReady && !shareFailed;
+  // A token in local state is only a server candidate. Copy, WhatsApp and QR
+  // stay disabled until this account/event scope has completed a successful
+  // ensure, or a previously verified scoped token is deliberately reused
+  // while the network is unavailable.
+  const preparationState = eventSharePreparationState(event);
+  const shareReady = preparationState.status === "verified" && Boolean(
+    currentEventOpenInviteToken(event)
+  );
+  const shareFailed = preparationState.status === "error";
   const returnsToParticipants = ["participants", "participants-add"].includes(
     eventDialog?.returnKind
   );
@@ -6917,7 +6925,7 @@ function renderEventSettingsMenuIcon(section) {
 
 function renderInviteStatus(event, ready, available = ready) {
   const publicSharingReady = runtimeConfig.launch.shareLinksReady;
-  const failed = eventSharePreparationErrors.has(event.id);
+  const failed = eventSharePreparationState(event).status === "error";
   const stateLabel = failed
     ? "נדרש חיבור כדי להכין את הקישור"
     : ready
@@ -13937,8 +13945,21 @@ function applyFriendNetworkToState(currentState, network) {
     const participantIndex = participants.findIndex(
       (participant) => participant.id === participantId
     );
+    const previousParticipant = participantIndex >= 0
+      ? participants[participantIndex]
+      : {};
+    const avatarResolution = resolveProfileAvatar(
+      {
+        avatarImage: previousParticipant.avatarImage,
+        avatarImageUpdatedAt: previousParticipant.avatarImageUpdatedAt
+      },
+      {
+        avatarImage: profile.avatar_image,
+        avatarImageUpdatedAt: profile.avatar_image_updated_at
+      }
+    );
     const participant = {
-      ...(participantIndex >= 0 ? participants[participantIndex] : {}),
+      ...previousParticipant,
       id: participantId,
       displayName: profile.display_name,
       username: publicProfileUsername(profile),
@@ -13950,13 +13971,13 @@ function applyFriendNetworkToState(currentState, network) {
           ? normalizeAvatarPreset(profile.avatar_preset)
           : participants[participantIndex]?.avatarPreset,
       avatarImage:
-        Object.hasOwn(profile, "avatar_image")
-          ? normalizeAvatarImage(profile.avatar_image)
-          : participants[participantIndex]?.avatarImage,
+        Object.hasOwn(profile, "avatar_image") || avatarResolution.avatarImageUpdatedAt
+          ? avatarResolution.avatarImage
+          : previousParticipant.avatarImage,
       avatarImageUpdatedAt:
-        Object.hasOwn(profile, "avatar_image_updated_at")
-          ? normalizeProfileUpdatedAt(profile.avatar_image_updated_at)
-          : participants[participantIndex]?.avatarImageUpdatedAt,
+        Object.hasOwn(profile, "avatar_image_updated_at") || avatarResolution.avatarImageUpdatedAt
+          ? avatarResolution.avatarImageUpdatedAt
+          : previousParticipant.avatarImageUpdatedAt,
       profileUpdatedAt: profile.updated_at
     };
     if (participantIndex >= 0) {
@@ -15420,12 +15441,50 @@ function prepareEventShare(eventId) {
   const activePreparation = eventSharePreparationPromises.get(eventId);
   if (activePreparation) return activePreparation;
 
-  eventSharePreparationErrors.delete(eventId);
+  const event = getEvent(eventId);
+  if (!event) return Promise.reject(new Error("Event not found"));
+  const existingState = eventSharePreparationState(event);
+  if (
+    existingState.status === "verified" &&
+    existingState.token === currentEventOpenInviteToken(event)
+  ) {
+    return Promise.resolve(eventInviteUrl(eventId));
+  }
+
+  const previouslyVerifiedToken = currentEventOpenInviteToken(event);
+  if (navigator.onLine === false && previouslyVerifiedToken) {
+    markEventShareVerified(event, previouslyVerifiedToken, "offline-cache");
+    return Promise.resolve(eventInviteUrl(eventId));
+  }
+
+  markEventSharePreparing(event);
   const preparation = settleEventSharePreparation(
     prepareEventShareNow(eventId)
   )
+    .then((inviteUrl) => {
+      const preparedEvent = getEvent(eventId);
+      const verifiedToken = currentEventOpenInviteToken(preparedEvent);
+      if (!preparedEvent || !verifiedToken) {
+        const error = new Error("Open event invitation was not verified");
+        error.code = "EVENT_INVITE_NOT_READY";
+        throw error;
+      }
+      markEventShareVerified(preparedEvent, verifiedToken, "server");
+      return inviteUrl;
+    })
     .catch((error) => {
-      eventSharePreparationErrors.add(eventId);
+      const currentEvent = getEvent(eventId);
+      const verifiedToken = currentEventOpenInviteToken(currentEvent);
+      if (
+        currentEvent &&
+        previouslyVerifiedToken &&
+        verifiedToken === previouslyVerifiedToken &&
+        canReuseVerifiedInviteAfterTransportFailure(error)
+      ) {
+        markEventShareVerified(currentEvent, verifiedToken, "offline-cache");
+        return eventInviteUrl(eventId);
+      }
+      if (currentEvent) markEventShareFailed(currentEvent, error);
       throw error;
     })
     .finally(() => {
@@ -15433,6 +15492,77 @@ function prepareEventShare(eventId) {
     });
   eventSharePreparationPromises.set(eventId, preparation);
   return preparation;
+}
+
+function eventSharePreparationState(event) {
+  const eventId = String(event?.id ?? "");
+  const preparationState = eventSharePreparationStates.get(eventId);
+  if (!eventId || !preparationState) return { status: "idle" };
+  if (preparationState.status !== "verified") return preparationState;
+
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  const verifiedToken = currentEventOpenInviteToken(event);
+  if (
+    !scope ||
+    preparationState.scopeKey !== scope.storageKey ||
+    !verifiedToken ||
+    preparationState.token !== verifiedToken
+  ) {
+    eventSharePreparationStates.delete(eventId);
+    return { status: "idle" };
+  }
+  return preparationState;
+}
+
+function markEventSharePreparing(event) {
+  eventSharePreparationStates.set(String(event?.id ?? ""), {
+    status: "preparing",
+    scopeKey: openInviteTokenScope(runtimeConfig, event)?.storageKey ?? ""
+  });
+}
+
+function markEventShareVerified(event, token, source = "server") {
+  const normalizedToken = eventOpenInviteToken({ openInviteToken: token });
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  if (!event?.id || !scope || !normalizedToken) return false;
+  eventSharePreparationStates.set(String(event.id), {
+    status: "verified",
+    scopeKey: scope.storageKey,
+    token: normalizedToken,
+    source
+  });
+  return true;
+}
+
+function markEventShareFailed(event, error) {
+  eventSharePreparationStates.set(String(event?.id ?? ""), {
+    status: "error",
+    scopeKey: openInviteTokenScope(runtimeConfig, event)?.storageKey ?? "",
+    code: String(error?.code ?? ""),
+    message: String(error?.message ?? "")
+  });
+}
+
+function canReuseVerifiedInviteAfterTransportFailure(error) {
+  if (navigator.onLine === false) return true;
+  if (error?.code === "EVENT_INVITE_TIMEOUT") return true;
+  if (error?.cachedInviteFallbackAllowed === true) return true;
+  if (
+    error?.code === "EVENT_INVITE_CLOUD_REQUIRED" &&
+    runtimeConfigUsesFallback()
+  ) return true;
+  if (isEventInviteError(error)) return false;
+  const message = String(error?.message ?? "");
+  return (
+    error?.name === "TypeError" ||
+    /failed to fetch|networkerror|network request failed|load failed/i.test(message)
+  );
+}
+
+function reconcileEventInviteAccountBoundary(config) {
+  if (!reconcileOpenInviteAccountScope(config)) return;
+  eventOpenInviteRuntimeTokens.clear();
+  eventSharePreparationStates.clear();
 }
 
 function settleEventSharePreparation(task, timeoutMs = 20_000) {
@@ -15532,6 +15662,7 @@ async function retryEventShare(eventId) {
 async function prepareEventShareNow(eventId) {
   const initialRuntimeConfig = await loadRuntimeConfig();
   runtimeConfig = initialRuntimeConfig;
+  reconcileEventInviteAccountBoundary(initialRuntimeConfig);
   if (initialRuntimeConfig.storage?.mode !== "supabase") {
     const error = new Error("נדרש חיבור לענן כדי להכין קישור מאובטח.");
     error.code = "EVENT_INVITE_CLOUD_REQUIRED";
@@ -15545,7 +15676,7 @@ async function prepareEventShareNow(eventId) {
       openInvite = await ensureOpenEventInvite(
         shareRuntimeConfig,
         eventId,
-        currentEventOpenInviteToken(sharedEvent) ?? ""
+        eventOpenInviteCandidateForServer(sharedEvent) ?? ""
       );
     } catch (error) {
       // Compatibility with an older server: recover a valid share link when
@@ -15567,6 +15698,7 @@ async function prepareSharedEventForInvitation(eventId) {
   if (!event) throw new Error("Event not found");
   const shareRuntimeConfig = await loadRuntimeConfig();
   runtimeConfig = shareRuntimeConfig;
+  reconcileEventInviteAccountBoundary(shareRuntimeConfig);
   if (shareRuntimeConfig.storage?.mode === "supabase") {
     const existingCredentials = eventShareCredentials(event);
     ensureEventShareCredentials(event);
@@ -15590,6 +15722,10 @@ async function prepareSharedEventForInvitation(eventId) {
     const error = new Error("האירוע עדיין מסתנכרן. כדאי לנסות שוב בעוד רגע.");
     error.code = "EVENT_INVITE_NOT_READY";
     error.retryable = true;
+    error.cachedInviteFallbackAllowed = Boolean(
+      accountSave?.ok && accountSave?.pending
+    );
+    if (accountSave?.error) error.cause = accountSave.error;
     throw error;
   }
   return shareRuntimeConfig;
@@ -15617,7 +15753,7 @@ async function rotateCurrentEventInvite(eventId) {
       throw new Error("Open event invitation could not be attached");
     }
     await saveSharedState(state);
-    eventSharePreparationErrors.delete(eventId);
+    markEventShareVerified(event, replacement.token, "server");
     notice = "הקישור הישן בוטל וקישור חדש מוכן לשיתוף.";
   } catch {
     emitOperationFailure("event_invite", { screen: "invite" });
@@ -15654,36 +15790,47 @@ async function copyInviteLink(eventId) {
 
 function currentEventOpenInviteToken(event) {
   const eventId = String(event?.id ?? "");
-  const memoryToken = eventOpenInviteRuntimeTokens.get(eventId);
-  if (memoryToken) return memoryToken;
-  const eventToken = eventOpenInviteToken(event);
-  if (eventToken) {
-    rememberEventOpenInviteToken(eventId, eventToken);
-    return eventToken;
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  if (!eventId || !scope) return null;
+  const memoryRecord = eventOpenInviteRuntimeTokens.get(eventId);
+  if (memoryRecord?.storageKey === scope.storageKey && memoryRecord.token) {
+    return memoryRecord.token;
   }
-  try {
-    const storedToken = window.localStorage.getItem(eventOpenInviteStorageKey(eventId));
-    const normalizedToken = eventOpenInviteToken({ openInviteToken: storedToken });
-    if (normalizedToken) {
-      eventOpenInviteRuntimeTokens.set(eventId, normalizedToken);
-      return normalizedToken;
-    }
-  } catch {}
+  if (memoryRecord) eventOpenInviteRuntimeTokens.delete(eventId);
+
+  const storedRecord = loadVerifiedOpenInviteToken(runtimeConfig, event);
+  if (storedRecord) {
+    eventOpenInviteRuntimeTokens.set(eventId, storedRecord);
+    return storedRecord.token;
+  }
   return null;
 }
 
 function rememberEventOpenInviteToken(eventId, token) {
+  const event = getEvent(eventId);
   const normalizedToken = eventOpenInviteToken({ openInviteToken: token });
-  if (!eventId || !normalizedToken) return false;
-  eventOpenInviteRuntimeTokens.set(eventId, normalizedToken);
-  try {
-    window.localStorage.setItem(eventOpenInviteStorageKey(eventId), normalizedToken);
-  } catch {}
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  if (!event || !scope || !normalizedToken) return false;
+  const storedRecord = saveVerifiedOpenInviteToken(
+    runtimeConfig,
+    event,
+    normalizedToken
+  );
+  eventOpenInviteRuntimeTokens.set(eventId, storedRecord ?? {
+    ...scope,
+    token: normalizedToken,
+    verifiedAt: new Date().toISOString()
+  });
   return true;
 }
 
-function eventOpenInviteStorageKey(eventId) {
-  return `sogrim-open-invite-token:${eventId}`;
+function eventOpenInviteCandidateForServer(event) {
+  return (
+    currentEventOpenInviteToken(event) ||
+    eventOpenInviteToken(event) ||
+    loadLegacyOpenInviteCandidate(event) ||
+    ""
+  );
 }
 
 function eventInvitePreparationNotice(error, fallback) {
@@ -18656,6 +18803,7 @@ async function hydrateAppForActiveAccount() {
     normalizeAvatarPreset(localProfile?.avatarPreset) || AVATAR_PRESETS[0].id;
   profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
   runtimeConfig = await loadRuntimeConfig();
+  reconcileEventInviteAccountBoundary(runtimeConfig);
 
   // Account bootstrap already saved its synchronized snapshot locally. Render it
   // immediately and let the returned refresh reconcile any later cloud change.
