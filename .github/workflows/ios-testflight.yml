@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.72"
+        default: "3.73"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "98"
+        default: "100"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תיקון יצירת קישורי הזמנה, פתיחה והצטרפות בין מכשירים."
+        default: "שיפור מסך סגירת האירוע, התראות צפות ממותגות ומניעת לחיצות בזמן גלילה."
 
 permissions:
   contents: read
