@@ -1,5 +1,5 @@
-const PWA_RELEASE = "346";
-const CACHE_NAME = "settle-friends-live-v346";
+const PWA_RELEASE = "347";
+const CACHE_NAME = "settle-friends-live-v347";
 const CACHE_FILES = [
   "/",
   "/index.html",

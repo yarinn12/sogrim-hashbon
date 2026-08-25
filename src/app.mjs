@@ -18550,9 +18550,6 @@ async function hydrateAppForActiveAccount() {
   );
   state = nextState;
   await hydrateOwnPublicAvatarBeforeFirstRender();
-  const startupProfileSaveRequest = shouldSaveJoinedProfile
-    ? saveSharedState(state)
-    : null;
 
   const invitedEventId = parseInviteEventId(window.location.href);
   const openedNotificationTarget = openNotificationTargetFromUrl(
@@ -18577,14 +18574,22 @@ async function hydrateAppForActiveAccount() {
   };
   appBootHydrated = true;
   render();
+  // A cached account snapshot can still contain membership credentials that the
+  // cloud refresh is about to replace. Never write that stale snapshot during
+  // startup: wait for the refresh, then publish the profile against the current
+  // memberships. Background reconciliation must also stay silent because the
+  // user did not initiate a change on this screen.
+  const startupProfileSaveRequest = shouldSaveJoinedProfile && !startupState.refresh
+    ? saveSharedState(state, { suppressRevertNotice: true })
+    : null;
   startupProfileSaveRequest?.catch(() => {});
+  const startupRefreshRequest = refreshStartupSharedState(startupState.refresh);
   const profilePublicationReady = startupState.refresh
-    ? Promise.resolve(startupProfileSaveRequest).then(() => startupState.refresh)
+    ? startupRefreshRequest
     : Promise.resolve(startupProfileSaveRequest);
   profilePublicationReady
     .then(() => publishCurrentProfileToSharedEventsOnce())
     .catch(() => {});
-  refreshStartupSharedState(startupState.refresh);
   refreshFriendNetwork()
     .then(() => render())
     .catch(() => {});
@@ -18667,8 +18672,8 @@ function settlementTransferPlanKey(transfers) {
 }
 
 function refreshStartupSharedState(refreshRequest) {
-  if (!refreshRequest) return;
-  refreshRequest
+  if (!refreshRequest) return Promise.resolve();
+  return refreshRequest
     .then((sharedState) => {
       if (!appBootHydrated) return;
       const nextState = syncLocalProfile(sharedState);

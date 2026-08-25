@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("app startup avoids an unconditional cloud write after every reload", async () => {
+test("app startup avoids stale or user-visible background cloud writes", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const startup = app.slice(
     app.indexOf("async function hydrateAppForActiveAccount()"),
@@ -12,12 +12,16 @@ test("app startup avoids an unconditional cloud write after every reload", async
   assert.match(startup, /hasSharedStateChanged\(sharedState, nextState\)/);
   assert.match(
     startup,
-    /const startupProfileSaveRequest = shouldSaveJoinedProfile\s*\? saveSharedState\(state\)\s*:\s*null/
+    /const startupProfileSaveRequest = shouldSaveJoinedProfile && !startupState\.refresh\s*\? saveSharedState\(state, \{ suppressRevertNotice: true \}\)\s*:\s*null/
   );
   assert.doesNotMatch(startup, /await saveSharedState\(state\)/);
   assert.match(
     startup,
-    /appBootHydrated = true;\s*render\(\);\s*startupProfileSaveRequest\?\.catch\(\(\) => \{\}\)/
+    /appBootHydrated = true;\s*render\(\);[\s\S]*?startupProfileSaveRequest\?\.catch\(\(\) => \{\}\)/
+  );
+  assert.match(
+    startup,
+    /const startupRefreshRequest = refreshStartupSharedState\(startupState\.refresh\);\s*const profilePublicationReady = startupState\.refresh\s*\? startupRefreshRequest/
   );
   assert.doesNotMatch(startup, /if \(localProfile\) await saveSharedState\(state\)/);
 });
@@ -31,7 +35,7 @@ test("the first app render does not wait for the online friend network", async (
 
   assert.match(
     startup,
-    /appBootHydrated = true;\s*render\(\);[\s\S]*?refreshStartupSharedState\(startupState\.refresh\);\s*refreshFriendNetwork\(\)/
+    /appBootHydrated = true;\s*render\(\);[\s\S]*?const startupRefreshRequest = refreshStartupSharedState\(startupState\.refresh\);[\s\S]*?refreshFriendNetwork\(\)/
   );
   assert.doesNotMatch(startup, /await refreshFriendNetwork\(\)/);
 });

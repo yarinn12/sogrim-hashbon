@@ -103,6 +103,6 @@ test("the current public avatar is reconciled before the first interactive rende
   assert.ok(firstRender > avatarHydration);
   assert.match(
     hydration,
-    /const profilePublicationReady = startupState\.refresh[\s\S]*?then\(\(\) => startupState\.refresh\)[\s\S]*?publishCurrentProfileToSharedEventsOnce/
+    /const startupRefreshRequest = refreshStartupSharedState\(startupState\.refresh\);[\s\S]*?const profilePublicationReady = startupState\.refresh[\s\S]*?startupRefreshRequest[\s\S]*?publishCurrentProfileToSharedEventsOnce/
   );
 });
