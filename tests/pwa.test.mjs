@@ -225,6 +225,20 @@ test("deployment never serves an install shell or PWA bootstrap from stale CDN c
   assert.equal(pwaRoute.continue, true);
 });
 
+test("the recovery page installs the current worker before reopening the app", async () => {
+  const [page, recovery] = await Promise.all([
+    readFile("pwa-recovery.html", "utf8"),
+    readFile("src/pwaRecovery.mjs", "utf8")
+  ]);
+
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs"/);
+  assert.match(recovery, /const PWA_RELEASE = "356"/);
+  assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
+  assert.match(recovery, /updateViaCache: "none"/);
+  assert.match(recovery, /await registration\?\.update\?\.\(\)/);
+  assert.match(recovery, /waitForCurrentWorker\(\)/);
+});
+
 test("service worker activates complete updates and claims installed apps", async () => {
   const sw = await readFile("sw.js", "utf8");
 
