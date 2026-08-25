@@ -1,5 +1,5 @@
-const PWA_RELEASE = "347";
-const CACHE_NAME = "settle-friends-live-v347";
+const PWA_RELEASE = "348";
+const CACHE_NAME = "settle-friends-live-v348";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -184,6 +184,10 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   const sameOrigin = url.origin === self.location.origin;
@@ -209,10 +213,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       try {
-        const response = await fetch(
-          event.request,
-          event.request.mode === "navigate" ? { cache: "no-store" } : undefined
-        );
+        const response = await fetch(event.request, { cache: "no-store" });
         if (
           response.status === 200 &&
           !event.request.headers.has("range")
@@ -274,6 +275,7 @@ function isPrivateInviteUrl(url) {
     url.searchParams.has("t") ||
     url.searchParams.has("key") ||
     url.searchParams.has("invite") ||
+    url.pathname.startsWith("/r/") ||
     /^\/i\/[^/]+\/[^/]+\/[^/]+\/?$/.test(url.pathname)
   );
 }

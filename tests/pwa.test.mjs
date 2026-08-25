@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=347");
+  assert.equal(manifest.start_url, "./?pwa_release=348");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=347&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=348&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -59,7 +59,7 @@ test("index links the manifest and mobile app metadata", async () => {
 
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=347"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=348"/
   );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
@@ -154,6 +154,7 @@ test("service worker never caches private invite credentials", async () => {
   assert.match(serviceWorker, /searchParams\.has\("t"\)/);
   assert.match(serviceWorker, /searchParams\.has\("key"\)/);
   assert.match(serviceWorker, /searchParams\.has\("invite"\)/);
+  assert.match(serviceWorker, /pathname\.startsWith\("\/r\/"\)/);
   assert.match(serviceWorker, /isPrivateInviteUrl/);
   assert.match(serviceWorker, /fetchPrivateInvite/);
   assert.match(serviceWorker, /\^\\\/i\\\//);
@@ -178,7 +179,9 @@ test("the early PWA bootstrap checks for updates before the full app finishes lo
   assert.match(bootstrap, /startPwaLifecycle\(\)/);
   assert.match(bootstrap, /SERVICE_WORKER_URL = `\/sw\.js\?pwa_release=\$\{PWA_RELEASE\}`/);
   assert.match(bootstrap, /updateViaCache: "none"/);
-  assert.match(bootstrap, /checkForUpdate = \(\) => registration\.update\(\)/);
+  assert.match(bootstrap, /checkForUpdate = \(\) => registration[\s\S]*?\.update\(\)[\s\S]*?\.then\(activateWaitingWorker\)/);
+  assert.match(bootstrap, /registration\.waiting\?\.postMessage\(\{ type: "SKIP_WAITING" \}\)/);
+  assert.match(bootstrap, /addEventListener\("updatefound"/);
   assert.match(bootstrap, /document\.visibilityState !== "visible"/);
   assert.match(bootstrap, /addEventListener\("pageshow", checkForUpdate\)/);
   assert.match(bootstrap, /addEventListener\("focus", checkForUpdate\)/);
@@ -226,4 +229,5 @@ test("service worker activates complete updates and claims installed apps", asyn
   assert.match(sw, /Promise\.all\(\[/);
   assert.match(sw, /names\.filter\(\(name\) => name !== CACHE_NAME\)/);
   assert.match(sw, /self\.clients\.claim\(\)/);
+  assert.match(sw, /addEventListener\("message"[\s\S]*?SKIP_WAITING[\s\S]*?self\.skipWaiting\(\)/);
 });

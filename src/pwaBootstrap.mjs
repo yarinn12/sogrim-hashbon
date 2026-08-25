@@ -1,4 +1,4 @@
-const PWA_RELEASE = "347";
+const PWA_RELEASE = "348";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const UPDATE_RELOAD_STORAGE_KEY = "settle-friends-pwa-update-reload";
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
@@ -51,8 +51,21 @@ async function startPwaLifecycle() {
         updateViaCache: "none"
       }
     );
-    const checkForUpdate = () => registration.update().catch(() => {});
+    const activateWaitingWorker = () => {
+      registration.waiting?.postMessage({ type: "SKIP_WAITING" });
+    };
+    registration.addEventListener("updatefound", () => {
+      const installingWorker = registration.installing;
+      installingWorker?.addEventListener("statechange", () => {
+        if (installingWorker.state === "installed") activateWaitingWorker();
+      });
+    });
+    const checkForUpdate = () => registration
+      .update()
+      .then(activateWaitingWorker)
+      .catch(() => {});
 
+    activateWaitingWorker();
     checkForUpdate();
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;

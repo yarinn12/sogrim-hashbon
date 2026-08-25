@@ -12,6 +12,7 @@ async function createWorker({
   const listeners = new Map();
   const fetchCalls = [];
   const cacheWrites = [];
+  let skipWaitingCalls = 0;
   const cache = {
     async addAll() {},
     async put(request, response) {
@@ -43,7 +44,9 @@ async function createWorker({
     self: {
       location: { origin: "https://sogrim-hesbon-app.vercel.app" },
       clients: { claim: async () => {} },
-      skipWaiting: async () => {},
+      skipWaiting: async () => {
+        skipWaitingCalls += 1;
+      },
       addEventListener(type, listener) {
         listeners.set(type, listener);
       }
@@ -58,6 +61,9 @@ async function createWorker({
   return {
     fetchCalls,
     cacheWrites,
+    get skipWaitingCalls() {
+      return skipWaitingCalls;
+    },
     dispatchInstall() {
       let installPromise;
       listeners.get("install")({
@@ -76,6 +82,9 @@ async function createWorker({
         }
       });
       return responsePromise;
+    },
+    dispatchMessage(data) {
+      listeners.get("message")?.({ data });
     }
   };
 }
@@ -88,7 +97,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "347" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "348" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -97,7 +106,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=347",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=348",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -108,6 +117,24 @@ test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   assert.equal(await response.text(), "fresh");
   assert.equal(worker.fetchCalls.length, 1);
   assert.equal(worker.fetchCalls[0][1]?.cache, "no-store");
+});
+
+test("installed-app modules also bypass Safari's stale HTTP cache", async () => {
+  const worker = await createWorker();
+  const response = await worker.dispatchFetch(
+    new Request("https://sogrim-hesbon-app.vercel.app/src/app.mjs")
+  );
+
+  assert.equal(await response.text(), "fresh");
+  assert.equal(worker.fetchCalls[0][1]?.cache, "no-store");
+});
+
+test("a waiting worker can be activated explicitly on iPhone", async () => {
+  const worker = await createWorker();
+
+  worker.dispatchMessage({ type: "SKIP_WAITING" });
+
+  assert.equal(worker.skipWaitingCalls, 1);
 });
 
 test("service worker bypasses cross-origin resources and API calls", async () => {
