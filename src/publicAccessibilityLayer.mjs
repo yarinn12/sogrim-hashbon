@@ -33,7 +33,6 @@ watchAccessibilityEntryPoints();
 window.setTimeout(restoreAccessibilityEntryFocusAfterNavigation, 250);
 
 document.addEventListener("click", handleAccessibilityClick, true);
-document.addEventListener("pointerdown", handleAccessibilityPointerDown, true);
 document.addEventListener("change", handleAccessibilityChange, true);
 document.addEventListener("keydown", handleAccessibilityKeydown, true);
 document.addEventListener("settle-friends:screen-rendered", scheduleEnhancement);
@@ -126,14 +125,6 @@ function enhanceAccessibilityEntryPoints() {
 function handleDirectAccessibilityEntryClick(event) {
   event.preventDefault();
   openAccessibilityCenter(event.currentTarget);
-}
-
-function handleAccessibilityPointerDown(event) {
-  const entry = event.target.closest?.(ENTRY_SELECTOR);
-  if (!entry || event.button > 0) return;
-  // Open on contact so a concurrent auth/profile render cannot replace the
-  // entry between pointer-down and click and silently lose the interaction.
-  openAccessibilityCenter(entry);
 }
 
 function renderAccessibilityButton(context = "header") {

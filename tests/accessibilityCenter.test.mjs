@@ -78,6 +78,10 @@ test("accessibility center is semantic, persistent and compatible with app navig
   assert.match(layer, /\.screen > \.top/);
   assert.match(layer, /settle-friends:accessibility-center-changed/);
   assert.match(layer, /backButton\.insertAdjacentElement\("afterend", entry\)/);
+  assert.doesNotMatch(
+    layer,
+    /addEventListener\("pointerdown", handleAccessibilityPointerDown/
+  );
   assert.match(ledger, /\.product-route-controls > \.app-back-button \{\s*order: 0 !important/);
   assert.match(ledger, /\.screen\[data-screen-kind="home"\][\s\S]*?\.product-route-controls[\s\S]*?> \.app-back-button[\s\S]*?display: inline-grid !important/);
   assert.match(ledger, /\.product-route-controls > \.accessibility-entry-button \{\s*order: 1 !important/);

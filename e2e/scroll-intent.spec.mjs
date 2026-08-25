@@ -121,6 +121,46 @@ test("scrolling on an event settings row keeps the settings overview open", asyn
   await expect(page.getByRole("heading", { name: "אופן ניהול" })).toBeVisible();
 });
 
+test("scrolling from the accessibility button never opens accessibility", async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page
+    .locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const accessibilityEntry = page.locator(
+    ".event-settings-route-backdrop [data-open-accessibility]"
+  );
+  await expect(accessibilityEntry).toBeVisible();
+  await accessibilityEntry.evaluate((button) => {
+    const target = button.querySelector("svg") ?? button;
+    const pointer = (type, y) => new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 13,
+      pointerType: "touch",
+      isPrimary: true,
+      button: 0,
+      clientX: 30,
+      clientY: y
+    });
+    target.dispatchEvent(pointer("pointerdown", 70));
+    target.dispatchEvent(pointer("pointermove", 98));
+    target.dispatchEvent(pointer("pointerup", 98));
+    target.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 1
+    }));
+  });
+
+  await expect(page.locator(".accessibility-center")).toBeHidden();
+  await expect(page.getByRole("heading", { name: "הגדרות האירוע" })).toBeVisible();
+
+  await accessibilityEntry.click();
+  await expect(page.locator('.accessibility-center[role="dialog"]')).toBeVisible();
+});
+
 async function dispatchTouchSequence(page, {
   moveY,
   dispatchScroll = false,
