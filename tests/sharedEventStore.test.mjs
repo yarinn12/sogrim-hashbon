@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   attachSharedEventCredentials,
+  buildSharedEventSyncSelection,
   buildSharedEventState,
   ensureSharedEventMembership,
   ensureEventShareCredentials,
@@ -12,6 +13,7 @@ import {
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
+import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
 
 test("membership recovery rebuilds a missing personal event index", async () => {
   const runtimeConfig = {
@@ -163,6 +165,8 @@ test("shared event payload contains only the selected event and its people", () 
           id: "a",
           displayName: "A",
           avatarPreset: "avatar-2",
+          avatarImage: "https://images.example.com/new-avatar.webp",
+          profileUpdatedAt: "2026-08-25T10:15:00.000Z",
           email: "private@example.com",
           authProvider: "google",
           authSubject: "private-google-subject"
@@ -202,9 +206,90 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.participants[0].authSubject, undefined);
   assert.equal(payload.participants[0].accountLinked, true);
   assert.equal(payload.participants[0].avatarPreset, "avatar-2");
+  assert.equal(
+    payload.participants[0].avatarImage,
+    "https://images.example.com/new-avatar.webp"
+  );
+  assert.equal(
+    payload.participants[0].profileUpdatedAt,
+    "2026-08-25T10:15:00.000Z"
+  );
   assert.equal(payload.participants[1].accountLinked, false);
   assert.equal(payload.events[0].groupId, undefined);
   assert.equal(payload.events[0].sharedSpaceKey, undefined);
+});
+
+test("a newer profile image crosses the shared-event snapshot and wins on another device", () => {
+  const event = {
+    id: "event-profile-sync",
+    participantIds: ["account-user-one"],
+    expenses: [],
+    transfers: [],
+    sharedSpaceId: "space-profile-sync",
+    sharedSpaceKey: "event_share_key_12345678901234567890"
+  };
+  const remotePayload = buildSharedEventState(
+    {
+      participants: [{
+        id: "account-user-one",
+        displayName: "Profile Owner",
+        avatarImage: "https://images.example.com/new-avatar.webp",
+        profileUpdatedAt: "2026-08-25T10:15:00.000Z",
+        accountLinked: true
+      }],
+      events: [event]
+    },
+    event.id
+  );
+  const staleDevice = {
+    currentParticipantId: "account-user-two",
+    participants: [{
+      id: "account-user-one",
+      displayName: "Profile Owner",
+      avatarImage: "https://images.example.com/old-avatar.webp",
+      profileUpdatedAt: "2026-08-24T10:15:00.000Z",
+      accountLinked: true
+    }],
+    groups: [],
+    events: [event]
+  };
+
+  const merged = mergeSharedStates(remotePayload, staleDevice);
+
+  assert.equal(
+    merged.participants[0].avatarImage,
+    "https://images.example.com/new-avatar.webp"
+  );
+  assert.equal(
+    merged.participants[0].profileUpdatedAt,
+    "2026-08-25T10:15:00.000Z"
+  );
+});
+
+test("a one-time profile repair republishes every shared event that references the account", () => {
+  const event = {
+    id: "event-profile-repair",
+    participantIds: ["account-user-one", "account-user-two"],
+    expenses: [],
+    transfers: [],
+    sharedSpaceId: "space-profile-repair",
+    sharedSpaceKey: "event_share_key_12345678901234567890"
+  };
+  const state = {
+    participants: [{ id: "account-user-one", displayName: "Profile Owner" }],
+    events: [event]
+  };
+
+  assert.deepEqual(buildSharedEventSyncSelection(state, state), {
+    eventIds: [],
+    deletedEventIds: []
+  });
+  assert.deepEqual(
+    buildSharedEventSyncSelection(state, state, {
+      forceParticipantIds: ["account-user-one"]
+    }),
+    { eventIds: [event.id], deletedEventIds: [] }
+  );
 });
 
 test("a new shared event is created atomically with its authenticated owner", async () => {

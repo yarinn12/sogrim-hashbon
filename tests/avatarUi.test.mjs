@@ -45,14 +45,27 @@ test("profile offers a compact accessible avatar picker", async () => {
 });
 
 test("gallery avatars stay out of auth metadata while syncing to the public profile", async () => {
-  const [app, accountLayer] = await Promise.all([
+  const [app, accountLayer, localStore, sharedEventStore] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
-    readFile("src/publicAccountAuthLayer.mjs", "utf8")
+    readFile("src/publicAccountAuthLayer.mjs", "utf8"),
+    readFile("src/data/localStore.mjs", "utf8"),
+    readFile("src/data/sharedEventStore.mjs", "utf8")
   ]);
 
   assert.match(app, /syncFriendProfile\(runtimeConfig, localProfile\)/);
+  assert.match(app, /networkProfileUpdatedAt/);
+  assert.match(app, /Date\.parse\(networkProfileUpdatedAt\) >= Date\.parse\(localProfileUpdatedAt\)/);
+  assert.match(app, /publishCurrentProfileToSharedEventsOnce/);
+  assert.match(app, /forceSharedParticipantIds: \[participantId\]/);
+  assert.match(app, /CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200/);
+  assert.match(localStore, /profileUpdatedAtField\(profile\.profileUpdatedAt\)/);
+  assert.match(
+    sharedEventStore,
+    /const profileUpdatedAt = normalizeProfileUpdatedAt\(participant\?\.profileUpdatedAt\)[\s\S]*?\{ profileUpdatedAt \}/
+  );
   assert.match(accountLayer, /normalizedAvatarImage\.startsWith\("https:\/\/"\)/);
   assert.match(accountLayer, /avatar_image: accountMetadataAvatarImage/);
+  assert.match(accountLayer, /sharedProfileIsNewer/);
 });
 
 test("participant avatars render branded images instead of initials", async () => {

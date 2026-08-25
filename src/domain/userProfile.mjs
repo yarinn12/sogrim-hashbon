@@ -12,6 +12,11 @@ export function isFullProfileName(value) {
   return normalizeProfileName(value).split(" ").filter(Boolean).length >= 2;
 }
 
+export function normalizeProfileUpdatedAt(value) {
+  const time = new Date(String(value ?? "")).getTime();
+  return Number.isFinite(time) ? new Date(time).toISOString() : "";
+}
+
 export function ensureNamedParticipant(
   state,
   profile,
@@ -30,7 +35,9 @@ export function ensureNamedParticipant(
         kind: "user",
         ...avatarFields(profile),
         ...authFields(profile),
-        profileUpdatedAt: new Date().toISOString()
+        profileUpdatedAt:
+          normalizeProfileUpdatedAt(profile?.profileUpdatedAt) ||
+          new Date().toISOString()
       };
 
   const participants = existingParticipant
@@ -82,6 +89,12 @@ function findExistingParticipant(state, profile) {
 }
 
 function mergeParticipantProfile(participant, profile, displayName) {
+  const previousProfileUpdatedAt = normalizeProfileUpdatedAt(
+    participant?.profileUpdatedAt
+  );
+  const incomingProfileUpdatedAt = normalizeProfileUpdatedAt(
+    profile?.profileUpdatedAt
+  );
   const nextParticipant = {
     ...participant,
     displayName,
@@ -90,7 +103,13 @@ function mergeParticipantProfile(participant, profile, displayName) {
     ...authFields(profile)
   };
   if (participantProfileChanged(participant, nextParticipant)) {
-    nextParticipant.profileUpdatedAt = new Date().toISOString();
+    nextParticipant.profileUpdatedAt =
+      incomingProfileUpdatedAt || new Date().toISOString();
+  } else if (
+    incomingProfileUpdatedAt &&
+    Date.parse(incomingProfileUpdatedAt) > Date.parse(previousProfileUpdatedAt || "1970-01-01")
+  ) {
+    nextParticipant.profileUpdatedAt = incomingProfileUpdatedAt;
   }
   return nextParticipant;
 }

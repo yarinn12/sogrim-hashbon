@@ -1,5 +1,6 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
 import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
+import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 
 const FRIEND_CODE_PATTERN = /^[a-f0-9]{20}$/;
 const SHARED_SPACE_ID_PATTERN = /^[a-zA-Z0-9_-]{3,80}$/;
@@ -38,7 +39,9 @@ export async function syncFriendProfile(
     display_name: String(profile.displayName).trim(),
     avatar_preset: String(profile.avatarPreset ?? "").trim() || null,
     avatar_image: normalizeAvatarImage(profile.avatarImage) || null,
-    updated_at: new Date().toISOString()
+    updated_at:
+      normalizeProfileUpdatedAt(profile.profileUpdatedAt) ||
+      new Date().toISOString()
   };
   try {
     return await patchFriendProfile(config, body, PROFILE_SELECT, fetchImpl);

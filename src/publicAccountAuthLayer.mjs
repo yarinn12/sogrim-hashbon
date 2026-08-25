@@ -74,7 +74,8 @@ import { emitOperationFailure } from "./data/productMetrics.mjs";
 import {
   ensureNamedParticipant,
   isFullProfileName,
-  normalizeProfileName
+  normalizeProfileName,
+  normalizeProfileUpdatedAt
 } from "./domain/userProfile.mjs";
 import { normalizeAvatarImage } from "./domain/avatarPresets.mjs";
 import {
@@ -462,16 +463,45 @@ async function connectAccountToApp(
     storedProfile?.participantId === accountProfile.participantId
       ? normalizeAvatarImage(storedProfile.avatarImage)
       : "";
+  const sharedAccountParticipant = sharedState.participants.find(
+    (participant) => participant.id === accountProfile.participantId
+  );
+  const storedProfileUpdatedAt = normalizeProfileUpdatedAt(
+    storedProfile?.profileUpdatedAt
+  );
+  const sharedProfileUpdatedAt = normalizeProfileUpdatedAt(
+    sharedAccountParticipant?.profileUpdatedAt
+  );
+  const sharedProfileIsNewer = Boolean(
+    sharedProfileUpdatedAt &&
+    (
+      !storedProfileUpdatedAt ||
+      Date.parse(sharedProfileUpdatedAt) > Date.parse(storedProfileUpdatedAt)
+    )
+  );
   const resolvedAvatarImage =
-    normalizeAvatarImage(accountProfile.avatarImage) || storedAvatarImage;
+    normalizeAvatarImage(accountProfile.avatarImage) ||
+    (
+      sharedProfileIsNewer
+        ? normalizeAvatarImage(sharedAccountParticipant?.avatarImage)
+        : storedAvatarImage
+    );
+  const resolvedAvatarPreset = sharedProfileIsNewer
+    ? sharedAccountParticipant?.avatarPreset
+    : storedProfile?.avatarPreset;
+  const resolvedProfileUpdatedAt = sharedProfileIsNewer
+    ? sharedProfileUpdatedAt
+    : storedProfileUpdatedAt;
   const nextState = ensureNamedParticipant(
     sharedState,
     {
       id: accountProfile.participantId,
       displayName,
-      ...(resolvedAvatarImage
+      ...(resolvedAvatarImage || sharedProfileIsNewer
         ? { avatarImage: resolvedAvatarImage }
         : {}),
+      avatarPreset: resolvedAvatarPreset,
+      profileUpdatedAt: resolvedProfileUpdatedAt,
       authProvider: accountProfile.authProvider,
       authSubject: accountProfile.authSubject,
       email: accountProfile.email
@@ -487,6 +517,8 @@ async function connectAccountToApp(
     participantId: nextState.currentParticipantId,
     displayName: participant?.displayName ?? displayName,
     avatarImage: participant?.avatarImage ?? resolvedAvatarImage,
+    avatarPreset: participant?.avatarPreset,
+    profileUpdatedAt: normalizeProfileUpdatedAt(participant?.profileUpdatedAt),
     authProvider: accountProfile.authProvider,
     authSubject: accountProfile.authSubject,
     email: accountProfile.email

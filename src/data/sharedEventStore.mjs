@@ -16,6 +16,7 @@ import {
   normalizeAvatarImage,
   normalizeAvatarPreset
 } from "../domain/avatarPresets.mjs";
+import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
@@ -95,10 +96,15 @@ export function buildSharedEventState(state, eventId) {
   };
 }
 
-export function buildSharedEventSyncSelection(previousState, nextState) {
+export function buildSharedEventSyncSelection(
+  previousState,
+  nextState,
+  { forceParticipantIds = [] } = {}
+) {
   const previousEvents = new Map(
     (previousState?.events ?? []).map((event) => [event?.id, event])
   );
+  const forcedParticipantIds = new Set(forceParticipantIds.filter(Boolean));
   const eventIds = [];
 
   for (const event of nextState?.events ?? []) {
@@ -107,7 +113,10 @@ export function buildSharedEventSyncSelection(previousState, nextState) {
     if (
       !previousEvent ||
       sharedEventFingerprint(previousState, event.id) !==
-        sharedEventFingerprint(nextState, event.id)
+        sharedEventFingerprint(nextState, event.id) ||
+      [...forcedParticipantIds].some((participantId) =>
+        referencedParticipantIds(event).has(participantId)
+      )
     ) {
       eventIds.push(event.id);
     }
@@ -633,12 +642,14 @@ function eventCloudConfig(runtimeConfig, credentials) {
 function sanitizeParticipant(participant) {
   const avatarPreset = normalizeAvatarPreset(participant?.avatarPreset);
   const avatarImage = normalizeAvatarImage(participant?.avatarImage);
+  const profileUpdatedAt = normalizeProfileUpdatedAt(participant?.profileUpdatedAt);
   return {
     id: String(participant.id),
     displayName: String(participant.displayName ?? ""),
     kind: participant.kind === "guest" ? "guest" : "user",
     ...(avatarPreset ? { avatarPreset } : {}),
     ...(avatarImage ? { avatarImage } : {}),
+    ...(profileUpdatedAt ? { profileUpdatedAt } : {}),
     accountLinked:
       participant.accountLinked === true ||
       (

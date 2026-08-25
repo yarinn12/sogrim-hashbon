@@ -15,7 +15,7 @@ on:
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שמירה בטוחה בקונפליקט בין מכשירים, ניסיונות סנכרון אוטומטיים והודעות שגיאה מדויקות יותר."
+        default: "סנכרון אמין של תמונת הפרופיל לקבוצות ולמכשירים אחרים, לצד שמירה בטוחה וניסיונות חוזרים בקונפליקט."
 
 permissions:
   contents: read

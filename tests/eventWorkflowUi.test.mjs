@@ -63,7 +63,7 @@ test("app bootstraps only after render-time constants are initialized", async ()
   );
   assert.match(
     app,
-    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\);\s*const sharedState = startupState\.state;/
+    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory\s*\? CACHED_ACCOUNT_CLOUD_WAIT_MS\s*: EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\);\s*const sharedState = startupState\.state;/
   );
 });
 

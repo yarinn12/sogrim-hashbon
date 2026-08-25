@@ -155,6 +155,23 @@ test("local profile memory survives reload without entering shared event state",
   });
 });
 
+test("local profile memory preserves the version used to reject stale devices", () => {
+  withLocalStorage(() => {
+    const savedProfile = saveLocalProfile({
+      participantId: "user-versioned",
+      displayName: "Versioned User",
+      avatarImage: "https://images.example.com/current.webp",
+      profileUpdatedAt: "2026-08-25T10:15:00.000Z"
+    });
+
+    assert.equal(savedProfile.profileUpdatedAt, "2026-08-25T10:15:00.000Z");
+    assert.equal(
+      loadLocalProfile().profileUpdatedAt,
+      "2026-08-25T10:15:00.000Z"
+    );
+  });
+});
+
 test("profiles on a shared device stay isolated by authenticated account id", () => {
   withLocalStorage(() => {
     setAccountSession("user-dani");

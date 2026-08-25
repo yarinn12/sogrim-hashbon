@@ -18,7 +18,7 @@
     "marketingUrl": "https://sogrim-hesbon-app.vercel.app/",
     "privacyPolicyUrl": "https://sogrim-hesbon-app.vercel.app/privacy",
     "copyright": "2026 Yarin Izhak",
-    "releaseNotes": "שיפרנו את אמינות הסנכרון בין כמה מכשירים: שינוי שנתקל בקונפליקט נשמר במכשיר ונשלח שוב אוטומטית במקום להתבטל. הודעות שגיאה מציגות כעת סיבה מדויקת יותר.",
+    "releaseNotes": "שיפרנו את אמינות הסנכרון בין מכשירים: תמונת פרופיל חדשה מתעדכנת כעת גם בקבוצות ולא נדרסת על ידי תמונה ישנה. שינוי שנתקל בקונפליקט נשמר במכשיר ונשלח שוב אוטומטית.",
     "availability": "Israel",
     "price": "Free"
   }

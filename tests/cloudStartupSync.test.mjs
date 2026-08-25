@@ -48,7 +48,7 @@ test("concurrent startup readers share one cloud-state request", async () => {
   assert.match(localStore, /return sharedStateLoadPromise/);
 });
 
-test("native startup renders account-scoped local state while a slow cloud refresh continues", async () => {
+test("native startup briefly waits for a current cloud profile before rendering cached account state", async () => {
   const [localStore, app, accountAuth] = await Promise.all([
     readFile("src/data/localStore.mjs", "utf8"),
     readFile("src/app.mjs", "utf8"),
@@ -74,7 +74,7 @@ test("native startup renders account-scoped local state while a slow cloud refre
   );
   assert.match(
     app,
-    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
+    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory\s*\? CACHED_ACCOUNT_CLOUD_WAIT_MS\s*: EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
   );
   assert.match(app, /refreshStartupSharedState\(startupState\.refresh\)/);
   assert.match(

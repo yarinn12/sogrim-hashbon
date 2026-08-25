@@ -169,7 +169,8 @@ import {
 import {
   ensureNamedParticipant,
   isFullProfileName,
-  normalizeProfileName
+  normalizeProfileName,
+  normalizeProfileUpdatedAt
 } from "./domain/userProfile.mjs";
 import {
   initializeParticipantMembership,
@@ -236,6 +237,7 @@ const RESUME_SYNC_COOLDOWN_MS = 5_000;
 const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000;
+const CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const DIALOG_OPEN_ACTIONS = new Set([
@@ -321,6 +323,8 @@ let expenseSaveInProgress = false;
 let paymentReminderBusyId = "";
 const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
 const PROFILE_IMAGE_PICKER_RETURN_STORAGE_KEY = "profile-image-picker-return";
+const PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX =
+  "settle-friends-shared-profile-publication:";
 const openSettlementTransferIds = loadOpenSettlementTransferIds();
 
 function loadOpenSettlementTransferIds() {
@@ -8769,7 +8773,8 @@ async function persistProfileAvatarDraft() {
     participantId,
     displayName,
     avatarImage,
-    avatarPreset
+    avatarPreset,
+    profileUpdatedAt
   });
 
   const [accountResult, stateResult, friendProfileResult] = await Promise.allSettled([
@@ -8793,10 +8798,45 @@ async function persistProfileAvatarDraft() {
   const friendProfileSynced =
     friendProfileResult.status === "fulfilled" && friendProfileResult.value !== false;
   const fullySynced = accountSynced && stateSynced && friendProfileSynced;
+  if (stateSynced) rememberPublishedSharedProfile(state.currentParticipantId);
   notice = globalThis.navigator?.onLine === false
     ? "התמונה נשמרה במכשיר ותסתנכרן כשהחיבור יחזור."
     : "תמונת הפרופיל נשמרה.";
   return fullySynced;
+}
+
+async function publishCurrentProfileToSharedEventsOnce() {
+  const participantId = state.currentParticipantId;
+  const participant = state.participants.find((item) => item.id === participantId);
+  const profileUpdatedAt = String(participant?.profileUpdatedAt ?? "").trim();
+  if (!participantId || !profileUpdatedAt) return false;
+  const hasSharedEvent = state.events.some((event) =>
+    event?.participantIds?.includes(participantId) &&
+    event?.sharedSpaceId &&
+    event?.sharedSpaceKey
+  );
+  if (!hasSharedEvent) return false;
+  const markerKey = `${PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX}${participantId}`;
+  if (window.localStorage.getItem(markerKey) === profileUpdatedAt) return false;
+
+  const result = await saveSharedState(state, {
+    forceSharedParticipantIds: [participantId]
+  });
+  if (result?.ok && result?.pending !== true) {
+    rememberPublishedSharedProfile(participantId);
+    return true;
+  }
+  return false;
+}
+
+function rememberPublishedSharedProfile(participantId) {
+  const participant = state.participants.find((item) => item.id === participantId);
+  const profileUpdatedAt = String(participant?.profileUpdatedAt ?? "").trim();
+  if (!participantId || !profileUpdatedAt) return;
+  window.localStorage.setItem(
+    `${PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX}${participantId}`,
+    profileUpdatedAt
+  );
 }
 
 function encodeCanvasJpegWithinLimit(
@@ -13550,17 +13590,64 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     const ownNetworkProfile = nextNetwork.profiles.find(
       (profile) => profile.user_id === nextNetwork.userId
     );
-    const localAvatarPreset = normalizeAvatarPreset(localProfile?.avatarPreset) || null;
+    let localAvatarPreset = normalizeAvatarPreset(localProfile?.avatarPreset) || null;
     const networkAvatarPreset = normalizeAvatarPreset(ownNetworkProfile?.avatar_preset) || null;
-    const localAvatarImage = normalizeAvatarImage(localProfile?.avatarImage) || null;
+    let localAvatarImage = normalizeAvatarImage(localProfile?.avatarImage) || null;
     const networkAvatarImage = normalizeAvatarImage(ownNetworkProfile?.avatar_image) || null;
+    let localProfileUpdatedAt = normalizeProfileUpdatedAt(localProfile?.profileUpdatedAt);
+    const networkProfileUpdatedAt = normalizeProfileUpdatedAt(ownNetworkProfile?.updated_at);
+    const publicProfileDiffers = Boolean(
+      ownNetworkProfile &&
+      (
+        ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
+        networkAvatarPreset !== localAvatarPreset ||
+        networkAvatarImage !== localAvatarImage
+      )
+    );
+    if (
+      ownNetworkProfile &&
+      networkProfileUpdatedAt &&
+      publicProfileDiffers &&
+      (
+        !localProfileUpdatedAt ||
+        Date.parse(networkProfileUpdatedAt) >= Date.parse(localProfileUpdatedAt)
+      )
+    ) {
+      localProfile = saveLocalProfile({
+        ...localProfile,
+        participantId: state.currentParticipantId,
+        displayName: ownNetworkProfile.display_name,
+        avatarPreset: Object.hasOwn(ownNetworkProfile, "avatar_preset")
+          ? normalizeAvatarPreset(ownNetworkProfile.avatar_preset)
+          : localProfile?.avatarPreset,
+        avatarImage: Object.hasOwn(ownNetworkProfile, "avatar_image")
+          ? normalizeAvatarImage(ownNetworkProfile.avatar_image)
+          : localProfile?.avatarImage,
+        profileUpdatedAt: networkProfileUpdatedAt
+      });
+      state = syncLocalProfile(state);
+      localAvatarPreset = normalizeAvatarPreset(localProfile?.avatarPreset) || null;
+      localAvatarImage = normalizeAvatarImage(localProfile?.avatarImage) || null;
+      localProfileUpdatedAt = normalizeProfileUpdatedAt(localProfile?.profileUpdatedAt);
+    }
+    const profileStillDiffers = Boolean(
+      ownNetworkProfile &&
+      (
+        ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
+        networkAvatarPreset !== localAvatarPreset ||
+        networkAvatarImage !== localAvatarImage
+      )
+    );
     const profileNeedsSync = Boolean(
       localProfile?.displayName &&
         (
           !ownNetworkProfile ||
-          ownNetworkProfile.display_name !== localProfile.displayName.trim() ||
-          networkAvatarPreset !== localAvatarPreset ||
-          networkAvatarImage !== localAvatarImage
+          profileStillDiffers &&
+          (
+            !networkProfileUpdatedAt ||
+            Date.parse(localProfileUpdatedAt || "1970-01-01") >
+              Date.parse(networkProfileUpdatedAt)
+          )
         )
     );
     if (profileNeedsSync) {
@@ -13699,11 +13786,13 @@ function applyFriendNetworkToState(currentState, network) {
       accountLinked: true,
       authSubject: friendUserId,
       avatarPreset:
-        normalizeAvatarPreset(profile.avatar_preset) ||
-        participants[participantIndex]?.avatarPreset,
+        Object.hasOwn(profile, "avatar_preset")
+          ? normalizeAvatarPreset(profile.avatar_preset)
+          : participants[participantIndex]?.avatarPreset,
       avatarImage:
-        normalizeAvatarImage(profile.avatar_image) ||
-        participants[participantIndex]?.avatarImage,
+        Object.hasOwn(profile, "avatar_image")
+          ? normalizeAvatarImage(profile.avatar_image)
+          : participants[participantIndex]?.avatarImage,
       profileUpdatedAt: profile.updated_at
     };
     if (participantIndex >= 0) {
@@ -15699,6 +15788,7 @@ async function saveProfileFromDraft() {
   }
 
   const invitedEventId = parseInviteEventId(window.location.href);
+  const profileUpdatedAt = new Date().toISOString();
   const nextState = ensureNamedParticipant(
     state,
     {
@@ -15706,6 +15796,7 @@ async function saveProfileFromDraft() {
       displayName,
       avatarPreset: profileAvatarDraft,
       avatarImage: profileAvatarImageDraft,
+      profileUpdatedAt,
       authProvider: localProfile?.authProvider,
       authSubject: localProfile?.authSubject,
       email: localProfile?.email
@@ -15727,6 +15818,7 @@ async function saveProfileFromDraft() {
     avatarPreset:
       normalizeAvatarPreset(participant?.avatarPreset) ||
       profileAvatarDraft,
+    profileUpdatedAt: participant?.profileUpdatedAt ?? profileUpdatedAt,
     authProvider: participant?.authProvider ?? localProfile?.authProvider,
     authSubject: participant?.authSubject ?? localProfile?.authSubject,
     email: participant?.email ?? localProfile?.email
@@ -17609,6 +17701,49 @@ function mergePayers(payers) {
 function syncLocalProfile(nextState) {
   if (!localProfile) return nextState;
 
+  const cloudParticipant = nextState.participants.find(
+    (participant) =>
+      participant.id === localProfile.participantId ||
+      (
+        participant.authProvider === localProfile.authProvider &&
+        participant.authSubject &&
+        participant.authSubject === localProfile.authSubject
+      )
+  );
+  const cloudProfileUpdatedAt = normalizeProfileUpdatedAt(
+    cloudParticipant?.profileUpdatedAt
+  );
+  const localProfileUpdatedAt = normalizeProfileUpdatedAt(
+    localProfile.profileUpdatedAt
+  );
+  if (
+    cloudParticipant &&
+    cloudProfileUpdatedAt &&
+    (
+      !localProfileUpdatedAt ||
+      Date.parse(cloudProfileUpdatedAt) > Date.parse(localProfileUpdatedAt)
+    )
+  ) {
+    localProfile = saveLocalProfile({
+      participantId: cloudParticipant.id,
+      displayName: cloudParticipant.displayName,
+      avatarPreset: normalizeAvatarPreset(cloudParticipant.avatarPreset),
+      avatarImage: normalizeAvatarImage(cloudParticipant.avatarImage),
+      profileUpdatedAt: cloudProfileUpdatedAt,
+      authProvider: cloudParticipant.authProvider ?? localProfile.authProvider,
+      authSubject: cloudParticipant.authSubject ?? localProfile.authSubject,
+      email: cloudParticipant.email ?? localProfile.email
+    });
+    profileNameDraft = localProfile.displayName;
+    profileAvatarDraft =
+      normalizeAvatarPreset(localProfile.avatarPreset) || AVATAR_PRESETS[0].id;
+    profileAvatarImageDraft = normalizeAvatarImage(localProfile.avatarImage);
+    return {
+      ...nextState,
+      currentParticipantId: cloudParticipant.id
+    };
+  }
+
   const stateWithProfile = ensureNamedParticipant(
     nextState,
     {
@@ -17616,6 +17751,7 @@ function syncLocalProfile(nextState) {
       displayName: localProfile.displayName,
       avatarPreset: localProfile.avatarPreset,
       avatarImage: localProfile.avatarImage,
+      profileUpdatedAt: localProfile.profileUpdatedAt,
       authProvider: localProfile.authProvider,
       authSubject: localProfile.authSubject,
       email: localProfile.email
@@ -17634,11 +17770,15 @@ function syncLocalProfile(nextState) {
     avatarPreset:
       normalizeAvatarPreset(participant?.avatarPreset) ||
       localProfile.avatarPreset,
+    profileUpdatedAt:
+      participant?.profileUpdatedAt ?? localProfile.profileUpdatedAt,
     authProvider: participant?.authProvider ?? localProfile.authProvider,
     authSubject: participant?.authSubject ?? localProfile.authSubject,
     email: participant?.email ?? localProfile.email
   });
   profileNameDraft = localProfile.displayName;
+  profileAvatarDraft =
+    normalizeAvatarPreset(localProfile.avatarPreset) || AVATAR_PRESETS[0].id;
   profileAvatarImageDraft = normalizeAvatarImage(localProfile.avatarImage);
   return stateWithProfile;
 }
@@ -18392,7 +18532,9 @@ async function hydrateAppForActiveAccount() {
     localAccountState.friendContacts?.length
   );
   const startupState = await loadSharedStateForStartup({
-    maxWaitMs: localAccountHasHistory ? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS
+    maxWaitMs: localAccountHasHistory
+      ? CACHED_ACCOUNT_CLOUD_WAIT_MS
+      : EMPTY_ACCOUNT_CLOUD_WAIT_MS
   });
   const sharedState = startupState.state;
   const hydratedState = await hydrateIncomingSharedEvent(sharedState);
@@ -18429,6 +18571,9 @@ async function hydrateAppForActiveAccount() {
   appBootHydrated = true;
   render();
   startupProfileSaveRequest?.catch(() => {});
+  Promise.resolve(startupProfileSaveRequest)
+    .then(() => publishCurrentProfileToSharedEventsOnce())
+    .catch(() => {});
   refreshStartupSharedState(startupState.refresh);
   refreshFriendNetwork()
     .then(() => render())

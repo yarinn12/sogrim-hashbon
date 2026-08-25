@@ -11,7 +11,8 @@ import {
 } from "./localIdentity.mjs";
 import {
   isFullProfileName,
-  normalizeProfileName
+  normalizeProfileName,
+  normalizeProfileUpdatedAt
 } from "../domain/userProfile.mjs";
 import {
   normalizeAvatarImage,
@@ -562,6 +563,7 @@ async function loadSharedStateOnce(requestScope) {
 }
 
 export async function saveSharedState(state) {
+  const { forceSharedParticipantIds = [] } = arguments[1] ?? {};
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
   const requestAccountParticipantId = requestAccountUserId
@@ -590,7 +592,9 @@ export async function saveSharedState(state) {
       error: new Error("State does not belong to the active account")
     };
   }
-  const syncSelection = buildSharedEventSyncSelection(previousState, cleanState);
+  const syncSelection = buildSharedEventSyncSelection(previousState, cleanState, {
+    forceParticipantIds: forceSharedParticipantIds
+  });
   const hasSharedEventMutation = Boolean(
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length
   );
@@ -868,6 +872,14 @@ export function saveLocalProfile(profile) {
             : ""
         )
     }),
+    ...profileUpdatedAtField(
+      profile.profileUpdatedAt ??
+        (
+          previousProfile?.participantId === profile.participantId
+            ? previousProfile.profileUpdatedAt
+            : ""
+        )
+    ),
     ...profileAuthFields(profile)
   };
   window.localStorage.setItem(
@@ -1256,6 +1268,7 @@ function parseLocalProfile(raw) {
       participantId: profile.participantId,
       displayName,
       ...profileAvatarFields(profile),
+      ...profileUpdatedAtField(profile.profileUpdatedAt),
       ...profileAuthFields(profile)
     };
   } catch {
@@ -1346,6 +1359,11 @@ function profileAvatarFields(profile) {
     ...(avatarPreset ? { avatarPreset } : {}),
     ...(avatarImage ? { avatarImage } : {})
   };
+}
+
+function profileUpdatedAtField(value) {
+  const profileUpdatedAt = normalizeProfileUpdatedAt(value);
+  return profileUpdatedAt ? { profileUpdatedAt } : {};
 }
 
 function loadProtectedParticipantId() {
