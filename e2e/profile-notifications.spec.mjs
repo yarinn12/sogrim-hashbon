@@ -212,6 +212,30 @@ test("profile keeps sensitive account actions behind one clear disclosure", asyn
   await assertNoHorizontalOverflow(page);
 });
 
+test("full name and username are full-width rows stacked in reading order", async ({ page }) => {
+  await page.locator('[data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+
+  const nameRow = page.locator('[data-profile-identity="display-name"]');
+  const usernameRow = page.locator('[data-profile-identity="username"]');
+  await expect(nameRow).toBeVisible();
+  await expect(usernameRow).toBeVisible();
+
+  const [gridBox, nameBox, usernameBox] = await Promise.all([
+    page.locator(".profile-identity-grid").boundingBox(),
+    nameRow.boundingBox(),
+    usernameRow.boundingBox()
+  ]);
+  expect(gridBox).not.toBeNull();
+  expect(nameBox).not.toBeNull();
+  expect(usernameBox).not.toBeNull();
+  expect(usernameBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height + 8);
+  expect(Math.abs(nameBox.x - usernameBox.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
+  await assertNoHorizontalOverflow(page);
+});
+
 test("a gallery profile image persists after reload without a false sync warning", async ({ page }) => {
   await page.locator('[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();

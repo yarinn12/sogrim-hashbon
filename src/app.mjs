@@ -1308,7 +1308,7 @@ function renderProfileSetup() {
         ${
           isEditingProfile
             ? `<div class="profile-identity-grid">
-                <section class="profile-identity-summary">
+                <section class="profile-identity-summary" data-profile-identity="display-name">
                   ${
                     profileNameEditing
                       ? `<label class="field">
@@ -1328,7 +1328,7 @@ function renderProfileSetup() {
                         </button>`
                   }
                 </section>
-                <section class="profile-identity-summary">
+                <section class="profile-identity-summary" data-profile-identity="username">
                   ${
                     profileUsernameEditing
                       ? `${renderProfileUsernameField()}

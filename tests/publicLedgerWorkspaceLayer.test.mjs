@@ -430,6 +430,24 @@ test("focused inbox and settings use the home surface system", async () => {
   );
 });
 
+test("profile identity fields stay stacked at every viewport width", async () => {
+  const [app, layer] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+  ]);
+
+  assert.match(app, /data-profile-identity="display-name"/);
+  assert.match(app, /data-profile-identity="username"/);
+  assert.match(
+    layer,
+    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+  );
+  assert.doesNotMatch(
+    layer,
+    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
+  );
+});
+
 test("all focused task windows inherit the home design system", async () => {
   const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
