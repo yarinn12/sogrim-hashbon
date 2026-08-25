@@ -11,7 +11,10 @@ const BASE_URL = normalizeBaseUrl(
 const checks = [];
 let runtimeConfig = null;
 
-await checkHtml("app shell", "/", { requireAppShell: true });
+await checkHtml("app shell", "/", {
+  requireAppShell: true,
+  requireNoStore: !ALLOW_ORIGIN_BACKED_SHELL
+});
 await checkJson("health", "/api/health", (payload) => {
   assert(payload?.ok === true, "health did not report ok");
   assert(payload?.storageMode === "supabase", "cloud storage is not active");
@@ -33,7 +36,7 @@ await checkJson("runtime config", "/api/config", (payload) => {
 });
 await checkHtml("private invite shell", inviteProbePath(), {
   requireAppShell: true,
-  allowPrivateNoStore: true
+  requireNoStore: true
 });
 await checkHtml("privacy", "/privacy");
 await checkHtml("support", "/support");
@@ -73,7 +76,7 @@ if (failures.length > 0) process.exitCode = 1;
 async function checkHtml(
   name,
   path,
-  { requireAppShell = false, allowPrivateNoStore = false } = {}
+  { requireAppShell = false, requireNoStore = false } = {}
 ) {
   await runCheck(name, async () => {
     const response = await request(new URL(path, `${BASE_URL}/`));
@@ -85,7 +88,14 @@ async function checkHtml(
     if (requireAppShell) {
       const body = await response.text();
       assert(/id=["']app["']/.test(body), "app shell marker is missing");
-      warnOnOriginBackedShell(name, response, { allowPrivateNoStore });
+      if (requireNoStore) {
+        assert(
+          String(response.headers.get("cache-control") ?? "").includes("no-store"),
+          "installed app shell can be reused from stale browser cache"
+        );
+      } else {
+        warnOnOriginBackedShell(name, response);
+      }
     } else {
       await response.body?.cancel();
     }
@@ -157,10 +167,9 @@ async function request(url, options = {}) {
   }
 }
 
-function warnOnOriginBackedShell(name, response, { allowPrivateNoStore = false } = {}) {
+function warnOnOriginBackedShell(name, response) {
   const cacheControl = String(response.headers.get("cache-control") ?? "");
   if (!cacheControl.includes("no-store")) return;
-  if (allowPrivateNoStore) return;
   if (ALLOW_ORIGIN_BACKED_SHELL) return;
   const detail = "app shell is origin-backed instead of CDN-backed";
   if (STRICT) throw new Error(detail);
