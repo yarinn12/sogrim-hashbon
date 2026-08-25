@@ -15,6 +15,8 @@ const REPORT_CATEGORIES = new Set([
   "other"
 ]);
 const PROFILE_SELECT =
+  "user_id,username,username_customized,display_name,avatar_preset,avatar_image,avatar_image_updated_at,updated_at";
+const AVATAR_IMAGE_PROFILE_SELECT =
   "user_id,username,username_customized,display_name,avatar_preset,avatar_image,updated_at";
 const LEGACY_PROFILE_SELECT =
   "user_id,username,username_customized,display_name,avatar_preset,updated_at";
@@ -36,19 +38,49 @@ export async function syncFriendProfile(
 ) {
   if (!friendNetworkAvailable(config) || !profile?.displayName) return null;
 
+  const profileUpdatedAt =
+    normalizeProfileUpdatedAt(profile.profileUpdatedAt) ||
+    new Date().toISOString();
+  const avatarImage = normalizeAvatarImage(profile.avatarImage);
+  const avatarImageUpdatedAt = normalizeProfileUpdatedAt(
+    profile.avatarImageUpdatedAt ||
+      (avatarImage ? profile.profileUpdatedAt : "")
+  );
   const body = {
     display_name: String(profile.displayName).trim(),
     avatar_preset: String(profile.avatarPreset ?? "").trim() || null,
-    avatar_image: normalizeAvatarImage(profile.avatarImage) || null,
-    updated_at:
-      normalizeProfileUpdatedAt(profile.profileUpdatedAt) ||
-      new Date().toISOString()
+    ...(avatarImage || avatarImageUpdatedAt
+      ? {
+          avatar_image: avatarImage || null,
+          avatar_image_updated_at: avatarImageUpdatedAt || profileUpdatedAt
+        }
+      : {}),
+    updated_at: profileUpdatedAt
   };
   try {
     return await patchFriendProfile(config, body, PROFILE_SELECT, fetchImpl);
   } catch (error) {
+    if (missingAvatarImageUpdatedAtColumn(error)) {
+      const { avatar_image_updated_at: _avatarImageUpdatedAt, ...imageBody } = body;
+      try {
+        return await patchFriendProfile(
+          config,
+          imageBody,
+          AVATAR_IMAGE_PROFILE_SELECT,
+          fetchImpl
+        );
+      } catch (imageError) {
+        if (!missingAvatarImageColumn(imageError)) throw imageError;
+        const { avatar_image: _avatarImage, ...legacyBody } = imageBody;
+        return patchFriendProfile(config, legacyBody, LEGACY_PROFILE_SELECT, fetchImpl);
+      }
+    }
     if (!missingAvatarImageColumn(error)) throw error;
-    const { avatar_image: _avatarImage, ...legacyBody } = body;
+    const {
+      avatar_image: _avatarImage,
+      avatar_image_updated_at: _avatarImageUpdatedAt,
+      ...legacyBody
+    } = body;
     return patchFriendProfile(config, legacyBody, LEGACY_PROFILE_SELECT, fetchImpl);
   }
 }
@@ -147,7 +179,20 @@ async function readFriendProfiles(config, userIds, fetchImpl) {
       fetchImpl
     );
   } catch (error) {
-    if (!missingAvatarImageColumn(error)) throw error;
+    if (missingAvatarImageUpdatedAtColumn(error)) {
+      try {
+        return await readRows(
+          config,
+          "user_profiles",
+          { ...query, select: AVATAR_IMAGE_PROFILE_SELECT },
+          fetchImpl
+        );
+      } catch (imageError) {
+        if (!missingAvatarImageColumn(imageError)) throw imageError;
+      }
+    } else if (!missingAvatarImageColumn(error)) {
+      throw error;
+    }
     return readRows(
       config,
       "user_profiles",
@@ -157,9 +202,16 @@ async function readFriendProfiles(config, userIds, fetchImpl) {
   }
 }
 
+function missingAvatarImageUpdatedAtColumn(error) {
+  const message = String(error?.message ?? "").toLowerCase();
+  return message.includes("avatar_image_updated_at") && message.includes("column");
+}
+
 function missingAvatarImageColumn(error) {
   const message = String(error?.message ?? "").toLowerCase();
-  return message.includes("avatar_image") && message.includes("column");
+  return message.includes("avatar_image") &&
+    !message.includes("avatar_image_updated_at") &&
+    message.includes("column");
 }
 
 export async function requestFriendship(

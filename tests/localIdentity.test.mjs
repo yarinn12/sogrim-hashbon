@@ -165,8 +165,13 @@ test("local profile memory preserves the version used to reject stale devices", 
     });
 
     assert.equal(savedProfile.profileUpdatedAt, "2026-08-25T10:15:00.000Z");
+    assert.equal(savedProfile.avatarImageUpdatedAt, "2026-08-25T10:15:00.000Z");
     assert.equal(
       loadLocalProfile().profileUpdatedAt,
+      "2026-08-25T10:15:00.000Z"
+    );
+    assert.equal(
+      loadLocalProfile().avatarImageUpdatedAt,
       "2026-08-25T10:15:00.000Z"
     );
   });

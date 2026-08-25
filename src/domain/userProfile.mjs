@@ -120,6 +120,7 @@ function participantProfileChanged(previous, next) {
     "kind",
     "avatarPreset",
     "avatarImage",
+    "avatarImageUpdatedAt",
     "authProvider",
     "authSubject",
     "email"
@@ -129,13 +130,18 @@ function participantProfileChanged(previous, next) {
 function avatarFields(profile) {
   const avatarPreset = normalizeAvatarPreset(profile?.avatarPreset);
   const avatarImage = normalizeAvatarImage(profile?.avatarImage);
+  const avatarImageUpdatedAt = normalizeProfileUpdatedAt(
+    profile?.avatarImageUpdatedAt ||
+      (avatarImage ? profile?.profileUpdatedAt : "")
+  );
   return {
     ...(avatarPreset ? { avatarPreset } : {}),
     ...(Object.hasOwn(profile ?? {}, "avatarImage")
       ? { avatarImage }
       : avatarImage
         ? { avatarImage }
-        : {})
+        : {}),
+    ...(avatarImageUpdatedAt ? { avatarImageUpdatedAt } : {})
   };
 }
 

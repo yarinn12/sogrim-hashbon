@@ -1446,6 +1446,43 @@ alter table public.user_profiles
   add column if not exists avatar_image text;
 
 alter table public.user_profiles
+  add column if not exists avatar_image_updated_at timestamptz;
+
+update public.user_profiles
+set avatar_image_updated_at = updated_at
+where avatar_image is not null
+  and avatar_image_updated_at is null;
+
+create or replace function private.preserve_versioned_profile_avatar()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.avatar_image is distinct from old.avatar_image
+    and (
+      new.avatar_image_updated_at is null
+      or new.avatar_image_updated_at is not distinct from old.avatar_image_updated_at
+      or new.avatar_image_updated_at <= coalesce(
+        old.avatar_image_updated_at,
+        '-infinity'::timestamptz
+      )
+    ) then
+    new.avatar_image := old.avatar_image;
+    new.avatar_image_updated_at := old.avatar_image_updated_at;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists preserve_versioned_profile_avatar
+  on public.user_profiles;
+create trigger preserve_versioned_profile_avatar
+  before update of avatar_image, avatar_image_updated_at
+  on public.user_profiles
+  for each row execute function private.preserve_versioned_profile_avatar();
+
+alter table public.user_profiles
   drop constraint if exists user_profiles_avatar_image_safe;
 alter table public.user_profiles
   add constraint user_profiles_avatar_image_safe
@@ -2038,12 +2075,17 @@ begin
       using errcode = '22023';
   end if;
 
-  update public.user_profiles
+  update public.user_profiles as profile
   set
     username = normalized_username,
     username_customized = true,
-    updated_at = pg_catalog.now()
-  where user_id = actor_id;
+    updated_at = case
+      when profile.username is distinct from normalized_username
+        or profile.username_customized is distinct from true
+        then pg_catalog.now()
+      else profile.updated_at
+    end
+  where profile.user_id = actor_id;
 
   if not found then
     raise exception 'Profile was not found'

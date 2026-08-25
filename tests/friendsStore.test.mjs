@@ -116,7 +116,7 @@ test("friend network reads only the signed-in user's visible relationships", asy
   );
   assert.match(
     profileRequest.url,
-    /select=user_id%2Cusername%2Cusername_customized%2Cdisplay_name%2Cavatar_preset%2Cavatar_image%2Cupdated_at/
+    /select=user_id%2Cusername%2Cusername_customized%2Cdisplay_name%2Cavatar_preset%2Cavatar_image%2Cavatar_image_updated_at%2Cupdated_at/
   );
   assert.ok(!profileRequest.url.includes("email"));
 });
@@ -181,8 +181,25 @@ test("profile refresh patches the existing triggered row without inserting a nul
   assert.equal(body.display_name, "Current User");
   assert.equal(body.avatar_preset, "avatar-3");
   assert.equal(body.avatar_image, "https://images.example.com/avatar.jpg");
+  assert.ok(Number.isFinite(Date.parse(body.avatar_image_updated_at)));
   assert.ok(!("user_id" in body));
   assert.ok(!("username" in body));
+});
+
+test("a fresh installation without avatar knowledge cannot clear the cloud avatar", async () => {
+  const calls = [];
+  await syncFriendProfile(
+    accountConfig(),
+    { displayName: "Current User", avatarPreset: "avatar-3" },
+    async (url, options = {}) => {
+      calls.push({ url, options });
+      return jsonResponse([{ user_id: userId, display_name: "Current User" }]);
+    }
+  );
+
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(Object.hasOwn(body, "avatar_image"), false);
+  assert.equal(Object.hasOwn(body, "avatar_image_updated_at"), false);
 });
 
 test("a stalled friend profile sync times out and allows a retry", async (t) => {

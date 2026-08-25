@@ -105,6 +105,54 @@ test("an unrelated stale save cannot restore an older profile name or avatar", (
   assert.equal(merged.participants[0].avatarPreset, "avatar-4");
 });
 
+test("an avatar survives a newer unrelated profile update from an empty device", () => {
+  const remote = baseState();
+  remote.participants[0] = {
+    ...remote.participants[0],
+    displayName: "שם מעודכן",
+    avatarImage: "",
+    profileUpdatedAt: "2026-08-25T11:00:00.000Z"
+  };
+  const local = baseState();
+  local.participants[0] = {
+    ...local.participants[0],
+    avatarImage: "https://images.example.com/chosen.webp",
+    avatarImageUpdatedAt: "2026-08-25T10:00:00.000Z",
+    profileUpdatedAt: "2026-08-25T10:00:00.000Z"
+  };
+
+  const merged = mergeSharedStates(remote, local);
+
+  assert.equal(merged.participants[0].displayName, "שם מעודכן");
+  assert.equal(
+    merged.participants[0].avatarImage,
+    "https://images.example.com/chosen.webp"
+  );
+});
+
+test("a newer explicit avatar removal wins across shared devices", () => {
+  const remote = baseState();
+  remote.participants[0] = {
+    ...remote.participants[0],
+    avatarImage: "",
+    avatarImageUpdatedAt: "2026-08-25T11:00:00.000Z"
+  };
+  const local = baseState();
+  local.participants[0] = {
+    ...local.participants[0],
+    avatarImage: "https://images.example.com/chosen.webp",
+    avatarImageUpdatedAt: "2026-08-25T10:00:00.000Z"
+  };
+
+  const merged = mergeSharedStates(remote, local);
+
+  assert.equal(merged.participants[0].avatarImage, "");
+  assert.equal(
+    merged.participants[0].avatarImageUpdatedAt,
+    "2026-08-25T11:00:00.000Z"
+  );
+});
+
 test("same event unions members and keeps the newest version of each expense", () => {
   const remote = stateWithEvent({
     id: "event-1",

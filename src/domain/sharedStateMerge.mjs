@@ -4,6 +4,7 @@ import {
   settlementOptionsForEvent
 } from "./settlement.mjs";
 import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
+import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const ENTITY_COLLECTION_KEYS = [
@@ -1219,7 +1220,6 @@ function mergeParticipant(remoteParticipant, localParticipant) {
     "displayName",
     "kind",
     "avatarPreset",
-    "avatarImage",
     "authProvider",
     "authSubject",
     "email",
@@ -1228,6 +1228,25 @@ function mergeParticipant(remoteParticipant, localParticipant) {
     if (Object.hasOwn(profileSource, field)) {
       merged[field] = cloneValue(profileSource[field]);
     }
+  }
+  const avatarResolution = resolveProfileAvatar(
+    localParticipant,
+    remoteParticipant
+  );
+  if (
+    avatarResolution.avatarImage ||
+    avatarResolution.avatarImageUpdatedAt ||
+    Object.hasOwn(localParticipant, "avatarImage") ||
+    Object.hasOwn(remoteParticipant, "avatarImage")
+  ) {
+    merged.avatarImage = avatarResolution.avatarImage;
+  } else {
+    delete merged.avatarImage;
+  }
+  if (avatarResolution.avatarImageUpdatedAt) {
+    merged.avatarImageUpdatedAt = avatarResolution.avatarImageUpdatedAt;
+  } else {
+    delete merged.avatarImageUpdatedAt;
   }
   if (
     Object.hasOwn(remoteParticipant, "accountLinked") ||

@@ -643,12 +643,17 @@ function sanitizeParticipant(participant) {
   const avatarPreset = normalizeAvatarPreset(participant?.avatarPreset);
   const avatarImage = normalizeAvatarImage(participant?.avatarImage);
   const profileUpdatedAt = normalizeProfileUpdatedAt(participant?.profileUpdatedAt);
+  const avatarImageUpdatedAt = normalizeProfileUpdatedAt(
+    participant?.avatarImageUpdatedAt ||
+      (avatarImage ? participant?.profileUpdatedAt : "")
+  );
   return {
     id: String(participant.id),
     displayName: String(participant.displayName ?? ""),
     kind: participant.kind === "guest" ? "guest" : "user",
     ...(avatarPreset ? { avatarPreset } : {}),
     ...(avatarImage ? { avatarImage } : {}),
+    ...(avatarImageUpdatedAt ? { avatarImageUpdatedAt } : {}),
     ...(profileUpdatedAt ? { profileUpdatedAt } : {}),
     accountLinked:
       participant.accountLinked === true ||

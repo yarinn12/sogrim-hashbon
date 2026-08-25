@@ -956,6 +956,20 @@ export function saveLocalProfile(profile) {
           previousProfile?.participantId === profile.participantId
             ? previousProfile.avatarImage
             : ""
+        ),
+      avatarImageUpdatedAt:
+        profile.avatarImageUpdatedAt ??
+        (
+          previousProfile?.participantId === profile.participantId
+            ? previousProfile.avatarImageUpdatedAt
+            : ""
+        ),
+      profileUpdatedAt:
+        profile.profileUpdatedAt ??
+        (
+          previousProfile?.participantId === profile.participantId
+            ? previousProfile.profileUpdatedAt
+            : ""
         )
     }),
     ...profileUpdatedAtField(
@@ -1482,9 +1496,14 @@ function profileAuthFields(profile) {
 function profileAvatarFields(profile) {
   const avatarPreset = normalizeAvatarPreset(profile?.avatarPreset);
   const avatarImage = normalizeAvatarImage(profile?.avatarImage);
+  const avatarImageUpdatedAt = normalizeProfileUpdatedAt(
+    profile?.avatarImageUpdatedAt ||
+      (avatarImage ? profile?.profileUpdatedAt : "")
+  );
   return {
     ...(avatarPreset ? { avatarPreset } : {}),
-    ...(avatarImage ? { avatarImage } : {})
+    ...(avatarImage ? { avatarImage } : {}),
+    ...(avatarImageUpdatedAt ? { avatarImageUpdatedAt } : {})
   };
 }
 

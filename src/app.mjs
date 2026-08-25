@@ -172,6 +172,7 @@ import {
   normalizeProfileName,
   normalizeProfileUpdatedAt
 } from "./domain/userProfile.mjs";
+import { resolveProfileAvatar } from "./domain/profileAvatarSync.mjs";
 import {
   initializeParticipantMembership,
   isActiveEventParticipant,
@@ -8761,6 +8762,7 @@ async function persistProfileAvatarDraft() {
         ? {
             ...participant,
             avatarImage,
+            avatarImageUpdatedAt: profileUpdatedAt,
             avatarPreset,
             profileUpdatedAt
           }
@@ -8772,6 +8774,7 @@ async function persistProfileAvatarDraft() {
     participantId,
     displayName,
     avatarImage,
+    avatarImageUpdatedAt: profileUpdatedAt,
     avatarPreset,
     profileUpdatedAt
   });
@@ -13591,62 +13594,72 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     );
     let localAvatarPreset = normalizeAvatarPreset(localProfile?.avatarPreset) || null;
     const networkAvatarPreset = normalizeAvatarPreset(ownNetworkProfile?.avatar_preset) || null;
-    let localAvatarImage = normalizeAvatarImage(localProfile?.avatarImage) || null;
-    const networkAvatarImage = normalizeAvatarImage(ownNetworkProfile?.avatar_image) || null;
     let localProfileUpdatedAt = normalizeProfileUpdatedAt(localProfile?.profileUpdatedAt);
     const networkProfileUpdatedAt = normalizeProfileUpdatedAt(ownNetworkProfile?.updated_at);
-    const publicProfileDiffers = Boolean(
+    const avatarResolution = resolveProfileAvatar(
+      {
+        avatarImage: localProfile?.avatarImage,
+        avatarImageUpdatedAt: localProfile?.avatarImageUpdatedAt
+      },
+      {
+        avatarImage: ownNetworkProfile?.avatar_image,
+        avatarImageUpdatedAt: ownNetworkProfile?.avatar_image_updated_at
+      }
+    );
+    const publicIdentityDiffers = Boolean(
       ownNetworkProfile &&
       (
         ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
-        networkAvatarPreset !== localAvatarPreset ||
-        networkAvatarImage !== localAvatarImage
+        networkAvatarPreset !== localAvatarPreset
       )
     );
-    if (
+    const publicIdentityIsNewer = Boolean(
       ownNetworkProfile &&
       networkProfileUpdatedAt &&
-      publicProfileDiffers &&
+      publicIdentityDiffers &&
       (
         !localProfileUpdatedAt ||
         Date.parse(networkProfileUpdatedAt) >= Date.parse(localProfileUpdatedAt)
       )
-    ) {
+    );
+    if (publicIdentityIsNewer || avatarResolution.source === "remote") {
       localProfile = saveLocalProfile({
         ...localProfile,
         participantId: state.currentParticipantId,
-        displayName: ownNetworkProfile.display_name,
-        avatarPreset: Object.hasOwn(ownNetworkProfile, "avatar_preset")
+        displayName: publicIdentityIsNewer
+          ? ownNetworkProfile.display_name
+          : localProfile?.displayName,
+        avatarPreset: publicIdentityIsNewer && Object.hasOwn(ownNetworkProfile, "avatar_preset")
           ? normalizeAvatarPreset(ownNetworkProfile.avatar_preset)
           : localProfile?.avatarPreset,
-        avatarImage: Object.hasOwn(ownNetworkProfile, "avatar_image")
-          ? normalizeAvatarImage(ownNetworkProfile.avatar_image)
-          : localProfile?.avatarImage,
-        profileUpdatedAt: networkProfileUpdatedAt
+        avatarImage: avatarResolution.avatarImage,
+        avatarImageUpdatedAt: avatarResolution.avatarImageUpdatedAt,
+        profileUpdatedAt: publicIdentityIsNewer
+          ? networkProfileUpdatedAt
+          : localProfileUpdatedAt
       });
       state = syncLocalProfile(state);
       localAvatarPreset = normalizeAvatarPreset(localProfile?.avatarPreset) || null;
-      localAvatarImage = normalizeAvatarImage(localProfile?.avatarImage) || null;
       localProfileUpdatedAt = normalizeProfileUpdatedAt(localProfile?.profileUpdatedAt);
     }
-    const profileStillDiffers = Boolean(
+    const identityStillDiffers = Boolean(
       ownNetworkProfile &&
       (
         ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
-        networkAvatarPreset !== localAvatarPreset ||
-        networkAvatarImage !== localAvatarImage
+        networkAvatarPreset !== localAvatarPreset
       )
     );
     const profileNeedsSync = Boolean(
       localProfile?.displayName &&
         (
           !ownNetworkProfile ||
-          profileStillDiffers &&
-          (
-            !networkProfileUpdatedAt ||
-            Date.parse(localProfileUpdatedAt || "1970-01-01") >
-              Date.parse(networkProfileUpdatedAt)
-          )
+          avatarResolution.needsRemoteSync ||
+          identityStillDiffers &&
+            (
+              !networkProfileUpdatedAt ||
+              Date.parse(localProfileUpdatedAt || "1970-01-01") >
+                Date.parse(networkProfileUpdatedAt)
+            )
         )
     );
     if (profileNeedsSync) {
@@ -13792,6 +13805,10 @@ function applyFriendNetworkToState(currentState, network) {
         Object.hasOwn(profile, "avatar_image")
           ? normalizeAvatarImage(profile.avatar_image)
           : participants[participantIndex]?.avatarImage,
+      avatarImageUpdatedAt:
+        Object.hasOwn(profile, "avatar_image_updated_at")
+          ? normalizeProfileUpdatedAt(profile.avatar_image_updated_at)
+          : participants[participantIndex]?.avatarImageUpdatedAt,
       profileUpdatedAt: profile.updated_at
     };
     if (participantIndex >= 0) {
@@ -15795,6 +15812,7 @@ async function saveProfileFromDraft() {
       displayName,
       avatarPreset: profileAvatarDraft,
       avatarImage: profileAvatarImageDraft,
+      avatarImageUpdatedAt: profileUpdatedAt,
       profileUpdatedAt,
       authProvider: localProfile?.authProvider,
       authSubject: localProfile?.authSubject,
@@ -15814,6 +15832,8 @@ async function saveProfileFromDraft() {
     avatarImage:
       normalizeAvatarImage(participant?.avatarImage) ||
       profileAvatarImageDraft,
+    avatarImageUpdatedAt:
+      participant?.avatarImageUpdatedAt || profileUpdatedAt,
     avatarPreset:
       normalizeAvatarPreset(participant?.avatarPreset) ||
       profileAvatarDraft,
@@ -17715,42 +17735,40 @@ function syncLocalProfile(nextState) {
   const localProfileUpdatedAt = normalizeProfileUpdatedAt(
     localProfile.profileUpdatedAt
   );
-  if (
+  const cloudProfileIsNewer = Boolean(
     cloudParticipant &&
-    cloudProfileUpdatedAt &&
-    (
-      !localProfileUpdatedAt ||
-      Date.parse(cloudProfileUpdatedAt) > Date.parse(localProfileUpdatedAt)
-    )
-  ) {
-    localProfile = saveLocalProfile({
-      participantId: cloudParticipant.id,
-      displayName: cloudParticipant.displayName,
-      avatarPreset: normalizeAvatarPreset(cloudParticipant.avatarPreset),
-      avatarImage: normalizeAvatarImage(cloudParticipant.avatarImage),
-      profileUpdatedAt: cloudProfileUpdatedAt,
-      authProvider: cloudParticipant.authProvider ?? localProfile.authProvider,
-      authSubject: cloudParticipant.authSubject ?? localProfile.authSubject,
-      email: cloudParticipant.email ?? localProfile.email
-    });
-    profileNameDraft = localProfile.displayName;
-    profileAvatarDraft =
-      normalizeAvatarPreset(localProfile.avatarPreset) || AVATAR_PRESETS[0].id;
-    profileAvatarImageDraft = normalizeAvatarImage(localProfile.avatarImage);
-    return {
-      ...nextState,
-      currentParticipantId: cloudParticipant.id
-    };
-  }
+      cloudProfileUpdatedAt &&
+      (
+        !localProfileUpdatedAt ||
+        Date.parse(cloudProfileUpdatedAt) > Date.parse(localProfileUpdatedAt)
+      )
+  );
+  const avatarResolution = resolveProfileAvatar(
+    {
+      avatarImage: localProfile.avatarImage,
+      avatarImageUpdatedAt: localProfile.avatarImageUpdatedAt
+    },
+    {
+      avatarImage: cloudParticipant?.avatarImage,
+      avatarImageUpdatedAt: cloudParticipant?.avatarImageUpdatedAt
+    }
+  );
 
   const stateWithProfile = ensureNamedParticipant(
     nextState,
     {
-      id: localProfile.participantId,
-      displayName: localProfile.displayName,
-      avatarPreset: localProfile.avatarPreset,
-      avatarImage: localProfile.avatarImage,
-      profileUpdatedAt: localProfile.profileUpdatedAt,
+      id: cloudParticipant?.id ?? localProfile.participantId,
+      displayName: cloudProfileIsNewer
+        ? cloudParticipant.displayName
+        : localProfile.displayName,
+      avatarPreset: cloudProfileIsNewer
+        ? normalizeAvatarPreset(cloudParticipant.avatarPreset)
+        : localProfile.avatarPreset,
+      avatarImage: avatarResolution.avatarImage,
+      avatarImageUpdatedAt: avatarResolution.avatarImageUpdatedAt,
+      profileUpdatedAt: cloudProfileIsNewer
+        ? cloudProfileUpdatedAt
+        : localProfileUpdatedAt,
       authProvider: localProfile.authProvider,
       authSubject: localProfile.authSubject,
       email: localProfile.email
@@ -17764,8 +17782,11 @@ function syncLocalProfile(nextState) {
     participantId: stateWithProfile.currentParticipantId,
     displayName: participant?.displayName ?? localProfile.displayName,
     avatarImage:
-      normalizeAvatarImage(participant?.avatarImage) ||
-      localProfile.avatarImage,
+      Object.hasOwn(participant ?? {}, "avatarImage")
+        ? normalizeAvatarImage(participant.avatarImage)
+        : avatarResolution.avatarImage,
+    avatarImageUpdatedAt:
+      participant?.avatarImageUpdatedAt || avatarResolution.avatarImageUpdatedAt,
     avatarPreset:
       normalizeAvatarPreset(participant?.avatarPreset) ||
       localProfile.avatarPreset,

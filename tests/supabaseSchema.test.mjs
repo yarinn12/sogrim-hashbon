@@ -118,6 +118,12 @@ test("friendship data is private, approval-based and has no direct client mutati
   assert.match(schema, /create or replace function public\.request_friendship_by_username/);
   assert.match(schema, /create or replace function public\.request_friendship_from_event/);
   assert.match(schema, /create or replace function public\.set_friend_username/);
+  assert.match(schema, /avatar_image_updated_at timestamptz/);
+  assert.match(schema, /profile\.username is distinct from normalized_username/);
+  assert.match(schema, /else profile\.updated_at/);
+  assert.match(schema, /create or replace function private\.preserve_versioned_profile_avatar/);
+  assert.match(schema, /new\.avatar_image_updated_at is not distinct from old\.avatar_image_updated_at/);
+  assert.match(schema, /before update of avatar_image, avatar_image_updated_at/);
   assert.match(schema, /create or replace function public\.manage_friendship/);
   assert.match(schema, /Only the recipient can accept a pending request/);
   assert.match(schema, /grant execute on function public\.request_friendship\(text\) to authenticated/);
@@ -248,6 +254,8 @@ test("schema deployment verifies every friendship table and RPC", async () => {
 
   assert.match(deployScript, /to_regclass\('public\.user_profiles'\)/);
   assert.match(deployScript, /profile_username_state_ready/);
+  assert.match(deployScript, /profile_avatar_version_ready/);
+  assert.match(deployScript, /stable_username_timestamp_ready/);
   assert.match(deployScript, /to_regclass\('public\.friend_invite_codes'\)/);
   assert.match(deployScript, /to_regclass\('public\.friendships'\)/);
   assert.match(deployScript, /to_regclass\('public\.user_blocks'\)/);

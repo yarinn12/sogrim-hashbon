@@ -88,7 +88,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "343" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "344" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -97,7 +97,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=343",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=344",
     method: "GET",
     mode: "navigate",
     headers: new Headers()

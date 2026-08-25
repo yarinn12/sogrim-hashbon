@@ -251,6 +251,20 @@ try {
           and data_type = 'boolean'
           and is_nullable = 'NO'
       ) as profile_username_state_ready,
+      exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'user_profiles'
+          and column_name = 'avatar_image_updated_at'
+          and data_type = 'timestamp with time zone'
+      ) and exists (
+        select 1
+        from pg_catalog.pg_trigger as trigger
+        where trigger.tgname = 'preserve_versioned_profile_avatar'
+          and trigger.tgrelid = 'public.user_profiles'::regclass
+          and not trigger.tgisinternal
+      ) as profile_avatar_version_ready,
       to_regclass('public.friend_invite_codes') is not null as invite_codes_ready,
       to_regclass('public.friendships') is not null as friendships_ready,
       to_regclass('public.user_blocks') is not null as user_blocks_ready,
@@ -305,6 +319,12 @@ try {
         as event_friend_request_ready,
       to_regprocedure('public.set_friend_username(text)') is not null
         as username_update_ready,
+      pg_catalog.strpos(
+        pg_catalog.pg_get_functiondef(
+          'public.set_friend_username(text)'::regprocedure
+        ),
+        'else profile.updated_at'
+      ) > 0 as stable_username_timestamp_ready,
       to_regprocedure('public.manage_friendship(uuid,text)') is not null as management_ready,
       to_regprocedure('public.block_user(uuid)') is not null as block_user_ready,
       to_regprocedure('public.unblock_user(uuid)') is not null as unblock_user_ready,
@@ -848,6 +868,7 @@ try {
     !result?.deletion_trigger_ready ||
     !result?.profiles_ready ||
     !result?.profile_username_state_ready ||
+    !result?.profile_avatar_version_ready ||
     !result?.invite_codes_ready ||
     !result?.friendships_ready ||
     !result?.user_blocks_ready ||
@@ -869,6 +890,7 @@ try {
     !result?.username_request_ready ||
     !result?.event_friend_request_ready ||
     !result?.username_update_ready ||
+    !result?.stable_username_timestamp_ready ||
     !result?.management_ready ||
     !result?.block_user_ready ||
     !result?.unblock_user_ready ||

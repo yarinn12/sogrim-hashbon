@@ -54,7 +54,8 @@ test("gallery avatars stay out of auth metadata while syncing to the public prof
 
   assert.match(app, /syncFriendProfile\(runtimeConfig, localProfile\)/);
   assert.match(app, /networkProfileUpdatedAt/);
-  assert.match(app, /Date\.parse\(networkProfileUpdatedAt\) >= Date\.parse\(localProfileUpdatedAt\)/);
+  assert.match(app, /resolveProfileAvatar/);
+  assert.match(app, /avatarImageUpdatedAt: profileUpdatedAt/);
   assert.match(app, /publishCurrentProfileToSharedEventsOnce/);
   assert.match(app, /forceSharedParticipantIds: \[participantId\]/);
   assert.match(app, /CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200/);
@@ -66,6 +67,7 @@ test("gallery avatars stay out of auth metadata while syncing to the public prof
   assert.match(accountLayer, /normalizedAvatarImage\.startsWith\("https:\/\/"\)/);
   assert.match(accountLayer, /avatar_image: accountMetadataAvatarImage/);
   assert.match(accountLayer, /sharedProfileIsNewer/);
+  assert.match(accountLayer, /resolveProfileAvatar/);
 });
 
 test("participant avatars render branded images instead of initials", async () => {
