@@ -223,6 +223,8 @@ test("deployment never serves an install shell or PWA bootstrap from stale CDN c
   assert.equal(rootRoute.headers["Cache-Control"], "no-store, max-age=0");
   assert.equal(pwaRoute.headers["Cache-Control"], "no-store, max-age=0");
   assert.equal(pwaRoute.continue, true);
+  assert.match(pwaRoute.src, /styles\\\.css/);
+  assert.match(pwaRoute.src, /src\/\(\.\*\)/);
 });
 
 test("the recovery page installs the current worker before reopening the app", async () => {

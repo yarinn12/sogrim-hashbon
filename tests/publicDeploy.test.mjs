@@ -223,7 +223,7 @@ test("Vercel serves static assets from the CDN and reserves Node for dynamic rou
       "no-store, max-age=0"
   )));
   assert.ok(config.routes.some((route) => (
-    route.src === "/(index\\.html|manifest\\.webmanifest|sw\\.js|pwa-recovery\\.html|src/pwaBootstrap\\.mjs)" &&
+    route.src === "/(index\\.html|styles\\.css|manifest\\.webmanifest|sw\\.js|pwa-recovery\\.html|src/(.*))" &&
     route.continue === true &&
     route.headers?.["Cache-Control"] === "no-store, max-age=0"
   )));

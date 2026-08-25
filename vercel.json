@@ -57,7 +57,7 @@
       }
     },
     {
-      "src": "/(index\\.html|manifest\\.webmanifest|sw\\.js|pwa-recovery\\.html|src/pwaBootstrap\\.mjs)",
+      "src": "/(index\\.html|styles\\.css|manifest\\.webmanifest|sw\\.js|pwa-recovery\\.html|src/(.*))",
       "headers": {
         "Cache-Control": "no-store, max-age=0"
       },
