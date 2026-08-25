@@ -8,7 +8,7 @@ test("public expense guest layer loads after the command icon layer", async () =
   assert.match(index, /publicExpenseGuestLayer\.mjs/);
   assert.match(
     index,
-    /publicCommandIconLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicExpenseGuestLayer\.mjs"><\/script>/
+    /publicCommandIconLayer\.mjs\?pwa_release=357"><\/script>\s+<script type="module" src="\.\/src\/publicExpenseGuestLayer\.mjs\?pwa_release=357"><\/script>/
   );
 });
 
@@ -29,7 +29,7 @@ test("public inline payer layer loads after expense guest controls", async () =>
   assert.match(index, /publicInlinePayerLayer\.mjs/);
   assert.match(
     index,
-    /publicExpenseGuestLayer\.mjs"><\/script>\s+<script type="module" src="\.\/src\/publicInlinePayerLayer\.mjs"><\/script>/
+    /publicExpenseGuestLayer\.mjs\?pwa_release=357"><\/script>\s+<script type="module" src="\.\/src\/publicInlinePayerLayer\.mjs\?pwa_release=357"><\/script>/
   );
   assert.match(sw, /\/src\/publicInlinePayerLayer\.mjs/);
 });

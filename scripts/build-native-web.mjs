@@ -80,7 +80,7 @@ console.log("Native web bundle is ready in www/.");
 async function bundleNativeModules() {
   const indexPath = join(output, "index.html");
   const html = await readFile(indexPath, "utf8");
-  const moduleTagPattern = /<script type="module" src="\.\/src\/([^"]+\.mjs)"><\/script>/g;
+  const moduleTagPattern = /<script type="module" src="\.\/src\/([^"?]+\.mjs)(?:\?pwa_release=\d+)?"><\/script>/g;
   const moduleScripts = [...html.matchAll(moduleTagPattern)].map((match) => ({
     tag: match[0],
     path: `./src/${match[1]}`
