@@ -17751,17 +17751,19 @@ function registerServiceWorker() {
       const registration = await navigator.serviceWorker.register("./sw.js", {
         updateViaCache: "none"
       });
+      const checkForServiceWorkerUpdate = () => registration.update().catch(() => {});
 
       if (!window.location.hash.includes("access_token")) {
-        registration.update().catch(() => {});
+        checkForServiceWorkerUpdate();
       }
 
       document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState !== "hidden") return;
-        registration.update().catch(() => {});
+        if (document.visibilityState !== "visible") return;
+        checkForServiceWorkerUpdate();
       });
 
-      window.addEventListener("online", () => registration.update().catch(() => {}));
+      window.addEventListener("pageshow", checkForServiceWorkerUpdate);
+      window.addEventListener("online", checkForServiceWorkerUpdate);
     } catch {}
   });
 }

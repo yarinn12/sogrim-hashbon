@@ -161,7 +161,7 @@ test("service worker leaves cross-origin and partial responses outside the app c
   assert.match(serviceWorker, /headers\.has\("range"\)/);
 });
 
-test("app checks for a service worker update after the active splash", async () => {
+test("app checks for a service worker update after startup and whenever an installed app returns", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const start = app.indexOf("function registerServiceWorker()");
   const end = app.indexOf("function persistState()", start);
@@ -170,8 +170,10 @@ test("app checks for a service worker update after the active splash", async () 
   assert.match(registration, /serviceWorker/);
   assert.match(registration, /register\("\.\/sw\.js", \{/);
   assert.match(registration, /updateViaCache: "none"/);
-  assert.match(registration, /registration\.update\(\)/);
-  assert.match(registration, /document\.visibilityState !== "hidden"/);
+  assert.match(registration, /checkForServiceWorkerUpdate = \(\) => registration\.update\(\)/);
+  assert.match(registration, /document\.visibilityState !== "visible"/);
+  assert.match(registration, /addEventListener\("pageshow", checkForServiceWorkerUpdate\)/);
+  assert.match(registration, /addEventListener\("online", checkForServiceWorkerUpdate\)/);
 });
 
 test("an installed app reloads once when a new service worker takes control", async () => {

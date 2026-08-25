@@ -1,4 +1,4 @@
-const CACHE_NAME = "settle-friends-live-v327";
+const CACHE_NAME = "settle-friends-live-v328";
 const CACHE_FILES = [
   "/",
   "/index.html",
