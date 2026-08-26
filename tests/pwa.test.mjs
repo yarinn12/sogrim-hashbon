@@ -61,6 +61,7 @@ test("index links the manifest and mobile app metadata", async () => {
     html,
     /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=368"/
   );
+  assert.match(html, /data-pwa-release="368"/);
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
