@@ -405,10 +405,11 @@ async function joinThroughProductionBrowser({
   const browser = await webkit.launch({ headless: true });
   try {
     const context = await browser.newContext({ ...devices["iPhone 15"] });
-    const page = await context.newPage();
+    const invitePage = await context.newPage();
+    let page = invitePage;
     const failedResponses = [];
     const authDiagnostics = [];
-    page.on("response", async (response) => {
+    context.on("response", async (response) => {
       const url = new URL(response.url());
       const isRelevant =
         url.pathname.startsWith("/auth/v1/") ||
@@ -426,9 +427,25 @@ async function joinThroughProductionBrowser({
       if (response.status() >= 400) failedResponses.push(entry);
     });
     const inviteUrl = `https://sogrim-hesbon-app.vercel.app/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(token)}`;
-    await page.goto(inviteUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await invitePage.goto(inviteUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await invitePage.locator("#public-account-auth-gate").waitFor({ timeout: 20_000 });
+
+    // Reproduce registration opening in a separate tab after the original
+    // invitation address is no longer visible. The account gate must recover
+    // the durable handoff before authentication and profile completion.
+    page = await context.newPage();
+    await page.goto("https://sogrim-hesbon-app.vercel.app/", {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000
+    });
     const gate = page.locator("#public-account-auth-gate");
     await gate.waitFor({ timeout: 20_000 });
+    const durableHandoff = await page.evaluate(() =>
+      localStorage.getItem("sogrim-pending-invite-handoff-v1")
+    );
+    assert.equal(JSON.parse(durableHandoff ?? "null")?.inviteUrl, inviteUrl);
+    await gate.getByText("קיבלת הזמנה", { exact: true }).waitFor({ timeout: 20_000 });
+    await invitePage.close();
     const emailToggle = gate.locator('[data-account-action="toggle-email"]');
     if (await emailToggle.isVisible()) await emailToggle.click();
     await gate.locator('input[name="email"]').fill(email);
