@@ -63,6 +63,46 @@ test("production health fails closed when a required launch dependency is missin
   assert.equal(payload.storageMode, "local");
 });
 
+test("deployed health keeps liveness separate from strict launch readiness", async () => {
+  const env = {
+    NODE_ENV: "production",
+    APP_PUBLIC_URL: "https://sogrim-hesbon-app.vercel.app"
+  };
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    env
+  }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const headers = {
+      host: "sogrim-hesbon-app.vercel.app",
+      "x-forwarded-proto": "https"
+    };
+    const live = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      headers
+    });
+    const strict = await fetch(
+      `http://127.0.0.1:${port}/api/health?strict=1`,
+      { headers }
+    );
+
+    assert.equal(live.status, 200);
+    assert.equal((await live.json()).ok, true);
+    assert.equal(strict.status, 503);
+    assert.equal((await strict.json()).ok, false);
+  } finally {
+    await new Promise((resolve, reject) =>
+      server.close((error) => error ? reject(error) : resolve())
+    );
+  }
+});
+
 test("the recovery server permits verified files under .well-known", async () => {
   const server = createServer(createAppHandler({ root: process.cwd(), port: 0 }));
   await new Promise((resolve, reject) => {
