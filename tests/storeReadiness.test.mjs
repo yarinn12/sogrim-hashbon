@@ -175,6 +175,7 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(readinessCheck, /localReady, liveReady, submissionReady/);
   assert.match(readinessCheck, /process\.argv\.includes\("--android"\)/);
   assert.match(readinessCheck, /androidReady/);
+  assert.match(readinessCheck, /androidOnly \? !androidReady : !submissionReady/);
   assert.match(readinessCheck, /AbortSignal\.timeout\(10_000\)/);
   assert.match(readinessCheck, /async function fetchWithRetry/);
   assert.doesNotMatch(readinessCheck, /Android release is prepared as 3\.44/);

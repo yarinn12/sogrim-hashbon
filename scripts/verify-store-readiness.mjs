@@ -251,7 +251,7 @@ console.log(JSON.stringify({
   liveChecks,
   manualChecks
 }, null, 2));
-if (androidOnly ? !androidReady : (!localReady || !liveReady)) process.exitCode = 1;
+if (androidOnly ? !androidReady : !submissionReady) process.exitCode = 1;
 
 async function checkFile(name, relativePath) {
   localChecks.push({ name, ok: existsSync(join(root, ...relativePath.split("/"))) });

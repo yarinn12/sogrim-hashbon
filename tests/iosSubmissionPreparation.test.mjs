@@ -41,6 +41,8 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(packageJson.scripts["native:ios:apple-secret"], /generate-apple-client-secret/);
   assert.match(packageJson.scripts["native:ios:csr"], /new-apple-distribution-csr/);
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, new RegExp(`default: "${metadata.version.number.replaceAll(".", "\\.")}"`));
+  assert.match(workflow, new RegExp(`default: "${metadata.version.build}"`));
   assert.match(workflow, /runs-on: macos-26/);
   assert.match(workflow, /Xcode_26\.6\.app/);
   assert.match(workflow, /verify-ios-workflow-env\.mjs/);
