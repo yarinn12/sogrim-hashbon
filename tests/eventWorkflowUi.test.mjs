@@ -681,7 +681,7 @@ test("participant manager separates the current roster from saved names", async 
   );
   assert.match(
     app,
-    /async function removeEventParticipant\([\s\S]*?const result = await persistState\(\);[\s\S]*?לא בוצע שינוי/
+    /async function removeEventParticipant\([\s\S]*?const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;[\s\S]*?לא בוצע שינוי/
   );
   assert.match(design, /\.event-participant-roster-row/);
   assert.match(design, /\.event-participant-roster-search/);
@@ -883,7 +883,10 @@ test("participant membership changes protect creators and admins while preservin
   assert.match(remove, /participantId === event\.createdByParticipantId/);
   assert.match(remove, /!canCurrentParticipantManage\(event\)/);
   assert.match(remove, /state = deactivateEventParticipant\(state, eventId, participantId\)/);
-  assert.match(remove, /const result = await persistState\(\)/);
+  assert.match(
+    remove,
+    /const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;/
+  );
   assert.match(remove, /state = previousState/);
   assert.match(remove, /ההיסטוריה הכספית נשמרה/);
   assert.match(remove, /notice = ""/);

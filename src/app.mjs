@@ -17877,7 +17877,10 @@ async function removeEventParticipant(eventId, participantId) {
       }
     : eventDialog;
   notice = "";
-  const result = await persistState();
+  const saveRequest = persistState();
+  render();
+  reactivateDialogAfterRender(".event-modal");
+  const result = await saveRequest;
   if (!result?.ok) {
     state = previousState;
     eventDialog = isEventParticipantsDialog(eventId)
@@ -17893,8 +17896,6 @@ async function removeEventParticipant(eventId, participantId) {
     reactivateDialogAfterRender(".event-modal");
     return;
   }
-  render();
-  reactivateDialogAfterRender(".event-modal");
 }
 
 function requestNewEventParticipantRemoval(participantId, trigger) {
