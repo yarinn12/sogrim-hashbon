@@ -1584,8 +1584,12 @@ async function initializeWebGoogleIdentity() {
   window.google.accounts.id.initialize({
     client_id: clientId,
     callback: handleWebGoogleCredential,
+    context: "signin",
     auto_select: false,
+    button_auto_select: false,
     cancel_on_tap_outside: true,
+    itp_support: true,
+    use_fedcm_for_button: true,
     ux_mode: "popup",
     nonce: nonce.hashed
   });
@@ -1702,17 +1706,27 @@ async function completeGoogleIdTokenSignIn({
   nonce = ""
 }) {
   const previousSession = loadStoredAccountSession();
-  accountSession = await signInWithIdToken(runtimeConfig, {
-    provider: "google",
-    token: idToken,
-    accessToken,
-    nonce
-  });
-  accountSession = await restoreAccountSession(accountSession, {
-    previousSession
-  });
-  scheduleAccountSessionRefresh();
-  await connectAccountToApp(accountSession, { forceReload: true });
+  accountSession = saveAccountSession(
+    await signInWithIdToken(runtimeConfig, {
+      provider: "google",
+      token: idToken,
+      accessToken,
+      nonce
+    })
+  );
+
+  try {
+    accountSession = await restoreAccountSession(accountSession, {
+      previousSession
+    });
+    scheduleAccountSessionRefresh();
+    await connectAccountToApp(accountSession, { forceReload: true });
+  } catch (error) {
+    if (!canResumeOffline(accountSession, error)) throw error;
+    resumeAccountLocally(accountSession);
+    watchAccountControls();
+    enhanceAccountControls();
+  }
 }
 
 function isCancelledNativeGoogleLogin(error) {

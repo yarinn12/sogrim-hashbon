@@ -3154,7 +3154,7 @@ const CSS = `
   html.product-studio-v3 a,
   html.product-studio-v3 [role="button"] {
     touch-action: manipulation !important;
-    -webkit-tap-highlight-color: rgba(8, 123, 116, 0.12);
+    -webkit-tap-highlight-color: transparent !important;
   }
 
   html.product-studio-v3 h1,

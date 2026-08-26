@@ -35,16 +35,16 @@ test("web app manifest declares an installable mobile app", async () => {
   const manifest = JSON.parse(await readFile("manifest.webmanifest", "utf8"));
 
   assert.equal(manifest.name, "סוגרים חשבון");
-  assert.equal(manifest.short_name, "סוגרים");
+  assert.equal(manifest.short_name, "סוגרים חשבון");
   assert.equal(manifest.display, "standalone");
   assert.equal(manifest.id, "./");
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=358");
+  assert.equal(manifest.start_url, "./?pwa_release=359");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=358&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=359&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -59,7 +59,7 @@ test("index links the manifest and mobile app metadata", async () => {
 
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=358"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=359"/
   );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
@@ -70,9 +70,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.doesNotMatch(html, /interactive-widget/);
   assert.match(html, /rel="icon" href="\.\/icon-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=358"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=358"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=358/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=359"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=359"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=359/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -135,7 +135,7 @@ test("service worker loads heavy brand media on demand and reuses it", async () 
 test("service worker precaches every browser module used by the public app", async () => {
   const html = await readFile("index.html", "utf8");
   const sw = await readFile("sw.js", "utf8");
-  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=358)?"><\/script>/g)]
+  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=359)?"><\/script>/g)]
     .map((match) => match[1]);
   const modulePaths = await collectBrowserModules(entryPaths);
 
@@ -192,6 +192,23 @@ test("the early PWA bootstrap checks for updates before the full app finishes lo
   assert.match(bootstrap, /addEventListener\("online", checkForUpdate\)/);
 });
 
+test("touch feedback never falls back to Safari's blue tap highlight", async () => {
+  const [styles, studio] = await Promise.all([
+    readFile("styles.css", "utf8"),
+    readFile("src/publicStudioDesignLayer.mjs", "utf8")
+  ]);
+
+  assert.match(styles, /html \{[\s\S]*?-webkit-tap-highlight-color: transparent;/);
+  assert.match(
+    styles,
+    /:where\(button, a, input, select, textarea, summary, \[role="button"\], \[tabindex\]\) \{[\s\S]*?-webkit-tap-highlight-color: transparent;/
+  );
+  assert.match(
+    studio,
+    /html\.product-studio-v3 button,[\s\S]*?-webkit-tap-highlight-color: transparent !important;/
+  );
+});
+
 test("home-screen mode receives an app canvas instead of browser-like chrome behavior", async () => {
   const [bootstrap, styles] = await Promise.all([
     readFile("src/pwaBootstrap.mjs", "utf8"),
@@ -234,8 +251,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=358"/);
-  assert.match(recovery, /const PWA_RELEASE = "358"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=359"/);
+  assert.match(recovery, /const PWA_RELEASE = "359"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);

@@ -392,6 +392,18 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, input, select, textarea, summary, [role="button"], [tabindex]) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, a, summary, [role="button"]) {
+  -webkit-touch-callout: none;
+}
+
 body {
   margin: 0;
   background:

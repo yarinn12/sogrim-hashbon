@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=358"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=359"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -61,6 +61,10 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /signInWithIdToken/);
   assert.match(layer, /window\.google\.accounts\.id\.renderButton/);
   assert.match(layer, /callback: handleWebGoogleCredential/);
+  assert.match(layer, /context: "signin"/);
+  assert.match(layer, /itp_support: true/);
+  assert.match(layer, /use_fedcm_for_button: true/);
+  assert.match(layer, /button_auto_select: false/);
   assert.match(layer, /nonce: nonce\.hashed/);
   assert.match(layer, /nonce: webGoogleNonce/);
   assert.match(layer, /await promptWebGoogleSignIn\(\)/);
@@ -69,6 +73,10 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /filterByAuthorizedAccounts: false/);
   assert.match(layer, /autoSelectEnabled: false/);
   assert.match(layer, /if \(isNativeAndroid\(\)\) \{\s*await signInWithNativeGoogle\(\)/);
+  assert.match(
+    layer,
+    /accountSession = saveAccountSession\(\s*await signInWithIdToken\(runtimeConfig,[\s\S]*?canResumeOffline\(accountSession, error\)[\s\S]*?resumeAccountLocally\(accountSession\)/
+  );
   assert.match(layer, /accountAuthErrorMessage\(error, "google"\)/);
   assert.match(layer, /renderAccountNameCompletionGate\(\{\s*displayName:/);
   assert.match(
