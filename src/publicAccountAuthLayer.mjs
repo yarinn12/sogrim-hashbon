@@ -22,6 +22,7 @@ import {
   loadAccountOAuthFlow,
   loadAccountUser,
   loadStoredAccountSession,
+  normalizeAccountEmail,
   parseAccountSessionSync,
   publishAccountSessionSync,
   refreshAccountSession,
@@ -871,6 +872,7 @@ function renderAccountGate({
             <label>
               <span>אימייל</span>
               <input name="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" value="${escapeAttribute(values.email ?? "")}" ${fieldErrorAttributes("email")} required />
+              ${mode === "signup" ? '<small class="account-auth-field-hint">נשלח קישור אימות לכתובת הזו. החשבון יופעל רק אחרי פתיחת הקישור.</small>' : ""}
             </label>
             <label>
               <span>סיסמה</span>
@@ -1212,7 +1214,10 @@ function accountFormValidationError(
     if (!email) {
       return { fieldName: "email", message: "צריך להזין כתובת אימייל." };
     }
-    if (form.querySelector('input[name="email"]')?.validity?.typeMismatch) {
+    if (
+      form.querySelector('input[name="email"]')?.validity?.typeMismatch ||
+      !normalizeAccountEmail(email)
+    ) {
       return { fieldName: "email", message: "כתובת האימייל אינה תקינה." };
     }
   }
@@ -1334,14 +1339,17 @@ async function handleAccountClick(event) {
   }
 
   if (action === "forgot-password") {
-    const email = String(
+    const enteredEmail = String(
       document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
     ).trim().toLowerCase();
-    if (!email || !email.includes("@")) {
+    const email = normalizeAccountEmail(enteredEmail);
+    if (!email) {
       renderAccountGate({
         mode: "login",
-        error: "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
-        values: { email }
+        error: enteredEmail
+          ? "כתובת האימייל אינה תקינה."
+          : "צריך להזין אימייל כדי לשלוח קישור לאיפוס הסיסמה.",
+        values: { email: enteredEmail }
       });
       focusAccountInput(document.getElementById(GATE_ID), {
         includeMobile: true,
@@ -1395,14 +1403,17 @@ async function handleAccountClick(event) {
   }
 
   if (action === "resend-verification") {
-    const email = String(
+    const enteredEmail = String(
       document.querySelector('[data-account-form] input[name="email"]')?.value ?? ""
     ).trim().toLowerCase();
-    if (!email || !email.includes("@")) {
+    const email = normalizeAccountEmail(enteredEmail);
+    if (!email) {
       renderAccountGate({
         mode: "login",
-        error: "צריך להזין אימייל כדי לשלוח קישור אימות חדש.",
-        values: { email },
+        error: enteredEmail
+          ? "כתובת האימייל אינה תקינה."
+          : "צריך להזין אימייל כדי לשלוח קישור אימות חדש.",
+        values: { email: enteredEmail },
         showVerificationResend: true
       });
       focusAccountInput(document.getElementById(GATE_ID), {
@@ -2982,6 +2993,13 @@ function injectStyle() {
       display: grid;
       gap: 7px;
       font-weight: 750;
+    }
+
+    .account-auth-field-hint {
+      color: #60746d;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.45;
     }
 
     .account-auth-form input {

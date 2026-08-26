@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=360"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=361"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -54,6 +54,8 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /data-account-mode="signup"/);
   assert.match(layer, /signInWithPassword/);
   assert.match(layer, /signUpWithPassword/);
+  assert.match(layer, /החשבון יופעל רק אחרי פתיחת הקישור/);
+  assert.match(layer, /normalizeAccountEmail\(email\)/);
   assert.match(layer, /resendSignupConfirmation/);
   assert.match(layer, /data-account-action="resend-verification"/);
   assert.match(layer, /https:\/\/accounts\.google\.com\/gsi\/client/);

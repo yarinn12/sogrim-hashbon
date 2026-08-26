@@ -30,6 +30,9 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
   assert.match(script, /ALLOW_ORIGIN_BACKED_SHELL/);
   assert.match(script, /requireNoStore: !ALLOW_ORIGIN_BACKED_SHELL/);
   assert.match(script, /installed app shell can be reused from stale browser cache/);
+  assert.match(script, /payload\?\.external\?\.email === true/);
+  assert.match(script, /payload\?\.mailer_autoconfirm === false/);
+  assert.match(script, /"authEmailDeliveryReady"/);
   assert.match(failoverScript, /REQUEST_TIMEOUT_MS = 30_000/);
   assert.match(failoverScript, /origin request failed/);
   assert.match(failoverScript, /reachable/);

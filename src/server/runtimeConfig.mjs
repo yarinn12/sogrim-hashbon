@@ -13,6 +13,9 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
   const supabaseUrl = normalizeUrl(env.SUPABASE_URL ?? "");
   const supabaseAnonKey = env.SUPABASE_ANON_KEY ?? "";
   const googleClientId = String(env.GOOGLE_CLIENT_ID ?? "").trim();
+  const authEmailDeliveryReady = parseBoolean(
+    env.AUTH_EMAIL_DELIVERY_READY
+  );
   const androidBannerId = String(env.ADMOB_ANDROID_BANNER_ID ?? "").trim();
   const adsEnabled = parseBoolean(env.ADMOB_ENABLED) && Boolean(androidBannerId);
   const premiumProductId = String(
@@ -97,6 +100,7 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
       publicUrlReady,
       cloudStorageReady,
       googleAuthReady,
+      authEmailDeliveryReady,
       accountDeletionReady,
       googlePlayBillingReady: premiumReady,
       pushDeliveryReady: firebasePushServerReady,

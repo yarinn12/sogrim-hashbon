@@ -67,6 +67,13 @@ test("password recovery keeps validation and success feedback visible", async ({
   await expect(validation).toContainText("צריך להזין אימייל");
   await expect(gate.locator('input[name="email"]')).toBeFocused();
 
+  await gate.locator('input[name="email"]').fill("qa@example");
+  await gate.getByRole("button", { name: "שכחתי סיסמה" }).click();
+  await expect(gate.locator("#account-auth-feedback")).toContainText(
+    "כתובת האימייל אינה תקינה"
+  );
+  expect(recoveryRequests).toBe(0);
+
   await gate.locator('input[name="email"]').fill("qa@example.com");
   await gate.getByRole("button", { name: "שכחתי סיסמה" }).click();
 
@@ -144,6 +151,9 @@ test("login and signup errors remain visible next to the relevant fields", async
   );
 
   await gate.getByRole("button", { name: "הרשמה", exact: true }).click();
+  await expect(gate.locator(".account-auth-field-hint")).toContainText(
+    "החשבון יופעל רק אחרי פתיחת הקישור"
+  );
   await gate.getByRole("button", { name: "צור חשבון", exact: true }).click();
   const signupError = gate.locator("#account-auth-feedback");
   await expect(signupError).toHaveRole("alert");

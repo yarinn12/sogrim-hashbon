@@ -132,7 +132,7 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   });
 
-  await page.goto("/?pwa_release=360");
+  await page.goto("/?pwa_release=361");
   const googleButton = page.getByRole("button", { name: "המשך עם Google" });
   await expect(googleButton).toBeVisible();
   await expect.poll(

@@ -30,6 +30,8 @@ import {
   googleOAuthUrl,
   LEGACY_STATE_CLAIM_PREFIX,
   loadAccountOAuthFlow,
+  normalizeAccountEmail,
+  requestPasswordReset,
   saveAccountOAuthFlow,
   signInWithIdToken,
   signInWithPassword,
@@ -47,6 +49,46 @@ const config = {
     anonKey: "publishable-key"
   }
 };
+
+test("email accounts require a deliverable-looking normalized address", async () => {
+  assert.equal(normalizeAccountEmail("  User+events@Example.COM  "), "user+events@example.com");
+  for (const invalid of [
+    "",
+    "missing-at.example.com",
+    "two@@example.com",
+    ".user@example.com",
+    "user..name@example.com",
+    "user@example",
+    "user@-example.com",
+    "user@example-.com",
+    "user@example.c"
+  ]) {
+    assert.equal(normalizeAccountEmail(invalid), "", invalid);
+  }
+
+  let requested = false;
+  await assert.rejects(
+    signUpWithPassword(
+      config,
+      {
+        email: "not-an-email",
+        password: "long-password",
+        displayName: "Test Person",
+        username: "test_person"
+      },
+      async () => {
+        requested = true;
+        return jsonResponse(200, {});
+      }
+    ),
+    /invalid email address/
+  );
+  await assert.rejects(
+    requestPasswordReset(config, "user@example", "https://app.example.com/"),
+    /invalid email address/
+  );
+  assert.equal(requested, false);
+});
 
 test("account session sync publishes only a completed identity change", () => {
   const storage = memoryStorage();
@@ -604,6 +646,10 @@ test("account auth errors stay helpful without exposing account existence", () =
   assert.equal(
     accountAuthErrorMessage(new Error("Email not confirmed")),
     "צריך לאשר את המייל לפני ההתחברות."
+  );
+  assert.equal(
+    accountAuthErrorMessage(new Error("Email address not authorized"), "signup"),
+    "ההרשמה באימייל עדיין אינה זמינה לכתובת הזו. אפשר להתחבר עם Google."
   );
   const googleConfigurationError = new Error("invalid audience");
   googleConfigurationError.status = 400;

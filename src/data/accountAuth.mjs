@@ -21,6 +21,42 @@ const SIGNUP_WORKSPACE_CLAIM_PREFIX = "settle-friends-signup-workspace-claimed:"
 export const LEGACY_STATE_CLAIM_PREFIX = "settle-friends-legacy-state-claim:";
 const LEGACY_STATE_STORAGE_KEY = "settle-friends-state";
 
+export function normalizeAccountEmail(value) {
+  const email = String(value ?? "").trim().normalize("NFKC").toLowerCase();
+  if (!email || email.length > 254 || /\s/.test(email)) return "";
+
+  const atIndex = email.indexOf("@");
+  if (atIndex <= 0 || atIndex !== email.lastIndexOf("@")) return "";
+  const local = email.slice(0, atIndex);
+  const domain = email.slice(atIndex + 1);
+  if (
+    local.length > 64 ||
+    local.startsWith(".") ||
+    local.endsWith(".") ||
+    local.includes("..") ||
+    !/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(local) ||
+    domain.length > 253 ||
+    !domain.includes(".")
+  ) {
+    return "";
+  }
+
+  const labels = domain.split(".");
+  if (
+    labels.some(
+      (label) =>
+        !label ||
+        label.length > 63 ||
+        !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label)
+    ) ||
+    labels.at(-1).length < 2
+  ) {
+    return "";
+  }
+
+  return email;
+}
+
 export function loadStoredAccountSession(storage = globalThis.localStorage) {
   try {
     const raw = storage?.getItem(ACCOUNT_SESSION_STORAGE_KEY);
@@ -198,6 +234,8 @@ export async function signUpWithPassword(config, options, fetchImpl = fetch) {
     workspace,
     storage = globalThis.localStorage
   } = options;
+  const normalizedEmail = normalizeAccountEmail(email);
+  if (!normalizedEmail) throw new Error("invalid email address");
   const normalizedUsername = normalizeUsername(username);
   if (!normalizedUsername) {
     throw new Error("username required");
@@ -209,7 +247,7 @@ export async function signUpWithPassword(config, options, fetchImpl = fetch) {
   const response = await authRequest(config, signupPath, {
     method: "POST",
     body: {
-      email,
+      email: normalizedEmail,
       password,
       data: {
         full_name: displayName,
@@ -263,9 +301,11 @@ export async function signInWithPassword(
   { email, password },
   fetchImpl = fetch
 ) {
+  const normalizedEmail = normalizeAccountEmail(email);
+  if (!normalizedEmail) throw new Error("invalid email address");
   const response = await authRequest(config, "/token?grant_type=password", {
     method: "POST",
-    body: { email, password }
+    body: { email: normalizedEmail, password }
   }, fetchImpl);
   return sessionFromAuthResponse(response);
 }
@@ -346,12 +386,14 @@ export async function requestPasswordReset(
   redirectTo,
   fetchImpl = fetch
 ) {
+  const normalizedEmail = normalizeAccountEmail(email);
+  if (!normalizedEmail) throw new Error("invalid email address");
   const path = redirectTo
     ? `/recover?redirect_to=${encodeURIComponent(redirectTo)}`
     : "/recover";
   await authRequest(config, path, {
     method: "POST",
-    body: { email }
+    body: { email: normalizedEmail }
   }, fetchImpl);
   return true;
 }
@@ -362,6 +404,8 @@ export async function resendSignupConfirmation(
   redirectTo,
   fetchImpl = fetch
 ) {
+  const normalizedEmail = normalizeAccountEmail(email);
+  if (!normalizedEmail) throw new Error("invalid email address");
   const path = redirectTo
     ? `/resend?redirect_to=${encodeURIComponent(redirectTo)}`
     : "/resend";
@@ -369,7 +413,7 @@ export async function resendSignupConfirmation(
     method: "POST",
     body: {
       type: "signup",
-      email: String(email ?? "").trim().toLowerCase()
+      email: normalizedEmail
     }
   }, fetchImpl);
   return true;
@@ -693,6 +737,13 @@ export function accountAuthErrorMessage(error, mode = "login") {
     return "לא הצלחנו להגיע לשירות החשבון. כדאי לבדוק את החיבור ולנסות שוב.";
   }
   if (message.includes("email not confirmed")) return "צריך לאשר את המייל לפני ההתחברות.";
+  if (
+    message.includes("email address not authorized") ||
+    message.includes("email_address_not_authorized")
+  ) {
+    return "ההרשמה באימייל עדיין אינה זמינה לכתובת הזו. אפשר להתחבר עם Google.";
+  }
+  if (message.includes("invalid email")) return "כתובת האימייל אינה תקינה.";
   if (message.includes("invalid login credentials")) return "האימייל או הסיסמה אינם נכונים.";
   if (message.includes("user already registered")) return "כבר קיים חשבון עם האימייל הזה.";
   if (
@@ -724,8 +775,7 @@ export function accountAuthErrorMessage(error, mode = "login") {
 }
 
 function validRecoveryEmail(value) {
-  const email = String(value ?? "").trim().toLowerCase();
-  return email.length <= 320 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  return Boolean(normalizeAccountEmail(value));
 }
 
 function normalizeSession(session) {

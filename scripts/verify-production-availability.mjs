@@ -22,6 +22,7 @@ await checkJson("health", "/api/health", (payload) => {
     "publicUrlReady",
     "cloudStorageReady",
     "googleAuthReady",
+    "authEmailDeliveryReady",
     "accountDeletionReady",
     "shareLinksReady"
   ]) {
@@ -47,7 +48,14 @@ if (runtimeConfig?.storage?.url && runtimeConfig?.storage?.anonKey) {
   await checkExternalJson(
     "Supabase Auth",
     `${runtimeConfig.storage.url}/auth/v1/settings`,
-    { apikey: runtimeConfig.storage.anonKey }
+    { apikey: runtimeConfig.storage.anonKey },
+    (payload) => {
+      assert(payload?.external?.email === true, "email/password authentication is disabled");
+      assert(
+        payload?.mailer_autoconfirm === false,
+        "email confirmation is disabled; unverified addresses can activate accounts"
+      );
+    }
   );
   await checkExternalJson(
     "Supabase Data API",
@@ -111,11 +119,11 @@ async function checkJson(name, path, validate) {
   });
 }
 
-async function checkExternalJson(name, url, headers) {
+async function checkExternalJson(name, url, headers, validate = () => {}) {
   await runCheck(name, async () => {
     const response = await request(url, { headers });
     assert(response.ok, `HTTP ${response.status}`);
-    await response.json();
+    validate(await response.json());
   });
 }
 

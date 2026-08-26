@@ -32,6 +32,7 @@ test("getRuntimeConfig stays in local mode without cloud environment values", ()
   assert.deepEqual(config.storage, { mode: "local" });
   assert.equal(config.launch.publicUrlReady, false);
   assert.equal(config.launch.cloudStorageReady, false);
+  assert.equal(config.launch.authEmailDeliveryReady, false);
   assert.equal(config.launch.accountDeletionReady, false);
   assert.equal(config.launch.pushDeliveryReady, false);
   assert.equal(config.launch.shareLinksReady, false);
@@ -44,6 +45,7 @@ test("getRuntimeConfig enables Supabase mode when public cloud values exist", ()
     SUPABASE_URL: "https://demo.supabase.co",
     SUPABASE_ANON_KEY: "anon-key",
     GOOGLE_CLIENT_ID: "google-client-id",
+    AUTH_EMAIL_DELIVERY_READY: "true",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key"
   });
 
@@ -60,6 +62,7 @@ test("getRuntimeConfig enables Supabase mode when public cloud values exist", ()
   assert.equal(config.launch.publicUrlReady, true);
   assert.equal(config.launch.cloudStorageReady, true);
   assert.equal(config.launch.googleAuthReady, true);
+  assert.equal(config.launch.authEmailDeliveryReady, true);
   assert.equal(config.launch.accountDeletionReady, true);
   assert.equal(config.launch.pushDeliveryReady, false);
   assert.equal(config.launch.shareLinksReady, true);

@@ -13,6 +13,7 @@ test("getHealthPayload exposes deployment readiness without secrets", () => {
       publicUrlReady: true,
       cloudStorageReady: true,
       googleAuthReady: false,
+      authEmailDeliveryReady: false,
       accountDeletionReady: true,
       googlePlayBillingReady: false,
       shareLinksReady: true
@@ -25,6 +26,7 @@ test("getHealthPayload exposes deployment readiness without secrets", () => {
     publicUrlReady: true,
     cloudStorageReady: true,
     googleAuthReady: false,
+    authEmailDeliveryReady: false,
     accountDeletionReady: true,
     googlePlayBillingReady: false,
     pushDeliveryReady: false,
@@ -49,6 +51,7 @@ test("production health fails closed when a required launch dependency is missin
         publicUrlReady: true,
         cloudStorageReady: false,
         googleAuthReady: true,
+        authEmailDeliveryReady: false,
         accountDeletionReady: false,
         shareLinksReady: false
       }

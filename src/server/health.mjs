@@ -3,6 +3,9 @@ export function getHealthPayload(config, { requireProductionReadiness = false } 
   const publicUrlReady = Boolean(config.launch?.publicUrlReady);
   const cloudStorageReady = Boolean(config.launch?.cloudStorageReady);
   const googleAuthReady = Boolean(config.launch?.googleAuthReady);
+  const authEmailDeliveryReady = Boolean(
+    config.launch?.authEmailDeliveryReady
+  );
   const accountDeletionReady = Boolean(config.launch?.accountDeletionReady);
   const shareLinksReady = Boolean(config.launch?.shareLinksReady);
   const productionReady =
@@ -19,6 +22,7 @@ export function getHealthPayload(config, { requireProductionReadiness = false } 
     publicUrlReady,
     cloudStorageReady,
     googleAuthReady,
+    authEmailDeliveryReady,
     accountDeletionReady,
     googlePlayBillingReady: Boolean(config.launch?.googlePlayBillingReady),
     pushDeliveryReady: Boolean(config.launch?.pushDeliveryReady),
