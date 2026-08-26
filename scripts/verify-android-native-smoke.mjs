@@ -147,6 +147,10 @@ async function waitForInteractive(startedAt) {
     if (socket) {
       try {
         const state = await readWebViewState(socket);
+        if (!state || typeof state !== "object") {
+          throw new Error("WebView inspection returned an empty result");
+        }
+        lastInspectionError = "";
         lastState = state;
         const observedElapsedMs = Date.now() - startedAt;
         const markedElapsedMs = startupElapsedMs(state, startedAt);

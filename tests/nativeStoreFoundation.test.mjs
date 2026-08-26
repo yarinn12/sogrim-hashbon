@@ -88,6 +88,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeSmoke, /actionableControlCount/);
   assert.match(nativeSmoke, /resourceTimings/);
   assert.match(nativeSmoke, /navigationTiming/);
+  assert.match(nativeSmoke, /WebView inspection returned an empty result/);
+  assert.match(nativeSmoke, /lastInspectionError = ""/);
   assert.match(nativeSmoke, /versionCode/);
   assert.match(nativeSmoke, /FATAL EXCEPTION/);
   assert.match(nativeSmoke, /pm", "get-app-links/);
