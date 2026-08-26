@@ -45,6 +45,14 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
   };
   let idTokenRequests = 0;
+  let releaseGoogleScript;
+  let markGoogleScriptRequested;
+  const googleScriptRelease = new Promise((resolve) => {
+    releaseGoogleScript = resolve;
+  });
+  const googleScriptRequested = new Promise((resolve) => {
+    markGoogleScriptRequested = resolve;
+  });
 
   await page.route("**/api/config", (route) => route.fulfill({
     json: {
@@ -58,27 +66,30 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
       }
     }
   }));
-  await page.route("https://accounts.google.com/gsi/client*", (route) => route.fulfill({
-    headers: { "access-control-allow-origin": "*" },
-    contentType: "application/javascript",
-    body: `
-      window.google = { accounts: { id: {
-        initialize(options) { window.__googleIdentityOptions = options; },
-        renderButton(target) {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.textContent = "המשך עם Google";
-          button.addEventListener("click", () => {
-            window.__googleIdentityOptions.callback({ credential: "google-id-token" });
-          });
-          target.replaceChildren(button);
-        },
-        prompt() {
-          window.__googleIdentityOptions.callback({ credential: "google-id-token" });
-        }
-      } } };
-    `
-  }));
+  await page.route("https://accounts.google.com/gsi/client*", async (route) => {
+    // Reproduce a slower iPhone connection: the visible placeholder must not
+    // consume a tap before Google's real one-click control is ready.
+    markGoogleScriptRequested();
+    await googleScriptRelease;
+    await route.fulfill({
+      headers: { "access-control-allow-origin": "*" },
+      contentType: "application/javascript",
+      body: `
+        window.google = { accounts: { id: {
+          initialize(options) { window.__googleIdentityOptions = options; },
+          renderButton(target) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "המשך עם Google";
+            button.addEventListener("click", () => {
+              window.__googleIdentityOptions.callback({ credential: "google-id-token" });
+            });
+            target.replaceChildren(button);
+          }
+        } } };
+      `
+    });
+  });
   await page.route(`${AUTH_ORIGIN}/**`, (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -132,9 +143,17 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   });
 
-  await page.goto("/?pwa_release=362");
+  const pageLoaded = page.goto("/?pwa_release=363");
+  await googleScriptRequested;
+  const loadingPlaceholder = page.locator("[data-account-google-placeholder]");
+  await expect(loadingPlaceholder).toBeVisible();
+  await expect(loadingPlaceholder).toBeDisabled();
+  await expect(loadingPlaceholder).not.toHaveAttribute("data-account-action", "google");
+  releaseGoogleScript();
+  await pageLoaded;
   const googleButton = page.getByRole("button", { name: "המשך עם Google" });
   await expect(googleButton).toBeVisible();
+  await expect(loadingPlaceholder).toBeHidden();
   await expect.poll(
     () => page.evaluate(() => Boolean(window.__googleIdentityOptions))
   ).toBe(true);

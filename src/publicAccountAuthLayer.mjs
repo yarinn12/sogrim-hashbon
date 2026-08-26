@@ -128,6 +128,8 @@ let accountConfigRetryPromise = null;
 let accountSyncReloadScheduled = false;
 let nativeGoogleLoginPromise = null;
 let webGoogleScriptPromise = null;
+let webGoogleInitializationPromise = null;
+let webGoogleInitializationClientId = "";
 let webGoogleInitialized = false;
 let webGoogleClientId = "";
 let webGoogleNonce = "";
@@ -347,6 +349,16 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   );
   appleEnabled = false;
   emailAuthExpanded = !googleEnabled && !appleEnabled;
+  // Start preparing Google before the gate is painted. On slower phones the
+  // old flow could consume the first tap merely loading the provider SDK, so
+  // the account picker only appeared after another tap.
+  if (googleEnabled) {
+    if (isNativeAndroid()) {
+      prepareNativeGoogleSignIn().catch(() => {});
+    } else {
+      initializeWebGoogleIdentity().catch(() => {});
+    }
+  }
   renderAccountGate({
     message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : ""
   });
@@ -1319,16 +1331,29 @@ async function handleAccountClick(event) {
   }
 
   if (action === "google") {
-    if (authBusy) return;
+    // The browser uses Google's official rendered control. Only Android's
+    // native button is handled here, so a browser tap can never be spent just
+    // replacing a fallback with the real Google button.
+    if (authBusy || !isNativeAndroid()) return;
     setAuthBusy(true);
     try {
-      if (isNativeAndroid()) {
-        await signInWithNativeGoogle();
-      } else {
-        await promptWebGoogleSignIn();
-      }
+      await signInWithNativeGoogle();
     } catch (error) {
       handleGoogleSignInError(error);
+    } finally {
+      setAuthBusy(false);
+    }
+    return;
+  }
+
+  if (action === "retry-google") {
+    if (authBusy || isNativeAndroid()) return;
+    setAuthBusy(true);
+    try {
+      await renderWebGoogleButton();
+    } catch {
+      const status = document.querySelector("[data-account-auth-status]");
+      if (status) status.textContent = "Google עדיין לא זמין. כדאי לבדוק את החיבור ולנסות שוב.";
     } finally {
       setAuthBusy(false);
     }
@@ -1567,6 +1592,7 @@ async function renderWebGoogleButton() {
   const target = control?.querySelector("[data-account-google-button]");
   if (!control || !target || isNativeAndroid()) return;
 
+  setWebGoogleLoadingState(control);
   try {
     await initializeWebGoogleIdentity();
     if (!target.isConnected) return;
@@ -1585,39 +1611,73 @@ async function renderWebGoogleButton() {
       width
     });
     control.classList.add("is-google-ready");
-  } catch {
+  } catch (error) {
     control.classList.remove("is-google-ready");
+    setWebGoogleRetryState(control);
+    throw error;
   }
 }
 
-async function promptWebGoogleSignIn() {
-  await initializeWebGoogleIdentity();
-  await renderWebGoogleButton();
-  window.google.accounts.id.prompt();
+function setWebGoogleLoadingState(control) {
+  const fallback = control?.querySelector(".account-google-fallback");
+  if (!(fallback instanceof HTMLButtonElement)) return;
+  fallback.dataset.accountGooglePlaceholder = "";
+  delete fallback.dataset.accountAction;
+  fallback.classList.add("account-google-loading");
+  fallback.disabled = true;
+  fallback.setAttribute("aria-busy", "true");
 }
 
-async function initializeWebGoogleIdentity() {
-  const clientId = String(runtimeConfig?.auth?.googleClientId ?? "").trim();
-  if (!clientId) throw new Error("Google client is unavailable");
-  await loadWebGoogleScript();
-  if (webGoogleInitialized && webGoogleClientId === clientId) return;
+function setWebGoogleRetryState(control) {
+  const fallback = control?.querySelector(".account-google-fallback");
+  if (!(fallback instanceof HTMLButtonElement)) return;
+  delete fallback.dataset.accountGooglePlaceholder;
+  fallback.dataset.accountAction = "retry-google";
+  fallback.classList.remove("account-google-loading");
+  fallback.disabled = false;
+  fallback.setAttribute("aria-busy", "false");
+}
 
-  const nonce = await createWebGoogleNonce();
-  webGoogleNonce = nonce.raw;
-  webGoogleClientId = clientId;
-  window.google.accounts.id.initialize({
-    client_id: clientId,
-    callback: handleWebGoogleCredential,
-    context: "signin",
-    auto_select: false,
-    button_auto_select: false,
-    cancel_on_tap_outside: true,
-    itp_support: true,
-    use_fedcm_for_button: true,
-    ux_mode: "popup",
-    nonce: nonce.hashed
+function initializeWebGoogleIdentity() {
+  const clientId = String(runtimeConfig?.auth?.googleClientId ?? "").trim();
+  if (!clientId) return Promise.reject(new Error("Google client is unavailable"));
+  if (webGoogleInitialized && webGoogleClientId === clientId) {
+    return Promise.resolve();
+  }
+  if (
+    webGoogleInitializationPromise &&
+    webGoogleInitializationClientId === clientId
+  ) {
+    return webGoogleInitializationPromise;
+  }
+
+  webGoogleInitializationClientId = clientId;
+  webGoogleInitializationPromise = (async () => {
+    await loadWebGoogleScript();
+    if (webGoogleInitialized && webGoogleClientId === clientId) return;
+
+    const nonce = await createWebGoogleNonce();
+    webGoogleNonce = nonce.raw;
+    webGoogleClientId = clientId;
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: handleWebGoogleCredential,
+      context: "signin",
+      auto_select: false,
+      button_auto_select: false,
+      cancel_on_tap_outside: true,
+      itp_support: true,
+      use_fedcm_for_button: true,
+      ux_mode: "popup",
+      nonce: nonce.hashed
+    });
+    webGoogleInitialized = true;
+  })().catch((error) => {
+    webGoogleInitializationPromise = null;
+    webGoogleInitializationClientId = "";
+    throw error;
   });
-  webGoogleInitialized = true;
+  return webGoogleInitializationPromise;
 }
 
 function loadWebGoogleScript() {
@@ -1690,7 +1750,7 @@ function handleGoogleSignInError(error) {
   });
 }
 
-async function signInWithNativeGoogle() {
+function prepareNativeGoogleSignIn() {
   if (!nativeGoogleLoginPromise) {
     nativeGoogleLoginPromise = import("@capgo/capacitor-social-login")
       .then(async ({ SocialLogin }) => {
@@ -1707,11 +1767,18 @@ async function signInWithNativeGoogle() {
       });
   }
 
-  const socialLogin = await nativeGoogleLoginPromise;
+  return nativeGoogleLoginPromise;
+}
+
+async function signInWithNativeGoogle() {
+  const socialLogin = await prepareNativeGoogleSignIn();
   const login = await socialLogin.login({
     provider: "google",
     options: {
-      style: "bottom",
+      // The bottom credential sheet can first fail with NoCredentialException
+      // and only then retry with the standard Google chooser. Going directly
+      // to the standard chooser removes that silent delay from the first tap.
+      style: "standard",
       filterByAuthorizedAccounts: false,
       autoSelectEnabled: false
     }
@@ -2361,15 +2428,21 @@ function enableProviderOptions() {
 }
 
 function providerOptionsMarkup() {
+  const googleMarkup = isNativeAndroid()
+    ? `<button class="account-google-button account-google-fallback" type="button" data-account-action="google">
+        ${googleIcon()}
+        <span>המשך עם Google</span>
+      </button>`
+    : `<div class="account-google-control" data-account-google-control>
+        <div class="account-google-official" data-account-google-button aria-label="המשך עם Google"></div>
+        <button class="account-google-button account-google-fallback account-google-loading" type="button" data-account-google-placeholder disabled aria-busy="true">
+          ${googleIcon()}
+          <span>המשך עם Google</span>
+        </button>
+      </div>`;
   const buttons = [
     googleEnabled
-      ? `<div class="account-google-control" data-account-google-control>
-          <div class="account-google-official" data-account-google-button aria-label="המשך עם Google"></div>
-          <button class="account-google-button account-google-fallback" type="button" data-account-action="google">
-            ${googleIcon()}
-            <span>המשך עם Google</span>
-          </button>
-        </div>`
+      ? googleMarkup
       : "",
     appleEnabled
       ? `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
@@ -2637,7 +2710,7 @@ function setAuthBusy(value) {
   if (status) status.textContent = value ? "מתחברים לחשבון…" : "";
   document.querySelectorAll("#public-account-auth-gate button, #public-account-auth-gate input")
     .forEach((element) => {
-      element.disabled = value;
+      element.disabled = value || element.hasAttribute("data-account-google-placeholder");
     });
 }
 
@@ -2949,6 +3022,11 @@ function injectStyle() {
       border-color: #aebfb7;
       box-shadow: 0 6px 16px rgba(20, 59, 49, .08);
       transform: translateY(-1px);
+    }
+
+    .account-google-loading {
+      cursor: wait;
+      pointer-events: none;
     }
 
     .account-google-button svg {

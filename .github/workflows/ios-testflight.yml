@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.86"
+        default: "3.87"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "113"
+        default: "114"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "אימות מייל נגיש יותר, שחזור חשבון יציב והודעות שאינן חוסמות פעולות במסך."
+        default: "כניסה עם Google נפתחת בלחיצה אחת, עם טעינה מוקדמת ושמירת התחברות יציבה."
 
 permissions:
   contents: read

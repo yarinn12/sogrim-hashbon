@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=362"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=363"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -69,12 +69,14 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /button_auto_select: false/);
   assert.match(layer, /nonce: nonce\.hashed/);
   assert.match(layer, /nonce: webGoogleNonce/);
-  assert.match(layer, /await promptWebGoogleSignIn\(\)/);
+  assert.doesNotMatch(layer, /accounts\.id\.prompt\(\)/);
   assert.doesNotMatch(layer, /secureOAuthUrl\(googleOAuthUrl\)/);
   assert.doesNotMatch(layer, /scopes: \["openid", "email", "profile"\]/);
   assert.match(layer, /filterByAuthorizedAccounts: false/);
   assert.match(layer, /autoSelectEnabled: false/);
-  assert.match(layer, /if \(isNativeAndroid\(\)\) \{\s*await signInWithNativeGoogle\(\)/);
+  assert.match(layer, /style: "standard"/);
+  assert.doesNotMatch(layer, /style: "bottom"/);
+  assert.match(layer, /if \(authBusy \|\| !isNativeAndroid\(\)\) return;\s*setAuthBusy\(true\);\s*try \{\s*await signInWithNativeGoogle\(\)/);
   assert.match(
     layer,
     /accountSession = saveAccountSession\(\s*await signInWithIdToken\(runtimeConfig,[\s\S]*?canResumeOffline\(accountSession, error\)[\s\S]*?resumeAccountLocally\(accountSession\)/
@@ -92,7 +94,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);
   assert.match(
     layer,
-    /if \(action === "google"\) \{\s*if \(authBusy\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
+    /if \(action === "google"\) \{[\s\S]*?if \(authBusy \|\| !isNativeAndroid\(\)\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
   );
   assert.match(
     layer,
@@ -458,6 +460,32 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(
     layer,
     /\.account-email-toggle \{[\s\S]*?min-height: 48px;[\s\S]*?font-weight: 800;/
+  );
+});
+
+test("Google sign-in never spends the first browser tap loading its real button", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /initializeWebGoogleIdentity\(\)\.catch\(\(\) => \{\}\);[\s\S]*?renderAccountGate/
+  );
+  assert.match(
+    layer,
+    /data-account-google-placeholder disabled aria-busy="true"/
+  );
+  assert.match(
+    layer,
+    /window\.google\.accounts\.id\.renderButton[\s\S]*?control\.classList\.add\("is-google-ready"\)/
+  );
+  assert.match(
+    layer,
+    /webGoogleInitializationPromise[\s\S]*?webGoogleInitializationClientId === clientId[\s\S]*?return webGoogleInitializationPromise/
+  );
+  assert.doesNotMatch(layer, /data-account-action="google"[\s\S]*?accounts\.id\.prompt/);
+  assert.match(
+    layer,
+    /prepareNativeGoogleSignIn\(\)\.catch\(\(\) => \{\}\);/
   );
 });
 
