@@ -95,6 +95,12 @@ test("server binds containers publicly while keeping local development private",
     "0.0.0.0"
   );
   assert.equal(
+    resolveServerHost({
+      env: { NODE_ENV: "production", HOST: "127.0.0.1" }
+    }),
+    "0.0.0.0"
+  );
+  assert.equal(
     resolveServerHost({ explicitHost: "10.0.0.4", env: {} }),
     "10.0.0.4"
   );

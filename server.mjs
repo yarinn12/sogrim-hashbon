@@ -653,7 +653,7 @@ if (isDirectRun()) {
   const host = resolveServerHost();
 
   createServer(createAppHandler({ root: defaultRoot, port })).listen(port, host, () => {
-    console.log(`Server running at http://127.0.0.1:${port}`);
+    console.log(`Server listening on http://${host}:${port}`);
     for (const url of getLanUrls(port)) {
       console.log(`LAN URL: ${url}`);
     }
@@ -665,8 +665,11 @@ export function resolveServerHost({
   env = process.env
 } = {}) {
   const configuredHost = String(explicitHost ?? env.HOST ?? "").trim();
-  if (configuredHost) return configuredHost;
-  return isDeployedRuntime(env) ? "0.0.0.0" : "127.0.0.1";
+  const deployedRuntime = isDeployedRuntime(env);
+  if (configuredHost && (!deployedRuntime || !isLocalHost(configuredHost))) {
+    return configuredHost;
+  }
+  return deployedRuntime ? "0.0.0.0" : "127.0.0.1";
 }
 
 function requestOrigin(request, port) {
