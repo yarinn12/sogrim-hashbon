@@ -683,6 +683,10 @@ test("participant manager separates the current roster from saved names", async 
     app,
     /async function removeEventParticipant\([\s\S]*?const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;[\s\S]*?לא בוצע שינוי/
   );
+  assert.match(
+    app,
+    /const removalMessage =[\s\S]*?message: ""[\s\S]*?notice = removalMessage;[\s\S]*?const saveRequest = persistState\(\)/
+  );
   assert.match(design, /\.event-participant-roster-row/);
   assert.match(design, /\.event-participant-roster-search/);
   assert.match(design, /\.event-participant-inactive-row/);

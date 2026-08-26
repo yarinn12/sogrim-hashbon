@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.89"
+        default: "3.90"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "116"
+        default: "117"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "לחיצה אחת על משתתף פותחת אותו מיד, גם לאחר גלילה, בלי לבטל לחיצות תקינות."
+        default: "הודעת הסרת משתתף משתמשת כעת בהתראה הצפה והאחידה של האפליקציה, עם כפתור סגירה ברור."
 
 permissions:
   contents: read

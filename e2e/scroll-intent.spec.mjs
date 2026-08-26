@@ -130,6 +130,29 @@ test("the first stationary tap opens a participant even while scroll restoration
   await expect(page.locator(".event-participant-management-modal")).toBeVisible();
 });
 
+test("participant removal confirmation uses the shared floating app alert", async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${PEER_ID}"]`)
+    .click();
+  await page.locator('[data-action="remove-event-participant"]').click();
+  await page.locator('[data-action="confirm-important-action"]').click();
+
+  const toast = page.locator(".app-toast");
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText("הסרנו את משתתף לבדיקה מהאירוע");
+  await expect(toast.locator(".app-toast-icon")).toBeVisible();
+  await expect(toast.locator('[data-action="dismiss-notice"]')).toHaveAttribute(
+    "aria-label",
+    "סגירת ההודעה"
+  );
+  await expect(page.locator(".event-participant-notice")).toHaveCount(0);
+});
+
 test("scrolling on an event settings row keeps the settings overview open", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page

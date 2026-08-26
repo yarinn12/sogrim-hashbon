@@ -17867,31 +17867,30 @@ async function removeEventParticipant(eventId, participantId) {
     ? {
         eventId,
         kind: "participants",
-        message: removalMessage,
         historyBaseDepth: eventDialog.historyBaseDepth
       }
     : isEventParticipantsDialog(eventId)
     ? {
         ...eventDialog,
-        message: removalMessage
+        message: ""
       }
     : eventDialog;
-  notice = "";
+  notice = removalMessage;
   const saveRequest = persistState();
   render();
   reactivateDialogAfterRender(".event-modal");
   const result = await saveRequest;
   if (!result?.ok) {
     state = previousState;
-    eventDialog = isEventParticipantsDialog(eventId)
+    eventDialog = eventDialog && eventDialog.eventId === eventId
       ? {
           ...eventDialog,
-          message: result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
-            ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
-            : "לא הצלחנו להסיר את המשתתף. לא בוצע שינוי."
+          message: ""
         }
       : eventDialog;
-    notice = eventDialog ? "" : "לא הצלחנו להסיר את המשתתף. לא בוצע שינוי.";
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
+      : "לא הצלחנו להסיר את המשתתף. לא בוצע שינוי.";
     render();
     reactivateDialogAfterRender(".event-modal");
     return;
