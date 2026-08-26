@@ -5547,10 +5547,10 @@ const CSS = `
     width: 100% !important;
     height: 100% !important;
     border-radius: 12px !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     outline: 0 !important;
     filter: drop-shadow(0 5px 7px rgba(11, 74, 56, 0.22)) !important;
-    transform: scale(1.24) !important;
+    transform: none !important;
   }
 
   html.ledger-workspace-v1 .product-brand-copy strong {
@@ -17207,6 +17207,13 @@ const CSS = `
     margin-block-end: 0 !important;
   }
 
+  html.ledger-workspace-v1 body #app
+    .screen.product-empty-home[data-screen-kind="home"]
+    > .top {
+    min-height: 250px !important;
+    padding-bottom: 76px !important;
+  }
+
   html.ledger-workspace-v1 .product-home-screen .home-quick-actions {
     position: relative !important;
     z-index: 4 !important;
@@ -17216,6 +17223,43 @@ const CSS = `
     justify-items: center !important;
     gap: 0 !important;
     margin: -74px 0 16px !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen.product-empty-home
+    .home-quick-actions {
+    margin: -104px 0 16px !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen.product-empty-home
+    .home-empty-visual {
+    aspect-ratio: 1672 / 941 !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen.product-empty-home
+    .home-empty-visual
+    img {
+    object-fit: contain !important;
+    background: #004d47 !important;
+  }
+
+  @media (min-width: 721px) and (max-width: 1024px),
+    (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    html.circle-design-v1.ledger-workspace-v1 body #app
+      .screen[data-screen-kind="home"] {
+      width: 100% !important;
+      max-width: 960px !important;
+      padding-inline: 28px !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .screen.product-empty-home[data-screen-kind="home"]
+      > .top {
+      min-height: 270px !important;
+      padding: 34px 34px 76px !important;
+    }
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-benefit-actions {

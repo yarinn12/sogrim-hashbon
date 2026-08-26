@@ -789,6 +789,16 @@ test("home makes the new-event action primary without separating it from the her
   );
   assert.match(
     layer,
+    /\.screen\.product-empty-home[\s\S]*?\.home-quick-actions \{[\s\S]*?margin: -104px 0 16px !important/
+  );
+  assert.match(
+    layer,
+    /@media \(min-width: 721px\) and \(max-width: 1024px\),[\s\S]*?max-width: 960px !important;[\s\S]*?min-height: 270px !important/
+  );
+  assert.match(layer, /aspect-ratio: 1672 \/ 941 !important/);
+  assert.match(layer, /object-fit: contain !important;[\s\S]*?transform: none !important/);
+  assert.match(
+    layer,
     /\.product-home-screen \.home-benefit-actions \{[\s\S]*?grid-template-columns: minmax\(0, 1\.48fr\) minmax\(126px, 0\.92fr\) !important/
   );
   assert.match(
