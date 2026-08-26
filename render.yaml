@@ -29,6 +29,8 @@ services:
         sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON_BASE64
         sync: false
+      - key: PUSH_DELIVERY_ENABLED
+        value: "false"
       - key: ADMOB_ENABLED
         value: "false"
       - key: ANDROID_MIN_SUPPORTED_BUILD

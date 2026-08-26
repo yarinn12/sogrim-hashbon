@@ -51,6 +51,8 @@ jobs:
         run: |
           set -o pipefail
           node scripts/verify-production-failover.mjs | tee production-failover.log
+        env:
+          RECOVERY_PRODUCTION_ORIGIN: https://sogrim-hashbon-recovery.onrender.com
 
       - name: Open one incident issue
         if: steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure'

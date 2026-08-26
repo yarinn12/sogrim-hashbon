@@ -213,6 +213,22 @@ test("mandatory Android updates block only known Android builds below the minimu
   );
 });
 
+test("Firebase push delivery can be disabled without removing recovery credentials", () => {
+  const config = getRuntimeConfig({
+    SUPABASE_URL: "https://demo.supabase.co",
+    SUPABASE_ANON_KEY: "anon-key",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-key",
+    FIREBASE_SERVICE_ACCOUNT_JSON: JSON.stringify({
+      project_id: "sogrim-demo",
+      client_email: "firebase@example.test",
+      private_key: "private-key"
+    }),
+    PUSH_DELIVERY_ENABLED: "false"
+  });
+
+  assert.equal(config.launch.pushDeliveryReady, false);
+});
+
 test("invalid mandatory update values fail open", () => {
   for (const value of ["-1", "not-a-build", ""]) {
     const scoped = getClientRuntimeConfig(

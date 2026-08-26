@@ -43,7 +43,12 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
     supabaseUrl &&
     (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY)
   );
+  const pushDeliveryEnabled =
+    env.PUSH_DELIVERY_ENABLED === undefined
+      ? true
+      : parseBoolean(env.PUSH_DELIVERY_ENABLED);
   const firebasePushServerReady = Boolean(
+    pushDeliveryEnabled &&
     (
       env.FIREBASE_SERVICE_ACCOUNT_JSON ||
       env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64

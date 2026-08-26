@@ -42,6 +42,10 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
   assert.match(workflow, /verify-production-availability\.mjs \| tee production-availability\.log/);
   assert.match(workflow, /verify-production-availability\.mjs --strict \| tee production-cdn\.log/);
   assert.match(workflow, /verify-production-failover\.mjs \| tee production-failover\.log/);
+  assert.match(
+    workflow,
+    /RECOVERY_PRODUCTION_ORIGIN: https:\/\/sogrim-hashbon-recovery\.onrender\.com/
+  );
   assert.match(workflow, /Open one incident issue/);
   assert.match(workflow, /Close recovered incident issue/);
 });
@@ -82,6 +86,7 @@ test("the recovery host keeps the Android ad rollout in test-only mode", async (
   assert.match(blueprint, /key: ADMOB_TEST_MODE\s+value: "true"/);
   assert.match(blueprint, /key: ADMOB_MIN_ANDROID_BUILD\s+value: "70"/);
   assert.match(blueprint, /key: ADMOB_ROLLOUT_PERCENT\s+value: "0"/);
+  assert.match(blueprint, /key: PUSH_DELIVERY_ENABLED\s+value: "false"/);
 });
 
 test("the backup image is published from main without embedding secrets", async () => {
