@@ -49,12 +49,13 @@ test("a tap, small finger drift and keyboard activation remain clickable", () =>
   );
 });
 
-test("scroll and pointer cancellation cannot activate the touched control", () => {
+test("a touch-driven scroll and pointer cancellation cannot activate the touched control", () => {
   let clock = 300;
   const tracker = createScrollIntentTracker({ now: () => clock });
   const button = createTarget();
 
   tracker.begin({ id: 3, x: 0, y: 0, target: button });
+  tracker.move({ id: 3, x: 0, y: 3, target: button });
   assert.equal(tracker.markScrolled(), true);
   tracker.end({ id: 3, target: button });
   assert.equal(tracker.shouldSuppressClick({ target: button, detail: 1 }), true);
@@ -62,6 +63,19 @@ test("scroll and pointer cancellation cannot activate the touched control", () =
   tracker.begin({ id: 4, x: 0, y: 0, target: button });
   assert.equal(tracker.cancel({ id: 4, target: button }), true);
   assert.equal(tracker.shouldSuppressClick({ target: button, detail: 1 }), true);
+});
+
+test("an unrelated scroll during a stationary tap does not consume its first click", () => {
+  const tracker = createScrollIntentTracker();
+  const participantRow = createTarget();
+
+  tracker.begin({ id: 8, x: 40, y: 80, target: participantRow });
+  assert.equal(tracker.markScrolled(), false);
+  assert.equal(tracker.end({ id: 8, target: participantRow }), false);
+  assert.equal(
+    tracker.shouldSuppressClick({ target: participantRow, detail: 1 }),
+    false
+  );
 });
 
 test("a new deliberate touch clears stale scroll suppression", () => {
@@ -90,7 +104,7 @@ test("the global guard loads before the app click layers and ships offline", asy
   assert.ok(guardIndex >= 0);
   assert.ok(guardIndex < appIndex);
   assert.ok(guardIndex < accountIndex);
-  assert.match(serviceWorker, /settle-friends-live-v364/);
+  assert.match(serviceWorker, /settle-friends-live-v365/);
   assert.match(serviceWorker, /publicScrollIntentLayer\.mjs/);
   assert.match(serviceWorker, /scrollIntent\.mjs/);
 });

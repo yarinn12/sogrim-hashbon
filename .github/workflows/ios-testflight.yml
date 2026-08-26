@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.88"
+        default: "3.89"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "115"
+        default: "116"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "הסרת משתתף מאירוע מגיבה מיד, בזמן שהשמירה לענן ממשיכה ברקע בצורה בטוחה."
+        default: "לחיצה אחת על משתתף פותחת אותו מיד, גם לאחר גלילה, בלי לבטל לחיצות תקינות."
 
 permissions:
   contents: read

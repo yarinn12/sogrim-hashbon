@@ -1,11 +1,13 @@
 import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "scroll-intent-owner";
+const PEER_ID = "scroll-intent-peer";
 const EVENT_ID = "scroll-intent-event";
 const seededState = {
   currentParticipantId: OWNER_ID,
   participants: [
-    { id: OWNER_ID, displayName: "בודק גלילה", kind: "user", avatarPreset: "avatar-1" }
+    { id: OWNER_ID, displayName: "בודק גלילה", kind: "user", avatarPreset: "avatar-1" },
+    { id: PEER_ID, displayName: "משתתף לבדיקה", kind: "guest", avatarPreset: "avatar-2" }
   ],
   friendContacts: [],
   groups: [],
@@ -15,7 +17,7 @@ const seededState = {
       name: "בדיקת גלילה בהגדרות",
       eventType: "outing",
       currency: "ILS",
-      participantIds: [OWNER_ID],
+      participantIds: [OWNER_ID, PEER_ID],
       adminIds: [OWNER_ID],
       createdByParticipantId: OWNER_ID,
       createdAt: "2026-08-25T08:00:00.000Z",
@@ -69,7 +71,7 @@ test("finger scrolling does not activate controls but a deliberate tap does", as
 
 test("an actual scroll suppresses activation without blocking keyboard access", async ({ page }) => {
   const afterScroll = await dispatchTouchSequence(page, {
-    moveY: 0,
+    moveY: 3,
     dispatchScroll: true,
     clickDetail: 1
   });
@@ -81,6 +83,51 @@ test("an actual scroll suppresses activation without blocking keyboard access", 
     return window.__scrollIntentActivations;
   });
   expect(afterKeyboardClick).toBe(1);
+});
+
+test("a stationary first tap survives an unrelated scroll event", async ({ page }) => {
+  const afterTap = await dispatchTouchSequence(page, {
+    moveY: 0,
+    dispatchScroll: true,
+    clickDetail: 1
+  });
+  expect(afterTap).toBe(1);
+});
+
+test("the first stationary tap opens a participant even while scroll restoration settles", async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const participant = page.locator(
+    `[data-action="open-event-participant-profile"][data-participant-id="${PEER_ID}"]`
+  );
+  await expect(participant).toBeVisible();
+  await participant.evaluate((button) => {
+    const target = button.querySelector("strong") ?? button;
+    const pointer = (type) => new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 14,
+      pointerType: "touch",
+      isPrimary: true,
+      button: 0,
+      clientX: 40,
+      clientY: 80
+    });
+    target.dispatchEvent(pointer("pointerdown"));
+    button.dispatchEvent(new Event("scroll"));
+    target.dispatchEvent(pointer("pointerup"));
+    target.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      detail: 1
+    }));
+  });
+
+  await expect(page.locator(".event-participant-management-modal")).toBeVisible();
 });
 
 test("scrolling on an event settings row keeps the settings overview open", async ({ page }) => {

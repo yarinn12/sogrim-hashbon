@@ -40,6 +40,7 @@ export function createScrollIntentTracker({
       startY: Number(y) || 0,
       startTarget: target,
       endTarget: target,
+      pointerMoved: false,
       moved: false,
       scrolled: false
     };
@@ -54,12 +55,16 @@ export function createScrollIntentTracker({
       (Number(x) || 0) - activeGesture.startX,
       (Number(y) || 0) - activeGesture.startY
     );
+    if (distance > 0) activeGesture.pointerMoved = true;
     if (distance > moveThresholdPx) activeGesture.moved = true;
     return activeGesture.moved;
   }
 
   function markScrolled() {
-    if (!activeGesture) return false;
+    // A delayed scroll event can belong to inertial scrolling or dialog focus
+    // restoration that started before this touch. Only associate scrolling with
+    // the active gesture after the pointer itself has actually moved.
+    if (!activeGesture?.pointerMoved) return false;
     activeGesture.scrolled = true;
     return true;
   }
