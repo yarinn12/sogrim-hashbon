@@ -10,6 +10,7 @@ export const PRODUCT_METRIC_NAMES = Object.freeze([
   "invite_shared",
   "invite_joined",
   "transfer_marked_paid",
+  "operation_deferred",
   "operation_failure",
   "client_error"
 ]);
@@ -53,6 +54,19 @@ const SCREENS = new Set(PRODUCT_METRIC_SCREENS);
 const PLATFORMS = new Set(PRODUCT_METRIC_PLATFORMS);
 const EVENT_TYPES = new Set(["standard", "trip", "restaurant"]);
 const OPERATIONS = new Set(PRODUCT_METRIC_OPERATIONS);
+const OPERATION_FAILURE_CLASSES = new Set([
+  "offline",
+  "network",
+  "timeout",
+  "auth",
+  "permission",
+  "conflict",
+  "validation",
+  "storage",
+  "server",
+  "unavailable",
+  "unknown"
+]);
 const METRIC_KEYS = new Set([
   "id",
   "sessionId",
@@ -178,11 +192,73 @@ function validateMetricDetail(eventName, detail) {
     if (!ERROR_DETAIL_PATTERN.test(detail)) throw metricError("Error detail is invalid");
     return;
   }
-  if (eventName === "operation_failure") {
-    if (!OPERATIONS.has(detail)) throw metricError("Operation detail is invalid");
+  if (["operation_deferred", "operation_failure"].includes(eventName)) {
+    const [operation, failureClass = ""] = detail.split(":");
+    if (
+      !OPERATIONS.has(operation) ||
+      (failureClass && !OPERATION_FAILURE_CLASSES.has(failureClass)) ||
+      detail.split(":").length > 2
+    ) {
+      throw metricError("Operation detail is invalid");
+    }
     return;
   }
   if (detail) throw metricError("Metric detail is not allowed");
+}
+
+export function operationMetricDetail(operation, failureClass = "") {
+  const safeOperation = String(operation ?? "").trim();
+  const safeFailureClass = String(failureClass ?? "").trim();
+  if (!OPERATIONS.has(safeOperation)) throw metricError("Operation detail is invalid");
+  if (safeFailureClass && !OPERATION_FAILURE_CLASSES.has(safeFailureClass)) {
+    throw metricError("Operation detail is invalid");
+  }
+  return safeFailureClass ? `${safeOperation}:${safeFailureClass}` : safeOperation;
+}
+
+export function classifyOperationFailure(error, { offline = false } = {}) {
+  if (offline) return "offline";
+  const values = flattenOperationErrors(error);
+  const codes = values.map((item) => String(item?.code ?? "").toUpperCase());
+  const statuses = values.map((item) => Number(item?.status ?? 0));
+  const message = values.map((item) => String(item?.message ?? "")).join(" ").toLowerCase();
+  if (codes.includes("CLOUD_STATE_AUTH_EXPIRED") || statuses.includes(401)) return "auth";
+  if (
+    codes.some((code) => code.includes("MEMBERSHIP_REVOKED")) ||
+    statuses.includes(403)
+  ) return "permission";
+  if (codes.includes("CLOUD_STATE_CONFLICT") || statuses.includes(409)) return "conflict";
+  if (statuses.includes(408) || /timeout|timed out|abort/.test(message)) return "timeout";
+  if (/local storage|localstorage|quota|storage is unavailable/.test(message)) return "storage";
+  if (
+    statuses.some((status) => [400, 404, 405, 422].includes(status)) ||
+    codes.some((code) => code.startsWith("INVALID_"))
+  ) return "validation";
+  if (
+    statuses.some((status) => status >= 500) ||
+    codes.some((code) => code.includes("SERVER"))
+  ) return "server";
+  if (/failed to fetch|fetch failed|network|connection|internet|load failed/.test(message)) {
+    return "network";
+  }
+  if (/unavailable|not configured/.test(message)) return "unavailable";
+  return "unknown";
+}
+
+function flattenOperationErrors(error) {
+  const values = [];
+  const pending = [error];
+  const seen = new Set();
+  while (pending.length > 0 && values.length < 8) {
+    const item = pending.shift();
+    if (!item || typeof item !== "object" || seen.has(item)) continue;
+    seen.add(item);
+    values.push(item);
+    for (const nested of [item.cause, item.error, ...(Array.isArray(item.errors) ? item.errors : [])]) {
+      if (nested && typeof nested === "object") pending.push(nested);
+    }
+  }
+  return values.length > 0 ? values : [{ message: String(error ?? "") }];
 }
 
 function errorSourceCategory(filename) {

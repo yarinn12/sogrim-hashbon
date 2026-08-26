@@ -5,6 +5,8 @@ import {
   ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX,
   ACCOUNT_OAUTH_FLOW_TTL_MS,
   ACCOUNT_RECOVERY_FLOW_PURPOSE,
+  ACCOUNT_RECOVERY_SESSION_STORAGE_KEY,
+  ACCOUNT_RECOVERY_SESSION_TTL_MS,
   ACCOUNT_SESSION_STORAGE_KEY,
   ACCOUNT_SESSION_SYNC_STORAGE_KEY,
   accountProfileFromUser,
@@ -15,6 +17,7 @@ import {
   clearAccountWorkspace,
   clearAccountOAuthFlow,
   clearAccountOAuthFlows,
+  clearAccountRecoverySession,
   createAccountOAuthFlowId,
   createAccountWorkspace,
   createOAuthPkce,
@@ -30,9 +33,11 @@ import {
   googleOAuthUrl,
   LEGACY_STATE_CLAIM_PREFIX,
   loadAccountOAuthFlow,
+  loadAccountRecoverySession,
   normalizeAccountEmail,
   requestPasswordReset,
   saveAccountOAuthFlow,
+  saveAccountRecoverySession,
   signInWithIdToken,
   signInWithPassword,
   signUpWithPassword
@@ -469,6 +474,36 @@ test("password recovery flow is bound to the locally requested email", async () 
     email: "not-an-email",
     createdAt: 1_000
   }, storage), null);
+});
+
+test("password recovery remains active across reload only for the same account and TTL", () => {
+  const storage = memoryStorage();
+  const session = { user: { id: "account-user-1" } };
+
+  assert.equal(saveAccountRecoverySession(session, storage, 1_000), true);
+  assert.equal(
+    storage.getItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY) !== null,
+    true
+  );
+  assert.equal(loadAccountRecoverySession(session, storage, 1_001), true);
+  assert.equal(
+    loadAccountRecoverySession(
+      session,
+      storage,
+      1_000 + ACCOUNT_RECOVERY_SESSION_TTL_MS + 1
+    ),
+    false
+  );
+  assert.equal(storage.getItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY), null);
+
+  saveAccountRecoverySession(session, storage, 2_000);
+  assert.equal(
+    loadAccountRecoverySession({ user: { id: "account-user-2" } }, storage, 2_001),
+    false
+  );
+  saveAccountRecoverySession(session, storage, 3_000);
+  assert.equal(clearAccountRecoverySession(storage), true);
+  assert.equal(loadAccountRecoverySession(session, storage, 3_001), false);
 });
 
 test("current signed-in session marks only its account cloud space as owned", () => {

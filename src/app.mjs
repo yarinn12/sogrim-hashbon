@@ -112,6 +112,7 @@ import {
   saveSharedState
 } from "./data/localStore.mjs";
 import {
+  emitOperationDeferred,
   emitOperationFailure,
   emitProductMetric
 } from "./data/productMetrics.mjs";
@@ -13264,7 +13265,7 @@ async function joinExistingEventFromDraft() {
       : "הצטרפת לאירוע.";
     emitProductMetric("invite_joined", { screen: "invite" });
   } catch (error) {
-    emitOperationFailure("event_invite", { screen: "invite" });
+    emitOperationFailure("event_invite", { screen: "invite", error });
     joinEventDraft.error = inviteJoinErrorMessage(error);
   } finally {
     joinEventBusy = false;
@@ -13865,9 +13866,9 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       }
     }
     if (preserveNotice) notice = previousNotice || notice;
-  } catch {
+  } catch (error) {
     console.warn("[friends] Online friend load failed");
-    emitOperationFailure("friend_network", { screen: "groups" });
+    emitOperationDeferred("friend_network", { screen: "groups", error });
     friendNetwork = friendNetwork.status === "ready"
       ? {
           ...friendNetwork,
@@ -15684,7 +15685,7 @@ async function openPreparedEventShare(eventId, trigger, shareView = "") {
   try {
     await sharePreparation;
   } catch (error) {
-    emitOperationFailure("event_invite", { screen: "invite" });
+    emitOperationFailure("event_invite", { screen: "invite", error });
     if (eventDialog?.eventId !== eventId || eventDialog.kind !== "share") {
       return;
     }
@@ -15718,7 +15719,7 @@ async function retryEventShare(eventId) {
     await sharePreparation;
     notice = "קישור ההצטרפות מוכן לשיתוף.";
   } catch (error) {
-    emitOperationFailure("event_invite", { screen: "invite" });
+    emitOperationFailure("event_invite", { screen: "invite", error });
     notice = eventInvitePreparationNotice(
       error,
       "עדיין לא הצלחנו להכין את הקישור. בדקו את החיבור ונסו שוב."
@@ -15901,8 +15902,8 @@ async function rotateCurrentEventInvite(eventId) {
     await saveSharedState(state);
     markEventShareVerified(event, replacement.token, "server");
     notice = "הקישור הישן בוטל וקישור חדש מוכן לשיתוף.";
-  } catch {
-    emitOperationFailure("event_invite", { screen: "invite" });
+  } catch (error) {
+    emitOperationFailure("event_invite", { screen: "invite", error });
     notice = replacementCreated
       ? "הקישור הוחלף, אבל השמירה במכשיר לא הושלמה. אפשר לשתף אותו עכשיו או לנסות שוב."
       : "לא הצלחנו להחליף את הקישור כרגע. הקישור הקיים לא השתנה.";
@@ -15918,7 +15919,7 @@ async function copyInviteLink(eventId) {
       await copyText(inviteUrl, "קישור ההזמנה הועתק.");
       emitProductMetric("invite_shared", { screen: "invite" });
     } catch (error) {
-      emitOperationFailure("event_invite", { screen: "invite" });
+      emitOperationFailure("event_invite", { screen: "invite", error });
       notice = eventInvitePreparationNotice(
         error,
         "לא הצלחנו להכין את קישור ההזמנה כרגע. נסו שוב בעוד רגע."
@@ -16054,8 +16055,8 @@ async function shareInviteOnWhatsApp(eventId) {
       return;
     }
     notice = "פתחתי הודעת וואטסאפ עם קישור ההצטרפות.";
-  } catch {
-    emitOperationFailure("share", { screen: "invite" });
+  } catch (error) {
+    emitOperationFailure("share", { screen: "invite", error });
     shareWindow?.close();
     notice = "לא הצלחנו לפתוח את WhatsApp. אפשר עדיין להעתיק את קישור ההצטרפות.";
   }
@@ -17393,8 +17394,11 @@ async function refreshNotificationInbox({ force = false } = {}) {
         items: result.items,
         error: ""
       };
-    } catch {
-      emitOperationFailure("notification_inbox", { screen: "notifications" });
+    } catch (error) {
+      emitOperationDeferred("notification_inbox", {
+        screen: "notifications",
+        error
+      });
       notificationInbox = hasUsableInbox
         ? previousInbox
         : {
@@ -19118,8 +19122,15 @@ function refreshStartupSharedState(refreshRequest) {
     .catch(() => {});
 }
 
-function renderScopedLocalFallback() {
-  emitOperationFailure("state_load", { screen: "boot" });
+function renderScopedLocalFallback(error) {
+  const deferred =
+    navigator.onLine === false ||
+    /failed to fetch|fetch failed|network|connection|internet|timeout|timed out/i
+      .test(String(error?.message ?? ""));
+  (deferred ? emitOperationDeferred : emitOperationFailure)(
+    "state_load",
+    { screen: "boot", error }
+  );
   localProfile = loadLocalProfile();
   profileNameDraft = localProfile?.displayName ?? "";
   profileAvatarDraft =

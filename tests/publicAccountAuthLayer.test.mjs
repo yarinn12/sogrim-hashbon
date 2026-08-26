@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=361"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=362"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -353,7 +353,7 @@ test("account gate protects private content and preserves interrupted form work"
   assert.match(layer, /canResumeOffline/);
   assert.match(
     layer,
-    /function handleAccountSetupFailure\(\)[\s\S]*?const storedSession = accountSession \?\? loadStoredAccountSession\(\)[\s\S]*?renderAccountRecoveryGate\(\)/
+    /function handleAccountSetupFailure\(error\)[\s\S]*?const storedSession = accountSession \?\? loadStoredAccountSession\(\)[\s\S]*?renderAccountRecoveryGate\(\)/
   );
   assert.match(
     layer,
@@ -578,6 +578,23 @@ test("OAuth fragment sessions require a locally bound password recovery flow", a
     layer,
     /purpose: ACCOUNT_RECOVERY_FLOW_PURPOSE,[\s\S]*?email/
   );
+  assert.match(layer, /saveAccountRecoverySession\(accountSession\)/);
+  assert.match(layer, /!callbackSession && loadAccountRecoverySession\(accountSession\)/);
+  assert.match(
+    layer,
+    /updateAccountPassword\(runtimeConfig, accountSession, password\)[\s\S]*?clearAccountRecoverySession\(\)/
+  );
+});
+
+test("email delivery gate hides signup and recovery actions until SMTP is ready", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  assert.match(
+    layer,
+    /runtimeConfig\?\.launch\?\.authEmailDeliveryReady === true/
+  );
+  assert.match(layer, /emailDeliveryReady \? `<button type="button" data-account-mode="signup"/);
+  assert.match(layer, /mode === "login" && emailDeliveryReady[\s\S]*?forgot-password/);
+  assert.match(layer, /showVerificationResend && emailDeliveryReady/);
 });
 
 test("sign-out removes reusable local credentials before awaiting the network", async () => {

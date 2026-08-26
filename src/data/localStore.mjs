@@ -32,7 +32,10 @@ import {
   loadStoredAccountSession
 } from "./accountAuth.mjs";
 import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
-import { emitOperationFailure } from "./productMetrics.mjs";
+import {
+  emitOperationDeferred,
+  emitOperationFailure
+} from "./productMetrics.mjs";
 import {
   buildSharedEventSyncSelection,
   recoverAccessibleSharedEvents,
@@ -558,6 +561,7 @@ async function loadSharedStateOnce(requestScope) {
             partial: false,
             reverted: false
           });
+          emitOperationDeferred("state_load", { screen: "boot", error });
         } else {
           publishSyncFailure(error);
           logSyncFailure(error, {
@@ -566,8 +570,8 @@ async function loadSharedStateOnce(requestScope) {
             partial: false,
             reverted: false
           });
+          emitOperationFailure("state_load", { screen: "boot", error });
         }
-        emitOperationFailure("state_load");
       }
 
       return applyLocalParticipantId(
@@ -615,8 +619,10 @@ async function loadSharedStateOnce(requestScope) {
       }
       saveStateForScope(localStateWithIdentity, requestScope);
       return localStateWithIdentity;
-    } catch {
-      emitOperationFailure("state_load");
+    } catch (error) {
+      (isRetryablePendingSyncFailure(error)
+        ? emitOperationDeferred
+        : emitOperationFailure)("state_load", { screen: "boot", error });
       return localState;
     }
   }
@@ -779,10 +785,11 @@ export async function saveSharedState(state) {
             // continues in the background and must not trigger false failure UI.
             publishSyncStatus("reconnecting");
             logQueuedSync(error, syncOutcome);
+            emitOperationDeferred("state_save", { error });
           } else {
             publishSyncFailure(error);
             logSyncFailure(error, syncOutcome);
-            emitOperationFailure("state_save");
+            emitOperationFailure("state_save", { error });
           }
           return {
             ok: acceptedPending,
@@ -812,12 +819,17 @@ export async function saveSharedState(state) {
       if (localSaved && pendingStateSaved) {
         publishSyncStatus("reconnecting");
         schedulePendingSharedStateRetry();
+        emitOperationDeferred("state_save", {
+          failureClass: globalThis.navigator?.onLine === false
+            ? "offline"
+            : "unavailable"
+        });
         return { ok: true, mode: "local", pending: true };
       }
       publishSyncStatus(
         globalThis.navigator?.onLine === false ? "offline" : "unavailable"
       );
-      emitOperationFailure("state_save");
+      emitOperationFailure("state_save", { failureClass: "storage" });
       return {
         ok: false,
         mode: "local",
@@ -826,7 +838,9 @@ export async function saveSharedState(state) {
     }
   }
 
-  if (!localSaved) emitOperationFailure("state_save");
+  if (!localSaved) {
+    emitOperationFailure("state_save", { failureClass: "storage" });
+  }
   return localSaved
     ? { ok: true, mode: "local" }
     : {
@@ -926,7 +940,10 @@ async function flushPendingSharedStateOnce() {
         reverted: false
       });
     }
-    emitOperationFailure("state_save");
+    (retryablePendingFailure ? emitOperationDeferred : emitOperationFailure)(
+      "state_save",
+      { error }
+    );
     return { ok: false, error };
   }
 }

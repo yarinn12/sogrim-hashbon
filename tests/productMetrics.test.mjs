@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 
 import { createAppHandler } from "../server.mjs";
 import {
+  classifyOperationFailure,
   normalizeProductMetricBatch,
+  operationMetricDetail,
   sanitizeClientError
 } from "../src/domain/productMetrics.mjs";
 import { startProductMetricTransport } from "../src/data/productMetrics.mjs";
@@ -291,6 +293,8 @@ test("product metrics retry transient failures and drain large queues in bounded
   await harness.runNextTimer();
   assert.equal(requests.length, 1);
   assert.equal(requests[0].length, 20);
+  assert.equal(requests[0][0].appVersion, "pwa-362");
+  assert.equal(requests[0][0].buildNumber, 362);
   assert.equal(harness.timerCount(), 1, "a transient failure should schedule a retry");
 
   await harness.runNextTimer();
@@ -353,6 +357,32 @@ test("operation failures accept only a fixed privacy-safe vocabulary", () => {
   }, { now: () => NOW }), /Operation detail is invalid/);
 });
 
+test("operation telemetry separates deferred sync from real failures without raw errors", () => {
+  assert.equal(operationMetricDetail("state_save", "network"), "state_save:network");
+  assert.equal(
+    classifyOperationFailure({ status: 401, message: "private@example.com" }),
+    "auth"
+  );
+  assert.equal(
+    classifyOperationFailure(new Error("Failed to fetch private event")),
+    "network"
+  );
+  assert.throws(
+    () => operationMetricDetail("state_save", "private@example.com"),
+    /Operation detail is invalid/
+  );
+
+  const [metric] = normalizeProductMetricBatch({
+    events: [{
+      ...metricPayload().events[0],
+      eventName: "operation_deferred",
+      screen: "boot",
+      detail: "state_load:network"
+    }]
+  }, { now: () => NOW });
+  assert.equal(metric.detail, "state_load:network");
+});
+
 function metricPayload() {
   return {
     events: [{
@@ -399,6 +429,7 @@ function createTransportHarness({ fetchImpl, now = () => NOW } = {}) {
   };
   const documentRef = {
     ...createEventTarget(),
+    documentElement: { dataset: { pwaRelease: "362" } },
     visibilityState: "visible",
     querySelector() {
       return { dataset: { screen: "expense" } };

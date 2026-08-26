@@ -32,9 +32,10 @@ test("privacy-safe product metrics load before the app and cover the key funnel"
 });
 
 test("product metrics schema is anonymous and locked behind the server role", async () => {
-  const [schema, deployScript] = await Promise.all([
+  const [schema, deployScript, classifiedOperationMigration] = await Promise.all([
     readFile("supabase/schema.sql", "utf8"),
-    readFile("scripts/apply-supabase-schema.mjs", "utf8")
+    readFile("scripts/apply-supabase-schema.mjs", "utf8"),
+    readFile("supabase/migrations/20260826170000_classify_operation_metrics.sql", "utf8")
   ]);
   const tableStart = schema.indexOf("create table if not exists public.product_metrics");
   const tableEnd = schema.indexOf("create or replace function public.delete_account_data", tableStart);
@@ -55,4 +56,13 @@ test("product metrics schema is anonymous and locked behind the server role", as
   assert.match(deployScript, /product_metrics_rls_ready/);
   assert.match(deployScript, /product_metrics_client_locked/);
   assert.match(deployScript, /product_metrics_anonymous_ready/);
+  assert.match(productMetricsSchema, /'operation_deferred'/);
+  assert.match(
+    productMetricsSchema,
+    /event_name in \('operation_deferred', 'operation_failure'\)/
+  );
+  assert.match(classifiedOperationMigration, /drop constraint if exists product_metrics_event_name_check/);
+  assert.match(classifiedOperationMigration, /drop constraint if exists product_metrics_check/);
+  assert.match(classifiedOperationMigration, /'operation_deferred'/);
+  assert.match(classifiedOperationMigration, /offline\|network\|timeout/);
 });

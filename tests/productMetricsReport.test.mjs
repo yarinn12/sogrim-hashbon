@@ -13,5 +13,7 @@ test("the product report exposes aggregate counts without raw account data", asy
   assert.match(report, /inviteJoin/);
   assert.match(report, /errorFreeSessionRate/);
   assert.match(report, /topOperationFailures/);
+  assert.match(report, /topDeferredOperations/);
+  assert.match(report, /failureClass/);
   assert.doesNotMatch(report, /user_id|email|display_name|event_id|expense_id|amount/);
 });

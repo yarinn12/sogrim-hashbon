@@ -3606,6 +3606,7 @@ create table if not exists public.product_metrics (
       'invite_shared',
       'invite_joined',
       'transfer_marked_paid',
+      'operation_deferred',
       'operation_failure',
       'client_error'
     )),
@@ -3644,21 +3645,10 @@ create table if not exists public.product_metrics (
       and detail ~ '^(Error|TypeError|ReferenceError|RangeError|SyntaxError|ResourceError|UnhandledRejection):(app|public-layer|vendor|resource|unknown):[0-9]{1,6}(:[0-9]{1,6}:[0-9a-f]{8})?$'
     )
     or (
-      event_name = 'operation_failure'
-      and detail in (
-        'auth',
-        'state_load',
-        'state_save',
-        'event_invite',
-        'friend_network',
-        'notification_inbox',
-        'feedback',
-        'push',
-        'ads',
-        'share'
-      )
+      event_name in ('operation_deferred', 'operation_failure')
+      and detail ~ '^(auth|state_load|state_save|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
     )
-    or (event_name not in ('event_created', 'client_error', 'operation_failure') and detail = '')
+    or (event_name not in ('event_created', 'client_error', 'operation_deferred', 'operation_failure') and detail = '')
   )
 );
 
@@ -3679,6 +3669,7 @@ alter table public.product_metrics
     'invite_shared',
     'invite_joined',
     'transfer_marked_paid',
+    'operation_deferred',
     'operation_failure',
     'client_error'
   ));
@@ -3694,21 +3685,10 @@ alter table public.product_metrics
       and detail ~ '^(Error|TypeError|ReferenceError|RangeError|SyntaxError|ResourceError|UnhandledRejection):(app|public-layer|vendor|resource|unknown):[0-9]{1,6}(:[0-9]{1,6}:[0-9a-f]{8})?$'
     )
     or (
-      event_name = 'operation_failure'
-      and detail in (
-        'auth',
-        'state_load',
-        'state_save',
-        'event_invite',
-        'friend_network',
-        'notification_inbox',
-        'feedback',
-        'push',
-        'ads',
-        'share'
-      )
+      event_name in ('operation_deferred', 'operation_failure')
+      and detail ~ '^(auth|state_load|state_save|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
     )
-    or (event_name not in ('event_created', 'client_error', 'operation_failure') and detail = '')
+    or (event_name not in ('event_created', 'client_error', 'operation_deferred', 'operation_failure') and detail = '')
   );
 
 create index if not exists product_metrics_event_received_idx

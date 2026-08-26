@@ -17,6 +17,8 @@ export const ACCOUNT_OAUTH_FLOW_QUERY_PARAM = "auth_flow";
 export const ACCOUNT_OAUTH_FLOW_STORAGE_PREFIX = "settle-friends-account-oauth-flow:";
 export const ACCOUNT_OAUTH_FLOW_TTL_MS = 10 * 60 * 1000;
 export const ACCOUNT_RECOVERY_FLOW_PURPOSE = "password-recovery";
+export const ACCOUNT_RECOVERY_SESSION_STORAGE_KEY = "settle-friends-account-recovery-session";
+export const ACCOUNT_RECOVERY_SESSION_TTL_MS = 15 * 60 * 1000;
 const SIGNUP_WORKSPACE_CLAIM_PREFIX = "settle-friends-signup-workspace-claimed:";
 export const LEGACY_STATE_CLAIM_PREFIX = "settle-friends-legacy-state-claim:";
 const LEGACY_STATE_STORAGE_KEY = "settle-friends-state";
@@ -621,6 +623,64 @@ export function clearAccountOAuthFlows(storage = globalThis.localStorage) {
   }
 }
 
+export function saveAccountRecoverySession(
+  session,
+  storage = globalThis.localStorage,
+  createdAt = Date.now()
+) {
+  const userId = String(session?.user?.id ?? "").trim();
+  const timestamp = Number(createdAt);
+  if (!validAccountUserId(userId) || !Number.isFinite(timestamp)) return false;
+  try {
+    storage?.setItem(
+      ACCOUNT_RECOVERY_SESSION_STORAGE_KEY,
+      JSON.stringify({ userId, createdAt: timestamp })
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function loadAccountRecoverySession(
+  session,
+  storage = globalThis.localStorage,
+  now = Date.now()
+) {
+  const userId = String(session?.user?.id ?? "").trim();
+  try {
+    const marker = JSON.parse(
+      storage?.getItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY) ?? "null"
+    );
+    const createdAt = Number(marker?.createdAt);
+    const valid =
+      validAccountUserId(userId) &&
+      marker?.userId === userId &&
+      Number.isFinite(createdAt) &&
+      Number(now) >= createdAt &&
+      Number(now) - createdAt <= ACCOUNT_RECOVERY_SESSION_TTL_MS;
+    if (!valid) {
+      storage?.removeItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    try {
+      storage?.removeItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY);
+    } catch {}
+    return false;
+  }
+}
+
+export function clearAccountRecoverySession(storage = globalThis.localStorage) {
+  try {
+    storage?.removeItem(ACCOUNT_RECOVERY_SESSION_STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function createOAuthPkceChallenge(
   verifier,
   cryptoImpl = globalThis.crypto
@@ -776,6 +836,10 @@ export function accountAuthErrorMessage(error, mode = "login") {
 
 function validRecoveryEmail(value) {
   return Boolean(normalizeAccountEmail(value));
+}
+
+function validAccountUserId(value) {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(String(value ?? ""));
 }
 
 function normalizeSession(session) {

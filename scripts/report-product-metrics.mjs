@@ -47,6 +47,15 @@ try {
     order by count desc
     limit 10
   `;
+  const deferredOperations = await sql`
+    select platform, app_version, build_number, screen, detail, pg_catalog.count(*)::integer as count
+    from public.product_metrics
+    where event_name = 'operation_deferred'
+      and received_at >= pg_catalog.now() - pg_catalog.make_interval(days => ${days})
+    group by platform, app_version, build_number, screen, detail
+    order by count desc
+    limit 10
+  `;
   const [sessionHealth] = await sql`
     select
       pg_catalog.count(distinct session_id)::integer as sessions,
@@ -96,14 +105,8 @@ try {
       technicalClass: row.detail,
       count: Number(row.count) || 0
     })),
-    topOperationFailures: operationFailures.map((row) => ({
-      platform: row.platform,
-      appVersion: row.app_version,
-      buildNumber: Number(row.build_number) || 0,
-      screen: row.screen,
-      operation: row.detail,
-      count: Number(row.count) || 0
-    }))
+    topOperationFailures: operationFailures.map(operationSummary),
+    topDeferredOperations: deferredOperations.map(operationSummary)
   };
 
   console.log(JSON.stringify(report, null, 2));
@@ -130,5 +133,18 @@ function healthSummary(row = {}) {
     errorFreeSessionRate: sessions
       ? Number(((sessions - affectedSessions) / sessions).toFixed(4))
       : null
+  };
+}
+
+function operationSummary(row = {}) {
+  const [operation = "unknown", failureClass = "legacy"] = String(row.detail ?? "").split(":");
+  return {
+    platform: row.platform,
+    appVersion: row.app_version,
+    buildNumber: Number(row.build_number) || 0,
+    screen: row.screen,
+    operation,
+    failureClass,
+    count: Number(row.count) || 0
   };
 }

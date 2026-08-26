@@ -1,8 +1,10 @@
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 import {
   PRODUCT_METRIC_EVENT,
+  classifyOperationFailure,
   createProductMetricId,
   normalizeProductMetric,
+  operationMetricDetail,
   sanitizeClientError
 } from "../domain/productMetrics.mjs";
 
@@ -24,12 +26,33 @@ export function emitProductMetric(eventName, fields = {}, documentRef = globalTh
 
 export function emitOperationFailure(
   operation,
-  { screen = "unknown" } = {},
+  { screen = "unknown", error = null, failureClass = "" } = {},
   documentRef = globalThis.document
 ) {
   return emitProductMetric("operation_failure", {
-    screen,
-    detail: operation
+    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
+    detail: operationMetricDetail(
+      operation,
+      failureClass || classifyOperationFailure(error, {
+        offline: globalThis.navigator?.onLine === false
+      })
+    )
+  }, documentRef);
+}
+
+export function emitOperationDeferred(
+  operation,
+  { screen = "unknown", error = null, failureClass = "" } = {},
+  documentRef = globalThis.document
+) {
+  return emitProductMetric("operation_deferred", {
+    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
+    detail: operationMetricDetail(
+      operation,
+      failureClass || classifyOperationFailure(error, {
+        offline: globalThis.navigator?.onLine === false
+      })
+    )
   }, documentRef);
 }
 
@@ -58,11 +81,21 @@ export function startProductMetricTransport({
     if (runtimeInfoPromise) return runtimeInfoPromise;
     runtimeInfoPromise = Promise.resolve(globalThis.SogrimNative?.app?.getInfo?.())
       .catch(() => null)
-      .then((info) => ({
-        platform: normalizePlatform(info?.platform ?? globalThis.Capacitor?.getPlatform?.()),
-        appVersion: normalizeVersion(info?.version),
-        buildNumber: normalizeBuild(info?.build)
-      }));
+      .then((info) => {
+        const platform = normalizePlatform(
+          info?.platform ?? globalThis.Capacitor?.getPlatform?.()
+        );
+        const webRelease = normalizeBuild(
+          documentRef.documentElement?.dataset?.pwaRelease
+        );
+        return {
+          platform,
+          appVersion: normalizeVersion(info?.version) ||
+            (platform === "web" && webRelease ? `pwa-${webRelease}` : ""),
+          buildNumber: normalizeBuild(info?.build) ||
+            (platform === "web" ? webRelease : 0)
+        };
+      });
     return runtimeInfoPromise;
   };
 
@@ -134,7 +167,7 @@ export function startProductMetricTransport({
         detail: detail?.detail ?? "",
         occurredAt: new Date(Number(now()) || Date.now()).toISOString()
       }, { now });
-      if (["client_error", "operation_failure"].includes(metric.eventName)) {
+      if (["client_error", "operation_deferred", "operation_failure"].includes(metric.eventName)) {
         const errorKey = `${metric.screen}:${metric.detail}`;
         const occurredAt = Date.parse(metric.occurredAt);
         const lastFailureAt = recentFailureTimes.get(errorKey) ?? 0;
@@ -194,7 +227,7 @@ export function startProductMetricTransport({
 }
 
 function currentScreen(documentRef) {
-  const app = documentRef.querySelector?.("#app");
+  const app = documentRef?.querySelector?.("#app");
   const screen = String(app?.dataset?.screen ?? "").replaceAll("-", "_");
   return [
     "auth",

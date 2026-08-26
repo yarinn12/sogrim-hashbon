@@ -14,6 +14,10 @@ test.beforeEach(async ({ page }) => {
           url: AUTH_ORIGIN,
           anonKey: "anon-key",
           table: "app_snapshots"
+        },
+        launch: {
+          googleAuthReady: false,
+          authEmailDeliveryReady: true
         }
       }
     })
@@ -28,7 +32,7 @@ test.beforeEach(async ({ page }) => {
 
 test("touching the login fields focuses them on iPad and opens the software-input path", async ({ page }) => {
   await page.goto("/");
-  const hasTouch = await page.evaluate(() => navigator.maxTouchPoints > 0);
+  const hasTouch = Boolean(test.info().project.use.hasTouch);
   test.skip(!hasTouch, "the software-input path only exists in touch contexts");
   const gate = page.locator("#public-account-auth-gate");
   const email = gate.locator('input[name="email"]');
@@ -84,6 +88,49 @@ test("password recovery keeps validation and success feedback visible", async ({
   await page.waitForTimeout(1_000);
   await expect(success).toBeVisible();
   expect(recoveryRequests).toBe(1);
+});
+
+test("password recovery form survives a reload for the same authenticated account", async ({ page }) => {
+  const user = {
+    id: "qa-recovery-user",
+    email: "qa@example.com",
+    user_metadata: {
+      full_name: "QA Recovery",
+      username: "qa_recovery",
+      account_space_id: "space-qa-recovery",
+      account_space_key: "abcdefghijklmnopqrstuvwxyzABCDEF"
+    }
+  };
+  await page.addInitScript(({ user }) => {
+    const session = {
+      access_token: "recovery-access-token",
+      refresh_token: "recovery-refresh-token",
+      token_type: "bearer",
+      expires_at: Math.floor(Date.now() / 1000) + 3_600,
+      user
+    };
+    localStorage.setItem(
+      "settle-friends-account-session",
+      JSON.stringify(session)
+    );
+    localStorage.setItem(
+      "settle-friends-account-recovery-session",
+      JSON.stringify({ userId: user.id, createdAt: Date.now() })
+    );
+  }, { user });
+  await page.route(`${AUTH_ORIGIN}/**`, async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return route.fulfill({ status: 200, json: user });
+    }
+    return route.fulfill({ status: 200, json: [] });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "איפוס סיסמה" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "איפוס סיסמה" })).toBeVisible();
+  await expect(page.locator('input[name="password"]')).toBeVisible();
 });
 
 test("an unconfirmed account can request a fresh verification email", async ({ page }) => {

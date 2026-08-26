@@ -3,6 +3,7 @@ import { iconSvg } from "./uiIcons.mjs";
 import {
   ACCOUNT_OAUTH_FLOW_QUERY_PARAM,
   ACCOUNT_RECOVERY_FLOW_PURPOSE,
+  clearAccountRecoverySession,
   ACCOUNT_RETURN_URL_STORAGE_KEY,
   ACCOUNT_SESSION_STORAGE_KEY,
   ACCOUNT_SESSION_SYNC_STORAGE_KEY,
@@ -20,6 +21,7 @@ import {
   ensureAccountWorkspace,
   exchangeOAuthCode,
   loadAccountOAuthFlow,
+  loadAccountRecoverySession,
   loadAccountUser,
   loadStoredAccountSession,
   normalizeAccountEmail,
@@ -29,6 +31,7 @@ import {
   requestPasswordReset,
   resendSignupConfirmation,
   saveAccountOAuthFlow,
+  saveAccountRecoverySession,
   saveAccountSession,
   sessionFromOAuthHash,
   signInWithIdToken,
@@ -164,8 +167,8 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") refreshAccountSessionIfNeeded();
 });
 
-function handleAccountSetupFailure() {
-  emitOperationFailure("auth", { screen: "auth" });
+function handleAccountSetupFailure(error) {
+  emitOperationFailure("auth", { screen: "auth", error });
   if (runtimeConfig?.storage?.mode === "supabase") {
     const storedSession = accountSession ?? loadStoredAccountSession();
     if (storedSession) {
@@ -243,11 +246,14 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         previousSession: sessionBeforeCallback,
         expectedEmail: validRecoveryCallback ? callbackFlow.email : ""
       });
+      const recoverySessionActive = validRecoveryCallback
+        ? saveAccountRecoverySession(accountSession)
+        : (!callbackSession && loadAccountRecoverySession(accountSession));
       if (validRecoveryCallback && callbackFlowId) {
         clearAccountOAuthFlow(callbackFlowId);
       }
       scheduleAccountSessionRefresh();
-      if (validRecoveryCallback) {
+      if (recoverySessionActive) {
         renderPasswordResetGate();
         return;
       }
@@ -327,6 +333,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
       // durable local outbox. Keep the account-scoped state and pending sync
       // so signing back into the same account can safely reconcile it.
       clearAccountSession();
+      clearAccountRecoverySession();
       accountSession = null;
     }
   }
@@ -777,6 +784,8 @@ function renderAccountGate({
   showVerificationResend = false,
   values = {}
 } = {}) {
+  const emailDeliveryReady = runtimeConfig?.launch?.authEmailDeliveryReady === true;
+  if (mode === "signup" && !emailDeliveryReady) mode = "login";
   document.querySelector(".public-profile-gate")?.remove();
   document.getElementById(GATE_ID)?.remove();
   document.querySelector("#app")?.setAttribute("inert", "");
@@ -853,7 +862,7 @@ function renderAccountGate({
         <div id="account-email-auth" class="account-email-auth" ${showEmailAuth ? "" : "hidden"}>
           <div class="account-auth-tabs" role="group" aria-label="כניסה או הרשמה">
             <button type="button" data-account-mode="login" aria-pressed="${mode === "login"}" class="${mode === "login" ? "is-active" : ""}">התחברות</button>
-            <button type="button" data-account-mode="signup" aria-pressed="${mode === "signup"}" class="${mode === "signup" ? "is-active" : ""}">הרשמה</button>
+            ${emailDeliveryReady ? `<button type="button" data-account-mode="signup" aria-pressed="${mode === "signup"}" class="${mode === "signup" ? "is-active" : ""}">הרשמה</button>` : ""}
           </div>
 
           <form class="account-auth-form" data-account-form data-mode="${mode}" novalidate>
@@ -882,14 +891,14 @@ function renderAccountGate({
               </span>
             </label>
             ${
-              mode === "login"
+              mode === "login" && emailDeliveryReady
                 ? `<button class="account-forgot-button" type="button" data-account-action="forgot-password">שכחתי סיסמה</button>`
                 : ""
             }
             ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
             ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
             ${
-              showVerificationResend
+              showVerificationResend && emailDeliveryReady
                 ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
                 : ""
             }
@@ -1094,6 +1103,7 @@ async function handleAccountSubmit(event) {
       accountSession = saveAccountSession(
         await updateAccountPassword(runtimeConfig, accountSession, password)
       );
+      clearAccountRecoverySession();
     } else if (mode === "complete-profile") {
       const displayName = normalizeProfileName(values.get("displayName"));
       const username = normalizeUsername(usernameValue);
@@ -1144,7 +1154,7 @@ async function handleAccountSubmit(event) {
     scheduleAccountSessionRefresh();
     await connectAccountToApp(accountSession, { forceReload: true });
   } catch (error) {
-    emitOperationFailure("auth", { screen: "auth" });
+    emitOperationFailure("auth", { screen: "auth", error });
     if (accountSession?.user && accountProfileNeedsCompletion(error)) {
       const accountProfile = accountProfileFromUser(accountSession.user);
       renderAccountNameCompletionGate({
@@ -1359,6 +1369,7 @@ async function handleAccountClick(event) {
     }
     setAuthBusy(true);
     try {
+      clearAccountRecoverySession();
       rememberAccountReturnUrl();
       const pkce = await createOAuthPkce();
       const flowId = createAccountOAuthFlowId();
@@ -1386,7 +1397,7 @@ async function handleAccountClick(event) {
         values: { email }
       });
     } catch (error) {
-      emitOperationFailure("auth", { screen: "auth" });
+      emitOperationFailure("auth", { screen: "auth", error });
       renderAccountGate({
         mode: "login",
         error: accountAuthErrorMessage(error),
@@ -1432,7 +1443,7 @@ async function handleAccountClick(event) {
         showVerificationResend: true
       });
     } catch (error) {
-      emitOperationFailure("auth", { screen: "auth" });
+      emitOperationFailure("auth", { screen: "auth", error });
       renderAccountGate({
         mode: "login",
         error: accountAuthErrorMessage(error),
@@ -1459,6 +1470,7 @@ async function handleAccountClick(event) {
     clearTimeout(accountRefreshTimer);
     clearPendingInviteUrl();
     clearAccountOAuthFlows();
+    clearAccountRecoverySession();
     try {
       await settleWithin(
         globalThis.SogrimNotifications?.prepareSignOut?.(),
@@ -1524,6 +1536,7 @@ async function handleAccountClick(event) {
       await deleteAccount(runtimeConfig, accountSession);
       clearPendingInviteUrl();
       clearAccountOAuthFlows();
+      clearAccountRecoverySession();
       clearLocalAccountData();
       clearAccountSession();
       publishAccountSessionSync(null, { reason: "deleted" });
@@ -1670,7 +1683,7 @@ function handleGoogleSignInError(error) {
     return;
   }
   if (isCancelledNativeGoogleLogin(error)) return;
-  emitOperationFailure("auth", { screen: "auth" });
+  emitOperationFailure("auth", { screen: "auth", error });
   renderAccountGate({
     mode: "login",
     error: accountAuthErrorMessage(error, "google")
