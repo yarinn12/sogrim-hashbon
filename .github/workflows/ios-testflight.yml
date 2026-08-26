@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.91"
+        default: "3.92"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "118"
+        default: "119"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "בקישור חשבון אפשר כעת להזמין אדם שאינו ברשימת החברים באמצעות WhatsApp, קישור קבוע או QR."
+        default: "קישור הזמנה נשמר לאורך הרשמה והפעלה מחדש, ושורת קישור לחשבון מגיבה כולה בלחיצה אחת."
 
 permissions:
   contents: read

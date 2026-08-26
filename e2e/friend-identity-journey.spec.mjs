@@ -200,7 +200,7 @@ test("an offline name can invite an account outside the friends list with the st
 
   const profileDialog = page.locator('[data-participant-detail-view="offline"]');
   await expect(profileDialog).toContainText("קישור לחשבון");
-  await profileDialog.locator('[data-action="open-event-participant-link"]').click();
+  await profileDialog.getByText("קישור לחשבון", { exact: true }).click();
 
   const linkDialog = page.locator('.event-participant-link-screen');
   const inviteAction = linkDialog.locator('[data-action="open-event-participant-link-invite"]');

@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=367"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=368"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -193,7 +193,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     accountConnection,
-    /nextState\.events\.some\(\(event\) => event\.id === verifiedInvitedEventId\)[\s\S]*?\(saveResult\?\.ok \|\| saveResult\?\.partial\)[\s\S]*?clearPendingInviteUrl\(\)/
+    /nextState\.events\.some\(\(event\) => event\.id === verifiedInvitedEventId\)[\s\S]*?\(saveResult\?\.ok \|\| saveResult\?\.partial\)[\s\S]*?clearPendingInviteUrl\(\);[\s\S]*?clearAccountReturnUrl\(\)/
   );
   assert.doesNotMatch(accountConnection, /mergeInviteSnapshotIntoState/);
   assert.doesNotMatch(accountConnection, /attachSharedEventCredentials/);

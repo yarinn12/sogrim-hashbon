@@ -733,6 +733,14 @@ test("offline names can be renamed from the event without changing participant i
   assert.match(offlineProfile, /commandIconSvgs\.edit/);
   assert.match(offlineProfile, /data-participant-detail-view="offline"/);
   assert.match(offlineProfile, /data-action="open-event-participant-link"/);
+  assert.match(
+    offlineProfile,
+    /<button[\s\S]*?class="event-participant-management-row"[\s\S]*?data-action="open-event-participant-link"/
+  );
+  assert.doesNotMatch(
+    offlineProfile,
+    /<div class="event-participant-management-row">[\s\S]*?data-action="open-event-participant-link"/
+  );
   assert.match(app, /eventDialog\.kind === "participant-rename"/);
   assert.match(renameDialog, /data-action="event-offline-participant-rename"/);
   assert.match(renameDialog, /data-action="save-offline-participant-name"/);

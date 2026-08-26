@@ -5354,7 +5354,14 @@ function renderOfflineEventParticipantProfile(event, participant) {
               <small>אותו אדם ואותה היסטוריה כספית</small>
             </span>
           </button>
-          <div class="event-participant-management-row">
+          <button
+            class="event-participant-management-row"
+            type="button"
+            data-action="open-event-participant-link"
+            data-event-id="${escapeAttribute(event.id)}"
+            data-participant-id="${escapeAttribute(participant.id)}"
+            ${canManage ? "" : "disabled"}
+          >
             <span class="event-participant-management-icon" aria-hidden="true">${commandIconSvgs.link}</span>
             <span class="event-participant-management-copy">
               <strong>קישור לחשבון</strong>
@@ -5364,15 +5371,8 @@ function renderOfflineEventParticipantProfile(event, participant) {
                   : "הזמינו אותו ב-WhatsApp, בקישור או ב-QR"
               }</small>
             </span>
-            <button
-              class="secondary-button event-participant-account-link-button"
-              type="button"
-              data-action="open-event-participant-link"
-              data-event-id="${escapeAttribute(event.id)}"
-              data-participant-id="${escapeAttribute(participant.id)}"
-              ${canManage ? "" : "disabled"}
-            >פתח</button>
-          </div>
+            <span class="event-participant-roster-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
           ${canChangeMembership ? renderEventParticipantRemovalRow(event, participant) : ""}
         </div>
       </section>

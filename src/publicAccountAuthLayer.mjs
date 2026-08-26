@@ -587,6 +587,7 @@ async function connectAccountToApp(
       (saveResult?.ok || saveResult?.partial)
   ) {
     clearPendingInviteUrl();
+    clearAccountReturnUrl();
   }
   const profileChanged =
     previousProfile?.authSubject !== accountProfile.authSubject ||
@@ -611,6 +612,7 @@ async function connectAccountToApp(
 
 function discardFailedInviteContext() {
   clearPendingInviteUrl();
+  clearAccountReturnUrl();
   try {
     const url = new URL(window.location.href);
     url.pathname = "/";
@@ -717,6 +719,7 @@ function resumeAccountLocally(session) {
 function lockForAccountSessionChange() {
   if (accountSyncReloadScheduled) return;
   clearPendingInviteUrl();
+  clearAccountReturnUrl();
   clearAccountOAuthFlows();
   accountSyncReloadScheduled = true;
   accountRefreshGeneration += 1;
@@ -1494,6 +1497,7 @@ async function handleAccountClick(event) {
     button.textContent = "מתנתק…";
     clearTimeout(accountRefreshTimer);
     clearPendingInviteUrl();
+    clearAccountReturnUrl();
     clearAccountOAuthFlows();
     clearAccountRecoverySession();
     try {
@@ -1560,6 +1564,7 @@ async function handleAccountClick(event) {
     try {
       await deleteAccount(runtimeConfig, accountSession);
       clearPendingInviteUrl();
+      clearAccountReturnUrl();
       clearAccountOAuthFlows();
       clearAccountRecoverySession();
       clearLocalAccountData();
@@ -2482,6 +2487,12 @@ function rememberAccountReturnUrl() {
   );
 }
 
+function clearAccountReturnUrl() {
+  try {
+    localStorage.removeItem(ACCOUNT_RETURN_URL_STORAGE_KEY);
+  } catch {}
+}
+
 function accountReturnPath() {
   const inviteUrl = pendingInviteUrl(window.location.href);
   const returnUrl = new URL(inviteUrl || window.location.href, window.location.origin);
@@ -2611,7 +2622,7 @@ async function settleWithin(task, timeoutMs) {
 function cleanAuthHash(oauthFlow = null) {
   const returnPath = oauthFlow?.returnPath ||
     localStorage.getItem(ACCOUNT_RETURN_URL_STORAGE_KEY);
-  localStorage.removeItem(ACCOUNT_RETURN_URL_STORAGE_KEY);
+  clearAccountReturnUrl();
   const fallbackUrl = new URL(location.href);
   for (const key of [
     "code",
