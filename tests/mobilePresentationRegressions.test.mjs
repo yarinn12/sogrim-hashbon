@@ -51,6 +51,28 @@ test("large text keeps short event tabs together while longer participant action
   );
 });
 
+test("expenses and summary keep the exact same mobile event header", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const eventHeader = app.slice(
+    app.indexOf("function renderEventHeader("),
+    app.indexOf("function renderEventIdentityNotice(")
+  );
+
+  assert.match(eventHeader, /<header class="top event-overview-header">/);
+  assert.match(
+    coherenceLayer,
+    /\.screen\[data-screen-kind="event"\][\s\S]*?> \.event-overview-header \{[\s\S]*?min-height: 112px !important;[\s\S]*?margin: 8px 0 13px !important;[\s\S]*?padding: 16px 18px !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /> \.event-overview-header[\s\S]*?\.eyebrow \{[\s\S]*?display: block !important;/
+  );
+  assert.doesNotMatch(
+    coherenceLayer,
+    /\.screen\[data-event-view="summary"\][\s\S]{0,100}> \.top[\s\S]{0,200}(?:display: none|min-height: 0|padding: 10px 14px)/
+  );
+});
+
 test("mobile share choices remain separate when text grows", () => {
   assert.match(
     coherenceLayer,

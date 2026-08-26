@@ -3921,7 +3921,7 @@ function renderEventHeader(event, participants = activeEventParticipants(event))
     ? "הזמנת חברים לאירוע"
     : "שיתוף והצטרפות לאירוע";
   return `
-    <header class="top">
+    <header class="top event-overview-header">
       ${renderAppBackButton()}
       <div class="brand">
         <p class="eyebrow">אירוע</p>

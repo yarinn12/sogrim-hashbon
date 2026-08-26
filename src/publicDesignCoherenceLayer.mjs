@@ -3515,27 +3515,28 @@ const CSS = `
       margin-bottom: 0 !important;
     }
 
+    /* Expenses and summary deliberately reuse one event header contract. */
     html.design-coherence-v1.ledger-workspace-v1 body #app
-      .screen[data-event-view="summary"]
-      > .top {
-      min-height: 0 !important;
-      margin-block: 4px 8px !important;
-      padding: 10px 14px !important;
+      .screen[data-screen-kind="event"]
+      > .event-overview-header {
+      min-height: 112px !important;
+      margin: 8px 0 13px !important;
+      padding: 16px 18px !important;
     }
 
     html.design-coherence-v1.ledger-workspace-v1 body #app
-      .screen[data-event-view="summary"]
-      > .top
+      .screen[data-screen-kind="event"]
+      > .event-overview-header
       .eyebrow {
-      display: none !important;
+      display: block !important;
     }
 
     html.design-coherence-v1.ledger-workspace-v1 body #app
-      .screen[data-event-view="summary"]
-      > .top
+      .screen[data-screen-kind="event"]
+      > .event-overview-header
       h1 {
-      font-size: clamp(20px, 6vw, 24px) !important;
-      line-height: 1.15 !important;
+      font-size: 28px !important;
+      line-height: 1.08 !important;
     }
 
     html.design-coherence-v1.ledger-workspace-v1 body #app
