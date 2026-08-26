@@ -8,6 +8,7 @@ import {
 } from "../src/data/accountAuth.mjs";
 import {
   loadCloudState,
+  readAccessibleSharedCloudStates,
   RECOVERED_MEMBER_SPACE_KEY,
   saveCloudState
 } from "../src/data/cloudStore.mjs";
@@ -57,13 +58,15 @@ try {
   const createdAt = "2026-08-03T12:00:00.000Z";
 
   let ownerState = baseAccountState(ownerProfile);
+  const joinerParticipant = baseAccountState(joinerProfile).participants[0];
+  ownerState.participants.push(joinerParticipant);
   ownerState.events = [
     {
       id: eventId,
       name: "בדיקת שני חשבונות",
       eventType: "standard",
       currency: "ILS",
-      participantIds: [ownerProfile.participantId],
+      participantIds: [ownerProfile.participantId, joinerProfile.participantId],
       adminIds: [ownerProfile.participantId],
       createdByParticipantId: ownerProfile.participantId,
       adminsCanEditOnly: false,
@@ -85,7 +88,50 @@ try {
   ];
 
   await saveCloudState(ownerConfig, ownerState);
+  await saveCloudState(joinerConfig, baseAccountState(joinerProfile));
+  await adminRequest("/rest/v1/friendships", {
+    method: "POST",
+    body: {
+      requester_id: owner.session.user.id,
+      addressee_id: joiner.session.user.id,
+      status: "accepted",
+      responded_at: new Date().toISOString()
+    },
+    prefer: "return=representation"
+  });
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+
+  const atomicallyGrantedEvents = await readAccessibleSharedCloudStates(joinerConfig);
+  assert.equal(
+    atomicallyGrantedEvents.some((row) => row.state?.events?.[0]?.id === eventId),
+    true,
+    "Canonical event publication did not atomically grant the connected participant access"
+  );
+
+  const directInviteResponse = await fetch(
+    "https://sogrim-hesbon-app.vercel.app/api/notifications/event-activity",
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${owner.session.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        eventId,
+        activityId: joinerProfile.participantId,
+        kind: "event-invite"
+      })
+    }
+  );
+  const directInvitePayload = await directInviteResponse.json().catch(() => ({}));
+  assert.equal(directInviteResponse.ok, true, JSON.stringify(directInvitePayload));
+  assert.equal(directInvitePayload.ok, true);
+  assert.equal(directInvitePayload.membershipRecipients, 1);
+  const joinerAccessibleEvents = await readAccessibleSharedCloudStates(joinerConfig);
+  assert.equal(
+    joinerAccessibleEvents.some((row) => row.state?.events?.[0]?.id === eventId),
+    true
+  );
 
   const initialInvite = await manageOpenEventInvite({
     runtimeConfig: ownerConfig,
@@ -315,6 +361,8 @@ try {
     ok: true,
     checks: {
       separateAccountIdentities: true,
+      canonicalPublicationGrantedMembershipAtomically: true,
+      directFriendInviteGrantedMembershipWithoutOpeningLink: true,
       authenticatedInviteRedeemed: true,
       replacementInviteRevokesPreviousLink: true,
       newlyGeneratedInviteRedeemed: true,

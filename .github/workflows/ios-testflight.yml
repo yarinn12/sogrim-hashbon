@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.93"
+        default: "3.94"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "120"
+        default: "121"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "קישור הזמנה נשמר לאורך הרשמה והפעלה מחדש, ושורת קישור לחשבון מגיבה כולה בלחיצה אחת."
+        default: "קישור חשבון ממתין כעת לאישור אמיתי מהענן, שומר היסטוריית הוצאות ותשלומים ומונע הודעת הצלחה שגויה. בנוסף שופרו קישורי הזמנה, סנכרון ועקביות הממשק במובייל."
 
 permissions:
   contents: read

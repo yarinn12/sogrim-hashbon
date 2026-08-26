@@ -4,7 +4,10 @@ import { GoogleAuth } from "google-auth-library";
 
 import { buildEventInviteUrl } from "../domain/inviteLinks.mjs";
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
-import { createPrivateEventInvite } from "./eventInvites.mjs";
+import {
+  activateEventInviteMembership,
+  createPrivateEventInvite
+} from "./eventInvites.mjs";
 import { storeInboxNotification } from "./notificationInbox.mjs";
 
 const FIREBASE_MESSAGING_SCOPE =
@@ -123,6 +126,7 @@ export async function sendEventActivityNotification({
   const notification = activityMessage(senderEvent, normalizedKind);
   const eligibleRecipients = [];
   let inboxRecipients = 0;
+  let membershipRecipients = 0;
   for (const recipientUserId of recipientUserIds) {
     const canonicallyActive = await (
       normalizedKind === "event-invite"
@@ -137,6 +141,28 @@ export async function sendEventActivityNotification({
       fetchImpl
     });
     if (!canonicallyActive) continue;
+
+    let privateInvite = null;
+    if (normalizedKind === "event-invite") {
+      privateInvite = await createPrivateEventInvite({
+        supabaseUrl,
+        serviceRoleKey,
+        event: senderEvent,
+        senderUserId: sender.id,
+        recipientUserId,
+        fetchImpl
+      });
+      const membershipActivated = privateInvite &&
+        await activateEventInviteMembership({
+          supabaseUrl,
+          serviceRoleKey,
+          invite: privateInvite,
+          userId: recipientUserId,
+          fetchImpl
+        });
+      if (!membershipActivated) continue;
+      membershipRecipients += 1;
+    }
 
     let needsRecoveryInvite = false;
     if (normalizedKind !== "event-invite") {
@@ -170,7 +196,7 @@ export async function sendEventActivityNotification({
 
     let actionUrl = "";
     if (normalizedKind === "event-invite" || needsRecoveryInvite) {
-      const privateInvite = await createPrivateEventInvite({
+      privateInvite ??= await createPrivateEventInvite({
         supabaseUrl,
         serviceRoleKey,
         event: senderEvent,
@@ -253,13 +279,16 @@ export async function sendEventActivityNotification({
       ok: true,
       status: 200,
       payload: {
-        ok: inboxRecipients > 0,
+        ok: membershipRecipients > 0 || inboxRecipients > 0,
         delivered: 0,
         recipients: 0,
         inboxRecipients,
+        ...(membershipRecipients > 0 ? { membershipRecipients } : {}),
         reason: inboxRecipients > 0
           ? "in-app-only"
-          : "no-eligible-recipients"
+          : membershipRecipients > 0
+            ? "access-granted"
+            : "no-eligible-recipients"
       }
     };
   }
@@ -274,6 +303,12 @@ export async function sendEventActivityNotification({
       recipients: eligibleRecipients,
       fetchImpl
     });
+    if (membershipRecipients > 0) {
+      return membershipAccessGrantedResponse({
+        membershipRecipients,
+        inboxRecipients
+      });
+    }
     return failure(503, "Push delivery is temporarily unavailable", {
       code: "PUSH_UNAVAILABLE",
       retryable: true
@@ -286,6 +321,12 @@ export async function sendEventActivityNotification({
       recipients: eligibleRecipients,
       fetchImpl
     });
+    if (membershipRecipients > 0) {
+      return membershipAccessGrantedResponse({
+        membershipRecipients,
+        inboxRecipients
+      });
+    }
     return failure(503, "Push delivery is temporarily unavailable", {
       code: "PUSH_UNAVAILABLE",
       retryable: true
@@ -364,6 +405,12 @@ export async function sendEventActivityNotification({
   }
 
   if (!delivered) {
+    if (membershipRecipients > 0) {
+      return membershipAccessGrantedResponse({
+        membershipRecipients,
+        inboxRecipients
+      });
+    }
     return failure(502, "No device accepted the event notification", {
       code: "DELIVERY_FAILED",
       retryable: true
@@ -377,7 +424,26 @@ export async function sendEventActivityNotification({
       ok: true,
       delivered,
       recipients: deliveredRecipients,
-      inboxRecipients
+      inboxRecipients,
+      ...(membershipRecipients > 0 ? { membershipRecipients } : {})
+    }
+  };
+}
+
+function membershipAccessGrantedResponse({
+  membershipRecipients,
+  inboxRecipients
+}) {
+  return {
+    ok: true,
+    status: 200,
+    payload: {
+      ok: true,
+      delivered: 0,
+      recipients: 0,
+      inboxRecipients,
+      membershipRecipients,
+      reason: "access-granted"
     }
   };
 }

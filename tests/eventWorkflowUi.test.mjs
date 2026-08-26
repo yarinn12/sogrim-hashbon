@@ -603,9 +603,11 @@ test("event participant changes stay inside the dialog without blocking browser 
   assert.match(dialog, /class="event-participant-notice" role="status"/);
   assert.doesNotMatch(toggle, /window\.alert/);
   assert.match(toggle, /message: `\$\{participant\.displayName\} נוסף לאירוע\.`/);
-  assert.match(toggle, /publishEventInvitation\(eventId, participant\)/);
+  assert.match(toggle, /await publishEventInvitation\(eventId, participant\)/);
   assert.match(toggle, /kind: "event-invite"/);
   assert.match(toggle, /preparePrivateEventInvitation\(eventId\)/);
+  assert.match(toggle, /membershipRecipients/);
+  assert.match(toggle, /rememberPendingEventMembershipInvitation/);
   assert.doesNotMatch(toggle, /prepareEventShare\(eventId\)/);
   assert.match(toggle, /data-event-participant-roster/);
   assert.match(toggle, /reactivateDialogAfterRender\(/);
@@ -782,6 +784,26 @@ test("account linking can invite someone outside the friends list through the st
   assert.doesNotMatch(
     app,
     /!canCurrentParticipantManage\(event\) \|\|\s*!linkableEventAccountParticipants\(event, participantId\)\.length/
+  );
+});
+
+test("account linking waits for a confirmed cloud save before reporting success", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const mergeFlow = sourceBetween(
+    app,
+    "async function mergeParticipantsInState()",
+    "function dropParticipantFromDrafts"
+  );
+
+  assert.match(app, /await mergeParticipantsInState\(\)/);
+  assert.match(mergeFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(mergeFlow, /const previousState = cloneNavigationValue\(state\)/);
+  assert.match(mergeFlow, /if \(!result\?\.ok\)/);
+  assert.match(mergeFlow, /state = previousState/);
+  assert.match(mergeFlow, /emitOperationFailure\("account_link"/);
+  assert.ok(
+    mergeFlow.indexOf("await saveSharedState") <
+      mergeFlow.indexOf("dropParticipantFromDrafts(source.id)")
   );
 });
 
@@ -1696,7 +1718,10 @@ test("expense action menus choose a safe direction above app navigation", async 
 
   assert.match(app, /app\.addEventListener\("toggle", handleTransientMenuToggle, true\)/);
   assert.match(app, /const safeBottom = Math\.min\(/);
-  assert.match(app, /menu\.classList\.toggle\("opens-upward", opensDownPastSafeArea && hasRoomAbove\)/);
+  assert.match(app, /function positionExpenseActionsMenu\(menu\)/);
+  assert.match(app, /const opensUpward = roomBelow < panelHeight && roomAbove > roomBelow;/);
+  assert.match(app, /menu\.classList\.toggle\("opens-upward", opensUpward\)/);
+  assert.match(app, /menu\.classList\.add\("is-viewport-positioned"\)/);
 });
 
 test("the focused expense notes dialog saves back to its event", async () => {

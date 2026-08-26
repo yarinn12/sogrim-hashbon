@@ -27,6 +27,10 @@ const pairwiseSettlementVerification = await readFile(
   "supabase/verification/verify_20260823193000_allow_pairwise_direct_reimbursements.sql",
   "utf8"
 );
+const accountLinkMigration = await readFile(
+  "supabase/migrations/20260826223000_allow_guarded_event_account_links.sql",
+  "utf8"
+);
 const app = await readFile("src/app.mjs", "utf8");
 
 test("launch hardening binds personal snapshots to one authenticated account", () => {
@@ -135,9 +139,7 @@ test("forward shared financial hardening closes synthetic settlement and referra
 
   for (const name of [
     "private.is_account_linked_shared_participant",
-    "private.is_valid_shared_event_financials",
-    "private.has_authorized_transfer_status_changes",
-    "private.guard_shared_event_financial_integrity"
+    "private.is_valid_shared_event_financials"
   ]) {
     assert.equal(functionSource(schema, name), functionSource(financialIntegrityMigration, name));
   }
@@ -160,9 +162,41 @@ test("forward shared financial hardening closes synthetic settlement and referra
   assert.match(financialIntegrityVerification, /verification_status/);
 });
 
+test("account linking preserves financial history through a narrowly authorized identity remap", () => {
+  assert.match(accountLinkMigration, /^begin;/);
+  assert.match(accountLinkMigration, /commit;\s*$/);
+  assert.match(accountLinkMigration, /private\.authorized_shared_event_account_link/);
+  assert.match(accountLinkMigration, /actor_member\.role = 'admin'/);
+  assert.match(accountLinkMigration, /target_member\.status = 'active'/);
+  assert.match(accountLinkMigration, /participantAccountLinks/);
+  assert.match(accountLinkMigration, /source_id not like 'account-%'/);
+  assert.match(accountLinkMigration, /private\.has_preserved_paid_history_for_account_link/);
+  assert.match(accountLinkMigration, /private\.revoke_event_invites_after_member_removal/);
+
+  for (const name of [
+    "private.authorized_shared_event_account_link",
+    "private.has_authorized_transfer_status_changes",
+    "private.guard_shared_event_financial_integrity",
+    "private.has_preserved_paid_history_for_account_link",
+    "private.guard_shared_event_history_and_limits",
+    "private.revoke_event_invites_after_member_removal"
+  ]) {
+    assert.equal(lastFunctionSource(schema, name), functionSource(accountLinkMigration, name));
+  }
+});
+
 function functionSource(sql, qualifiedName) {
   const marker = `create or replace function ${qualifiedName}`;
   const start = sql.indexOf(marker);
+  assert.notEqual(start, -1, `${qualifiedName} is missing`);
+  const end = sql.indexOf("\n$$;", start);
+  assert.notEqual(end, -1, `${qualifiedName} is incomplete`);
+  return sql.slice(start, end + 4);
+}
+
+function lastFunctionSource(sql, qualifiedName) {
+  const marker = `create or replace function ${qualifiedName}`;
+  const start = sql.lastIndexOf(marker);
   assert.notEqual(start, -1, `${qualifiedName} is missing`);
   const end = sql.indexOf("\n$$;", start);
   assert.notEqual(end, -1, `${qualifiedName} is incomplete`);

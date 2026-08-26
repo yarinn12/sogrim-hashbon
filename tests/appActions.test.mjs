@@ -1311,6 +1311,23 @@ test("an event manager can link an offline name only inside the current event", 
     },
     transfers: []
   });
+  state.events[0].transfers = [{
+    id: "transfer-paid-by-guest",
+    fromParticipantId: "guest-dani",
+    toParticipantId: "owner",
+    amount: 2000,
+    status: "paid",
+    markedPaidByParticipantId: "guest-dani",
+    markedPaidAt: "2026-08-20T10:00:00.000Z",
+    statusUpdatedAt: "2026-08-20T10:00:00.000Z"
+  }];
+  state.events[0].transferStatusUpdates = [{
+    id: "transfer-paid-by-guest",
+    status: "paid",
+    updatedAt: "2026-08-20T10:00:00.000Z",
+    markedAt: "2026-08-20T10:00:00.000Z",
+    markedPaidByParticipantId: "guest-dani"
+  }];
   state.participants = state.participants.map((participant) =>
     participant.id === "dani"
       ? { ...participant, accountLinked: true }
@@ -1358,6 +1375,18 @@ test("an event manager can link an offline name only inside the current event", 
   assert.deepEqual(currentEvent.expenses[0].payers, [
     { participantId: "dani", amount: 6000 }
   ]);
+  assert.equal(currentEvent.transfers[0].fromParticipantId, "dani");
+  assert.equal(currentEvent.transfers[0].markedPaidByParticipantId, "dani");
+  assert.equal(
+    currentEvent.transferStatusUpdates[0].markedPaidByParticipantId,
+    "dani"
+  );
+  assert.deepEqual(currentEvent.participantAccountLinks, [{
+    sourceParticipantId: "guest-dani",
+    targetParticipantId: "dani",
+    linkedByParticipantId: "owner",
+    linkedAt: currentEvent.participantAccountLinks[0].linkedAt
+  }]);
   assert.equal(
     currentEvent.membershipUpdatedAtByParticipant["guest-dani"],
     currentEvent.membershipUpdatedAtByParticipant.dani

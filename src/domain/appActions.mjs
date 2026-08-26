@@ -821,7 +821,10 @@ export function linkParticipantAccountInEvent(
       event,
       sourceParticipantId,
       targetParticipantId,
-      linkedAt
+      linkedAt,
+      {
+        accountLinkActorParticipantId: state.currentParticipantId
+      }
     );
     return {
       ...linkedEvent,
@@ -1077,7 +1080,8 @@ function mergeParticipantIntoEvent(
   event,
   sourceParticipantId,
   targetParticipantId,
-  updatedAt
+  updatedAt,
+  { accountLinkActorParticipantId = "" } = {}
 ) {
   const eventParticipantIds = new Set(event.participantIds);
   const inactiveParticipantIds = new Set(event.inactiveParticipantIds ?? []);
@@ -1121,6 +1125,19 @@ function mergeParticipantIntoEvent(
     inactiveParticipantIds: remappedInactiveParticipantIds,
     adminIds: uniqueIds((event.adminIds ?? []).map((id) => replaceId(id, sourceParticipantId, targetParticipantId))),
     createdByParticipantId: replaceId(event.createdByParticipantId, sourceParticipantId, targetParticipantId),
+    participantAccountLinks: accountLinkActorParticipantId
+      ? [
+          ...(event.participantAccountLinks ?? []).filter(
+            (link) => link?.sourceParticipantId !== sourceParticipantId
+          ),
+          {
+            sourceParticipantId,
+            targetParticipantId,
+            linkedByParticipantId: accountLinkActorParticipantId,
+            linkedAt: updatedAt
+          }
+        ]
+      : event.participantAccountLinks,
     expenses: event.expenses.map((expense) => {
       if (!expenseReferencesParticipant(expense, sourceParticipantId)) {
         return expense;
@@ -1168,6 +1185,14 @@ function mergeParticipantIntoEvent(
         )
       };
     }),
+    transferStatusUpdates: (event.transferStatusUpdates ?? []).map((update) =>
+      update?.markedPaidByParticipantId === sourceParticipantId
+        ? {
+            ...update,
+            markedPaidByParticipantId: targetParticipantId
+          }
+        : update
+    ),
     transfers: event.transfers
       .map((transfer) =>
         transferReferencesParticipant(transfer, sourceParticipantId)

@@ -212,7 +212,7 @@ test("the dialog-open body class is cleared when no dialog remains", () => {
 
   assert.match(
     render,
-    /!eventDialog &&\s*!expenseDraft &&\s*!importantActionDialog &&\s*!eventStatusMenu &&\s*!settlementCelebration\s*\) \{\s*document\.body\.classList\.remove\("app-dialog-open"\);/
+    /!eventDialog &&\s*!expenseDraft &&\s*!importantActionDialog &&\s*!eventStatusMenu &&\s*!settlementCelebration &&\s*!settlementCloseConfirmation\s*\) \{\s*document\.body\.classList\.remove\("app-dialog-open"\);/
   );
 });
 

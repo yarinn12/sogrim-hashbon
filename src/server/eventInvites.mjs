@@ -481,7 +481,29 @@ export async function createPrivateEventInvite({
       })
     }
   );
-  return response.ok ? { token, createdAt, expiresAt } : null;
+  const inviteId = response.ok
+    ? String(await response.json().catch(() => "")).trim()
+    : "";
+  return UUID_PATTERN.test(inviteId)
+    ? { id: inviteId, token, createdAt, expiresAt }
+    : null;
+}
+
+export async function activateEventInviteMembership({
+  supabaseUrl,
+  serviceRoleKey,
+  invite,
+  userId,
+  fetchImpl = fetch
+}) {
+  return activateInviteMembership({
+    supabaseUrl,
+    serviceRoleKey,
+    inviteId: invite?.id,
+    token: invite?.token,
+    userId,
+    fetchImpl
+  });
 }
 
 function serverContext(runtimeConfig, env) {

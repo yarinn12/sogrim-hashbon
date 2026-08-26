@@ -193,7 +193,7 @@ test("closing a dialog restores the exact action that opened it", async () => {
   assert.match(app, /if \(snapshot\.dialogSelector && !currentDialog\) return/);
   assert.match(
     app,
-    /const activeModalDialog =\s*document\.body\.classList\.contains\("app-dialog-open"\) &&\s*app\.querySelector\('\[role="dialog"\]\[aria-modal="true"\]'\)/
+    /const activeModalDialog =\s*document\.body\.classList\.contains\("app-dialog-open"\) &&\s*app\.querySelector\(':is\(\[role="dialog"\], \[role="alertdialog"\]\)\[aria-modal="true"\]'\)/
   );
   assert.match(app, /if \(!returnTarget \|\| activeModalDialog\) return/);
 });

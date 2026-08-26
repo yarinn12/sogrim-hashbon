@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import { isDeepStrictEqual } from "node:util";
 import postgres from "postgres";
 
 import {
+  buildSharedEventState,
   eventShareCredentials,
   mergeSharedEventIntoState
 } from "../src/data/sharedEventStore.mjs";
@@ -77,7 +77,6 @@ try {
       throw new Error("The offline source is unexpectedly tied to an account membership.");
     }
 
-    assertParticipantLinkIsFinanciallyNeutral(event);
     const source = sharedRow.state.participants?.find(
       (participant) => participant.id === sourceParticipantId
     );
@@ -90,18 +89,20 @@ try {
       ...sharedRow.state,
       currentParticipantId: admin.participant_id
     };
-    const nextSharedState = linkParticipantAccountInEvent(
+    const linkedState = linkParticipantAccountInEvent(
       repairState,
       eventId,
       sourceParticipantId,
       targetParticipantId
     );
-    if (nextSharedState === repairState) {
+    if (linkedState === repairState) {
       throw new Error("The participant link was rejected by event permissions or identity checks.");
     }
+    const nextSharedState = buildSharedEventState(linkedState, eventId);
+    if (!nextSharedState) throw new Error("The linked shared-event payload is unavailable.");
     const nextEvent = nextSharedState.events.find((item) => item.id === eventId);
     validateEvent(nextSharedState, sharedRow.id);
-    assertFinancialPayloadUnchanged(event, nextEvent);
+    assertFinancialMeaningPreserved(event, nextEvent);
     if (nextEvent.participantIds.includes(sourceParticipantId)) {
       throw new Error("The offline duplicate remains active after the repair.");
     }
@@ -203,6 +204,13 @@ try {
     `;
     for (const workspace of nextWorkspaces) {
       await transaction`
+        select pg_catalog.set_config(
+          'request.jwt.claim.sub',
+          ${String(workspace.owner_user_id)},
+          true
+        )
+      `;
+      await transaction`
         update public.app_snapshots
         set state = ${transaction.json(workspace.nextState)}, updated_at = pg_catalog.now()
         where id = ${workspace.id}
@@ -215,34 +223,37 @@ try {
   await sql.end();
 }
 
-function assertParticipantLinkIsFinanciallyNeutral(event) {
-  const expenseReference = (event.expenses ?? []).find(
-    (expense) =>
-      expense.createdByParticipantId === sourceParticipantId ||
-      expense.sharedByParticipantIds?.includes(sourceParticipantId) ||
-      expense.payers?.some(
-        (payer) => payer.participantId === sourceParticipantId
-      )
+function assertFinancialMeaningPreserved(previousEvent, nextEvent) {
+  const previousExpenseTotals = new Map(
+    (previousEvent.expenses ?? []).map((expense) => [expense.id, expense.total])
   );
-  const transferReference = (event.transfers ?? []).find(
-    (transfer) =>
-      transfer.fromParticipantId === sourceParticipantId ||
-      transfer.toParticipantId === sourceParticipantId ||
-      transfer.markedPaidByParticipantId === sourceParticipantId
+  const nextExpenseTotals = new Map(
+    (nextEvent.expenses ?? []).map((expense) => [expense.id, expense.total])
   );
-  if (expenseReference || transferReference) {
-    throw new Error(
-      "Refusing automatic live repair because the offline source has financial history."
-    );
-  }
-}
-
-function assertFinancialPayloadUnchanged(previousEvent, nextEvent) {
   if (
-    !isDeepStrictEqual(previousEvent.expenses ?? [], nextEvent.expenses ?? []) ||
-    !isDeepStrictEqual(previousEvent.transfers ?? [], nextEvent.transfers ?? [])
+    previousExpenseTotals.size !== nextExpenseTotals.size ||
+    [...previousExpenseTotals].some(
+      ([expenseId, total]) => nextExpenseTotals.get(expenseId) !== total
+    )
   ) {
-    throw new Error("The proposed repair changes financial records.");
+    throw new Error("The proposed link changes an expense amount or removes an expense.");
+  }
+
+  const previousPaidIds = new Set(
+    (previousEvent.transfers ?? [])
+      .filter((transfer) => transfer.status === "paid")
+      .map((transfer) => transfer.id)
+  );
+  const nextPaidIds = new Set(
+    (nextEvent.transfers ?? [])
+      .filter((transfer) => transfer.status === "paid")
+      .map((transfer) => transfer.id)
+  );
+  if (
+    previousPaidIds.size !== nextPaidIds.size ||
+    [...previousPaidIds].some((transferId) => !nextPaidIds.has(transferId))
+  ) {
+    throw new Error("The proposed link removes completed payment history.");
   }
 }
 

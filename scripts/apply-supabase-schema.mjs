@@ -57,7 +57,13 @@ try {
         'private.has_valid_shared_event_transfer_totals(jsonb)'
       ) is not null
         and to_regprocedure(
-          'private.has_authorized_transfer_status_changes(jsonb,jsonb,text)'
+          'private.has_authorized_transfer_status_changes(jsonb,jsonb,text,text)'
+        ) is not null
+        and to_regprocedure(
+          'private.authorized_shared_event_account_link(text,jsonb,jsonb,text)'
+        ) is not null
+        and to_regprocedure(
+          'private.has_preserved_paid_history_for_account_link(jsonb,jsonb,jsonb)'
         ) is not null
         and to_regprocedure(
           'private.guard_shared_event_financial_integrity()'

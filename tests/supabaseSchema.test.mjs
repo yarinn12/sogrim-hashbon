@@ -297,3 +297,35 @@ test("schema deployment verifies workspace claim and pair-lock hardening", async
   assert.match(deployScript, /shared_snapshot_policy_ready/);
   assert.match(deployScript, /friendship_pair_lock_ready/);
 });
+
+test("canonical account participants receive event membership atomically", async () => {
+  const [schema, migration, verification, rollback, applyScript] = await Promise.all([
+    readFile("supabase/schema.sql", "utf8"),
+    readFile(
+      "supabase/migrations/20260826204500_auto_grant_canonical_event_membership.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/verification/verify_20260826204500_auto_grant_canonical_event_membership.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/rollbacks/20260826204500_auto_grant_canonical_event_membership_safe.sql",
+      "utf8"
+    ),
+    readFile("scripts/apply-canonical-membership-fix.mjs", "utf8")
+  ]);
+
+  for (const source of [schema, migration]) {
+    assert.match(source, /after insert or update on public\.app_snapshots/);
+    assert.match(source, /from pg_catalog\.unnest\(active_ids\)/);
+    assert.match(source, /join auth\.users as account/);
+    assert.match(source, /status = 'active'/);
+    assert.match(source, /on conflict \(snapshot_id, user_id\) do update/);
+  }
+  assert.match(verification, /AFTER INSERT OR UPDATE/);
+  assert.match(verification, /Canonical account participants are not granted membership atomically/);
+  assert.match(rollback, /memberships are intentionally retained/);
+  assert.match(applyScript, /--dry-run/);
+  assert.match(applyScript, /await transaction\.unsafe\(verification\)/);
+});

@@ -3686,6 +3686,214 @@ const CSS = `
     line-height: 1.35 !important;
   }
 
+  /* Event workspace tabs use one active contract, regardless of link/button semantics. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .event-workspace-tab {
+    -webkit-tap-highlight-color: transparent !important;
+    appearance: none !important;
+    touch-action: manipulation !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .event-workspace-tab:is(.is-active, [aria-current="page"]),
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .event-workspace-tab:is(.is-active, [aria-current="page"]):is(:hover, :active, :focus-visible) {
+    border-color: var(--app-brand) !important;
+    color: #ffffff !important;
+    background: var(--app-brand) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .event-workspace-tab:is(.is-active, [aria-current="page"]) :is(strong, small, .command-card-icon) {
+    color: #ffffff !important;
+  }
+
+  /* Keep the repayment control anchored to the same left-hand slot in both modes. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    .settlement-stage-heading {
+    flex-wrap: nowrap !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    .settlement-repayment-shortcut {
+    width: 164px !important;
+    min-width: 164px !important;
+    max-width: 164px !important;
+    flex: 0 0 164px !important;
+    justify-content: center !important;
+    margin-inline-start: auto !important;
+    box-sizing: border-box !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    .settlement-featured-action > .settlement-close-primary {
+    align-self: stretch !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Expense overflow menus are viewport-positioned above sticky actions and navigation. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu.is-viewport-positioned > div {
+    position: fixed !important;
+    inset: auto !important;
+    top: var(--expense-menu-top) !important;
+    left: var(--expense-menu-left) !important;
+    z-index: 260 !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: var(--expense-menu-max-height) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+
+  /* Close-event confirmation follows the same white/green floating feedback language. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 240 !important;
+    display: grid !important;
+    place-items: end center !important;
+    box-sizing: border-box !important;
+    padding: 16px 14px calc(env(safe-area-inset-bottom) + 96px) !important;
+    background: rgba(7, 27, 24, 0.14) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation {
+    width: min(520px, calc(100vw - 28px)) !important;
+    max-width: calc(100vw - 28px) !important;
+    display: grid !important;
+    gap: 14px !important;
+    box-sizing: border-box !important;
+    padding: 14px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(6, 75, 67, 0.2) !important;
+    border-radius: var(--app-radius-panel) !important;
+    color: var(--app-ink) !important;
+    background: #fbfefd !important;
+    box-shadow:
+      0 22px 52px rgba(7, 27, 24, 0.22),
+      0 4px 14px rgba(7, 27, 24, 0.1) !important;
+    outline: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-heading {
+    display: grid !important;
+    grid-template-columns: 44px minmax(0, 1fr) 44px !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-icon {
+    width: 44px !important;
+    height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 10px !important;
+    color: #ffffff !important;
+    background: #064b43 !important;
+    box-shadow: 0 7px 16px rgba(6, 75, 67, 0.18) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy > span {
+    color: var(--app-brand) !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy h2 {
+    margin: 0 !important;
+    color: var(--app-ink) !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    line-height: 1.3 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-dismiss {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    color: var(--app-muted) !important;
+    background: rgba(6, 75, 67, 0.06) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p {
+    margin: 0 !important;
+    color: var(--app-muted) !important;
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation > p strong {
+    display: block !important;
+    margin-bottom: 4px !important;
+    color: var(--app-ink) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions {
+    display: grid !important;
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) !important;
+    gap: 10px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions > button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 50px !important;
+  }
+
+  @media (max-width: 420px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      .settlement-repayment-shortcut {
+      width: 148px !important;
+      min-width: 148px !important;
+      max-width: 148px !important;
+      flex-basis: 148px !important;
+    }
+  }
+
+  @media (max-width: 350px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-event-view="summary"]
+      .settlement-repayment-shortcut {
+      width: 136px !important;
+      min-width: 136px !important;
+      max-width: 136px !important;
+      flex-basis: 136px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html.design-coherence-v1 *,
     html.design-coherence-v1 *::before,

@@ -168,6 +168,13 @@ function createActivityFetch({
     if (address.endsWith("/rest/v1/rpc/rotate_private_event_invite")) {
       return jsonResponse("44444444-4444-4444-8444-444444444444");
     }
+    if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
+      return jsonResponse({
+        status: "active",
+        snapshotId: "shared-event-space",
+        participantId: RECIPIENT_PARTICIPANT_ID
+      });
+    }
     if (
       address.includes("/rest/v1/event_invite_tokens") &&
       ["PATCH", "POST"].includes(options.method)
@@ -531,6 +538,17 @@ test("a pending friendship cannot strand an active event participant", async () 
 
   assert.equal(result.status, 200);
   assert.equal(result.payload.delivered, 1);
+  assert.equal(result.payload.membershipRecipients, 1);
+  const membershipActivation = requests.find((request) =>
+    request.url.endsWith("/rest/v1/rpc/redeem_event_invite_membership")
+  );
+  const membershipBody = JSON.parse(membershipActivation.options.body);
+  assert.equal(
+    membershipBody.p_invite_id,
+    "44444444-4444-4444-8444-444444444444"
+  );
+  assert.match(membershipBody.p_token_hash, /^[a-f0-9]{64}$/);
+  assert.equal(membershipBody.p_user_id, RECIPIENT_USER_ID);
   assert.equal(
     requests.some((request) =>
       request.url.includes("/rest/v1/notification_inbox?")
@@ -541,6 +559,28 @@ test("a pending friendship cannot strand an active event participant", async () 
     requests.some((request) => request.url.includes("/rest/v1/friendships?")),
     false
   );
+});
+
+test("an event invite keeps access successful when push delivery is unavailable", async () => {
+  const { fetchImpl } = createActivityFetch();
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: RECIPIENT_PARTICIPANT_ID,
+    kind: "event-invite",
+    fetchImpl,
+    accessTokenProvider: async () => {
+      throw new Error("push temporarily unavailable");
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.membershipRecipients, 1);
+  assert.equal(result.payload.reason, "access-granted");
+  assert.equal(result.payload.delivered, 0);
 });
 
 test("an expense notification repairs access when the recipient workspace lost the event", async () => {

@@ -337,6 +337,8 @@ const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
 const PROFILE_IMAGE_PICKER_RETURN_STORAGE_KEY = "profile-image-picker-return";
 const PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX =
   "settle-friends-shared-profile-publication:";
+const PENDING_EVENT_MEMBERSHIP_STORAGE_KEY =
+  "settle-friends-pending-event-memberships";
 const openSettlementTransferIds = loadOpenSettlementTransferIds();
 
 function loadOpenSettlementTransferIds() {
@@ -431,6 +433,7 @@ let eventLongPressStartPoint = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let resumeSyncRequest = null;
+let pendingEventMembershipRetryRequest = null;
 let lastResumeSyncAt = 0;
 let appBootHydrationPromise = null;
 let appBootHydrated = false;
@@ -448,16 +451,26 @@ window.addEventListener("popstate", handleBrowserHistoryBack);
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
+window.addEventListener(NATIVE_RESUME_EVENT, retryPendingEventMembershipInvitations);
+window.addEventListener("online", retryPendingEventMembershipInvitations);
 window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted);
 window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") requestResumeSync();
+  if (document.visibilityState === "visible") {
+    requestResumeSync();
+    retryPendingEventMembershipInvitations();
+  }
 });
 window.setInterval(requestVisibleEventSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 window.setInterval(requestVisibleFriendNetworkSync, FRIEND_NETWORK_SYNC_INTERVAL_MS);
 document.addEventListener("keydown", handleDialogKeydown);
+window.addEventListener("resize", scheduleOpenExpenseMenuPosition);
+window.visualViewport?.addEventListener("resize", scheduleOpenExpenseMenuPosition);
+window.visualViewport?.addEventListener("scroll", scheduleOpenExpenseMenuPosition);
 document.addEventListener("account-auth-ready", () => {
-  hydrateAppAfterAccountReady().catch(renderScopedLocalFallback);
+  hydrateAppAfterAccountReady()
+    .then(() => retryPendingEventMembershipInvitations())
+    .catch(renderScopedLocalFallback);
 });
 document.addEventListener("settle-friends:push-status", (event) => {
   if (event.detail?.status !== "received") return;
@@ -525,7 +538,8 @@ function render() {
     !expenseDraft &&
     !importantActionDialog &&
     !eventStatusMenu &&
-    !settlementCelebration
+    !settlementCelebration &&
+    !settlementCloseConfirmation
   ) {
     document.body.classList.remove("app-dialog-open");
   }
@@ -933,6 +947,11 @@ function handleBrowserHistoryBack(event) {
     activateDialog(".event-status-menu");
   } else if (settlementCelebration) {
     activateDialog(".settlement-celebration-dialog");
+  } else if (settlementCloseConfirmation) {
+    activateDialog(
+      ".settlement-close-confirmation",
+      '[data-action="confirm-close-event"]'
+    );
   } else {
     document.body.classList.remove("app-dialog-open");
     clearDialogBackgroundInert();
@@ -9669,14 +9688,38 @@ function renderSettlementCloseConfirmation(event, pendingTransfers, pendingTotal
     : `${pendingTransfers.length} יתרות סופיות בסך ${formatEventMoney(event, pendingTotal)} יישלחו לתשלום.`;
 
   return `
-    <div class="settlement-close-confirmation" role="region" aria-label="אישור סגירת האירוע" aria-live="polite">
-      <p><strong>אחרי הסגירה לא יהיה אפשר להוסיף או לערוך הוצאות.</strong></p>
-      <p>${escapeHtml(message)} כל המשתתפים יקבלו התראה שהגיע הזמן לשלם.</p>
-      <div class="settlement-close-confirmation-actions">
-        <button class="primary-button" type="button" data-action="confirm-close-event" data-event-id="${event.id}">סגור אירוע ושלח התראה</button>
-        <button class="secondary-button" type="button" data-action="cancel-close-event-confirmation">ביטול</button>
-      </div>
-    </div>
+    <section class="settlement-close-confirmation-backdrop" aria-label="אישור סגירת האירוע">
+      <section
+        class="settlement-close-confirmation"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="settlement-close-confirmation-title"
+        aria-describedby="settlement-close-confirmation-description"
+        tabindex="-1"
+      >
+        <div class="settlement-close-confirmation-heading">
+          <span class="app-toast-icon settlement-close-confirmation-icon" aria-hidden="true">${iconSvg("bell")}</span>
+          <div class="settlement-close-confirmation-copy">
+            <span>פעולה חשובה</span>
+            <h2 id="settlement-close-confirmation-title">לסגור את האירוע ולהתחיל להתחשבן?</h2>
+          </div>
+          <button
+            class="app-toast-close settlement-close-confirmation-dismiss"
+            type="button"
+            data-action="cancel-close-event-confirmation"
+            aria-label="סגירת חלון האישור"
+          >${iconSvg("x")}</button>
+        </div>
+        <p id="settlement-close-confirmation-description">
+          <strong>אחרי הסגירה לא יהיה אפשר להוסיף או לערוך הוצאות.</strong>
+          ${escapeHtml(message)} כל המשתתפים יקבלו התראה שהגיע הזמן לשלם.
+        </p>
+        <div class="settlement-close-confirmation-actions">
+          <button class="secondary-button" type="button" data-action="cancel-close-event-confirmation">ביטול</button>
+          <button class="primary-button" type="button" data-action="confirm-close-event" data-event-id="${event.id}">סגור אירוע ושלח התראה</button>
+        </div>
+      </section>
+    </section>
   `;
 }
 
@@ -12296,25 +12339,71 @@ function handleTransientMenuToggle(event) {
   }
   if (!menu.open) {
     menu.classList.remove("opens-upward");
+    menu.classList.remove("is-viewport-positioned");
+    menu.style.removeProperty("--expense-menu-left");
+    menu.style.removeProperty("--expense-menu-top");
+    menu.style.removeProperty("--expense-menu-max-height");
     return;
   }
   requestAnimationFrame(() => {
-    if (!menu.isConnected || !menu.open) return;
-    const panel = menu.querySelector(":scope > div");
-    if (!(panel instanceof HTMLElement)) return;
-    const nav = app.querySelector(
-      ".event-route-primary-nav:not([hidden]), .product-app-nav:not([hidden])"
-    );
-    const menuRect = menu.getBoundingClientRect();
-    const panelHeight = panel.scrollHeight;
-    const safeBottom = Math.min(
-      window.innerHeight,
-      nav instanceof HTMLElement ? nav.getBoundingClientRect().top : window.innerHeight
-    ) - 8;
-    const opensDownPastSafeArea = menuRect.bottom + 6 + panelHeight > safeBottom;
-    const hasRoomAbove = menuRect.top - 6 - panelHeight >= 0;
-    menu.classList.toggle("opens-upward", opensDownPastSafeArea && hasRoomAbove);
+    positionExpenseActionsMenu(menu);
   });
+}
+
+let openExpenseMenuPositionFrame = 0;
+
+function scheduleOpenExpenseMenuPosition() {
+  if (openExpenseMenuPositionFrame) return;
+  openExpenseMenuPositionFrame = requestAnimationFrame(() => {
+    openExpenseMenuPositionFrame = 0;
+    const menu = app.querySelector(".expense-row-actions-menu[open]");
+    if (menu instanceof HTMLDetailsElement) positionExpenseActionsMenu(menu);
+  });
+}
+
+function positionExpenseActionsMenu(menu) {
+  if (!menu.isConnected || !menu.open) return;
+  const panel = menu.querySelector(":scope > div");
+  const trigger = menu.querySelector(":scope > summary");
+  if (!(panel instanceof HTMLElement) || !(trigger instanceof HTMLElement)) return;
+
+  const viewport = window.visualViewport;
+  const viewportLeft = viewport?.offsetLeft ?? 0;
+  const viewportTop = viewport?.offsetTop ?? 0;
+  const viewportWidth = viewport?.width ?? window.innerWidth;
+  const viewportHeight = viewport?.height ?? window.innerHeight;
+  const nav = app.querySelector(
+    ".event-route-primary-nav:not([hidden]), .product-app-nav:not([hidden])"
+  );
+  const navTop = nav instanceof HTMLElement
+    ? nav.getBoundingClientRect().top
+    : viewportTop + viewportHeight;
+  const safeTop = viewportTop + 8;
+  const safeBottom = Math.min(viewportTop + viewportHeight, navTop) - 8;
+  const triggerRect = trigger.getBoundingClientRect();
+  const panelWidth = Math.min(panel.scrollWidth || 166, viewportWidth - 16);
+  const panelHeight = Math.min(panel.scrollHeight, Math.max(0, safeBottom - safeTop));
+  const roomBelow = safeBottom - triggerRect.bottom - 6;
+  const roomAbove = triggerRect.top - safeTop - 6;
+  const opensUpward = roomBelow < panelHeight && roomAbove > roomBelow;
+  const unclampedTop = opensUpward
+    ? triggerRect.top - panelHeight - 6
+    : triggerRect.bottom + 6;
+  const maxTop = Math.max(safeTop, safeBottom - panelHeight);
+  const top = Math.min(Math.max(unclampedTop, safeTop), maxTop);
+  const left = Math.min(
+    Math.max(triggerRect.right - panelWidth, viewportLeft + 8),
+    viewportLeft + viewportWidth - panelWidth - 8
+  );
+
+  menu.classList.toggle("opens-upward", opensUpward);
+  menu.classList.add("is-viewport-positioned");
+  menu.style.setProperty("--expense-menu-left", `${Math.round(left)}px`);
+  menu.style.setProperty("--expense-menu-top", `${Math.round(top)}px`);
+  menu.style.setProperty(
+    "--expense-menu-max-height",
+    `${Math.max(44, Math.floor(safeBottom - top))}px`
+  );
 }
 
 function hasOpenTransientMenu() {
@@ -14883,7 +14972,7 @@ async function executeImportantAction(action) {
       eventId: action.payload.eventId ?? "",
       mergeKind: action.payload.mergeKind ?? "duplicate"
     };
-    mergeParticipantsInState();
+    await mergeParticipantsInState();
     return;
   }
 
@@ -15188,19 +15277,20 @@ function syncMergeParticipantControls(changedAction) {
     );
 }
 
-function mergeParticipantsInState() {
+async function mergeParticipantsInState() {
   ensureMergeParticipantsDraft();
   if (!mergeParticipantsDraft) return;
 
-  const source = state.participants.find((participant) => participant.id === mergeParticipantsDraft.sourceId);
-  const target = state.participants.find((participant) => participant.id === mergeParticipantsDraft.targetId);
+  const pendingMerge = { ...mergeParticipantsDraft };
+  const source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
+  const target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
   if (!source || !target || source.id === target.id) return;
 
-  const nextState = mergeParticipantsDraft.mergeKind === "account-link"
-    ? mergeParticipantsDraft.eventId
+  const nextState = pendingMerge.mergeKind === "account-link"
+    ? pendingMerge.eventId
       ? linkParticipantAccountInEvent(
           state,
-          mergeParticipantsDraft.eventId,
+          pendingMerge.eventId,
           source.id,
           target.id
         )
@@ -15212,7 +15302,45 @@ function mergeParticipantsInState() {
     render();
     return;
   }
+
+  const previousState = cloneNavigationValue(state);
   state = nextState;
+  if (pendingMerge.mergeKind === "account-link" && eventDialog?.eventId === pendingMerge.eventId) {
+    eventDialog = {
+      ...eventDialog,
+      message: `מקשרים את ${source.displayName} לחשבון של ${target.displayName}…`
+    };
+    notice = "";
+  } else {
+    notice = "שומרים את האיחוד…";
+  }
+  render();
+  reactivateDialogAfterRender(".event-modal");
+
+  const result = pendingMerge.mergeKind === "account-link"
+    ? await saveSharedState(state, { awaitCloud: true })
+    : await persistState();
+  if (!result?.ok) {
+    state = previousState;
+    mergeParticipantsDraft = null;
+    const failureMessage = "לא הצלחנו לקשר את החשבון. לא בוצע שינוי, ואפשר לנסות שוב.";
+    if (pendingMerge.mergeKind === "account-link") {
+      emitOperationFailure("account_link", {
+        screen: "participants",
+        error: result?.error
+      });
+      eventDialog = eventDialog?.eventId === pendingMerge.eventId
+        ? { ...eventDialog, message: failureMessage }
+        : eventDialog;
+      notice = eventDialog?.eventId === pendingMerge.eventId ? "" : failureMessage;
+    } else {
+      notice = "לא הצלחנו לשמור את האיחוד. לא בוצע שינוי.";
+    }
+    render();
+    reactivateDialogAfterRender(".event-modal");
+    return result;
+  }
+
   if (localProfile?.participantId === source.id) {
     localProfile = saveLocalProfile({
       ...localProfile,
@@ -15226,7 +15354,9 @@ function mergeParticipantsInState() {
   ) {
     eventDialog = {
       ...eventDialog,
-      message: `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`,
+      message: result?.pending
+        ? `קישרנו את ${source.displayName} לחשבון של ${target.displayName}. הסנכרון יושלם אוטומטית.`
+        : `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`,
       resolvedPairIds: []
     };
   } else if (
@@ -15236,15 +15366,22 @@ function mergeParticipantsInState() {
     eventDialog = {
       eventId: eventDialog.eventId,
       kind: "participants",
-      message: `קישרנו את ${source.displayName} לחשבון של ${target.displayName}.`,
+      message: result?.pending
+        ? `קישרנו את ${source.displayName} לחשבון של ${target.displayName}. הסנכרון יושלם אוטומטית.`
+        : `קישרנו את ${source.displayName} לחשבון של ${target.displayName}.`,
       historyBaseDepth: eventDialog.historyBaseDepth
     };
   }
   dropParticipantFromDrafts(source.id);
   mergeParticipantsDraft = null;
-  notice = `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`;
-  persistState();
+  notice = pendingMerge.mergeKind === "account-link"
+    ? ""
+    : result?.pending
+      ? `אוחד. ${target.displayName} הוא עכשיו חשבון אחד והסנכרון יושלם אוטומטית.`
+      : `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`;
   render();
+  reactivateDialogAfterRender(".event-modal");
+  return result;
 }
 
 function dropParticipantFromDrafts(participantId) {
@@ -15468,7 +15605,7 @@ async function addFriendParticipantToExpense(eventId, participantId) {
     return;
   }
 
-  publishEventInvitation(eventId, participant);
+  await publishEventInvitation(eventId, participant);
   finishExpenseParticipantAddRoute();
 }
 
@@ -15732,12 +15869,46 @@ function preparePrivateEventInvitation(eventId) {
   const activePreparation = eventSharePreparationPromises.get(preparationKey);
   if (activePreparation) return activePreparation;
 
-  const preparation = prepareSharedEventForInvitation(eventId)
+  const preparation = settleEventSharePreparation(
+    preparePrivateEventInvitationNow(eventId)
+  )
     .finally(() => {
       eventSharePreparationPromises.delete(preparationKey);
     });
   eventSharePreparationPromises.set(preparationKey, preparation);
   return preparation;
+}
+
+async function preparePrivateEventInvitationNow(eventId) {
+  const initialConfig = await loadRuntimeConfig();
+  runtimeConfig = initialConfig;
+  const configuredUserId = String(
+    initialConfig?.storage?.account?.userId ?? ""
+  ).trim();
+  const currentParticipantId = String(state?.currentParticipantId ?? "").trim();
+  const expectedUserId = configuredUserId || (
+    currentParticipantId.startsWith("account-")
+      ? currentParticipantId.slice("account-".length)
+      : ""
+  );
+
+  try {
+    return await prepareSharedEventForInvitation(eventId, {
+      publishExisting: true
+    });
+  } catch (error) {
+    if (!eventInviteAuthRefreshRequired(error) || !expectedUserId) throw error;
+
+    const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+    if (!refreshedSession) throw error;
+    const freshRuntimeConfig = await loadRuntimeConfig();
+    const freshUserId = String(
+      freshRuntimeConfig?.storage?.account?.userId ?? ""
+    ).trim();
+    if (freshUserId !== expectedUserId) throw error;
+    runtimeConfig = freshRuntimeConfig;
+    return prepareSharedEventForInvitation(eventId, { publishExisting: true });
+  }
 }
 
 async function openPreparedEventShare(eventId, trigger, shareView = "") {
@@ -16988,11 +17159,10 @@ function requestCloseCurrentEvent(eventId) {
 
   settlementCloseConfirmation = { eventId };
   render();
-  requestAnimationFrame(() => {
-    app
-      .querySelector('[data-action="confirm-close-event"]')
-      ?.focus({ preventScroll: true });
-  });
+  activateDialog(
+    ".settlement-close-confirmation",
+    '[data-action="confirm-close-event"]'
+  );
 }
 
 async function chooseEventStatusFromMenu(eventId, nextStatus, trigger) {
@@ -18105,7 +18275,7 @@ async function toggleEventParticipant(eventId, participantId, checked) {
     reactivateDialogAfterRender(".event-modal");
     return;
   }
-  publishEventInvitation(eventId, participant);
+  await publishEventInvitation(eventId, participant);
   if (returnsToParticipantRoster) {
     renderHistoryFallback();
     reactivateDialogAfterRender(
@@ -18132,37 +18302,182 @@ async function toggleEventParticipant(eventId, participantId, checked) {
   }
 }
 
-function publishEventInvitation(eventId, participant) {
+async function publishEventInvitation(
+  eventId,
+  participant,
+  { showMessage = true } = {}
+) {
   if (
     !accountUserIdFromParticipantId(participant?.id) ||
     participant.id === state.currentParticipantId
   ) {
-    return;
+    return { ok: true, skipped: true };
   }
 
-  Promise.resolve(preparePrivateEventInvitation(eventId))
-    .then(async () => {
-      const config = runtimeConfig?.storage?.account?.accessToken
-        ? runtimeConfig
-        : await loadRuntimeConfig();
-      runtimeConfig = config;
-      const result = await sendEventActivityNotification(config, {
-        eventId,
-        activityId: participant.id,
-        kind: "event-invite"
-      });
-      if (!result?.ok) throw new Error("invite-not-delivered");
-      updateParticipantInvitationMessage(
-        eventId,
-        `${participant.displayName} נוסף לאירוע וההזמנה נשלחה לחשבון שלו.`
-      );
-    })
-    .catch(() => {
-      updateParticipantInvitationMessage(
-        eventId,
-        `${participant.displayName} נוסף לאירוע. אם ההזמנה לא הגיעה, אפשר לשלוח לו גם את קישור האירוע.`
-      );
+  rememberPendingEventMembershipInvitation(eventId, participant.id);
+  try {
+    await preparePrivateEventInvitation(eventId);
+    const config = runtimeConfig?.storage?.account?.accessToken
+      ? runtimeConfig
+      : await loadRuntimeConfig();
+    runtimeConfig = config;
+    const result = await sendEventActivityNotification(config, {
+      eventId,
+      activityId: participant.id,
+      kind: "event-invite"
     });
+    if (!result?.ok || Number(result.membershipRecipients ?? 0) < 1) {
+      const error = new Error("Event membership was not confirmed");
+      error.code = "EVENT_MEMBERSHIP_NOT_CONFIRMED";
+      error.retryable = true;
+      throw error;
+    }
+    forgetPendingEventMembershipInvitation(eventId, participant.id);
+    if (showMessage) {
+      updateParticipantInvitationMessage(
+        eventId,
+        `${participant.displayName} נוסף לאירוע ולחשבון שלו.`
+      );
+    }
+    return { ok: true, result };
+  } catch (error) {
+    (error?.retryable || navigator.onLine === false
+      ? emitOperationDeferred
+      : emitOperationFailure)("event_invite", {
+      screen: "participants",
+      error
+    });
+    if (showMessage) {
+      updateParticipantInvitationMessage(
+        eventId,
+        `${participant.displayName} נוסף לאירוע. החיבור לחשבון שלו יושלם אוטומטית כשהחיבור יחזור.`
+      );
+    }
+    return { ok: false, error };
+  }
+}
+
+function pendingEventMembershipOwnerId() {
+  return String(
+    runtimeConfig?.storage?.account?.userId ||
+      accountUserIdFromParticipantId(state?.currentParticipantId) ||
+      ""
+  ).trim();
+}
+
+function loadPendingEventMembershipInvitations() {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(PENDING_EVENT_MEMBERSHIP_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (entry) =>
+            entry &&
+            typeof entry.ownerUserId === "string" &&
+            typeof entry.eventId === "string" &&
+            typeof entry.participantId === "string"
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingEventMembershipInvitations(entries) {
+  try {
+    if (entries.length) {
+      window.localStorage.setItem(
+        PENDING_EVENT_MEMBERSHIP_STORAGE_KEY,
+        JSON.stringify(entries)
+      );
+    } else {
+      window.localStorage.removeItem(PENDING_EVENT_MEMBERSHIP_STORAGE_KEY);
+    }
+  } catch {
+    // A blocked storage area must not prevent the immediate server attempt.
+  }
+}
+
+function rememberPendingEventMembershipInvitation(eventId, participantId) {
+  const ownerUserId = pendingEventMembershipOwnerId();
+  if (!ownerUserId || !eventId || !participantId) return;
+  const entries = loadPendingEventMembershipInvitations();
+  if (
+    entries.some(
+      (entry) =>
+        entry.ownerUserId === ownerUserId &&
+        entry.eventId === eventId &&
+        entry.participantId === participantId
+    )
+  ) {
+    return;
+  }
+  entries.push({
+    ownerUserId,
+    eventId,
+    participantId,
+    queuedAt: new Date().toISOString()
+  });
+  savePendingEventMembershipInvitations(entries);
+}
+
+function forgetPendingEventMembershipInvitation(eventId, participantId) {
+  const ownerUserId = pendingEventMembershipOwnerId();
+  savePendingEventMembershipInvitations(
+    loadPendingEventMembershipInvitations().filter(
+      (entry) =>
+        !(
+          entry.ownerUserId === ownerUserId &&
+          entry.eventId === eventId &&
+          entry.participantId === participantId
+        )
+    )
+  );
+}
+
+function retryPendingEventMembershipInvitations() {
+  if (
+    pendingEventMembershipRetryRequest ||
+    !appBootHydrated ||
+    navigator.onLine === false
+  ) {
+    return pendingEventMembershipRetryRequest ?? Promise.resolve();
+  }
+
+  const ownerUserId = pendingEventMembershipOwnerId();
+  if (!ownerUserId) return Promise.resolve();
+  const pendingEntries = loadPendingEventMembershipInvitations().filter(
+    (entry) => entry.ownerUserId === ownerUserId
+  );
+  if (!pendingEntries.length) return Promise.resolve();
+
+  pendingEventMembershipRetryRequest = (async () => {
+    for (const entry of pendingEntries) {
+      const event = getEvent(entry.eventId);
+      const participant = state.participants.find(
+        (item) => item.id === entry.participantId
+      );
+      if (
+        !event ||
+        !participant ||
+        !event.participantIds.includes(entry.participantId) ||
+        isEventParticipantInactive(event, entry.participantId)
+      ) {
+        forgetPendingEventMembershipInvitation(
+          entry.eventId,
+          entry.participantId
+        );
+        continue;
+      }
+      await publishEventInvitation(entry.eventId, participant, {
+        showMessage: false
+      });
+    }
+  })().finally(() => {
+    pendingEventMembershipRetryRequest = null;
+  });
+  return pendingEventMembershipRetryRequest;
 }
 
 function updateParticipantInvitationMessage(eventId, message) {
@@ -18573,7 +18888,7 @@ function restorePendingDialogReturnFocus() {
   const returnTarget = pendingDialogReturnFocus;
   const activeModalDialog =
     document.body.classList.contains("app-dialog-open") &&
-    app.querySelector('[role="dialog"][aria-modal="true"]');
+    app.querySelector(':is([role="dialog"], [role="alertdialog"])[aria-modal="true"]');
   if (!returnTarget || activeModalDialog) return;
 
   if (returnTarget.element?.isConnected) {
@@ -18600,7 +18915,7 @@ function restorePendingDialogReturnFocus() {
 function setDialogBackgroundInert(dialog) {
   clearDialogBackgroundInert();
   const backdrop = dialog.closest(
-    ".expense-modal-backdrop, .event-modal-backdrop, .settlement-celebration-backdrop, .event-status-menu-backdrop, .important-action-dialog-backdrop"
+    ".expense-modal-backdrop, .event-modal-backdrop, .settlement-celebration-backdrop, .event-status-menu-backdrop, .important-action-dialog-backdrop, .settlement-close-confirmation-backdrop"
   );
   if (!backdrop) return;
 
@@ -18751,7 +19066,7 @@ function handleDialogKeydown(event) {
   }
 
   const dialog = app.querySelector(
-    '.important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
+    '.settlement-close-confirmation[role="alertdialog"], .important-action-dialog[role="alertdialog"], .settlement-celebration-dialog[role="dialog"], .event-status-menu[role="dialog"], .expense-modal[role="dialog"], .event-modal[role="dialog"], .event-modal[role="region"]'
   );
   if (!dialog) return;
 
@@ -19009,7 +19324,9 @@ function escapeAttribute(value) {
 
 function bootstrapApp() {
   if (!document.documentElement.classList.contains("account-auth-pending")) {
-    hydrateAppAfterAccountReady().catch(renderScopedLocalFallback);
+    hydrateAppAfterAccountReady()
+      .then(() => retryPendingEventMembershipInvitations())
+      .catch(renderScopedLocalFallback);
   }
   loadRuntimeConfig().then((config) => {
     runtimeConfig = config;

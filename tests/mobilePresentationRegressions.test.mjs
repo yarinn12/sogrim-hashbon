@@ -121,6 +121,54 @@ test("settlement completion feedback stays roomy and branded across mobile sizes
   );
 });
 
+test("event workspace controls stay stable above sticky mobile chrome", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(
+    coherenceLayer,
+    /\.event-workspace-tab:is\(\.is-active, \[aria-current="page"\]\)[\s\S]*?color: #ffffff !important;[\s\S]*?background: var\(--app-brand\) !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.settlement-repayment-shortcut \{[\s\S]*?width: 164px !important;[\s\S]*?min-width: 164px !important;[\s\S]*?flex: 0 0 164px !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.expense-row-actions-menu\.is-viewport-positioned > div \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 260 !important;[\s\S]*?max-height: var\(--expense-menu-max-height\) !important;/
+  );
+  assert.match(app, /function positionExpenseActionsMenu\(menu\)/);
+  assert.match(app, /const safeBottom = Math\.min\(viewportTop \+ viewportHeight, navTop\) - 8;/);
+  assert.match(app, /menu\.style\.setProperty\("--expense-menu-top"/);
+});
+
+test("close-event confirmation uses the branded floating card with an explicit dismiss control", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const confirmation = app.slice(
+    app.indexOf("function renderSettlementCloseConfirmation"),
+    app.indexOf("function renderTransferRow")
+  );
+
+  assert.match(confirmation, /class="settlement-close-confirmation-backdrop"/);
+  assert.match(confirmation, /role="alertdialog"/);
+  assert.match(confirmation, /aria-modal="true"/);
+  assert.match(confirmation, /class="app-toast-close settlement-close-confirmation-dismiss"/);
+  assert.match(confirmation, /data-action="cancel-close-event-confirmation"/);
+  assert.match(confirmation, /פעולה חשובה/);
+  assert.doesNotMatch(confirmation, /role="region"/);
+  assert.match(
+    coherenceLayer,
+    /\.settlement-close-confirmation-backdrop \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 240 !important;[\s\S]*?background: rgba\(7, 27, 24, 0\.14\) !important;/
+  );
+  assert.match(
+    coherenceLayer,
+    /\.settlement-close-confirmation \{[\s\S]*?background: #fbfefd !important;/
+  );
+  assert.doesNotMatch(
+    coherenceLayer.slice(coherenceLayer.indexOf("Close-event confirmation follows")),
+    /#fffaf2|139, 93, 37/
+  );
+});
+
 test("fixed navigation keeps a scrollable safe zone and large text cannot pan sideways", () => {
   assert.match(
     coherenceLayer,
