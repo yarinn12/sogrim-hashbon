@@ -803,7 +803,7 @@ async function assertExpenseStepStartsAtTop(page, step) {
 }
 
 async function assertDocumentDirection(page) {
-  await expect(page.locator("html")).toHaveAttribute("lang", "he");
+  await expect(page.locator("html")).toHaveAttribute("lang", "he-IL");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
 }
 

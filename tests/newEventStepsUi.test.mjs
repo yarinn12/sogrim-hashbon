@@ -149,7 +149,7 @@ test("event details open settlement before participant management", async () => 
   );
   assert.match(
     app,
-    /if \(action === "new-event-name" && newEventDraft\) \{[\s\S]*?newEventDraft\.name = target\.value;[\s\S]*?replaceBrowserHistoryState\(\)/
+    /if \(action === "new-event-name" && newEventDraft\) \{[\s\S]*?newEventDraft\.name = target\.value;[\s\S]*?scheduleBrowserHistoryReplacement\(\)/
   );
 });
 

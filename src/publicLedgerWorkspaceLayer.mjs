@@ -19171,6 +19171,33 @@ const CSS = `
     line-height: 1.35 !important;
   }
 
+  html.ledger-workspace-v1
+    .profile-identity-summary[data-profile-identity="username"]
+    .profile-identity-copy
+    > strong {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    display: block !important;
+    overflow: hidden !important;
+    direction: ltr !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    overflow-wrap: normal !important;
+  }
+
+  html.ledger-workspace-v1
+    .profile-identity-summary[data-profile-identity="username"]
+    .profile-identity-copy
+    > strong
+    > bdi {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    display: block !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+  }
+
   html.ledger-workspace-v1 .profile-identity-edit {
     flex: 0 0 auto !important;
     min-width: 44px !important;

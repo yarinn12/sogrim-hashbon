@@ -316,23 +316,46 @@ test("a long saved-name list stays searchable while creating an event", async ({
   await page
     .locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]')
     .click();
+  await expect(page.locator('[data-action="new-event-guest-name"]')).toBeFocused();
 
   for (let index = 1; index <= 16; index += 1) {
-    await page
-      .locator('[data-action="new-event-guest-name"]')
-      .fill(`חבר שמור ${index}`);
+    const guestName = page.locator('[data-action="new-event-guest-name"]');
+    await expect(guestName).toBeFocused();
+    await guestName.pressSequentially(`חבר שמור ${index}`, { delay: 2 });
+    await expect(guestName).toHaveValue(`חבר שמור ${index}`);
     await page.locator('[data-action="new-event-add-guest"]').click();
+    await expect(guestName).toHaveValue("");
   }
+  await page.evaluate(() => {
+    window.__newEventParticipantHistorySettled = false;
+    window.addEventListener("popstate", () => {
+      window.__newEventParticipantHistorySettled = true;
+    }, { once: true });
+  });
   await page.locator('[data-action="close-new-event-participant-view"]').click();
-  await page
-    .locator('[data-action="set-new-event-participant-view"][data-participant-view="friends"]')
-    .click();
+  await expect.poll(
+    () => page.evaluate(() => window.__newEventParticipantHistorySettled)
+  ).toBe(true);
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const friendsViewButton = page.locator(
+    '[data-action="set-new-event-participant-view"][data-participant-view="friends"]'
+  );
+  await expect(friendsViewButton).toBeVisible();
+  await friendsViewButton.focus();
+  await expect(friendsViewButton).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.locator('[data-new-event-participant-subview="friends"]')
+  ).toBeVisible();
 
   const participantSearch = page.locator(
     '[data-participant-search-for="new-event-participant"]'
   );
   await expect(participantSearch).toBeVisible();
-  await participantSearch.fill("חבר שמור 16");
+  await participantSearch.pressSequentially("חבר שמור 16", { delay: 10 });
+  await expect(participantSearch).toHaveValue("חבר שמור 16");
   await expect(
     page.locator(
       '[data-participant-checks-for="new-event-participant"] [data-participant-name]:visible'

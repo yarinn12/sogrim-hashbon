@@ -236,11 +236,14 @@ test("opening the profile clears notices from the previous task", async () => {
   assert.match(handler, /notice = "";/);
 });
 
-test("draft edits refresh the current browser history entry", async () => {
+test("draft edits safely coalesce browser history refreshes", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const inputHandler = sourceBetween(app, "function handleInput(event)", "async function handleChange");
 
-  assert.match(inputHandler, /replaceBrowserHistoryState\(\)/);
+  assert.match(inputHandler, /scheduleBrowserHistoryReplacement\(\)/);
+  assert.match(app, /function flushScheduledBrowserHistoryReplacement\(\)/);
+  assert.match(app, /async function handleClick\(event\) \{\s*flushScheduledBrowserHistoryReplacement\(\)/);
+  assert.match(app, /if \(error\?\.name !== "SecurityError"\) throw error/);
 });
 
 test("removing an earlier payer keeps the inline guest editor on the correct row", async () => {

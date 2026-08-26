@@ -417,6 +417,7 @@ let runtimeConfig = {
 let eventStatusFilter = "open";
 let appHistoryDepth = 0;
 let lastNavigationViewKey = "";
+let scheduledBrowserHistoryReplacement = null;
 let lastRenderedScreenKey = "";
 let lastCommittedScreenMarkup = "";
 let renderGeneration = 0;
@@ -775,15 +776,46 @@ function syncBrowserHistory() {
   if (key === lastNavigationViewKey) return;
 
   appHistoryDepth += 1;
-  window.history.pushState(createBrowserHistoryState(), "", window.location.href);
+  try {
+    window.history.pushState(createBrowserHistoryState(), "", window.location.href);
+  } catch (error) {
+    appHistoryDepth = Math.max(0, appHistoryDepth - 1);
+    if (error?.name !== "SecurityError") throw error;
+  }
   lastNavigationViewKey = key;
+}
+
+function scheduleBrowserHistoryReplacement() {
+  if (!window.history?.replaceState || scheduledBrowserHistoryReplacement !== null) return;
+
+  scheduledBrowserHistoryReplacement = window.setTimeout(() => {
+    scheduledBrowserHistoryReplacement = null;
+    replaceBrowserHistoryState();
+  }, 350);
+}
+
+function flushScheduledBrowserHistoryReplacement() {
+  if (scheduledBrowserHistoryReplacement === null) return;
+
+  window.clearTimeout(scheduledBrowserHistoryReplacement);
+  scheduledBrowserHistoryReplacement = null;
+  replaceBrowserHistoryState();
 }
 
 function replaceBrowserHistoryState() {
   if (!window.history?.replaceState) return;
 
-  window.history.replaceState(createBrowserHistoryState(), "", window.location.href);
-  lastNavigationViewKey = navigationViewKey();
+  if (scheduledBrowserHistoryReplacement !== null) {
+    window.clearTimeout(scheduledBrowserHistoryReplacement);
+    scheduledBrowserHistoryReplacement = null;
+  }
+  const key = navigationViewKey();
+  try {
+    window.history.replaceState(createBrowserHistoryState(), "", window.location.href);
+  } catch (error) {
+    if (error?.name !== "SecurityError") throw error;
+  }
+  lastNavigationViewKey = key;
 }
 
 function renderReplacingBrowserHistory() {
@@ -1265,8 +1297,18 @@ function currentFriendUsername() {
   return publicProfileUsername(currentFriendProfile());
 }
 
+function profileUsernameEditorReady() {
+  return friendNetworkAvailable(runtimeConfig) && friendNetwork.status === "ready";
+}
+
 function renderProfileUsernameField() {
-  if (!friendNetworkAvailable(runtimeConfig)) return "";
+  if (!friendNetworkAvailable(runtimeConfig)) {
+    return `
+      <div class="profile-username-status" role="status">
+        <span>עריכת שם המשתמש זמינה אחרי חיבור לחשבון.</span>
+      </div>
+    `;
+  }
   if (friendNetwork.status === "loading") {
     return `
       <div class="profile-username-status" role="status">
@@ -1275,7 +1317,13 @@ function renderProfileUsernameField() {
       </div>
     `;
   }
-  if (friendNetwork.status !== "ready") return "";
+  if (friendNetwork.status !== "ready") {
+    return `
+      <div class="profile-username-status" role="status">
+        <span>לא הצלחנו לטעון את שם המשתמש כרגע. אפשר לחזור ולנסות שוב.</span>
+      </div>
+    `;
+  }
 
   const usernameValue = profileUsernameDraft
     ? `@${profileUsernameDraft.replace(/^@+/, "")}`
@@ -1366,7 +1414,7 @@ function renderProfileSetup() {
                     profileUsernameEditing
                       ? `${renderProfileUsernameField()}
                         <div class="profile-field-actions">
-                          <button class="primary-button" data-action="save-profile">שמור</button>
+                          ${profileUsernameEditorReady() ? '<button class="primary-button" data-action="save-profile">שמור</button>' : ""}
                           <button class="secondary-button" type="button" data-action="cancel-profile-username-edit">ביטול</button>
                         </div>`
                       : `<div class="profile-identity-copy">
@@ -5805,6 +5853,20 @@ function renderEventShareDialog(event) {
     currentEventOpenInviteToken(event)
   );
   const shareFailed = preparationState.status === "error";
+  const shareAuthRequired = shareFailed && eventInviteAuthRefreshRequired(preparationState);
+  const shareNotAllowed = shareFailed && preparationState.code === "EVENT_INVITE_NOT_ALLOWED";
+  const shareCanRetry = shareFailed && !shareAuthRequired && !shareNotAllowed;
+  const shareUnavailableLabel = shareAuthRequired
+    ? "נדרשת התחברות"
+    : shareNotAllowed
+      ? "אין הרשאה לשתף"
+      : "הקישור לא זמין";
+  const shareFailureMessage = shareFailed
+    ? eventInvitePreparationNotice(
+        preparationState,
+        "לא הצלחנו להכין את הקישור כרגע. אפשר לבדוק את החיבור ולנסות שוב."
+      )
+    : "";
   const returnsToParticipants = ["participants", "participants-add"].includes(
     eventDialog?.returnKind
   );
@@ -5856,8 +5918,8 @@ function renderEventShareDialog(event) {
         <div class="event-share-link-status ${shareReady ? "is-ready" : shareFailed ? "is-error" : "is-loading"}" role="status">
           <span aria-hidden="true">${iconSvg(shareReady ? "check" : "share")}</span>
           <span>
-            <strong>${shareReady ? "הקישור מוכן" : shareFailed ? "לא הצלחנו לשמור את הקישור" : "מכינים את הקישור"}</strong>
-            <small>${shareReady ? "אפשר להעתיק או לשלוח בוואטסאפ." : shareFailed ? "האירוע נשמר. אפשר לנסות שוב בלי ליצור אירוע חדש." : "עוד רגע אפשר יהיה לשתף."}</small>
+            <strong>${shareReady ? "הקישור מוכן" : shareFailed ? shareUnavailableLabel : "מכינים את הקישור"}</strong>
+            <small>${shareReady ? "אפשר להעתיק או לשלוח בוואטסאפ." : shareFailed ? escapeHtml(shareFailureMessage) : "עוד רגע אפשר יהיה לשתף."}</small>
           </span>
         </div>
         <div class="invite-link-row">
@@ -5874,8 +5936,8 @@ function renderEventShareDialog(event) {
               class="primary-button whatsapp-button"
               data-action="share-invite-whatsapp"
               data-event-id="${escapeAttribute(event.id)}"
-              ${shareReady ? "" : 'disabled aria-disabled="true" aria-busy="true"'}
-            >${shareReady ? "שלח בוואטסאפ" : "מכין קישור…"}</button>
+              ${shareReady ? "" : shareFailed ? 'disabled aria-disabled="true"' : 'disabled aria-disabled="true" aria-busy="true"'}
+            >${shareReady ? "שלח בוואטסאפ" : shareFailed ? shareUnavailableLabel : "מכין קישור…"}</button>
             <button
               class="secondary-button"
               data-action="copy-invite"
@@ -5886,7 +5948,7 @@ function renderEventShareDialog(event) {
           </div>
         </div>
         ${
-          shareFailed
+          shareCanRetry
             ? `<button
                 class="secondary-button event-invite-retry-button"
                 type="button"
@@ -10520,6 +10582,7 @@ function openEventStatusMenu(eventId, trigger) {
 }
 
 async function handleClick(event) {
+  flushScheduledBrowserHistoryReplacement();
   const clickedTransientMenu = event.target.closest?.(
     ".expense-row-actions-menu, .settlement-more-actions, .event-cover-actions-menu"
   );
@@ -11230,8 +11293,17 @@ async function handleClick(event) {
   }
 
   if (action === "new-event-add-guest") {
-    if (newEventDraft) newEventDraft.participantView = "manual";
+    if (!newEventDraft) return;
+    newEventDraft.participantView = "manual";
+    const guestNameInput = app.querySelector('[data-action="new-event-guest-name"]');
+    if (guestNameInput instanceof HTMLInputElement) {
+      newEventDraft.guestName = guestNameInput.value;
+    }
     addGuestToDraft(newEventDraft);
+    const renderedGuestNameInput = app.querySelector('[data-action="new-event-guest-name"]');
+    if (renderedGuestNameInput instanceof HTMLInputElement) {
+      renderedGuestNameInput.value = newEventDraft.guestName;
+    }
     requestAnimationFrame(() => {
       if (document.activeElement?.matches?.('[data-action="participant-search"]')) {
         return;
@@ -12587,14 +12659,14 @@ function handleInput(event) {
     if (eventDialog?.kind !== "participant-rename") return;
     eventDialog.offlineNameDraft = target.value;
     eventDialog.error = "";
-    replaceBrowserHistoryState();
+    scheduleBrowserHistoryReplacement();
     return;
   }
   if (action === "participant-report-details") {
     if (eventDialog?.kind !== "participant-report") return;
     eventDialog.reportDetails = target.value;
     eventDialog.error = "";
-    replaceBrowserHistoryState();
+    scheduleBrowserHistoryReplacement();
     return;
   }
   if (action === "friends-new-offline-name") {
@@ -12615,12 +12687,12 @@ function handleInput(event) {
   }
   if (action === "new-event-name" && newEventDraft) {
     newEventDraft.name = target.value;
-    replaceBrowserHistoryState();
+    scheduleBrowserHistoryReplacement();
     return;
   }
   if (action === "new-event-guest-name" && newEventDraft) {
     newEventDraft.guestName = target.value;
-    replaceBrowserHistoryState();
+    scheduleBrowserHistoryReplacement();
     return;
   }
   if (action === "join-event-link") {
@@ -12692,7 +12764,7 @@ function handleInput(event) {
     rememberExpenseDraft();
   }
 
-  replaceBrowserHistoryState();
+  scheduleBrowserHistoryReplacement();
 }
 
 async function handleChange(event) {
@@ -16472,7 +16544,16 @@ function addPayerToExpenseDraft() {
 function applyExpenseTemplate(template) {
   if (!expenseDraft || !template) return;
 
-  expenseDraft.name = template;
+  const renderedNameInput = app.querySelector('[data-action="expense-name"]');
+  const currentName = String(
+    renderedNameInput instanceof HTMLInputElement
+      ? renderedNameInput.value
+      : expenseDraft.name ?? ""
+  ).trim();
+  expenseDraft.name = currentName;
+  if (!currentName || EXPENSE_TEMPLATES.includes(currentName)) {
+    expenseDraft.name = template;
+  }
   render();
   activateDialog(".expense-modal");
   requestAnimationFrame(() => {

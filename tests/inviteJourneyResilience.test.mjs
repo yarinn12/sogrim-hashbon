@@ -201,7 +201,10 @@ test("native sharing publishes new events without rewriting established shared e
   assert.match(app, /data-share-ready="\$\{shareReady\}"/);
   assert.match(app, /value="\$\{shareReady \? escapeAttribute\(inviteUrl\) : ""\}"/);
   assert.match(app, /type="hidden"\s+name="eventInviteUrl"/);
-  assert.match(app, /\$\{shareReady \? "" : 'disabled aria-disabled="true" aria-busy="true"'\}/);
+  assert.match(
+    app,
+    /shareFailed \? 'disabled aria-disabled="true"' : 'disabled aria-disabled="true" aria-busy="true"'/
+  );
   assert.match(app, /eventSharePreparationStates/);
   const publishBeforeInvite = app.slice(
     app.indexOf("async function prepareSharedEventForInvitation"),
@@ -228,7 +231,7 @@ test("native sharing publishes new events without rewriting established shared e
   );
 });
 
-test("a failed invite preparation explains the problem and retries in place", () => {
+test("a failed invite preparation explains the problem without looking busy", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const dialog = app.slice(
     app.indexOf("function renderEventShareDialog"),
@@ -241,8 +244,13 @@ test("a failed invite preparation explains the problem and retries in place", ()
 
   assert.match(dialog, /preparationState\.status === "verified"/);
   assert.match(dialog, /const shareFailed = preparationState\.status === "error"/);
-  assert.match(dialog, /לא הצלחנו לשמור את הקישור/);
-  assert.match(dialog, /האירוע נשמר\. אפשר לנסות שוב בלי ליצור אירוע חדש/);
+  assert.match(dialog, /const shareUnavailableLabel/);
+  assert.match(dialog, /הקישור לא זמין/);
+  assert.match(dialog, /const shareCanRetry/);
+  assert.match(
+    dialog,
+    /shareFailed \? 'disabled aria-disabled="true"' : 'disabled aria-disabled="true" aria-busy="true"'/
+  );
   assert.match(dialog, /data-action="retry-event-share"/);
   assert.match(retry, /const sharePreparation = prepareEventShare\(eventId\)/);
   assert.match(retry, /reactivateDialogAfterRender\("\.event-modal"\)/);

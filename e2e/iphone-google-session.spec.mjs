@@ -135,6 +135,9 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
   await page.goto("/?pwa_release=360");
   const googleButton = page.getByRole("button", { name: "המשך עם Google" });
   await expect(googleButton).toBeVisible();
+  await expect.poll(
+    () => page.evaluate(() => Boolean(window.__googleIdentityOptions))
+  ).toBe(true);
   expect(await page.evaluate(() => ({
     itpSupport: window.__googleIdentityOptions?.itp_support,
     fedCmButton: window.__googleIdentityOptions?.use_fedcm_for_button,
