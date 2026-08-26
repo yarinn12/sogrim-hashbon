@@ -533,13 +533,15 @@ test("inviting from participant management returns to the participant roster", a
     shareDialog,
     /\["participants", "participants-add"\]\.includes\(\s*eventDialog\?\.returnKind/
   );
-  assert.match(shareDialog, /backAction: returnsToParticipants/);
+  assert.match(shareDialog, /backAction: returnsToParentRoute/);
   assert.match(shareDialog, /\? "event-share-back"/);
   assert.match(shareDialog, /\? "event-share-view-back"/);
-  assert.match(shareDialog, /backLabel: returnsToParticipants/);
+  assert.match(shareDialog, /backLabel: returnsToParticipantLink/);
+  assert.match(shareDialog, /\? "חזרה לקישור החשבון"/);
+  assert.match(shareDialog, /: returnsToParticipants/);
   assert.match(shareDialog, /\? "חזרה למשתתפים"/);
   assert.match(shareDialog, /: "חזרה לדרכי ההזמנה"/);
-  assert.match(openDialog, /\["participants", "participants-add"\]\.includes\(eventDialog\.kind\)/);
+  assert.match(openDialog, /\["participants", "participants-add", "participant-link"\]\.includes\(eventDialog\.kind\)/);
   assert.match(openDialog, /returnKind,/);
   assert.match(goBack, /eventDialog\?\.kind === "share"/);
   assert.match(
@@ -747,6 +749,32 @@ test("offline names can be renamed from the event without changing participant i
   assert.match(design, /font-size: max\(16px, 1em\) !important/);
   assert.match(coherence, /\.event-participant-management\.is-offline/);
   assert.match(coherence, /\.event-participant-account-link-button/);
+});
+
+test("account linking can invite someone outside the friends list through the standard event invite", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const linkDialog = sourceBetween(
+    app,
+    "function renderEventParticipantLinkDialog(event)",
+    "function compareEventParticipantRoster"
+  );
+  const openDialog = sourceBetween(
+    app,
+    "function openEventDialogWithDetails(",
+    "function handleEventLongPressStart"
+  );
+
+  assert.match(linkDialog, /data-action="open-event-participant-link-invite"/);
+  assert.match(linkDialog, /WhatsApp, העתקת קישור או סריקת QR/);
+  assert.match(linkDialog, /class="event-share-choice event-share-route-list event-participant-link-invite"/);
+  assert.match(linkDialog, /candidates\.length/);
+  assert.match(app, /await openPreparedEventShare\(eventId, target, "link"\)/);
+  assert.match(openDialog, /returnKind === "participant-link"/);
+  assert.match(openDialog, /returnParticipantId/);
+  assert.doesNotMatch(
+    app,
+    /!canCurrentParticipantManage\(event\) \|\|\s*!linkableEventAccountParticipants\(event, participantId\)\.length/
+  );
 });
 
 test("participant manager keeps the roster calm and moves adding into one focused step", async () => {

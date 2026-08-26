@@ -65,7 +65,7 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }) => {
+test.beforeEach(async ({ page, request }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -85,8 +85,25 @@ test.beforeEach(async ({ page, request }) => {
     }
   });
 
+  const stateForTest = testInfo.title.includes("outside the friends list")
+    ? {
+        ...seededState,
+        participants: seededState.participants.filter((participant) => participant.id !== ACCOUNT_ID),
+        events: seededState.events.map((event) => ({
+          ...event,
+          participantIds: event.participantIds.filter((participantId) => participantId !== ACCOUNT_ID),
+          expenses: event.expenses.map((expense) => ({
+            ...expense,
+            sharedByParticipantIds: expense.sharedByParticipantIds.filter(
+              (participantId) => participantId !== ACCOUNT_ID
+            )
+          }))
+        }))
+      }
+    : seededState;
+
   await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+  await request.put("/api/state", { data: stateForTest });
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -101,7 +118,7 @@ test.beforeEach(async ({ page, request }) => {
     );
     localStorage.setItem("settle-friends-current-participant", participantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { participantId: OWNER_ID, state: seededState });
+  }, { participantId: OWNER_ID, state: stateForTest });
 
   await page.goto("/");
   await page
@@ -171,4 +188,33 @@ test("an offline name links to its connected account without losing money", asyn
   );
   expect(savedState.participants.some((participant) => participant.id === OFFLINE_ID)).toBe(false);
   expect(savedState.events[0].expenses[0].total).toBe(9_000);
+});
+
+test("an offline name can invite an account outside the friends list with the standard share tools", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .click();
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${OFFLINE_ID}"]`)
+    .click();
+
+  const profileDialog = page.locator('[data-participant-detail-view="offline"]');
+  await expect(profileDialog).toContainText("קישור לחשבון");
+  await profileDialog.locator('[data-action="open-event-participant-link"]').click();
+
+  const linkDialog = page.locator('.event-participant-link-screen');
+  const inviteAction = linkDialog.locator('[data-action="open-event-participant-link-invite"]');
+  await expect(inviteAction).toBeVisible();
+  await expect(inviteAction).toContainText("WhatsApp, העתקת קישור או סריקת QR");
+  await inviteAction.click();
+
+  const shareDialog = page.locator('[data-event-share-view="link"]');
+  await expect(shareDialog).toBeVisible();
+  await expect(shareDialog.locator('[data-action="share-invite-whatsapp"]')).toBeVisible();
+  await expect(shareDialog.locator('[data-action="copy-invite"]')).toBeVisible();
+  await expect(page.locator('.event-share-modal')).toContainText("קישור קבוע, WhatsApp או QR");
+
+  await page.locator('[data-action="event-share-back"]').click();
+  await expect(page.locator('.event-participant-link-screen')).toBeVisible();
+  await expect(page.locator('[data-action="open-event-participant-link-invite"]')).toBeVisible();
 });

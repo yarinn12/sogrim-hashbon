@@ -975,6 +975,13 @@ function historyEventDialogFocusSelector(previousDialog, restoredDialog) {
     return '[data-action="open-event-share"]';
   }
   if (
+    previousDialog?.kind === "share" &&
+    previousDialog.returnKind === "participant-link" &&
+    restoredDialog?.kind === "participant-link"
+  ) {
+    return '[data-action="open-event-participant-link-invite"]';
+  }
+  if (
     previousDialog?.kind === "participants-add" &&
     restoredDialog?.kind === "participants"
   ) {
@@ -5353,8 +5360,8 @@ function renderOfflineEventParticipantProfile(event, participant) {
               <strong>קישור לחשבון</strong>
               <small>${
                 linkCandidates.length
-                  ? "בחרו חשבון מחובר שכבר נמצא באירוע"
-                  : "האפשרות תיפתח לאחר שהחשבון יצטרף לאירוע"
+                  ? "בחרו חשבון שכבר באירוע או הזמינו חשבון חדש"
+                  : "הזמינו אותו ב-WhatsApp, בקישור או ב-QR"
               }</small>
             </span>
             <button
@@ -5363,8 +5370,8 @@ function renderOfflineEventParticipantProfile(event, participant) {
               data-action="open-event-participant-link"
               data-event-id="${escapeAttribute(event.id)}"
               data-participant-id="${escapeAttribute(participant.id)}"
-              ${canManage && linkCandidates.length ? "" : "disabled"}
-            >קשר</button>
+              ${canManage ? "" : "disabled"}
+            >פתח</button>
           </div>
           ${canChangeMembership ? renderEventParticipantRemovalRow(event, participant) : ""}
         </div>
@@ -5397,6 +5404,7 @@ function renderEventParticipantLinkDialog(event) {
   }
 
   const candidates = linkableEventAccountParticipants(event, participant.id);
+  const canInvite = canCurrentParticipantEdit(event) && !isEventClosed(event);
   return renderEventDialogShell({
     eyebrow: "",
     title: "קישור לחשבון",
@@ -5411,33 +5419,54 @@ function renderEventParticipantLinkDialog(event) {
       <section class="event-participant-link-screen">
         <div class="event-participant-link-intro">
           <strong>איזה חשבון שייך לאדם הזה?</strong>
-          <p>ההוצאות וההיסטוריה יאוחדו רק לאחר אישור נוסף.</p>
+          <p>${candidates.length ? "בחרו חשבון שכבר באירוע, או הזמינו את האדם להתחבר." : "הזמינו את האדם להתחבר, ולאחר שיצטרף תוכלו לקשר את החשבון."}</p>
         </div>
-        <div class="event-participant-link-list" role="list">
-          ${candidates
-            .map(
-              (candidate) => `
-                <button
-                  class="event-participant-link-candidate"
-                  type="button"
-                  role="listitem"
-                  data-action="link-offline-participant-account"
-                  data-event-id="${escapeAttribute(event.id)}"
-                  data-source-participant-id="${escapeAttribute(participant.id)}"
-                  data-target-participant-id="${escapeAttribute(candidate.id)}"
-                >
-                  ${renderAvatar(candidate.id, event)}
-                  <span>
-                    <strong>${escapeHtml(participantName(candidate.id, event))}</strong>
-                    ${renderParticipantUsername(candidate)}
-                    <small>משתמש בסוגרים חשבון</small>
-                  </span>
-                  <span class="event-participant-link-arrow" aria-hidden="true">${iconSvg("chevron-left")}</span>
-                </button>
-              `
-            )
-            .join("")}
-        </div>
+        <section class="event-share-choice event-share-route-list event-participant-link-invite" aria-label="הזמנת חשבון חדש">
+          <button
+            class="event-share-route-choice"
+            type="button"
+            data-action="open-event-participant-link-invite"
+            data-event-id="${escapeAttribute(event.id)}"
+            data-participant-id="${escapeAttribute(participant.id)}"
+            ${canInvite ? "" : 'disabled aria-disabled="true"'}
+          >
+            ${renderCommandIcon("share")}
+            <span>
+              <strong>הזמן אותו להתחבר</strong>
+              <small>${canInvite ? "WhatsApp, העתקת קישור או סריקת QR" : "כדי להזמין צריך לפתוח את האירוע לעריכה"}</small>
+            </span>
+            <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
+        </section>
+        ${
+          candidates.length
+            ? `<div class="event-participant-link-list" role="list" aria-label="חשבונות שכבר באירוע">
+                ${candidates
+                  .map(
+                    (candidate) => `
+                      <button
+                        class="event-participant-link-candidate"
+                        type="button"
+                        role="listitem"
+                        data-action="link-offline-participant-account"
+                        data-event-id="${escapeAttribute(event.id)}"
+                        data-source-participant-id="${escapeAttribute(participant.id)}"
+                        data-target-participant-id="${escapeAttribute(candidate.id)}"
+                      >
+                        ${renderAvatar(candidate.id, event)}
+                        <span>
+                          <strong>${escapeHtml(participantName(candidate.id, event))}</strong>
+                          ${renderParticipantUsername(candidate)}
+                          <small>משתמש בסוגרים חשבון</small>
+                        </span>
+                        <span class="event-participant-link-arrow" aria-hidden="true">${iconSvg("chevron-left")}</span>
+                      </button>
+                    `
+                  )
+                  .join("")}
+              </div>`
+            : ""
+        }
       </section>
     `
   });
@@ -5871,6 +5900,8 @@ function renderEventShareDialog(event) {
   const returnsToParticipants = ["participants", "participants-add"].includes(
     eventDialog?.returnKind
   );
+  const returnsToParticipantLink = eventDialog?.returnKind === "participant-link";
+  const returnsToParentRoute = returnsToParticipants || returnsToParticipantLink;
   const isShareRoute = shareView !== "menu";
   const dialogCopy = shareView === "friends"
     ? {
@@ -5895,14 +5926,16 @@ function renderEventShareDialog(event) {
     modalClass: "event-task-modal event-share-modal event-participant-route-modal",
     routeMode: true,
     showClose: false,
-    backAction: returnsToParticipants
+    backAction: returnsToParentRoute
       ? "event-share-back"
       : isShareRoute
         ? "event-share-view-back"
         : "",
-    backLabel: returnsToParticipants
-      ? "חזרה למשתתפים"
-      : "חזרה לדרכי ההזמנה",
+    backLabel: returnsToParticipantLink
+      ? "חזרה לקישור החשבון"
+      : returnsToParticipants
+        ? "חזרה למשתתפים"
+        : "חזרה לדרכי ההזמנה",
     body: shareView === "friends"
       ? renderEventShareFriends(event, canEdit)
       : shareView === "link"
@@ -10487,9 +10520,12 @@ function openEventDialogWithDetails(
   const returnKind =
     kind === "share" &&
     eventDialog?.eventId === eventId &&
-    ["participants", "participants-add"].includes(eventDialog.kind)
+    ["participants", "participants-add", "participant-link"].includes(eventDialog.kind)
       ? eventDialog.kind
       : "";
+  const returnParticipantId = returnKind === "participant-link"
+    ? eventDialog?.participantId
+    : "";
   rememberDialogReturnFocus(trigger);
   expenseDraft = null;
   eventDialog = {
@@ -10497,6 +10533,7 @@ function openEventDialogWithDetails(
     eventId,
     kind,
     returnKind,
+    ...(returnParticipantId ? { returnParticipantId } : {}),
     historyBaseDepth: Number.isFinite(eventDialog?.historyBaseDepth)
       ? eventDialog.historyBaseDepth
       : appHistoryDepth
@@ -11204,8 +11241,7 @@ async function handleClick(event) {
       !participant ||
       participantConnectionStatus(participant).connected ||
       !event.participantIds.includes(participantId) ||
-      !canCurrentParticipantManage(event) ||
-      !linkableEventAccountParticipants(event, participantId).length
+      !canCurrentParticipantManage(event)
     ) {
       return;
     }
@@ -11322,6 +11358,25 @@ async function handleClick(event) {
         .querySelector('[data-action="toggle-new-event-invite-after-create"]')
         ?.focus({ preventScroll: true });
     });
+    return;
+  }
+
+  if (action === "open-event-participant-link-invite") {
+    const eventId = target.dataset.eventId;
+    const participantId = target.dataset.participantId;
+    const event = getEvent(eventId);
+    const participant = state.participants.find((item) => item.id === participantId);
+    if (
+      !event ||
+      !participant ||
+      participantConnectionStatus(participant).connected ||
+      !event.participantIds.includes(participantId) ||
+      !canCurrentParticipantEdit(event) ||
+      isEventClosed(event)
+    ) {
+      return;
+    }
+    await openPreparedEventShare(eventId, target, "link");
     return;
   }
 
@@ -12317,6 +12372,25 @@ function goBackInApp() {
     ["participants", "participants-add"].includes(eventDialog.returnKind)
   ) {
     renderHistoryFallback();
+    return;
+  }
+
+  if (
+    eventDialog?.kind === "share" &&
+    eventDialog.returnKind === "participant-link"
+  ) {
+    const participantId = eventDialog.returnParticipantId;
+    eventDialog = {
+      eventId: eventDialog.eventId,
+      kind: "participant-link",
+      participantId,
+      historyBaseDepth: eventDialog.historyBaseDepth
+    };
+    renderHistoryFallback();
+    reactivateDialogAfterRender(
+      ".event-modal",
+      '[data-action="open-event-participant-link-invite"]'
+    );
     return;
   }
 

@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=366");
+  assert.equal(manifest.start_url, "./?pwa_release=367");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=366&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=367&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
@@ -59,7 +59,7 @@ test("index links the manifest and mobile app metadata", async () => {
 
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=366"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=367"/
   );
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
@@ -70,9 +70,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.doesNotMatch(html, /interactive-widget/);
   assert.match(html, /rel="icon" href="\.\/icon-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=366"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=366"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=366/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=367"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=367"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=367/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -135,7 +135,7 @@ test("service worker loads heavy brand media on demand and reuses it", async () 
 test("service worker precaches every browser module used by the public app", async () => {
   const html = await readFile("index.html", "utf8");
   const sw = await readFile("sw.js", "utf8");
-  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=366)?"><\/script>/g)]
+  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=367)?"><\/script>/g)]
     .map((match) => match[1]);
   const modulePaths = await collectBrowserModules(entryPaths);
 
@@ -251,8 +251,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=366"/);
-  assert.match(recovery, /const PWA_RELEASE = "366"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=367"/);
+  assert.match(recovery, /const PWA_RELEASE = "367"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);

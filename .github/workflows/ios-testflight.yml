@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.90"
+        default: "3.91"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "117"
+        default: "118"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "הודעת הסרת משתתף משתמשת כעת בהתראה הצפה והאחידה של האפליקציה, עם כפתור סגירה ברור."
+        default: "בקישור חשבון אפשר כעת להזמין אדם שאינו ברשימת החברים באמצעות WhatsApp, קישור קבוע או QR."
 
 permissions:
   contents: read
