@@ -452,8 +452,10 @@ let appBootHydrationPromise = null;
 let appBootHydrated = false;
 
 app.addEventListener("click", handleClick);
+app.addEventListener("keydown", handleParticipantAvatarKeydown);
 app.addEventListener("input", handleInput);
 app.addEventListener("change", handleChange);
+app.addEventListener("selectstart", handleTextSelectionStart);
 app.addEventListener("toggle", handleTransientMenuToggle, true);
 app.addEventListener("pointerdown", handleEventLongPressStart);
 app.addEventListener("pointermove", handleEventLongPressMove);
@@ -751,7 +753,7 @@ function ensureRenderableScreen() {
 
   if (
     screen.name === "friend-profile" &&
-    !isAcceptedNetworkFriendParticipant(screen.participantId)
+    !canOpenParticipantStatistics(screen.participantId)
   ) {
     screen = { name: "groups", tab: "people" };
     return;
@@ -2798,19 +2800,21 @@ function friendProfileForRelationship(friendship) {
   );
 }
 
-function renderFriendProfileAvatar(profile) {
+function renderFriendProfileAvatar(profile, participantId = "") {
   const preset =
     normalizeAvatarPreset(profile?.avatar_preset) || AVATAR_PRESETS[0].id;
   const source =
     normalizeAvatarImage(profile?.avatar_image) || avatarPresetSource(preset);
+  const displayName = String(profile?.display_name ?? "משתמש").trim() || "משתמש";
+  const opensStatistics = canOpenParticipantStatistics(participantId);
   return `
     <span
-      class="avatar has-picture is-account"
+      class="avatar has-picture is-account ${opensStatistics ? "is-participant-statistics-action" : ""}"
       data-avatar-preset="${preset}"
       data-participant-identity="account"
-      aria-hidden="true"
+      ${participantStatisticsAvatarAttributes(participantId, displayName)}
     >
-      <img src="${source}" alt="" width="256" height="256" loading="lazy" decoding="async" />
+      <img src="${escapeAttribute(source)}" alt="" width="256" height="256" loading="lazy" decoding="async" />
     </span>
   `;
 }
@@ -2974,21 +2978,15 @@ function renderNetworkFriendRow(friendship) {
       class="friend-row is-connected"
       data-friend-name="${escapeAttribute(searchableIdentity)}"
     >
-      <button
-        class="friend-row-person friend-row-profile-button"
-        data-action="open-friend-profile"
-        data-participant-id="${participantId}"
-        type="button"
-        aria-label="פתח את הקשר עם ${escapeAttribute(profile.display_name)}"
-      >
-        ${renderFriendProfileAvatar(profile)}
+      <span class="friend-row-person">
+        ${renderFriendProfileAvatar(profile, participantId)}
         <span class="friend-row-copy">
           <span class="friend-row-name">
             <strong>${escapeHtml(profile.display_name)}</strong>
           </span>
           ${username ? `<bdi class="friend-username" dir="ltr">${escapeHtml(username)}</bdi>` : ""}
         </span>
-      </button>
+      </span>
       <button
         class="friend-remove-button"
         data-action="remove-network-friend"
@@ -3004,10 +3002,8 @@ function renderNetworkFriendRow(friendship) {
 }
 
 function renderFriendRelationshipProfile() {
-  const participant = state.participants.find(
-    (item) => item.id === screen.participantId
-  );
-  if (!participant || !isAcceptedNetworkFriendParticipant(participant.id)) {
+  const participant = participantForStatistics(screen.participantId);
+  if (!participant || !canOpenParticipantStatistics(participant.id)) {
     screen = { name: "groups", tab: "people" };
     return renderGroups();
   }
@@ -3028,6 +3024,11 @@ function renderFriendRelationshipProfile() {
     transfers: []
   };
   const targetName = participant.displayName;
+  const acceptedFriend = isAcceptedNetworkFriendParticipant(participant.id);
+  const identityClass = participantConnectionStatus(participant).connected
+    ? "is-account"
+    : "is-offline";
+  const identityView = identityClass === "is-account" ? "account" : "offline";
   const insights = buildParticipantRelationshipInsights({
     events: sharedEvents,
     currentParticipantId: state.currentParticipantId,
@@ -3045,7 +3046,7 @@ function renderFriendRelationshipProfile() {
       <header class="top">
         ${renderAppBackButton()}
         <div class="brand">
-          <p class="eyebrow">חברים</p>
+          <p class="eyebrow">סטטיסטיקה משותפת</p>
           <h1>הקשר עם ${escapeHtml(targetName)}</h1>
           <p class="muted">הפעילות המשותפת שלכם במקום אחד.</p>
         </div>
@@ -3053,8 +3054,8 @@ function renderFriendRelationshipProfile() {
       ${renderNotice()}
       <main class="friend-relationship-content">
         <section
-          class="event-participant-profile-card event-participant-detail event-participant-relationship is-account"
-          data-participant-detail-view="account"
+          class="event-participant-profile-card event-participant-detail event-participant-relationship ${identityClass}"
+          data-participant-detail-view="${identityView}"
           data-participant-id="${escapeAttribute(participant.id)}"
         >
           <header class="event-participant-profile-identity event-participant-detail-identity relationship-identity-card">
@@ -3063,7 +3064,9 @@ function renderFriendRelationshipProfile() {
               <strong>${escapeHtml(targetName)}</strong>
               ${renderParticipantUsername(participant)}
             </div>
-            <span class="relationship-friendship-badge is-accepted">חבר</span>
+            ${acceptedFriend
+              ? '<span class="relationship-friendship-badge is-accepted">חבר</span>'
+              : renderParticipantConnectionBadge(participant)}
           </header>
           ${renderParticipantRelationshipScorecard(
             contextEvent,
@@ -3089,9 +3092,46 @@ function isAcceptedNetworkFriendParticipant(participantId) {
   );
 }
 
+function participantForStatistics(participantId) {
+  const normalizedId = String(participantId ?? "").trim();
+  const savedParticipant = state.participants.find(
+    (participant) => participant.id === normalizedId
+  );
+  if (savedParticipant) return savedParticipant;
+
+  const userId = accountUserIdFromParticipantId(normalizedId);
+  const profile = userId
+    ? (friendNetwork.profiles ?? []).find((item) => item.user_id === userId)
+    : null;
+  if (!profile?.display_name) return null;
+
+  return {
+    id: normalizedId,
+    displayName: profile.display_name,
+    username: publicProfileUsername(profile),
+    kind: "member",
+    accountLinked: true,
+    authSubject: userId,
+    avatarPreset: normalizeAvatarPreset(profile.avatar_preset),
+    avatarImage: normalizeAvatarImage(profile.avatar_image),
+    avatarImageUpdatedAt: profile.avatar_image_updated_at,
+    profileUpdatedAt: profile.updated_at
+  };
+}
+
+function canOpenParticipantStatistics(participantId) {
+  const normalizedId = String(participantId ?? "").trim();
+  return Boolean(
+    normalizedId &&
+    normalizedId !== state.currentParticipantId &&
+    participantForStatistics(normalizedId)
+  );
+}
+
 function renderPendingFriendRow(friendship, direction) {
   const profile = friendProfileForRelationship(friendship);
   if (!profile) return "";
+  const participantId = `account-${profile.user_id}`;
   const busy = friendNetworkBusyAction === friendship.id;
   const username = formatUsername(publicProfileUsername(profile));
   const searchableIdentity = [profile.display_name, username]
@@ -3104,7 +3144,7 @@ function renderPendingFriendRow(friendship, direction) {
       data-friend-name="${escapeAttribute(searchableIdentity)}"
     >
       <span class="friend-row-person">
-        ${renderFriendProfileAvatar(profile)}
+        ${renderFriendProfileAvatar(profile, participantId)}
         <span class="friend-row-copy">
           <span class="friend-row-name"><strong>${escapeHtml(profile.display_name)}</strong></span>
           ${username ? `<bdi class="friend-username" dir="ltr">${escapeHtml(username)}</bdi>` : ""}
@@ -10640,6 +10680,7 @@ function openEventDialogWithDetails(
 
 function handleEventLongPressStart(event) {
   if (!event.isPrimary || event.button !== 0) return;
+  if (event.target.closest('[data-action="open-participant-statistics"]')) return;
   if (event.target.closest('[data-action="event-status-select"]')) return;
 
   const target = event.target.closest('[data-long-press-event="true"][data-event-id]');
@@ -10680,16 +10721,65 @@ function cancelEventLongPress() {
 }
 
 function handleEventContextMenu(event) {
+  if (isEditableTextTarget(event.target)) return;
+
+  event.preventDefault();
+  if (event.target.closest('[data-action="open-participant-statistics"]')) return;
   if (event.target.closest('[data-action="event-status-select"]')) return;
 
   const target = event.target.closest('[data-long-press-event="true"][data-event-id]');
   if (!target) return;
 
-  event.preventDefault();
   cancelEventLongPress();
   suppressedEventOpenId = target.dataset.eventId;
   suppressEventOpenUntil = performance.now() + 900;
   openEventStatusMenu(target.dataset.eventId, target);
+}
+
+function isEditableTextTarget(target) {
+  const control = target?.closest?.(
+    'input, textarea, [contenteditable], [role="textbox"]'
+  );
+  if (!control) return false;
+  if (control.matches("textarea")) {
+    return !control.readOnly && !control.disabled;
+  }
+  if (control.matches("input")) {
+    return (
+      !control.readOnly &&
+      !control.disabled &&
+      ![
+        "button",
+        "checkbox",
+        "color",
+        "file",
+        "hidden",
+        "image",
+        "radio",
+        "range",
+        "reset",
+        "submit"
+      ].includes(control.type)
+    );
+  }
+  if (control.matches('[role="textbox"]')) {
+    return control.getAttribute("aria-readonly") !== "true";
+  }
+  return control.isContentEditable;
+}
+
+function handleTextSelectionStart(event) {
+  if (!isEditableTextTarget(event.target)) event.preventDefault();
+}
+
+function handleParticipantAvatarKeydown(event) {
+  const avatar = event.target.closest?.(
+    '.avatar[data-action="open-participant-statistics"]'
+  );
+  if (!avatar || !["Enter", " "].includes(event.key)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  avatar.click();
 }
 
 function openEventStatusMenu(eventId, trigger) {
@@ -11190,9 +11280,29 @@ async function handleClick(event) {
 
   if (action === "open-friend-profile") {
     const participantId = target.dataset.participantId;
-    if (!isAcceptedNetworkFriendParticipant(participantId)) return;
+    if (!canOpenParticipantStatistics(participantId)) return;
     notice = "";
     screen = { name: "friend-profile", participantId };
+    render();
+    return;
+  }
+
+  if (action === "open-participant-statistics") {
+    event.preventDefault();
+    event.stopPropagation();
+    const participantId = target.dataset.participantId;
+    if (!canOpenParticipantStatistics(participantId)) return;
+    if (
+      screen.name === "friend-profile" &&
+      screen.participantId === participantId
+    ) {
+      return;
+    }
+    notice = "";
+    screen = { name: "friend-profile", participantId };
+    expenseDraft = null;
+    eventDialog = null;
+    eventStatusMenu = null;
     render();
     return;
   }
@@ -19616,7 +19726,7 @@ function renderAvatarStack(participantIds, event = null) {
 }
 
 function renderAvatar(participantId, event = null) {
-  const participant = state.participants.find((item) => item.id === participantId);
+  const participant = participantForStatistics(participantId);
   const name = event
     ? participantName(participantId, event)
     : participant?.displayName ?? "משתתף";
@@ -19627,8 +19737,19 @@ function renderAvatar(participantId, event = null) {
   const identityClass = identity.connected ? "is-account" : "is-offline";
   const avatarPreset = avatarPresetForParticipant(participant, participantId);
   const avatarSource = avatarSourceForParticipant(participant, participantId);
+  const opensStatistics = canOpenParticipantStatistics(participantId);
+  const eventId = event?.id ?? "";
 
-  return `<span class="avatar has-picture ${guestClass} ${identityClass}" data-avatar-preset="${avatarPreset}" data-participant-identity="${identity.connected ? "account" : "offline"}" title="${escapeAttribute(`${name} · ${identity.label}`)}" aria-hidden="true"><img src="${escapeAttribute(avatarSource)}" alt="" width="256" height="256" loading="lazy" decoding="async" /></span>`;
+  return `<span class="avatar has-picture ${guestClass} ${identityClass} ${opensStatistics ? "is-participant-statistics-action" : ""}" data-avatar-preset="${avatarPreset}" data-participant-identity="${identity.connected ? "account" : "offline"}" title="${escapeAttribute(`${name} · ${identity.label}`)}" ${participantStatisticsAvatarAttributes(participantId, name, eventId)}><img src="${escapeAttribute(avatarSource)}" alt="" width="256" height="256" loading="lazy" decoding="async" /></span>`;
+}
+
+function participantStatisticsAvatarAttributes(
+  participantId,
+  displayName,
+  eventId = ""
+) {
+  if (!canOpenParticipantStatistics(participantId)) return 'aria-hidden="true"';
+  return `data-action="open-participant-statistics" data-participant-id="${escapeAttribute(participantId)}" ${eventId ? `data-event-id="${escapeAttribute(eventId)}"` : ""} role="button" tabindex="0" aria-label="${escapeAttribute(`פתיחת הסטטיסטיקה בינך לבין ${displayName}`)}"`;
 }
 
 function canCurrentParticipantEdit(event) {

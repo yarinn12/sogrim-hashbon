@@ -137,6 +137,78 @@ test.afterEach(() => {
   expect(runtimeIssues, "the core mobile journey must not emit browser runtime errors").toEqual([]);
 });
 
+test("another person's picture alone opens shared statistics while editable text stays selectable", async ({
+  page
+}) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const participantRow = page.locator(
+    `[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`
+  );
+  const participantAvatar = participantRow.locator(
+    '.avatar[data-action="open-participant-statistics"]'
+  );
+  await expect(participantAvatar).toHaveAttribute("role", "button");
+  await expect(participantAvatar).toHaveAttribute("tabindex", "0");
+  await expect(
+    participantRow.locator(".event-participant-person-copy")
+  ).not.toHaveAttribute("data-action", "open-participant-statistics");
+
+  await participantAvatar.click();
+  const statisticsScreen = page.locator(
+    `.friend-relationship-screen[data-friend-profile-id="${MAOR_ID}"]`
+  );
+  await expect(statisticsScreen).toBeVisible();
+  await expect(statisticsScreen.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  if (process.env.CAPTURE_PARTICIPANT_STATS === "1") {
+    await page.screenshot({
+      path: `design-audits/participant-statistics-${test.info().project.name}.png`,
+      fullPage: false
+    });
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+    await page.evaluate(() => document.documentElement.clientWidth)
+  );
+  const headingSelection = await statisticsScreen.locator("h1").evaluate((element) => {
+    const styles = getComputedStyle(element);
+    const event = new Event("selectstart", { bubbles: true, cancelable: true });
+    return {
+      canceled: !element.dispatchEvent(event),
+      css: styles.userSelect || styles.webkitUserSelect
+    };
+  });
+  expect(headingSelection).toEqual({ canceled: true, css: "none" });
+
+  await page.goBack();
+  await expect(participantRow).toBeVisible();
+  await participantRow.locator(".event-participant-person-copy").click();
+  await expect(page.locator(".event-participant-management-modal")).toBeVisible();
+
+  await page.goBack();
+  await page.goBack();
+  await page
+    .locator(`[data-action="show-expense-form"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  const editableAmount = page.locator('[data-action="expense-total"]');
+  const editableSelection = await editableAmount.evaluate((element) => {
+    const styles = getComputedStyle(element);
+    const event = new Event("selectstart", { bubbles: true, cancelable: true });
+    return {
+      canceled: !element.dispatchEvent(event),
+      css: styles.userSelect || styles.webkitUserSelect
+    };
+  });
+  expect(editableSelection).toEqual({ canceled: false, css: "text" });
+});
+
 test("iPad event screens use the tablet canvas instead of a phone column", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit");
   await page

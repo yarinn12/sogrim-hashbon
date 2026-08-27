@@ -87,7 +87,7 @@ test("friends roster clearly separates connected accounts from offline names", a
   assert.match(app, /renderParticipantConnectionBadge\(participant\)/);
 });
 
-test("connected friends open the approved relationship statistics route", async () => {
+test("participant pictures alone open the approved relationship statistics route", async () => {
   const [app, layer] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
@@ -102,8 +102,9 @@ test("connected friends open the approved relationship statistics route", async 
     app.indexOf("function isAcceptedNetworkFriendParticipant")
   );
 
-  assert.match(networkRow, /data-action="open-friend-profile"/);
-  assert.match(networkRow, /data-participant-id="\$\{participantId\}"/);
+  assert.match(networkRow, /<span class="friend-row-person">/);
+  assert.match(networkRow, /renderFriendProfileAvatar\(profile, participantId\)/);
+  assert.doesNotMatch(networkRow, /data-action="open-friend-profile"/);
   assert.match(networkRow, /data-action="remove-network-friend"/);
   assert.doesNotMatch(networkRow, /חבר מאושר/);
   assert.doesNotMatch(networkRow, /משתמש מחובר · אפשר לצרף/);
@@ -117,9 +118,10 @@ test("connected friends open the approved relationship statistics route", async 
   assert.doesNotMatch(friendProfile, /renderParticipantRelationshipBalance/);
   assert.match(
     app,
-    /screen\.name === "friend-profile" &&[\s\S]*?!isAcceptedNetworkFriendParticipant\(screen\.participantId\)[\s\S]*?screen = \{ name: "groups", tab: "people" \}/
+    /screen\.name === "friend-profile" &&[\s\S]*?!canOpenParticipantStatistics\(screen\.participantId\)[\s\S]*?screen = \{ name: "groups", tab: "people" \}/
   );
-  assert.match(layer, /\.friend-row-profile-button/);
+  assert.match(layer, /\.avatar\.is-participant-statistics-action/);
+  assert.doesNotMatch(layer, /\.friend-row-profile-button/);
   assert.match(layer, /\.friend-relationship-content/);
 });
 

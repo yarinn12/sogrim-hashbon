@@ -84,7 +84,35 @@ test("participant avatars render branded images instead of initials", async () =
   assert.match(renderer, /avatarPresetForParticipant/);
   assert.match(renderer, /class="avatar has-picture/);
   assert.match(renderer, /<img src="\$\{escapeAttribute\(avatarSource\)\}"/);
+  assert.match(renderer, /participantStatisticsAvatarAttributes\(participantId, name, eventId\)/);
   assert.doesNotMatch(renderer, /participantInitials|escapeHtml\(name\)/);
+});
+
+test("only another participant's picture opens the shared statistics screen", async () => {
+  const [app, layer] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+  ]);
+  const attributes = app.slice(
+    app.indexOf("function participantStatisticsAvatarAttributes"),
+    app.indexOf("function canCurrentParticipantEdit")
+  );
+  const action = app.slice(
+    app.indexOf('if (action === "open-participant-statistics")'),
+    app.indexOf('if (action === "friend-add-mode")')
+  );
+
+  assert.match(attributes, /if \(!canOpenParticipantStatistics\(participantId\)\) return 'aria-hidden="true"'/);
+  assert.match(attributes, /data-action="open-participant-statistics"/);
+  assert.match(attributes, /role="button" tabindex="0"/);
+  assert.match(attributes, /פתיחת הסטטיסטיקה בינך לבין/);
+  assert.match(action, /event\.preventDefault\(\)/);
+  assert.match(action, /event\.stopPropagation\(\)/);
+  assert.match(action, /screen = \{ name: "friend-profile", participantId \}/);
+  assert.match(app, /function handleParticipantAvatarKeydown\(event\)/);
+  assert.match(layer, /\.avatar\.is-participant-statistics-action:active \{[\s\S]*?scale: 0\.96 !important/);
+  assert.match(layer, /width: max\(100%, 44px\) !important/);
+  assert.match(layer, /height: max\(100%, 44px\) !important/);
 });
 
 test("every signed-in screen carries the selected profile picture and greeting into the app header", async () => {

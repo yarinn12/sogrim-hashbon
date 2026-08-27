@@ -7,6 +7,26 @@ const ledger = readFileSync("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 const mobileModal = readFileSync("src/publicMobileModalLayer.mjs", "utf8");
 const inviteJoinLayer = readFileSync("src/publicInviteJoinFixLayer.mjs", "utf8");
 
+test("long-press text selection stays limited to live editing fields", () => {
+  assert.match(app, /app\.addEventListener\("selectstart", handleTextSelectionStart\)/);
+  assert.match(
+    app,
+    /function handleTextSelectionStart\(event\) \{[\s\S]*?if \(!isEditableTextTarget\(event\.target\)\) event\.preventDefault\(\)/
+  );
+  assert.match(
+    app,
+    /function handleEventContextMenu\(event\) \{[\s\S]*?if \(isEditableTextTarget\(event\.target\)\) return;[\s\S]*?event\.preventDefault\(\)/
+  );
+  assert.match(
+    ledger,
+    /Long-press text tools are reserved for fields that can actually be edited\.[\s\S]*?html\.ledger-workspace-v1 body,[\s\S]*?-webkit-user-select: none !important;[\s\S]*?-webkit-touch-callout: none !important/
+  );
+  assert.match(
+    ledger,
+    /textarea:not\(\[readonly\]\):not\(\[disabled\]\),[\s\S]*?\[contenteditable="true"\],[\s\S]*?-webkit-user-select: text !important;[\s\S]*?-webkit-touch-callout: default !important/
+  );
+});
+
 test("every money field opens a numeric keypad and stays LTR", () => {
   for (const action of ["expense-total", "expense-payer-amount", "quick-item-amount"]) {
     const field = app.slice(app.indexOf(`data-action="${action}"`));

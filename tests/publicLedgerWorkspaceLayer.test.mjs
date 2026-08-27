@@ -793,7 +793,7 @@ test("shared route and progress controls keep Android touch targets at least 44p
   );
   assert.match(
     layer,
-    /Final mobile touch-target guardrails[\s\S]*?\.friend-row-profile-button \{[\s\S]*?min-height: 44px !important/
+    /Participant statistics belong to the picture itself[\s\S]*?\.avatar\.is-participant-statistics-action::after \{[\s\S]*?width: max\(100%, 44px\) !important;[\s\S]*?height: max\(100%, 44px\) !important/
   );
 });
 

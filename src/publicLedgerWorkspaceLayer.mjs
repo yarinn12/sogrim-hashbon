@@ -14241,31 +14241,6 @@ const CSS = `
     gap: 16px !important;
   }
 
-  html.ledger-workspace-v1 .friend-row-profile-button {
-    min-width: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    color: inherit !important;
-    background: transparent !important;
-    font: inherit !important;
-    text-align: start !important;
-    cursor: pointer !important;
-    border-radius: 14px !important;
-  }
-
-  html.ledger-workspace-v1 .friend-row-profile-button:hover {
-    background: var(--ledger-accent-soft) !important;
-  }
-
-  html.ledger-workspace-v1 .friend-row-profile-button:active {
-    transform: translateY(1px) !important;
-  }
-
-  html.ledger-workspace-v1 .friend-row-profile-button:focus-visible {
-    outline: 3px solid rgba(24, 151, 132, 0.24) !important;
-    outline-offset: 4px !important;
-  }
-
   html.ledger-workspace-v1 .friend-relationship-content {
     width: min(100%, 440px) !important;
     margin-inline: auto !important;
@@ -17611,10 +17586,6 @@ const CSS = `
     min-height: 44px !important;
   }
 
-  html.ledger-workspace-v1 .friend-row-profile-button {
-    min-height: 44px !important;
-  }
-
   /* Profile image sources follow the same compact task pattern as event images. */
   html.ledger-workspace-v1 .profile-avatar-picker-body {
     display: grid !important;
@@ -19324,6 +19295,74 @@ const CSS = `
     text-overflow: clip !important;
     -webkit-box-orient: vertical !important;
     -webkit-line-clamp: 2 !important;
+  }
+
+  /* Participant statistics belong to the picture itself, never the surrounding row. */
+  html.ledger-workspace-v1 .avatar.is-participant-statistics-action {
+    position: relative !important;
+    z-index: 1 !important;
+    cursor: pointer !important;
+    touch-action: manipulation !important;
+    scale: 1 !important;
+    transition-property: scale, box-shadow !important;
+    transition-duration: 160ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .avatar.is-participant-statistics-action::after {
+    content: "" !important;
+    position: absolute !important;
+    inset-block-start: 50% !important;
+    inset-inline-start: 50% !important;
+    width: max(100%, 44px) !important;
+    height: max(100%, 44px) !important;
+    border-radius: 50% !important;
+    transform: translate(50%, -50%) !important;
+  }
+
+  html[dir="ltr"].ledger-workspace-v1
+    .avatar.is-participant-statistics-action::after {
+    transform: translate(-50%, -50%) !important;
+  }
+
+  html.ledger-workspace-v1
+    .avatar-stack
+    .avatar.is-participant-statistics-action::after {
+    width: 100% !important;
+    height: 100% !important;
+  }
+
+  html.ledger-workspace-v1 .avatar.is-participant-statistics-action:active {
+    scale: 0.96 !important;
+  }
+
+  html.ledger-workspace-v1
+    .avatar.is-participant-statistics-action:focus-visible {
+    outline: 3px solid rgba(34, 174, 178, 0.34) !important;
+    outline-offset: 3px !important;
+  }
+
+  /* Long-press text tools are reserved for fields that can actually be edited. */
+  html.ledger-workspace-v1 body,
+  html.ledger-workspace-v1 body * {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+    -webkit-touch-callout: none !important;
+  }
+
+  html.ledger-workspace-v1
+    body
+    :is(
+      input:not([readonly]):not([disabled]):not([type="button"]):not([type="checkbox"]):not([type="color"]):not([type="file"]):not([type="hidden"]):not([type="image"]):not([type="radio"]):not([type="range"]):not([type="reset"]):not([type="submit"]),
+      textarea:not([readonly]):not([disabled]),
+      [contenteditable=""],
+      [contenteditable="true"],
+      [contenteditable="plaintext-only"],
+      [role="textbox"]:not([aria-readonly="true"])
+    ) {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    -webkit-touch-callout: default !important;
   }
 
   /* Approved QA decision: the signed-out gift state uses the full mobile canvas intentionally. */

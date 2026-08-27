@@ -362,7 +362,11 @@ test("friends and requests remain distinct while groups stay hidden without data
 });
 
 test("friend relationship stays readable and legacy group routes return to friends", async ({ page }) => {
-  await page.locator('[data-action="open-friend-profile"]').click();
+  await page
+    .locator(
+      '[data-friend-identity-section="connected"] .avatar[data-action="open-participant-statistics"]'
+    )
+    .click();
   await expect(page.locator('[data-friend-profile-id]')).toBeVisible();
   await expect(page.getByText("אתם במספרים", { exact: true })).toBeVisible();
   await assertNoHorizontalOverflow(page);
