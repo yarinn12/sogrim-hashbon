@@ -17165,13 +17165,6 @@ const CSS = `
     margin-block-end: 0 !important;
   }
 
-  html.ledger-workspace-v1 body #app
-    .screen.product-empty-home[data-screen-kind="home"]
-    > .top {
-    min-height: 250px !important;
-    padding-bottom: 76px !important;
-  }
-
   html.ledger-workspace-v1 .product-home-screen .home-quick-actions {
     position: relative !important;
     z-index: 4 !important;
@@ -17181,12 +17174,6 @@ const CSS = `
     justify-items: center !important;
     gap: 0 !important;
     margin: -74px 0 16px !important;
-  }
-
-  html.ledger-workspace-v1 body #app
-    .screen.product-empty-home
-    .home-quick-actions {
-    margin: -104px 0 16px !important;
   }
 
   html.ledger-workspace-v1 body #app
@@ -17212,12 +17199,6 @@ const CSS = `
       padding-inline: 28px !important;
     }
 
-    html.ledger-workspace-v1 body #app
-      .screen.product-empty-home[data-screen-kind="home"]
-      > .top {
-      min-height: 270px !important;
-      padding: 34px 34px 76px !important;
-    }
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-benefit-actions {

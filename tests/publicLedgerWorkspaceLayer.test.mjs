@@ -797,7 +797,7 @@ test("shared route and progress controls keep Android touch targets at least 44p
   );
 });
 
-test("home makes the new-event action primary without separating it from the hero", async () => {
+test("home makes the new-event action primary and keeps the empty state on the same hero geometry", async () => {
   const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
   assert.match(
@@ -810,11 +810,17 @@ test("home makes the new-event action primary without separating it from the her
   );
   assert.match(
     layer,
-    /\.screen\.product-empty-home[\s\S]*?\.home-quick-actions \{[\s\S]*?margin: -104px 0 16px !important/
+    /\.screen\.product-empty-home\[data-screen-kind="home"\][\s\S]*?> \.top \{[\s\S]*?min-height: 180px !important/
   );
   assert.match(
     layer,
-    /@media \(min-width: 721px\) and \(max-width: 1024px\),[\s\S]*?max-width: 960px !important;[\s\S]*?min-height: 270px !important/
+    /@media \(max-width: 720px\) \{[\s\S]*?\.screen\.product-empty-home\[data-screen-kind="home"\][\s\S]*?> \.top,[\s\S]*?min-height: 164px !important/
+  );
+  assert.doesNotMatch(layer, /min-height: 250px !important/);
+  assert.doesNotMatch(layer, /margin: -104px 0 16px !important/);
+  assert.match(
+    layer,
+    /@media \(min-width: 721px\) and \(max-width: 1024px\),[\s\S]*?max-width: 960px !important/
   );
   assert.match(layer, /aspect-ratio: 1672 \/ 941 !important/);
   assert.match(layer, /object-fit: contain !important;[\s\S]*?transform: none !important/);

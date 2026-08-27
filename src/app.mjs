@@ -1960,11 +1960,9 @@ function renderHome() {
     homeParticipant,
     state.currentParticipantId
   );
-  const homeTitle = sortedEvents.length ? "מה סוגרים היום?" : "מתחילים מאירוע ראשון";
-  const homeDescription = sortedEvents.length
-    ? "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה."
-    : "פותחים אירוע, מזמינים חברים ומוסיפים את ההוצאה הראשונה.";
-  const newEventLabel = sortedEvents.length ? "אירוע חדש" : "פתח אירוע ראשון";
+  const homeTitle = "מה סוגרים היום?";
+  const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
+  const newEventLabel = "אירוע חדש";
 
   return `
     <section class="screen font-hebrew" data-screen-kind="home" data-profile-avatar-src="${escapeAttribute(homeAvatarSource)}">
