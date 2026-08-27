@@ -17,6 +17,7 @@ import { verifyGoogleCredential } from "./src/server/googleAuth.mjs";
 import { verifyGooglePlaySubscription } from "./src/server/googlePlayBilling.mjs";
 import { sendPaymentReminder } from "./src/server/paymentReminders.mjs";
 import { sendEventActivityNotification } from "./src/server/eventActivityNotifications.mjs";
+import { sendBroadcastNotification } from "./src/server/broadcastNotifications.mjs";
 import {
   purgeExpiredProductMetrics,
   storeProductMetrics
@@ -116,6 +117,7 @@ export function createAppHandler({
   googlePlaySubscriptionVerifier = verifyGooglePlaySubscription,
   paymentReminderService = sendPaymentReminder,
   eventActivityNotificationService = sendEventActivityNotification,
+  broadcastNotificationService = sendBroadcastNotification,
   productMetricsService = storeProductMetrics,
   productMetricsRetentionService = purgeExpiredProductMetrics,
   adminAnalyticsService = getAdminAnalyticsOverview,
@@ -560,6 +562,34 @@ export function createAppHandler({
       return;
     }
 
+    if (
+      url.pathname === "/api/admin/notifications/broadcast" &&
+      request.method === "POST"
+    ) {
+      let body = {};
+      try {
+        body = await readJsonBody(request, 4_000);
+      } catch (error) {
+        sendJson(response, error?.code === "BODY_TOO_LARGE" ? 413 : 400, {
+          ok: false,
+          error: error?.code === "BODY_TOO_LARGE"
+            ? "Notification payload is too large"
+            : "Invalid notification request"
+        });
+        return;
+      }
+
+      const result = await broadcastNotificationService({
+        env,
+        authorization: request.headers.authorization,
+        title: body?.title,
+        body: body?.body,
+        campaignId: body?.campaignId
+      });
+      sendJson(response, result.status, result.payload);
+      return;
+    }
+
     const requestedPath = url.pathname === "/" ||
       url.pathname === "/auth/callback" ||
       (url.pathname.startsWith("/i/") && parseInviteEventId(url.toString())) ||
@@ -575,6 +605,7 @@ export function createAppHandler({
       response.end("Method not allowed");
       return;
     }
+
     if (!isAllowedStaticPath(requestedPath)) {
       response.writeHead(404, {
         "content-type": "text/plain; charset=utf-8",
@@ -944,6 +975,7 @@ function sensitiveApiRateLimitNamespace(pathname, method) {
     "GET /api/admin/overview",
     "POST /api/notifications/payment-reminder",
     "POST /api/notifications/event-activity",
+    "POST /api/admin/notifications/broadcast",
     "POST /api/event-invites/open-link",
     "POST /api/event-invites/redeem"
   ]);
