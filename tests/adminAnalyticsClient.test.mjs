@@ -56,8 +56,23 @@ test("admin analytics response is normalized before rendering", async () => {
         overview: {
           generatedAt: "2026-08-14T10:00:00.000Z",
           windowDays: 120,
-          accounts: { registered: "11", signedInDuringWindow: 5 },
-          storage: { sharedEvents: "113", databaseBytes: 14380179 },
+          accounts: {
+            registered: "11",
+            confirmed: 10,
+            createdDuringWindow: 3,
+            signedInLast24Hours: 2,
+            signedInLast7Days: 4,
+            signedInDuringWindow: 5
+          },
+          storage: {
+            sharedEvents: "113",
+            activeSharedEventsDuringWindow: 17,
+            databaseBytes: 14380179
+          },
+          push: { reachableUsers: 6, enabledDevices: 8, androidDevices: 5 },
+          notifications: { unreadItems: 2, createdDuringWindow: 7 },
+          invites: { activeLinks: 4, redeemedDuringWindow: 2 },
+          feedback: { new: 1, reviewing: 2 },
           sessions: { total: 2, affected: 1, errorFreeRate: 0.5 },
           operationFailures: [{ operation: "state_load", count: "1" }]
         }
@@ -68,7 +83,10 @@ test("admin analytics response is normalized before rendering", async () => {
   assert.equal(result.available, true);
   assert.equal(result.overview.windowDays, 90);
   assert.equal(result.overview.accounts.registered, 11);
+  assert.equal(result.overview.accounts.signedInLast7Days, 4);
   assert.equal(result.overview.storage.sharedEvents, 113);
+  assert.equal(result.overview.push.reachableUsers, 6);
+  assert.equal(result.overview.notifications.unreadItems, 2);
   assert.equal(result.overview.operationFailures[0].count, 1);
 });
 
@@ -85,9 +103,11 @@ test("admin analytics view model keeps the daily overview concise", () => {
 
   assert.equal(viewModel.status, "healthy");
   assert.equal(viewModel.statusTitle, "הכול פועל כרגיל");
-  assert.equal(viewModel.quickStats.length, 3);
+  assert.equal(viewModel.quickStats.length, 4);
   assert.equal(viewModel.quickStats[0].value, "11");
-  assert.equal(viewModel.quickStats[1].value, "113");
+  assert.equal(viewModel.quickStats[1].value, "5");
+  assert.equal(viewModel.quickStats[2].value, "113");
+  assert.equal(viewModel.detailGroups.length, 3);
   assert.equal(viewModel.failure.title, "לא נרשמו תקלות בתקופה");
   assert.equal(formatBytes(14380179), "13.7 MB");
 });

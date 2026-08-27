@@ -1604,8 +1604,62 @@ function renderAdminAnalyticsContent(viewModel) {
       </div>
     </section>
 
+    <section class="admin-detail-section" aria-labelledby="admin-detail-title">
+      <h2 id="admin-detail-title">כל הנתונים</h2>
+      <div class="admin-detail-grid">
+        ${viewModel.detailGroups.map((group) => `
+          <article class="admin-detail-card" data-admin-group="${escapeAttribute(group.id)}">
+            <header class="admin-detail-card-heading">
+              <span class="admin-detail-card-icon" aria-hidden="true">${iconSvg(group.icon)}</span>
+              <h3>${escapeHtml(group.title)}</h3>
+            </header>
+            <div class="admin-detail-list">
+              ${group.items.map((item) => `
+                <div class="admin-detail-row">
+                  <div>
+                    <span>${escapeHtml(item.label)}</span>
+                    <small>${escapeHtml(item.detail)}</small>
+                  </div>
+                  <strong><span class="font-num">${escapeHtml(item.value)}</span></strong>
+                </div>
+              `).join("")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="admin-reliability-section" aria-labelledby="admin-reliability-title">
+      <div class="admin-section-heading-row">
+        <h2 id="admin-reliability-title">יציבות המערכת</h2>
+        <span class="admin-health-rate"><span class="font-num">${escapeHtml(viewModel.reliability.rate)}</span> תקינות</span>
+      </div>
+      <div class="admin-reliability-summary">
+        <div><strong><span class="font-num">${escapeHtml(viewModel.reliability.totalSessions)}</span></strong><span>הפעלות</span></div>
+        <div><strong><span class="font-num">${escapeHtml(viewModel.reliability.affectedSessions)}</span></strong><span>הפעלות עם תקלה</span></div>
+        <div><strong><span class="font-num">${escapeHtml(viewModel.reliability.failureCount)}</span></strong><span>כשלי פעולה</span></div>
+      </div>
+      ${viewModel.reliability.failures.length ? `
+        <div class="admin-breakdown-list" aria-label="כשלים לפי פעולה">
+          ${viewModel.reliability.failures.map((item) => `
+            <div><span>${escapeHtml(item.label)}</span><strong><span class="font-num">${escapeHtml(item.value)}</span></strong></div>
+          `).join("")}
+        </div>
+      ` : ""}
+      ${viewModel.reliability.platforms.length ? `
+        <div class="admin-platform-list" aria-label="הפעלות לפי פלטפורמה">
+          ${viewModel.reliability.platforms.map((item) => `
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <span><bdi><span class="font-num">${escapeHtml(item.sessions)}</span></bdi> הפעלות · <bdi><span class="font-num">${escapeHtml(item.affected)}</span></bdi> עם תקלה</span>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+
     <section class="admin-monitor-section" aria-labelledby="admin-monitor-title">
-      <h2 id="admin-monitor-title">מעקב</h2>
+      <h2 id="admin-monitor-title">מערכת ואחסון</h2>
       <div class="admin-monitor-list">
         <div class="admin-monitor-row${attention ? " is-attention" : ""}">
           <span class="admin-monitor-icon" aria-hidden="true">${iconSvg(attention ? "history" : "check")}</span>

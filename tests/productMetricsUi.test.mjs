@@ -46,7 +46,10 @@ test("product metrics schema is anonymous and locked behind the server role", as
     readFile("supabase/verification/verify_20260826233000_account_link_reliability_metrics.sql", "utf8")
   ]);
   const tableStart = schema.indexOf("create table if not exists public.product_metrics");
-  const tableEnd = schema.indexOf("create or replace function public.delete_account_data", tableStart);
+  const tableEnd = schema.indexOf(
+    "create or replace function public.admin_analytics_overview",
+    tableStart
+  );
   const productMetricsSchema = schema.slice(tableStart, tableEnd);
 
   assert.ok(tableStart >= 0);

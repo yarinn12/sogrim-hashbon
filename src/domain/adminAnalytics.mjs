@@ -5,6 +5,7 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
   );
   const affectedSessions = nonNegativeNumber(overview?.sessions?.affected);
   const needsAttention = failureCount > 0 || affectedSessions > 0;
+  const registeredAccounts = nonNegativeNumber(overview?.accounts?.registered);
   const activeAccounts = nonNegativeNumber(
     overview?.accounts?.signedInDuringWindow
   );
@@ -14,27 +15,146 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
     windowDays,
     status: needsAttention ? "attention" : "healthy",
     statusTitle: needsAttention
-      ? "יש נקודה שכדאי לבדוק"
+      ? "יש נקודות שכדאי לבדוק"
       : "הכול פועל כרגיל",
-    statusDescription: `${formatNumber(activeAccounts, locale)} משתמשים פעילים בתקופה`,
+    statusDescription: `${formatNumber(activeAccounts, locale)} מתוך ${formatNumber(registeredAccounts, locale)} משתמשים היו פעילים ב-${formatNumber(windowDays, locale)} הימים האחרונים`,
     updatedLabel: formatUpdatedLabel(overview?.generatedAt, locale),
     quickStats: [
       {
         id: "accounts",
-        value: formatNumber(overview?.accounts?.registered, locale),
-        label: "משתמשים"
+        value: formatNumber(registeredAccounts, locale),
+        label: "משתמשים רשומים"
+      },
+      {
+        id: "active",
+        value: formatNumber(activeAccounts, locale),
+        label: `פעילים ב-${formatNumber(windowDays, locale)} ימים`
       },
       {
         id: "events",
         value: formatNumber(overview?.storage?.sharedEvents, locale),
-        label: "אירועים"
+        label: "אירועים משותפים"
       },
       {
-        id: "health",
-        value: formatHealthRate(overview?.sessions?.errorFreeRate, locale),
-        label: "הפעלות תקינות"
+        id: "push",
+        value: formatNumber(overview?.push?.reachableUsers, locale),
+        label: "משתמשים זמינים ל-Push"
       }
     ],
+    detailGroups: [
+      {
+        id: "accounts",
+        title: "משתמשים",
+        icon: "users",
+        items: [
+          detailItem(
+            "חשבונות מאומתים",
+            overview?.accounts?.confirmed,
+            ratioLabel(
+              overview?.accounts?.confirmed,
+              registeredAccounts,
+              locale
+            ),
+            locale
+          ),
+          detailItem(
+            `נרשמו ב-${formatNumber(windowDays, locale)} ימים`,
+            overview?.accounts?.createdDuringWindow,
+            "משתמשים חדשים",
+            locale
+          ),
+          detailItem(
+            "פעילים בשבעת הימים האחרונים",
+            overview?.accounts?.signedInLast7Days,
+            "לפי כניסה לחשבון",
+            locale
+          ),
+          detailItem(
+            "פעילים ב-24 השעות האחרונות",
+            overview?.accounts?.signedInLast24Hours,
+            "לפי כניסה לחשבון",
+            locale
+          )
+        ]
+      },
+      {
+        id: "delivery",
+        title: "מכשירים והתראות",
+        icon: "bell",
+        items: [
+          detailItem(
+            "מכשירים פעילים",
+            overview?.push?.enabledDevices,
+            `${ratioLabel(overview?.push?.reachableUsers, registeredAccounts, locale)} מהמשתמשים זמינים`,
+            locale
+          ),
+          detailItem(
+            "Android",
+            overview?.push?.androidDevices,
+            "מכשירים עם Push פעיל",
+            locale
+          ),
+          detailItem(
+            "iPhone ו-iPad",
+            overview?.push?.iosDevices,
+            "מכשירים עם Push פעיל",
+            locale
+          ),
+          detailItem(
+            "התראות שלא נקראו",
+            overview?.notifications?.unreadItems,
+            `${formatNumber(overview?.notifications?.createdDuringWindow, locale)} נוצרו בתקופה`,
+            locale
+          )
+        ]
+      },
+      {
+        id: "activity",
+        title: "פעילות",
+        icon: "calendar",
+        items: [
+          detailItem(
+            "אירועים פעילים בתקופה",
+            overview?.storage?.activeSharedEventsDuringWindow,
+            `מתוך ${formatNumber(overview?.storage?.sharedEvents, locale)} אירועים`,
+            locale
+          ),
+          detailItem(
+            "קישורי הזמנה פעילים",
+            overview?.invites?.activeLinks,
+            `${formatNumber(overview?.invites?.redeemedDuringWindow, locale)} שימושים בתקופה`,
+            locale
+          ),
+          detailItem(
+            "סביבות משתמש",
+            overview?.storage?.workspaces,
+            "עותקי מידע אישיים בענן",
+            locale
+          ),
+          detailItem(
+            "פניות חדשות",
+            overview?.feedback?.new,
+            `${formatNumber(overview?.feedback?.reviewing, locale)} בטיפול`,
+            locale
+          )
+        ]
+      }
+    ],
+    reliability: {
+      rate: formatHealthRate(overview?.sessions?.errorFreeRate, locale),
+      totalSessions: formatNumber(overview?.sessions?.total, locale),
+      affectedSessions: formatNumber(affectedSessions, locale),
+      failureCount: formatNumber(failureCount, locale),
+      failures: (overview?.operationFailures ?? []).slice(0, 5).map((item) => ({
+        label: operationLabel(item?.operation),
+        value: formatNumber(item?.count, locale)
+      })),
+      platforms: (overview?.platforms ?? []).map((item) => ({
+        label: platformLabel(item?.platform),
+        sessions: formatNumber(item?.count, locale),
+        affected: formatNumber(item?.affected, locale)
+      }))
+    },
     failure: {
       count: failureCount,
       title: failureCount === 1
@@ -48,7 +168,7 @@ export function buildAdminAnalyticsViewModel(overview, locale = "he-IL") {
     },
     storage: {
       title: `נפח מידע ${formatBytes(overview?.storage?.databaseBytes, locale)}`,
-      detail: "תקין"
+      detail: `${formatBytes(overview?.storage?.snapshotBytes, locale)} של נתוני אפליקציה`
     }
   };
 }
@@ -61,6 +181,24 @@ export function formatBytes(value, locale = "he-IL") {
     return `${formatDecimal(kilobytes, locale)} KB`;
   }
   return `${formatDecimal(kilobytes / 1024, locale)} MB`;
+}
+
+function detailItem(label, value, detail, locale) {
+  return {
+    label,
+    value: formatNumber(value, locale),
+    detail
+  };
+}
+
+function ratioLabel(part, total, locale) {
+  const denominator = nonNegativeNumber(total);
+  if (!denominator) return "0%";
+  const ratio = Math.min(1, nonNegativeNumber(part) / denominator);
+  return new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 0
+  }).format(ratio);
 }
 
 function formatHealthRate(value, locale) {
@@ -83,13 +221,30 @@ function formatUpdatedLabel(value, locale) {
 
 function operationLabel(value) {
   const labels = {
+    auth: "התחברות",
     state_load: "טעינת מידע",
     state_save: "שמירת מידע",
-    invite_load: "פתיחת הזמנה",
-    notification_load: "טעינת התראות"
+    account_link: "איחוד חשבונות",
+    event_invite: "קישורי הזמנה",
+    friend_network: "רשת חברים",
+    notification_inbox: "טעינת התראות",
+    feedback: "שליחת משוב",
+    push: "Push",
+    ads: "פרסומות",
+    share: "שיתוף"
   };
   const operation = String(value ?? "").trim();
   return labels[operation] ?? "פעולה במערכת";
+}
+
+function platformLabel(value) {
+  const labels = {
+    android: "Android",
+    ios: "iPhone ו-iPad",
+    web: "דפדפן"
+  };
+  const platform = String(value ?? "").trim().toLowerCase();
+  return labels[platform] ?? (platform || "לא ידוע");
 }
 
 function formatDecimal(value, locale) {

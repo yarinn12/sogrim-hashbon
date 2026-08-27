@@ -3,9 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 test("admin analytics SQL exposes aggregates only to the server role", async () => {
-  const [schema, migration, verification] = await Promise.all([
+  const [schema, migration, expandedMigration, verification] = await Promise.all([
     readFile("supabase/schema.sql", "utf8"),
     readFile("supabase/migrations/20260814143000_admin_analytics_overview.sql", "utf8"),
+    readFile("supabase/migrations/20260827102500_expand_admin_analytics_overview.sql", "utf8"),
     readFile("supabase/verification/verify_20260814143000_admin_analytics_overview.sql", "utf8")
   ]);
 
@@ -22,6 +23,12 @@ test("admin analytics SQL exposes aggregates only to the server role", async () 
     assert.match(adminFunction, /grant execute on function public\.admin_analytics_overview\(integer\)\s+to service_role/);
     assert.doesNotMatch(adminFunction, /jsonb_build_object\([^)]*email/i);
   }
+  assert.match(expandedMigration, /'reachableUsers'/);
+  assert.match(expandedMigration, /from public\.push_devices/);
+  assert.match(expandedMigration, /'createdDuringWindow'/);
+  assert.match(expandedMigration, /from public\.notification_inbox/);
+  assert.match(expandedMigration, /from public\.event_invite_tokens/);
+  assert.doesNotMatch(expandedMigration, /jsonb_build_object\([^)]*email/i);
   assert.match(verification, /has_function_privilege/);
 });
 

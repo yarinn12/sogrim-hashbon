@@ -31,5 +31,7 @@ test("admin overview inherits the product header and bottom navigation", () => {
   assert.match(brandSource, /kind === "admin"\s*\? "profile"/);
   assert.match(styles, /\.admin-status-hero/);
   assert.match(styles, /\.admin-quick-stats/);
+  assert.match(styles, /\.admin-detail-grid/);
+  assert.match(styles, /\.admin-reliability-section/);
   assert.match(styles, /prefers-reduced-motion/);
 });

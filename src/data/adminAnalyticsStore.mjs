@@ -56,6 +56,19 @@ export function normalizeAdminAnalyticsOverview(value) {
   const sessions = overview.sessions && typeof overview.sessions === "object"
     ? overview.sessions
     : {};
+  const push = overview.push && typeof overview.push === "object"
+    ? overview.push
+    : {};
+  const notifications = overview.notifications &&
+      typeof overview.notifications === "object"
+    ? overview.notifications
+    : {};
+  const invites = overview.invites && typeof overview.invites === "object"
+    ? overview.invites
+    : {};
+  const feedback = overview.feedback && typeof overview.feedback === "object"
+    ? overview.feedback
+    : {};
   const metrics = overview.metrics && typeof overview.metrics === "object"
     ? overview.metrics
     : {};
@@ -66,13 +79,42 @@ export function normalizeAdminAnalyticsOverview(value) {
     accounts: {
       registered: nonNegativeInteger(accounts.registered),
       confirmed: nonNegativeInteger(accounts.confirmed),
+      createdDuringWindow: nonNegativeInteger(accounts.createdDuringWindow),
+      signedInLast24Hours: nonNegativeInteger(accounts.signedInLast24Hours),
+      signedInLast7Days: nonNegativeInteger(accounts.signedInLast7Days),
       signedInDuringWindow: nonNegativeInteger(accounts.signedInDuringWindow)
     },
     storage: {
       workspaces: nonNegativeInteger(storage.workspaces),
       sharedEvents: nonNegativeInteger(storage.sharedEvents),
+      activeSharedEventsDuringWindow: nonNegativeInteger(
+        storage.activeSharedEventsDuringWindow
+      ),
       snapshotBytes: nonNegativeInteger(storage.snapshotBytes),
       databaseBytes: nonNegativeInteger(storage.databaseBytes)
+    },
+    push: {
+      reachableUsers: nonNegativeInteger(push.reachableUsers),
+      enabledDevices: nonNegativeInteger(push.enabledDevices),
+      androidDevices: nonNegativeInteger(push.androidDevices),
+      iosDevices: nonNegativeInteger(push.iosDevices),
+      disabledDevices: nonNegativeInteger(push.disabledDevices)
+    },
+    notifications: {
+      inboxItems: nonNegativeInteger(notifications.inboxItems),
+      unreadItems: nonNegativeInteger(notifications.unreadItems),
+      createdDuringWindow: nonNegativeInteger(
+        notifications.createdDuringWindow
+      )
+    },
+    invites: {
+      activeLinks: nonNegativeInteger(invites.activeLinks),
+      redeemedDuringWindow: nonNegativeInteger(invites.redeemedDuringWindow)
+    },
+    feedback: {
+      new: nonNegativeInteger(feedback.new),
+      reviewing: nonNegativeInteger(feedback.reviewing),
+      resolved: nonNegativeInteger(feedback.resolved)
     },
     metrics: Object.fromEntries(
       Object.entries(metrics)

@@ -3770,6 +3770,22 @@ as $$
         from auth.users
         where confirmed_at is not null
       ),
+      'createdDuringWindow', (
+        select pg_catalog.count(*)::bigint
+        from auth.users
+        where created_at >= pg_catalog.now()
+          - pg_catalog.make_interval(days => parameters.window_days)
+      ),
+      'signedInLast24Hours', (
+        select pg_catalog.count(*)::bigint
+        from auth.users
+        where last_sign_in_at >= pg_catalog.now() - interval '24 hours'
+      ),
+      'signedInLast7Days', (
+        select pg_catalog.count(*)::bigint
+        from auth.users
+        where last_sign_in_at >= pg_catalog.now() - interval '7 days'
+      ),
       'signedInDuringWindow', (
         select pg_catalog.count(*)::bigint
         from auth.users
@@ -3788,11 +3804,93 @@ as $$
         from public.app_snapshots
         where snapshot_kind = 'shared_event'
       ),
+      'activeSharedEventsDuringWindow', (
+        select pg_catalog.count(*)::bigint
+        from public.app_snapshots
+        where snapshot_kind = 'shared_event'
+          and updated_at >= pg_catalog.now()
+            - pg_catalog.make_interval(days => parameters.window_days)
+      ),
       'snapshotBytes', (
         select coalesce(pg_catalog.sum(pg_catalog.pg_column_size(state)), 0)::bigint
         from public.app_snapshots
       ),
       'databaseBytes', pg_catalog.pg_database_size(pg_catalog.current_database())::bigint
+    ),
+    'push', pg_catalog.jsonb_build_object(
+      'reachableUsers', (
+        select pg_catalog.count(distinct user_id)::bigint
+        from public.push_devices
+        where enabled
+      ),
+      'enabledDevices', (
+        select pg_catalog.count(*)::bigint
+        from public.push_devices
+        where enabled
+      ),
+      'androidDevices', (
+        select pg_catalog.count(*)::bigint
+        from public.push_devices
+        where enabled and platform = 'android'
+      ),
+      'iosDevices', (
+        select pg_catalog.count(*)::bigint
+        from public.push_devices
+        where enabled and platform = 'ios'
+      ),
+      'disabledDevices', (
+        select pg_catalog.count(*)::bigint
+        from public.push_devices
+        where not enabled
+      )
+    ),
+    'notifications', pg_catalog.jsonb_build_object(
+      'inboxItems', (
+        select pg_catalog.count(*)::bigint
+        from public.notification_inbox
+      ),
+      'unreadItems', (
+        select pg_catalog.count(*)::bigint
+        from public.notification_inbox
+        where read_at is null
+      ),
+      'createdDuringWindow', (
+        select pg_catalog.count(*)::bigint
+        from public.notification_inbox
+        where created_at >= pg_catalog.now()
+          - pg_catalog.make_interval(days => parameters.window_days)
+      )
+    ),
+    'invites', pg_catalog.jsonb_build_object(
+      'activeLinks', (
+        select pg_catalog.count(*)::bigint
+        from public.event_invite_tokens
+        where revoked_at is null
+          and (expires_at is null or expires_at > pg_catalog.now())
+      ),
+      'redeemedDuringWindow', (
+        select pg_catalog.count(*)::bigint
+        from public.event_invite_tokens
+        where last_redeemed_at >= pg_catalog.now()
+          - pg_catalog.make_interval(days => parameters.window_days)
+      )
+    ),
+    'feedback', pg_catalog.jsonb_build_object(
+      'new', (
+        select pg_catalog.count(*)::bigint
+        from public.app_feedback
+        where status = 'new'
+      ),
+      'reviewing', (
+        select pg_catalog.count(*)::bigint
+        from public.app_feedback
+        where status = 'reviewing'
+      ),
+      'resolved', (
+        select pg_catalog.count(*)::bigint
+        from public.app_feedback
+        where status = 'resolved'
+      )
     ),
     'metrics', coalesce(
       (
