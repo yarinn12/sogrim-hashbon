@@ -16,10 +16,10 @@ test("friends hub keeps blocked accounts in a collapsed reversible privacy secti
   assert.match(panel, /friendNetwork\.blockedUsers/);
 });
 
-test("friends hub keeps people, requests and recurring groups in focused tabs", async () => {
+test("friends hub temporarily exposes only friends and requests without deleting group code", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const start = app.indexOf("function renderGroups()");
-  const end = app.indexOf("function renderGroupCreate()", start);
+  const end = app.indexOf("function renderFriendsPeopleTab", start);
   const hub = app.slice(start, end);
 
   assert.match(hub, /friends-hub-screen/);
@@ -27,19 +27,16 @@ test("friends hub keeps people, requests and recurring groups in focused tabs", 
   assert.match(hub, /data-action="friends-hub-tab"/);
   assert.match(hub, /data-tab="people"/);
   assert.match(hub, /data-tab="requests"/);
-  assert.match(hub, /data-tab="groups"/);
+  assert.doesNotMatch(hub, /data-tab="groups"/);
   assert.match(hub, /renderFriendsPeopleTab/);
   assert.match(hub, /renderFriendsRequestsTab/);
-  assert.match(hub, /renderFriendsGroupsTab/);
-  assert.match(hub, /const hubTitle = activeTab === "groups"/);
   assert.match(hub, /activeTab === "requests"/);
   assert.match(hub, /<h1>\$\{hubTitle\}<\/h1>/);
-  assert.match(hub, /stack \$\{activeGroups\.length \? "has-groups" : "is-empty"\}/);
+  assert.match(app, /function renderFriendsGroupsTab\(activeGroups\)/);
   assert.match(
-    hub,
-    /activeGroups\.length[\s\S]*?קבוצה חדשה[\s\S]*?: ""/
+    app,
+    /\["group-create", "group-edit"\]\.includes\(screen\.name\)[\s\S]*?screen = \{ name: "groups", tab: "people" \}/
   );
-  assert.match(hub, /צור קבוצה ראשונה/);
 });
 
 test("friend requests stay out of the main friends roster", async () => {
@@ -63,9 +60,9 @@ test("the requests tab remains a real route instead of falling back to people", 
   const actionEnd = app.indexOf('if (action === "event-status-filter")', actionStart);
   const action = app.slice(actionStart, actionEnd);
 
-  assert.match(action, /\["people", "requests", "groups"\]\.includes/);
+  assert.match(action, /\["people", "requests"\]\.includes/);
   assert.match(action, /screen = \{ name: "groups", tab: nextTab \}/);
-  assert.match(action, /nextTab !== "groups"/);
+  assert.doesNotMatch(action, /nextTab !== "groups"/);
   assert.match(action, /renderReplacingBrowserHistory\(\)/);
 });
 

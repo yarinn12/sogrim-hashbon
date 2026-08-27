@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 const OWNER_ID = "person-design-regression-owner";
 const EVENT_ID = "event-design-regression";
+const RESTAURANT_EVENT_ID = "event-design-regression-restaurant";
 
 const seededState = {
   currentParticipantId: OWNER_ID,
@@ -26,6 +27,23 @@ const seededState = {
       createdByParticipantId: OWNER_ID,
       createdAt: "2026-08-26T08:00:00.000Z",
       updatedAt: "2026-08-26T08:00:00.000Z",
+      roundSettlementTransfers: true,
+      directSettlementTransfers: false,
+      locked: false,
+      expenses: [],
+      transfers: [],
+      activityLog: []
+    },
+    {
+      id: RESTAURANT_EVENT_ID,
+      name: "מסעדת בדיקת רגרסיה",
+      eventType: "restaurant",
+      currency: "ILS",
+      participantIds: [OWNER_ID],
+      adminIds: [OWNER_ID],
+      createdByParticipantId: OWNER_ID,
+      createdAt: "2026-08-26T09:00:00.000Z",
+      updatedAt: "2026-08-26T09:00:00.000Z",
       roundSettlementTransfers: true,
       directSettlementTransfers: false,
       locked: false,
@@ -109,6 +127,30 @@ test("expense templates preserve a custom name and still switch templates", asyn
   await expect(expenseName).toHaveValue("אוכל");
   await page.locator('[data-action="expense-template"][data-template="שתייה"]').click();
   await expect(expenseName).toHaveValue("שתייה");
+});
+
+test("restaurant expense back and close controls never overlap", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${RESTAURANT_EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator(`[data-action="show-expense-form"][data-event-id="${RESTAURANT_EVENT_ID}"]`)
+    .first()
+    .click();
+  await page.locator('[data-action="restaurant-split-mode"][data-mode="equal"]').click();
+
+  const back = page.locator('.expense-modal-step-header [data-action="expense-step-back"]');
+  const close = page.locator('.expense-modal-step-header [data-action="cancel-expense"]');
+  await expect(back).toBeVisible();
+  await expect(close).toBeVisible();
+  const [backBox, closeBox] = await Promise.all([back.boundingBox(), close.boundingBox()]);
+  expect(backBox).not.toBeNull();
+  expect(closeBox).not.toBeNull();
+  const separated =
+    backBox.x + backBox.width <= closeBox.x ||
+    closeBox.x + closeBox.width <= backBox.x;
+  expect(separated, "back and close controls must occupy separate header columns").toBe(true);
 });
 
 test("a failed share link stops loading and explains the unavailable action", async ({ page }) => {

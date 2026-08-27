@@ -1,7 +1,8 @@
 const SUPPORTED_ACTIVITY_KINDS = new Set([
   "expense-created",
   "participant-joined",
-  "event-invite"
+  "event-invite",
+  "event-closed"
 ]);
 
 export async function sendEventActivityNotification(

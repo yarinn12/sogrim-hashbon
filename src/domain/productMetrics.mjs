@@ -19,6 +19,7 @@ export const PRODUCT_METRIC_OPERATIONS = Object.freeze([
   "auth",
   "state_load",
   "state_save",
+  "account_link",
   "event_invite",
   "friend_network",
   "notification_inbox",

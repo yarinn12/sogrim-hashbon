@@ -19,7 +19,7 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /paymentActionsEnabled = isEventClosed\(event\)/);
   assert.doesNotMatch(app, /אפשר לסמן אחרי סגירת האירוע/);
   assert.match(app, /const transferRow = event\.target\.closest\?\.\("\.transfer-row"\)/);
-  assert.match(app, /explanation\.open = !explanation\.open/);
+  assert.match(app, /setTransferExplanationOpen\(transferRow, !explanation\.open\)/);
   assert.match(app, /data-transfer-id="\$\{escapeAttribute\(transfer\.id\)\}"/);
   assert.match(app, /openTransferIds:[\s\S]*?transfer-explanation\[open\]/);
   assert.match(app, /for \(const transferId of snapshot\.openTransferIds \?\? \[\]\)/);
@@ -27,9 +27,11 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /const openSettlementTransferIds = loadOpenSettlementTransferIds\(\)/);
   assert.match(app, /openSettlementTransferIds\.add\(transferId\)/);
   assert.match(app, /persistOpenSettlementTransferIds\(\)/);
-  assert.match(app, /renderTransferExplanation\(event, transfer, \{ open: explanationOpen \}\)/);
+  assert.match(app, /renderTransferExplanation\(event, transfer, \{ open: explanationOpen, id: explanationId \}\)/);
   assert.match(app, /class="secondary-button transfer-complete-button"/);
   assert.match(app, /<span aria-hidden="true">✓<\/span> הועבר/);
+  assert.match(app, /<details class="transfer-paid-history" open>/);
+  assert.match(app, /data-action="mark-pending"[\s\S]*?>בטל סימון<\/button>/);
   assert.match(app, /reconcileEventTransfers\(updatedEvent, updatedEvent\?\.transfers \?\? \[\]\)/);
 });
 
@@ -91,11 +93,20 @@ test("closing with pending transfers uses stateful confirmation and stays revers
   assert.match(app, /let settlementCloseConfirmation = null/);
   assert.match(app, /function requestCloseCurrentEvent\(eventId\)/);
   assert.match(app, /data-action="confirm-close-event"/);
+  assert.match(
+    app,
+    /data-action="confirm-close-event" data-allow-offline-mutation="true"/
+  );
   assert.match(app, /data-action="cancel-close-event-confirmation"/);
   assert.match(app, /נותרה העברה פתוחה בסך/);
   assert.match(app, /נותרו \$\{pendingTransfers\.length\} העברות פתוחות בסך/);
   assert.match(app, /if \(isEventClosed\(event\)\)/);
   assert.match(app, /function syncSettlementCloseConfirmation\(eventId\)/);
+  assert.match(app, /const closeEventRequests = new Map\(\)/);
+  assert.match(app, /await closeCurrentEvent\(eventId\)/);
+  assert.match(app, /async function closeCurrentEventNow/);
+  assert.match(app, /if \(!result\?\.ok && !result\?\.pending\)/);
+  assert.match(app, /הסנכרון עם שאר המשתתפים יושלם אוטומטית/);
 });
 
 test("settlement action hierarchy follows payment state", async () => {

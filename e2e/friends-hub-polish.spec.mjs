@@ -333,7 +333,7 @@ test.beforeEach(async ({ page }) => {
     .toHaveCount(1);
 });
 
-test("friends, requests and groups remain distinct and readable with real content", async ({ page }) => {
+test("friends and requests remain distinct while groups stay hidden without data loss", async ({ page }) => {
   await expect(page.locator('[data-friend-identity-section="offline"] .friend-row'))
     .toHaveCount(3);
   await expect(page.locator('[data-action="open-friend-add"]')).toBeVisible();
@@ -350,18 +350,18 @@ test("friends, requests and groups remain distinct and readable with real conten
   await assertNoHorizontalOverflow(page);
   await capture(page, "08c-friend-requests");
 
-  await page.locator('[data-action="friends-hub-tab"][data-tab="groups"]').click();
-  await expect(page.locator('[data-friends-tab="groups"]')).toBeVisible();
-  await expect(page.locator(".groups-list-section .group-row")).toHaveCount(2);
-  const lastGroup = page.locator(".groups-list-section .group-row").last();
-  await lastGroup.scrollIntoViewIfNeeded();
-  await lastGroup.locator('[data-action="edit-group"]').click({ trial: true });
-  await lastGroup.locator('[data-action="archive-group"]').click({ trial: true });
+  await expect(page.locator('[data-action="friends-hub-tab"][data-tab="groups"]')).toHaveCount(0);
+  await expect(page.locator(".groups-list-section")).toHaveCount(0);
+  const storedGroups = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
+    return state.groups?.length ?? 0;
+  });
+  expect(storedGroups).toBe(2);
   await assertNoHorizontalOverflow(page);
-  await capture(page, "08d-groups-populated");
+  await capture(page, "08d-groups-hidden");
 });
 
-test("friend relationship and group editing stay readable as focused routes", async ({ page }) => {
+test("friend relationship stays readable and legacy group routes return to friends", async ({ page }) => {
   await page.locator('[data-action="open-friend-profile"]').click();
   await expect(page.locator('[data-friend-profile-id]')).toBeVisible();
   await expect(page.getByText("אתם במספרים", { exact: true })).toBeVisible();
@@ -370,32 +370,10 @@ test("friend relationship and group editing stay readable as focused routes", as
 
   await page.locator('[data-action="go-back"]').click();
   await expect(page.locator('[data-friends-tab="people"]')).toBeVisible();
-  await page.locator('[data-action="friends-hub-tab"][data-tab="groups"]').click();
-  await page.locator('[data-action="edit-group"]').first().click();
-  await expect(page.locator('[data-screen-kind="group-edit"]')).toBeVisible();
-  await expect(page.locator('[data-action="save-edit-group"]')).toBeVisible();
-  const managerDisclosure = page.locator(".group-editor-disclosure").filter({ hasText: "מנהלים" });
-  const offlineDisclosure = page.locator(".group-editor-offline-add");
-  await expect(managerDisclosure).not.toHaveAttribute("open", "");
-  await expect(offlineDisclosure).not.toHaveAttribute("open", "");
+  await expect(page.locator('[data-action="new-group"]')).toHaveCount(0);
+  await expect(page.locator('[data-screen-kind="group-edit"]')).toHaveCount(0);
   await assertNoHorizontalOverflow(page);
-  await capture(page, "08f-group-edit");
-
-  await managerDisclosure.locator("summary").click();
-  await expect(page.locator('[data-action="edit-group-admin"]')).toHaveCount(5);
-  await offlineDisclosure.locator("summary").click();
-  await expect(page.locator('[data-action="edit-group-member-name"]')).toBeVisible();
-  await page.locator('[data-action="save-edit-group"]').click({ trial: true });
-
-  await page.locator('[data-action="go-back"]').click();
-  await expect(page.locator('[data-friends-tab="groups"]')).toBeVisible();
-  await page.locator('[data-action="new-group"]').first().click();
-  await expect(page.locator('[data-screen-kind="group-create"]')).toBeVisible();
-  await expect(page.locator(".group-editor-offline-add")).not.toHaveAttribute("open", "");
-  await assertNoHorizontalOverflow(page);
-  await capture(page, "08g-group-create");
-  await page.locator(".group-editor-offline-add summary").click();
-  await expect(page.locator('[data-action="group-member-name"]')).toBeVisible();
+  await capture(page, "08f-friends-only");
 });
 
 test("duplicate-name management opens on the merge task and keeps the full roster secondary", async ({ page }) => {

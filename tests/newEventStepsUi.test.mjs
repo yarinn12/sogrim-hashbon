@@ -37,8 +37,8 @@ test("new event creation separates type and details", async () => {
   assert.match(detailsStep, /data-action="new-event-name"/);
   assert.match(detailsStep, /data-action="open-new-event-settlement"/);
   assert.doesNotMatch(detailsStep, /data-action="create-event"/);
-  assert.match(participantsStep, /data-action="new-event-group"/);
-  assert.match(participantsStep, /availableGroups\.length/);
+  assert.doesNotMatch(participantsStep, /data-action="new-event-group"/);
+  assert.doesNotMatch(participantsStep, /availableGroups\.length/);
   assert.match(participantsStep, /data-event-creation-step="participants"/);
   assert.match(participantsStep, /data-action="create-event"/);
   assert.doesNotMatch(detailsStep, /data-action="new-event-type"/);
@@ -285,19 +285,39 @@ test("event creation back navigation follows type and details", async () => {
   assert.match(backLayer, /button\.closest\('\[data-event-creation-step\]'\)/);
 });
 
-test("removing a selected new-event participant asks for confirmation", async () => {
+test("the event creator stays selected while other participant removals ask for confirmation", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const selectedParticipant = sourceBetween(
+    app,
+    "function renderNewEventSelectedParticipant",
+    "function renderNewEventParticipantEditor"
+  );
 
   assert.match(
     app,
-    /\["toggle-new-event-participant", "new-event-participant"\]\.includes\(action\)[\s\S]*?newEventDraft\.participantIds\.includes\(participantId\)[\s\S]*?requestNewEventParticipantRemoval/
+    /\["toggle-new-event-participant", "new-event-participant"\]\.includes\(action\)[\s\S]*?participantId === state\.currentParticipantId[\s\S]*?ensureCurrentParticipantInNewEventDraft\(\)[\s\S]*?requestNewEventParticipantRemoval/
   );
-  assert.match(app, /data-action="toggle-new-event-participant"/);
+  assert.match(selectedParticipant, /if \(isCurrent\)[\s\S]*?is-current-participant/);
+  assert.doesNotMatch(
+    selectedParticipant.slice(
+      selectedParticipant.indexOf("if (isCurrent)"),
+      selectedParticipant.indexOf("return `", selectedParticipant.indexOf("if (isCurrent)") + 20)
+    ),
+    /data-action="toggle-new-event-participant"/
+  );
   assert.match(app, /kind: "remove-new-event-participant"/);
   assert.match(app, /title: `להסיר את \$\{participant\.displayName\} מהאירוע\?`/);
   assert.match(
     app,
-    /action\.kind === "remove-new-event-participant"[\s\S]*?toggleId\(newEventDraft\.participantIds, action\.payload\.participantId, false\)/
+    /action\.kind === "remove-new-event-participant"[\s\S]*?action\.payload\.participantId === state\.currentParticipantId[\s\S]*?toggleId\(newEventDraft\.participantIds, action\.payload\.participantId, false\)/
+  );
+  assert.match(
+    app,
+    /function ensureCurrentParticipantInNewEventDraft\(\)[\s\S]*?newEventDraft\.participantIds\.unshift\(currentParticipantId\)/
+  );
+  assert.match(
+    app,
+    /async function createEventFromDraft\(\) \{\s*if \(createEventBusy\) return;\s*ensureCurrentParticipantInNewEventDraft\(\)/
   );
 });
 
@@ -325,7 +345,7 @@ test("friend and manual participant choices open dedicated full-screen subviews"
     'if (action === "join-event-screen")'
   );
 
-  assert.match(app, /function renderNewEventParticipantSubview\(availableGroups\)/);
+  assert.match(app, /function renderNewEventParticipantSubview\(\)/);
   assert.match(app, /data-new-event-participant-subview=/);
   assert.match(app, /data-action="close-new-event-participant-view"/);
   assert.match(app, /newEventDraft\.participantView = nextView;/);

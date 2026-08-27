@@ -135,6 +135,28 @@ try {
         order by account.created_at
       `
     : undefined;
+  const orphanedWorkspaceDetails = process.argv.includes("--details")
+    ? await sql`
+        select
+          account.id as user_id,
+          coalesce(account.raw_app_meta_data ->> 'provider', '') as provider,
+          account.created_at,
+          account.updated_at,
+          account.last_sign_in_at,
+          account.email like 'qa-%@example.test'
+            or account.email = 'store-review@sogrimhashbon.app' as is_test_account,
+          coalesce(account.raw_user_meta_data ? 'full_name', false) as has_full_name,
+          coalesce(account.raw_user_meta_data ? 'username', false) as has_username,
+          account.raw_user_meta_data ->> 'account_space_id' as workspace_id
+        from auth.users as account
+        left join public.app_snapshots as snapshot
+          on snapshot.id = account.raw_user_meta_data ->> 'account_space_id'
+        where nullif(account.raw_user_meta_data ->> 'account_space_id', '') is not null
+          and snapshot.id is null
+          and account.last_sign_in_at is not null
+        order by account.created_at
+      `
+    : undefined;
 
   const failures = Object.entries({ ...accounts, ...duplicates })
     .filter(([key, value]) =>
@@ -161,7 +183,7 @@ try {
     duplicates,
     failures,
     warnings,
-    ...(details ? { details } : {})
+    ...(details ? { details, orphaned_workspace_details: orphanedWorkspaceDetails } : {})
   }));
   if (failures.length) process.exitCode = 1;
 } finally {

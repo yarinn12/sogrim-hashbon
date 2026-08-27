@@ -29,14 +29,22 @@ export function emitOperationFailure(
   { screen = "unknown", error = null, failureClass = "" } = {},
   documentRef = globalThis.document
 ) {
-  return emitProductMetric("operation_failure", {
-    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
-    detail: operationMetricDetail(
+  let detail;
+  try {
+    detail = operationMetricDetail(
       operation,
       failureClass || classifyOperationFailure(error, {
         offline: globalThis.navigator?.onLine === false
       })
-    )
+    );
+  } catch {
+    // Telemetry is best effort and must never interrupt the user operation it
+    // is trying to describe.
+    return false;
+  }
+  return emitProductMetric("operation_failure", {
+    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
+    detail
   }, documentRef);
 }
 
@@ -45,14 +53,22 @@ export function emitOperationDeferred(
   { screen = "unknown", error = null, failureClass = "" } = {},
   documentRef = globalThis.document
 ) {
-  return emitProductMetric("operation_deferred", {
-    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
-    detail: operationMetricDetail(
+  let detail;
+  try {
+    detail = operationMetricDetail(
       operation,
       failureClass || classifyOperationFailure(error, {
         offline: globalThis.navigator?.onLine === false
       })
-    )
+    );
+  } catch {
+    // A malformed diagnostic label must not turn a recoverable operation into
+    // a visible application failure.
+    return false;
+  }
+  return emitProductMetric("operation_deferred", {
+    screen: screen === "unknown" ? currentScreen(documentRef) : screen,
+    detail
   }, documentRef);
 }
 

@@ -370,6 +370,12 @@ test("a one-time profile repair republishes every shared event that references t
     }),
     { eventIds: [event.id], deletedEventIds: [] }
   );
+  assert.deepEqual(
+    buildSharedEventSyncSelection(state, state, {
+      forceEventIds: [event.id]
+    }),
+    { eventIds: [event.id], deletedEventIds: [] }
+  );
 });
 
 test("a regular member save never republishes another participant profile", async () => {

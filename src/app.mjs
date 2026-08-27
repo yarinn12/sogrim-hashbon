@@ -102,10 +102,12 @@ import {
 import {
   loadState,
   loadRuntimeConfig,
+  refreshRuntimeConfigNow,
   runtimeConfigUsesFallback,
   loadSharedState,
   loadSharedStateForStartup,
   loadLocalProfile,
+  flushPendingSharedState,
   resetSharedState,
   saveState,
   saveLocalProfile,
@@ -134,6 +136,13 @@ import {
   reconcileOpenInviteAccountScope,
   saveVerifiedOpenInviteToken
 } from "./data/openInviteTokenStore.mjs";
+import {
+  accountLinkIsConfirmed,
+  forgetPendingAccountLink,
+  loadPendingAccountLinks,
+  markPendingAccountLinkAttempt,
+  rememberPendingAccountLink
+} from "./data/pendingAccountLinks.mjs";
 import {
   loadNotificationInbox,
   markAllNotificationsRead,
@@ -183,6 +192,7 @@ import {
   normalizeProfileUpdatedAt
 } from "./domain/userProfile.mjs";
 import { resolveProfileAvatar } from "./domain/profileAvatarSync.mjs";
+import { requestImageCrop } from "./imageCropper.mjs";
 import {
   initializeParticipantMembership,
   isActiveEventParticipant,
@@ -398,6 +408,7 @@ const eventSharePreparationStates = new Map();
 const eventOpenInviteRuntimeTokens = new Map();
 const eventRepaymentModeRequestVersions = new Map();
 const transferStatusRequestVersions = new Map();
+const closeEventRequests = new Map();
 let importantActionReturnFocus = null;
 let pendingImportantActionReturnFocus = null;
 let pendingConfirmedEventDialog = null;
@@ -434,6 +445,8 @@ let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let resumeSyncRequest = null;
 let pendingEventMembershipRetryRequest = null;
+let pendingAccountLinkRetryRequest = null;
+let mergeParticipantsRequest = null;
 let lastResumeSyncAt = 0;
 let appBootHydrationPromise = null;
 let appBootHydrated = false;
@@ -452,24 +465,32 @@ window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
 window.addEventListener(NATIVE_RESUME_EVENT, retryPendingEventMembershipInvitations);
+window.addEventListener(NATIVE_RESUME_EVENT, retryPendingAccountLinks);
 window.addEventListener("online", retryPendingEventMembershipInvitations);
+window.addEventListener("online", retryPendingAccountLinks);
 window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted);
 window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     requestResumeSync();
     retryPendingEventMembershipInvitations();
+    retryPendingAccountLinks();
   }
 });
 window.setInterval(requestVisibleEventSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 window.setInterval(requestVisibleFriendNetworkSync, FRIEND_NETWORK_SYNC_INTERVAL_MS);
 document.addEventListener("keydown", handleDialogKeydown);
 window.addEventListener("resize", scheduleOpenExpenseMenuPosition);
+window.addEventListener("orientationchange", scheduleOpenExpenseMenuPosition);
+document.addEventListener("scroll", scheduleOpenExpenseMenuPosition, true);
 window.visualViewport?.addEventListener("resize", scheduleOpenExpenseMenuPosition);
 window.visualViewport?.addEventListener("scroll", scheduleOpenExpenseMenuPosition);
 document.addEventListener("account-auth-ready", () => {
   hydrateAppAfterAccountReady()
-    .then(() => retryPendingEventMembershipInvitations())
+    .then(() => Promise.all([
+      retryPendingEventMembershipInvitations(),
+      retryPendingAccountLinks()
+    ]))
     .catch(renderScopedLocalFallback);
 });
 document.addEventListener("settle-friends:push-status", (event) => {
@@ -715,6 +736,16 @@ function ensureRenderableScreen() {
     !newEventDraft?.eventType
   ) {
     screen = { name: "new-event-type" };
+    return;
+  }
+
+  if (
+    ["group-create", "group-edit"].includes(screen.name) ||
+    (screen.name === "groups" && screen.tab === "groups")
+  ) {
+    screen = { name: "groups", tab: "people" };
+    groupDraft = null;
+    editingGroupDraft = null;
     return;
   }
 
@@ -1470,7 +1501,7 @@ function renderProfileSetup() {
             ? `<nav class="profile-shortcuts" aria-label="אפשרויות פרופיל">
                 <button class="secondary-button profile-friends-entry" data-action="groups" data-tab="people" type="button">
                   <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("users")}</span>
-                  <span class="profile-shortcut-label">חברים וקבוצות</span>
+                  <span class="profile-shortcut-label">חברים</span>
                   <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
                 </button>
                 <button class="secondary-button profile-accessibility-entry" data-open-accessibility type="button">
@@ -1877,7 +1908,7 @@ function renderHome() {
   );
   const homeTitle = sortedEvents.length ? "מה סוגרים היום?" : "מתחילים מאירוע ראשון";
   const homeDescription = sortedEvents.length
-    ? "אירוע חדש, קבוצה קבועה, או חשבון שכבר מחכה לסגירה."
+    ? "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה."
     : "פותחים אירוע, מזמינים חברים ומוסיפים את ההוצאה הראשונה.";
   const newEventLabel = sortedEvents.length ? "אירוע חדש" : "פתח אירוע ראשון";
 
@@ -2340,7 +2371,7 @@ function renderBackupPanel() {
       <div class="section-title-row">
         <div>
           <h2>גיבוי ושחזור</h2>
-          <p class="muted">שמירה ידנית של כל הקבוצות, האירועים וההוצאות בקובץ אחד.</p>
+          <p class="muted">שמירה ידנית של כל החברים, האירועים וההוצאות בקובץ אחד.</p>
         </div>
         <div class="section-title-actions">
           <button class="secondary-button" data-action="export-state">ייצא גיבוי</button>
@@ -2355,9 +2386,7 @@ function renderBackupPanel() {
 }
 
 function renderGroups() {
-  const activeGroups = visibleGroupsForParticipant(state, state.currentParticipantId)
-    .sort((a, b) => creationTimestamp(b.createdAt, b.id) - creationTimestamp(a.createdAt, a.id));
-  const activeTab = ["people", "requests", "groups"].includes(screen.tab)
+  const activeTab = ["people", "requests"].includes(screen.tab)
     ? screen.tab
     : "people";
   const acceptedFriendships = friendRelationships("accepted");
@@ -2373,9 +2402,7 @@ function renderGroups() {
   );
   const friendCount = acceptedFriendships.length + offlineParticipants.length;
   const requestCount = incomingFriendships.length + outgoingFriendships.length;
-  const hubTitle = activeTab === "groups"
-    ? "קבוצות"
-    : activeTab === "requests"
+  const hubTitle = activeTab === "requests"
       ? "בקשות"
       : "חברים";
 
@@ -2386,12 +2413,12 @@ function renderGroups() {
         <div class="brand">
           <p class="eyebrow">האנשים שלך</p>
           <h1>${hubTitle}</h1>
-          <p class="muted">חברים, בקשות וקבוצות.</p>
+          <p class="muted">חברים ובקשות חברות.</p>
         </div>
       </header>
       ${renderNotice()}
 
-      <nav class="friends-hub-tabs" role="tablist" aria-label="חברים, בקשות וקבוצות">
+      <nav class="friends-hub-tabs" role="tablist" aria-label="חברים ובקשות חברות">
         <button
           class="friends-hub-tab ${activeTab === "people" ? "is-active" : ""}"
           data-action="friends-hub-tab"
@@ -2420,20 +2447,6 @@ function renderGroups() {
           <span>בקשות</span>
           <strong class="${incomingFriendships.length ? "has-new-requests" : ""}"><span class="font-num">${requestCount}</span></strong>
         </button>
-        <button
-          class="friends-hub-tab ${activeTab === "groups" ? "is-active" : ""}"
-          data-action="friends-hub-tab"
-          data-tab="groups"
-          type="button"
-          role="tab"
-          id="friends-tab-groups"
-          aria-controls="friends-panel-groups"
-          aria-selected="${activeTab === "groups"}"
-          tabindex="${activeTab === "groups" ? "0" : "-1"}"
-        >
-          <span>קבוצות</span>
-          <strong><span class="font-num">${activeGroups.length}</span></strong>
-        </button>
       </nav>
 
       ${
@@ -2443,12 +2456,10 @@ function renderGroups() {
               offlineParticipants,
               friendCount
             })
-          : activeTab === "requests"
-            ? renderFriendsRequestsTab({
-                incomingFriendships,
-                outgoingFriendships
-              })
-            : renderFriendsGroupsTab(activeGroups)
+          : renderFriendsRequestsTab({
+              incomingFriendships,
+              outgoingFriendships
+            })
       }
     </section>
   `;
@@ -3090,12 +3101,9 @@ function renderFriendRow(participant) {
   const identity = participantConnectionStatus(participant);
   const visibleEvents = visibleEventsForParticipant(state, state.currentParticipantId)
     .filter((event) => event.participantIds.includes(participant.id));
-  const activeGroups = visibleGroupsForParticipant(state, state.currentParticipantId)
-    .filter((group) => group.memberIds.includes(participant.id));
-  const activity = [
-    visibleEvents.length ? formatCount(visibleEvents.length, "אירוע", "אירועים") : "",
-    activeGroups.length ? formatCount(activeGroups.length, "קבוצה", "קבוצות") : ""
-  ].filter(Boolean).join(" · ");
+  const activity = visibleEvents.length
+    ? formatCount(visibleEvents.length, "אירוע", "אירועים")
+    : "";
   const helper = isCurrent
     ? "החשבון שלך"
     : activity || (identity.connected ? "מחובר לאפליקציה" : "שם ידני");
@@ -3258,7 +3266,7 @@ function renderGroupCreate() {
 
 function renderGroupEdit() {
   if (!editingGroupDraft) {
-    screen = { name: "groups", tab: "groups" };
+    screen = { name: "groups", tab: "people" };
     return renderGroups();
   }
 
@@ -3435,7 +3443,7 @@ function renderMergeParticipantsPanel() {
           <select data-action="merge-target" name="mergeTargetParticipant">${targetOptions}</select>
         </label>
       </div>
-      <button class="primary-button section" data-action="merge-participants" ${disabled ? "disabled" : ""}>אחד שמות</button>
+      <button class="primary-button section" data-action="merge-participants" data-allow-offline-mutation="true" ${disabled ? "disabled" : ""}>אחד שמות</button>
     </section>
   `;
 }
@@ -3535,29 +3543,7 @@ function renderEventRowMeta(event, participants) {
 }
 
 function renderEventRow(event) {
-  const financialParticipants = eventParticipants(event);
   const participants = activeEventParticipants(event);
-  const transfers = eventSettlementTransfers(event, financialParticipants);
-  const pendingPersonalTransfers = transfers.filter(
-    (transfer) =>
-      transfer.status !== "paid" &&
-      (transfer.fromParticipantId === state.currentParticipantId ||
-        transfer.toParticipantId === state.currentParticipantId)
-  );
-  const needsPayment = pendingPersonalTransfers.some(
-    (transfer) => transfer.fromParticipantId === state.currentParticipantId
-  );
-  const awaitsReceipt = pendingPersonalTransfers.some(
-    (transfer) => transfer.toParticipantId === state.currentParticipantId
-  );
-  const attentionLabel =
-    needsPayment && awaitsReceipt
-      ? "יש לך פעולות ממתינות באירוע"
-      : needsPayment
-        ? "ממתין לתשלום שלך"
-        : awaitsReceipt
-          ? "ממתין לאישור קבלה"
-          : "";
   const statusClass = isEventClosed(event) ? "is-locked" : "is-open";
   const statusLabel = isEventClosed(event) ? "סגור" : "פתוח";
   const canManageStatus = canCurrentParticipantManage(event);
@@ -3582,11 +3568,6 @@ function renderEventRow(event) {
         <span class="event-row-main">
           <span class="event-row-title">
             <strong>${escapeHtml(eventRowDisplayName(event))}</strong>
-            ${
-              attentionLabel
-                ? `<span class="event-row-attention" role="img" aria-label="${escapeAttribute(attentionLabel)}" title="${escapeAttribute(attentionLabel)}"><span aria-hidden="true"></span></span>`
-                : ""
-            }
           </span>
           ${renderEventRowMeta(event, participants)}
         </span>
@@ -3778,6 +3759,8 @@ function renderNewEvent() {
 
 function syncNewEventParticipantControls() {
   if (!newEventDraft) return;
+
+  ensureCurrentParticipantInNewEventDraft();
 
   const selectedIds = new Set(newEventDraft.participantIds);
   app.querySelectorAll('[data-action="new-event-participant"]').forEach((input) => {
@@ -4481,7 +4464,12 @@ function renderImportantActionDialog() {
         </div>
         <div class="important-action-dialog-actions">
           <button class="secondary-button" type="button" data-action="cancel-important-action">ביטול</button>
-          <button class="important-action-confirm-button" type="button" data-action="confirm-important-action">
+          <button
+            class="important-action-confirm-button"
+            type="button"
+            data-action="confirm-important-action"
+            ${importantActionDialog.kind === "merge-participants" ? 'data-allow-offline-mutation="true"' : ""}
+          >
             ${escapeHtml(importantActionDialog.confirmLabel)}
           </button>
         </div>
@@ -5468,6 +5456,7 @@ function renderEventParticipantLinkDialog(event) {
                         type="button"
                         role="listitem"
                         data-action="link-offline-participant-account"
+                        data-allow-offline-mutation="true"
                         data-event-id="${escapeAttribute(event.id)}"
                         data-source-participant-id="${escapeAttribute(participant.id)}"
                         data-target-participant-id="${escapeAttribute(candidate.id)}"
@@ -6145,6 +6134,23 @@ function renderNewEventParticipantAction({
 
 function renderNewEventSelectedParticipant(participant) {
   const isCurrent = participant.id === state.currentParticipantId;
+  if (isCurrent) {
+    return `
+      <div
+        class="new-event-selected-participant is-account is-current-participant"
+        data-participant-id="${escapeAttribute(participant.id)}"
+        data-participant-name="${escapeAttribute(participantSearchIdentity(participant, participant.displayName))}"
+      >
+        ${renderAvatar(participant.id)}
+        <span class="new-event-selected-participant-copy">
+          <strong>${escapeHtml(participant.displayName)}</strong>
+          ${renderParticipantUsername(participant)}
+        </span>
+        <small class="new-event-selected-participant-self">אתה · יוצר האירוע</small>
+        <span class="new-event-selected-participant-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
+      </div>
+    `;
+  }
   return `
     <label
       class="new-event-selected-participant ${participantConnectionStatus(participant).connected ? "is-account" : "is-offline"}"
@@ -6165,17 +6171,13 @@ function renderNewEventSelectedParticipant(participant) {
         <strong>${escapeHtml(participant.displayName)}</strong>
         ${renderParticipantUsername(participant)}
       </span>
-      ${
-        isCurrent
-          ? '<small class="new-event-selected-participant-self">אתה</small>'
-          : renderParticipantConnectionBadge(participant)
-      }
+      ${renderParticipantConnectionBadge(participant)}
       <span class="new-event-selected-participant-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
     </label>
   `;
 }
 
-function renderNewEventParticipantEditor(availableGroups) {
+function renderNewEventParticipantEditor() {
   if (newEventDraft.participantView === "friends") {
     return `
       <section class="new-event-participant-editor new-event-participant-picker" aria-labelledby="new-event-friends-title">
@@ -6183,27 +6185,6 @@ function renderNewEventParticipantEditor(availableGroups) {
           <h2 id="new-event-friends-title">בחר מחברים</h2>
           <p>מסמנים רק את מי שמצטרף לאירוע הזה.</p>
         </header>
-        ${
-          availableGroups.length
-            ? `
-              <label class="field new-event-group-field">
-                <span>בחירה מהירה מקבוצה <small>(לא חובה)</small></span>
-                <select data-action="new-event-group" name="eventGroup">
-                  <option value="" ${newEventDraft.groupId === "" ? "selected" : ""}>ללא קבוצה קבועה</option>
-                  ${availableGroups
-                    .map(
-                      (group) => `
-                        <option value="${escapeAttribute(group.id)}" ${newEventDraft.groupId === group.id ? "selected" : ""}>
-                          ${escapeHtml(groupSelectLabel(group))}
-                        </option>
-                      `
-                    )
-                    .join("")}
-                </select>
-              </label>
-            `
-            : ""
-        }
         ${renderParticipantChecks(newEventDraft.participantIds, "new-event-participant")}
       </section>
     `;
@@ -6227,7 +6208,7 @@ function renderNewEventParticipantEditor(availableGroups) {
   return "";
 }
 
-function renderNewEventParticipantSubview(availableGroups) {
+function renderNewEventParticipantSubview() {
   const isFriendsView = newEventDraft.participantView === "friends";
   const title = isFriendsView ? "בחירת חברים" : "הוספת שם ידנית";
   const description = isFriendsView
@@ -6246,7 +6227,7 @@ function renderNewEventParticipantSubview(availableGroups) {
       </header>
 
       ${renderNotice()}
-      ${renderNewEventParticipantEditor(availableGroups)}
+      ${renderNewEventParticipantEditor()}
 
       <div class="new-event-participant-footer new-event-participant-subview-footer">
         <button class="primary-button" type="button" data-action="close-new-event-participant-view">שמירה וחזרה</button>
@@ -6257,9 +6238,9 @@ function renderNewEventParticipantSubview(availableGroups) {
 
 function renderNewEventParticipants() {
   ensureNewEventDraft();
-  const availableGroups = visibleGroupsForParticipant(state, state.currentParticipantId);
+  ensureCurrentParticipantInNewEventDraft();
   if (["friends", "manual"].includes(newEventDraft.participantView)) {
-    return renderNewEventParticipantSubview(availableGroups);
+    return renderNewEventParticipantSubview();
   }
   const selectedParticipants = newEventDraft.participantIds
     .map((participantId) => state.participants.find((participant) => participant.id === participantId))
@@ -6320,7 +6301,7 @@ function renderNewEventParticipants() {
             view: "manual"
           })}
         </div>
-        ${renderNewEventParticipantEditor(availableGroups)}
+        ${renderNewEventParticipantEditor()}
       </section>
 
       <div class="new-event-participant-footer">
@@ -6982,16 +6963,22 @@ function renderEventSettingsDangerDialog(event) {
     showClose: false,
     body: `
       <section class="event-danger-zone section">
-        <div>
-          <strong>עזיבת האירוע</strong>
-          <p class="muted">אפשר לעזוב רק אם אין הוצאות או העברות על שמך ואינך המנהל היחיד.</p>
+        <div class="event-danger-zone-heading">
+          <span class="event-danger-zone-icon" aria-hidden="true">${iconSvg("log-out")}</span>
+          <div>
+            <strong>עזיבת האירוע</strong>
+            <p class="muted">אפשר לעזוב רק אם אין הוצאות או העברות על שמך ואינך המנהל היחיד.</p>
+          </div>
         </div>
         <button class="secondary-button danger-button" data-action="leave-event" data-event-id="${event.id}" ${!canLeave ? "disabled" : ""}>עזוב אירוע</button>
       </section>
       <section class="event-danger-zone event-delete-zone section">
-        <div>
-          <strong>מחיקת האירוע</strong>
-          <p class="muted">מחיקה מסירה את האירוע לכל המשתתפים וזמינה למנהל בלבד.</p>
+        <div class="event-danger-zone-heading">
+          <span class="event-danger-zone-icon" aria-hidden="true">${iconSvg("trash")}</span>
+          <div>
+            <strong>מחיקת האירוע</strong>
+            <p class="muted">מחיקה מסירה את האירוע לכל המשתתפים וזמינה למנהל בלבד.</p>
+          </div>
         </div>
         <button class="secondary-button danger-button" data-action="delete-event" data-event-id="${event.id}" ${!canManage ? "disabled" : ""}>מחק אירוע</button>
       </section>
@@ -7130,7 +7117,7 @@ function renderExpenseForm(event) {
   }
 
   return `
-    <section class="expense-modal-backdrop" aria-label="חלון הוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="חלון הוצאה">
       <section class="panel expense-modal expense-step-modal" role="dialog" aria-modal="true" aria-labelledby="expense-modal-title" aria-describedby="expense-modal-description" data-event-id="${event.id}" data-currency="${eventCurrency(event)}" data-expense-step="${flowStep}" tabindex="-1">
         <div class="expense-modal-header expense-modal-step-header">
           <div>
@@ -7140,12 +7127,12 @@ function renderExpenseForm(event) {
             ${flowStep === "amount" ? renderRestoredDraftNote() : ""}
           </div>
           <div class="expense-modal-header-actions">
+            <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
             ${
               flowMeta.number > 1 || expenseDraft.restaurantEqualSplit
                 ? `<button class="icon-button modal-section-back-button" data-action="expense-step-back" aria-label="חזרה לשלב הקודם" title="חזרה לשלב הקודם"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
-                : ""
+                : `<button class="icon-button modal-section-back-button" data-action="cancel-expense" aria-label="חזרה לאירוע" title="חזרה לאירוע"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>`
             }
-            <button class="icon-button modal-back-button modal-close-button" data-action="cancel-expense" aria-label="סגירת חלון ההוצאה" title="סגירת חלון ההוצאה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
           </div>
         </div>
 
@@ -7305,6 +7292,7 @@ function renderExpenseForm(event) {
         }
       </div>
       </section>
+      ${renderEventRoutePrimaryNav()}
     </section>
   `;
 }
@@ -7407,7 +7395,7 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
       : "בוחרים דרך אחת וממשיכים.";
 
   return `
-    <section class="expense-modal-backdrop" aria-label="הוספת משתתף להוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="הוספת משתתף להוצאה">
       <section
         class="panel expense-modal expense-step-modal expense-participant-add-route"
         role="dialog"
@@ -7426,8 +7414,8 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
             <p class="muted" id="expense-participant-add-description">${escapeHtml(description)}</p>
           </div>
           <div class="expense-modal-header-actions">
+            <button class="accessibility-entry-button accessibility-entry-header expense-accessibility-button" data-open-accessibility type="button" aria-label="פתיחת הגדרות נגישות" title="נגישות"><span aria-hidden="true">${iconSvg("accessibility")}</span></button>
             <button class="icon-button modal-section-back-button" data-action="expense-participant-add-back" aria-label="חזרה" title="חזרה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("chevron-left")}</span></button>
-            <button class="icon-button modal-back-button modal-close-button" data-action="cancel-expense" aria-label="סגירת חלון ההוצאה" title="סגירת חלון ההוצאה"><span class="modal-control-icon" aria-hidden="true">${iconSvg("x")}</span></button>
           </div>
         </div>
         ${renderExpenseFlowProgress("participants")}
@@ -7443,6 +7431,7 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
           </div>
         </fieldset>
       </section>
+      ${renderEventRoutePrimaryNav()}
     </section>
   `;
 }
@@ -8864,13 +8853,17 @@ async function saveProfileAvatarImage(file) {
     render();
     return;
   }
-  if (profileAvatarPendingPreview) URL.revokeObjectURL(profileAvatarPendingPreview);
-  profileAvatarPendingPreview = URL.createObjectURL(file);
-  render();
   try {
-    profileAvatarImageDraft = await compressProfileAvatarImage(file);
-    URL.revokeObjectURL(profileAvatarPendingPreview);
-    profileAvatarPendingPreview = "";
+    const croppedCanvas = await requestImageCrop(file, {
+      shape: "circle",
+      aspectRatio: 1,
+      outputWidth: 480,
+      outputHeight: 480,
+      title: "בחר את תמונת הפרופיל",
+      description: "הזז והגדל עד שהאזור הרצוי נמצא בתוך העיגול."
+    });
+    if (!croppedCanvas) return;
+    profileAvatarImageDraft = compressProfileAvatarImage(croppedCanvas);
     profileError = "";
     render();
     await persistProfileAvatarDraft();
@@ -8881,7 +8874,6 @@ async function saveProfileAvatarImage(file) {
         ?.focus({ preventScroll: true });
     });
   } catch (error) {
-    if (profileAvatarPendingPreview) URL.revokeObjectURL(profileAvatarPendingPreview);
     profileAvatarPendingPreview = "";
     console.warn("[images] Profile image processing failed", {
       type: String(file?.type ?? ""),
@@ -9033,48 +9025,16 @@ function encodeCanvasJpegWithinLimit(
   throw new Error("Image remains too large after compression");
 }
 
-function compressProfileAvatarImage(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = reject;
-      image.onload = () => {
-        const sourceEdge = Math.min(image.naturalWidth, image.naturalHeight);
-        const sourceX = Math.max(0, (image.naturalWidth - sourceEdge) / 2);
-        const sourceY = Math.max(0, (image.naturalHeight - sourceEdge) / 2);
-        const outputEdge = Math.max(1, Math.min(320, sourceEdge));
-        const canvas = document.createElement("canvas");
-        canvas.width = outputEdge;
-        canvas.height = outputEdge;
-        canvas
-          .getContext("2d")
-          ?.drawImage(
-            image,
-            sourceX,
-            sourceY,
-            sourceEdge,
-            sourceEdge,
-            0,
-            0,
-            outputEdge,
-            outputEdge
-          );
-        const dataUrl = encodeCanvasJpegWithinLimit(canvas, {
-          maxLength: 180_000,
-          initialQuality: 0.76,
-          minQuality: 0.4,
-          minEdge: 128
-        });
-        const avatarImage = normalizeAvatarImage(dataUrl);
-        if (!avatarImage) return reject(new Error("Profile image is too large"));
-        resolve(avatarImage);
-      };
-      image.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
+function compressProfileAvatarImage(croppedCanvas) {
+  const dataUrl = encodeCanvasJpegWithinLimit(croppedCanvas, {
+    maxLength: 180_000,
+    initialQuality: 0.76,
+    minQuality: 0.4,
+    minEdge: 128
   });
+  const avatarImage = normalizeAvatarImage(dataUrl);
+  if (!avatarImage) throw new Error("Profile image is too large");
+  return avatarImage;
 }
 
 async function saveEventCoverImage(eventId, file) {
@@ -9086,7 +9046,21 @@ async function saveEventCoverImage(eventId, file) {
     return;
   }
   try {
-    const coverImage = await compressEventCoverImage(file);
+    const croppedCanvas = await requestImageCrop(file, {
+      shape: "rectangle",
+      aspectRatio: 16 / 7,
+      outputWidth: 1280,
+      outputHeight: 560,
+      title: "בחר את תמונת האירוע",
+      description: "הזז והגדל עד שהאזור הרצוי נמצא בתוך המלבן."
+    });
+    if (!croppedCanvas) return;
+    const coverImage = encodeCanvasJpegWithinLimit(croppedCanvas, {
+      maxLength: 240_000,
+      initialQuality: 0.76,
+      minQuality: 0.42,
+      minEdge: 320
+    });
     await updateEventCoverImage(eventId, coverImage);
   } catch (error) {
     console.warn("[images] Event cover processing failed", {
@@ -9716,7 +9690,7 @@ function renderSettlementCloseConfirmation(event, pendingTransfers, pendingTotal
         </p>
         <div class="settlement-close-confirmation-actions">
           <button class="secondary-button" type="button" data-action="cancel-close-event-confirmation">ביטול</button>
-          <button class="primary-button" type="button" data-action="confirm-close-event" data-event-id="${event.id}">סגור אירוע ושלח התראה</button>
+          <button class="primary-button" type="button" data-action="confirm-close-event" data-allow-offline-mutation="true" data-event-id="${event.id}">סגור אירוע ושלח התראה</button>
         </div>
       </section>
     </section>
@@ -9780,10 +9754,14 @@ function renderTransferRow(
     !paid && paymentReminderEligibility(transfer).allowed;
   const reminderBusy = paymentReminderBusyId === transfer.id;
   const explanationOpen = openSettlementTransferIds.has(transfer.id);
+  const explanationId = `transfer-explanation-${transfer.id}`;
   return `
     <article
       class="transfer-row ${paid ? "is-paid" : "is-pending"} ${isPersonal ? "is-personal" : ""} ${personalRoleClass} ${explanationOpen ? "is-explanation-open" : ""}"
       data-transfer-id="${escapeAttribute(transfer.id)}"
+      tabindex="0"
+      aria-expanded="${explanationOpen ? "true" : "false"}"
+      aria-controls="${escapeAttribute(explanationId)}"
       aria-label="${escapeAttribute(`${fromName} מעביר ${formatEventMoney(event, transfer.amount)} ל-${toName}. ${historicalPaidTotal ? `${formatEventMoney(event, historicalPaidTotal)} כבר שולמו. ` : ""}${statusText}`)}"
     >
       <div class="transfer-main">
@@ -9839,7 +9817,7 @@ function renderTransferRow(
           }
         </span>
       </div>
-      ${renderTransferExplanation(event, transfer, { open: explanationOpen })}
+      ${renderTransferExplanation(event, transfer, { open: explanationOpen, id: explanationId })}
       ${renderTransferPaidHistory(event, paidHistory)}
       ${renderTransferPaidHistory(event, groupedPaidTransfers, {
         summaryLabel: `פירוט ${formatCount(groupedPaidTransfers.length, "תשלום", "תשלומים")}`
@@ -9919,7 +9897,7 @@ function renderTransferPaidHistory(
     0
   );
   return `
-    <details class="transfer-paid-history">
+    <details class="transfer-paid-history" open>
       <summary>
         <span>${escapeHtml(summaryLabel)}</span>
         <strong class="amount"><bdi dir="ltr"><span class="font-num">${formatEventMoney(event, total)}</span></bdi></strong>
@@ -10027,12 +10005,13 @@ function transferPaidStatusText(event, transfer) {
   return `שולם · ${marker}${time ? ` · ${time}` : ""}`;
 }
 
-function renderTransferExplanation(event, transfer, { open = false } = {}) {
+function renderTransferExplanation(event, transfer, { open = false, id = "" } = {}) {
+  const idAttribute = id ? ` id="${escapeAttribute(id)}"` : "";
   if (usesDirectSettlementTransfers(event)) {
     const debtorName = participantName(transfer.fromParticipantId, event);
     const creditorName = participantName(transfer.toParticipantId, event);
     return `
-      <details class="transfer-explanation" ${open ? "open" : ""}>
+      <details class="transfer-explanation"${idAttribute} ${open ? "open" : ""}>
         <summary>איך הסכום חושב?</summary>
         <div class="transfer-explanation-body">
           <p class="transfer-debt-summary"><strong><bdi>${escapeHtml(debtorName)}</bdi> חייב ל־<bdi>${escapeHtml(creditorName)}</bdi> <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi></strong></p>
@@ -10062,7 +10041,7 @@ function renderTransferExplanation(event, transfer, { open = false } = {}) {
   const creditorName = participantName(transfer.toParticipantId, event);
 
   return `
-    <details class="transfer-explanation" ${open ? "open" : ""}>
+    <details class="transfer-explanation"${idAttribute} ${open ? "open" : ""}>
       <summary>איך הסכום חושב?</summary>
       <div class="transfer-explanation-body">
         <p class="transfer-debt-summary"><strong><bdi>${escapeHtml(debtorName)}</bdi> חייב ל־<bdi>${escapeHtml(creditorName)}</bdi> <bdi dir="ltr"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></bdi></strong></p>
@@ -10093,6 +10072,24 @@ function renderTransferExplanation(event, transfer, { open = false } = {}) {
       </div>
     </details>
   `;
+}
+
+function setTransferExplanationOpen(transferRow, open) {
+  const explanation = transferRow?.querySelector?.(".transfer-explanation");
+  if (!(transferRow instanceof HTMLElement) || !(explanation instanceof HTMLDetailsElement)) {
+    return false;
+  }
+
+  explanation.open = open;
+  transferRow.classList.toggle("is-explanation-open", open);
+  transferRow.setAttribute("aria-expanded", String(open));
+  const transferId = transferRow.dataset.transferId;
+  if (transferId) {
+    if (open) openSettlementTransferIds.add(transferId);
+    else openSettlementTransferIds.delete(transferId);
+    persistOpenSettlementTransferIds();
+  }
+  return true;
 }
 
 function renderSettlementExpenseShare(event, expenseShare) {
@@ -10244,7 +10241,11 @@ function participantCandidateFilter(selectedIds, action = "") {
   }
 
   return (participant) =>
-    allowedIds.has(participant.id);
+    allowedIds.has(participant.id) &&
+    !(
+      action === "new-event-participant" &&
+      participant.id === state.currentParticipantId
+    );
 }
 
 function participantConnectionStatus(participant) {
@@ -10677,14 +10678,7 @@ async function handleClick(event) {
   ) {
     const explanation = transferRow.querySelector(".transfer-explanation");
     if (explanation) {
-      explanation.open = !explanation.open;
-      transferRow.classList.toggle("is-explanation-open", explanation.open);
-      const transferId = transferRow.dataset.transferId;
-      if (transferId) {
-        if (explanation.open) openSettlementTransferIds.add(transferId);
-        else openSettlementTransferIds.delete(transferId);
-        persistOpenSettlementTransferIds();
-      }
+      setTransferExplanationOpen(transferRow, !explanation.open);
     }
     return;
   }
@@ -10717,6 +10711,11 @@ async function handleClick(event) {
     event.preventDefault();
     const participantId = target.dataset.participantId;
     if (!participantId || !newEventDraft) return;
+    if (participantId === state.currentParticipantId) {
+      ensureCurrentParticipantInNewEventDraft();
+      syncNewEventParticipantControls();
+      return;
+    }
     if (newEventDraft.participantIds.includes(participantId)) {
       requestNewEventParticipantRemoval(participantId, target);
     } else {
@@ -11103,7 +11102,7 @@ async function handleClick(event) {
 
   if (action === "groups") {
     notice = "";
-    const friendsTab = target.dataset.tab === "groups" ? "groups" : "people";
+    const friendsTab = "people";
     screen = { name: "groups", tab: friendsTab };
     groupDraft = null;
     joinEventDraft = null;
@@ -11162,17 +11161,17 @@ async function handleClick(event) {
   }
 
   if (action === "friends-hub-tab") {
-    const nextTab = ["people", "requests", "groups"].includes(target.dataset.tab)
+    const nextTab = ["people", "requests"].includes(target.dataset.tab)
       ? target.dataset.tab
       : "people";
     if (screen.name !== "groups" || screen.tab !== nextTab) {
       notice = "";
       screen = { name: "groups", tab: nextTab };
-      if (nextTab !== "groups" && friendNetwork.status === "idle") {
+      if (friendNetwork.status === "idle") {
         friendNetwork = emptyFriendNetwork("loading");
       }
       renderReplacingBrowserHistory();
-      if (nextTab !== "groups" && friendNetwork.status !== "ready") {
+      if (friendNetwork.status !== "ready") {
         refreshFriendNetwork().catch(() => {});
       }
       requestAnimationFrame(() => {
@@ -11189,18 +11188,12 @@ async function handleClick(event) {
 
   if (action === "new-group") {
     notice = "";
-    screen = { name: "group-create" };
-    groupDraft = {
-      name: "",
-      memberIds: [state.currentParticipantId],
-      newMemberName: ""
-    };
+    screen = { name: "groups", tab: "people" };
+    groupDraft = null;
     editingGroupDraft = null;
     mergeParticipantsDraft = null;
     render();
-    requestAnimationFrame(() => {
-      app.querySelector('[data-action="group-name"]')?.focus();
-    });
+    return;
   }
 
   if (action === "manage-people") {
@@ -11445,7 +11438,7 @@ async function handleClick(event) {
 
   if (action === "cancel-edit-group") {
     editingGroupDraft = null;
-    screen = { name: "groups", tab: "groups" };
+    screen = { name: "groups", tab: "people" };
     render();
   }
 
@@ -12267,7 +12260,7 @@ async function handleClick(event) {
 
   if (action === "confirm-close-event") {
     const eventId = settlementCloseConfirmation?.eventId || target.dataset.eventId;
-    closeCurrentEvent(eventId);
+    await closeCurrentEvent(eventId);
     return;
   }
 
@@ -12729,7 +12722,7 @@ function goBackInApp() {
   if (["group-create", "group-edit", "people"].includes(screen.name)) {
     screen = {
       name: "groups",
-      tab: screen.name === "people" ? "people" : "groups"
+      tab: "people"
     };
     groupDraft = null;
     editingGroupDraft = null;
@@ -13215,6 +13208,7 @@ async function handleChange(event) {
 
 async function createEventFromDraft() {
   if (createEventBusy) return;
+  ensureCurrentParticipantInNewEventDraft();
   if (newEventDraft.participantIds.length === 0) {
     notice = "צריך לבחור לפחות משתתף אחד.";
     screen = { name: "new-event-participants" };
@@ -13414,7 +13408,10 @@ async function joinExistingEventFromDraft() {
       profileNameDraft = participant.displayName;
     }
 
-    const saveResult = await saveSharedState(state);
+    const saveResult = await saveSharedState(state, {
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    });
     if (!saveResult?.ok && !saveResult?.partial) {
       joinEventDraft.error =
         "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ולחצו שוב.";
@@ -13423,8 +13420,8 @@ async function joinExistingEventFromDraft() {
     joinEventDraft = null;
     newEventDraft = null;
     screen = { name: "event", eventId };
-    notice = saveResult?.partial
-      ? "הצטרפת. העותק האישי יסתנכרן כשהחיבור יחזור."
+    notice = saveResult?.partial || saveResult?.pending
+      ? "ההצטרפות אושרה והסנכרון יושלם אוטומטית כשהחיבור יתייצב."
       : "הצטרפת לאירוע.";
     emitProductMetric("invite_joined", { screen: "invite" });
   } catch (error) {
@@ -13913,7 +13910,6 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       friendNetwork = emptyFriendNetwork("signed-out");
       if (
         screen.name === "groups" &&
-        screen.tab !== "groups" &&
         previousRenderKey !== friendNetworkRenderKey()
       ) {
         render();
@@ -14051,7 +14047,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     visibleFriendDataChanged &&
     !profileAvatarPickerIsOpen &&
     (
-      (screen.name === "groups" && screen.tab !== "groups") ||
+      screen.name === "groups" ||
       screen.name === "profile" ||
       screen.name === "friend-add" ||
       screen.name === "friend-profile"
@@ -14285,7 +14281,7 @@ function saveEditedGroup() {
     adminIds: editingGroupDraft.adminIds
   });
   editingGroupDraft = null;
-  screen = { name: "groups", tab: "groups" };
+  screen = { name: "groups", tab: "people" };
   notice = "הקבוצה עודכנה.";
   persistState();
   render();
@@ -14318,7 +14314,7 @@ function createGroupFromDraft() {
   const matchingGroup = findMatchingActiveGroup(state.groups, candidateGroup);
   if (matchingGroup) {
     groupDraft = null;
-    screen = { name: "groups", tab: "groups" };
+    screen = { name: "groups", tab: "people" };
     notice = "כבר קיימת קבוצה עם אותו שם ואותם חברים, לכן לא יצרנו עותק נוסף.";
     render();
     requestAnimationFrame(() => {
@@ -14338,7 +14334,7 @@ function createGroupFromDraft() {
   });
   persistState();
   groupDraft = null;
-  screen = { name: "groups", tab: "groups" };
+  screen = { name: "groups", tab: "people" };
   notice = "הקבוצה נשמרה.";
   render();
 }
@@ -14792,9 +14788,24 @@ function requestEventDeletion(eventId, trigger) {
   openImportantActionDialog(
     {
       kind: "delete-event",
+      label: "מחיקת אירוע",
       title: `למחוק את "${event.name}"?`,
       description: "כל ההוצאות, המשתתפים וההעברות באירוע יימחקו לצמיתות. אי אפשר לשחזר אותו.",
       confirmLabel: "מחק אירוע",
+      metrics: [
+        {
+          label: "משתתפים",
+          value: String(event.participantIds?.length ?? 0)
+        },
+        {
+          label: "הוצאות",
+          value: String(event.expenses?.length ?? 0)
+        },
+        {
+          label: "העברות",
+          value: String(event.transfers?.length ?? 0)
+        }
+      ],
       payload: { eventId }
     },
     trigger
@@ -14960,6 +14971,11 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "remove-new-event-participant") {
+    if (action.payload.participantId === state.currentParticipantId) {
+      ensureCurrentParticipantInNewEventDraft();
+      render();
+      return;
+    }
     toggleId(newEventDraft.participantIds, action.payload.participantId, false);
     render();
     return;
@@ -14987,7 +15003,7 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "delete-event") {
-    deleteCurrentEvent(action.payload.eventId);
+    await deleteCurrentEvent(action.payload.eventId);
     return;
   }
 
@@ -14997,7 +15013,7 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "close-event-from-home") {
-    closeCurrentEvent(action.payload.eventId, { destination: "home" });
+    await closeCurrentEvent(action.payload.eventId, { destination: "home" });
     return;
   }
 
@@ -15277,14 +15293,56 @@ function syncMergeParticipantControls(changedAction) {
     );
 }
 
-async function mergeParticipantsInState() {
+function mergeParticipantsInState() {
+  if (mergeParticipantsRequest) return mergeParticipantsRequest;
+  mergeParticipantsRequest = mergeParticipantsInStateNow().finally(() => {
+    mergeParticipantsRequest = null;
+  });
+  return mergeParticipantsRequest;
+}
+
+async function mergeParticipantsInStateNow() {
   ensureMergeParticipantsDraft();
   if (!mergeParticipantsDraft) return;
 
   const pendingMerge = { ...mergeParticipantsDraft };
-  const source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
-  const target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
+  let source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
+  let target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
   if (!source || !target || source.id === target.id) return;
+
+  if (pendingMerge.mergeKind === "account-link" && pendingMerge.eventId) {
+    if (eventDialog?.eventId === pendingMerge.eventId) {
+      eventDialog = {
+        ...eventDialog,
+        message: "מכינים חיבור מאובטח ושומרים אותו בענן…"
+      };
+      render();
+      reactivateDialogAfterRender(".event-modal");
+    }
+    try {
+      await prepareSharedEventForInvitation(pendingMerge.eventId, {
+        publishExisting: true
+      });
+    } catch (error) {
+      mergeParticipantsDraft = null;
+      emitOperationFailure("account_link", {
+        screen: "event",
+        error
+      });
+      const failureMessage =
+        "לא הצלחנו להכין חיבור מאובטח לחשבון. לא בוצע שינוי, ואפשר לנסות שוב.";
+      eventDialog = eventDialog?.eventId === pendingMerge.eventId
+        ? { ...eventDialog, message: failureMessage }
+        : eventDialog;
+      notice = eventDialog?.eventId === pendingMerge.eventId ? "" : failureMessage;
+      render();
+      reactivateDialogAfterRender(".event-modal");
+      return { ok: false, error };
+    }
+    source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
+    target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
+    if (!source || !target || source.id === target.id) return;
+  }
 
   const nextState = pendingMerge.mergeKind === "account-link"
     ? pendingMerge.eventId
@@ -15304,6 +15362,10 @@ async function mergeParticipantsInState() {
   }
 
   const previousState = cloneNavigationValue(state);
+  const accountLinkReceipt = pendingMerge.mergeKind === "account-link"
+    ? pendingAccountLinkReceipt(nextState, pendingMerge)
+    : null;
+  if (accountLinkReceipt) rememberPendingAccountLink(accountLinkReceipt);
   state = nextState;
   if (pendingMerge.mergeKind === "account-link" && eventDialog?.eventId === pendingMerge.eventId) {
     eventDialog = {
@@ -15318,11 +15380,15 @@ async function mergeParticipantsInState() {
   reactivateDialogAfterRender(".event-modal");
 
   const result = pendingMerge.mergeKind === "account-link"
-    ? await saveSharedState(state, { awaitCloud: true })
+    ? await saveSharedState(state, {
+        awaitCloud: true,
+        forceSharedEventIds: [pendingMerge.eventId]
+      })
     : await persistState();
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     mergeParticipantsDraft = null;
+    if (accountLinkReceipt) forgetPendingAccountLink(accountLinkReceipt);
     const failureMessage = "לא הצלחנו לקשר את החשבון. לא בוצע שינוי, ואפשר לנסות שוב.";
     if (pendingMerge.mergeKind === "account-link") {
       emitOperationFailure("account_link", {
@@ -15341,6 +15407,26 @@ async function mergeParticipantsInState() {
     return result;
   }
 
+  let accountLinkConfirmed = pendingMerge.mergeKind !== "account-link";
+  if (accountLinkReceipt) {
+    try {
+      accountLinkConfirmed = await confirmPendingAccountLink(accountLinkReceipt);
+    } catch (error) {
+      emitOperationDeferred("account_link", {
+        screen: "event",
+        error
+      });
+    }
+    if (accountLinkConfirmed) {
+      forgetPendingAccountLink(accountLinkReceipt);
+    } else {
+      rememberPendingAccountLink(accountLinkReceipt);
+    }
+  }
+  const accountLinkPending = Boolean(
+    pendingMerge.mergeKind === "account-link" && !accountLinkConfirmed
+  );
+
   if (localProfile?.participantId === source.id) {
     localProfile = saveLocalProfile({
       ...localProfile,
@@ -15354,8 +15440,8 @@ async function mergeParticipantsInState() {
   ) {
     eventDialog = {
       ...eventDialog,
-      message: result?.pending
-        ? `קישרנו את ${source.displayName} לחשבון של ${target.displayName}. הסנכרון יושלם אוטומטית.`
+      message: accountLinkPending
+        ? `החיבור של ${source.displayName} לחשבון של ${target.displayName} נשמר וממתין לאישור מהענן. נשלים אותו אוטומטית.`
         : `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`,
       resolvedPairIds: []
     };
@@ -15366,8 +15452,8 @@ async function mergeParticipantsInState() {
     eventDialog = {
       eventId: eventDialog.eventId,
       kind: "participants",
-      message: result?.pending
-        ? `קישרנו את ${source.displayName} לחשבון של ${target.displayName}. הסנכרון יושלם אוטומטית.`
+      message: accountLinkPending
+        ? `החיבור של ${source.displayName} לחשבון של ${target.displayName} נשמר וממתין לאישור מהענן. נשלים אותו אוטומטית.`
         : `קישרנו את ${source.displayName} לחשבון של ${target.displayName}.`,
       historyBaseDepth: eventDialog.historyBaseDepth
     };
@@ -15381,7 +15467,9 @@ async function mergeParticipantsInState() {
       : `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`;
   render();
   reactivateDialogAfterRender(".event-modal");
-  return result;
+  return accountLinkPending
+    ? { ...result, ok: true, pending: true, confirmed: false }
+    : { ...result, confirmed: true };
 }
 
 function dropParticipantFromDrafts(participantId) {
@@ -15991,6 +16079,26 @@ async function prepareEventShareNow(eventId) {
   try {
     return await prepareEventShareWithCurrentSession(eventId);
   } catch (error) {
+    if (
+      error?.code === "EVENT_INVITE_CLOUD_REQUIRED" &&
+      expectedUserId
+    ) {
+      try {
+        const freshRuntimeConfig = await refreshRuntimeConfigNow();
+        const freshUserId = String(
+          freshRuntimeConfig?.storage?.account?.userId ?? ""
+        ).trim();
+        if (
+          freshRuntimeConfig?.storage?.mode === "supabase" &&
+          freshUserId === expectedUserId
+        ) {
+          runtimeConfig = freshRuntimeConfig;
+          return await prepareEventShareWithCurrentSession(eventId);
+        }
+      } catch {
+        // Continue with the regular authenticated-session recovery below.
+      }
+    }
     if (!eventInviteAuthRefreshRequired(error) || !expectedUserId) throw error;
 
     const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
@@ -17153,7 +17261,7 @@ function requestCloseCurrentEvent(eventId) {
     (transfer) => transfer.status !== "paid"
   );
   if (!pendingTransfers.length || isEventClosed(event)) {
-    closeCurrentEvent(eventId);
+    void closeCurrentEvent(eventId);
     return;
   }
 
@@ -17212,7 +17320,7 @@ async function setEventStatusFromHome(eventId, nextStatus, trigger) {
   prepareEventTransfers(event);
   const pendingTransfers = event.transfers.filter((transfer) => transfer.status !== "paid");
   if (!pendingTransfers.length) {
-    closeCurrentEvent(eventId, { destination: "home" });
+    await closeCurrentEvent(eventId, { destination: "home" });
     return;
   }
 
@@ -17239,12 +17347,25 @@ function cancelSettlementCloseConfirmation() {
   renderHistoryFallback();
 }
 
-function closeCurrentEvent(eventId, { destination = "settlement" } = {}) {
+function closeCurrentEvent(eventId, options = {}) {
+  const existingRequest = closeEventRequests.get(eventId);
+  if (existingRequest) return existingRequest;
+
+  const request = closeCurrentEventNow(eventId, options).finally(() => {
+    if (closeEventRequests.get(eventId) === request) {
+      closeEventRequests.delete(eventId);
+    }
+  });
+  closeEventRequests.set(eventId, request);
+  return request;
+}
+
+async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לסגור אירוע.";
     render();
-    return;
+    return { ok: false, reason: "forbidden" };
   }
 
   if (isEventClosed(event)) {
@@ -17253,7 +17374,7 @@ function closeCurrentEvent(eventId, { destination = "settlement" } = {}) {
       screen = { name: "settlement", eventId };
     }
     render();
-    return;
+    return { ok: true, unchanged: true };
   }
 
   const settlement = calculateSettlement(
@@ -17264,9 +17385,10 @@ function closeCurrentEvent(eventId, { destination = "settlement" } = {}) {
   if (settlement.issues.length) {
     notice = "אי אפשר לסגור את האירוע עד שמתקנים את ההוצאות שסומנו לבדיקה.";
     render();
-    return;
+    return { ok: false, reason: "invalid-expenses" };
   }
 
+  const previousState = cloneNavigationValue(state);
   prepareEventTransfers(event);
   const closedAt = new Date().toISOString();
   state = closeEvent(state, eventId, closedAt);
@@ -17276,11 +17398,32 @@ function closeCurrentEvent(eventId, { destination = "settlement" } = {}) {
   eventDialog = null;
   notice = "האירוע נסגר וננעל לעריכה.";
   const saveRequest = persistState();
-  publishEventActivityAfterSave(saveRequest, eventId, "event-closed", activityId);
   screen = destination === "home"
     ? { name: "home" }
     : { name: "settlement", eventId };
   render();
+
+  let result;
+  try {
+    result = await saveRequest;
+  } catch (error) {
+    result = { ok: false, error };
+  }
+  if (!result?.ok && !result?.pending) {
+    state = previousState;
+    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
+      ? "אין לחשבון הרשאה לסגור את האירוע. רעננו את המסך."
+      : "לא הצלחנו לסגור את האירוע. לא בוצע שינוי ואפשר לנסות שוב.";
+    render();
+    return result;
+  }
+
+  notice = result?.pending
+    ? "האירוע נסגר. הסנכרון עם שאר המשתתפים יושלם אוטומטית."
+    : "האירוע נסגר וננעל לעריכה.";
+  publishEventActivityAfterSave(Promise.resolve(result), eventId, "event-closed", activityId);
+  render();
+  return result;
 }
 
 function requestReopenCurrentEvent(eventId, trigger) {
@@ -17430,21 +17573,30 @@ function leaveCurrentEvent(eventId) {
   render();
 }
 
-function deleteCurrentEvent(eventId) {
+async function deleteCurrentEvent(eventId) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול למחוק אירוע.";
     render();
-    return;
+    return { ok: false, mode: "permission" };
   }
 
+  const previousState = state;
   state = deleteEvent(state, eventId);
   expenseDraft = null;
   eventDialog = null;
   screen = { name: "home" };
   notice = `האירוע "${event.name}" נמחק.`;
-  persistState();
   render();
+
+  const result = await saveSharedState(state, { awaitCloud: true });
+  if (!result?.ok && !result?.pending) {
+    state = previousState;
+    screen = { name: "event", eventId };
+    notice = "לא הצלחנו להשלים את מחיקת האירוע. האירוע נשאר שמור ואפשר לנסות שוב.";
+    render();
+  }
+  return result;
 }
 
 async function markTransferPaid(transferId, trigger) {
@@ -17816,7 +17968,7 @@ function archiveSettledEvent(eventId) {
       notice = `"${event.name}" שמור בהיסטוריה.`;
       render();
     } else {
-      closeCurrentEvent(eventId, { destination: "home" });
+      void closeCurrentEvent(eventId, { destination: "home" });
     }
   } finally {
     restoringBrowserHistory = false;
@@ -18143,7 +18295,11 @@ async function removeEventParticipant(eventId, participantId) {
 
 function requestNewEventParticipantRemoval(participantId, trigger) {
   const participant = state.participants.find((item) => item.id === participantId);
-  if (!participant || !newEventDraft?.participantIds.includes(participantId)) return;
+  if (
+    !participant ||
+    participantId === state.currentParticipantId ||
+    !newEventDraft?.participantIds.includes(participantId)
+  ) return;
 
   openImportantActionDialog(
     {
@@ -18156,6 +18312,14 @@ function requestNewEventParticipantRemoval(participantId, trigger) {
     },
     trigger
   );
+}
+
+function ensureCurrentParticipantInNewEventDraft() {
+  const currentParticipantId = String(state.currentParticipantId ?? "").trim();
+  if (!newEventDraft || !currentParticipantId) return false;
+  if (newEventDraft.participantIds.includes(currentParticipantId)) return false;
+  newEventDraft.participantIds.unshift(currentParticipantId);
+  return true;
 }
 
 async function restoreEventParticipant(eventId, participantId) {
@@ -18261,6 +18425,13 @@ async function toggleEventParticipant(eventId, participantId, checked) {
       subjectParticipantId: participantId
     });
   }
+  render();
+  reactivateDialogAfterRender(
+    ".event-modal",
+    returnsToParticipantRoster
+      ? `[data-action="open-event-participant-profile"][data-participant-id="${participantId}"]`
+      : `[data-action="remove-event-participant"][data-participant-id="${participantId}"]`
+  );
   const result = await persistState();
   if (!result?.ok) {
     state = previousState;
@@ -18300,6 +18471,116 @@ async function toggleEventParticipant(eventId, participantId, checked) {
   ) {
     reactivateDialogAfterRender(".event-modal");
   }
+}
+
+function pendingAccountLinkReceipt(candidateState, pendingMerge) {
+  const event = candidateState?.events?.find(
+    (item) => item.id === pendingMerge?.eventId
+  );
+  const link = (event?.participantAccountLinks ?? []).find(
+    (item) =>
+      item?.sourceParticipantId === pendingMerge?.sourceId &&
+      item?.targetParticipantId === pendingMerge?.targetId
+  );
+  const ownerUserId =
+    accountUserIdFromParticipantId(link?.linkedByParticipantId) ||
+    String(runtimeConfig?.storage?.account?.userId ?? "").trim() ||
+    accountUserIdFromParticipantId(candidateState?.currentParticipantId);
+  if (!event || !link?.linkedAt || !ownerUserId) return null;
+  return {
+    ownerUserId,
+    eventId: event.id,
+    sourceParticipantId: pendingMerge.sourceId,
+    targetParticipantId: pendingMerge.targetId,
+    linkedAt: link.linkedAt,
+    queuedAt: new Date().toISOString(),
+    attempts: 0,
+    lastAttemptAt: ""
+  };
+}
+
+async function confirmPendingAccountLink(receipt) {
+  const event = getEvent(receipt?.eventId);
+  const credentials = eventShareCredentials(event);
+  if (!event || !credentials) return false;
+
+  const config = await loadRuntimeConfig();
+  runtimeConfig = config;
+  if (config.storage?.mode !== "supabase") return false;
+  const remoteState = await readSharedEventState(
+    config,
+    credentials,
+    receipt.eventId
+  );
+  if (!accountLinkIsConfirmed(remoteState, receipt)) return false;
+
+  state = mergeSharedEventIntoState(state, remoteState, credentials);
+  saveState(state);
+  return true;
+}
+
+function retryPendingAccountLinks() {
+  if (
+    pendingAccountLinkRetryRequest ||
+    !appBootHydrated ||
+    navigator.onLine === false
+  ) {
+    return pendingAccountLinkRetryRequest ?? Promise.resolve();
+  }
+
+  const ownerUserId = pendingEventMembershipOwnerId();
+  const pendingEntries = loadPendingAccountLinks(
+    window.localStorage,
+    ownerUserId
+  );
+  if (!ownerUserId || !pendingEntries.length) return Promise.resolve();
+
+  pendingAccountLinkRetryRequest = (async () => {
+    await flushPendingSharedState().catch(() => null);
+    for (const entry of pendingEntries) {
+      markPendingAccountLinkAttempt(entry);
+      try {
+        if (await confirmPendingAccountLink(entry)) {
+          forgetPendingAccountLink(entry);
+          continue;
+        }
+
+        const replayedState = accountLinkIsConfirmed(state, entry)
+          ? state
+          : linkParticipantAccountInEvent(
+              state,
+              entry.eventId,
+              entry.sourceParticipantId,
+              entry.targetParticipantId
+            );
+        if (replayedState === state && !accountLinkIsConfirmed(state, entry)) {
+          continue;
+        }
+        state = replayedState;
+        const result = await saveSharedState(state, {
+          awaitCloud: true,
+          suppressRevertNotice: true,
+          forceSharedEventIds: [entry.eventId]
+        });
+        if (result?.ok && await confirmPendingAccountLink(entry)) {
+          forgetPendingAccountLink(entry);
+          continue;
+        }
+        emitOperationDeferred("account_link", {
+          screen: "event",
+          error: result?.error
+        });
+      } catch (error) {
+        emitOperationDeferred("account_link", {
+          screen: "event",
+          error
+        });
+      }
+    }
+  })().finally(() => {
+    pendingAccountLinkRetryRequest = null;
+  });
+  return pendingAccountLinkRetryRequest;
 }
 
 async function publishEventInvitation(
@@ -18927,7 +19208,10 @@ function setDialogBackgroundInert(dialog) {
 
   const screen = backdrop.closest(".screen");
   screen?.querySelectorAll(":scope > *").forEach((element) => {
-    if (element === backdrop) return;
+    // A dialog can be rendered inside a screen section (for example the
+    // settlement summary). Never make the dialog's own ancestor inert: doing
+    // so also disables every button inside the visually active dialog.
+    if (element === backdrop || element.contains(backdrop)) return;
     if (isDismissibleNotice(element)) return;
     if (keepsRouteChromeActive && isRouteChrome(element)) return;
     element.dataset.appDialogInertContainer = "true";
@@ -19042,6 +19326,18 @@ function handleDialogKeydown(event) {
   if (handleFriendsHubTabKeyboardNavigation(event)) return;
   if (handleInputKeyboardShortcut(event)) return;
 
+  const transferRow = event.target.closest?.(".transfer-row[tabindex]");
+  if (
+    transferRow &&
+    event.target === transferRow &&
+    (event.key === "Enter" || event.key === " ")
+  ) {
+    event.preventDefault();
+    const explanation = transferRow.querySelector(".transfer-explanation");
+    if (explanation) setTransferExplanationOpen(transferRow, !explanation.open);
+    return;
+  }
+
   if (event.key === "Escape" && closeOpenTransientMenus()) {
     event.preventDefault();
     return;
@@ -19077,9 +19373,19 @@ function handleDialogKeydown(event) {
   }
 
   if (event.key !== "Tab") return;
-  const focusable = [...dialog.querySelectorAll(
-    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [tabindex]:not([tabindex="-1"])'
-  )].filter((element) => element.offsetParent !== null);
+  const focusableSelector =
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], summary, [tabindex]:not([tabindex="-1"])';
+  const routeDialog = dialog.closest("[data-event-route-dialog]");
+  const candidates = routeDialog
+    ? [...app.querySelectorAll(focusableSelector)].filter(
+        (element) =>
+          dialog.contains(element) ||
+          Boolean(element.closest(".product-app-identity, .product-app-nav, .event-route-primary-nav"))
+      )
+    : [...dialog.querySelectorAll(focusableSelector)];
+  const focusable = [...new Set(candidates)].filter(
+    (element) => element.offsetParent !== null && !element.inert
+  );
   if (focusable.length === 0) {
     event.preventDefault();
     dialog.focus({ preventScroll: true });
@@ -19325,7 +19631,10 @@ function escapeAttribute(value) {
 function bootstrapApp() {
   if (!document.documentElement.classList.contains("account-auth-pending")) {
     hydrateAppAfterAccountReady()
-      .then(() => retryPendingEventMembershipInvitations())
+      .then(() => Promise.all([
+        retryPendingEventMembershipInvitations(),
+        retryPendingAccountLinks()
+      ]))
       .catch(renderScopedLocalFallback);
   }
   loadRuntimeConfig().then((config) => {

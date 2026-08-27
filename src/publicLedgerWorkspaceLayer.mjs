@@ -848,27 +848,6 @@ const CSS = `
     justify-items: end !important;
   }
 
-  html.ledger-workspace-v1 .event-row-attention {
-    min-height: 26px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    padding: 0 9px !important;
-    border-radius: 5px !important;
-    font-size: 11.5px !important;
-    font-weight: 700 !important;
-    white-space: nowrap !important;
-  }
-
-  html.ledger-workspace-v1 .event-row-attention.is-action {
-    color: #8e352b !important;
-    background: #fcece8 !important;
-  }
-
-  html.ledger-workspace-v1 .event-row-attention.is-waiting {
-    color: var(--ledger-brand) !important;
-    background: var(--ledger-accent-soft) !important;
-  }
-
   html.ledger-workspace-v1 .event-type-chip,
   html.ledger-workspace-v1 .status-chip {
     border: 0 !important;
@@ -890,7 +869,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-status-toggle {
     min-width: 76px !important;
-    min-height: 40px !important;
+    min-height: 44px !important;
     margin-inline-end: 18px !important;
     gap: 8px !important;
     border: 1px solid var(--ledger-line) !important;
@@ -1466,7 +1445,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-template-grid .secondary-button {
     flex: 0 0 auto !important;
-    min-height: 40px !important;
+    min-height: 44px !important;
     border-color: var(--ledger-line) !important;
     background: var(--ledger-surface-soft) !important;
     scroll-snap-align: start !important;
@@ -2472,12 +2451,6 @@ const CSS = `
       gap: 6px !important;
     }
 
-    html.ledger-workspace-v1 .event-row-attention {
-      min-height: 24px !important;
-      padding-inline: 7px !important;
-      font-size: 10.5px !important;
-    }
-
     html.ledger-workspace-v1 .profile-setup-screen > .backup-panel {
       padding: 17px !important;
     }
@@ -3399,7 +3372,6 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .status-chip,
-  html.ledger-workspace-v1 .event-row-attention,
   html.ledger-workspace-v1 .event-type-chip {
     min-height: 26px !important;
     display: inline-flex !important;
@@ -6074,26 +6046,6 @@ const CSS = `
     line-height: 1.25 !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
-  }
-
-  html.ledger-workspace-v1 .event-row-attention {
-    width: 18px !important;
-    min-width: 18px !important;
-    height: 18px !important;
-    display: inline-grid !important;
-    place-items: center !important;
-    border-radius: 50% !important;
-    background: rgba(139, 93, 37, 0.1) !important;
-  }
-
-  html.ledger-workspace-v1 .event-row-attention > span {
-    width: 7px !important;
-    min-width: 7px !important;
-    height: 7px !important;
-    border-radius: 50% !important;
-    background: var(--ledger-warning) !important;
-    box-shadow: 0 0 0 3px rgba(139, 93, 37, 0.12) !important;
-    animation: ledger-dot-breathe 2.3s ease-in-out infinite !important;
   }
 
   @keyframes ledger-dot-breathe {
@@ -12062,6 +12014,7 @@ const CSS = `
     inset: auto !important;
     left: auto !important;
     right: auto !important;
+    z-index: auto !important;
     width: 100% !important;
     min-height: 72px !important;
     margin: 0 0 18px !important;
@@ -12086,6 +12039,7 @@ const CSS = `
       inset: auto !important;
       left: auto !important;
       right: auto !important;
+      z-index: auto !important;
       width: 100% !important;
       min-height: 70px !important;
       margin: 0 0 16px !important;
@@ -12260,7 +12214,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .friends-hub-tab > strong.has-new-requests {
     color: #ffffff !important;
-    background: var(--ledger-accent) !important;
+    background: var(--ledger-brand) !important;
   }
 
   html.ledger-workspace-v1 .friends-hub-panel {
@@ -12338,7 +12292,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .blocked-user-row .secondary-button {
     flex: 0 0 auto !important;
-    min-height: 40px !important;
+    min-height: 44px !important;
     padding-inline: 12px !important;
   }
 
@@ -13695,7 +13649,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .referral-qr-card {
-      width: min(100%, 176px) !important;
+      width: min(100%, 190px) !important;
       justify-self: center !important;
     }
 
@@ -16140,7 +16094,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .people-management-disclosure .known-participant-row > .danger-button {
     min-width: 44px !important;
-    min-height: 40px !important;
+    min-height: 44px !important;
     padding-inline: 12px !important;
   }
 
@@ -16961,6 +16915,10 @@ const CSS = `
     cursor: pointer !important;
   }
 
+  html.ledger-workspace-v1 .new-event-selected-participant.is-current-participant {
+    cursor: default !important;
+  }
+
   html.ledger-workspace-v1 .new-event-selected-participant > input {
     position: absolute !important;
     width: 1px !important;
@@ -17518,8 +17476,8 @@ const CSS = `
     position: absolute !important;
     inset-block-start: 10px !important;
     inset-inline-end: 10px !important;
-    width: 40px !important;
-    height: 40px !important;
+    width: 44px !important;
+    height: 44px !important;
     display: grid !important;
     place-items: center !important;
     border: 1px solid rgba(255, 255, 255, 0.72) !important;
@@ -17566,7 +17524,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-cover-action {
     width: 100% !important;
-    min-height: 42px !important;
+    min-height: 44px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
@@ -17658,6 +17616,7 @@ const CSS = `
 
   /* Final mobile touch-target guardrails for shared route controls. */
   html.ledger-workspace-v1 .product-route-controls > .accessibility-entry-button,
+  html.ledger-workspace-v1 .expense-modal-step-header .expense-accessibility-button,
   html.ledger-workspace-v1 .event-settings-accessibility-button {
     width: 48px !important;
     min-width: 48px !important;
@@ -17818,27 +17777,40 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .referral-share-workspace {
-    grid-template-columns: 180px minmax(0, 1fr) !important;
+    grid-template-columns: 190px minmax(0, 1fr) !important;
     gap: 16px !important;
   }
 
   html.ledger-workspace-v1 .referral-qr-card {
-    padding: 10px !important;
-    border-radius: 14px !important;
+    gap: 10px !important;
+    padding: 12px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 16px !important;
     color: var(--ledger-ink) !important;
-    background: var(--ledger-accent-soft) !important;
-    box-shadow: inset 0 0 0 1px rgba(6, 75, 67, 0.09) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
   }
 
   html.ledger-workspace-v1 .referral-qr-code {
-    padding: 6px !important;
-    border-radius: 8px !important;
+    padding: 8px !important;
+    border: 1px solid rgba(0, 0, 0, 0.1) !important;
+    border-radius: 10px !important;
     background: #ffffff !important;
   }
 
   html.ledger-workspace-v1 .referral-qr-code svg {
     outline: 1px solid oklch(0 0 0 / 0.1) !important;
     outline-offset: -1px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-card figcaption {
+    gap: 3px !important;
+  }
+
+  html.ledger-workspace-v1 .referral-qr-card figcaption strong {
+    color: var(--ledger-ink) !important;
+    font-size: 13px !important;
+    font-weight: 750 !important;
   }
 
   html.ledger-workspace-v1 .referral-qr-card figcaption small,
@@ -17894,7 +17866,7 @@ const CSS = `
       #public-referral-rewards-dialog
       .referral-qr-card {
       grid-row: 2 !important;
-      width: min(100%, 176px) !important;
+      width: min(100%, 190px) !important;
       justify-self: center !important;
     }
 
@@ -18147,6 +18119,11 @@ const CSS = `
     cursor: pointer;
   }
 
+  html.ledger-workspace-v1 .transfer-row[tabindex]:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--ledger-brand) 68%, #ffffff) !important;
+    outline-offset: 3px !important;
+  }
+
   html.ledger-workspace-v1 .transfer-row .transfer-explanation > summary {
     display: none !important;
   }
@@ -18225,9 +18202,10 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] .event-workspace-nav {
-    position: static !important;
+    position: sticky !important;
     inset: auto !important;
-    z-index: auto !important;
+    inset-block-start: calc(68px + env(safe-area-inset-top)) !important;
+    z-index: 60 !important;
   }
 
   html.ledger-workspace-v1 body #app .screen[data-event-view="summary"] .transfer-row:has(.transfer-explanation) {
@@ -18750,7 +18728,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row-actions-menu button {
-    min-height: 42px !important;
+    min-height: 44px !important;
     display: flex !important;
     align-items: center !important;
     justify-content: flex-start !important;
@@ -18904,6 +18882,104 @@ const CSS = `
   html.ledger-workspace-v1 body:has(.event-participant-route-backdrop) .product-app-nav {
     display: grid !important;
     z-index: 130 !important;
+  }
+
+  /* Final interaction consistency pass: shared brand states and app-like routes. */
+  html.ledger-workspace-v1 .referral-reward-days-text,
+  html.ledger-workspace-v1 .referral-reward-days-text.is-inactive {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-add-screen .event-participant-candidate-row,
+  html.ledger-workspace-v1 .event-participant-add-screen .event-participant-identity-group > header {
+    background: #ffffff !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-add-screen .event-participant-add-button {
+    border-color: var(--ledger-brand) !important;
+    color: #ffffff !important;
+    background: var(--ledger-brand) !important;
+    box-shadow: 0 8px 18px -14px rgba(6, 54, 40, 0.72) !important;
+    transition-property: background-color, border-color, box-shadow, scale !important;
+    transition-duration: 160ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .event-participant-add-screen .event-participant-add-button:active:not(:disabled) {
+    scale: 0.96 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-workspace-nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] :is(.event-workspace-expenses, .event-workspace-summary) {
+    min-width: 0 !important;
+    min-height: 56px !important;
+    padding-inline: 14px !important;
+    border: 1px solid var(--ledger-line-strong) !important;
+    border-radius: 14px !important;
+    color: var(--ledger-brand) !important;
+    background: #ffffff !important;
+    box-shadow: 0 1px 2px rgba(2, 31, 27, 0.06) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] :is(.event-workspace-expenses, .event-workspace-summary):is(.is-active, [aria-current="page"]) {
+    border-color: var(--ledger-brand) !important;
+    color: #ffffff !important;
+    background: var(--ledger-brand) !important;
+    box-shadow: 0 10px 22px -16px rgba(6, 54, 40, 0.74) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-route-backdrop {
+    padding-block-end: calc(var(--event-route-nav-safe-height, 96px) + env(safe-area-inset-bottom)) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-route-backdrop .expense-step-modal {
+    max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - env(safe-area-inset-bottom)) !important;
+  }
+
+  html.ledger-workspace-v1 .expense-route-backdrop .event-route-primary-nav {
+    display: grid !important;
+    z-index: 230 !important;
+  }
+
+  html.ledger-workspace-v1 body:has(.expense-route-backdrop) .screen > .product-app-identity > .product-app-nav {
+    display: none !important;
+  }
+
+  html.ledger-workspace-v1 .expense-modal-step-header .expense-accessibility-button {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .expense-modal-step-header .modal-section-back-button {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+  }
+
+  html.circle-design-v1.ledger-workspace-v1
+    .restaurant-quick-modal
+    .expense-modal-step-header
+    > .expense-modal-header-actions,
+  html.circle-design-v1.ledger-workspace-v1
+    .restaurant-quick-modal
+    .expense-modal-step-header
+    > .expense-modal-header-actions
+    :is(.modal-section-back-button, .modal-close-button) {
+    position: static !important;
+    inset: auto !important;
+  }
+
+  html.circle-design-v1.ledger-workspace-v1
+    .restaurant-quick-modal
+    .expense-modal-step-header
+    > .expense-modal-header-actions {
+    pointer-events: auto !important;
   }
 
   html.ledger-workspace-v1 .event-participant-route-backdrop .event-modal {
@@ -19269,10 +19345,6 @@ const CSS = `
     -webkit-line-clamp: 2 !important;
   }
 
-  html.ledger-workspace-v1 .event-row-attention {
-    margin-block-start: 1px !important;
-  }
-
   /* Approved QA decision: the signed-out gift state uses the full mobile canvas intentionally. */
   @media (max-width: 760px) {
     html.ledger-workspace-v1
@@ -19291,6 +19363,27 @@ const CSS = `
       .referral-dialog-shell.is-signin-state
       .referral-state-message {
       width: min(100%, 420px) !important;
+    }
+  }
+
+  @media (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    html.ledger-workspace-v1 body #app .screen[data-screen-kind="event"] {
+      width: min(100%, 720px) !important;
+      max-width: 720px !important;
+      padding-inline: 28px !important;
+    }
+
+    html.ledger-workspace-v1 .product-app-nav,
+    html.ledger-workspace-v1 .event-route-primary-nav {
+      width: min(480px, calc(100% - 40px)) !important;
+    }
+
+    html.circle-design-v1.ledger-workspace-v1
+      .expense-modal-backdrop
+      .restaurant-quick-modal {
+      width: min(100%, 720px) !important;
+      max-width: 720px !important;
+      margin-inline: auto !important;
     }
   }
 `;

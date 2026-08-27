@@ -26,12 +26,12 @@ test("template chips expose a scroll affordance without changing layout", () => 
   assert.doesNotMatch(block, /margin/, "layout box is untouched");
 });
 
-test("chips stay compact and are not inflated to 48px", () => {
+test("chips stay compact while meeting the 44px touch floor", () => {
   const rule = layer.slice(
     layer.indexOf("html.ledger-workspace-v1 .expense-template-grid .secondary-button {")
   );
   const block = rule.slice(0, rule.indexOf("}"));
-  assert.match(block, /min-height: 40px !important/);
+  assert.match(block, /min-height: 44px !important/);
 });
 
 test("destructive and confirm actions meet the 48dp Android floor", () => {

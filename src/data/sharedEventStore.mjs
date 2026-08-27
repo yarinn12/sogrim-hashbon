@@ -100,12 +100,13 @@ export function buildSharedEventState(state, eventId) {
 export function buildSharedEventSyncSelection(
   previousState,
   nextState,
-  { forceParticipantIds = [] } = {}
+  { forceParticipantIds = [], forceEventIds = [] } = {}
 ) {
   const previousEvents = new Map(
     (previousState?.events ?? []).map((event) => [event?.id, event])
   );
   const forcedParticipantIds = new Set(forceParticipantIds.filter(Boolean));
+  const forcedEventIds = new Set(forceEventIds.filter(Boolean));
   const eventIds = [];
 
   for (const event of nextState?.events ?? []) {
@@ -113,6 +114,7 @@ export function buildSharedEventSyncSelection(
     const previousEvent = previousEvents.get(event.id);
     if (
       !previousEvent ||
+      forcedEventIds.has(event.id) ||
       sharedEventFingerprint(previousState, event.id) !==
         sharedEventFingerprint(nextState, event.id) ||
       [...forcedParticipantIds].some((participantId) =>

@@ -162,7 +162,7 @@ test("home keeps event selection calm while event actions remain available", asy
   const event = sourceBetween(app, "function renderEvent(event)", "function renderEventActionDock");
 
   assert.match(app, /pendingBalanceForParticipant/);
-  assert.match(row, /event-row-attention/);
+  assert.doesNotMatch(row, /event-row-attention/);
   assert.doesNotMatch(row, /event-row-balance/);
   assert.match(
     row,

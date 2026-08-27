@@ -1,0 +1,97 @@
+import { expect, test } from "@playwright/test";
+
+const EVENT_ID = "event-close-resilience";
+const OWNER_ID = "person-owner";
+const FRIEND_ID = "person-friend";
+
+const seededState = {
+  currentParticipantId: OWNER_ID,
+  participants: [
+    { id: OWNER_ID, displayName: "ירין יצחק", kind: "user", avatarPreset: "avatar-1" },
+    { id: FRIEND_ID, displayName: "דני כהן", kind: "user", avatarPreset: "avatar-2" }
+  ],
+  friendContacts: [],
+  groups: [],
+  events: [
+    {
+      id: EVENT_ID,
+      name: "בדיקת סגירה",
+      eventType: "outing",
+      currency: "ILS",
+      participantIds: [OWNER_ID, FRIEND_ID],
+      adminIds: [OWNER_ID],
+      createdByParticipantId: OWNER_ID,
+      createdAt: "2026-08-27T08:00:00.000Z",
+      updatedAt: "2026-08-27T08:10:00.000Z",
+      statusUpdatedAt: "2026-08-27T08:10:00.000Z",
+      roundSettlementTransfers: false,
+      expenses: [
+        {
+          id: "expense-close-resilience",
+          name: "מונית",
+          total: 10000,
+          payers: [{ participantId: OWNER_ID, amount: 10000 }],
+          sharedByParticipantIds: [OWNER_ID, FRIEND_ID],
+          createdByParticipantId: OWNER_ID,
+          updatedAt: "2026-08-27T08:10:00.000Z"
+        }
+      ],
+      transfers: [],
+      activityLog: []
+    }
+  ],
+  deletedEvents: [],
+  deletedParticipants: []
+};
+
+test.beforeEach(async ({ page, request }) => {
+  await request.post("/api/reset");
+  await request.put("/api/state", { data: seededState });
+  await page.addInitScript(({ participantId, state }) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+    localStorage.setItem(
+      "settle-friends-local-profile",
+      JSON.stringify({
+        participantId,
+        displayName: "ירין יצחק",
+        avatarPreset: "avatar-1"
+      })
+    );
+    localStorage.setItem("settle-friends-current-participant", participantId);
+    sessionStorage.setItem("settle-friends-skip-next-splash", "1");
+  }, { participantId: OWNER_ID, state: seededState });
+  await page.goto("/");
+});
+
+test("event closing remains responsive behind a stale sync lock", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page.locator('.event-workspace-summary[data-action="settle"]').click();
+
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent("sogrim:sync-status", { detail: { status: "offline" } })
+    );
+  });
+
+  await page.locator('[data-action="close-event"]').first().click();
+  const confirmation = page.locator(".settlement-close-confirmation");
+  await expect(confirmation).toBeVisible();
+
+  const confirmButton = confirmation.locator('[data-action="confirm-close-event"]');
+  await expect(confirmButton).not.toHaveAttribute("aria-disabled", "true");
+  await confirmButton.click({ timeout: 5000 });
+
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.locator(".settlement-screen")).toContainText("האירוע נסגר");
+  await expect.poll(async () =>
+    page.evaluate(({ eventId }) => {
+      const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
+      return state.events?.find((event) => event.id === eventId)?.locked;
+    }, { eventId: EVENT_ID })
+  ).toBe(true);
+});

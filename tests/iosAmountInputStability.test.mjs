@@ -32,6 +32,7 @@ test("open dialogs make background controls inert", async () => {
 
   assert.match(app, /function setDialogBackgroundInert\(dialog\)/);
   assert.match(app, /backdrop\.contains\(element\)/);
+  assert.match(app, /element === backdrop \|\| element\.contains\(backdrop\)/);
   assert.match(app, /element\.inert = true/);
   assert.match(app, /function clearDialogBackgroundInert\(\)/);
   assert.match(app, /element\.inert = false/);

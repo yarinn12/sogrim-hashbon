@@ -3309,7 +3309,7 @@ create table if not exists public.event_activity_notifications (
     check (activity_id ~ '^[A-Za-z0-9_-]{1,128}$'),
   kind text not null
     constraint event_activity_notifications_kind_check
-    check (kind in ('expense-created', 'participant-joined', 'event-invite')),
+    check (kind in ('expense-created', 'participant-joined', 'event-invite', 'event-closed')),
   sender_user_id uuid not null references auth.users(id) on delete cascade,
   recipient_user_id uuid not null references auth.users(id) on delete cascade,
   status text not null default 'reserved'
@@ -3326,7 +3326,7 @@ alter table public.event_activity_notifications
   drop constraint if exists event_activity_notifications_kind_check;
 alter table public.event_activity_notifications
   add constraint event_activity_notifications_kind_check
-  check (kind in ('expense-created', 'participant-joined', 'event-invite'));
+  check (kind in ('expense-created', 'participant-joined', 'event-invite', 'event-closed'));
 
 create index if not exists event_activity_notifications_rate_idx
   on public.event_activity_notifications (
@@ -3371,7 +3371,8 @@ begin
     or normalized_kind not in (
       'expense-created',
       'participant-joined',
-      'event-invite'
+      'event-invite',
+      'event-closed'
     )
     or p_sender_user_id is null
     or p_recipient_user_id is null
@@ -3489,6 +3490,7 @@ create table if not exists public.notification_inbox (
       'expense-created',
       'participant-joined',
       'event-invite',
+      'event-closed',
       'payment-reminder'
     )),
   title text not null
@@ -3515,6 +3517,7 @@ alter table public.notification_inbox
     'expense-created',
     'participant-joined',
     'event-invite',
+    'event-closed',
     'payment-reminder'
   ));
 alter table public.notification_inbox
@@ -3646,7 +3649,7 @@ create table if not exists public.product_metrics (
     )
     or (
       event_name in ('operation_deferred', 'operation_failure')
-      and detail ~ '^(auth|state_load|state_save|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
+      and detail ~ '^(auth|state_load|state_save|account_link|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
     )
     or (event_name not in ('event_created', 'client_error', 'operation_deferred', 'operation_failure') and detail = '')
   )
@@ -3686,7 +3689,7 @@ alter table public.product_metrics
     )
     or (
       event_name in ('operation_deferred', 'operation_failure')
-      and detail ~ '^(auth|state_load|state_save|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
+      and detail ~ '^(auth|state_load|state_save|account_link|event_invite|friend_network|notification_inbox|feedback|push|ads|share)(:(offline|network|timeout|auth|permission|conflict|validation|storage|server|unavailable|unknown))?$'
     )
     or (event_name not in ('event_created', 'client_error', 'operation_deferred', 'operation_failure') and detail = '')
   );
@@ -5965,6 +5968,7 @@ $$;
 create or replace function private.guard_shared_event_history_and_limits()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare
@@ -7992,6 +7996,7 @@ $$;
 create or replace function private.guard_shared_event_history_and_limits()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare

@@ -10,6 +10,28 @@ test("secondary ledger text keeps accessible contrast on light surfaces", async 
   assert.match(layer, /input::placeholder,[\s\S]*?color: #5f706b !important/);
 });
 
+test("mobile headers, tablet workspaces and compact actions keep safe geometry", async () => {
+  const [ledger, coherence] = await Promise.all([
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+  ]);
+
+  assert.match(
+    ledger,
+    /\.restaurant-quick-modal[\s\S]*?\.expense-modal-step-header[\s\S]*?:is\(\.modal-section-back-button, \.modal-close-button\) \{[\s\S]*?position: static !important;[\s\S]*?inset: auto !important;/
+  );
+  assert.match(
+    ledger,
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?\.screen\[data-screen-kind="event"\][\s\S]*?max-width: 720px !important;/
+  );
+  assert.match(ledger, /\.expense-row-actions-menu button \{[\s\S]*?min-height: 44px !important;/);
+  assert.match(coherence, /--app-danger: #b94739/);
+  assert.match(
+    coherence,
+    /\.event-participant-account-link-button\) \{[\s\S]*?min-height: 44px !important;/
+  );
+});
+
 test("ledger workspace is the final public design layer", async () => {
   const [html, worker, layer] = await Promise.all([
     readFile("index.html", "utf8"),
@@ -96,7 +118,6 @@ test("approved mobile reference drives the home hero, shortcuts, event ledger, a
   );
   assert.match(layer, /\.home-event-tools\.home-invite-hub[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/);
   assert.match(layer, /\.event-list \{[\s\S]*?background: transparent !important/);
-  assert.match(layer, /\.event-row-attention > span \{[\s\S]*?var\(--ledger-warning\)/);
   assert.match(layer, /\.product-app-nav \{[\s\S]*?border-radius: 999px !important/);
   assert.match(layer, /width: min\(100%, 448px\) !important/);
   assert.match(layer, /Home event index: a compact ledger row, not a stack of generic cards/);
@@ -676,7 +697,7 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   );
   assert.match(
     layer,
-    /\.screen\[data-screen-kind="event"\] \.expense-row-actions-menu button \{[\s\S]*?min-height: 42px !important;[\s\S]*?background: transparent !important;[\s\S]*?font-size: 13\.5px !important/
+    /\.screen\[data-screen-kind="event"\] \.expense-row-actions-menu button \{[\s\S]*?min-height: 44px !important;[\s\S]*?background: transparent !important;[\s\S]*?font-size: 13\.5px !important/
   );
   assert.match(
     layer,

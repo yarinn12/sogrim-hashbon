@@ -4,6 +4,7 @@ const INBOX_KINDS = new Set([
   "expense-created",
   "participant-joined",
   "event-invite",
+  "event-closed",
   "payment-reminder"
 ]);
 const INBOX_VIEWS = new Set(["event", "summary"]);

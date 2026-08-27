@@ -356,9 +356,9 @@ function referralRewardCard(context = "friends") {
         <small class="referral-reward-detail">${helper}</small>
         ${
           active
-            ? `<span class="referral-reward-status"><span class="font-num">${daysRemaining}</span> ימים נותרו</span>`
+            ? `<span class="referral-reward-days-text"><span class="font-num">${daysRemaining}</span> ימים נותרו</span>`
             : isProfile
-              ? `<span class="referral-reward-status is-inactive">ההטבה לא פעילה</span>`
+              ? `<span class="referral-reward-days-text is-inactive">ההטבה לא פעילה</span>`
               : ""
         }
       </span>
@@ -607,8 +607,8 @@ function referralDialogMarkup() {
                     <section class="referral-share-section" aria-labelledby="referral-share-title">
                       <span class="referral-section-heading">
                         <small>הזמנה אישית</small>
-                        <h3 id="referral-share-title">נותנים לחבר לסרוק</h3>
-                        <p>או שולחים לו את ההזמנה בלחיצה אחת.</p>
+                        <h3 id="referral-share-title">משתפים בדרך שנוחה לכם</h3>
+                        <p>מציגים את ה־QR לידכם או שולחים את הקישור בלחיצה אחת.</p>
                       </span>
                       <div class="referral-share-workspace">
                         ${referralQrMarkup(inviteUrl)}
@@ -691,8 +691,8 @@ function referralQrMarkup(inviteUrl) {
       <figure class="referral-qr-card" data-referral-qr>
         <div class="referral-qr-code">${qrSvg}</div>
         <figcaption>
-          <strong>סריקה מהירה</strong>
-          <small>מכוונים את המצלמה לקוד</small>
+          <strong>QR להזמנה</strong>
+          <small>פותחים מצלמה וסורקים</small>
         </figcaption>
       </figure>
     `;
@@ -934,21 +934,21 @@ function injectReferralStyles() {
       line-height: 1.4;
     }
 
-    .referral-reward-status {
+    .referral-reward-days-text {
       width: fit-content;
       margin-block-start: 5px;
-      padding: 5px 9px;
-      border-radius: 999px;
+      padding: 0;
+      border-radius: 0;
       color: #075b4c;
-      background: #ddf3ed;
+      background: transparent;
       font-size: 0.76rem;
       font-weight: 850;
       line-height: 1.2;
     }
 
-    .referral-reward-status.is-inactive {
+    .referral-reward-days-text.is-inactive {
       color: #5e6d69;
-      background: #edf2f0;
+      background: transparent;
     }
 
     .referral-reward-action.primary-button {
@@ -1213,7 +1213,7 @@ function injectReferralStyles() {
 
     .referral-share-workspace {
       display: grid;
-      grid-template-columns: 180px minmax(0, 1fr);
+      grid-template-columns: 190px minmax(0, 1fr);
       align-items: stretch;
       gap: 16px;
     }
@@ -1644,7 +1644,7 @@ function injectReferralStyles() {
       }
 
       .referral-qr-card {
-        width: min(100%, 176px);
+        width: min(100%, 190px);
         justify-self: center;
       }
 

@@ -9,7 +9,11 @@ import {
   operationMetricDetail,
   sanitizeClientError
 } from "../src/domain/productMetrics.mjs";
-import { startProductMetricTransport } from "../src/data/productMetrics.mjs";
+import {
+  emitOperationDeferred,
+  emitOperationFailure,
+  startProductMetricTransport
+} from "../src/data/productMetrics.mjs";
 import {
   purgeExpiredProductMetrics,
   storeProductMetrics
@@ -359,6 +363,7 @@ test("operation failures accept only a fixed privacy-safe vocabulary", () => {
 
 test("operation telemetry separates deferred sync from real failures without raw errors", () => {
   assert.equal(operationMetricDetail("state_save", "network"), "state_save:network");
+  assert.equal(operationMetricDetail("account_link", "conflict"), "account_link:conflict");
   assert.equal(
     classifyOperationFailure({ status: 401, message: "private@example.com" }),
     "auth"
@@ -381,6 +386,13 @@ test("operation telemetry separates deferred sync from real failures without raw
     }]
   }, { now: () => NOW });
   assert.equal(metric.detail, "state_load:network");
+});
+
+test("diagnostic telemetry can never break the product operation", () => {
+  assert.doesNotThrow(() => {
+    assert.equal(emitOperationFailure("unknown-operation", {}, null), false);
+    assert.equal(emitOperationDeferred("unknown-operation", {}, null), false);
+  });
 });
 
 function metricPayload() {

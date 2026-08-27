@@ -504,6 +504,13 @@ test("a gallery profile image persists after reload without a false sync warning
   await picker
     .locator('[data-action="profile-avatar-image"][data-image-source="gallery"]')
     .setInputFiles("icon-192.png");
+  const cropDialog = page.locator(".image-crop-dialog");
+  const cropStage = cropDialog.locator(".image-crop-stage.is-circle");
+  await expect(cropDialog).toBeVisible();
+  await expect(cropDialog).toContainText("בחר את תמונת הפרופיל");
+  const cropBounds = await cropStage.boundingBox();
+  expect(Math.abs((cropBounds?.width ?? 0) - (cropBounds?.height ?? 0))).toBeLessThanOrEqual(1);
+  await cropDialog.locator('[data-crop-action="confirm"]').click();
   await expect(page.locator(".notice")).toHaveText("תמונת הפרופיל נשמרה.");
   const uploadedSource = await page
     .locator(".product-header-profile-avatar img")

@@ -566,12 +566,21 @@ async function connectAccountToApp(
     authSubject: accountProfile.authSubject,
     email: accountProfile.email
   });
+  const profileChanged =
+    previousProfile?.authSubject !== accountProfile.authSubject ||
+    previousProfile?.authProvider !== accountProfile.authProvider;
   const accountStateChanged = hasSharedStateChanged(
     startupState.state,
     nextState
   );
   const saveRequest = accountStateChanged
-    ? saveSharedState(nextState, { suppressRevertNotice: true })
+    ? saveSharedState(nextState, {
+        suppressRevertNotice: true,
+        // A first OAuth connection or an account switch reloads the document
+        // below. Wait for the personal workspace write so that the reload
+        // cannot abort it and leave account metadata pointing at no snapshot.
+        awaitCloud: forceReload || profileChanged
+      })
     : Promise.resolve({ ok: true, mode: "unchanged" });
   const saveResult = await saveRequest;
   const invitedEventWasDeleted = nextState.deletedEvents?.some(
@@ -589,9 +598,6 @@ async function connectAccountToApp(
     clearPendingInviteUrl();
     clearAccountReturnUrl();
   }
-  const profileChanged =
-    previousProfile?.authSubject !== accountProfile.authSubject ||
-    previousProfile?.authProvider !== accountProfile.authProvider;
   if (forceReload || profileChanged) {
     publishAccountSessionSync(accountSession);
     setSessionValue(AUTH_CHANGED_MARKER, "1");

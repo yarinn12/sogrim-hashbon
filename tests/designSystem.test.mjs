@@ -52,20 +52,18 @@ test("Hebrew font loading does not block the app from rendering", async () => {
   assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
   assert.match(html, /as="style"/);
   assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=372"/);
+  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=384"/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
   assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
   assert.match(loader, /fontStylesheet\.media = "all"/);
   assert.match(html, /<noscript>[\s\S]*fonts\.googleapis\.com[\s\S]*<\/noscript>/);
 });
 
-test("event rows render participants, status, and accessible action attention without financial clutter", async () => {
+test("event rows render participants and status without decorative attention dots or financial clutter", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /class="event-row-main"/);
-  assert.match(app, /event-row-attention/);
-  assert.match(app, /ממתין לתשלום שלך/);
-  assert.match(app, /ממתין לאישור קבלה/);
+  assert.doesNotMatch(app, /event-row-attention/);
   assert.match(
     app,
     /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event\)/

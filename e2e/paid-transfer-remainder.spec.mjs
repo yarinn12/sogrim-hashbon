@@ -103,7 +103,7 @@ test("a paid transfer and a later remainder stay in one relationship row", async
   await expect(row).toContainText("כבר שולם");
   await expect(row).toContainText("₪20.00");
 
-  await row.locator(".transfer-paid-history > summary").click();
+  await expect(row.locator(".transfer-paid-history")).toHaveAttribute("open", "");
   await expect(row.locator('[data-action="mark-pending"]')).toBeVisible();
   await row.locator('[data-action="mark-pending"]').click();
 

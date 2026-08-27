@@ -16,9 +16,11 @@ import {
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
+import { accountLinkIsConfirmed } from "../src/data/pendingAccountLinks.mjs";
 import {
   closeEvent,
   deactivateEventParticipant,
+  linkParticipantAccountInEvent,
   reopenEvent,
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
@@ -58,6 +60,9 @@ try {
   const createdAt = "2026-08-03T12:00:00.000Z";
 
   let ownerState = baseAccountState(ownerProfile);
+  await saveCloudState(ownerConfig, ownerState, qaFetch);
+  await saveCloudState(joinerConfig, baseAccountState(joinerProfile), qaFetch);
+
   const joinerParticipant = baseAccountState(joinerProfile).participants[0];
   ownerState.participants.push(joinerParticipant);
   ownerState.events = [
@@ -88,7 +93,6 @@ try {
   ];
 
   await saveCloudState(ownerConfig, ownerState);
-  await saveCloudState(joinerConfig, baseAccountState(joinerProfile));
   await adminRequest("/rest/v1/friendships", {
     method: "POST",
     body: {
@@ -241,6 +245,47 @@ try {
     new Set(joinerState.events[0].expenses.map((expense) => expense.id))
   );
 
+  ownerState = linkParticipantAccountInEvent(
+    ownerState,
+    eventId,
+    offlineGuestId,
+    joinerProfile.participantId
+  );
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  for (const [stateOwner, linkedState] of [["owner", ownerState], ["joiner", joinerState]]) {
+    const linkedEvent = linkedState.events[0];
+    assert.equal(linkedEvent.participantIds.includes(offlineGuestId), false);
+    const accountLinkConfirmed = accountLinkIsConfirmed(
+      linkedState,
+      {
+        eventId,
+        sourceParticipantId: offlineGuestId,
+        targetParticipantId: joinerProfile.participantId
+      }
+    );
+    if (!accountLinkConfirmed) {
+      console.error(JSON.stringify({
+        diagnostic: "canonical-account-link-not-confirmed",
+        stateOwner,
+        participantAccountLinks: linkedEvent.participantAccountLinks,
+        membershipTimestampRetained: Object.hasOwn(
+          linkedEvent.membershipUpdatedAtByParticipant ?? {},
+          offlineGuestId
+        ),
+        aliasRetained: Object.hasOwn(
+          linkedEvent.participantAliases ?? {},
+          offlineGuestId
+        )
+      }));
+    }
+    assert.equal(
+      accountLinkConfirmed,
+      true
+    );
+    assert.equal(linkedEvent.expenses.length, 2);
+  }
+
   const settlement = calculateSettlement(
     ownerState.participants.filter((participant) =>
       ownerState.events[0].participantIds.includes(participant.id)
@@ -369,6 +414,7 @@ try {
       productionIphoneLoginJoinedFromNewLink: true,
       connectedParticipantJoined: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
+      offlineAccountLinkPersistedCanonically: true,
       concurrentExpensesMerged: true,
       settlementMatchedBothAccounts: true,
       transferStatusSynced: true,
@@ -626,6 +672,20 @@ async function adminRequest(path, { method = "GET", body, prefer } = {}) {
     );
   }
   return payload;
+}
+
+async function qaFetch(input, init) {
+  const response = await fetch(input, init);
+  if (!response.ok) {
+    console.error(JSON.stringify({
+      diagnostic: "two-account-cloud-request-failed",
+      path: new URL(String(input)).pathname,
+      method: init?.method ?? "GET",
+      status: response.status,
+      body: (await response.clone().text().catch(() => "")).slice(0, 800)
+    }));
+  }
+  return response;
 }
 
 function requiredEnv(name) {

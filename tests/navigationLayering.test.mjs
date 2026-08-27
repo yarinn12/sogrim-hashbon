@@ -13,6 +13,21 @@ function slice(source, from, to) {
   return source.slice(start, end > -1 ? end : undefined);
 }
 
+test("event route dialogs keep visible route chrome in the keyboard focus loop", () => {
+  const keyboard = slice(
+    app,
+    "function handleDialogKeydown(event)",
+    "function handleFriendsHubTabKeyboardNavigation(event)"
+  );
+
+  assert.match(keyboard, /dialog\.closest\("\[data-event-route-dialog\]"\)/);
+  assert.match(
+    keyboard,
+    /\.product-app-identity, \.product-app-nav, \.event-route-primary-nav/
+  );
+  assert.match(keyboard, /element\.offsetParent !== null && !element\.inert/);
+});
+
 test("back unwinds one dialog layer at a time in priority order", () => {
   const back = slice(app, "function goBackInApp()", "function renderHistoryFallback");
   const order = [
@@ -35,13 +50,13 @@ test("back unwinds one dialog layer at a time in priority order", () => {
   );
 });
 
-test("focused group screens return to the groups overview without using dialog teardown", () => {
+test("legacy group screens return to the friends overview without using dialog teardown", () => {
   const back = slice(app, "function goBackInApp()", "function renderHistoryFallback");
 
   assert.match(back, /\["group-create", "group-edit", "people"\]\.includes\(screen\.name\)/);
   assert.match(
     back,
-    /name: "groups",\s*tab: screen\.name === "people" \? "people" : "groups"/
+    /name: "groups",\s*tab: "people"/
   );
   assert.doesNotMatch(back, /eventDialog \|\| expenseDraft \|\| editingGroupDraft/);
 });
@@ -80,10 +95,10 @@ test("Tab is trapped inside the active dialog in both directions", () => {
   assert.match(keydown, /else if \(!event\.shiftKey && document\.activeElement === last\)/);
   assert.match(
     keydown,
-    /\.filter\(\(element\) => element\.offsetParent !== null\)/,
+    /element\.offsetParent !== null && !element\.inert/,
     "hidden controls are excluded from the trap"
   );
-  assert.match(keydown, /textarea:not\(\[disabled\]\), summary, \[tabindex\]/);
+  assert.match(keydown, /textarea:not\(\[disabled\]\), a\[href\], summary, \[tabindex\]/);
 });
 
 test("browser back restores the dialog that was open and its return focus", () => {

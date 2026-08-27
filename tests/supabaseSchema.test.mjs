@@ -219,7 +219,19 @@ test("event invitations are durable, private, and carry only a trusted action ur
   );
   assert.match(
     schema,
+    /event_activity_notifications_kind_check[\s\S]+?'event-closed'/
+  );
+  assert.match(
+    schema,
     /notification_inbox_kind_check[\s\S]+?'event-invite'/
+  );
+  assert.match(
+    schema,
+    /notification_inbox_kind_check[\s\S]+?'event-closed'/
+  );
+  assert.match(
+    schema,
+    /reserve_event_activity_notification[\s\S]+?normalized_kind not in \([\s\S]+?'event-closed'/
   );
   assert.match(schema, /add column if not exists action_url text not null default ''/);
   assert.match(schema, /notification_inbox_action_url_check/);
@@ -296,6 +308,38 @@ test("schema deployment verifies workspace claim and pair-lock hardening", async
   assert.match(deployScript, /is_safe_account_deletion_anonymization/);
   assert.match(deployScript, /shared_snapshot_policy_ready/);
   assert.match(deployScript, /friendship_pair_lock_ready/);
+});
+
+test("event-closed notification migration updates durable storage and reservation", async () => {
+  const [migration, verification, applyScript] = await Promise.all([
+    readFile(
+      "supabase/migrations/20260827023000_enable_event_closed_notifications.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/verification/verify_20260827023000_event_closed_notifications.sql",
+      "utf8"
+    ),
+    readFile("scripts/apply-event-closed-notifications.mjs", "utf8")
+  ]);
+
+  assert.match(migration, /event_activity_notifications_kind_check/);
+  assert.match(migration, /notification_inbox_kind_check/);
+  assert.match(migration, /reserve_event_activity_notification/);
+  assert.match(
+    migration,
+    /normalized_kind not in \([\s\S]+?'event-closed'/
+  );
+  assert.match(migration, /'event-closed'/);
+  assert.match(migration, /^begin;[\s\S]*commit;\s*$/);
+  assert.match(verification, /pg_get_constraintdef/);
+  assert.match(verification, /event_activity_notifications_kind_check/);
+  assert.match(verification, /notification_inbox_kind_check/);
+  assert.match(verification, /pg_get_functiondef/);
+  assert.match(verification, /reserve_event_activity_notification/);
+  assert.match(verification, /event-closed/);
+  assert.match(applyScript, /--dry-run/);
+  assert.match(applyScript, /await transaction\.unsafe\(verification\)/);
 });
 
 test("canonical account participants receive event membership atomically", async () => {

@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "3.94"
+        default: "3.99"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "121"
+        default: "126"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "קישור חשבון ממתין כעת לאישור אמיתי מהענן, שומר היסטוריית הוצאות ותשלומים ומונע הודעת הצלחה שגויה. בנוסף שופרו קישורי הזמנה, סנכרון ועקביות הממשק במובייל."
+        default: "תיקנו גלילה וחיתוך במסכי ההוצאות וההגדרות, חיזקנו מחיקת אירוע ושמירה בין מכשירים, ואיחדנו את מסכי המחיקה וההזמנה עם השפה העיצובית של האפליקציה. אזור החברים פושט וכעת מוצגים בו חברים ובקשות בלבד."
 
 permissions:
   contents: read

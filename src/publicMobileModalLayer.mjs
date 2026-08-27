@@ -152,6 +152,109 @@ const CSS = `
     .event-modal .actions {
       padding-bottom: max(0px, env(safe-area-inset-bottom)) !important;
     }
+
+    /* Route modals share the screen with the persistent app navigation. Keep
+       the action row above it and give the content one explicit scroll owner. */
+    html.ledger-workspace-v1 body #app
+      .expense-route-backdrop
+      .expense-step-modal {
+      height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      min-height: 0 !important;
+      max-height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      overflow: hidden !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .expense-route-backdrop
+      .expense-step-modal
+      > .expense-flow-fields {
+      min-height: 0 !important;
+      flex: 1 1 auto !important;
+      overflow: hidden !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .expense-route-backdrop
+      .expense-flow-body {
+      min-height: 0 !important;
+      overflow-y: auto !important;
+      overscroll-behavior-y: contain !important;
+      touch-action: pan-y !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .expense-route-backdrop
+      .expense-modal-actions {
+      position: relative !important;
+      flex: 0 0 auto !important;
+      margin: 0 !important;
+      padding: 12px 16px max(12px, env(safe-area-inset-bottom)) !important;
+      border-top: 1px solid rgba(17, 21, 19, 0.1) !important;
+      background: #ffffff !important;
+      box-shadow: 0 -4px 10px rgba(17, 21, 19, 0.06) !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-task-modal {
+      height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      min-height: 0 !important;
+      max-height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      grid-template-rows: auto auto minmax(0, 1fr) !important;
+      overflow: hidden !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-route-sync-status[hidden] {
+      display: none !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-route-sync-status {
+      grid-row: 2 !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-task-modal
+      > .event-modal-body {
+      grid-row: 3 !important;
+      min-height: 0 !important;
+      overflow-y: auto !important;
+      overscroll-behavior-y: contain !important;
+      touch-action: pan-y !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-settings-modal
+      > .event-modal-body
+      > :is(.event-cover-settings, .event-settings-menu) {
+      flex: 0 0 auto !important;
+      align-self: stretch !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-settings-modal
+      > .event-modal-body
+      > .event-settings-menu {
+      height: max-content !important;
+    }
   }
 `;
 

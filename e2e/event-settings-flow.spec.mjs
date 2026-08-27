@@ -81,8 +81,27 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test("event settings remain still while the user reads or scrolls", async ({ page }) => {
+  const viewport = page.viewportSize();
+  if (viewport && viewport.height > 520) {
+    await page.setViewportSize({ width: viewport.width, height: 520 });
+  }
   const settingsDialog = page.locator('.event-settings-modal[role="region"]');
   await expect(settingsDialog).toBeVisible();
+  const settingsBody = settingsDialog.locator(':scope > .event-modal-body');
+  const initialScrollMetrics = await settingsBody.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    scrollTop: element.scrollTop,
+    overflowY: getComputedStyle(element).overflowY,
+    touchAction: getComputedStyle(element).touchAction
+  }));
+  expect(initialScrollMetrics.scrollHeight).toBeGreaterThan(initialScrollMetrics.clientHeight);
+  expect(initialScrollMetrics.overflowY).toBe("auto");
+  expect(initialScrollMetrics.touchAction).toContain("pan-y");
+  await settingsBody.evaluate((element) => {
+    element.scrollTop = Math.min(180, element.scrollHeight - element.clientHeight);
+  });
+  await expect.poll(() => settingsBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const dangerCard = page.locator('[data-settings-section="danger"]');
   await dangerCard.scrollIntoViewIfNeeded();
   await dangerCard.focus();
@@ -91,6 +110,56 @@ test("event settings remain still while the user reads or scrolls", async ({ pag
   await startStrictSmoothnessProbe(page);
   await page.waitForTimeout(2_000);
   expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
+});
+
+test("event manager can delete an event and the deletion survives reload", async ({ page }) => {
+  const dangerCard = page.locator('[data-settings-section="danger"]');
+  await dangerCard.scrollIntoViewIfNeeded();
+  await dangerCard.click();
+
+  const dangerDialog = page.getByRole("region", { name: "עזיבה ומחיקה" });
+  const deleteButton = dangerDialog.locator('[data-action="delete-event"]');
+  await expect(deleteButton).toBeEnabled();
+  await deleteButton.click();
+
+  const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
+  await expect(confirmation).toContainText("מחיקת אירוע");
+  await expect(confirmation).toContainText("משתתפים");
+  await expect(confirmation).toContainText("הוצאות");
+  await confirmation.locator('[data-action="confirm-important-action"]').click();
+
+  await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  await expect(
+    page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+  ).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  await expect(
+    page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+  ).toHaveCount(0);
+});
+
+test("event cover upload previews the exact wide crop before saving", async ({ page }) => {
+  await page
+    .locator('.event-cover-settings [data-action="event-cover-image"]')
+    .first()
+    .setInputFiles("icon-192.png");
+
+  const cropDialog = page.locator(".image-crop-dialog");
+  const cropStage = cropDialog.locator(".image-crop-stage.is-rectangle");
+  await expect(cropDialog).toBeVisible();
+  await expect(cropDialog).toContainText("בחר את תמונת האירוע");
+  const cropBounds = await cropStage.boundingBox();
+  expect((cropBounds?.width ?? 0) / (cropBounds?.height ?? 1)).toBeCloseTo(16 / 7, 1);
+  await cropDialog.locator('[data-crop-action="confirm"]').click();
+
+  await expect(page.locator(".event-cover-settings > img")).toBeVisible();
+  const storedCover = await page.evaluate((eventId) => {
+    const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
+    return state.events?.find((event) => event.id === eventId)?.coverImage || "";
+  }, EVENT_ID);
+  expect(storedCover).toMatch(/^data:image\/jpeg;base64,/);
 });
 
 test("event settings save smoothly, return focus and survive reload", async ({ page }) => {

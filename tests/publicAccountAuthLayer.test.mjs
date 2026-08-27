@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=372"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=384"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -185,7 +185,12 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(
     layer,
-    /const saveRequest = accountStateChanged[\s\S]*?saveSharedState\(nextState, \{ suppressRevertNotice: true \}\)[\s\S]*?mode: "unchanged"/
+    /const saveRequest = accountStateChanged[\s\S]*?saveSharedState\(nextState, \{[\s\S]*?suppressRevertNotice: true,[\s\S]*?awaitCloud: forceReload \|\| profileChanged[\s\S]*?\}\)[\s\S]*?mode: "unchanged"/
+  );
+  assert.ok(
+    layer.indexOf("awaitCloud: forceReload || profileChanged") <
+      layer.indexOf("if (forceReload || profileChanged)"),
+    "OAuth and account-switch reloads must wait for the workspace write"
   );
   assert.match(
     layer,

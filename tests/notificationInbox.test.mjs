@@ -92,6 +92,31 @@ test("notification inbox accepts an action on the configured public domain", asy
   assert.equal(result.items[0].actionUrl.startsWith(`${publicUrl}/i/`), true);
 });
 
+test("an event-closed notification keeps the summary destination", async () => {
+  const result = await loadNotificationInbox(
+    runtimeConfig(),
+    {},
+    async () => new Response(JSON.stringify([{
+      id: "notification-event-closed",
+      event_id: "event-trip",
+      activity_id: "activity-event-closed",
+      kind: "event-closed",
+      title: "האירוע נסגר",
+      body: "אפשר לעבור להתחשבנות.",
+      view: "summary",
+      action_url: "",
+      created_at: "2026-08-27T10:00:00.000Z",
+      read_at: null
+    }]), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })
+  );
+
+  assert.equal(result.items[0].kind, "event-closed");
+  assert.equal(result.items[0].view, "summary");
+});
+
 test("a stalled notification inbox load times out and allows a retry", async (t) => {
   let stalledSignal = null;
   t.mock.timers.enable({ apis: ["setTimeout"] });

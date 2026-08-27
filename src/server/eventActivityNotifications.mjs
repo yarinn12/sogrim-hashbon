@@ -230,7 +230,7 @@ export async function sendEventActivityNotification({
       kind: normalizedKind,
       title: notification.title,
       body: notification.body,
-      view: normalizedKind === "event-closed" ? "settlement" : "event",
+      view: normalizedKind === "event-closed" ? "summary" : "event",
       actionUrl,
       publicUrl: runtimeConfig?.publicUrl,
       fetchImpl
@@ -354,7 +354,7 @@ export async function sendEventActivityNotification({
                 eventId: normalizedEventId,
                 activityId: normalizedActivityId,
                 kind: normalizedKind,
-                view: normalizedKind === "event-closed" ? "settlement" : "event",
+                view: normalizedKind === "event-closed" ? "summary" : "event",
                 actionUrl: recipient.actionUrl
               },
               android: {

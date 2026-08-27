@@ -76,7 +76,7 @@ test("expense steps explain invalid input while final saving stays guarded", () 
   assert.match(app, /if \(!expenseDraft \|\| expenseSaveInProgress\) return;/);
 });
 
-test("only critical destructive actions are raised to the 48dp floor", () => {
+test("critical destructive actions use 48px while compact chips keep a 44px floor", () => {
   const start = ledger.indexOf('[data-action="delete-expense"]');
   const block = ledger.slice(start, ledger.indexOf("}", start) + 40);
 
@@ -87,8 +87,8 @@ test("only critical destructive actions are raised to the 48dp floor", () => {
   );
   assert.match(
     chips.slice(0, chips.indexOf("}")),
-    /min-height: 40px !important/,
-    "compact chips are deliberately left alone"
+    /min-height: 44px !important/,
+    "compact chips remain smaller than destructive actions without becoming hard to tap"
   );
 });
 

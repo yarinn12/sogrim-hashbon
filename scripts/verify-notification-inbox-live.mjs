@@ -256,6 +256,37 @@ try {
   const fullyReadInbox = await loadNotificationInbox(recipientConfig);
   assert.ok(fullyReadInbox.items.every((item) => item.readAt));
 
+  const closeActivityId = `activity-event-closed-${suffix}`;
+  const closeActivity = {
+    id: closeActivityId,
+    kind: "event-closed",
+    actorParticipantId: senderParticipantId,
+    occurredAt: new Date().toISOString()
+  };
+  await saveBothAccountStates({
+    participants,
+    expenses,
+    activityLog: [closeActivity],
+    locked: true
+  });
+  const closeDelivery = await sendEventActivityNotification(
+    notificationConfig(sender),
+    { eventId, activityId: closeActivityId, kind: "event-closed" }
+  );
+  if (!closeDelivery?.ok) {
+    console.error(
+      JSON.stringify({ stage: "event-closed-delivery", closeDelivery })
+    );
+  }
+  assert.equal(closeDelivery.ok, true);
+  assert.equal(closeDelivery.inboxRecipients, 1);
+  const closedInbox = await loadNotificationInbox(recipientConfig);
+  const closedNotification = closedInbox.items.find(
+    (item) => item.kind === "event-closed"
+  );
+  assert.ok(closedNotification, "Closing the event did not reach the inbox");
+  assert.equal(closedNotification.view, "summary");
+
   result = {
     ok: true,
     checks: {
@@ -269,7 +300,8 @@ try {
       senderDoesNotReceiveOwnActivity: true,
       crossAccountReadUpdateBlocked: true,
       recipientCanMarkOneRead: true,
-      recipientCanMarkAllRead: true
+      recipientCanMarkAllRead: true,
+      eventClosureOpensSummary: true
     }
   };
 } finally {
@@ -334,8 +366,20 @@ function expense(id, payerId, participantId, total) {
   };
 }
 
-async function saveBothAccountStates({ participants, expenses }) {
-  const authoritativeState = accountState(accounts[0], participants, expenses);
+async function saveBothAccountStates({
+  participants,
+  expenses,
+  activityLog = [],
+  locked = false
+}) {
+  const eventOptions = { activityLog, locked };
+  const authoritativeState = accountState(
+    accounts[0],
+    participants,
+    expenses,
+    true,
+    eventOptions
+  );
   await saveSharedEventState(
     accountCloudConfig(accounts[0]),
     authoritativeState,
@@ -344,12 +388,18 @@ async function saveBothAccountStates({ participants, expenses }) {
   for (const account of accounts) {
     await saveCloudState(
       accountCloudConfig(account),
-      accountState(account, participants, expenses)
+      accountState(account, participants, expenses, true, eventOptions)
     );
   }
 }
 
-function accountState(account, participants, expenses, includeEvent = true) {
+function accountState(
+  account,
+  participants,
+  expenses,
+  includeEvent = true,
+  { activityLog = [], locked = false } = {}
+) {
   const transfers = calculateSettlement(participants, expenses).transfers;
   const event = {
     id: eventId,
@@ -361,8 +411,8 @@ function accountState(account, participants, expenses, includeEvent = true) {
     adminsCanEditOnly: false,
     currency: "ILS",
     roundSettlementTransfers: false,
-    locked: false,
-    closedAt: null,
+    locked,
+    closedAt: locked ? new Date().toISOString() : null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     sharedSpaceId: sharedSpace.id,
@@ -372,7 +422,7 @@ function accountState(account, participants, expenses, includeEvent = true) {
     distinctParticipantPairs: [],
     expenses,
     deletedExpenses: [],
-    activityLog: [],
+    activityLog,
     transfers
   };
   return {

@@ -190,6 +190,65 @@ test("an offline name links to its connected account without losing money", asyn
   expect(savedState.events[0].expenses[0].total).toBe(9_000);
 });
 
+test("the explicit account-link confirmation works on the first tap", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .click();
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${OFFLINE_ID}"]`)
+    .click();
+
+  const profileDialog = page.locator('[data-participant-detail-view="offline"]');
+  await profileDialog.getByText("קישור לחשבון", { exact: true }).click();
+
+  const linkDialog = page.locator(".event-participant-link-screen");
+  const accountCandidate = linkDialog.locator(
+    `[data-action="link-offline-participant-account"][data-source-participant-id="${OFFLINE_ID}"][data-target-participant-id="${ACCOUNT_ID}"]`
+  );
+  await expect(accountCandidate).toBeVisible();
+  await accountCandidate.click({ timeout: 5_000 });
+
+  const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
+  const confirmButton = confirmation.locator(
+    '[data-action="confirm-important-action"]'
+  );
+  await expect(confirmation).toContainText("לקשר את אריאל ניזרי לחשבון של אריאל ניזרי?");
+  await expect(confirmButton).toBeEnabled();
+  await expect
+    .poll(() =>
+      confirmButton.evaluate((button) =>
+        button.closest("[inert]")?.getAttribute("class") ?? ""
+      )
+    )
+    .toBe("");
+  await confirmButton.click({ timeout: 5_000 });
+
+  await expect(confirmation).toHaveCount(0);
+  await expect.poll(async () =>
+    page.evaluate(({ eventId, sourceId, targetId }) => {
+      const saved = JSON.parse(
+        localStorage.getItem("settle-friends-state") || "{}"
+      );
+      const event = saved.events?.find((item) => item.id === eventId);
+      return {
+        sourceActive: event?.participantIds?.includes(sourceId),
+        targetActive: event?.participantIds?.includes(targetId),
+        expensePayerId: event?.expenses?.[0]?.payers?.[0]?.participantId,
+        linked: event?.participantAccountLinks?.some(
+          (link) =>
+            link.sourceParticipantId === sourceId &&
+            link.targetParticipantId === targetId
+        )
+      };
+    }, { eventId: EVENT_ID, sourceId: OFFLINE_ID, targetId: ACCOUNT_ID })
+  ).toEqual({
+    sourceActive: false,
+    targetActive: true,
+    expensePayerId: ACCOUNT_ID,
+    linked: true
+  });
+});
+
 test("an offline name can invite an account outside the friends list with the standard share tools", async ({ page }) => {
   await page
     .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)

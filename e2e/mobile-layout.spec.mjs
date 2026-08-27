@@ -137,7 +137,22 @@ test.afterEach(() => {
   expect(runtimeIssues, "the core mobile journey must not emit browser runtime errors").toEqual([]);
 });
 
-test("offline mode keeps shared event data read-only until sync access returns", async ({
+test("iPad event screens use the tablet canvas instead of a phone column", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "ipad-webkit");
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+
+  const layout = await page.locator('.screen[data-screen-kind="event"]').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { width: rect.width, viewportWidth: window.innerWidth };
+  });
+  expect(layout.width).toBeGreaterThanOrEqual(Math.min(640, layout.viewportWidth - 56));
+  expect(layout.width).toBeLessThanOrEqual(722);
+});
+
+test("offline mode keeps shared event changes local-first until sync access returns", async ({
   page,
   context
 }) => {
@@ -158,28 +173,12 @@ test("offline mode keeps shared event data read-only until sync access returns",
 
   await context.setOffline(true);
   const syncToast = page.locator("[data-sync-status]");
-  await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
+  await expect(adminToggle).not.toHaveAttribute("aria-disabled", "true");
   await expect(syncToast).toBeHidden();
 
-  await adminToggle.click({ force: true });
-  await expect(syncToast).toContainText(
-    "אין רשת כרגע"
-  );
-  await expect(syncToast).toHaveClass(/app-toast/);
-  await expect(syncToast.locator(".app-toast-icon")).toBeVisible();
-  const syncDismissButton = syncToast.locator("[data-sync-dismiss]");
-  await expect(syncDismissButton).toHaveAttribute("aria-label", "סגירת ההודעה");
-  const syncDismissSize = await syncDismissButton.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    return { width: Math.round(rect.width), height: Math.round(rect.height) };
-  });
-  expect(syncDismissSize).toEqual({ width: 44, height: 44 });
-  await syncDismissButton.click();
+  await adminToggle.click();
+  await expect(adminToggle).toBeChecked();
   await expect(syncToast).toBeHidden();
-  await expect(adminToggle).toHaveAttribute("aria-disabled", "true");
-  await adminToggle.click({ force: true });
-  await expect(syncToast).toBeVisible();
-  await expect(adminToggle).not.toBeChecked();
 
   await page.goBack();
   await expect(page.locator(".event-participant-roster-modal")).toBeVisible();
@@ -192,8 +191,9 @@ test("offline mode keeps shared event data read-only until sync access returns",
     '[data-action="toggle-event-participant-admin"]'
   );
   await expect(reconnectedAdminToggle).not.toHaveAttribute("aria-disabled", "true");
-  await reconnectedAdminToggle.check();
   await expect(reconnectedAdminToggle).toBeChecked();
+  await reconnectedAdminToggle.uncheck();
+  await expect(reconnectedAdminToggle).not.toBeChecked();
 });
 
 test("routine background sync never opens a sync surface", async ({ page }) => {
@@ -257,6 +257,8 @@ test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInf
 
   const dialog = page.locator(".expense-step-modal");
   await expect(dialog).toBeVisible();
+  const nav = page.locator(".event-route-primary-nav");
+  await expect(nav).toBeVisible();
   const rect = await dialog.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
     return {
@@ -270,7 +272,13 @@ test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInf
   expect(rect.top).toBeLessThanOrEqual(4);
   expect(rect.left).toBeLessThanOrEqual(4);
   expect(rect.right).toBeGreaterThanOrEqual(1190);
-  expect(rect.bottom).toBeGreaterThanOrEqual(830);
+  const navTop = await nav.evaluate((element) =>
+    Math.round(element.getBoundingClientRect().top)
+  );
+  expect(rect.bottom).toBeLessThanOrEqual(navTop + 4);
+  expect(rect.bottom).toBeGreaterThanOrEqual(navTop - 24);
+  await expect(dialog.locator(".expense-modal-actions")).toBeVisible();
+  await expect(dialog.locator('[data-action="expense-step-next"]')).toBeInViewport();
   expect(rect.radius).toBe("0px");
 });
 
@@ -411,6 +419,18 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await assertLayoutHealth(page, "event summary");
   await assertCompactSettlementFirstView(page);
 
+  const keyboardTransfer = page.locator('.transfer-row:has(.transfer-explanation)').first();
+  if (await keyboardTransfer.count()) {
+    const explanation = keyboardTransfer.locator('.transfer-explanation');
+    await keyboardTransfer.focus();
+    await keyboardTransfer.press("Enter");
+    await expect(keyboardTransfer).toHaveAttribute("aria-expanded", "true");
+    await expect(explanation).toHaveAttribute("open", "");
+    await keyboardTransfer.press("Space");
+    await expect(keyboardTransfer).toHaveAttribute("aria-expanded", "false");
+    await expect(explanation).not.toHaveAttribute("open", "");
+  }
+
   const settlementCalculation = page.locator(".settlement-featured-breakdown").first();
   if (await settlementCalculation.count()) {
     await expect(settlementCalculation).not.toHaveAttribute("open", "");
@@ -483,6 +503,10 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await assertExpenseStepStartsAtTop(page, "participants");
   await page.locator('[data-action="expense-step-next"]').click();
   await assertExpenseStepStartsAtTop(page, "review");
+  for (const step of ["participants", "payer", "name", "amount"]) {
+    await page.locator('[data-action="expense-step-back"]').click();
+    await assertExpenseStepStartsAtTop(page, step);
+  }
   await page.locator('[data-action="cancel-expense"]').click();
   await expect(expenseDialog).toBeHidden();
 
@@ -743,10 +767,21 @@ async function assertCompactSettlementFirstView(page) {
       "large text must not introduce an empty block before the first transfer"
     ).toBeLessThanOrEqual(80);
   } else {
-    expect(layout.heading?.top, "transfer heading must begin in the first viewport")
-      .toBeLessThan(layout.bottomNavigation?.top ?? layout.viewportHeight);
-    expect(layout.firstTransfer?.top, "the first transfer must begin before bottom navigation")
-      .toBeLessThan(layout.bottomNavigation?.top ?? layout.viewportHeight);
+    expect(layout.heading?.top, "transfer heading stays in the document flow")
+      .toBeLessThan(layout.viewportHeight * 1.5);
+    const transfer = page.locator(".settlement-transfer-board .transfer-row").first();
+    await transfer.scrollIntoViewIfNeeded();
+    const reachableLayout = await page.evaluate(() => ({
+      transferTop: Math.round(
+        document.querySelector(".settlement-transfer-board .transfer-row")
+          ?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY
+      ),
+      navigationTop: Math.round(
+        document.querySelector(".product-app-nav")?.getBoundingClientRect().top ?? innerHeight
+      )
+    }));
+    expect(reachableLayout.transferTop, "the first transfer must scroll above bottom navigation")
+      .toBeLessThan(reachableLayout.navigationTop);
   }
   expect(layout.screenPaddingBottom, "summary content needs safe scroll space above bottom navigation")
     .toBeGreaterThanOrEqual(120);
@@ -754,16 +789,28 @@ async function assertCompactSettlementFirstView(page) {
 
 async function assertSingleDecisionExpenseStep(page) {
   const dialog = page.locator(".expense-step-modal");
+  const nav = page.locator(".event-route-primary-nav");
+  await expect(nav).toBeVisible();
   await expect.poll(async () => {
     const rect = await dialog.evaluate((element) => element.getBoundingClientRect());
     return Math.round(rect.top);
   }, { message: "expense flow settles against the top edge" }).toBeLessThanOrEqual(4);
   await expect.poll(async () => {
-    const rect = await dialog.evaluate((element) => element.getBoundingClientRect());
-    return Math.round(rect.bottom);
-  }, { message: "expense flow settles against the bottom edge" }).toBeGreaterThanOrEqual(
-    await page.evaluate(() => innerHeight - 4)
-  );
+    return await page.evaluate(() => {
+      const dialog = document.querySelector(".expense-step-modal");
+      const nav = document.querySelector(".event-route-primary-nav");
+      if (!dialog || !nav) return Number.POSITIVE_INFINITY;
+      return Math.abs(
+        Math.round(dialog.getBoundingClientRect().bottom) -
+          Math.round(nav.getBoundingClientRect().top)
+      );
+    });
+  }, { message: "expense flow reserves the bottom navigation area" }).toBeLessThanOrEqual(24);
+
+  const actions = dialog.locator(".expense-modal-actions");
+  await expect(actions).toBeVisible();
+  await expect(actions).toBeInViewport();
+  await expect(dialog.locator('[data-action="expense-step-next"]')).toBeInViewport();
 
   const layout = await dialog.evaluate((dialog) => {
     const visible = (element) => {

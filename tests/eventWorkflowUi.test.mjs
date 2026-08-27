@@ -10,6 +10,44 @@ function sourceBetween(source, start, end) {
   return source.slice(startIndex, endIndex);
 }
 
+test("settlement transfer explanations remain keyboard accessible", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const transferRow = sourceBetween(
+    app,
+    "function renderTransferRow(",
+    "function renderDirectFeaturedSettlementBreakdown("
+  );
+  const keyboard = sourceBetween(
+    app,
+    "function handleDialogKeydown(event)",
+    "function handleFriendsHubTabKeyboardNavigation(event)"
+  );
+
+  assert.match(transferRow, /tabindex="0"/);
+  assert.match(transferRow, /aria-expanded=/);
+  assert.match(transferRow, /aria-controls=/);
+  assert.match(app, /function setTransferExplanationOpen\(transferRow, open\)/);
+  assert.match(keyboard, /event\.key === "Enter" \|\| event\.key === " "/);
+  assert.match(keyboard, /setTransferExplanationOpen\(transferRow, !explanation\.open\)/);
+});
+
+test("open expense menus track every viewport scroll source", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+
+  assert.match(
+    app,
+    /document\.addEventListener\("scroll", scheduleOpenExpenseMenuPosition, true\)/
+  );
+  assert.match(
+    app,
+    /window\.addEventListener\("orientationchange", scheduleOpenExpenseMenuPosition\)/
+  );
+  assert.match(
+    app,
+    /window\.visualViewport\?\.addEventListener\("scroll", scheduleOpenExpenseMenuPosition\)/
+  );
+});
+
 test("connected participants expose private reporting and reversible blocking without touching money", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const profile = sourceBetween(
@@ -146,7 +184,7 @@ test("expense saving ignores duplicate or stale save actions", async () => {
   assert.match(saveExpense, /finally \{\s*expenseSaveInProgress = false/);
 });
 
-test("regular and restaurant expense dialogs use one dedicated close action", async () => {
+test("regular expense flow uses app-like back navigation while restaurant keeps its close action", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const regularExpense = sourceBetween(
     app,
@@ -159,9 +197,11 @@ test("regular and restaurant expense dialogs use one dedicated close action", as
     "function renderQuickItemRow"
   );
 
-  assert.match(regularExpense, /modal-close-button/);
+  assert.match(regularExpense, /expense-route-backdrop/);
+  assert.match(regularExpense, /expense-accessibility-button/);
+  assert.match(regularExpense, /aria-label="חזרה לאירוע"/);
+  assert.match(regularExpense, /renderEventRoutePrimaryNav\(\)/);
   assert.match(quickExpense, /modal-close-button/);
-  assert.match(regularExpense, /aria-label="סגירת חלון ההוצאה"/);
   assert.match(quickExpense, /aria-label="סגירת חלון ההוצאה"/);
   assert.doesNotMatch(quickExpense, /modal-back-button-label/);
 });
@@ -791,14 +831,16 @@ test("account linking waits for a confirmed cloud save before reporting success"
   const app = await readFile("src/app.mjs", "utf8");
   const mergeFlow = sourceBetween(
     app,
-    "async function mergeParticipantsInState()",
+    "async function mergeParticipantsInStateNow()",
     "function dropParticipantFromDrafts"
   );
 
   assert.match(app, /await mergeParticipantsInState\(\)/);
-  assert.match(mergeFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(mergeFlow, /prepareSharedEventForInvitation\(pendingMerge\.eventId/);
+  assert.match(mergeFlow, /forceSharedEventIds: \[pendingMerge\.eventId\]/);
+  assert.match(mergeFlow, /confirmPendingAccountLink\(accountLinkReceipt\)/);
   assert.match(mergeFlow, /const previousState = cloneNavigationValue\(state\)/);
-  assert.match(mergeFlow, /if \(!result\?\.ok\)/);
+  assert.match(mergeFlow, /if \(!result\?\.ok && !result\?\.pending\)/);
   assert.match(mergeFlow, /state = previousState/);
   assert.match(mergeFlow, /emitOperationFailure\("account_link"/);
   assert.ok(
@@ -1410,15 +1452,12 @@ test("event screen uses one focused start action instead of a repeated command g
   assert.doesNotMatch(app, /function renderEventCommandGrid/);
 });
 
-test("home event rows prioritize selection details, participants, action attention, and status", async () => {
+test("home event rows prioritize selection details, participants, and status without decorative attention dots", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const row = sourceBetween(app, "function renderEventRow(event)", "function ensureNewEventDraft");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
 
-  assert.match(row, /pendingPersonalTransfers/);
-  assert.match(row, /ממתין לתשלום שלך/);
-  assert.match(row, /ממתין לאישור קבלה/);
-  assert.match(row, /event-row-attention/);
+  assert.doesNotMatch(row, /event-row-attention|attentionLabel/);
   assert.match(row, /data-action="event-status-select"/);
   assert.match(row, /class="event-row-open"/);
   assert.match(row, /aria-haspopup="dialog"/);

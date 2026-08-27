@@ -81,3 +81,23 @@ test("confirmation supports app back, browser back, Escape and focus restoration
     /\.important-action-dialog \{[\s\S]*?overflow-x: hidden !important;[\s\S]*?overflow-y: auto !important;[\s\S]*?overscroll-behavior: contain !important/
   );
 });
+
+test("event deletion is optimistic, cloud-confirmed and recoverable on a hard failure", async () => {
+  const [app, coherence] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
+  ]);
+  const start = app.indexOf("async function deleteCurrentEvent");
+  const end = app.indexOf("async function markTransferPaid", start);
+  const deletion = app.slice(start, end);
+
+  assert.ok(start >= 0 && end > start);
+  assert.match(deletion, /const previousState = state/);
+  assert.match(deletion, /render\(\);[\s\S]*?await saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(deletion, /if \(!result\?\.ok && !result\?\.pending\)/);
+  assert.match(deletion, /state = previousState/);
+  assert.match(app, /await deleteCurrentEvent\(action\.payload\.eventId\)/);
+  assert.match(app, /label: "מחיקת אירוע"[\s\S]*?metrics:/);
+  assert.match(coherence, /\.event-danger-zone-heading/);
+  assert.match(coherence, /data-important-action-kind="delete-event"/);
+});

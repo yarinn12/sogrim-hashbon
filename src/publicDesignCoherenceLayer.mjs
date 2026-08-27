@@ -17,7 +17,7 @@ const CSS = `
     --app-brand-bright: #164e3f;
     --app-accent: #164e3f;
     --app-accent-soft: #edf4f1;
-    --app-danger: #ef4444;
+    --app-danger: #b94739;
     --app-positive: #10b981;
     --app-radius-control: 10px;
     --app-radius-card: 10px;
@@ -1186,9 +1186,13 @@ const CSS = `
   /* Event tools use the same quiet hierarchy as the approved app shell. */
   html.design-coherence-v1 body #app .event-task-modal {
     display: grid !important;
-    grid-template-rows: auto minmax(0, 1fr) !important;
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
     overflow: hidden !important;
     background: var(--app-canvas) !important;
+  }
+
+  html.design-coherence-v1 body #app .event-task-modal > .event-route-sync-status {
+    grid-row: 2 !important;
   }
 
   html.design-coherence-v1 body #app
@@ -1300,6 +1304,7 @@ const CSS = `
   html.design-coherence-v1 body #app
     .event-task-modal
     > .event-modal-body {
+    grid-row: 3 !important;
     min-width: 0 !important;
     min-height: 0 !important;
     display: grid !important;
@@ -2319,7 +2324,8 @@ const CSS = `
     }
 
     html.design-coherence-v1 .event-participant-route-modal:focus-visible {
-      outline: none !important;
+      outline: 3px solid var(--app-brand-bright) !important;
+      outline-offset: -3px !important;
     }
 
     html.design-coherence-v1
@@ -2763,7 +2769,7 @@ const CSS = `
     :is(.relationship-friendship-action, .event-participant-account-link-button) {
     width: auto !important;
     min-width: 76px !important;
-    min-height: 40px !important;
+    min-height: 44px !important;
     justify-content: center !important;
     padding: 0 13px !important;
     border-radius: 10px !important;
@@ -3768,6 +3774,7 @@ const CSS = `
     box-sizing: border-box !important;
     padding: 16px 14px calc(env(safe-area-inset-bottom) + 96px) !important;
     background: rgba(7, 27, 24, 0.14) !important;
+    pointer-events: auto !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation {
@@ -3786,6 +3793,7 @@ const CSS = `
       0 22px 52px rgba(7, 27, 24, 0.22),
       0 4px 14px rgba(7, 27, 24, 0.1) !important;
     outline: none !important;
+    pointer-events: auto !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-heading {
@@ -3866,6 +3874,104 @@ const CSS = `
     width: 100% !important;
     min-width: 0 !important;
     min-height: 50px !important;
+  }
+
+  /* Destructive event settings keep the same quiet white task surfaces as the
+     rest of the app; danger is communicated by the action, not a tinted page. */
+  html.design-coherence-v1 body #app .event-danger-zone {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 14px !important;
+    padding: 16px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    background: var(--app-surface) !important;
+    box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone-heading {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 12px !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone-heading > div {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone-icon {
+    width: 42px !important;
+    height: 42px !important;
+    display: grid !important;
+    place-items: center !important;
+    border: 1px solid color-mix(in srgb, var(--app-danger) 18%, var(--app-line)) !important;
+    border-radius: 12px !important;
+    color: var(--app-danger) !important;
+    background: var(--app-surface-soft) !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone-icon .ui-icon-svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone :is(strong, p) {
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone > .danger-button {
+    width: 100% !important;
+    min-height: 48px !important;
+    scale: 1 !important;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease,
+      scale 160ms ease !important;
+  }
+
+  html.design-coherence-v1 body #app .event-danger-zone > .danger-button:active:not(:disabled) {
+    scale: 0.96 !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .important-action-dialog[data-important-action-kind="delete-event"] {
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    background: var(--app-surface) !important;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .important-action-dialog[data-important-action-kind="delete-event"]
+    .important-action-impact
+    > div {
+    border: 1px solid var(--app-line) !important;
+    border-radius: 12px !important;
+    background: var(--app-surface-soft) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .important-action-dialog[data-important-action-kind="delete-event"]
+    .important-action-confirm-button {
+    min-height: 48px !important;
+    border-radius: var(--app-radius-control) !important;
+    scale: 1 !important;
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      scale 160ms ease !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .important-action-dialog[data-important-action-kind="delete-event"]
+    .important-action-confirm-button:active:not(:disabled) {
+    scale: 0.96 !important;
   }
 
   @media (max-width: 420px) {

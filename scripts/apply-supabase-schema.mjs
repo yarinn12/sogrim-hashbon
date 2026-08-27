@@ -75,6 +75,17 @@ try {
             and trigger.tgrelid = 'public.app_snapshots'::regclass
             and not trigger.tgisinternal
         ) as shared_financial_guard_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_proc as procedure
+        where procedure.oid =
+          'private.guard_shared_event_history_and_limits()'::regprocedure
+          and procedure.prosecdef
+      )
+        and not pg_catalog.has_schema_privilege('anon', 'private', 'usage')
+        and not pg_catalog.has_schema_privilege(
+          'authenticated', 'private', 'usage'
+        ) as shared_history_guard_execution_ready,
       (
         select relation.relrowsecurity and relation.relforcerowsecurity
         from pg_catalog.pg_class as relation
@@ -738,6 +749,16 @@ try {
           and column_name = 'session_id'
           and data_type = 'uuid'
       ) as product_metrics_anonymous_ready,
+      exists (
+        select 1
+        from pg_catalog.pg_constraint as constraint_record
+        where constraint_record.conrelid = 'public.product_metrics'::regclass
+          and constraint_record.conname = 'product_metrics_check'
+          and pg_catalog.strpos(
+            pg_catalog.pg_get_constraintdef(constraint_record.oid),
+            'account_link'
+          ) > 0
+      ) as product_metrics_account_link_ready,
       to_regclass('private.product_metric_rate_limits') is not null
         and to_regprocedure(
           'public.reserve_product_metric_batch(uuid,integer,integer,integer)'
@@ -876,6 +897,7 @@ try {
     !result?.trusted_shared_activity_ready ||
     !result?.personal_snapshot_guard_ready ||
     !result?.shared_financial_guard_ready ||
+    !result?.shared_history_guard_execution_ready ||
     !result?.signup_claims_rls_ready ||
     !result?.signup_claims_private ||
     !result?.signup_claim_trigger_ready ||
@@ -956,6 +978,7 @@ try {
     !result?.product_metrics_rls_ready ||
     !result?.product_metrics_client_locked ||
     !result?.product_metrics_anonymous_ready ||
+    !result?.product_metrics_account_link_ready ||
     !result?.product_metrics_rate_limit_ready ||
     !result?.removed_member_invites_revoked ||
     !result?.admin_analytics_function_locked ||

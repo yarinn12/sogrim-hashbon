@@ -20,12 +20,13 @@ test("profile offers a compact accessible avatar picker", async () => {
   assert.match(app, /pickerShell\.open = false/);
   assert.match(app, /data-action="profile-avatar-image"[^>]*accept="image\/\*"/);
   assert.match(app, /data-action="profile-avatar-image"[^>]*capture="environment"/);
-  assert.match(app, /profileAvatarPendingPreview = URL\.createObjectURL\(file\);[\s\S]*?render\(\);[\s\S]*?compressProfileAvatarImage\(file\)/);
+  assert.match(app, /requestImageCrop\(file, \{[\s\S]*?shape: "circle"[\s\S]*?aspectRatio: 1[\s\S]*?outputWidth: 480[\s\S]*?outputHeight: 480/);
+  assert.match(app, /if \(!croppedCanvas\) return;[\s\S]*?compressProfileAvatarImage\(croppedCanvas\)/);
   assert.doesNotMatch(app, /data-action="profile-avatar-url"/);
   assert.doesNotMatch(app, /action === "save-profile-avatar-url"/);
   assert.match(app, /async function persistProfileAvatarDraft\(\)/);
   assert.match(app, /await persistProfileAvatarDraft\(\)/);
-  assert.match(app, /function compressProfileAvatarImage\(file\)/);
+  assert.match(app, /function compressProfileAvatarImage\(croppedCanvas\)/);
   assert.match(app, /maxLength: 180_000/);
   assert.match(app, /normalizeAvatarImage\(dataUrl\)/);
   assert.match(app, /stateResult\.value\?\.ok !== false/);
@@ -159,6 +160,7 @@ test("avatar assets and the preset module are available offline", async () => {
     assert.match(nativeBuilder, new RegExp(`assets/avatars/avatar-${index}\\.png`));
   }
   assert.match(sw, /\/src\/domain\/avatarPresets\.mjs/);
+  assert.match(sw, /\/src\/imageCropper\.mjs/);
   assert.match(nativeBuilder, /mkdir\(join\(output, "assets", "avatars"\)/);
   assert.match(vercelConfig, /"assets\/\*\*"/);
   assert.match(vercelIgnore, /!assets\/avatars\/\*\.png/);

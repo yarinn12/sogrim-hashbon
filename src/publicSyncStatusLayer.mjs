@@ -14,67 +14,19 @@ const ROUTINE_SYNC_STATUSES = new Set([
 ]);
 const ONLINE_MUTATION_ACTIONS = new Set([
   "accept-friend-request",
-  "add-event-participant",
-  "archive-group",
-  "archive-settled-event",
-  "block-connected-user",
   "cancel-friend-request",
-  "choose-event-status",
-  "confirm-close-event",
-  "confirm-important-action",
-  "connect-duplicate-participant",
-  "create-event",
-  "create-group",
   "decline-friend-request",
-  "delete-event",
-  "delete-expense",
-  "edit-group-add-member",
-  "event-add-guest",
-  "expense-add-friend-participant",
-  "expense-add-payer-guest",
-  "finish-restaurant-calculation",
-  "friends-add-offline",
-  "group-add-member",
   "join-existing-event",
-  "leave-event",
-  "link-offline-participant-account",
   "mark-all-notifications-read",
-  "mark-paid",
-  "mark-pending",
-  "mark-pending-group",
-  "merge-participants",
-  "new-event-add-guest",
-  "remove-event-from-list",
-  "remove-event-participant",
-  "remove-network-friend",
-  "remove-offline-friend",
-  "remove-participant",
   "request-event-friendship",
-  "reset",
-  "restore-event-participant",
-  "rotate-event-invite",
-  "save-edit-group",
-  "save-expense",
-  "save-expense-and-continue",
-  "save-offline-participant-name",
-  "save-participant-alias",
-  "save-profile",
-  "save-quick-expenses",
   "send-friend-request",
-  "set-event-management-mode",
-  "set-event-repayment-mode",
-  "set-event-rounding-mode",
   "submit-participant-report",
-  "toggle-admin-edit",
-  "toggle-lock",
   "unblock-connected-user"
 ]);
-const ONLINE_MUTATION_CHANGE_ACTIONS = new Set([
-  "event-currency",
-  "event-participant",
-  "import-state-file",
-  "toggle-event-participant-admin"
-]);
+// Form changes and ledger mutations are deliberately local-first. The shared
+// store queues them durably and reconciles them after connectivity returns, so
+// a stale sync state must never turn a visible control into a no-op.
+const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
 let currentStatus = "";
 let lastScreenSignature = screenSignature();
@@ -102,9 +54,9 @@ function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
   const currentScreenSignature = screenSignature();
 
-  if (["offline", "conflict"].includes(status)) {
+  if (status === "offline") {
     mutationLockReason = status;
-  } else if (status === "saved") {
+  } else if (["saved", "conflict"].includes(status)) {
     mutationLockReason = "";
   }
   syncMutationControls();
@@ -130,7 +82,7 @@ function handleSyncStatus(event) {
 }
 
 async function handleOffline() {
-  if (offlineProbePromise || mutationLockReason === "conflict") {
+  if (offlineProbePromise) {
     return offlineProbePromise;
   }
 
@@ -173,7 +125,7 @@ async function confirmServerIsUnreachable() {
 }
 
 async function recoverOnlineMutationAccess() {
-  if (reconnectPromise || mutationLockReason === "conflict") return reconnectPromise;
+  if (reconnectPromise) return reconnectPromise;
 
   mutationLockReason = "reconnecting";
   showStatus("reconnecting");
@@ -209,6 +161,10 @@ function blockOfflineMutation(event) {
 
   const target = event.target?.closest?.("[data-action]");
   if (!target) return;
+  // Account linking and duplicate-name merges are durable operations: the app
+  // stores them locally and retries/validates them against the canonical cloud
+  // state. A stale connectivity lock must not turn their controls into no-ops.
+  if (target.dataset.allowOfflineMutation === "true") return;
   const action = target.dataset.action ?? "";
   const requiresOnline = event.type === "change"
     ? ONLINE_MUTATION_CHANGE_ACTIONS.has(action)
@@ -358,6 +314,20 @@ function syncInlineStatusTargets() {
 function syncMutationControls() {
   const locked = Boolean(mutationLockReason);
   document.querySelectorAll("[data-action]").forEach((control) => {
+    if (control.dataset.allowOfflineMutation === "true") {
+      if (control.hasAttribute("data-online-mutation-disabled")) {
+        const previousAriaDisabled =
+          control.dataset.onlineMutationPreviousAriaDisabled ?? "__missing__";
+        if (previousAriaDisabled === "__missing__") {
+          control.removeAttribute("aria-disabled");
+        } else {
+          control.setAttribute("aria-disabled", previousAriaDisabled);
+        }
+        delete control.dataset.onlineMutationDisabled;
+        delete control.dataset.onlineMutationPreviousAriaDisabled;
+      }
+      return;
+    }
     const action = control.dataset.action ?? "";
     const isMutation =
       ONLINE_MUTATION_ACTIONS.has(action) ||
@@ -416,7 +386,7 @@ function injectStyles() {
 
     .public-sync-status[hidden] { display: none !important; }
     body.app-dialog-open .public-sync-status {
-      z-index: 200;
+      z-index: 320;
       top: auto;
       bottom: calc(96px + env(safe-area-inset-bottom));
     }

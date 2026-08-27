@@ -24,6 +24,28 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /"saving",[\s\S]*?"saved",[\s\S]*?"reconnecting",[\s\S]*?"unavailable"/);
   assert.match(layer, /ONLINE_MUTATION_ACTIONS/);
   assert.match(layer, /ONLINE_MUTATION_CHANGE_ACTIONS/);
+  const onlineActions = layer.slice(
+    layer.indexOf("const ONLINE_MUTATION_ACTIONS"),
+    layer.indexOf("const ONLINE_MUTATION_CHANGE_ACTIONS")
+  );
+  for (const durableAction of [
+    "confirm-close-event",
+    "confirm-important-action",
+    "create-event",
+    "save-expense",
+    "mark-paid",
+    "mark-pending",
+    "toggle-lock"
+  ]) {
+    assert.doesNotMatch(
+      onlineActions,
+      new RegExp(`"${durableAction}"`),
+      `${durableAction} must reach the local-first handler even behind a stale sync status`
+    );
+  }
+  assert.match(onlineActions, /"join-existing-event"/);
+  assert.match(onlineActions, /"send-friend-request"/);
+  assert.match(layer, /const ONLINE_MUTATION_CHANGE_ACTIONS = new Set\(\);/);
   assert.match(layer, /document\.addEventListener\("click", blockOfflineMutation, true\)/);
   assert.match(layer, /document\.addEventListener\("change", blockOfflineMutation, true\)/);
   assert.match(layer, /event\.stopImmediatePropagation\(\)/);
@@ -38,7 +60,29 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   );
   assert.match(
     layer,
+    /status === "offline"[\s\S]*?\["saved", "conflict"\]\.includes\(status\)[\s\S]*?mutationLockReason = ""/,
+    "a resolved cloud conflict must not leave every mutation control locked"
+  );
+  assert.match(
+    layer,
     /function blockOfflineMutation\(event\)[\s\S]*?showStatus\(mutationLockReason === "conflict" \? "conflict" : "offline"\)/
+  );
+  assert.match(
+    layer,
+    /if \(target\.dataset\.allowOfflineMutation === "true"\) return;/,
+    "durable mutations must not become silent no-ops behind a stale sync lock"
+  );
+  assert.match(
+    app,
+    /data-action="link-offline-participant-account"\s+data-allow-offline-mutation="true"/
+  );
+  assert.match(
+    app,
+    /data-action="merge-participants" data-allow-offline-mutation="true"/
+  );
+  assert.match(
+    app,
+    /importantActionDialog\.kind === "merge-participants" \? 'data-allow-offline-mutation="true"'/
   );
   assert.doesNotMatch(layer, /let mutationLockReason = navigator\.onLine === false/);
   assert.match(layer, /return "אין רשת כרגע"/);
@@ -75,6 +119,11 @@ test("public sync status reports cloud saves and recovery without cluttering scr
     /\.event-action-sync-retry \{[\s\S]*?min-width: 44px !important;[\s\S]*?min-height: 44px !important;/
   );
   assert.match(layer, /bottom: calc\(96px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(
+    layer,
+    /body\.app-dialog-open \.public-sync-status \{[\s\S]*?z-index: 320/,
+    "a genuinely online-only failure must remain visible above confirmation dialogs"
+  );
   assert.match(layer, /\.public-sync-status\[hidden\] \{ display: none !important; \}/);
   assert.match(layer, /flushPendingSharedState/);
   assert.match(layer, /await flushPendingSharedState\(\)/);

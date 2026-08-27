@@ -777,3 +777,62 @@ test("client accepts the event invitation activity kind", async () => {
     kind: "event-invite"
   });
 });
+
+test("closing an event reaches the in-app inbox and opens its summary", async () => {
+  const activityId = "activity-event-closed";
+  const senderState = eventState();
+  senderState.events[0].activityLog = [{
+    id: activityId,
+    kind: "event-closed",
+    actorParticipantId: SENDER_PARTICIPANT_ID,
+    occurredAt: "2026-08-27T10:00:00.000Z"
+  }];
+  const recipientState = eventState({
+    currentParticipantId: RECIPIENT_PARTICIPANT_ID
+  });
+  recipientState.events[0].activityLog = structuredClone(
+    senderState.events[0].activityLog
+  );
+  const { fetchImpl, requests } = createActivityFetch({
+    senderState,
+    authoritativeState: senderState,
+    recipientState
+  });
+
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId,
+    kind: "event-closed",
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  const inboxWrite = requests.find((request) =>
+    request.url.includes("/rest/v1/notification_inbox?")
+  );
+  const inboxItem = JSON.parse(inboxWrite.options.body);
+  assert.equal(inboxItem.kind, "event-closed");
+  assert.equal(inboxItem.view, "summary");
+  const delivery = requests.find((request) =>
+    request.url.includes("fcm.googleapis.com/")
+  );
+  assert.equal(JSON.parse(delivery.options.body).message.data.view, "summary");
+
+  const clientCalls = [];
+  await sendClientEventActivityNotification(
+    runtimeConfig(),
+    { eventId: EVENT_ID, activityId, kind: "event-closed" },
+    async (url, options) => {
+      clientCalls.push({ url, options });
+      return jsonResponse({ ok: true, inboxRecipients: 1 });
+    }
+  );
+  assert.equal(JSON.parse(clientCalls[0].options.body).kind, "event-closed");
+});

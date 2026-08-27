@@ -640,6 +640,7 @@ $$;
 create or replace function private.guard_shared_event_history_and_limits()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare

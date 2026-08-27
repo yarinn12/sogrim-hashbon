@@ -633,6 +633,7 @@ async function loadSharedStateOnce(requestScope) {
 export async function saveSharedState(state) {
   const {
     forceSharedParticipantIds = [],
+    forceSharedEventIds = [],
     suppressRevertNotice = false,
     awaitCloud = false
   } = arguments[1] ?? {};
@@ -665,7 +666,8 @@ export async function saveSharedState(state) {
     };
   }
   const syncSelection = buildSharedEventSyncSelection(previousState, cleanState, {
-    forceParticipantIds: forceSharedParticipantIds
+    forceParticipantIds: forceSharedParticipantIds,
+    forceEventIds: forceSharedEventIds
   });
   const hasSharedEventMutation = Boolean(
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length

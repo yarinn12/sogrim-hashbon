@@ -60,7 +60,7 @@ test("tester-facing forms use accessible names and polished loading copy", async
   assert.match(coherence, /\.event-participant-route-modal:focus-visible[\s\S]*?outline: 3px solid/);
   assert.match(
     coherence,
-    /@media \(max-width: 720px\)[\s\S]*?\.event-participant-route-modal:focus-visible \{[\s\S]*?outline: none !important;/
+    /@media \(max-width: 720px\)[\s\S]*?\.event-participant-route-modal:focus-visible \{[\s\S]*?outline: 3px solid var\(--app-brand-bright\) !important;[\s\S]*?outline-offset: -3px !important;/
   );
   assert.match(
     coherence,

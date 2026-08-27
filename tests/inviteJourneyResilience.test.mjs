@@ -296,6 +296,20 @@ test("prepareEventShareNow always reloads the runtime config", () => {
   );
 });
 
+test("invite preparation recovers when an iOS resume briefly exposes fallback config", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const prepare = app.slice(
+    app.indexOf("async function prepareEventShareNow(eventId)"),
+    app.indexOf("async function prepareEventShareWithCurrentSession")
+  );
+
+  assert.match(prepare, /error\?\.code === "EVENT_INVITE_CLOUD_REQUIRED"/);
+  assert.match(prepare, /await refreshRuntimeConfigNow\(\)/);
+  assert.match(prepare, /freshRuntimeConfig\?\.storage\?\.mode === "supabase"/);
+  assert.match(prepare, /freshUserId === expectedUserId/);
+  assert.match(prepare, /return await prepareEventShareWithCurrentSession\(eventId\)/);
+});
+
 test("invite preparation refreshes an expired account session once and retries", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const prepare = app.slice(
@@ -314,8 +328,8 @@ test("invite preparation refreshes an expired account session once and retries",
     prepare.match(
       /return (?:await )?prepareEventShareWithCurrentSession\(eventId\)/g
     )?.length,
-    2,
-    "the invite attempt is retried exactly once after a successful refresh"
+    3,
+    "invite preparation has one initial attempt and one bounded retry for each recoverable boundary"
   );
   assert.match(prepare, /CLOUD_STATE_AUTH_EXPIRED/);
   assert.match(prepare, /SHARED_EVENT_ACCOUNT_REQUIRED/);

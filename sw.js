@@ -1,5 +1,5 @@
-const PWA_RELEASE = "372";
-const CACHE_NAME = "settle-friends-live-v372";
+const PWA_RELEASE = "384";
+const CACHE_NAME = "settle-friends-live-v384";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -33,6 +33,7 @@ const CACHE_FILES = [
   "/accessibility.html",
   "/account-deletion.html",
   "/src/app.mjs",
+  "/src/imageCropper.mjs",
   "/src/pwaBootstrap.mjs",
   "/src/publicAppSplashLayer.mjs",
   "/src/primaryNavigation.mjs",
@@ -51,6 +52,7 @@ const CACHE_FILES = [
   "/src/data/eventActivityNotifications.mjs",
   "/src/data/eventInvites.mjs",
   "/src/data/openInviteTokenStore.mjs",
+  "/src/data/pendingAccountLinks.mjs",
   "/src/data/notificationInbox.mjs",
   "/src/data/paymentReminders.mjs",
   "/src/data/productMetrics.mjs",

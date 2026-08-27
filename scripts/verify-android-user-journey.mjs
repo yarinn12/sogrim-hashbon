@@ -143,7 +143,7 @@ if (hasEvent) {
         style.visibility !== 'hidden' && !candidate.disabled;
     }))`
   );
-  check("Profile exposes the friends and groups hub", hasFriendsHub);
+  check("Profile exposes the friends hub", hasFriendsHub);
   if (hasFriendsHub) {
     await clickAction(page, "groups");
     await waitForScreen(page, "groups");
@@ -157,13 +157,17 @@ if (hasEvent) {
     await waitForFriendsTab(page, "requests");
     await inspect(page, "friends-requests");
 
-    await clickSelector(
+    const retiredGroupsTabHidden = await evaluate(
       page,
-      '[data-action="friends-hub-tab"][data-tab="groups"]',
-      "Friends groups tab"
+      `![...document.querySelectorAll('[data-action="friends-hub-tab"][data-tab="groups"]')]
+        .some((candidate) => {
+          const rect = candidate.getBoundingClientRect();
+          const style = getComputedStyle(candidate);
+          return rect.width > 0 && rect.height > 0 && style.display !== 'none' &&
+            style.visibility !== 'hidden';
+        })`
     );
-    await waitForFriendsTab(page, "groups");
-    await inspect(page, "friends-groups");
+    check("Retired groups tab stays hidden", retiredGroupsTabHidden);
 
     await androidBack();
     await waitForScreen(page, "profile");
@@ -611,6 +615,7 @@ async function inspect(page, label) {
   check(`${label}: no unnamed visible controls`, state.unnamedControls.length === 0);
   check(`${label}: visible controls meet 44px targets`, state.smallControls.length === 0);
   check(`${label}: no blocked visible controls`, state.blockedControls.length === 0);
+  check(`${label}: route controls do not overlap the event tabs`, !state.routeWorkspaceOverlap);
   check(`${label}: modal header content is not clipped`, state.clippedModalHeaders.length === 0);
   if (label === "share") {
     if (state.visibleInviteUrl) {
@@ -728,6 +733,16 @@ function inspectionExpression() {
     const ids = [...document.querySelectorAll('[id]')].map((element) => element.id).filter(Boolean);
     const duplicateIds = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
     const inviteInput = document.querySelector('input[name="eventInviteUrl"]');
+    const routeControls = [...document.querySelectorAll('.product-route-controls')].find(visible);
+    const eventWorkspaceNav = [...document.querySelectorAll('.event-workspace-nav')].find(visible);
+    const routeWorkspaceOverlap = Boolean(routeControls && eventWorkspaceNav && (() => {
+      const routeRect = routeControls.getBoundingClientRect();
+      const workspaceRect = eventWorkspaceNav.getBoundingClientRect();
+      return Math.max(routeRect.left, workspaceRect.left) <
+          Math.min(routeRect.right, workspaceRect.right) &&
+        Math.max(routeRect.top, workspaceRect.top) <
+          Math.min(routeRect.bottom, workspaceRect.bottom);
+    })());
     return {
       screen: document.querySelector('#app')?.dataset?.screen || '',
       focusedRoute: ['new-event', 'join-event'].includes(
@@ -744,6 +759,7 @@ function inspectionExpression() {
       overlayVisible: ${visibleOverlayExpression()},
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
       duplicateIds,
+      routeWorkspaceOverlap,
       unnamedControls: controls.filter((element) => hitTarget(element) && !label(element))
         .map((element) => element.dataset?.action || element.tagName),
       smallControls: controls.filter((element) => {

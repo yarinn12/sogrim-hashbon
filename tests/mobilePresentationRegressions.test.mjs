@@ -2,11 +2,39 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [homeLayer, coherenceLayer, dynamicTypeLayer] = await Promise.all([
+const [homeLayer, coherenceLayer, dynamicTypeLayer, mobileModalLayer] = await Promise.all([
   readFile("src/publicHomeButtonLayer.mjs", "utf8"),
   readFile("src/publicDesignCoherenceLayer.mjs", "utf8"),
-  readFile("src/publicDynamicTypeLayer.mjs", "utf8")
+  readFile("src/publicDynamicTypeLayer.mjs", "utf8"),
+  readFile("src/publicMobileModalLayer.mjs", "utf8")
 ]);
+
+test("mobile route modals reserve the navigation area and keep one scroll owner", () => {
+  assert.match(
+    mobileModalLayer,
+    /\.expense-route-backdrop[\s\S]*?\.expense-step-modal \{[\s\S]*?height: calc\([\s\S]*?--event-route-nav-safe-height[\s\S]*?overflow: hidden !important;/
+  );
+  assert.match(
+    mobileModalLayer,
+    /\.expense-route-backdrop[\s\S]*?\.expense-modal-actions \{[\s\S]*?flex: 0 0 auto !important;[\s\S]*?margin: 0 !important;/
+  );
+  assert.match(
+    mobileModalLayer,
+    /\.event-modal-backdrop\[data-event-route-dialog="true"\][\s\S]*?\.event-task-modal \{[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) !important;/
+  );
+  assert.match(
+    mobileModalLayer,
+    /> \.event-modal-body \{[\s\S]*?grid-row: 3 !important;[\s\S]*?overflow-y: auto !important;[\s\S]*?touch-action: pan-y !important;/
+  );
+  assert.match(
+    mobileModalLayer,
+    /\.event-settings-modal[\s\S]*?> \.event-modal-body[\s\S]*?> :is\(\.event-cover-settings, \.event-settings-menu\) \{[\s\S]*?flex: 0 0 auto !important;/
+  );
+  assert.match(
+    mobileModalLayer,
+    /> \.event-settings-menu \{[\s\S]*?height: max-content !important;/
+  );
+});
 
 test("mobile participant management keeps global route chrome available", () => {
   assert.match(homeLayer, /\[data-event-route-dialog="true"\]/);
@@ -74,20 +102,23 @@ test("expenses and summary keep the exact same mobile event header", async () =>
 });
 
 test("mobile share choices remain separate when text grows", () => {
+  const shareSection = coherenceLayer.slice(
+    coherenceLayer.indexOf(".event-share-modal"),
+    coherenceLayer.indexOf("/* Compact event workflow polish")
+  );
   assert.match(
-    coherenceLayer,
+    shareSection,
     /\.event-share-modal[\s\S]*?> \.event-modal-body \{[\s\S]*?display: grid !important;[\s\S]*?grid-auto-rows: max-content !important;[\s\S]*?gap: 16px !important;/
   );
   assert.match(
-    coherenceLayer,
+    shareSection,
     /\.event-share-modal[\s\S]*?\.event-share-choice \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?align-content: start !important;/
   );
   assert.match(
-    coherenceLayer,
+    shareSection,
     /\.event-share-choice[\s\S]*?> button \{[\s\S]*?position: relative !important;[\s\S]*?width: 100% !important;/
   );
-  assert.doesNotMatch(coherenceLayer, /grid-template-rows: repeat\(2, max-content\) !important;/);
-  assert.doesNotMatch(coherenceLayer, /grid-row: 2 !important;/);
+  assert.doesNotMatch(shareSection, /grid-template-rows: repeat\(2, max-content\) !important;/);
 });
 
 test("settlement completion feedback stays roomy and branded across mobile sizes", () => {
@@ -123,6 +154,7 @@ test("settlement completion feedback stays roomy and branded across mobile sizes
 
 test("event workspace controls stay stable above sticky mobile chrome", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const ledgerLayer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
   assert.match(
     coherenceLayer,
@@ -139,6 +171,14 @@ test("event workspace controls stay stable above sticky mobile chrome", async ()
   assert.match(app, /function positionExpenseActionsMenu\(menu\)/);
   assert.match(app, /const safeBottom = Math\.min\(viewportTop \+ viewportHeight, navTop\) - 8;/);
   assert.match(app, /menu\.style\.setProperty\("--expense-menu-top"/);
+  assert.match(
+    ledgerLayer,
+    /body #app \.screen\[data-screen-kind="event"\] \.event-workspace-nav \{[\s\S]*?position: sticky !important;[\s\S]*?inset-block-start: calc\(68px \+ env\(safe-area-inset-top\)\) !important;[\s\S]*?z-index: 60 !important;/
+  );
+  assert.match(
+    ledgerLayer,
+    /\.event-action-dock \{[\s\S]*?position: relative !important;[\s\S]*?z-index: auto !important;/
+  );
 });
 
 test("close-event confirmation uses the branded floating card with an explicit dismiss control", async () => {
@@ -157,11 +197,11 @@ test("close-event confirmation uses the branded floating card with an explicit d
   assert.doesNotMatch(confirmation, /role="region"/);
   assert.match(
     coherenceLayer,
-    /\.settlement-close-confirmation-backdrop \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 240 !important;[\s\S]*?background: rgba\(7, 27, 24, 0\.14\) !important;/
+    /\.settlement-close-confirmation-backdrop \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 240 !important;[\s\S]*?background: rgba\(7, 27, 24, 0\.14\) !important;[\s\S]*?pointer-events: auto !important;/
   );
   assert.match(
     coherenceLayer,
-    /\.settlement-close-confirmation \{[\s\S]*?background: #fbfefd !important;/
+    /\.settlement-close-confirmation \{[\s\S]*?background: #fbfefd !important;[\s\S]*?pointer-events: auto !important;/
   );
   assert.doesNotMatch(
     coherenceLayer.slice(coherenceLayer.indexOf("Close-event confirmation follows")),
