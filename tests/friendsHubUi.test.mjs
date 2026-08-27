@@ -123,6 +123,14 @@ test("participant pictures alone open the approved relationship statistics route
   assert.match(layer, /\.avatar\.is-participant-statistics-action/);
   assert.doesNotMatch(layer, /\.friend-row-profile-button/);
   assert.match(layer, /\.friend-relationship-content/);
+  assert.match(
+    app,
+    /class="relationship-duo"[\s\S]*?data-relationship-person="current"[\s\S]*?data-relationship-person="target"/
+  );
+  assert.match(
+    app,
+    /class="relationship-comparison-values"[\s\S]*?data-relationship-person="current"[\s\S]*?data-relationship-person="target"[\s\S]*?value="\$\{currentShare\}"/
+  );
 });
 
 test("shared events and groups never create friendship without approval", async () => {

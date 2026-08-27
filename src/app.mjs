@@ -5163,13 +5163,13 @@ function renderParticipantRelationshipScorecard(
     <section class="relationship-scorecard" aria-labelledby="relationship-scorecard-title">
       <h3 id="relationship-scorecard-title">אתם במספרים</h3>
       <div class="relationship-duo" aria-label="${escapeAttribute(`השוואה בין ${targetName} לבינך`)}">
-        <span>
-          ${renderAvatar(participant.id, avatarEvent)}
-          <small>${escapeHtml(targetName)}</small>
-        </span>
-        <span>
+        <span data-relationship-person="current">
           ${renderAvatar(state.currentParticipantId, avatarEvent)}
           <small>אתה</small>
+        </span>
+        <span data-relationship-person="target">
+          ${renderAvatar(participant.id, avatarEvent)}
+          <small>${escapeHtml(targetName)}</small>
         </span>
       </div>
       ${renderRelationshipComparison({
@@ -5235,14 +5235,14 @@ function renderRelationshipComparison({
     <div class="relationship-comparison">
       <strong>${escapeHtml(label)}</strong>
       <div class="relationship-comparison-values">
-        <span><span class="font-num" dir="ltr">${escapeHtml(targetValue)}</span><small>${escapeHtml(targetName)}</small></span>
-        <span><span class="font-num" dir="ltr">${escapeHtml(currentValue)}</span><small>אתה</small></span>
+        <span data-relationship-person="current"><span class="font-num" dir="ltr">${escapeHtml(currentValue)}</span><small>אתה</small></span>
+        <span data-relationship-person="target"><span class="font-num" dir="ltr">${escapeHtml(targetValue)}</span><small>${escapeHtml(targetName)}</small></span>
       </div>
       <progress
         max="100"
-        value="${targetShare}"
-        aria-label="${escapeAttribute(`${leaderLabel}: ${targetShare}% מול ${currentShare}%`)}"
-      >${targetShare}%</progress>
+        value="${currentShare}"
+        aria-label="${escapeAttribute(`${leaderLabel}: אתה ${currentShare}% מול ${targetName} ${targetShare}%`)}"
+      >${currentShare}%</progress>
       <small class="relationship-comparison-leader">${escapeHtml(leaderLabel)}</small>
     </div>
   `;

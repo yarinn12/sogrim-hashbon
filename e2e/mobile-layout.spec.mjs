@@ -167,6 +167,29 @@ test("another person's picture alone opens shared statistics while editable text
   );
   await expect(statisticsScreen).toBeVisible();
   await expect(statisticsScreen.getByText("אתם במספרים", { exact: true })).toBeVisible();
+  const relationshipSides = await statisticsScreen
+    .locator(".relationship-duo")
+    .evaluate((element) => {
+      const current = element.querySelector('[data-relationship-person="current"]');
+      const target = element.querySelector('[data-relationship-person="target"]');
+      return {
+        currentX: current?.getBoundingClientRect().x ?? -1,
+        targetX: target?.getBoundingClientRect().x ?? -1
+      };
+    });
+  expect(relationshipSides.currentX).toBeGreaterThan(relationshipSides.targetX);
+  const comparisonSides = await statisticsScreen
+    .locator(".relationship-comparison-values")
+    .first()
+    .evaluate((element) => {
+      const current = element.querySelector('[data-relationship-person="current"]');
+      const target = element.querySelector('[data-relationship-person="target"]');
+      return {
+        currentX: current?.getBoundingClientRect().x ?? -1,
+        targetX: target?.getBoundingClientRect().x ?? -1
+      };
+    });
+  expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
   if (process.env.CAPTURE_PARTICIPANT_STATS === "1") {
     await page.screenshot({
       path: `design-audits/participant-statistics-${test.info().project.name}.png`,
