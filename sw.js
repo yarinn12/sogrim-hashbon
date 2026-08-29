@@ -20,7 +20,7 @@ const CACHE_FILES = [
   "/sogrim-logo-lockup.png",
   "/sogrim-share-logo.png",
   "/sogrim-home-hero.png",
-  "/assets/sogrim-logo-intro.mp4",
+  "/assets/sogrim-heshbon-loading-loop-v2.mp4",
   "/assets/sogrim-logo-intro-poster.jpg",
   "/assets/sogrim-logo-intro-hold.jpg",
   "/assets/sign-in-with-apple-iw.png",
@@ -165,7 +165,7 @@ const CACHE_FILES = [
 
 const LAZY_MEDIA_FILES = new Set([
   "/sogrim-home-hero.png",
-  "/assets/sogrim-logo-intro.mp4",
+  "/assets/sogrim-heshbon-loading-loop-v2.mp4",
   "/assets/sogrim-logo-intro-poster.jpg",
   "/assets/sogrim-logo-intro-hold.jpg"
 ]);

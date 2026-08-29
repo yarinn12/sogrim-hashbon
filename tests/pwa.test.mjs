@@ -129,7 +129,7 @@ test("service worker loads heavy brand media on demand and reuses it", async () 
   const sw = await readFile("sw.js", "utf8");
 
   assert.match(sw, /const LAZY_MEDIA_FILES = new Set/);
-  assert.match(sw, /"\/assets\/sogrim-logo-intro\.mp4"/);
+  assert.match(sw, /"\/assets\/sogrim-heshbon-loading-loop-v2\.mp4"/);
   assert.match(sw, /"\/sogrim-home-hero\.png"/);
   assert.match(sw, /const PRECACHE_FILES = CACHE_FILES\.filter/);
   assert.match(sw, /precacheFreshFiles\(cache\)/);

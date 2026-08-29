@@ -28,4 +28,12 @@ public class SogrimCapabilitiesPlugin extends Plugin {
         }
         call.resolve();
     }
+
+    @PluginMethod
+    public void notifyWebSplashReady(PluginCall call) {
+        if (getActivity() instanceof MainActivity) {
+            ((MainActivity) getActivity()).setWebSplashReady();
+        }
+        call.resolve();
+    }
 }

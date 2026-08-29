@@ -10,7 +10,7 @@ test("the app shows one branded splash only while the first real screen loads", 
     readFile("styles.css", "utf8"),
     readFile("src/publicAppSplashLayer.mjs", "utf8"),
     readFile("src/publicAccountAuthLayer.mjs", "utf8"),
-    readFile("assets/sogrim-logo-intro.mp4")
+    readFile("assets/sogrim-heshbon-loading-loop-v2.mp4")
     ]);
 
   assert.match(index, /<html[^>]*class="account-auth-pending"/);
@@ -18,7 +18,7 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(index, /aria-busy="true"/);
   assert.match(index, /class="boot-shell"/);
   assert.match(index, /id="app-splash"/);
-  assert.match(index, /assets\/sogrim-logo-intro\.mp4/);
+  assert.match(index, /assets\/sogrim-heshbon-loading-loop-v2\.mp4/);
   assert.match(index, /assets\/sogrim-logo-intro-poster\.jpg/);
   assert.match(index, /assets\/sogrim-logo-intro-hold\.jpg/);
   assert.match(index, /loop[\s\S]*?muted[\s\S]*?playsinline/);
@@ -33,7 +33,8 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(splashLayer, /VIDEO_STALL_TIMEOUT_MS = 2400/);
   assert.match(splashLayer, /VIDEO_WATCHDOG_INTERVAL_MS = 800/);
   assert.doesNotMatch(splashLayer, /APP_READY_VIDEO_GRACE_MS/);
-  assert.doesNotMatch(splashLayer, /MIN_VISIBLE_VIDEO_MS/);
+  assert.match(splashLayer, /VIDEO_PRESENTATION_GRACE_MS = 1200/);
+  assert.match(splashLayer, /MIN_VIDEO_PRESENTATION_MS = 1700/);
   assert.match(splashLayer, /MAX_SPLASH_WAIT_MS = 5500/);
   assert.match(splashLayer, /MAX_SPLASH_RENDER_RETRY_MS = 750/);
   assert.match(splashLayer, /SPLASH_EXIT_MS = 100/);
@@ -98,7 +99,7 @@ test("the app shows one branded splash only while the first real screen loads", 
   );
   assert.match(
     splashLayer,
-    /Never keep the user waiting once[\s\S]*?dismiss\(\);/
+    /const waitForVideo = videoPresentedAt[\s\S]*?presentationWaitId = window\.setTimeout\(dismissWhenReady, waitForVideo\)/
   );
   assert.match(
     splashLayer,
@@ -133,6 +134,8 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(styles, /\.app-splash \{/);
   assert.doesNotMatch(styles, /html\.native-app \.app-splash::before/);
   assert.equal(splashLayer.match(/setNativeSystemBarStyle\(true\)/g)?.length, 2);
+  assert.match(splashLayer, /notifyNativeWebSplashReady/);
+  assert.match(splashLayer, /SogrimCapabilities\?\.notifyWebSplashReady/);
   assert.doesNotMatch(splashLayer, /setNativeSystemBarStyle\(false\)/);
   assert.match(index, /width="1080"[\s\S]*?height="1920"/);
   assert.match(styles, /html\.app-splash-active body \{[\s\S]*?background: #fff/);

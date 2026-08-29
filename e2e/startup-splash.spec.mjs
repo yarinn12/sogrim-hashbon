@@ -85,7 +85,7 @@ test.describe("startup splash", () => {
   });
 
   test("falls back cleanly when the intro video cannot load", async ({ page }) => {
-    await page.route("**/assets/sogrim-logo-intro.mp4", (route) => route.abort());
+    await page.route("**/assets/sogrim-heshbon-loading-loop-v2.mp4", (route) => route.abort());
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();

@@ -9,6 +9,8 @@ const VIDEO_LOAD_TIMEOUT_MS = 6000;
 const VIDEO_PROGRESS_TIMEOUT_MS = 4500;
 const VIDEO_STALL_TIMEOUT_MS = 2400;
 const VIDEO_WATCHDOG_INTERVAL_MS = 800;
+const VIDEO_PRESENTATION_GRACE_MS = 1200;
+const MIN_VIDEO_PRESENTATION_MS = 1700;
 const MAX_SPLASH_WAIT_MS = 5500;
 const MAX_SPLASH_RENDER_RETRY_MS = 750;
 const SPLASH_EXIT_MS = 100;
@@ -22,6 +24,7 @@ if (splash && app) {
 }
 
 function installSplash({ showPosterOnly = false } = {}) {
+  const splashStartedAt = performance.now();
   const reduceMotion =
     loadAccessibilityPreferences().reduceMotion ||
     window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
@@ -30,12 +33,14 @@ function installSplash({ showPosterOnly = false } = {}) {
   let loadTimeoutId = 0;
   let progressTimeoutId = 0;
   let maximumWaitId = 0;
+  let presentationWaitId = 0;
   let watchdogIntervalId = 0;
   let videoReady = false;
   let lastProgressAt = 0;
   let lastVideoTime = 0;
   let frameRevealPending = false;
   let playbackPending = false;
+  let videoPresentedAt = 0;
 
   setNativeSystemBarStyle(true);
   document.documentElement.classList.add("app-splash-active");
@@ -61,6 +66,7 @@ function installSplash({ showPosterOnly = false } = {}) {
   if (fallbackMode) {
     splash.classList.add("is-fallback");
     video?.pause();
+    notifyNativeWebSplashReady();
   } else {
     video.muted = true;
     video.defaultMuted = true;
@@ -135,7 +141,9 @@ function installSplash({ showPosterOnly = false } = {}) {
     if (dismissed || fallbackMode) return;
     window.clearTimeout(progressTimeoutId);
     lastProgressAt = Date.now();
+    if (!videoPresentedAt) videoPresentedAt = performance.now();
     splash.classList.add("is-video-ready");
+    notifyNativeWebSplashReady();
     startPlaybackWatchdog();
     dismissWhenReady();
   }
@@ -187,6 +195,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     watchdogIntervalId = 0;
     splash.classList.add("is-fallback");
     video?.pause();
+    notifyNativeWebSplashReady();
     dismissWhenReady();
   }
 
@@ -209,8 +218,18 @@ function installSplash({ showPosterOnly = false } = {}) {
   function dismissWhenReady() {
     if (dismissed || !applicationIsReady()) return;
 
-    // The splash is only a loading surface. Never keep the user waiting once
-    // authentication, update policy, and the first application screen are ready.
+    if (!fallbackMode && !showPosterOnly) {
+      const now = performance.now();
+      const waitForVideo = videoPresentedAt
+        ? MIN_VIDEO_PRESENTATION_MS - (now - videoPresentedAt)
+        : VIDEO_PRESENTATION_GRACE_MS - (now - splashStartedAt);
+      if (waitForVideo > 0) {
+        window.clearTimeout(presentationWaitId);
+        presentationWaitId = window.setTimeout(dismissWhenReady, waitForVideo);
+        return;
+      }
+    }
+
     dismiss();
   }
 
@@ -221,6 +240,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     window.clearTimeout(loadTimeoutId);
     window.clearTimeout(progressTimeoutId);
     window.clearTimeout(maximumWaitId);
+    window.clearTimeout(presentationWaitId);
     window.clearInterval(watchdogIntervalId);
     appObserver.disconnect();
     document.removeEventListener("account-auth-ready", dismissWhenReady);
@@ -275,4 +295,10 @@ function applicationIsReady() {
     "native-styles-pending"
   );
   return !updateCheckPending && !nativeStylesPending && !accountAuthPending && (accountGateRendered || appRendered);
+}
+
+function notifyNativeWebSplashReady() {
+  const capacitor = globalThis.Capacitor;
+  if (!capacitor?.isNativePlatform?.()) return;
+  capacitor.Plugins?.SogrimCapabilities?.notifyWebSplashReady?.().catch(() => {});
 }

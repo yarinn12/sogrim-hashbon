@@ -49,7 +49,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /legal\.mjs/);
   assert.match(buildScript, /sogrim-logo-lockup\.png/);
   assert.match(buildScript, /sogrim-share-logo\.png/);
-  assert.match(buildScript, /assets\/sogrim-logo-intro\.mp4/);
+  assert.match(buildScript, /assets\/sogrim-heshbon-loading-loop-v2\.mp4/);
   assert.match(buildScript, /assets\/sogrim-logo-intro-poster\.jpg/);
   assert.match(buildScript, /assets\/sogrim-logo-intro-hold\.jpg/);
   assert.match(buildScript, /await cp\(join\(root, "src"\)/);
@@ -171,12 +171,13 @@ test("native projects include store signing and Apple privacy requirements", asy
     /android:host="sogrim-hesbon-app\.vercel\.app"\s*\/>/
   );
   assert.match(androidActivity, /SplashScreen\.installSplashScreen\(this\)/);
-  assert.match(androidActivity, /setBackgroundColor\(Color\.rgb\(217, 213, 207\)\)/);
+  assert.match(androidActivity, /setBackgroundColor\(Color\.WHITE\)/);
   assert.match(androidActivity, /setKeepOnScreenCondition/);
-  assert.match(androidActivity, /getProgress\(\) < 25/);
-  assert.match(androidActivity, /SPLASH_SAFETY_TIMEOUT_MS = 1_800L/);
+  assert.match(androidActivity, /return !webSplashReady/);
+  assert.match(androidActivity, /SPLASH_SAFETY_TIMEOUT_MS = 2_500L/);
   assert.match(androidActivity, /setLightStatusBars/);
   assert.match(capabilitiesPlugin, /setSystemBarStyle/);
+  assert.match(capabilitiesPlugin, /notifyWebSplashReady/);
   assert.equal(appSplash.match(/setNativeSystemBarStyle\(true\)/g)?.length, 2);
   assert.doesNotMatch(appSplash, /setNativeSystemBarStyle\(false\)/);
   assert.match(androidActivity, /BuildConfig\.NATIVE_QA_WEBVIEW/);

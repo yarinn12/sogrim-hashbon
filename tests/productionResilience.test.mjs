@@ -66,6 +66,7 @@ test("the backup container is minimal, non-root and health checked", async () =>
   assert.match(dockerignore, /^android$/m);
   assert.match(dockerignore, /^ios$/m);
   assert.match(dockerignore, /^!assets\/sogrim-logo-intro\.mp4$/m);
+  assert.match(dockerignore, /^!assets\/sogrim-heshbon-loading-loop-v2\.mp4$/m);
   assert.match(dockerignore, /^!assets\/sogrim-logo-intro-poster\.jpg$/m);
 });
 

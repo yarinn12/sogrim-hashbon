@@ -11,8 +11,9 @@ import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
 
-    private static final long SPLASH_SAFETY_TIMEOUT_MS = 1_800L;
+    private static final long SPLASH_SAFETY_TIMEOUT_MS = 2_500L;
     private boolean lightStatusBars = true;
+    private volatile boolean webSplashReady = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -20,9 +21,7 @@ public class MainActivity extends BridgeActivity {
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         splashScreen.setKeepOnScreenCondition(() -> {
             if (SystemClock.uptimeMillis() >= splashDeadline) return false;
-            return getBridge() == null ||
-                getBridge().getWebView() == null ||
-                getBridge().getWebView().getProgress() < 25;
+            return !webSplashReady;
         });
 
         registerPlugin(SogrimCapabilitiesPlugin.class);
@@ -37,7 +36,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().setBackgroundColor(Color.rgb(217, 213, 207));
+            getBridge().getWebView().setBackgroundColor(Color.WHITE);
         }
     }
 
@@ -50,6 +49,10 @@ public class MainActivity extends BridgeActivity {
     public void setLightStatusBars(boolean light) {
         lightStatusBars = light;
         runOnUiThread(this::applySystemBarStyle);
+    }
+
+    public void setWebSplashReady() {
+        webSplashReady = true;
     }
 
     private void applySystemBarStyle() {
