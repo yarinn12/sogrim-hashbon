@@ -52,7 +52,7 @@ test("Hebrew font loading does not block the app from rendering", async () => {
   assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
   assert.match(html, /as="style"/);
   assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=398"/);
+  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=399"/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
   assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
   assert.match(loader, /fontStylesheet\.media = "all"/);

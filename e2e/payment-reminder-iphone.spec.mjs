@@ -106,6 +106,12 @@ test("a recipient can send an in-app reminder even without system push capabilit
     if (url.pathname.endsWith("/auth/v1/user")) {
       return route.fulfill({ headers: corsHeaders, json: accountUser });
     }
+    if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: { status: "existing", workspaceId: "space-maor-iphone" }
+      });
+    }
     if (url.pathname.includes("/app_snapshots")) {
       return route.fulfill({
         headers: corsHeaders,

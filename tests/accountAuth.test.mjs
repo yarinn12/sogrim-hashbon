@@ -274,6 +274,7 @@ test("workspace repair for an authenticated account never reuses another user's 
     "abcdefghijklmnopqrstuvwxyzABCDEF"
   );
   let updateBody = null;
+  let ensureBody = null;
   const session = {
     access_token: "access-token",
     refresh_token: "refresh-token",
@@ -282,12 +283,20 @@ test("workspace repair for an authenticated account never reuses another user's 
 
   const repaired = await ensureAccountWorkspace(config, session, {
     storage,
-    fetchImpl: async (_url, request) => {
-      updateBody = JSON.parse(request.body);
-      return new Response(JSON.stringify({
-        ...session.user,
-        user_metadata: updateBody.data
-      }), { status: 200 });
+    fetchImpl: async (url, request) => {
+      if (String(url).endsWith("/auth/v1/user")) {
+        updateBody = JSON.parse(request.body);
+        return new Response(JSON.stringify({
+          ...session.user,
+          user_metadata: updateBody.data
+        }), { status: 200 });
+      }
+      assert.match(String(url), /\/rest\/v1\/rpc\/ensure_account_workspace$/);
+      ensureBody = JSON.parse(request.body);
+      return jsonResponse(200, {
+        status: "created",
+        workspaceId: ensureBody.p_space_id
+      });
     }
   });
 
@@ -295,6 +304,73 @@ test("workspace repair for an authenticated account never reuses another user's 
   assert.equal(
     storage.getItem(CLIENT_SPACE_STORAGE_KEY),
     repaired.user.user_metadata.account_space_id
+  );
+  assert.deepEqual(ensureBody, {
+    p_space_id: repaired.user.user_metadata.account_space_id
+  });
+});
+
+test("every completed sign-in verifies an existing metadata workspace on the server", async () => {
+  const storage = memoryStorage();
+  const workspace = {
+    id: "space-existing-account",
+    key: "abcdefghijklmnopqrstuvwxyzABCDEF"
+  };
+  const session = {
+    access_token: "access-token",
+    refresh_token: "refresh-token",
+    user: {
+      id: "existing-user",
+      user_metadata: {
+        account_space_id: workspace.id,
+        account_space_key: workspace.key
+      }
+    }
+  };
+  const requests = [];
+
+  const result = await ensureAccountWorkspace(config, session, {
+    storage,
+    fetchImpl: async (url, request) => {
+      requests.push({ url: String(url), request });
+      return jsonResponse(200, {
+        status: "existing",
+        workspaceId: workspace.id
+      });
+    }
+  });
+
+  assert.equal(result, session);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /\/rest\/v1\/rpc\/ensure_account_workspace$/);
+  assert.equal(requests[0].request.method, "POST");
+  assert.equal(requests[0].request.headers.authorization, "Bearer access-token");
+  assert.deepEqual(JSON.parse(requests[0].request.body), {
+    p_space_id: workspace.id
+  });
+  assert.equal(storage.getItem(CLIENT_SPACE_STORAGE_KEY), workspace.id);
+});
+
+test("sign-in fails visibly when the account workspace cannot be validated", async () => {
+  const session = {
+    access_token: "access-token",
+    user: {
+      id: "existing-user",
+      user_metadata: {
+        account_space_id: "space-existing-account",
+        account_space_key: "abcdefghijklmnopqrstuvwxyzABCDEF"
+      }
+    }
+  };
+
+  await assert.rejects(
+    ensureAccountWorkspace(config, session, {
+      storage: memoryStorage(),
+      fetchImpl: async () => jsonResponse(403, {
+        message: "Account workspace ownership is invalid"
+      })
+    }),
+    /Account workspace ownership is invalid/
   );
 });
 

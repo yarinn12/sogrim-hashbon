@@ -110,6 +110,8 @@ test("the non-Apple release gate blocks continuity and delivery regressions", as
   assert.match(script, /admin_operational_health/);
   assert.match(script, /accountsWithoutWorkspace/);
   assert.match(script, /eventsWithoutActiveMembers/);
+  assert.match(script, /connectedEventPublicationContinuity/);
+  assert.match(script, /activeUnsharedMultiAccountCreatorEvents/);
   assert.match(script, /activeMembershipsMissingPersonalIndex/);
   assert.match(script, /stalePushReservations/);
   assert.match(script, /rls_forced/);

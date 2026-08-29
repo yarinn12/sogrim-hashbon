@@ -25,7 +25,10 @@ try {
     ) is not null as available,
     pg_catalog.to_regprocedure(
       'public.admin_shared_event_index_health()'
-    ) is not null as event_index_available
+    ) is not null as event_index_available,
+    pg_catalog.to_regprocedure(
+      'public.admin_connected_event_publication_health()'
+    ) is not null as event_publication_available
   `;
   const policies = await sql`
     select
@@ -55,9 +58,9 @@ try {
       'public.app_snapshots_shared_event_event_id_uidx'
     )
   `;
-
   let health = null;
   let eventIndexHealth = null;
+  let eventPublicationHealth = null;
   if (rpcStatus?.available) {
     const [row] = await sql`
       select public.admin_operational_health(30) as health
@@ -69,6 +72,12 @@ try {
       select public.admin_shared_event_index_health() as health
     `;
     eventIndexHealth = row?.health ?? null;
+  }
+  if (rpcStatus?.event_publication_available) {
+    const [row] = await sql`
+      select public.admin_connected_event_publication_health() as health
+    `;
+    eventPublicationHealth = row?.health ?? null;
   }
 
   const expectedTables = 5;
@@ -86,6 +95,10 @@ try {
     sharedEventPersonalIndexContinuity:
       Number(
         eventIndexHealth?.activeMembershipsMissingPersonalIndex ?? -1
+      ) === 0,
+    connectedEventPublicationContinuity:
+      Number(
+        eventPublicationHealth?.activeUnsharedMultiAccountCreatorEvents ?? -1
       ) === 0,
     uniqueSharedEventIdentity:
       Boolean(sharedEventIdentity?.indisunique) &&
@@ -115,6 +128,9 @@ try {
       ),
       activeMembershipsMissingPersonalIndex: Number(
         eventIndexHealth?.activeMembershipsMissingPersonalIndex ?? 0
+      ),
+      activeUnsharedMultiAccountCreatorEvents: Number(
+        eventPublicationHealth?.activeUnsharedMultiAccountCreatorEvents ?? 0
       ),
       duplicateSharedEventIds: sharedEventIdentity?.indisvalid ? 0 : null,
       stalePushReservations: Number(health?.pushDelivery?.stalePending ?? 0),

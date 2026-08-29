@@ -422,38 +422,85 @@ export async function resendSignupConfirmation(
 }
 
 export async function ensureAccountWorkspace(config, session, options = {}) {
-  const existing = accountWorkspaceFromUser(session?.user);
-  if (existing) {
-    activateAccountWorkspace(existing, {
+  let nextSession = session;
+  let workspace = accountWorkspaceFromUser(nextSession?.user);
+
+  if (!workspace) {
+    // Never reuse the globally active space when repairing an authenticated
+    // account. It may belong to a different user from an earlier session on the
+    // same browser. Signup has its own explicit legacy-state claim flow.
+    workspace = {
+      id: createClientSpaceId(),
+      key: createClientSpaceKey()
+    };
+    activateAccountWorkspace(workspace, {
       storage: options.storage,
       currentUrl: options.currentUrl
     });
-    return session;
+    const currentMetadata = nextSession?.user?.user_metadata ?? {};
+    nextSession = await updateAccountUser(config, nextSession, {
+      ...currentMetadata,
+      account_space_id: workspace.id,
+      account_space_key: workspace.key
+    }, options.fetchImpl ?? fetch);
+    saveAccountSession(nextSession, options.storage);
   }
 
-  // Never reuse the globally active space when repairing an authenticated
-  // account. It may belong to a different user from an earlier session on the
-  // same browser. Signup has its own explicit legacy-state claim flow.
-  const workspace = {
-    id: createClientSpaceId(),
-    key: createClientSpaceKey()
-  };
-  activateAccountWorkspace(workspace, {
-    storage: options.storage,
-    currentUrl: options.currentUrl
-  });
-  const currentMetadata = session?.user?.user_metadata ?? {};
-  const nextSession = await updateAccountUser(config, session, {
-    ...currentMetadata,
-    account_space_id: workspace.id,
-    account_space_key: workspace.key
-  }, options.fetchImpl ?? fetch);
-  saveAccountSession(nextSession, options.storage);
+  // Metadata alone is not proof that the workspace row exists. OAuth can be
+  // interrupted after metadata is saved and before the first client snapshot
+  // write. This idempotent server call creates the owned workspace atomically
+  // or validates the existing one on every completed sign-in.
+  await ensureAccountWorkspaceRecord(
+    config,
+    nextSession,
+    workspace,
+    options.fetchImpl ?? fetch
+  );
   activateAccountWorkspace(workspace, {
     storage: options.storage,
     currentUrl: options.currentUrl
   });
   return nextSession;
+}
+
+async function ensureAccountWorkspaceRecord(
+  config,
+  session,
+  workspace,
+  fetchImpl
+) {
+  if (
+    config?.storage?.mode !== "supabase" ||
+    !config.storage.url ||
+    !config.storage.anonKey ||
+    !session?.access_token ||
+    !workspace?.id
+  ) {
+    throw new Error("Account workspace service is unavailable");
+  }
+
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/ensure_account_workspace`,
+    {
+      method: "POST",
+      headers: {
+        apikey: config.storage.anonKey,
+        authorization: `Bearer ${session.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ p_space_id: workspace.id })
+    }
+  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !["created", "existing"].includes(payload?.status)) {
+    const error = new Error(
+      payload?.message ?? payload?.error ?? "Account workspace initialization failed"
+    );
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
 }
 
 export async function signOutAccount(

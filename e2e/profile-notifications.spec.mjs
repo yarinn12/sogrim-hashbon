@@ -164,6 +164,12 @@ test.beforeEach(async ({ page }) => {
         }
       });
     }
+    if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: { status: "existing", workspaceId: SPACE_ID }
+      });
+    }
     if (url.pathname.endsWith("/rest/v1/rpc/get_referral_program_status")) {
       referralStatusAttempts += 1;
       if (referralStatusAttempts === 1) {

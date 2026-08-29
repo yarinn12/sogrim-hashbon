@@ -124,6 +124,12 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     if (url.pathname.endsWith("/auth/v1/user")) {
       return route.fulfill({ headers: corsHeaders, json: accountUser });
     }
+    if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: { status: "existing", workspaceId: SPACE_ID }
+      });
+    }
     if (url.pathname.includes("/app_snapshots")) {
       return route.fulfill({
         headers: corsHeaders,
@@ -147,7 +153,7 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   });
 
-  const pageLoaded = page.goto("/?pwa_release=398");
+  const pageLoaded = page.goto("/?pwa_release=399");
   await googleScriptRequested;
   const loadingPlaceholder = page.locator("[data-account-google-placeholder]");
   await expect(loadingPlaceholder).toBeVisible();

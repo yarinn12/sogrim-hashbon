@@ -123,6 +123,12 @@ test("password recovery form survives a reload for the same authenticated accoun
     if (url.pathname.endsWith("/auth/v1/user")) {
       return route.fulfill({ status: 200, json: user });
     }
+    if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
+      return route.fulfill({
+        status: 200,
+        json: { status: "existing", workspaceId: "space-qa-recovery" }
+      });
+    }
     return route.fulfill({ status: 200, json: [] });
   });
 

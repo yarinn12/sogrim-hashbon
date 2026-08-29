@@ -207,7 +207,10 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(inviteToggleAction, /newEventDraft\.inviteAfterCreate = !newEventDraft\.inviteAfterCreate/);
   assert.doesNotMatch(inviteToggleAction, /participantDetails\.open/);
   assert.match(createFlow, /const inviteAfterCreate = newEventDraft\.inviteAfterCreate === true/);
-  assert.match(createFlow, /const saveRequest = persistState\(\)/);
+  assert.match(
+    createFlow,
+    /const saveRequest = persistState\(\{[\s\S]*?awaitCloud: invitedAccountParticipants\.length > 0,[\s\S]*?forceSharedEventIds: invitedAccountParticipants\.length \? \[event\.id\] : \[\]/
+  );
   assert.match(createFlow, /const submittedDraft = structuredClone\(newEventDraft\)/);
   assert.match(createFlow, /const stateBeforeCreate = structuredClone\(state\)/);
   assert.match(createFlow, /const saveResult = await saveRequest/);
@@ -221,6 +224,14 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(
     createFlow,
     /const invitedAccountParticipants = event\.participantIds[\s\S]*?accountUserIdFromParticipantId/
+  );
+  assert.match(
+    createFlow,
+    /if \(invitedAccountParticipants\.length\) \{\s+ensureEventShareCredentials\(event\);\s+\}/
+  );
+  assert.ok(
+    createFlow.indexOf("ensureEventShareCredentials(event)") <
+      createFlow.indexOf("state.events.unshift(event)")
   );
   assert.match(
     createFlow,

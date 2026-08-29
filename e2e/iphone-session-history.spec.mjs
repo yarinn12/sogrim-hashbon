@@ -98,6 +98,12 @@ test("an installed iPhone app keeps its session and restores cloud history", asy
       }
       return route.fulfill({ headers: corsHeaders, json: accountUser });
     }
+    if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: { status: "existing", workspaceId: SPACE_ID }
+      });
+    }
     if (url.pathname.includes("/app_snapshots")) {
       return route.fulfill({
         headers: corsHeaders,

@@ -13742,9 +13742,32 @@ async function createEventFromDraft() {
     occurredAt: createdAtIso
   });
 
+  const invitedAccountParticipants = event.participantIds
+    .filter(
+      (participantId) =>
+        participantId !== state.currentParticipantId &&
+        Boolean(accountUserIdFromParticipantId(participantId))
+    )
+    .map((participantId) =>
+      state.participants.find((participant) => participant.id === participantId)
+    )
+    .filter(Boolean);
+  // An event that already contains connected accounts must be durable as a
+  // shared event in the very first save. Creating it as personal first and
+  // publishing it in a later request leaves other devices with nothing to
+  // discover if iOS suspends the app or that second request is interrupted.
+  // The credentials are also kept in the crash-safe outbox, so a temporary
+  // outage can finish the same canonical publication after reconnecting.
+  if (invitedAccountParticipants.length) {
+    ensureEventShareCredentials(event);
+  }
+
   state.events.unshift(event);
   createEventBusy = true;
-  const saveRequest = persistState();
+  const saveRequest = persistState({
+    awaitCloud: invitedAccountParticipants.length > 0,
+    forceSharedEventIds: invitedAccountParticipants.length ? [event.id] : []
+  });
   render();
 
   try {
@@ -13774,16 +13797,6 @@ async function createEventFromDraft() {
     // explicit invitation. Publish the shared event and activate those
     // memberships immediately; otherwise the event exists only in the
     // creator's personal workspace and the other device has nothing to load.
-    const invitedAccountParticipants = event.participantIds
-      .filter(
-        (participantId) =>
-          participantId !== state.currentParticipantId &&
-          Boolean(accountUserIdFromParticipantId(participantId))
-      )
-      .map((participantId) =>
-        state.participants.find((participant) => participant.id === participantId)
-      )
-      .filter(Boolean);
     for (const participant of invitedAccountParticipants) {
       rememberPendingEventMembershipInvitation(event.id, participant.id);
     }
