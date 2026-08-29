@@ -104,7 +104,7 @@ test("the global guard loads before the app click layers and ships offline", asy
   assert.ok(guardIndex >= 0);
   assert.ok(guardIndex < appIndex);
   assert.ok(guardIndex < accountIndex);
-  assert.match(serviceWorker, /settle-friends-live-v401/);
+  assert.match(serviceWorker, /settle-friends-live-v402/);
   assert.match(serviceWorker, /publicScrollIntentLayer\.mjs/);
   assert.match(serviceWorker, /scrollIntent\.mjs/);
 });

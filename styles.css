@@ -528,7 +528,7 @@ select:focus-visible {
 html.app-splash-active,
 html.app-splash-active body {
   overflow: hidden;
-  background: #d9d5cf;
+  background: #fff;
 }
 
 .app-splash {
@@ -538,7 +538,7 @@ html.app-splash-active body {
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: #d9d5cf;
+  background: #fff;
   opacity: 1;
   visibility: visible;
   transition:
@@ -547,24 +547,13 @@ html.app-splash-active body {
 }
 
 .app-splash-frame {
-  width: min(100vw, 960px);
-  aspect-ratio: 16 / 9;
+  width: min(100vw, calc(100dvh * 9 / 16), 540px);
+  max-height: 100dvh;
+  aspect-ratio: 9 / 16;
   display: grid;
   place-items: center;
   isolation: isolate;
-  background: #d9d5cf;
-}
-
-.app-splash-frame::after {
-  content: "";
-  z-index: 3;
-  grid-area: 1 / 1;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  box-shadow:
-    inset 0 0 20px 10px #d9d5cf,
-    inset 0 0 44px 4px rgba(217, 213, 207, 0.52);
+  background: #fff;
 }
 
 .app-splash-video,
@@ -575,7 +564,7 @@ html.app-splash-active body {
   height: 100%;
   display: block;
   object-fit: contain;
-  background: #d9d5cf;
+  background: #fff;
 }
 
 .app-splash-video {
@@ -589,7 +578,6 @@ html.app-splash-active body {
 
 .app-splash-hold {
   opacity: 0;
-  mix-blend-mode: multiply;
 }
 
 .app-splash.is-video-ready .app-splash-video {
