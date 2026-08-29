@@ -2484,6 +2484,15 @@ h3 {
   margin-top: 24px;
 }
 
+.important-action-dialog-actions.has-alternate {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.important-action-alternate-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .important-action-dialog-actions .secondary-button,
 .important-action-confirm-button {
   min-height: 48px;
@@ -3438,7 +3447,8 @@ html body .status-chip.is-warn {
     border-radius: 10px;
   }
 
-  .important-action-dialog-actions {
+  .important-action-dialog-actions,
+  .important-action-dialog-actions.has-alternate {
     grid-template-columns: 1fr;
   }
 

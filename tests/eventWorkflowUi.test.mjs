@@ -1015,12 +1015,14 @@ test("participant membership changes protect creators and admins while preservin
   assert.match(requestRemoval, /participantId === state\.currentParticipantId/);
   assert.match(requestRemoval, /participantId === event\.createdByParticipantId/);
   assert.match(requestRemoval, /!canCurrentParticipantManage\(event\)/);
-  assert.match(requestRemoval, /ההוצאות וההעברות שכבר רשומות על שמו יישארו ללא שינוי/);
-  assert.match(requestRemoval, /אפשר להוסיף אותו שוב בהמשך/);
+  assert.match(requestRemoval, /יש על שמו היסטוריה באירוע/);
+  assert.match(requestRemoval, /השאר שם אופליין/);
+  assert.match(requestRemoval, /הסר לגמרי/);
+  assert.match(requestRemoval, /alternateDisabled: keepsHistoricalReference/);
   assert.doesNotMatch(requestRemoval, /קודם מעדכנים את ההוצאות שלו/);
   assert.match(remove, /participantId === event\.createdByParticipantId/);
   assert.match(remove, /!canCurrentParticipantManage\(event\)/);
-  assert.match(remove, /state = deactivateEventParticipant\(state, eventId, participantId\)/);
+  assert.match(remove, /\{ preserveOffline \}/);
   assert.match(
     remove,
     /const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;/

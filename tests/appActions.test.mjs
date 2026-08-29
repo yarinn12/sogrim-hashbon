@@ -887,11 +887,33 @@ test("leaveEvent removes an eligible participant and preserves unrelated transfe
   ]);
 });
 
-test("leaveEvent keeps a participant when expenses or transfers depend on them", () => {
-  const nextState = leaveEvent(baseState(), "event-1", "dani");
+test("leaveEvent lets a non-manager leave while preserving their financial history offline", () => {
+  const state = baseState();
+  const nextState = leaveEvent(state, "event-1", "dani");
 
   assert.deepEqual(nextState.events[0].participantIds, ["owner", "dani", "avi"]);
-  assert.deepEqual(nextState.events[0].transfers, baseState().events[0].transfers);
+  assert.deepEqual(nextState.events[0].inactiveParticipantIds, ["dani"]);
+  assert.deepEqual(nextState.events[0].transfers, state.events[0].transfers);
+  assert.strictEqual(nextState.events[0].expenses, state.events[0].expenses);
+});
+
+test("leaveEvent lets a former creator leave but still blocks the only remaining manager", () => {
+  const state = baseState();
+  state.events[0] = {
+    ...state.events[0],
+    createdByParticipantId: "owner",
+    adminIds: ["dani"]
+  };
+  const creatorLeft = leaveEvent(state, "event-1", "owner");
+  assert.deepEqual(creatorLeft.events[0].inactiveParticipantIds, ["owner"]);
+  assert.deepEqual(creatorLeft.events[0].adminIds, ["dani"]);
+
+  state.events[0] = {
+    ...state.events[0],
+    createdByParticipantId: "dani",
+    adminIds: ["avi"]
+  };
+  assert.strictEqual(leaveEvent(state, "event-1", "avi"), state);
 });
 
 test("deactivateEventParticipant removes an online account from active membership while preserving money", () => {
@@ -953,6 +975,29 @@ test("deactivateEventParticipant removes an unused online account only from the 
   assert.deepEqual(nextState.events[0].participantIds, ["owner", "dani"]);
   assert.deepEqual(nextState.events[0].inactiveParticipantIds, []);
   assert.equal(nextState.participants.some((participant) => participant.id === "avi"), true);
+});
+
+test("deactivateEventParticipant can preserve an unused removed participant as an offline historical name", () => {
+  const state = baseState();
+  state.events[0] = {
+    ...state.events[0],
+    expenses: state.events[0].expenses.map((expense) => ({
+      ...expense,
+      sharedByParticipantIds: ["owner", "dani"]
+    }))
+  };
+
+  const nextState = deactivateEventParticipant(
+    state,
+    "event-1",
+    "avi",
+    "2026-07-26T09:07:00.000Z",
+    { preserveOffline: true }
+  );
+
+  assert.deepEqual(nextState.events[0].participantIds, ["owner", "dani", "avi"]);
+  assert.deepEqual(nextState.events[0].inactiveParticipantIds, ["avi"]);
+  assert.deepEqual(nextState.events[0].adminIds, ["owner"]);
 });
 
 test("deactivateEventParticipant keeps creator history but removes the creator from the active roster", () => {

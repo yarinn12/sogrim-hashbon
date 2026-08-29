@@ -19,10 +19,19 @@ export function canManageEventSettings(state, event, participantId) {
 }
 
 export function canEditEvent(state, event, participantId) {
-  if (event.locked || event.inactiveParticipantIds?.includes(participantId)) {
+  if (
+    !participantId ||
+    !(event.participantIds ?? []).includes(participantId) ||
+    event.locked ||
+    event.inactiveParticipantIds?.includes(participantId)
+  ) {
     return false;
   }
   if (!event.adminsCanEditOnly) return true;
 
   return canManageEventSettings(state, event, participantId);
+}
+
+export function canAddEventParticipant(state, event, participantId) {
+  return canEditEvent(state, event, participantId);
 }

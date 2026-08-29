@@ -10,6 +10,8 @@ if (!databaseUrl) throw new Error("Database URL is required");
 
 const hoursArgument = process.argv.find((value) => value.startsWith("--hours="));
 const hours = Math.min(Math.max(Number(hoursArgument?.slice(8) || 6), 1), 168);
+const eventArgument = process.argv.find((value) => value.startsWith("--event="));
+const eventNameFilter = String(eventArgument?.slice(8) ?? "").trim();
 const sql = postgres(databaseUrl, {
   max: 1,
   connect_timeout: 15,
@@ -36,6 +38,11 @@ try {
         snapshot.state -> 'events' -> 0 -> 'adminIds',
         '[]'::jsonb
       ) as admin_ids,
+      coalesce(
+        (snapshot.state -> 'events' -> 0 ->> 'adminIdsScopedToEvent')::boolean,
+        false
+      ) as admin_ids_scoped_to_event,
+      snapshot.state -> 'events' -> 0 ->> 'adminIdsUpdatedAt' as admin_ids_updated_at,
       jsonb_array_length(
         coalesce(snapshot.state -> 'events' -> 0 -> 'expenses', '[]'::jsonb)
       ) as expense_count,
@@ -91,10 +98,17 @@ try {
     left join lateral (
       select jsonb_agg(
         jsonb_build_object(
-          'workspaceId', personal.id,
-          'username', profile.username,
-          'sharedSpaceId', event_record.event ->> 'sharedSpaceId',
-          'hasSharedSpaceKey', nullif(event_record.event ->> 'sharedSpaceKey', '') is not null
+           'workspaceId', personal.id,
+           'username', profile.username,
+           'sharedSpaceId', event_record.event ->> 'sharedSpaceId',
+           'hasSharedSpaceKey', nullif(event_record.event ->> 'sharedSpaceKey', '') is not null,
+           'adminIds', coalesce(event_record.event -> 'adminIds', '[]'::jsonb),
+           'adminIdsScopedToEvent', coalesce(
+             (event_record.event ->> 'adminIdsScopedToEvent')::boolean,
+             false
+           ),
+           'adminIdsUpdatedAt', event_record.event ->> 'adminIdsUpdatedAt',
+           'workspaceUpdatedAt', personal.updated_at
         ) order by personal.updated_at desc
       ) as references
       from public.app_snapshots as personal
@@ -109,6 +123,10 @@ try {
     ) as personal_refs on true
     where snapshot.snapshot_kind = 'shared_event'
       and snapshot.updated_at > now() - make_interval(hours => ${hours})
+      and (
+        ${eventNameFilter} = ''
+        or snapshot.state -> 'events' -> 0 ->> 'name' = ${eventNameFilter}
+      )
     order by snapshot.updated_at desc
   `;
 
@@ -133,6 +151,8 @@ try {
       adminsCanEditOnly: row.admins_can_edit_only,
       participantIds,
       adminIds: row.admin_ids,
+      adminIdsScopedToEvent: row.admin_ids_scoped_to_event,
+      adminIdsUpdatedAt: row.admin_ids_updated_at,
       expenseCount: row.expense_count,
       deletedExpenseCount: row.deleted_expense_count,
       activeMembers,

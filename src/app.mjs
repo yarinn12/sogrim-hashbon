@@ -212,6 +212,7 @@ import {
   unresolvedDuplicateParticipantPairs
 } from "./domain/participantIdentity.mjs";
 import {
+  canAddEventParticipant,
   canEditEvent,
   canManageEventSettings,
   eventAdminIds
@@ -4528,7 +4529,7 @@ function renderEventStatusMenu() {
     ? "מחיקה לכל המשתתפים, לאחר אישור נוסף"
     : canRemove
       ? "הסרה מהאירועים שלי, לאחר אישור נוסף"
-      : "לא ניתן להסיר אירוע שיש בו הוצאות או העברות על שמך";
+      : "מנהל יחיד צריך להעביר ניהול לפני עזיבה";
   const shareDescription = canShare
     ? "קישור או QR, בחירה מחברים או הוספת שם ידנית"
     : isEventClosed(event)
@@ -4630,8 +4631,19 @@ function renderImportantActionDialog() {
               : ""
           }
         </div>
-        <div class="important-action-dialog-actions">
+        <div class="important-action-dialog-actions ${importantActionDialog.alternateLabel ? "has-alternate" : ""}">
           <button class="secondary-button" type="button" data-action="cancel-important-action">ביטול</button>
+          ${
+            importantActionDialog.alternateLabel
+              ? `<button
+                  class="secondary-button important-action-alternate-button"
+                  type="button"
+                  data-action="confirm-important-action-alternate"
+                  ${importantActionDialog.alternateDisabled ? "disabled" : ""}
+                  ${importantActionDialog.alternateDescription ? `title="${escapeAttribute(importantActionDialog.alternateDescription)}"` : ""}
+                >${escapeHtml(importantActionDialog.alternateLabel)}</button>`
+              : ""
+          }
           <button
             class="important-action-confirm-button"
             type="button"
@@ -5892,7 +5904,7 @@ function renderInactiveEventParticipants(event, participants, canEdit) {
 
 function renderInactiveEventParticipantRow(event, participant, canEdit) {
   const displayName = participantName(participant.id, event);
-  const identity = participantConnectionStatus(participant);
+  const identity = participantConnectionStatusForEvent(participant, event);
 
   return `
     <article
@@ -5905,7 +5917,7 @@ function renderInactiveEventParticipantRow(event, participant, canEdit) {
         <span class="event-participant-person-copy">
           <strong>${escapeHtml(displayName)}</strong>
           <span class="event-participant-meta">
-            ${renderParticipantConnectionBadge(participant)}
+            ${renderParticipantConnectionBadge(participant, event)}
             <small class="event-participant-money-status">נשמר בהיסטוריה</small>
           </span>
         </span>
@@ -7198,7 +7210,7 @@ function renderEventSettingsDangerDialog(event) {
           <span class="event-danger-zone-icon" aria-hidden="true">${iconSvg("log-out")}</span>
           <div>
             <strong>עזיבת האירוע</strong>
-            <p class="muted">אפשר לעזוב רק אם אין הוצאות או העברות על שמך ואינך המנהל היחיד.</p>
+            <p class="muted">אפשר לעזוב גם כשיש הוצאות על שמך. ההיסטוריה תישמר כשם אופליין; מנהל יחיד צריך קודם להעביר ניהול.</p>
           </div>
         </div>
         <button class="secondary-button danger-button" data-action="leave-event" data-event-id="${event.id}" ${!canLeave ? "disabled" : ""}>עזוב אירוע</button>
@@ -10534,7 +10546,14 @@ function participantCandidateFilter(selectedIds, action = "") {
 }
 
 function participantConnectionStatus(participant) {
+  return participantConnectionStatusForEvent(participant, null);
+}
+
+function participantConnectionStatusForEvent(participant, event) {
   const isCurrentParticipant = participant.id === state.currentParticipantId;
+  const isHistoricalOffline = Boolean(
+    event && isEventParticipantInactive(event, participant.id)
+  );
   const authProvider =
     participant.authProvider ??
     (isCurrentParticipant ? localProfile?.authProvider : "");
@@ -10548,7 +10567,7 @@ function participantConnectionStatus(participant) {
       Boolean(authSubject)
     );
 
-  if (connected) {
+  if (connected && !isHistoricalOffline) {
     return {
       connected: true,
       label: isCurrentParticipant ? "אתה" : "חבר באפליקציה",
@@ -10563,12 +10582,14 @@ function participantConnectionStatus(participant) {
     connected: false,
     label: "שם אופליין",
     className: "is-offline",
-    description: `${participant.displayName} הוא שם שהוזן ידנית ואינו משתמש מחובר`
+    description: isHistoricalOffline
+      ? `${participant.displayName} אינו משתתף פעיל באירוע והשם נשמר עבור ההיסטוריה`
+      : `${participant.displayName} הוא שם שהוזן ידנית ואינו משתמש מחובר`
   };
 }
 
-function renderParticipantConnectionBadge(participant) {
-  const status = participantConnectionStatus(participant);
+function renderParticipantConnectionBadge(participant, event = null) {
+  const status = participantConnectionStatusForEvent(participant, event);
   return `
     <small
       class="participant-connection-badge ${status.className}"
@@ -11190,6 +11211,11 @@ async function handleClick(event) {
 
   if (action === "confirm-important-action") {
     await confirmImportantAction();
+    return;
+  }
+
+  if (action === "confirm-important-action-alternate") {
+    await confirmImportantAction("alternate");
     return;
   }
 
@@ -12029,11 +12055,13 @@ async function handleClick(event) {
   }
 
   if (action === "open-event-participants") {
+    await requestResumeSync({ force: true });
     openEventDialog(target.dataset.eventId, "participants", target);
   }
 
   if (action === "open-event-participant-add") {
     const eventId = target.dataset.eventId;
+    await requestResumeSync({ force: true });
     if (!getEvent(eventId)) return;
     const returnKind = eventDialog?.kind === "share" ? "share" : "participants";
     eventDialog = {
@@ -15249,16 +15277,23 @@ function requestEventLeave(eventId, trigger) {
   if (!event) return;
 
   if (!canLeaveEvent(state, eventId, state.currentParticipantId)) {
-    notice = "אי אפשר לעזוב אירוע שיש בו הוצאות או העברות על שמך, או כשאתה המנהל היחיד.";
+    notice = "אי אפשר לעזוב כשאתה המנהל היחיד. קודם מעבירים את הניהול למשתתף אחר.";
     render();
     return;
   }
+
+  const hasMoneyHistory = eventParticipantHasMoneyHistory(
+    event,
+    state.currentParticipantId
+  );
 
   openImportantActionDialog(
     {
       kind: "leave-event",
       title: `לעזוב את "${event.name}"?`,
-      description: "האירוע יוסר מהמסך שלך. כדי לחזור אליו תצטרך לקבל קישור הצטרפות חדש.",
+      description: hasMoneyHistory
+        ? "הגישה שלך לאירוע תוסר, אבל השם שלך וההוצאות וההעברות שכבר רשומות עליו יישארו בהיסטוריה כשם אופליין. כדי לחזור תצטרך הזמנה חדשה."
+        : "האירוע יוסר מהמסך שלך. כדי לחזור אליו תצטרך לקבל קישור הצטרפות חדש.",
       confirmLabel: "עזוב אירוע",
       payload: { eventId }
     },
@@ -15394,8 +15429,18 @@ function closeImportantActionDialog() {
 }
 
 async function confirmImportantAction() {
-  const pendingAction = importantActionDialog;
+  const variant = arguments[0] === "alternate" ? "alternate" : "primary";
+  let pendingAction = importantActionDialog;
   if (!pendingAction) return;
+  if (variant === "alternate" && pendingAction.alternatePayload) {
+    pendingAction = {
+      ...pendingAction,
+      payload: {
+        ...(pendingAction.payload ?? {}),
+        ...pendingAction.alternatePayload
+      }
+    };
+  }
 
   const returnFocus = importantActionReturnFocus;
   const underlyingDialogSelector = expenseDraft
@@ -15456,7 +15501,8 @@ async function executeImportantAction(action) {
   if (action.kind === "remove-event-participant") {
     await removeEventParticipant(
       action.payload.eventId,
-      action.payload.participantId
+      action.payload.participantId,
+      action.payload.removalMode
     );
     return;
   }
@@ -15489,7 +15535,7 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "leave-event") {
-    leaveCurrentEvent(action.payload.eventId);
+    await leaveCurrentEvent(action.payload.eventId);
     return;
   }
 
@@ -18058,14 +18104,16 @@ function toggleAdminEditMode(eventId) {
   render();
 }
 
-function leaveCurrentEvent(eventId) {
+async function leaveCurrentEvent(eventId) {
   const event = getEvent(eventId);
   if (!canLeaveEvent(state, eventId, state.currentParticipantId)) {
-    notice = "אי אפשר לעזוב אירוע שיש בו הוצאות או העברות על שמך, או כשאתה המנהל היחיד.";
+    notice = "אי אפשר לעזוב כשאתה המנהל היחיד. קודם מעבירים את הניהול למשתתף אחר.";
     render();
-    return;
+    return { ok: false, mode: "permission" };
   }
 
+  const previousState = cloneNavigationValue(state);
+  const previousScreen = cloneNavigationValue(screen);
   state = leaveEvent(state, eventId, state.currentParticipantId);
   recordEventActivity(eventId, "participant-left", {
     subjectParticipantId: state.currentParticipantId
@@ -18074,8 +18122,15 @@ function leaveCurrentEvent(eventId) {
   eventDialog = null;
   screen = { name: "home" };
   notice = `עזבת את "${event.name}".`;
-  persistState();
   render();
+  const result = await persistState();
+  if (!result?.ok && !result?.pending) {
+    state = previousState;
+    screen = previousScreen;
+    notice = "לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.";
+    render();
+  }
+  return result;
 }
 
 async function deleteCurrentEvent(eventId) {
@@ -18850,22 +18905,36 @@ function requestEventParticipantRemoval(eventId, participantId, trigger) {
   const hasMoneyHistory = eventParticipantHasMoneyHistory(event, participantId);
   const keepsHistoricalReference =
     hasMoneyHistory || participantId === event.createdByParticipantId;
+  const participantLabel = participantName(participantId, event);
 
   openImportantActionDialog(
     {
       kind: "remove-event-participant",
-      title: `להסיר את ${participantName(participantId, event)} מהאירוע?`,
+      title: `איך להסיר את ${participantLabel} מהאירוע?`,
       description: keepsHistoricalReference
-        ? "המשתתף יוסר מהאירוע הפעיל ולא יופיע בהוצאות חדשות. ההוצאות וההעברות שכבר רשומות על שמו יישארו ללא שינוי."
-        : "המשתתף יוסר רק מהאירוע הזה. אפשר להוסיף אותו שוב בהמשך.",
-      confirmLabel: "הסר מהאירוע",
-      payload: { eventId, participantId }
+        ? "יש על שמו היסטוריה באירוע, לכן אי אפשר למחוק את השם בלי לפגוע בחישוב. אפשר להסיר את הגישה ולהשאיר אותו כשם אופליין."
+        : "אפשר להסיר אותו לגמרי מהאירוע, או להשאיר את השם ברשימה ההיסטורית כאופליין.",
+      confirmLabel: keepsHistoricalReference ? "השאר שם אופליין" : "הסר לגמרי",
+      alternateLabel: keepsHistoricalReference
+        ? "הסר לגמרי (לא זמין)"
+        : "השאר שם אופליין",
+      alternateDisabled: keepsHistoricalReference,
+      alternateDescription: keepsHistoricalReference
+        ? "לא ניתן למחוק לגמרי שם שמופיע בהוצאות או בהעברות קיימות"
+        : "הגישה תוסר והשם יישאר ברשימה ההיסטורית",
+      payload: {
+        eventId,
+        participantId,
+        removalMode: keepsHistoricalReference ? "offline" : "remove"
+      },
+      alternatePayload: { removalMode: "offline" }
     },
     trigger
   );
 }
 
 async function removeEventParticipant(eventId, participantId) {
+  const removalMode = arguments[2] === "offline" ? "offline" : "remove";
   const event = getEvent(eventId);
   const participant = state.participants.find((item) => item.id === participantId);
   if (
@@ -18885,15 +18954,24 @@ async function removeEventParticipant(eventId, participantId) {
   const preservesMoneyHistory =
     participantId === event.createdByParticipantId ||
     eventParticipantHasMoneyHistory(event, participantId);
+  const preserveOffline = preservesMoneyHistory || removalMode === "offline";
   const removalMessage = preservesMoneyHistory
-    ? `הסרנו את ${participant.displayName} מהאירוע. ההיסטוריה הכספית נשמרה.`
-    : `הסרנו את ${participant.displayName} מהאירוע.`;
+    ? `הסרנו את ${participant.displayName} מהאירוע. ההיסטוריה הכספית נשמרה כשם אופליין.`
+    : preserveOffline
+      ? `הסרנו את ${participant.displayName} מהאירוע והשארנו את השם כאופליין.`
+      : `הסרנו את ${participant.displayName} מהאירוע.`;
   const removedFromProfile =
     eventDialog?.kind === "participant-profile" &&
     eventDialog.eventId === eventId &&
     eventDialog.participantId === participantId;
   const previousState = cloneNavigationValue(state);
-  state = deactivateEventParticipant(state, eventId, participantId);
+  state = deactivateEventParticipant(
+    state,
+    eventId,
+    participantId,
+    new Date().toISOString(),
+    { preserveOffline }
+  );
   recordEventActivity(eventId, "participant-removed", {
     subjectParticipantId: participantId
   });
@@ -19016,7 +19094,10 @@ async function restoreEventParticipant(eventId, participantId) {
 
 async function toggleEventParticipant(eventId, participantId, checked) {
   const event = getEvent(eventId);
-  if (!canCurrentParticipantChangeEventMembership(event, participantId)) {
+  const canChangeMembership = checked
+    ? canCurrentParticipantAddEventMember(event, participantId)
+    : canCurrentParticipantChangeEventMembership(event, participantId);
+  if (!canChangeMembership) {
     notice = editBlockedMessage(event);
     render();
     return;
@@ -20289,6 +20370,15 @@ function canCurrentParticipantUpdateTransfer(event, transfer) {
 
 function canCurrentParticipantChangeEventMembership(event, participantId) {
   return Boolean(participantId && canCurrentParticipantManage(event));
+}
+
+function canCurrentParticipantAddEventMember(event, participantId) {
+  if (!participantId || !event) return false;
+  if (canCurrentParticipantChangeEventMembership(event, participantId)) return true;
+  return Boolean(
+    !(event.participantIds ?? []).includes(participantId) &&
+      canAddEventParticipant(state, event, state.currentParticipantId)
+  );
 }
 
 function editBlockedMessage(event) {

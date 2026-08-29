@@ -20,6 +20,7 @@ import { accountLinkIsConfirmed } from "../src/data/pendingAccountLinks.mjs";
 import {
   closeEvent,
   deactivateEventParticipant,
+  leaveEvent,
   linkParticipantAccountInEvent,
   reopenEvent,
   removeExpense,
@@ -54,15 +55,25 @@ try {
     "חבר מצטרף בדיקה",
     { includeUsername: false }
   );
+  const addedFriend = await createTemporaryAccount(
+    "added-friend",
+    "חבר שנוסף באירוע שיתופי"
+  );
   const ownerConfig = runtimeConfig(owner);
   const joinerConfig = runtimeConfig(joiner);
   const ownerProfile = accountProfileFromUser(owner.session.user);
   const joinerProfile = accountProfileFromUser(joiner.session.user);
+  const addedFriendProfile = accountProfileFromUser(addedFriend.session.user);
   const createdAt = "2026-08-03T12:00:00.000Z";
 
   let ownerState = baseAccountState(ownerProfile);
   await saveCloudState(ownerConfig, ownerState, qaFetch);
   await saveCloudState(joinerConfig, baseAccountState(joinerProfile), qaFetch);
+  await saveCloudState(
+    runtimeConfig(addedFriend),
+    baseAccountState(addedFriendProfile),
+    qaFetch
+  );
 
   const joinerParticipant = baseAccountState(joinerProfile).participants[0];
   ownerState.participants.push(joinerParticipant);
@@ -99,6 +110,16 @@ try {
     body: {
       requester_id: owner.session.user.id,
       addressee_id: joiner.session.user.id,
+      status: "accepted",
+      responded_at: new Date().toISOString()
+    },
+    prefer: "return=representation"
+  });
+  await adminRequest("/rest/v1/friendships", {
+    method: "POST",
+    body: {
+      requester_id: joiner.session.user.id,
+      addressee_id: addedFriend.session.user.id,
       status: "accepted",
       responded_at: new Date().toISOString()
     },
@@ -197,10 +218,61 @@ try {
   );
   joinedEvent.sharedSpaceKey = RECOVERED_MEMBER_SPACE_KEY;
 
+  // A non-admin may add exactly one accepted friend when the event is in
+  // collaborative mode. The same member must still be unable to remove that
+  // person or promote themselves to manager.
+  const friendParticipant = baseAccountState(addedFriendProfile).participants[0];
+  const friendAddedAt = new Date().toISOString();
+  const collaborativeFriendState = structuredClone(joinerState);
+  collaborativeFriendState.participants.push(friendParticipant);
+  collaborativeFriendState.events[0].participantIds.push(
+    addedFriendProfile.participantId
+  );
+  collaborativeFriendState.events[0].membershipUpdatedAt = friendAddedAt;
+  collaborativeFriendState.events[0].membershipUpdatedAtByParticipant = {
+    ...(collaborativeFriendState.events[0].membershipUpdatedAtByParticipant ?? {}),
+    [addedFriendProfile.participantId]: friendAddedAt
+  };
+  joinerState = await saveSharedEventState(
+    joinerConfig,
+    collaborativeFriendState,
+    eventId
+  );
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  assert.equal(
+    ownerState.events[0].participantIds.includes(addedFriendProfile.participantId),
+    true
+  );
+
+  const unauthorizedRemoval = deactivateEventParticipant(
+    structuredClone(joinerState),
+    eventId,
+    addedFriendProfile.participantId,
+    new Date(Date.now() + 1_000).toISOString()
+  );
+  await assert.rejects(
+    saveSharedEventState(joinerConfig, unauthorizedRemoval, eventId),
+    (error) => error?.status === 403 || error?.status === 400
+  );
+
+  const unauthorizedPromotion = structuredClone(joinerState);
+  unauthorizedPromotion.events[0].adminIds.push(joinerProfile.participantId);
+  unauthorizedPromotion.events[0].adminIdsScopedToEvent = true;
+  unauthorizedPromotion.events[0].adminIdsUpdatedAt =
+    new Date(Date.now() + 2_000).toISOString();
+  await assert.rejects(
+    saveSharedEventState(joinerConfig, unauthorizedPromotion, eventId),
+    (error) => error?.status === 403 || error?.status === 400
+  );
+
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.deepEqual(
     new Set(ownerState.events[0].participantIds),
-    new Set([ownerProfile.participantId, joinerProfile.participantId])
+    new Set([
+      ownerProfile.participantId,
+      joinerProfile.participantId,
+      addedFriendProfile.participantId
+    ])
   );
 
   const ownerStaleState = addExpense(ownerState, {
@@ -419,21 +491,20 @@ try {
     createdAt: "2026-08-03T12:17:00.000Z",
     updatedAt: "2026-08-03T12:17:00.000Z"
   });
-  const removalAt = new Date(Date.now() + 60_000).toISOString();
-  ownerState = deactivateEventParticipant(
-    ownerState,
+  joinerState = leaveEvent(
+    joinerState,
     eventId,
-    joinerProfile.participantId,
-    removalAt
+    joinerProfile.participantId
   );
   assert.equal(
-    !ownerState.events[0].participantIds.includes(joinerProfile.participantId) ||
-      ownerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
+    joinerState.events[0].participantIds.includes(joinerProfile.participantId) &&
+      joinerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
     true
   );
-  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  await saveSharedEventState(joinerConfig, joinerState, eventId);
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.equal(
-    !ownerState.events[0].participantIds.includes(joinerProfile.participantId) ||
+    ownerState.events[0].participantIds.includes(joinerProfile.participantId) &&
       ownerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
     true
   );
@@ -481,6 +552,9 @@ try {
       newlyGeneratedInviteRedeemed: true,
       productionIphoneLoginJoinedFromNewLink: true,
       connectedParticipantJoined: true,
+      collaborativeMemberAddedAcceptedFriend: true,
+      collaborativeMemberRemovalBlocked: true,
+      collaborativeMemberPromotionBlocked: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
       nonAdminExistingExpenseEditSynced: true,
       offlineAccountLinkPersistedCanonically: true,
@@ -490,6 +564,7 @@ try {
       transferStatusSynced: true,
       eventClosureSynced: true,
       bothAccountWorkspacesReloaded: true,
+      nonAdminLeftWithMoneyHistoryPreservedOffline: true,
       removedMemberAccessRevoked: true,
       removedMemberStaleWriteBlocked: true,
       oldInviteCannotRejoinRemovedMember: true,

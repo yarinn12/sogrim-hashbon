@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  canAddEventParticipant,
   canEditEvent,
   canManageEventSettings,
   eventAdminIds
@@ -76,6 +77,23 @@ test("everyone can edit unrestricted events unless the event is locked", () => {
 
   assert.equal(canEditEvent(state, event, "dani"), true);
   assert.equal(canEditEvent(state, { ...event, locked: true }, "yarin"), false);
+});
+
+test("active members can add participants only in collaborative events", () => {
+  const state = baseState();
+  const collaborative = { ...state.events[0], adminsCanEditOnly: false };
+
+  assert.equal(canAddEventParticipant(state, collaborative, "dani"), true);
+  assert.equal(canAddEventParticipant(state, state.events[0], "dani"), false);
+  assert.equal(canAddEventParticipant(state, collaborative, "outsider"), false);
+  assert.equal(
+    canAddEventParticipant(
+      state,
+      { ...collaborative, inactiveParticipantIds: ["dani"] },
+      "dani"
+    ),
+    false
+  );
 });
 
 test("a participant removed from active membership cannot edit or manage the event", () => {

@@ -256,8 +256,7 @@ export function removeExpense(
 export function canLeaveEvent(state, eventId, participantId) {
   const event = state.events.find((item) => item.id === eventId);
   if (!event || !event.participantIds.includes(participantId)) return false;
-  if (event.createdByParticipantId === participantId) return false;
-  if (participantHasEventMoneyHistory(event, participantId)) return false;
+  if ((event.inactiveParticipantIds ?? []).includes(participantId)) return false;
 
   const managerIds = eventManagerIds(state, event);
   const isManager = managerIds.includes(participantId);
@@ -269,42 +268,15 @@ export function canLeaveEvent(state, eventId, participantId) {
 export function leaveEvent(state, eventId, participantId) {
   if (!canLeaveEvent(state, eventId, participantId)) return state;
   const updatedAt = new Date().toISOString();
-
-  return {
-    ...state,
-    events: state.events.map((event) =>
-      event.id === eventId
-        ? {
-            ...event,
-            participantIds: uniqueIds(
-              event.participantIds.filter((id) => id !== participantId)
-            ),
-            inactiveParticipantIds: uniqueIds(
-              (event.inactiveParticipantIds ?? []).filter(
-                (id) => id !== participantId
-              )
-            ),
-            adminIds: uniqueIds(
-              (event.adminIds ?? []).filter((id) => id !== participantId)
-            ),
-            membershipUpdatedAt: updatedAt,
-            membershipUpdatedAtByParticipant:
-              markParticipantMembershipChanges(
-                event,
-                [participantId],
-                updatedAt
-              )
-          }
-        : event
-    )
-  };
+  return deactivateEventParticipant(state, eventId, participantId, updatedAt);
 }
 
 export function deactivateEventParticipant(
   state,
   eventId,
   participantId,
-  updatedAt = new Date().toISOString()
+  updatedAt = new Date().toISOString(),
+  { preserveOffline = false } = {}
 ) {
   const event = state.events.find((item) => item.id === eventId);
   if (
@@ -317,6 +289,7 @@ export function deactivateEventParticipant(
   }
 
   const keepsHistoricalReference =
+    preserveOffline ||
     event.createdByParticipantId === participantId ||
     participantHasEventMoneyHistory(event, participantId);
   const participantIds = keepsHistoricalReference
