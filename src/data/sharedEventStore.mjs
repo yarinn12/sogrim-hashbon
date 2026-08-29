@@ -830,6 +830,13 @@ function referencedParticipantIds(event) {
     if (activity.fromParticipantId) ids.add(activity.fromParticipantId);
     if (activity.toParticipantId) ids.add(activity.toParticipantId);
   }
+  for (const note of event.notes ?? []) {
+    if (note.createdByParticipantId) ids.add(note.createdByParticipantId);
+    if (note.updatedByParticipantId) ids.add(note.updatedByParticipantId);
+  }
+  for (const deletion of event.deletedNotes ?? []) {
+    if (deletion.deletedByParticipantId) ids.add(deletion.deletedByParticipantId);
+  }
   ids.delete(undefined);
   ids.delete("");
   return ids;

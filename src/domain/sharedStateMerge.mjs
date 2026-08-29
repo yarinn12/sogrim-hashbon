@@ -5,6 +5,7 @@ import {
 } from "./settlement.mjs";
 import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
+import { mergeEventNotes } from "./eventNotes.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const ENTITY_COLLECTION_KEYS = [
@@ -403,6 +404,7 @@ function mergeEvent(remoteEvent, localEvent) {
     ...membership,
     ...lifecycle,
     ...settings,
+    ...mergeEventNotes(remoteEvent, localEvent),
     participantAliases: {
       ...cloneValue(objectOrEmpty(remoteEvent.participantAliases)),
       ...cloneValue(objectOrEmpty(localEvent.participantAliases))
@@ -1111,6 +1113,28 @@ function remapEventParticipantReferences(
             deletedParticipantIds.has(transfer.toParticipantId)
           )
       );
+  }
+  if (Array.isArray(event.notes)) {
+    nextEvent.notes = event.notes.map((note) => ({
+      ...note,
+      createdByParticipantId: remapParticipantId(
+        note.createdByParticipantId,
+        redirects
+      ),
+      updatedByParticipantId: remapParticipantId(
+        note.updatedByParticipantId,
+        redirects
+      )
+    }));
+  }
+  if (Array.isArray(event.deletedNotes)) {
+    nextEvent.deletedNotes = event.deletedNotes.map((deletion) => ({
+      ...deletion,
+      deletedByParticipantId: remapParticipantId(
+        deletion.deletedByParticipantId,
+        redirects
+      )
+    }));
   }
   if (Array.isArray(event.transferStatusUpdates)) {
     nextEvent.transferStatusUpdates = event.transferStatusUpdates.map(

@@ -1038,6 +1038,14 @@ function eventReferencesParticipant(event, participantId) {
         transfer.toParticipantId === participantId ||
         transfer.markedPaidByParticipantId === participantId
     ) ||
+    (event.notes ?? []).some(
+      (note) =>
+        note.createdByParticipantId === participantId ||
+        note.updatedByParticipantId === participantId
+    ) ||
+    (event.deletedNotes ?? []).some(
+      (deletion) => deletion.deletedByParticipantId === participantId
+    ) ||
     (event.activityLog ?? []).some((entry) =>
       [
         entry.actorParticipantId,
@@ -1130,6 +1138,27 @@ function mergeParticipantIntoEvent(
         )
       };
     }),
+    notes: (event.notes ?? []).map((note) => ({
+      ...note,
+      createdByParticipantId: replaceId(
+        note.createdByParticipantId,
+        sourceParticipantId,
+        targetParticipantId
+      ),
+      updatedByParticipantId: replaceId(
+        note.updatedByParticipantId,
+        sourceParticipantId,
+        targetParticipantId
+      )
+    })),
+    deletedNotes: (event.deletedNotes ?? []).map((deletion) => ({
+      ...deletion,
+      deletedByParticipantId: replaceId(
+        deletion.deletedByParticipantId,
+        sourceParticipantId,
+        targetParticipantId
+      )
+    })),
     activityLog: (event.activityLog ?? []).map((entry) => {
       if (!activityEntryReferencesParticipant(entry, sourceParticipantId)) {
         return entry;

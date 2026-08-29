@@ -2,6 +2,7 @@ import {
   validateSharedStateFinancials,
   validateSharedStateIdentifiers
 } from "../domain/sharedStateMerge.mjs";
+import { validateSharedStateNotes } from "../domain/eventNotes.mjs";
 
 export function validateSharedStatePayload(state) {
   const errors = [];
@@ -28,6 +29,7 @@ export function validateSharedStatePayload(state) {
 
   errors.push(...validateSharedStateIdentifiers(state));
   errors.push(...validateSharedStateFinancials(state));
+  errors.push(...validateSharedStateNotes(state));
 
   return {
     ok: errors.length === 0,
