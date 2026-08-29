@@ -47,6 +47,7 @@ import {
   runtimeApiOrigins,
   runtimePublicOrigin
 } from "../domain/publicOrigin.mjs";
+import { fetchWithTimeout } from "./fetchTimeout.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const RUNTIME_CONFIG_TIMEOUT_MS = 4_000;
@@ -1045,7 +1046,12 @@ export async function resetSharedState() {
   }
 
   try {
-    const response = await fetch("/api/reset", { method: "POST" });
+    const response = await fetchWithTimeout(
+      globalThis.fetch,
+      "/api/reset",
+      { method: "POST" },
+      RUNTIME_CONFIG_TIMEOUT_MS
+    );
     if (!response.ok) throw new Error("Reset failed");
     const state = cleanLegacyStarterData(
       await response.json(),
@@ -1477,7 +1483,12 @@ async function settleSaveWithinUiBudget(saveRequest, durablePendingSaved) {
   const queuedResult = new Promise((resolve) => {
     timeoutId = globalThis.setTimeout(() => {
       publishSyncStatus("reconnecting");
-      resolve({ ok: true, mode: "queued", pending: true });
+      resolve({
+        ok: true,
+        mode: "queued",
+        pending: true,
+        completion: saveRequest
+      });
     }, FOREGROUND_SAVE_BUDGET_MS);
   });
   try {

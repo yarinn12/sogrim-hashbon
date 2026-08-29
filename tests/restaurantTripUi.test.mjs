@@ -40,7 +40,7 @@ test("restaurant entry starts with a simple split choice and asks for payment la
   assert.match(app, /ADD_QUICK_ITEM_GUEST_VALUE/);
   assert.match(app, /data-action="quick-item-new-guest-name"/);
   assert.match(app, /data-action="quick-item-add-guest"/);
-  assert.match(app, /function addInlineQuickItemGuest\(eventId, itemIndex\)/);
+  assert.match(app, /async function addInlineQuickItemGuest\(eventId, itemIndex\)/);
   assert.match(app, /expenseDraft\.quickItems\[itemIndex\]\.sharedBy = guest\.id/);
   assert.match(quickForm, /const ready = summary\.billTotal > 0 && !summary\.error/);
   assert.match(

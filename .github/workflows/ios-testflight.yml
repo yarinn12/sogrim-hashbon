@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.10"
+        default: "4.11"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "132"
+        default: "133"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "חיזקנו הזמנות והתראות בין מכשירים, הוספנו התאוששות אוטומטית מסשן שפג ומנענו תקיעות רשת במסכים מרכזיים, כולל iPhone ו-iPad."
+        default: "תיקנו עדכון PWA שנשאר על גרסה ישנה ב-iPhone וב-iPad, חיזקנו כניסה עם Google ושמירת משתתפים והוצאות בין מכשירים, והוספנו התאוששות בטוחה מכשלי סנכרון."
 
 permissions:
   contents: read

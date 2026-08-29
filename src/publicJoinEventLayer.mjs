@@ -425,7 +425,7 @@ async function joinExistingEventFromPublicPanel() {
       { reactivateInactive: false }
     );
     saveState(state);
-    const saveResult = await saveSharedState(state);
+    const saveResult = await saveSharedState(state, { awaitCloud: true });
     if (!saveResult?.ok && !saveResult?.partial) {
       setJoinError(
         error,

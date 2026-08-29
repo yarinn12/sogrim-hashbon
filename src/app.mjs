@@ -11961,7 +11961,8 @@ async function handleClick(event) {
   }
 
   if (action === "event-add-guest") {
-    addGuestToEvent(target.dataset.eventId);
+    await addGuestToEvent(target.dataset.eventId);
+    return;
   }
 
   if (action === "pick-event-contact") {
@@ -12006,7 +12007,7 @@ async function handleClick(event) {
   }
 
   if (action === "keep-duplicate-participants") {
-    keepDuplicateParticipantsSeparate(
+    await keepDuplicateParticipantsSeparate(
       target.dataset.eventId,
       target.dataset.participantPair
     );
@@ -12014,7 +12015,7 @@ async function handleClick(event) {
   }
 
   if (action === "save-participant-alias") {
-    saveParticipantAlias(
+    await saveParticipantAlias(
       target.dataset.eventId,
       target.dataset.participantId
     );
@@ -12058,7 +12059,7 @@ async function handleClick(event) {
   }
 
   if (action === "save-offline-participant-name") {
-    saveOfflineParticipantName(
+    await saveOfflineParticipantName(
       target.dataset.eventId,
       target.dataset.participantId
     );
@@ -12352,7 +12353,8 @@ async function handleClick(event) {
   }
 
   if (action === "toggle-admin-edit") {
-    toggleAdminEditMode(target.dataset.eventId);
+    await toggleAdminEditMode(target.dataset.eventId);
+    return;
   }
 
   if (action === "leave-event") {
@@ -12551,11 +12553,13 @@ async function handleClick(event) {
   }
 
   if (action === "expense-add-payer-guest") {
-    addInlinePayerGuest(target.dataset.eventId, Number(target.dataset.index));
+    await addInlinePayerGuest(target.dataset.eventId, Number(target.dataset.index));
+    return;
   }
 
   if (action === "quick-item-add-guest") {
-    addInlineQuickItemGuest(target.dataset.eventId, Number(target.dataset.index));
+    await addInlineQuickItemGuest(target.dataset.eventId, Number(target.dataset.index));
+    return;
   }
 
   if (action === "expense-template") {
@@ -12731,7 +12735,8 @@ async function handleClick(event) {
   }
 
   if (action === "save-quick-expenses") {
-    saveQuickExpenses(target.dataset.eventId);
+    await saveQuickExpenses(target.dataset.eventId);
+    return;
   }
 
   if (action === "copy-quick-split") {
@@ -15160,7 +15165,7 @@ function participantMergeImpact(participantId) {
   );
 }
 
-function keepDuplicateParticipantsSeparate(eventId, pairKey) {
+async function keepDuplicateParticipantsSeparate(eventId, pairKey) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return;
 
@@ -15170,6 +15175,7 @@ function keepDuplicateParticipantsSeparate(eventId, pairKey) {
   ).find((pair) => pair.key === pairKey);
   if (!unresolvedPair) return;
 
+  const previousPairs = [...(event.distinctParticipantPairs ?? [])];
   event.distinctParticipantPairs = [
     ...new Set([...(event.distinctParticipantPairs ?? []), pairKey])
   ];
@@ -15186,15 +15192,25 @@ function keepDuplicateParticipantsSeparate(eventId, pairKey) {
       ]
     };
   }
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    event.distinctParticipantPairs = previousPairs;
+    if (eventDialog?.eventId === eventId) {
+      eventDialog = {
+        ...eventDialog,
+        message: "לא הצלחנו לשמור את ההפרדה. אפשר לנסות שוב."
+      };
+    }
+  }
   render();
   reactivateDialogAfterRender(
     ".event-modal",
     `[data-action="participant-alias"][data-participant-id="${unresolvedPair.left.id}"]`
   );
+  return result;
 }
 
-function saveOfflineParticipantName(eventId, participantId) {
+async function saveOfflineParticipantName(eventId, participantId) {
   const event = getEvent(eventId);
   const participant = state.participants.find((item) => item.id === participantId);
   if (
@@ -15236,19 +15252,26 @@ function saveOfflineParticipantName(eventId, participantId) {
   }
 
   if (displayName !== participant.displayName) {
+    const previousState = cloneNavigationValue(state);
     const nextState = renameOfflineParticipant(state, participantId, displayName);
     if (nextState === state) {
       showError("לא הצלחנו לעדכן את השם. אפשר לנסות שוב.");
       return;
     }
     state = nextState;
-    persistState();
+    const result = await persistState();
+    if (!result?.ok) {
+      state = previousState;
+      showError("לא הצלחנו לשמור את השם. לא בוצע שינוי ואפשר לנסות שוב.");
+      return result;
+    }
   }
 
   goBackInApp();
+  return { ok: true };
 }
 
-function saveParticipantAlias(eventId, participantId) {
+async function saveParticipantAlias(eventId, participantId) {
   const event = getEvent(eventId);
   if (
     !event ||
@@ -15265,11 +15288,16 @@ function saveParticipantAlias(eventId, participantId) {
 
   const alias = sanitizeParticipantAlias(input.value);
   const dialogScrollTop = app.querySelector(".event-modal")?.scrollTop ?? 0;
+  const previousAliases = { ...(event.participantAliases ?? {}) };
   event.participantAliases = {
     ...(event.participantAliases ?? {}),
     [participantId]: alias
   };
-  persistState();
+  const result = await persistState();
+  if (!result?.ok) {
+    event.participantAliases = previousAliases;
+    notice = "לא הצלחנו לשמור את הכינוי. לא בוצע שינוי ואפשר לנסות שוב.";
+  }
   render();
   reactivateDialogAfterRender(
     ".event-modal",
@@ -15610,15 +15638,21 @@ async function executeImportantAction(action) {
   }
 
   if (action.kind === "remove-offline-friend") {
+    const previousState = state;
     state = removeFriendContact(state, action.payload.participantId);
-    notice = "השם הוסר מרשימת החברים. האירועים וההוצאות נשמרו.";
-    await persistState();
+    const result = await persistState();
+    if (!result?.ok) {
+      state = previousState;
+      notice = "לא הצלחנו להסיר את השם. לא בוצע שינוי ואפשר לנסות שוב.";
+    } else {
+      notice = "השם הוסר מרשימת החברים. האירועים וההוצאות נשמרו.";
+    }
     render();
     return;
   }
 
   if (action.kind === "restore-backup") {
-    restoreStateBackup(action.payload.restoredState);
+    await restoreStateBackup(action.payload.restoredState);
     return;
   }
 
@@ -16112,7 +16146,7 @@ async function pickEventContact(eventId) {
   }
 }
 
-function addGuestToEvent(eventId) {
+async function addGuestToEvent(eventId) {
   const input =
     app.querySelector('.event-modal [data-action="event-guest-name"]') ??
     app.querySelector('[data-action="event-guest-name"]');
@@ -16137,6 +16171,9 @@ function addGuestToEvent(eventId) {
     reactivateDialogAfterRender(dialogSelector);
     return;
   }
+  const previousState = cloneNavigationValue(state);
+  const previousExpenseDraft = cloneNavigationValue(expenseDraft);
+  const previousEventDialog = cloneNavigationValue(eventDialog);
   const { participant: guest, created } = resolveOfflineParticipant(name, "guest");
   const participantAdded = activateParticipantForEvent(event, guest.id);
   if (participantAdded) {
@@ -16169,25 +16206,37 @@ function addGuestToEvent(eventId) {
   } else {
     notice = participantMessage;
   }
-  persistState();
+  const saveRequest = persistState();
   if (returnsToParticipantRoster) {
     renderHistoryFallback();
     reactivateDialogAfterRender(
       ".event-modal",
       `[data-action="open-event-participant-profile"][data-participant-id="${guest.id}"]`
     );
-    return;
-  }
-  if (returnsToExpenseParticipants) {
+  } else if (returnsToExpenseParticipants) {
     finishExpenseParticipantAddRoute();
-    return;
+  } else {
+    render();
+    reactivateDialogAfterRender(
+      dialogSelector,
+      `${dialogSelector} [data-action="event-guest-name"]`,
+      dialogScrollTop
+    );
   }
-  render();
-  reactivateDialogAfterRender(
-    dialogSelector,
-    `${dialogSelector} [data-action="event-guest-name"]`,
-    dialogScrollTop
-  );
+
+  const result = await completedSaveResult(saveRequest);
+  if (!result?.ok) {
+    state = previousState;
+    expenseDraft = previousExpenseDraft;
+    eventDialog = previousEventDialog;
+    const failureMessage = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי ואפשר לנסות שוב.";
+    if (expenseDraft) expenseDraft.error = failureMessage;
+    if (eventDialog) eventDialog.message = failureMessage;
+    notice = failureMessage;
+    render();
+    reactivateDialogAfterRender(dialogSelector, '[data-action="event-guest-name"]', dialogScrollTop);
+  }
+  return result;
 }
 
 function expenseParticipantAddRewindSteps() {
@@ -16263,7 +16312,7 @@ async function addFriendParticipantToExpense(eventId, participantId) {
   finishExpenseParticipantAddRoute();
 }
 
-function addInlinePayerGuest(eventId, payerIndex) {
+async function addInlinePayerGuest(eventId, payerIndex) {
   if (!expenseDraft || !Number.isInteger(payerIndex) || !expenseDraft.payers[payerIndex]) return;
   const dialogScrollTop = app.querySelector(".expense-modal")?.scrollTop ?? 0;
 
@@ -16292,6 +16341,8 @@ function addInlinePayerGuest(eventId, payerIndex) {
     return;
   }
 
+  const previousState = cloneNavigationValue(state);
+  const previousExpenseDraft = cloneNavigationValue(expenseDraft);
   const { participant: guest } = resolveOfflineParticipant(name, "guest");
   if (activateParticipantForEvent(event, guest.id)) {
     recordEventActivity(event.id, "participant-added", {
@@ -16308,7 +16359,12 @@ function addInlinePayerGuest(eventId, payerIndex) {
     expenseDraft.error = `${guest.displayName} כבר נמצא ברשימת המשלמים.`;
     expenseDraft.inlinePayerGuestIndex = null;
     expenseDraft.inlinePayerGuestName = "";
-    persistState();
+    const result = await completedSaveResult(persistState());
+    if (!result?.ok) {
+      state = previousState;
+      expenseDraft = previousExpenseDraft;
+      expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
+    }
     render();
     reactivateDialogAfterRender(".expense-modal", "", dialogScrollTop);
     return;
@@ -16318,16 +16374,24 @@ function addInlinePayerGuest(eventId, payerIndex) {
   expenseDraft.inlinePayerGuestName = "";
   expenseDraft.error = "";
   rebalanceExpenseDraftPayers(payerIndex);
-  persistState();
+  const saveRequest = persistState();
   render();
   reactivateDialogAfterRender(
     ".expense-modal",
     `[data-action="expense-payer-amount"][data-index="${payerIndex}"]`,
     dialogScrollTop
   );
+  const result = await completedSaveResult(saveRequest);
+  if (!result?.ok) {
+    state = previousState;
+    expenseDraft = previousExpenseDraft;
+    expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
+    render();
+    reactivateDialogAfterRender(".expense-modal", "", dialogScrollTop);
+  }
 }
 
-function addInlineQuickItemGuest(eventId, itemIndex) {
+async function addInlineQuickItemGuest(eventId, itemIndex) {
   if (!expenseDraft || !Number.isInteger(itemIndex) || !expenseDraft.quickItems[itemIndex]) return;
 
   const event = getEvent(eventId);
@@ -16356,6 +16420,8 @@ function addInlineQuickItemGuest(eventId, itemIndex) {
     return;
   }
 
+  const previousState = cloneNavigationValue(state);
+  const previousExpenseDraft = cloneNavigationValue(expenseDraft);
   const { participant: guest } = resolveOfflineParticipant(name, "guest");
   if (activateParticipantForEvent(event, guest.id)) {
     recordEventActivity(event.id, "participant-added", {
@@ -16370,9 +16436,17 @@ function addInlineQuickItemGuest(eventId, itemIndex) {
   expenseDraft.quickInlineGuestIndex = null;
   expenseDraft.quickInlineGuestName = "";
   expenseDraft.error = "";
-  persistState();
+  const saveRequest = persistState();
   render();
   activateDialog(".expense-modal");
+  const result = await completedSaveResult(saveRequest);
+  if (!result?.ok) {
+    state = previousState;
+    expenseDraft = previousExpenseDraft;
+    expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
+    render();
+    activateDialog(".expense-modal");
+  }
 }
 
 function prepareEventShare(eventId) {
@@ -16818,8 +16892,15 @@ async function rotateCurrentEventInvite(eventId) {
     if (!attachOpenInviteToken(event, replacement.token)) {
       throw new Error("Open event invitation could not be attached");
     }
-    await saveSharedState(state);
+    const saveResult = await saveSharedState(state, { awaitCloud: true });
     markEventShareVerified(event, replacement.token, "server");
+    if (!saveResult?.ok || saveResult?.pending) {
+      const error = saveResult?.error instanceof Error
+        ? saveResult.error
+        : new Error("Replacement invitation is still syncing");
+      error.code ||= "EVENT_INVITE_SAVE_PENDING";
+      throw error;
+    }
     notice = "הקישור הישן בוטל וקישור חדש מוכן לשיתוף.";
   } catch (error) {
     emitOperationFailure("event_invite", { screen: "invite", error });
@@ -17102,7 +17183,9 @@ async function importStateBackup(file, trigger) {
   }
 }
 
-function restoreStateBackup(restoredState) {
+async function restoreStateBackup(restoredState) {
+  const previousState = state;
+  const previousScreen = screen;
   state = bindStateBackupToCurrentParticipant(restoredState, state);
   screen = { name: "home" };
   newEventDraft = null;
@@ -17112,9 +17195,21 @@ function restoreStateBackup(restoredState) {
   groupDraft = null;
   editingGroupDraft = null;
   mergeParticipantsDraft = null;
-  notice = "הגיבוי שוחזר.";
-  persistState();
+  notice = "משחזרים את הגיבוי…";
   render();
+  const result = await persistState({ awaitCloud: true });
+  if (!result?.ok) {
+    state = previousState;
+    screen = previousScreen;
+    notice = "לא הצלחנו לשחזר את הגיבוי. הנתונים הקיימים נשארו ללא שינוי.";
+    render();
+    return result;
+  }
+  notice = result?.pending
+    ? "הגיבוי שוחזר במכשיר ויסתנכרן אוטומטית."
+    : "הגיבוי שוחזר.";
+  render();
+  return result;
 }
 
 async function saveProfileFromDraft() {
@@ -17734,7 +17829,8 @@ function continueExpenseEntry(event) {
   activateExpenseEntryDialog();
 }
 
-function saveQuickExpenses(eventId) {
+async function saveQuickExpenses(eventId) {
+  if (!expenseDraft || expenseSaveInProgress) return;
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
     expenseDraft.error = editBlockedMessage(event);
@@ -17742,49 +17838,84 @@ function saveQuickExpenses(eventId) {
     return;
   }
 
-  const result = buildQuickItemExpenses({
-    items: expenseDraft.quickItems,
-    payerParticipantId: expenseDraft.quickPayerId,
-    participantIds: event.participantIds,
-    occurredOn: expenseDraft.occurredOn,
-    createdByParticipantId: state.currentParticipantId,
-    makeExpenseId: () => makeId("expense")
-  });
+  expenseSaveInProgress = true;
+  const previousState = cloneNavigationValue(state);
+  try {
+    const result = buildQuickItemExpenses({
+      items: expenseDraft.quickItems,
+      payerParticipantId: expenseDraft.quickPayerId,
+      participantIds: event.participantIds,
+      occurredOn: expenseDraft.occurredOn,
+      createdByParticipantId: state.currentParticipantId,
+      makeExpenseId: () => makeId("expense")
+    });
 
-  if (result.error) {
-    expenseDraft.error = result.error;
-    render();
-    activateDialog(".expense-modal");
-    return;
-  }
+    if (result.error) {
+      expenseDraft.error = result.error;
+      render();
+      activateDialog(".expense-modal");
+      return;
+    }
 
-  const validationError = result.expenses
-    .flatMap((expense) => validateExpense(expense, { participantIds: event.participantIds }))
-    .find(Boolean);
-  if (validationError) {
-    expenseDraft.error = validationError;
-    render();
-    activateDialog(".expense-modal");
-    return;
-  }
+    const validationError = result.expenses
+      .flatMap((expense) => validateExpense(expense, { participantIds: event.participantIds }))
+      .find(Boolean);
+    if (validationError) {
+      expenseDraft.error = validationError;
+      render();
+      activateDialog(".expense-modal");
+      return;
+    }
 
-  const previousTransfers = [...(event.transfers ?? [])];
-  event.expenses.unshift(...result.expenses);
-  for (const expense of result.expenses) {
-    recordEventActivity(
-      eventId,
-      "expense-created",
-      { entityId: expense.id, label: expense.name },
-      expense.updatedAt
-    );
+    const previousTransfers = [...(event.transfers ?? [])];
+    event.expenses.unshift(...result.expenses);
+    for (const expense of result.expenses) {
+      recordEventActivity(
+        eventId,
+        "expense-created",
+        { entityId: expense.id, label: expense.name },
+        expense.updatedAt
+      );
+    }
+    reconcileEventTransfers(event, previousTransfers);
+    const saveResult = await persistState();
+    if (!saveResult?.ok) {
+      state = previousState;
+      expenseDraft.error =
+        "הפריטים לא נשמרו כדי למנוע הבדל בין חברי האירוע. בדקו את החיבור ונסו שוב.";
+      render();
+      reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+      return saveResult;
+    }
+
+    publishReferralActivityAfterSave(saveResult, eventId, "expense-created");
+    const firstExpense = result.expenses[0];
+    if (firstExpense) {
+      emitProductMetric("expense_created", { screen: "expense" });
+      publishEventActivityAfterSave(
+        saveResult,
+        eventId,
+        "expense-created",
+        firstExpense.id
+      );
+    }
+    clearRememberedExpenseDraft(eventId);
+    const rewindSteps = expenseDialogRewindSteps();
+    expenseDraft = null;
+    notice = `${formatCount(result.expenses.length, "פריט נוסף", "פריטים נוספו")} לאירוע.`;
+    closeDialogWithHistory(rewindSteps);
+    return saveResult;
+  } catch (error) {
+    state = previousState;
+    if (expenseDraft) {
+      expenseDraft.error = "לא הצלחנו לשמור את הפריטים. אפשר לנסות שוב.";
+      render();
+      reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+    }
+    return { ok: false, error };
+  } finally {
+    expenseSaveInProgress = false;
   }
-  reconcileEventTransfers(event, previousTransfers);
-  persistState();
-  clearRememberedExpenseDraft(eventId);
-  const rewindSteps = expenseDialogRewindSteps();
-  expenseDraft = null;
-  notice = `${formatCount(result.expenses.length, "פריט נוסף", "פריטים נוספו")} לאירוע.`;
-  closeDialogWithHistory(rewindSteps);
 }
 
 async function deleteExpense(eventId, expenseId) {
@@ -18119,7 +18250,7 @@ async function toggleEventLock(eventId) {
   return result;
 }
 
-function toggleAdminEditMode(eventId) {
+async function toggleAdminEditMode(eventId) {
   const event = getEvent(eventId);
   if (!canCurrentParticipantManage(event)) {
     notice = "רק מנהל יכול לשנות הרשאות עריכה.";
@@ -18127,10 +18258,12 @@ function toggleAdminEditMode(eventId) {
     return;
   }
 
-  state = setEventAdminsCanEditOnly(state, eventId, !event.adminsCanEditOnly);
-  expenseDraft = null;
-  persistState();
-  render();
+  return setEventManagementMode(
+    eventId,
+    event.adminsCanEditOnly
+      ? EVENT_MANAGEMENT_COLLABORATIVE
+      : EVENT_MANAGEMENT_CENTRALIZED
+  );
 }
 
 async function leaveCurrentEvent(eventId) {
@@ -19848,7 +19981,7 @@ function recordEventActivity(
 
 function publishReferralActivityAfterSave(saveRequest, eventId, kind) {
   const sharedSpaceId = String(getEvent(eventId)?.sharedSpaceId ?? "").trim();
-  Promise.resolve(saveRequest)
+  completedSaveResult(saveRequest)
     .then((result) => {
       if (!result?.ok || result.mode !== "cloud" || !sharedSpaceId) return;
       document.dispatchEvent(
@@ -19866,7 +19999,7 @@ function publishEventActivityAfterSave(
   kind,
   activityId
 ) {
-  Promise.resolve(saveRequest)
+  completedSaveResult(saveRequest)
     .then(async (result) => {
       if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
         return;
@@ -19878,6 +20011,12 @@ function publishEventActivityAfterSave(
       });
     })
     .catch(() => {});
+}
+
+function completedSaveResult(saveRequest) {
+  return Promise.resolve(saveRequest).then((result) =>
+    result?.completion ? result.completion : result
+  );
 }
 
 function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0) {

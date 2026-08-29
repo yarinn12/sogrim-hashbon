@@ -112,7 +112,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "400" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "401" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));

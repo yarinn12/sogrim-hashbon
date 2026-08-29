@@ -210,6 +210,12 @@ test("native sharing publishes new events without rewriting established shared e
     app.indexOf("async function prepareSharedEventForInvitation"),
     app.indexOf("async function rotateCurrentEventInvite")
   );
+  const rotateInvite = app.slice(
+    app.indexOf("async function rotateCurrentEventInvite"),
+    app.indexOf("async function copyInviteLink")
+  );
+  assert.match(rotateInvite, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(rotateInvite, /!saveResult\?\.ok \|\| saveResult\?\.pending/);
   assert.match(
     publishBeforeInvite,
     /if \(!existingCredentials \|\| publishExisting\) \{/,

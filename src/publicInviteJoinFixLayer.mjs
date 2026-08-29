@@ -141,7 +141,11 @@ async function joinInviteWithName(displayName, errorNode) {
       displayName: participant?.displayName ?? displayName
     });
     saveState(nextState);
-    const saveResult = await saveSharedState(nextState);
+    const saveResult = await saveSharedState(nextState, { awaitCloud: true });
+    if (!saveResult?.ok && !saveResult?.partial) {
+      showJoinSaveError(errorNode);
+      return;
+    }
     if (!wasAlreadyParticipant && participant) {
       notifyJoinedEvent(saveResult, context.eventId, participant.id);
     }
@@ -200,6 +204,13 @@ function showNameError(errorNode) {
     errorNode.closest("form")?.querySelector('input[name="displayName"]') ??
     document.querySelector('[data-action="profile-name"]');
   input?.focus({ preventScroll: true });
+}
+
+function showJoinSaveError(errorNode) {
+  if (!errorNode) return;
+  errorNode.hidden = false;
+  errorNode.textContent =
+    "לא הצלחנו להשלים את ההצטרפות כרגע. בדקו את החיבור ונסו שוב.";
 }
 
 function reloadOnce(eventId) {

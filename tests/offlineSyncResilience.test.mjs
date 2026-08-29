@@ -1002,7 +1002,10 @@ test("a stalled cloud write returns control after the foreground budget without 
     const result = await store.saveSharedState(changedState);
     const elapsedMs = Date.now() - startedAt;
 
-    assert.deepEqual(result, { ok: true, mode: "queued", pending: true });
+    assert.equal(result.ok, true);
+    assert.equal(result.mode, "queued");
+    assert.equal(result.pending, true);
+    assert.ok(result.completion instanceof Promise);
     assert.ok(elapsedMs >= 1_000, `foreground budget returned too early (${elapsedMs}ms)`);
     assert.ok(elapsedMs < 3_000, `foreground budget blocked too long (${elapsedMs}ms)`);
     assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
@@ -1016,7 +1019,9 @@ test("a stalled cloud write returns control after the foreground budget without 
     );
     cloudRequestIsStalled = false;
     releaseStalledRequest?.();
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    const completion = await result.completion;
+    assert.equal(completion.ok, true);
+    assert.equal(completion.pending, true);
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);

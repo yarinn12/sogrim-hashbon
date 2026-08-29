@@ -1100,7 +1100,7 @@ test("adding an offline participant replaces stale participant feedback", async 
   const app = await readFile("src/app.mjs", "utf8");
   const addGuest = sourceBetween(
     app,
-    "function addGuestToEvent(eventId)",
+    "async function addGuestToEvent(eventId)",
     "function addInlinePayerGuest"
   );
 
@@ -1209,7 +1209,7 @@ test("expense payer selector can add a missing payer inline", async () => {
   assert.match(app, /ADD_PAYER_PARTICIPANT_VALUE/);
   assert.match(expenseForm[0], /data-action="expense-new-payer-name"/);
   assert.match(expenseForm[0], /data-action="expense-add-payer-guest"/);
-  assert.match(app, /addInlinePayerGuest\(target\.dataset\.eventId, Number\(target\.dataset\.index\)\)/);
+  assert.match(app, /await addInlinePayerGuest\(target\.dataset\.eventId, Number\(target\.dataset\.index\)\)/);
   assert.match(app, /expenseDraft\.payers\[payerIndex\]\.participantId = guest\.id/);
   assert.match(app, /expenseDraft\.sharedByParticipantIds\.push\(guest\.id\)/);
   assert.match(styles, /\.payer-inline-add/);

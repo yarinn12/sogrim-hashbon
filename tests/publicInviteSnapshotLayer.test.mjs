@@ -99,6 +99,7 @@ test("snapshot joining refreshes the account token before reading the event clou
       joinFlow.indexOf("saveState(state)")
   );
   assert.match(joinFlow, /if \(inviteJoinBusy\) return/);
+  assert.match(joinFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
   assert.match(joinFlow, /inviteJoinBusy = true/);
   assert.match(joinFlow, /button\.disabled = true/);
   assert.match(joinFlow, /finally \{[\s\S]*?inviteJoinBusy = false/);
@@ -118,6 +119,7 @@ test("the public join panel persists only a server-verified event", async () => 
   assert.match(joinFlow, /resolveEventInviteCredentials\(/);
   assert.match(joinFlow, /readSharedEventState\(/);
   assert.match(joinFlow, /mergeSharedEventIntoState\(/);
+  assert.match(joinFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
   assert.ok(
     joinFlow.indexOf("resolveEventInviteCredentials(") <
       joinFlow.indexOf("readSharedEventState(")
@@ -249,6 +251,7 @@ test("invite context is retained until the participant save reaches the shared e
   );
 
   assert.match(importFlow, /if \(!saveResult\?\.ok && !saveResult\?\.partial\) return false;/);
+  assert.match(importFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
   assert.ok(
     importFlow.indexOf("if (!saveResult?.ok && !saveResult?.partial) return false;") <
       importFlow.indexOf("clearPendingInviteUrl();")
@@ -293,6 +296,8 @@ test("public invite join fix connects a new visitor before the old profile save 
   assert.match(layer, /let inviteProfileJoinBusy = false/);
   assert.match(layer, /if \(!context \|\| inviteProfileJoinBusy\) return/);
   assert.match(layer, /setInviteProfileJoinBusy\(true\)/);
+  assert.match(layer, /saveSharedState\(nextState, \{ awaitCloud: true \}\)/);
+  assert.match(layer, /if \(!saveResult\?\.ok && !saveResult\?\.partial\)/);
   assert.match(layer, /let shouldReleaseBusy = true/);
   assert.match(layer, /shouldReleaseBusy = false/);
 });

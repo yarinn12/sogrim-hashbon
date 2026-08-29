@@ -260,7 +260,7 @@ test("the recovery page installs the current worker before reopening the app", a
   ]);
 
   assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=401"/);
-  assert.match(recovery, /const PWA_RELEASE = "400"/);
+  assert.match(recovery, /const PWA_RELEASE = "401"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);
@@ -275,4 +275,21 @@ test("service worker activates complete updates and claims installed apps", asyn
   assert.match(sw, /names\.filter\(\(name\) => name !== CACHE_NAME\)/);
   assert.match(sw, /self\.clients\.claim\(\)/);
   assert.match(sw, /addEventListener\("message"[\s\S]*?SKIP_WAITING[\s\S]*?self\.skipWaiting\(\)/);
+});
+
+test("every PWA update surface declares the exact same release", async () => {
+  const [manifest, page, worker, bootstrap, recovery] = await Promise.all([
+    readFile("manifest.webmanifest", "utf8"),
+    readFile("index.html", "utf8"),
+    readFile("sw.js", "utf8"),
+    readFile("src/pwaBootstrap.mjs", "utf8"),
+    readFile("src/pwaRecovery.mjs", "utf8")
+  ]);
+  const release = manifest.match(/pwa_release=(\d+)/)?.[1];
+  assert.ok(release, "manifest must declare a PWA release");
+  assert.match(page, new RegExp(`pwa_release=${release}`));
+  assert.match(worker, new RegExp(`const PWA_RELEASE = "${release}"`));
+  assert.match(worker, new RegExp(`settle-friends-live-v${release}`));
+  assert.match(bootstrap, new RegExp(`const PWA_RELEASE = "${release}"`));
+  assert.match(recovery, new RegExp(`const PWA_RELEASE = "${release}"`));
 });

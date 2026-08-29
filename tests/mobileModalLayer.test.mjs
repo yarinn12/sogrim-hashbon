@@ -63,7 +63,7 @@ test("expense entry focuses the first useful money control", async () => {
 
 test("dialog rerenders preserve modality, scroll position, and input focus", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const addGuestStart = app.indexOf("function addGuestToEvent(eventId)");
+  const addGuestStart = app.indexOf("async function addGuestToEvent(eventId)");
   const addGuestEnd = app.indexOf("function addInlinePayerGuest", addGuestStart);
   const addGuest = app.slice(addGuestStart, addGuestEnd);
 

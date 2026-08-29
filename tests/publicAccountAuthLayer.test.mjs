@@ -470,6 +470,9 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(layer, /scroll-padding-block-end: calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(layer, /new AbortController\(\)/);
   assert.match(layer, /controller\.abort\(\), 2500/);
+  assert.match(layer, /const GOOGLE_IDENTITY_SCRIPT_TIMEOUT_MS = 8_000/);
+  assert.match(layer, /script\.remove\(\);[\s\S]*?Google sign-in did not load in time/);
+  assert.match(layer, /accountStateChanged[\s\S]*?!saveResult\?\.ok[\s\S]*?ACCOUNT_WORKSPACE_SAVE_FAILED/);
   assert.match(
     layer,
     /\.account-email-toggle \{[\s\S]*?min-height: 48px;[\s\S]*?font-weight: 800;/

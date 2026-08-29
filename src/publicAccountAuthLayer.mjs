@@ -105,6 +105,7 @@ const ACCOUNT_CONFIG_RETRY_MS = 5_000;
 const EMPTY_ACCOUNT_CLOUD_WAIT_MS = 8_000;
 const OAUTH_PKCE_VERIFIER_KEY = "settle-friends-oauth-pkce-verifier";
 const GOOGLE_IDENTITY_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
+const GOOGLE_IDENTITY_SCRIPT_TIMEOUT_MS = 8_000;
 
 let runtimeConfig = null;
 let accountSession = null;
@@ -583,6 +584,17 @@ async function connectAccountToApp(
       })
     : Promise.resolve({ ok: true, mode: "unchanged" });
   const saveResult = await saveRequest;
+  if (
+    accountStateChanged &&
+    !saveResult?.ok &&
+    !saveResult?.partial
+  ) {
+    const error = saveResult?.error instanceof Error
+      ? saveResult.error
+      : new Error("Account workspace could not be saved");
+    error.code ||= "ACCOUNT_WORKSPACE_SAVE_FAILED";
+    throw error;
+  }
   const invitedEventWasDeleted = nextState.deletedEvents?.some(
     (item) => item.id === verifiedInvitedEventId
   );
@@ -1723,11 +1735,22 @@ function loadWebGoogleScript() {
 
   webGoogleScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const timeoutId = window.setTimeout(() => {
+      script.remove();
+      reject(new Error("Google sign-in did not load in time"));
+    }, GOOGLE_IDENTITY_SCRIPT_TIMEOUT_MS);
+    const finish = (callback, value) => {
+      window.clearTimeout(timeoutId);
+      callback(value);
+    };
     script.src = GOOGLE_IDENTITY_SCRIPT_SRC;
     script.async = true;
     script.defer = true;
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("Google sign-in is unavailable"));
+    script.onload = () => finish(resolve);
+    script.onerror = () => finish(
+      reject,
+      new Error("Google sign-in is unavailable")
+    );
     document.head.append(script);
   }).catch((error) => {
     webGoogleScriptPromise = null;

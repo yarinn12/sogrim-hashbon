@@ -16,5 +16,8 @@ test("profile keeps emergency backup support out of the everyday interface", asy
   assert.match(app, /exportStateBackup\(\)/);
   assert.match(app, /importStateBackup\(target\.files\[0\], target\)/);
   assert.match(app, /kind: "restore-backup"/);
-  assert.match(app, /restoreStateBackup\(action\.payload\.restoredState\)/);
+  assert.match(app, /await restoreStateBackup\(action\.payload\.restoredState\)/);
+  assert.match(app, /async function restoreStateBackup\(restoredState\)/);
+  assert.match(app, /persistState\(\{ awaitCloud: true \}\)/);
+  assert.match(app, /state = previousState/);
 });

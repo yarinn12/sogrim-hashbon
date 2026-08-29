@@ -8,6 +8,7 @@ import {
   buildNotificationDestination,
   notificationTargetFromPayload
 } from "./domain/notificationTargets.mjs";
+import { fetchWithTimeout } from "./data/fetchTimeout.mjs";
 
 const NATIVE_AUTH_CALLBACK = new URL(
   NATIVE_AUTH_PATH,
@@ -211,7 +212,12 @@ function createNativeCameraApi(cameraPlugin) {
 
       const webPath = String(media?.webPath ?? "").trim();
       if (!webPath) throw new Error("Native camera returned no image path");
-      const response = await fetch(webPath);
+      const response = await fetchWithTimeout(
+        globalThis.fetch,
+        webPath,
+        {},
+        10_000
+      );
       if (!response.ok) throw new Error("Native camera image could not be read");
       const blob = await response.blob();
       const format = String(media?.metadata?.format ?? "jpeg")

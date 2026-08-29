@@ -11,13 +11,17 @@ import {
 } from "./domain/inviteLinks.mjs";
 import { clearPendingInviteUrl, pendingInviteUrl } from "./data/pendingInvite.mjs";
 import { ensureNamedParticipant } from "./domain/userProfile.mjs";
+import { fetchWithTimeout } from "./data/fetchTimeout.mjs";
 
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 const STYLE_ID = "public-google-auth-layer-style";
+const GOOGLE_AUTH_TIMEOUT_MS = 10_000;
+const GOOGLE_SCRIPT_TIMEOUT_MS = 8_000;
 
 let googleScriptPromise = null;
 let googleInitialized = false;
 let googleClientId = "";
+let googleCredentialRequest = null;
 
 injectGoogleAuthStyle();
 setupGoogleAuthLayer();
@@ -88,6 +92,16 @@ function initializeGoogleAuth() {
 }
 
 async function handleGoogleCredential(response) {
+  if (googleCredentialRequest) return googleCredentialRequest;
+
+  const request = handleGoogleCredentialOnce(response).finally(() => {
+    if (googleCredentialRequest === request) googleCredentialRequest = null;
+  });
+  googleCredentialRequest = request;
+  return request;
+}
+
+async function handleGoogleCredentialOnce(response) {
   const form = document.querySelector("[data-public-profile-form]");
   const error = form?.querySelector("[data-public-profile-error]");
 
@@ -139,11 +153,16 @@ async function handleGoogleCredential(response) {
 }
 
 async function verifyGoogleCredential(credential) {
-  const response = await fetch("/api/auth/google", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ credential })
-  });
+  const response = await fetchWithTimeout(
+    globalThis.fetch,
+    "/api/auth/google",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ credential })
+    },
+    GOOGLE_AUTH_TIMEOUT_MS
+  );
   if (!response.ok) return null;
   const payload = await response.json();
   return payload?.profile ?? null;
@@ -155,12 +174,23 @@ function loadGoogleScript() {
 
   googleScriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
+    const timeoutId = window.setTimeout(() => {
+      script.remove();
+      reject(new Error("Google sign-in did not load in time"));
+    }, GOOGLE_SCRIPT_TIMEOUT_MS);
+    const finish = (callback, value) => {
+      window.clearTimeout(timeoutId);
+      callback(value);
+    };
     script.src = GOOGLE_SCRIPT_SRC;
     script.async = true;
     script.defer = true;
-    script.onload = resolve;
-    script.onerror = reject;
+    script.onload = () => finish(resolve);
+    script.onerror = (error) => finish(reject, error);
     document.head.append(script);
+  }).catch((error) => {
+    googleScriptPromise = null;
+    throw error;
   });
 
   return googleScriptPromise;
