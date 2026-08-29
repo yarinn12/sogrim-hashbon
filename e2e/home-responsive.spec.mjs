@@ -41,6 +41,27 @@ const populatedAccountState = {
   ]
 };
 
+const newlyJoinedOldEvent = {
+  id: "event-1720000000000-newly-joined",
+  name: "אירוע ישן שהצטרפתי אליו עכשיו",
+  eventType: "standard",
+  currency: "ILS",
+  participantIds: [OWNER_ID],
+  adminIds: [],
+  createdByParticipantId: "another-account",
+  createdAt: "2024-07-03T08:00:00.000Z",
+  updatedAt: "2024-07-03T08:00:00.000Z",
+  membershipUpdatedAtByParticipant: {
+    [OWNER_ID]: "2026-08-29T12:00:00.000Z"
+  },
+  roundSettlementTransfers: true,
+  directSettlementTransfers: false,
+  locked: false,
+  expenses: [],
+  transfers: [],
+  activityLog: []
+};
+
 test.beforeEach(async ({ page, request }) => {
   await request.post("/api/reset");
   await request.put("/api/state", { data: emptyAccountState });
@@ -169,6 +190,25 @@ test("the first-event action is identical to the regular new-event action", asyn
   expect(emptyAction.text).toBe("אירוע חדש");
   expect(populatedAction.text).toBe("אירוע חדש");
   expect(emptyAction.presentation).toEqual(populatedAction.presentation);
+});
+
+test("an old event joined today appears first on home", async ({ page, request }) => {
+  const syncedState = {
+    ...populatedAccountState,
+    events: [...populatedAccountState.events, newlyJoinedOldEvent]
+  };
+  await request.put("/api/state", { data: syncedState });
+  await page.addInitScript((state) => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+  }, syncedState);
+  await page.goto("/");
+  await expect(page.locator(".event-row")).toHaveCount(2);
+  await expect(
+    page.locator(`.event-row[data-event-id="${newlyJoinedOldEvent.id}"]`)
+  ).toBeVisible();
+  await expect(page.locator(".event-row").first()).toContainText(
+    newlyJoinedOldEvent.name
+  );
 });
 
 async function homeCreateActionPresentation(page) {

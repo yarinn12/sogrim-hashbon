@@ -118,6 +118,7 @@ export function reconcileSettlementTransfers(
   const pendingTransfers = buildOutstandingTransfers(
     pendingBalances,
     paidTransfers,
+    previousTransfers,
     directTransfers,
     directRoutePreferences,
     roundTransfers ? WHOLE_CURRENCY_UNIT : 1
@@ -386,6 +387,7 @@ function addNettedRoutePreference(routeAmounts, transfer) {
 function buildOutstandingTransfers(
   balances,
   paidTransfers,
+  previousTransfers,
   directTransfers,
   directRoutePreferences = new Map(),
   directTransferUnit = 1
@@ -408,24 +410,114 @@ function buildOutstandingTransfers(
     })
   );
 
+  let preferred = baseline;
   if (
     blockedRoutes.size === 0 ||
     !baseline.some((transfer) =>
       blockedRoutes.has(settlementTransferRoute(transfer))
     )
   ) {
-    return baseline;
+    preferred = baseline;
+  } else {
+    const rerouted = buildTransfersAvoidingRoutes(
+      balances,
+      blockedRoutes,
+      buildTransfers
+    );
+    preferred = amountOnRoutes(rerouted, blockedRoutes) <
+        amountOnRoutes(baseline, blockedRoutes)
+      ? rerouted
+      : baseline;
   }
 
-  const rerouted = buildTransfersAvoidingRoutes(
+  if (directTransfers) return preferred;
+
+  const stableCandidate = buildTransfersFavoringPreviousRoutes(
     balances,
     blockedRoutes,
+    previousTransfers,
     buildTransfers
   );
-  return amountOnRoutes(rerouted, blockedRoutes) <
-      amountOnRoutes(baseline, blockedRoutes)
-    ? rerouted
-    : baseline;
+  const preferredOverlap = previousRouteOverlap(preferred, previousTransfers);
+  const stableOverlap = previousRouteOverlap(stableCandidate, previousTransfers);
+  const doesNotReintroduceBlockedRoutes =
+    amountOnRoutes(stableCandidate, blockedRoutes) <=
+    amountOnRoutes(preferred, blockedRoutes);
+
+  return stableOverlap > preferredOverlap &&
+      stableCandidate.length <= preferred.length + 1 &&
+      doesNotReintroduceBlockedRoutes
+    ? stableCandidate
+    : preferred;
+}
+
+function buildTransfersFavoringPreviousRoutes(
+  balances,
+  blockedRoutes,
+  previousTransfers,
+  buildTransfers
+) {
+  const remainingBalances = { ...(balances ?? {}) };
+  const preservedTransfers = [];
+
+  for (const previousTransfer of previousTransfers ?? []) {
+    const route = settlementTransferRoute(previousTransfer);
+    if (
+      previousTransfer?.status === "paid" ||
+      !route ||
+      blockedRoutes.has(route) ||
+      !isPositiveAgoraAmount(previousTransfer.amount)
+    ) {
+      continue;
+    }
+
+    const debtorAmount = Math.max(
+      0,
+      -(remainingBalances[previousTransfer.fromParticipantId] ?? 0)
+    );
+    const creditorAmount = Math.max(
+      0,
+      remainingBalances[previousTransfer.toParticipantId] ?? 0
+    );
+    const amount = Math.min(
+      previousTransfer.amount,
+      debtorAmount,
+      creditorAmount
+    );
+    if (!isPositiveAgoraAmount(amount)) continue;
+
+    preservedTransfers.push({
+      id: transferIdFor({ ...previousTransfer, amount }),
+      fromParticipantId: previousTransfer.fromParticipantId,
+      toParticipantId: previousTransfer.toParticipantId,
+      amount,
+      status: "pending"
+    });
+    remainingBalances[previousTransfer.fromParticipantId] += amount;
+    remainingBalances[previousTransfer.toParticipantId] -= amount;
+  }
+
+  const remainingTransfers = blockedRoutes.size
+    ? buildTransfersAvoidingRoutes(
+        remainingBalances,
+        blockedRoutes,
+        buildTransfers
+      )
+    : buildTransfers(remainingBalances);
+  return combineTransfersByRoute([
+    ...preservedTransfers,
+    ...remainingTransfers
+  ]);
+}
+
+function previousRouteOverlap(transfers, previousTransfers) {
+  const previousRoutes = new Set(
+    (previousTransfers ?? [])
+      .filter((transfer) => transfer?.status !== "paid")
+      .map(settlementTransferRoute)
+      .filter(Boolean)
+  );
+  return amountOnRoutes(transfers, previousRoutes);
 }
 
 function buildTransfersAvoidingRoutes(balances, blockedRoutes, buildTransfers) {

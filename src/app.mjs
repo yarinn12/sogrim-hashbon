@@ -218,6 +218,7 @@ import {
   eventAdminIds
 } from "./domain/permissions.mjs";
 import {
+  eventRelevanceTimestamp,
   visibleEventsForParticipant,
   visibleGroupsForParticipant
 } from "./domain/personalMemory.mjs";
@@ -261,6 +262,17 @@ const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 const RESUME_SYNC_COOLDOWN_MS = 5_000;
 const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
+const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
+  "home",
+  "event",
+  "settlement",
+  "notifications",
+  "profile",
+  "groups",
+  "people",
+  "friend-profile",
+  "admin-overview"
+]);
 const OWN_PROFILE_STARTUP_WAIT_MS = 3_000;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
@@ -1986,7 +1998,12 @@ function renderInviteProfilePreview(invitedEvent) {
 
 function renderHome() {
   const sortedEvents = visibleEventsForParticipant(state, state.currentParticipantId)
-    .sort((a, b) => creationTimestamp(b.createdAt, b.id) - creationTimestamp(a.createdAt, a.id));
+    .sort(
+      (a, b) =>
+        eventRelevanceTimestamp(b, state.currentParticipantId) -
+          eventRelevanceTimestamp(a, state.currentParticipantId) ||
+        creationTimestamp(b.createdAt, b.id) - creationTimestamp(a.createdAt, a.id)
+    );
   const homeDialogEvent =
     eventDialog?.kind === "share" ? getEvent(eventDialog.eventId) : null;
   const statusCounts = countEventsByStatus(sortedEvents);
@@ -4229,7 +4246,7 @@ function renderEventCover(event) {
   return `
     <figure class="event-cover-image">
       <img src="${escapeAttribute(event.coverImage)}" alt="תמונת האירוע ${escapeAttribute(event.name)}" />
-      ${canCurrentParticipantEdit(event) ? `
+      ${canCurrentParticipantManage(event) ? `
         <details class="event-cover-actions-menu" data-event-id="${escapeAttribute(event.id)}">
           <summary class="event-cover-menu-button" aria-label="החלפה או הסרה של תמונת האירוע" title="אפשרויות תמונה">${iconSvg("more")}</summary>
           <div class="event-cover-actions-panel">
@@ -5049,12 +5066,9 @@ function renderEventParticipantAdminControl(event, participant) {
   const canDisable = !isAdmin || adminIds.length > 1;
   const enabled =
     canManage &&
-    !event.locked &&
     participantConnectionStatus(participant).connected &&
     canDisable;
-  const description = event.locked
-    ? "צריך לפתוח את האירוע לעריכה לפני שינוי מנהלים"
-    : !canDisable
+  const description = !canDisable
       ? "חייב להישאר לפחות מנהל אחד"
       : "יכול לערוך הוצאות ומשתתפים";
 
@@ -6591,7 +6605,6 @@ function renderEventShareFriends(event, canEdit) {
 
 function renderEventSettingsDialog(event) {
   const canManage = canCurrentParticipantManage(event);
-  const canEdit = canCurrentParticipantEdit(event);
   const canLeave = canLeaveEvent(state, event.id, state.currentParticipantId);
   const adminNames =
     eventAdminIds(state, event)
@@ -6629,13 +6642,13 @@ function renderEventSettingsDialog(event) {
         <div class="event-cover-settings-actions event-cover-source-grid">
           <label class="secondary-button event-cover-upload">
             <span>מהגלריה</span>
-            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" hidden ${!canEdit ? "disabled" : ""} />
+            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" hidden ${!canManage ? "disabled" : ""} />
           </label>
           <label class="secondary-button event-cover-upload">
             <span>מצלמה</span>
-            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" capture="environment" hidden ${!canEdit ? "disabled" : ""} />
+            <input data-action="event-cover-image" data-event-id="${escapeAttribute(event.id)}" type="file" accept="image/*" capture="environment" hidden ${!canManage ? "disabled" : ""} />
           </label>
-          ${event.coverImage && canEdit ? `<button class="secondary-button" type="button" data-action="remove-event-cover" data-event-id="${escapeAttribute(event.id)}">הסר</button>` : ""}
+          ${event.coverImage && canManage ? `<button class="secondary-button" type="button" data-action="remove-event-cover" data-event-id="${escapeAttribute(event.id)}">הסר</button>` : ""}
         </div>
       </section>
       <div class="event-settings-menu">
@@ -9302,7 +9315,7 @@ function compressProfileAvatarImage(croppedCanvas) {
 
 async function saveEventCoverImage(eventId, file) {
   const event = getEvent(eventId);
-  if (!event || !canCurrentParticipantEdit(event)) return;
+  if (!event || !canCurrentParticipantManage(event)) return;
   if (file.type && !file.type.startsWith("image/")) {
     notice = "אפשר לבחור קובץ תמונה בלבד.";
     render();
@@ -9409,6 +9422,8 @@ async function applyExpenseAttachmentImage(file) {
 }
 
 async function updateEventCoverImage(eventId, coverImage) {
+  const event = getEvent(eventId);
+  if (!event || !canCurrentParticipantManage(event)) return false;
   const previousState = state;
   const updatedAt = new Date().toISOString();
   state = {
@@ -11249,6 +11264,7 @@ async function handleClick(event) {
     editingGroupDraft = null;
     mergeParticipantsDraft = null;
     render();
+    requestResumeSync({ force: true }).catch(() => {});
   }
 
   if (action === "save-profile") {
@@ -18751,8 +18767,6 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   let message = "";
   if (!canCurrentParticipantManage(event)) {
     message = "רק מנהל אירוע יכול לשנות הרשאות ניהול.";
-  } else if (event.locked) {
-    message = "צריך לפתוח את האירוע לעריכה לפני שמשנים מנהלים.";
   } else if (!participantConnectionStatus(participant).connected) {
     message = "אפשר להגדיר כמנהל רק משתמש שמחובר לאפליקציה.";
   } else {
@@ -20677,13 +20691,18 @@ function requestVisibleEventSync() {
   if (
     document.visibilityState !== "visible" ||
     !appBootHydrated ||
-    !["home", "event", "settlement"].includes(screen.name) ||
+    !VISIBLE_BACKGROUND_SYNC_SCREENS.has(screen.name) ||
     expenseDraft ||
     eventDialog ||
     importantActionDialog ||
     eventStatusMenu ||
     settlementCelebration ||
-    settlementCloseConfirmation
+    settlementCloseConfirmation ||
+    profileNameEditing ||
+    profileUsernameEditing ||
+    groupDraft ||
+    editingGroupDraft ||
+    mergeParticipantsDraft
   ) {
     return Promise.resolve();
   }

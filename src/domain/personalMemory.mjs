@@ -6,6 +6,20 @@ export function visibleEventsForParticipant(state, participantId) {
   );
 }
 
+export function eventRelevanceTimestamp(event, participantId) {
+  const membershipTimestamp = timestamp(
+    event?.membershipUpdatedAtByParticipant?.[participantId]
+  );
+  if (membershipTimestamp > 0) return membershipTimestamp;
+
+  const createdTimestamp = timestamp(event?.createdAt);
+  if (createdTimestamp > 0) return createdTimestamp;
+
+  const eventIdTimestamp = String(event?.id ?? "").match(/^event-(\d{10,})-/)?.[1];
+  const numericEventIdTimestamp = Number(eventIdTimestamp);
+  return Number.isFinite(numericEventIdTimestamp) ? numericEventIdTimestamp : 0;
+}
+
 export function visibleGroupsForParticipant(state, participantId) {
   if (!participantId) return [];
 
@@ -55,4 +69,9 @@ function eventBelongsToParticipant(event, participantId) {
       event.adminIds?.includes(participantId) ||
       event.createdByParticipantId === participantId
   );
+}
+
+function timestamp(value) {
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : 0;
 }

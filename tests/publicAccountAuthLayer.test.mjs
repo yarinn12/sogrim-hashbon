@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=399"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=400"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -458,6 +458,14 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(
     layer,
     /@media \(max-width: 760px\)[\s\S]*?\.account-auth-shell \{[\s\S]*?overflow: visible;/
+  );
+  assert.match(
+    layer,
+    /\(min-width: 761px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?\.account-auth-brand \{[\s\S]*?safe-area-inset-top/
+  );
+  assert.match(
+    layer,
+    /iPad home-screen apps[\s\S]*?\.account-auth-shell \{[\s\S]*?width: min\(100%, 430px\);/
   );
   assert.match(layer, /scroll-padding-block-end: calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(layer, /new AbortController\(\)/);

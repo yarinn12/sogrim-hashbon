@@ -13,7 +13,14 @@ test("open shared events refresh quietly while the app remains visible", () => {
   );
   assert.match(
     appSource,
-    /function requestVisibleEventSync\(\) \{[\s\S]*\!\["home", "event", "settlement"\]\.includes\(screen\.name\)[\s\S]*expenseDraft[\s\S]*eventDialog[\s\S]*return requestResumeSync\(\);[\s\S]*\}/
+    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*eventDialog[\s\S]*profileNameEditing[\s\S]*return requestResumeSync\(\);[\s\S]*\}/
+  );
+});
+
+test("opening home forces an immediate shared state refresh", () => {
+  assert.match(
+    appSource,
+    /if \(action === "home"\) \{[\s\S]*screen = \{ name: "home" \};[\s\S]*render\(\);[\s\S]*requestResumeSync\(\{ force: true \}\)\.catch/
   );
 });
 test("a received push forces the shared event to refresh before the inbox opens", () => {

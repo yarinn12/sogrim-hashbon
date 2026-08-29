@@ -3838,7 +3838,8 @@ function injectStyle() {
       pointer-events: none;
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 760px),
+      (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
       .account-auth-gate {
         place-items: stretch;
         padding: 0;
@@ -3998,6 +3999,21 @@ function injectStyle() {
         bottom: 0;
         padding-top: 14px;
         background: #ffffff;
+      }
+    }
+
+    /* iPad home-screen apps use tablet CSS widths even when the intended UI is phone-like. */
+    @media (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+      .account-auth-gate {
+        justify-items: center;
+        padding-inline:
+          max(16px, env(safe-area-inset-left))
+          max(16px, env(safe-area-inset-right));
+        background: #f4f7f5;
+      }
+
+      .account-auth-shell {
+        width: min(100%, 430px);
       }
     }
   `;

@@ -1415,6 +1415,32 @@ test("event cover supports reliable gallery and camera replacement", async () =>
   assert.match(app, /settingsFieldUpdatedAt: \{[\s\S]*coverImage: updatedAt/);
 });
 
+test("closed events keep non-financial manager controls available", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const cover = sourceBetween(
+    app,
+    "function renderEventCover(event)",
+    "function renderEventEmptyExpenseState"
+  );
+  const settings = sourceBetween(
+    app,
+    "function renderEventSettingsDialog(event)",
+    "function renderEventSettingsManagementDialog(event)"
+  );
+  const adminToggle = sourceBetween(
+    app,
+    "async function toggleEventParticipantAdmin(eventId, participantId, enabled)",
+    "async function setEventRoundingMode(eventId, mode)"
+  );
+
+  assert.match(cover, /canCurrentParticipantManage\(event\)/);
+  assert.doesNotMatch(cover, /canCurrentParticipantEdit\(event\)/);
+  assert.match(settings, /hidden \$\{!canManage \? "disabled" : ""\}/);
+  assert.doesNotMatch(settings, /!canEdit/);
+  assert.doesNotMatch(adminToggle, /event\.locked/);
+  assert.match(adminToggle, /canCurrentParticipantManage\(event\)/);
+});
+
 test("event settings let managers choose direct payer reimbursements", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const ledgerWorkspace = await readFile(

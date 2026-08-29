@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  eventRelevanceTimestamp,
   visibleEventsForParticipant,
   visibleGroupsForParticipant
 } from "../src/domain/personalMemory.mjs";
@@ -66,6 +67,25 @@ const state = {
     }
   ]
 };
+
+test("a newly joined old event is ranked by the participant membership time", () => {
+  const oldEvent = {
+    id: "event-1720000000000-old",
+    createdAt: "2024-07-03T00:00:00.000Z",
+    membershipUpdatedAtByParticipant: {
+      yarin: "2026-08-29T12:00:00.000Z"
+    }
+  };
+
+  assert.equal(
+    eventRelevanceTimestamp(oldEvent, "yarin"),
+    Date.parse("2026-08-29T12:00:00.000Z")
+  );
+  assert.equal(
+    eventRelevanceTimestamp(oldEvent, "dani"),
+    Date.parse("2024-07-03T00:00:00.000Z")
+  );
+});
 
 test("personal event memory only shows events connected to the current user", () => {
   assert.deepEqual(

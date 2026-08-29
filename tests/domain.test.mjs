@@ -1355,6 +1355,56 @@ test("editing below an already paid amount creates a balancing reverse transfer"
   assert.deepEqual(repeated.transfers, result.transfers);
 });
 
+test("smart settlement keeps familiar routes after a small expense change", () => {
+  const people = ["a", "b", "c", "d", "e"].map((id) => ({
+    id,
+    displayName: id.toUpperCase()
+  }));
+  const originalExpenses = [
+    {
+      id: "original",
+      total: 20000,
+      payers: [
+        { participantId: "d", amount: 10000 },
+        { participantId: "e", amount: 10000 }
+      ],
+      sharedByParticipantIds: ["a", "b"]
+    }
+  ];
+  const previous = reconcileSettlementTransfers(people, originalExpenses).transfers;
+  const changedExpenses = [
+    ...originalExpenses,
+    {
+      id: "small-change",
+      total: 1000,
+      payers: [{ participantId: "a", amount: 1000 }],
+      sharedByParticipantIds: ["e"]
+    }
+  ];
+
+  const result = reconcileSettlementTransfers(
+    people,
+    changedExpenses,
+    previous
+  );
+  assert.deepEqual(
+    result.transfers.map(({ fromParticipantId, toParticipantId, amount }) => ({
+      fromParticipantId,
+      toParticipantId,
+      amount
+    })),
+    [
+      { fromParticipantId: "a", toParticipantId: "d", amount: 9000 },
+      { fromParticipantId: "b", toParticipantId: "e", amount: 9000 },
+      { fromParticipantId: "b", toParticipantId: "d", amount: 1000 }
+    ]
+  );
+  assert.deepEqual(
+    reconcileSettlementTransfers(people, changedExpenses, result.transfers).transfers,
+    result.transfers
+  );
+});
+
 test("duplicate paid history is applied only once", () => {
   const people = [
     { id: "a", displayName: "A" },

@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.08"
+        default: "4.09"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "130"
+        default: "131"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "חיזקנו את יצירת האירועים והסנכרון בין מכשירים, כך שחברים מחוברים מקבלים את האירוע מיד וברציפות, ושיפרנו את שחזור סביבת החשבון לאחר התחברות."
+        default: "שיפרנו את הופעת האירועים מיד לאחר הזמנה, חיזקנו את הסנכרון בין מכשירים, ייצבנו את מסלולי הקיזוז החכם ושיפרנו את תצוגת מסך הכניסה באייפד."
 
 permissions:
   contents: read
