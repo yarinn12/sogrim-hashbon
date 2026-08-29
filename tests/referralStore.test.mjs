@@ -126,6 +126,17 @@ test("referral status preserves an expired-session response for one safe retry",
   );
 });
 
+test("referral status releases a hanging entitlement request", async () => {
+  await assert.rejects(
+    loadReferralProgramStatus(
+      accountConfig(),
+      async () => new Promise(() => {}),
+      5
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+});
+
 function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
   return {
     ok,

@@ -233,6 +233,38 @@ test("restore skips an invalid purchase and restores the next active one", async
   }
 });
 
+test("purchase verification releases a hanging billing request", async () => {
+  const previousCapacitor = globalThis.Capacitor;
+  globalThis.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "android",
+    Plugins: {
+      PremiumBilling: {
+        restoreSubscriptions: async () => ({
+          purchases: [{
+            productId: PRODUCT_ID,
+            purchaseToken: "active-purchase-token-with-enough-entropy",
+            purchaseState: "purchased"
+          }]
+        })
+      }
+    }
+  };
+
+  try {
+    await assert.rejects(
+      restorePremium(
+        clientBillingRuntimeConfig(),
+        async () => new Promise(() => {}),
+        5
+      ),
+      (error) => error?.code === "NETWORK_TIMEOUT"
+    );
+  } finally {
+    globalThis.Capacitor = previousCapacitor;
+  }
+});
+
 test("detached Play purchase updates are filtered to the Premium product", async () => {
   const previousCapacitor = globalThis.Capacitor;
   let nativeListener = null;

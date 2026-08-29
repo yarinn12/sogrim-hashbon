@@ -1,3 +1,8 @@
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
+
 const FEEDBACK_CATEGORIES = new Set(["bug", "clarity", "idea"]);
 const MIN_MESSAGE_LENGTH = 10;
 const MAX_MESSAGE_LENGTH = 1200;
@@ -9,7 +14,8 @@ export function appFeedbackAvailable(config) {
 export async function submitAppFeedback(
   config,
   { category, message, context = {} },
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 ) {
   const identity = feedbackIdentity(config);
   if (!identity) throw new Error("Sign in is required");
@@ -17,7 +23,8 @@ export async function submitAppFeedback(
   const normalizedCategory = normalizeFeedbackCategory(category);
   const normalizedMessage = normalizeFeedbackMessage(message);
   const normalizedContext = normalizeFeedbackContext(context);
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${identity.url}/rest/v1/rpc/submit_app_feedback`,
     {
       method: "POST",
@@ -32,7 +39,8 @@ export async function submitAppFeedback(
         p_message: normalizedMessage,
         p_context: normalizedContext
       })
-    }
+    },
+    timeoutMs
   );
 
   if (!response.ok) throw new Error("Feedback could not be submitted");

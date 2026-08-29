@@ -1,7 +1,13 @@
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
+
 export async function sendPaymentReminder(
   config,
   { eventId, transferId },
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 ) {
   const account = config?.storage?.account;
   const normalizedEventId = String(eventId ?? "").trim();
@@ -15,7 +21,8 @@ export async function sendPaymentReminder(
     return { ok: false, reason: "unavailable" };
   }
 
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${config?.apiBaseUrl ?? ""}/api/notifications/payment-reminder`,
     {
       method: "POST",
@@ -27,7 +34,8 @@ export async function sendPaymentReminder(
         eventId: normalizedEventId,
         transferId: normalizedTransferId
       })
-    }
+    },
+    timeoutMs
   );
   const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;

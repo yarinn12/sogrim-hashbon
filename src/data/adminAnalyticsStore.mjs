@@ -1,3 +1,8 @@
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
+
 const DEFAULT_WINDOW_DAYS = 30;
 const MAX_WINDOW_DAYS = 90;
 
@@ -5,7 +10,8 @@ export async function loadAdminAnalyticsOverview(
   config,
   {
     windowDays = DEFAULT_WINDOW_DAYS,
-    fetchImpl = fetch
+    fetchImpl = fetch,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
   } = {}
 ) {
   const accessToken = String(config?.storage?.account?.accessToken ?? "").trim();
@@ -14,14 +20,16 @@ export async function loadAdminAnalyticsOverview(
   }
 
   const apiBaseUrl = String(config?.apiBaseUrl ?? "").replace(/\/+$/, "");
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${apiBaseUrl}/api/admin/overview?days=${normalizeWindowDays(windowDays)}`,
     {
       headers: {
         authorization: `Bearer ${accessToken}`
       },
       cache: "no-store"
-    }
+    },
+    timeoutMs
   );
   const payload = await response.json().catch(() => ({}));
 

@@ -309,6 +309,23 @@ test("product metrics retry transient failures and drain large queues in bounded
   stop();
 });
 
+test("product metrics recover when a transport request never responds", async () => {
+  const harness = createTransportHarness({
+    fetchImpl: async () => new Promise(() => {})
+  });
+  harness.options.requestTimeoutMs = 5;
+
+  const stop = startProductMetricTransport(harness.options);
+  await harness.runNextTimer();
+
+  assert.equal(
+    harness.timerCount(),
+    1,
+    "a timed-out metrics batch should return to the bounded retry queue"
+  );
+  stop();
+});
+
 test("product metrics collapse identical client error storms without losing later errors", async () => {
   const requests = [];
   let currentTime = NOW;

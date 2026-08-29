@@ -19347,11 +19347,7 @@ async function publishEventInvitation(
   rememberPendingEventMembershipInvitation(eventId, participant.id);
   try {
     await preparePrivateEventInvitation(eventId);
-    const config = runtimeConfig?.storage?.account?.accessToken
-      ? runtimeConfig
-      : await loadRuntimeConfig();
-    runtimeConfig = config;
-    const result = await sendEventActivityNotification(config, {
+    const result = await sendEventActivityNotificationWithAccountRecovery({
       eventId,
       activityId: participant.id,
       kind: "event-invite"
@@ -19385,6 +19381,43 @@ async function publishEventInvitation(
     }
     return { ok: false, error };
   }
+}
+
+async function sendEventActivityNotificationWithAccountRecovery(payload) {
+  const initialConfig = await loadRuntimeConfig();
+  runtimeConfig = initialConfig;
+  const expectedUserId = String(
+    initialConfig?.storage?.account?.userId ?? ""
+  ).trim();
+  const request = () => sendEventActivityNotification(runtimeConfig, payload);
+
+  try {
+    return await request();
+  } catch (error) {
+    if (!eventInviteAuthRefreshRequired(error) || !expectedUserId) {
+      throw error;
+    }
+  }
+
+  const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+  if (!refreshedSession?.access_token) {
+    const error = new Error("Account session is unavailable");
+    error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+
+  const freshConfig = await loadRuntimeConfig();
+  const freshUserId = String(
+    freshConfig?.storage?.account?.userId ?? ""
+  ).trim();
+  if (freshUserId !== expectedUserId) {
+    const error = new Error("Account changed during notification recovery");
+    error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+
+  runtimeConfig = freshConfig;
+  return request();
 }
 
 function pendingEventMembershipOwnerId() {
@@ -19838,11 +19871,7 @@ function publishEventActivityAfterSave(
       if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
         return;
       }
-      const config = runtimeConfig?.storage?.account?.accessToken
-        ? runtimeConfig
-        : await loadRuntimeConfig();
-      runtimeConfig = config;
-      await sendEventActivityNotification(config, {
+      await sendEventActivityNotificationWithAccountRecovery({
         eventId,
         activityId,
         kind

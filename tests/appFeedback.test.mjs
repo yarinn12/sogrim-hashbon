@@ -89,6 +89,21 @@ test("feedback is inserted as the signed-in user without a read response", async
   assert.equal(body.p_context.email, undefined);
 });
 
+test("feedback submission releases a hanging mobile request", async () => {
+  await assert.rejects(
+    submitAppFeedback(
+      config,
+      {
+        category: "bug",
+        message: "הטופס נשאר פתוח זמן רב מדי"
+      },
+      async () => new Promise(() => {}),
+      5
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+});
+
 test("feedback storage is write-only and account scoped", async () => {
   const [schema, applySchema, accountLayer, bridge, serviceWorker, privacy] =
     await Promise.all([

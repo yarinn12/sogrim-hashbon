@@ -2,6 +2,10 @@ import {
   accountStorageIdentityFromSession,
   loadStoredAccountSession
 } from "./accountAuth.mjs";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
 
 const PUSH_TOKEN_STORAGE_PREFIX = "settle-friends-push-token";
 const PUSH_PREFERENCES_STORAGE_PREFIX = "settle-friends-push-preferences";
@@ -98,7 +102,8 @@ export async function registerPushDevice(
     preferences = defaultPushPreferences(),
     appVersion = ""
   },
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 ) {
   const account = currentPushAccount(config);
   const normalizedToken = normalizePushToken(token);
@@ -107,7 +112,8 @@ export async function registerPushDevice(
     return { ok: false, reason: "unavailable" };
   }
 
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${config.storage.url}/rest/v1/rpc/register_push_device`,
     {
       method: "POST",
@@ -118,11 +124,15 @@ export async function registerPushDevice(
         p_preferences: normalizePushPreferences(preferences),
         p_app_version: String(appVersion ?? "").trim().slice(0, 32) || null
       })
-    }
+    },
+    timeoutMs
   );
 
   if (!response.ok) {
-    throw new Error(`Push device registration failed (${response.status})`);
+    const error = new Error(`Push device registration failed (${response.status})`);
+    error.status = response.status;
+    error.code = response.status === 401 ? "AUTH_REQUIRED" : "PUSH_REGISTRATION_FAILED";
+    throw error;
   }
 
   return { ok: true, userId: account.userId };
@@ -131,23 +141,29 @@ export async function registerPushDevice(
 export async function disablePushDevice(
   config,
   token,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 ) {
   const account = currentPushAccount(config);
   const normalizedToken = normalizePushToken(token);
   if (!account || !normalizedToken) return { ok: false, reason: "unavailable" };
 
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${config.storage.url}/rest/v1/rpc/disable_push_device`,
     {
       method: "POST",
       headers: pushHeaders(config, account.accessToken),
       body: JSON.stringify({ p_token: normalizedToken })
-    }
+    },
+    timeoutMs
   );
 
   if (!response.ok) {
-    throw new Error(`Push device disable failed (${response.status})`);
+    const error = new Error(`Push device disable failed (${response.status})`);
+    error.status = response.status;
+    error.code = response.status === 401 ? "AUTH_REQUIRED" : "PUSH_DISABLE_FAILED";
+    throw error;
   }
 
   return { ok: true, userId: account.userId };

@@ -4,6 +4,10 @@ import {
 } from "../domain/entitlements.mjs";
 import { normalizeReferralCode } from "../domain/referralCodes.mjs";
 import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
 
 export { normalizeReferralCode };
 
@@ -62,7 +66,12 @@ function referralCodeFromPath(pathname) {
   );
 }
 
-export async function claimReferral(config, referralCode, fetchImpl = fetch) {
+export async function claimReferral(
+  config,
+  referralCode,
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+) {
   const code = normalizeReferralCode(referralCode);
   if (!referralProgramAvailable(config)) {
     throw new Error("Sign in is required");
@@ -73,11 +82,17 @@ export async function claimReferral(config, referralCode, fetchImpl = fetch) {
     config,
     "claim_referral",
     { p_referral_code: code },
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
 }
 
-export async function qualifyReferral(config, eventId, fetchImpl = fetch) {
+export async function qualifyReferral(
+  config,
+  eventId,
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+) {
   const normalizedEventId = String(eventId ?? "").trim();
   if (!referralProgramAvailable(config)) {
     return { status: "unavailable" };
@@ -88,11 +103,16 @@ export async function qualifyReferral(config, eventId, fetchImpl = fetch) {
     config,
     "qualify_referral",
     { p_event_id: normalizedEventId },
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
 }
 
-export async function loadReferralProgramStatus(config, fetchImpl = fetch) {
+export async function loadReferralProgramStatus(
+  config,
+  fetchImpl = fetch,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+) {
   if (!referralProgramAvailable(config)) {
     return emptyReferralProgramStatus("signed-out");
   }
@@ -101,13 +121,21 @@ export async function loadReferralProgramStatus(config, fetchImpl = fetch) {
     config,
     "get_referral_program_status",
     {},
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
   return normalizeReferralProgramStatus(payload);
 }
 
-async function callReferralRpc(config, functionName, body, fetchImpl) {
-  const response = await fetchImpl(
+async function callReferralRpc(
+  config,
+  functionName,
+  body,
+  fetchImpl,
+  timeoutMs
+) {
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/${functionName}`,
     {
       method: "POST",
@@ -117,7 +145,8 @@ async function callReferralRpc(config, functionName, body, fetchImpl) {
         "content-type": "application/json"
       },
       body: JSON.stringify(body)
-    }
+    },
+    timeoutMs
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw referralStoreError(payload, response.status);

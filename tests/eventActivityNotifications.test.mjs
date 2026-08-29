@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 
 import { sendEventActivityNotification as sendClientEventActivityNotification } from "../src/data/eventActivityNotifications.mjs";
@@ -792,6 +793,48 @@ test("client accepts the event invitation activity kind", async () => {
   });
 });
 
+test("client keeps a hanging event invitation retryable after its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    sendClientEventActivityNotification(
+      runtimeConfig(),
+      {
+        eventId: EVENT_ID,
+        activityId: RECIPIENT_PARTICIPANT_ID,
+        kind: "event-invite"
+      },
+      async (_url, options) => {
+        requestSignal = options.signal;
+        return new Promise(() => {});
+      },
+      5
+    ),
+    (error) =>
+      error?.code === "NETWORK_TIMEOUT" && error?.retryable === true
+  );
+
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("client exposes an expired notification session for account recovery", async () => {
+  await assert.rejects(
+    sendClientEventActivityNotification(
+      runtimeConfig(),
+      {
+        eventId: EVENT_ID,
+        activityId: RECIPIENT_PARTICIPANT_ID,
+        kind: "event-invite"
+      },
+      async () => jsonResponse(
+        { error: "Account session is invalid", code: "AUTH_REQUIRED" },
+        401
+      )
+    ),
+    (error) => error?.code === "AUTH_REQUIRED" && error?.status === 401
+  );
+});
+
 test("closing an event reaches the in-app inbox and opens its summary", async () => {
   const activityId = "activity-event-closed";
   const senderState = eventState();
@@ -849,4 +892,20 @@ test("closing an event reaches the in-app inbox and opens its summary", async ()
     }
   );
   assert.equal(JSON.parse(clientCalls[0].options.body).kind, "event-closed");
+});
+
+test("event invitations and saved activities recover one expired account session", async () => {
+  const app = await readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
+  const helper = app.slice(
+    app.indexOf("async function sendEventActivityNotificationWithAccountRecovery"),
+    app.indexOf("function pendingEventMembershipOwnerId")
+  );
+
+  assert.match(helper, /eventInviteAuthRefreshRequired\(error\)/);
+  assert.match(helper, /SogrimAccountSession\?\.refresh\?\.\(\)/);
+  assert.match(helper, /freshUserId !== expectedUserId/);
+  assert.equal(
+    (app.match(/sendEventActivityNotificationWithAccountRecovery\(\{/g) ?? []).length,
+    2
+  );
 });

@@ -44,6 +44,22 @@ test("admin analytics client treats an ordinary account as unavailable", async (
   });
 });
 
+test("admin analytics releases a dashboard request that never responds", async () => {
+  await assert.rejects(
+    loadAdminAnalyticsOverview(
+      {
+        apiBaseUrl: "https://app.example.com",
+        storage: { account: { accessToken: "admin-token" } }
+      },
+      {
+        fetchImpl: async () => new Promise(() => {}),
+        timeoutMs: 5
+      }
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+});
+
 test("admin analytics response is normalized before rendering", async () => {
   const result = await loadAdminAnalyticsOverview(
     {

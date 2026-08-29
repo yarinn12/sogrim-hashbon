@@ -17,12 +17,14 @@ const STYLE_ID = "public-notification-layer-style";
 const PUSH_TOKEN_EVENT = "settle-friends:push-token";
 const PUSH_STATUS_EVENT = "settle-friends:push-status";
 const NATIVE_CAPABILITIES_EVENT = "settle-friends:native-capabilities";
+const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 
 let permissionState = "prompt";
 let notificationBusy = false;
 let notificationError = "";
 let registeredForCurrentAccount = false;
 let startupReady = false;
+let notificationInitializationRequest = null;
 
 setupNotificationLayer();
 
@@ -32,6 +34,8 @@ function setupNotificationLayer() {
   document.addEventListener(PUSH_TOKEN_EVENT, handlePushToken);
   document.addEventListener(PUSH_STATUS_EVENT, handlePushStatus);
   document.addEventListener(NATIVE_CAPABILITIES_EVENT, handleNativeCapabilities);
+  window.addEventListener("online", requestNotificationInitialization);
+  window.addEventListener(NATIVE_RESUME_EVENT, requestNotificationInitialization);
   document.addEventListener("click", handleNotificationAction, true);
   document.addEventListener("change", handleNotificationPreferenceChange, true);
 
@@ -41,15 +45,30 @@ function setupNotificationLayer() {
 
   runAfterFirstInteractiveScreen(() => {
     startupReady = true;
-    initializeNotifications().catch(() => {});
+    requestNotificationInitialization();
     renderNotificationSettings();
   });
 }
 
 function handleNativeCapabilities() {
   if (!startupReady) return;
-  initializeNotifications().catch(() => {});
+  requestNotificationInitialization();
   renderNotificationSettings();
+}
+
+function requestNotificationInitialization() {
+  if (!startupReady) return Promise.resolve(false);
+  if (notificationInitializationRequest) {
+    return notificationInitializationRequest;
+  }
+
+  notificationInitializationRequest = initializeNotifications()
+    .then(() => true)
+    .catch(() => false)
+    .finally(() => {
+      notificationInitializationRequest = null;
+    });
+  return notificationInitializationRequest;
 }
 
 async function initializeNotifications() {
@@ -223,8 +242,7 @@ async function handlePushToken(event) {
 
   saveStoredPushToken(userId, token);
   try {
-    const config = await loadRuntimeConfig();
-    const result = await registerPushDevice(config, {
+    const result = await registerPushDeviceWithAccountRecovery(userId, {
       token,
       platform,
       preferences: loadStoredPushPreferences(userId)
@@ -247,14 +265,50 @@ async function syncNotificationPreferences(userId, preferences) {
   ).trim().toLowerCase();
   if (!token || !["android", "ios"].includes(platform)) return false;
 
-  const config = await loadRuntimeConfig();
-  const result = await registerPushDevice(config, {
+  const result = await registerPushDeviceWithAccountRecovery(userId, {
     token,
     platform,
     preferences
   });
   registeredForCurrentAccount = result.ok;
   return result.ok;
+}
+
+async function registerPushDeviceWithAccountRecovery(userId, registration) {
+  const expectedUserId = String(userId ?? "").trim();
+  let config = await loadRuntimeConfig();
+  const request = () => registerPushDevice(config, registration);
+
+  try {
+    return await request();
+  } catch (error) {
+    if (
+      Number(error?.status ?? 0) !== 401 ||
+      !expectedUserId
+    ) {
+      throw error;
+    }
+  }
+
+  const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+  if (
+    !refreshedSession?.access_token ||
+    String(refreshedSession?.user?.id ?? "").trim() !== expectedUserId
+  ) {
+    const error = new Error("Push account session is unavailable");
+    error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+
+  config = await loadRuntimeConfig();
+  if (
+    String(config?.storage?.account?.userId ?? "").trim() !== expectedUserId
+  ) {
+    const error = new Error("Account changed during push recovery");
+    error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+  return request();
 }
 
 function handlePushStatus(event) {

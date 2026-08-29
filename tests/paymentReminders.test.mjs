@@ -486,3 +486,30 @@ test("client reminder store requests in-app delivery without a device push capab
     "Bearer account-access-token"
   );
 });
+
+test("client reminder store releases a hanging mobile request after its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    sendClientPaymentReminder(
+      {
+        apiBaseUrl: "https://sogrim.example",
+        storage: {
+          account: {
+            userId: CREDITOR_USER_ID,
+            accessToken: "account-access-token"
+          }
+        }
+      },
+      { eventId: EVENT_ID, transferId: TRANSFER_ID },
+      async (_url, options) => {
+        requestSignal = options.signal;
+        return new Promise(() => {});
+      },
+      5
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+
+  assert.equal(requestSignal?.aborted, true);
+});

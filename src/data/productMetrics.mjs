@@ -1,5 +1,9 @@
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
+import {
   PRODUCT_METRIC_EVENT,
   classifyOperationFailure,
   createProductMetricId,
@@ -78,7 +82,8 @@ export function startProductMetricTransport({
   fetchImpl = globalThis.fetch,
   storage = globalThis.localStorage,
   now = Date.now,
-  cryptoRef = globalThis.crypto
+  cryptoRef = globalThis.crypto,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 } = {}) {
   if (!documentRef?.addEventListener || !windowRef?.addEventListener || typeof fetchImpl !== "function") {
     return () => {};
@@ -132,7 +137,7 @@ export function startProductMetricTransport({
     try {
       const info = await runtimeInfo();
       const events = batch.map((metric) => ({ ...metric, ...info }));
-      const response = await fetchImpl("/api/product-metrics", {
+      const response = await fetchWithTimeout(fetchImpl, "/api/product-metrics", {
         method: "POST",
         headers: {
           authorization: `Bearer ${session.access_token}`,
@@ -141,7 +146,7 @@ export function startProductMetricTransport({
         body: JSON.stringify({ events }),
         credentials: "same-origin",
         keepalive: true
-      });
+      }, requestTimeoutMs);
       if (!response?.ok && (response?.status === 429 || Number(response?.status) >= 500)) {
         throw new Error("Retryable product metrics response");
       }

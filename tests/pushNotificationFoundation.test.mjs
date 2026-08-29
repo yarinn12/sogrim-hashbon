@@ -88,6 +88,13 @@ test("notification preferences are explicit, account scoped, and sign-out safe",
   assert.match(layer, /buttonLabel: "הפעל התראות"/);
   assert.match(layer, /prepareSignOut/);
   assert.match(layer, /NATIVE_CAPABILITIES_EVENT/);
+  assert.match(layer, /NATIVE_RESUME_EVENT/);
+  assert.match(layer, /addEventListener\("online", requestNotificationInitialization\)/);
+  assert.match(layer, /addEventListener\(NATIVE_RESUME_EVENT, requestNotificationInitialization\)/);
+  assert.match(layer, /if \(notificationInitializationRequest\)/);
+  assert.match(layer, /function registerPushDeviceWithAccountRecovery/);
+  assert.match(layer, /SogrimAccountSession\?\.refresh\?\.\(\)/);
+  assert.match(layer, /Account changed during push recovery/);
   assert.match(layer, /event\.stopImmediatePropagation\(\)/);
   assert.doesNotMatch(layer, /requestPermissions\(\)/);
   assert.match(accountLayer, /SogrimNotifications\?\.prepareSignOut/);

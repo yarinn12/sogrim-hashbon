@@ -71,6 +71,36 @@ test("push device disable uses the signed-in account token", async () => {
   });
 });
 
+test("push device registration releases a hanging mobile request", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    registerPushDevice(
+      config,
+      { token: "d".repeat(64), platform: "ios" },
+      async (_url, options) => {
+        requestSignal = options.signal;
+        return new Promise(() => {});
+      },
+      5
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("push device registration exposes an expired account session", async () => {
+  await assert.rejects(
+    registerPushDevice(
+      config,
+      { token: "e".repeat(64), platform: "ios" },
+      async () => ({ ok: false, status: 401 })
+    ),
+    (error) => error?.code === "AUTH_REQUIRED" && error?.status === 401
+  );
+});
+
 test("push token memory is scoped to one account", () => {
   const values = new Map();
   const storage = {
