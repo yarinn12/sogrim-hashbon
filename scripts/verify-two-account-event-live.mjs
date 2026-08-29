@@ -541,6 +541,43 @@ try {
     false
   );
 
+  // The original creator must be able to leave after transferring management.
+  // This used to pass in the client domain and fail only at the database guard,
+  // producing an optimistic success on one device and a rollback elsewhere.
+  const managementTransferredAt = new Date().toISOString();
+  ownerState.events[0].adminIds = [
+    ownerProfile.participantId,
+    addedFriendProfile.participantId
+  ];
+  ownerState.events[0].adminIdsScopedToEvent = true;
+  ownerState.events[0].adminIdsUpdatedAt = managementTransferredAt;
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  ownerState = leaveEvent(ownerState, eventId, ownerProfile.participantId);
+  assert.equal(
+    ownerState.events[0].inactiveParticipantIds?.includes(ownerProfile.participantId),
+    true
+  );
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  let addedFriendState = await loadCloudState(
+    runtimeConfig(addedFriend),
+    baseAccountState(addedFriendProfile)
+  );
+  addedFriendState = await refreshSharedEvents(
+    runtimeConfig(addedFriend),
+    addedFriendState
+  );
+  const creatorLeaveEvent = addedFriendState.events.find(
+    (event) => event.id === eventId
+  );
+  assert.equal(
+    creatorLeaveEvent?.inactiveParticipantIds?.includes(ownerProfile.participantId),
+    true
+  );
+  assert.equal(
+    creatorLeaveEvent?.adminIds?.includes(addedFriendProfile.participantId),
+    true
+  );
+
   console.log(JSON.stringify({
     ok: true,
     checks: {
@@ -565,6 +602,7 @@ try {
       eventClosureSynced: true,
       bothAccountWorkspacesReloaded: true,
       nonAdminLeftWithMoneyHistoryPreservedOffline: true,
+      creatorLeftAfterManagementTransfer: true,
       removedMemberAccessRevoked: true,
       removedMemberStaleWriteBlocked: true,
       oldInviteCannotRejoinRemovedMember: true,

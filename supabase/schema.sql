@@ -1386,7 +1386,6 @@ begin
     actor_participant_id = any(old_active_ids)
     and not (actor_participant_id = any(new_active_ids))
     and pg_catalog.array_remove(old_active_ids, actor_participant_id) = new_active_ids
-    and old_event ->> 'createdByParticipantId' is distinct from actor_participant_id
     and pg_catalog.cardinality(new_admin_ids) > 0
     and (
       old_admin_ids = new_admin_ids

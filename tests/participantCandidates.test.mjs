@@ -173,7 +173,11 @@ test("participant toggling still re-renders outside the participant dialog", () 
     app.indexOf("function syncEventParticipantDialog")
   );
 
-  assert.match(toggle, /persistState\(\);/, "state is always persisted first");
+  assert.match(
+    toggle,
+    /await persistState\(\{\s*awaitCloud: true,\s*forceSharedEventIds: \[eventId\]\s*\}\);/,
+    "participant membership waits for canonical cloud persistence"
+  );
   assert.match(
     toggle,
     /render\(\);\s*\n\s*if \(\s*eventDialog\?\.kind === "participants-add" \|\|\s*\(eventDialog\?\.kind === "share" && eventDialog\.shareView === "friends"\)/,

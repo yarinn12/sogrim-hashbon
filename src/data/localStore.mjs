@@ -568,6 +568,43 @@ async function loadSharedStateOnce(requestScope) {
     const pendingState = loadPendingSharedState(runtimeConfig);
     if (pendingState) {
       if (shouldDeferPendingSharedStateRetry()) {
+        // A queued local write must not freeze every remote read for the full
+        // retry backoff (which can reach two minutes). Keep the outbox intact,
+        // but merge fresh cloud data into the visible state so changes from a
+        // second phone still appear while delivery is being retried.
+        try {
+          const remoteState = await loadCloudState(
+            runtimeConfig,
+            toCloudState(runtimeConfig, localState)
+          );
+          runtimeConfig = activateClientSpace(
+            attachStoredAccountIdentity(runtimeConfig)
+          );
+          const mergedPendingState = mergeSharedStates(remoteState, pendingState);
+          const refreshedPendingState = await hydrateAccessibleSharedEventState(
+            runtimeConfig,
+            mergedPendingState
+          );
+          if (!loadRequestIsCurrent(
+            requestScope,
+            requestAccountGeneration,
+            requestSaveGeneration
+          )) {
+            return loadState();
+          }
+          const visiblePendingState = applyLocalParticipantId(
+            cleanLegacyStarterData(
+              refreshedPendingState,
+              loadProtectedParticipantId()
+            ),
+            loadLocalParticipantId()
+          );
+          saveStateForScope(visiblePendingState, requestScope);
+          return visiblePendingState;
+        } catch (error) {
+          reportPartialStateLoadFailure(error);
+        }
+
         return applyLocalParticipantId(
           cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
           loadLocalParticipantId()

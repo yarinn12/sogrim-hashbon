@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 
 test("open shared events refresh quietly while the app remains visible", () => {
-  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 12_000;/);
+  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 6_000;/);
   assert.match(appSource, /window\.addEventListener\("focus", requestVisibleEventSync\);/);
   assert.match(
     appSource,
@@ -13,7 +13,15 @@ test("open shared events refresh quietly while the app remains visible", () => {
   );
   assert.match(
     appSource,
-    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*eventDialog[\s\S]*profileNameEditing[\s\S]*return requestResumeSync\(\);[\s\S]*\}/
+    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*profileNameEditing[\s\S]*return requestResumeSync\(\{ includeSecondary: false \}\);[\s\S]*\}/
+  );
+  assert.doesNotMatch(
+    appSource.slice(
+      appSource.indexOf("function requestVisibleEventSync"),
+      appSource.indexOf("bootstrapApp();")
+    ),
+    /eventDialog \|\|/,
+    "read-only dialogs must not freeze cross-device refreshes"
   );
 });
 
@@ -30,7 +38,7 @@ test("a received push forces the shared event to refresh before the inbox opens"
   );
   assert.match(
     appSource,
-    /function requestResumeSync\(\{ force = false \} = \{\}\)/
+    /function requestResumeSync\(\{ force = false, includeSecondary = true \} = \{\}\)/
   );
   assert.match(
     appSource,

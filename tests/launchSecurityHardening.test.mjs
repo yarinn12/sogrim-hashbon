@@ -43,6 +43,18 @@ const transferStatusReversalVerification = await readFile(
   "supabase/verification/verify_20260827190000_participant_transfer_status_reversal.sql",
   "utf8"
 );
+const creatorSelfLeaveMigration = await readFile(
+  "supabase/migrations/20260829193000_allow_event_creator_self_leave.sql",
+  "utf8"
+);
+const creatorSelfLeaveVerification = await readFile(
+  "supabase/verification/verify_20260829193000_event_creator_self_leave.sql",
+  "utf8"
+);
+const creatorSelfLeaveRollback = await readFile(
+  "supabase/rollbacks/20260829193000_allow_event_creator_self_leave_safe.sql",
+  "utf8"
+);
 const app = await readFile("src/app.mjs", "utf8");
 
 test("launch hardening binds personal snapshots to one authenticated account", () => {
@@ -220,10 +232,37 @@ test("payment status reversal is narrow, attributable, and compatible with centr
   );
   assert.equal(
     normalizeSql(functionSource(schema, "private.guard_shared_snapshot_update")),
-    normalizeSql(functionSource(transferStatusReversalMigration, "private.guard_shared_snapshot_update"))
+    normalizeSql(
+      functionSource(
+        transferStatusReversalMigration,
+        "private.guard_shared_snapshot_update"
+      ).replace(
+        /\n\s*and old_event ->> 'createdByParticipantId' is distinct from actor_participant_id/,
+        ""
+      )
+    )
   );
   assert.match(transferStatusReversalVerification, /involved participant cannot reverse/);
   assert.match(transferStatusReversalVerification, /unrelated participant can rewrite/);
+});
+
+test("an event creator may leave only after another active manager remains", () => {
+  const guard = functionSource(schema, "private.guard_shared_snapshot_update");
+  const leavingBranch = guard.slice(
+    guard.indexOf("actor_is_leaving :="),
+    guard.indexOf("actor_is_joining :=")
+  );
+
+  assert.match(leavingBranch, /pg_catalog\.array_remove\(old_active_ids, actor_participant_id\) = new_active_ids/);
+  assert.match(leavingBranch, /pg_catalog\.cardinality\(new_admin_ids\) > 0/);
+  assert.doesNotMatch(leavingBranch, /createdByParticipantId/);
+  assert.match(creatorSelfLeaveMigration, /^begin;/);
+  assert.match(creatorSelfLeaveMigration, /pg_catalog\.pg_get_functiondef/);
+  assert.match(creatorSelfLeaveMigration, /Safe creator self-leave guard is incomplete/);
+  assert.match(creatorSelfLeaveMigration, /commit;\s*$/);
+  assert.match(creatorSelfLeaveVerification, /Event creators are still blocked from leaving/);
+  assert.match(creatorSelfLeaveVerification, /Safe self-leave constraints are incomplete/);
+  assert.match(creatorSelfLeaveRollback, /Safe self-leave rollback anchor was not found/);
 });
 
 function normalizeSql(sql) {

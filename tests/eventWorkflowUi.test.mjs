@@ -759,11 +759,11 @@ test("participant manager separates the current roster from saved names", async 
   );
   assert.match(
     app,
-    /async function removeEventParticipant\([\s\S]*?const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;[\s\S]*?לא בוצע שינוי/
+    /async function removeEventParticipant\([\s\S]*?const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;[\s\S]*?לא בוצע שינוי/
   );
   assert.match(
     app,
-    /const removalMessage =[\s\S]*?message: ""[\s\S]*?notice = removalMessage;[\s\S]*?const saveRequest = persistState\(\)/
+    /const removalMessage =[\s\S]*?message: ""[\s\S]*?notice = removalMessage;[\s\S]*?const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true/
   );
   assert.match(design, /\.event-participant-roster-row/);
   assert.match(design, /\.event-participant-roster-search/);
@@ -1025,7 +1025,7 @@ test("participant membership changes protect creators and admins while preservin
   assert.match(remove, /\{ preserveOffline \}/);
   assert.match(
     remove,
-    /const saveRequest = persistState\(\);\s*render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;/
+    /const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;/
   );
   assert.match(remove, /state = previousState/);
   assert.match(remove, /ההיסטוריה הכספית נשמרה/);
@@ -1391,7 +1391,7 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /סכומי ההוצאות תמיד נשמרים בדיוק כפי שהוזנו/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
   assert.match(roundingHandler, /const previousState = state/);
-  assert.match(roundingHandler, /const result = await persistState\(\)/);
+  assert.match(roundingHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(roundingHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
 });
 
@@ -1410,7 +1410,7 @@ test("event cover supports reliable gallery and camera replacement", async () =>
   assert.match(app, /function encodeCanvasJpegWithinLimit\(/);
   assert.match(app, /maxLength: 240_000/);
   assert.match(app, /await updateEventCoverImage\(eventId, coverImage\)/);
-  assert.match(app, /const result = await persistState\(\)/);
+  assert.match(app, /async function updateEventCoverImage[\s\S]*?const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(app, /state = previousState/);
   assert.match(app, /settingsFieldUpdatedAt: \{[\s\S]*coverImage: updatedAt/);
 });
@@ -1465,11 +1465,11 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(repaymentHandler, /const previousTransfers = eventSettlementTransfers\(event\)/);
   assert.match(repaymentHandler, /const transferPlanChanged = settlementTransferPlanKey\(previousTransfers\)/);
   assert.ok(
-    repaymentHandler.indexOf("render();") < repaymentHandler.indexOf("await persistState()"),
+    repaymentHandler.indexOf("render();") < repaymentHandler.indexOf("await persistState("),
     "the selected repayment mode should render before waiting for cloud persistence"
   );
   assert.match(repaymentHandler, /במקרה הזה סכומי ההעברות כבר היו זהים/);
-  assert.match(repaymentHandler, /const result = await persistState\(\)/);
+  assert.match(repaymentHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(
     repaymentHandler,
     /if \(eventRepaymentModeRequestVersions\.get\(eventId\) !== requestVersion\) return;/

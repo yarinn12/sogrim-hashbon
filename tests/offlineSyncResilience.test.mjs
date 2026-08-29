@@ -419,6 +419,26 @@ test("a recovered pending-state conflict is reported as saved instead of remaini
   );
 });
 
+test("a queued write never freezes reads from another device during retry backoff", () => {
+  const load = localStore.slice(
+    localStore.indexOf("async function loadSharedStateOnce"),
+    localStore.indexOf("export async function saveSharedState")
+  );
+  const deferredBranch = load.slice(
+    load.indexOf("if (shouldDeferPendingSharedStateRetry())"),
+    load.indexOf("try {", load.indexOf("if (shouldDeferPendingSharedStateRetry())") + 80)
+  );
+
+  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(\)\) \{[\s\S]*?await loadCloudState\(/);
+  assert.match(load, /const mergedPendingState = mergeSharedStates\(remoteState, pendingState\)/);
+  assert.match(load, /saveStateForScope\(visiblePendingState, requestScope\)/);
+  assert.doesNotMatch(
+    deferredBranch,
+    /return applyLocalParticipantId/,
+    "the retry timer cannot short-circuit the cloud read"
+  );
+});
+
 test("shared event writes also retry through a merge on conflict", () => {
   const save = sharedEventStore.slice(
     sharedEventStore.indexOf("export async function saveSharedEventState"),
