@@ -81,3 +81,27 @@ test("product metrics schema is anonymous and locked behind the server role", as
   assert.match(accountLinkReliabilityMigration, /account_link/);
   assert.match(accountLinkReliabilityVerification, /Account-link reliability metrics/);
 });
+
+test("product metric rate limiting uses an executable timestamp instead of the SQL current_time keyword", async () => {
+  const [schema, migration, verification, server] = await Promise.all([
+    readFile("supabase/schema.sql", "utf8"),
+    readFile(
+      "supabase/migrations/20260829170000_fix_product_metric_rate_limit_clock.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/verification/verify_20260829170000_product_metric_rate_limit_clock.sql",
+      "utf8"
+    ),
+    readFile("src/server/productMetrics.mjs", "utf8")
+  ]);
+
+  for (const source of [schema, migration]) {
+    assert.match(source, /current_timestamp_value timestamptz/);
+    assert.doesNotMatch(source, /\bcurrent_time timestamptz/);
+  }
+  assert.match(verification, /The first product metric reservation was not allowed/);
+  assert.match(verification, /The product metric event limit was not enforced/);
+  assert.match(server, /\[product-metrics\] Supabase request failed/);
+  assert.match(server, /stage,[\s\S]*status:[\s\S]*code:/);
+});

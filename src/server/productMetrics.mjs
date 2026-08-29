@@ -54,7 +54,10 @@ export async function storeProductMetrics({
       })
     }
   );
-  if (!capacityResponse.ok) return failure(502, "Metrics capacity could not be reserved");
+  if (!capacityResponse.ok) {
+    await logUpstreamFailure("capacity", capacityResponse);
+    return failure(502, "Metrics capacity could not be reserved");
+  }
   const capacityReserved = await capacityResponse.json().catch(() => false);
   if (capacityReserved !== true) return failure(429, "Metrics rate limit exceeded");
 
@@ -66,7 +69,10 @@ export async function storeProductMetrics({
       body: JSON.stringify(metrics.map((metric) => toDatabaseRow(metric, createProductMetricId)))
     }
   );
-  if (!insertResponse.ok) return failure(502, "Metrics could not be stored");
+  if (!insertResponse.ok) {
+    await logUpstreamFailure("insert", insertResponse);
+    return failure(502, "Metrics could not be stored");
+  }
 
   cleanupExpiredMetrics({ supabaseUrl, serviceRoleKey, fetchImpl, now }).catch(() => {});
 
@@ -137,6 +143,15 @@ function serviceHeaders(serviceRoleKey, prefer) {
 function bearerToken(value) {
   const match = String(value).match(/^Bearer\s+([^\s]+)$/i);
   return match?.[1] ?? "";
+}
+
+async function logUpstreamFailure(stage, response) {
+  const payload = await response.json().catch(() => null);
+  console.error("[product-metrics] Supabase request failed", {
+    stage,
+    status: Number(response?.status) || 0,
+    code: String(payload?.code ?? "").slice(0, 32)
+  });
 }
 
 function failure(status, error) {

@@ -58,6 +58,15 @@ try {
       'public.app_snapshots_shared_event_event_id_uidx'
     )
   `;
+  const [productMetricClock] = await sql`
+    select
+      pg_catalog.strpos(
+        pg_catalog.pg_get_functiondef(
+          'public.reserve_product_metric_batch(uuid,integer,integer,integer)'::regprocedure
+        ),
+        'current_timestamp_value timestamptz'
+      ) > 0 as unambiguous
+  `;
   let health = null;
   let eventIndexHealth = null;
   let eventPublicationHealth = null;
@@ -106,6 +115,7 @@ try {
       Boolean(sharedEventIdentity?.has_predicate),
     noStalePushReservations:
       Number(health?.pushDelivery?.stalePending ?? -1) === 0,
+    productMetricRateLimitClock: Boolean(productMetricClock?.unambiguous),
     snapshotStreamPresent: Boolean(health?.dataContinuity?.latestSnapshotAt)
   };
   const failedChecks = Object.entries(checks)
