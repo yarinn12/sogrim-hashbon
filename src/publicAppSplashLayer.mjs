@@ -13,6 +13,7 @@ const MAX_SPLASH_WAIT_MS = 5500;
 const MAX_SPLASH_RENDER_RETRY_MS = 750;
 const SPLASH_EXIT_MS = 100;
 const UPDATE_CHECK_EVENT = "sogrim:mandatory-update-check";
+const NATIVE_STYLES_READY_EVENT = "sogrim:native-styles-ready";
 
 const showPosterOnly = consumeSplashBypass();
 
@@ -51,6 +52,7 @@ function installSplash({ showPosterOnly = false } = {}) {
   document.addEventListener("account-auth-ready", dismissWhenReady);
   document.addEventListener("settle-friends:screen-rendered", dismissWhenReady);
   document.addEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
+  document.addEventListener(NATIVE_STYLES_READY_EVENT, dismissWhenReady);
   maximumWaitId = window.setTimeout(
     dismissAfterMaximumWait,
     MAX_SPLASH_WAIT_MS
@@ -224,6 +226,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     document.removeEventListener("account-auth-ready", dismissWhenReady);
     document.removeEventListener("settle-friends:screen-rendered", dismissWhenReady);
     document.removeEventListener(UPDATE_CHECK_EVENT, dismissWhenReady);
+    document.removeEventListener(NATIVE_STYLES_READY_EVENT, dismissWhenReady);
     document.removeEventListener("visibilitychange", handleVisibilityChange);
     video?.removeEventListener("playing", handleVideoPlaying);
     video?.removeEventListener("timeupdate", handleVideoProgress);
@@ -268,5 +271,8 @@ function applicationIsReady() {
   const updateCheckPending = document.documentElement.classList.contains(
     "mandatory-update-checking"
   );
-  return !updateCheckPending && !accountAuthPending && (accountGateRendered || appRendered);
+  const nativeStylesPending = document.documentElement.classList.contains(
+    "native-styles-pending"
+  );
+  return !updateCheckPending && !nativeStylesPending && !accountAuthPending && (accountGateRendered || appRendered);
 }

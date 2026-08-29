@@ -1,8 +1,17 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 
 test.use({ serviceWorkers: "allow" });
 
 const installBaseUrl = process.env.PWA_INSTALL_BASE_URL?.trim();
+const manifestSource = readFileSync(
+  new URL("../manifest.webmanifest", import.meta.url),
+  "utf8"
+);
+const currentRelease = manifestSource.match(/pwa_release=(\d+)/)?.[1];
+if (!currentRelease) {
+  throw new Error("The PWA release is missing from manifest.webmanifest");
+}
 
 test("a fresh iPhone or iPad home-screen install receives the current app shell", async ({
   browserName,
@@ -11,15 +20,15 @@ test("a fresh iPhone or iPad home-screen install receives the current app shell"
   test.skip(browserName !== "webkit", "This regression targets iOS and iPadOS WebKit");
 
   const installUrl = installBaseUrl
-    ? new URL("/?pwa_release=387", installBaseUrl).toString()
-    : "/?pwa_release=387";
+    ? new URL(`/?pwa_release=${currentRelease}`, installBaseUrl).toString()
+    : `/?pwa_release=${currentRelease}`;
   await page.goto(installUrl, { waitUntil: "load" });
   await expect(page).toHaveTitle("סוגרים חשבון");
 
-  const installedState = await page.evaluate(async () => {
+  const installedState = await page.evaluate(async (release) => {
     const registration = await navigator.serviceWorker.ready;
     const cacheNames = await caches.keys();
-    const currentCache = await caches.open("settle-friends-live-v387");
+    const currentCache = await caches.open(`settle-friends-live-v${release}`);
     const [shell, manifest, bootstrap] = await Promise.all([
       currentCache.match("/index.html"),
       currentCache.match("/manifest.webmanifest"),
@@ -32,19 +41,19 @@ test("a fresh iPhone or iPad home-screen install receives the current app shell"
       manifest: await manifest?.text(),
       bootstrap: await bootstrap?.text()
     };
-  });
+  }, currentRelease);
 
-  expect(installedState.scriptUrl).toContain("/sw.js?pwa_release=387");
-  expect(installedState.cacheNames).toContain("settle-friends-live-v387");
-  expect(installedState.shell).toContain("manifest.webmanifest?pwa_release=387");
-  expect(installedState.shell).toContain("styles.css?pwa_release=387");
-  expect(installedState.shell).toContain("src/pwaBootstrap.mjs?pwa_release=387");
-  expect(installedState.shell).toContain("src/app.mjs?pwa_release=387");
-  expect(installedState.shell).toContain("src/publicAccountAuthLayer.mjs?pwa_release=387");
-  expect(installedState.shell).toContain("src/publicProfileContextLayer.mjs?pwa_release=387");
-  expect(installedState.manifest).toContain('"start_url": "./?pwa_release=387"');
+  expect(installedState.scriptUrl).toContain(`/sw.js?pwa_release=${currentRelease}`);
+  expect(installedState.cacheNames).toContain(`settle-friends-live-v${currentRelease}`);
+  expect(installedState.shell).toContain(`manifest.webmanifest?pwa_release=${currentRelease}`);
+  expect(installedState.shell).toContain(`styles.css?pwa_release=${currentRelease}`);
+  expect(installedState.shell).toContain(`src/pwaBootstrap.mjs?pwa_release=${currentRelease}`);
+  expect(installedState.shell).toContain(`src/app.mjs?pwa_release=${currentRelease}`);
+  expect(installedState.shell).toContain(`src/publicAccountAuthLayer.mjs?pwa_release=${currentRelease}`);
+  expect(installedState.shell).toContain(`src/publicProfileContextLayer.mjs?pwa_release=${currentRelease}`);
+  expect(installedState.manifest).toContain(`"start_url": "./?pwa_release=${currentRelease}"`);
   expect(installedState.manifest).toContain('"display_override": ["standalone"]');
-  expect(installedState.bootstrap).toContain('const PWA_RELEASE = "387"');
+  expect(installedState.bootstrap).toContain(`const PWA_RELEASE = "${currentRelease}"`);
 });
 
 test("an iPhone home-screen launch receives native-feeling standalone chrome", async ({
@@ -61,8 +70,8 @@ test("an iPhone home-screen launch receives native-feeling standalone chrome", a
     });
   });
   const installUrl = installBaseUrl
-    ? new URL("/?pwa_release=387", installBaseUrl).toString()
-    : "/?pwa_release=387";
+    ? new URL(`/?pwa_release=${currentRelease}`, installBaseUrl).toString()
+    : `/?pwa_release=${currentRelease}`;
   await page.goto(installUrl, { waitUntil: "load" });
 
   const appMode = await page.evaluate(() => ({

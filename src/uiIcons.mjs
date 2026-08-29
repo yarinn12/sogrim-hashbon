@@ -4,6 +4,7 @@ const iconShapes = {
   balance: '<path d="M5 7h14"/><path d="M8 7 5.5 13h5L8 7Z"/><path d="M16 7 13.5 13h5L16 7Z"/><path d="M12 4.5v14"/><path d="M8.5 19.5h7"/>',
   bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
   calculator: '<rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M8 7h8M8 11h2M14 11h2M8 15h2M14 15h2M8 19h2M14 19h2"/>',
+  camera: '<path d="M8.5 6 10 4h4l1.5 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="12.5" r="3.5"/>',
   calendar: '<rect x="4" y="5.5" width="16" height="14" rx="2.5"/><path d="M8 3.5v4M16 3.5v4M4 9.5h16"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   "chevron-left": '<path d="m15 18-6-6 6-6"/>',

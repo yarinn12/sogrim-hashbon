@@ -18,6 +18,29 @@ const emptyAccountState = {
   deletedParticipants: []
 };
 
+const populatedAccountState = {
+  ...emptyAccountState,
+  events: [
+    {
+      id: "event-home-responsive-existing",
+      name: "אירוע קיים",
+      eventType: "standard",
+      currency: "ILS",
+      participantIds: [OWNER_ID],
+      adminIds: [OWNER_ID],
+      createdByParticipantId: OWNER_ID,
+      createdAt: "2026-08-28T08:00:00.000Z",
+      updatedAt: "2026-08-28T08:00:00.000Z",
+      roundSettlementTransfers: true,
+      directSettlementTransfers: false,
+      locked: false,
+      expenses: [],
+      transfers: [],
+      activityLog: []
+    }
+  ]
+};
+
 test.beforeEach(async ({ page, request }) => {
   await request.post("/api/reset");
   await request.put("/api/state", { data: emptyAccountState });
@@ -56,6 +79,7 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     await page.setViewportSize(viewport);
     await page.goto("/");
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+    await waitForHomePresentation(page);
 
     const layout = await page.evaluate(() => {
       const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
@@ -98,15 +122,106 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     expect(layout.screen.right).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.hero.left).toBeGreaterThanOrEqual(0);
     expect(layout.hero.right).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.action.bottom).toBeLessThanOrEqual(layout.hero.bottom + 2);
-    expect(layout.action.top - layout.copy.bottom).toBeGreaterThanOrEqual(12);
+    const actionCenter = (layout.action.top + layout.action.bottom) / 2;
+    expect(layout.action.top).toBeLessThan(layout.hero.bottom);
+    expect(layout.action.bottom).toBeGreaterThan(layout.hero.bottom);
+    expect(Math.abs(actionCenter - layout.hero.bottom)).toBeLessThanOrEqual(16);
+    expect(layout.action.top - layout.copy.bottom).toBeGreaterThanOrEqual(-2);
     expect(layout.promo.width / layout.promo.height).toBeCloseTo(1672 / 941, 2);
     expect(layout.promoImageFit).toBe("contain");
     expect(layout.brandImageFit).toBe("contain");
     expect(layout.brandImageTransform).toBe("none");
 
     if (viewport.width >= 721) {
-      expect(layout.screen.width).toBeGreaterThanOrEqual(Math.min(viewport.width, 960) - 2);
+      expect(layout.screen.width).toBeLessThanOrEqual(430);
+      const screenCenter = (layout.screen.left + layout.screen.right) / 2;
+      expect(Math.abs(screenCenter - viewport.width / 2)).toBeLessThanOrEqual(2);
     }
   }
 });
+
+test("the first-event action is identical to the regular new-event action", async ({ page, request }) => {
+  await page.goto("/");
+  const emptyAction = await homeCreateActionPresentation(page);
+
+  await request.put("/api/state", { data: populatedAccountState });
+  const populatedPage = await page.context().newPage();
+  await populatedPage.addInitScript((state) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+    localStorage.setItem(
+      "settle-friends-local-profile",
+      JSON.stringify({
+        participantId: state.currentParticipantId,
+        displayName: "ירין יצחק",
+        avatarPreset: "avatar-1"
+      })
+    );
+    localStorage.setItem("settle-friends-current-participant", state.currentParticipantId);
+    sessionStorage.setItem("settle-friends-skip-next-splash", "1");
+  }, populatedAccountState);
+  await populatedPage.goto("/");
+  await expect(populatedPage.locator(".event-row")).toHaveCount(1);
+  const populatedAction = await homeCreateActionPresentation(populatedPage);
+  await populatedPage.close();
+
+  expect(emptyAction.text).toBe("אירוע חדש");
+  expect(populatedAction.text).toBe("אירוע חדש");
+  expect(emptyAction.presentation).toEqual(populatedAction.presentation);
+});
+
+async function homeCreateActionPresentation(page) {
+  await waitForHomePresentation(page);
+  const action = page.locator(".home-create-event-action");
+  await expect(action).toBeVisible();
+  return action.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    const wrapperStyle = getComputedStyle(element.closest(".home-quick-actions"));
+    return {
+      text: element.textContent?.trim() ?? "",
+      presentation: {
+        width: Math.round(bounds.width),
+        height: Math.round(bounds.height),
+        display: style.display,
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        gap: style.gap,
+        padding: style.padding,
+        borderRadius: style.borderRadius,
+        fontSize: style.fontSize,
+        wrapperDisplay: wrapperStyle.display,
+        wrapperWidth: wrapperStyle.width,
+        wrapperMarginBlockStart: wrapperStyle.marginBlockStart,
+        wrapperMarginBlockEnd: wrapperStyle.marginBlockEnd,
+        wrapperGridTemplateColumns: wrapperStyle.gridTemplateColumns,
+        wrapperJustifyItems: wrapperStyle.justifyItems
+      }
+    };
+  });
+}
+
+async function waitForHomePresentation(page) {
+  await page.waitForFunction(() =>
+    document.documentElement.classList.contains("ledger-workspace-v1") &&
+    document.getElementById("public-ledger-workspace-layer-style") &&
+    document.getElementById("public-design-coherence-layer-style") &&
+    document.getElementById("public-dynamic-type-style") &&
+    document.getElementById("public-mobile-fullscreen-modal-layer")
+  );
+  await page.evaluate(async () => {
+    await document.fonts?.ready;
+    await Promise.all(
+      [...document.images].map((image) =>
+        image.complete ? image.decode?.().catch(() => {}) : Promise.resolve()
+      )
+    );
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))
+    );
+  });
+  // The public motion layer intentionally finishes the first screen reveal in
+  // 500ms. Measure only the settled layout, never a translucent mid-frame.
+  await page.waitForTimeout(600);
+}

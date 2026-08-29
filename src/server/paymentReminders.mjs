@@ -1,5 +1,3 @@
-import { createHash, timingSafeEqual } from "node:crypto";
-
 import { GoogleAuth } from "google-auth-library";
 
 import { formatCurrency, normalizeCurrency } from "../domain/currencies.mjs";
@@ -33,12 +31,8 @@ export async function sendPaymentReminder({
     env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY || ""
   ).trim();
   const accountToken = bearerToken(authorization);
+  const pushDeliveryReady = Boolean(runtimeConfig?.launch?.pushDeliveryReady);
 
-  if (!runtimeConfig?.launch?.pushDeliveryReady) {
-    return failure(503, "Push delivery is not configured", {
-      code: "PUSH_UNAVAILABLE"
-    });
-  }
   if (!accountToken) {
     return failure(401, "Authentication is required", {
       code: "AUTH_REQUIRED"
@@ -83,6 +77,7 @@ export async function sendPaymentReminder({
     serviceRoleKey,
     eventId: normalizedEventId,
     workspaceEvent: senderWorkspaceEvent,
+    senderUserId: sender.id,
     fetchImpl
   });
   const senderTransfer = transferFromState(
@@ -140,6 +135,12 @@ export async function sendPaymentReminder({
     recipientUserId,
     fetchImpl
   });
+  if (!reservation) {
+    return failure(503, "Payment reminder storage is temporarily unavailable", {
+      code: "REMINDER_STORAGE_UNAVAILABLE",
+      retryable: true
+    });
+  }
   if (!reservation?.allowed) {
     return failure(429, "A reminder was already sent recently", {
       code: "REMINDER_COOLDOWN",
@@ -161,12 +162,14 @@ export async function sendPaymentReminder({
     view: "summary",
     fetchImpl
   });
-  const devices = await loadPaymentReminderDevices({
-    supabaseUrl,
-    serviceRoleKey,
-    userId: recipientUserId,
-    fetchImpl
-  });
+  const devices = pushDeliveryReady
+    ? await loadPaymentReminderDevices({
+        supabaseUrl,
+        serviceRoleKey,
+        userId: recipientUserId,
+        fetchImpl
+      })
+    : [];
   if (!devices.length) {
     await completeReminderReservation({
       supabaseUrl,
@@ -191,6 +194,14 @@ export async function sendPaymentReminder({
   try {
     firebase = await accessTokenProvider(env);
   } catch {
+    if (storedInInbox) {
+      return finishInAppOnlyReminder({
+        supabaseUrl,
+        serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl
+      });
+    }
     await deleteReminderReservation({
       supabaseUrl,
       serviceRoleKey,
@@ -203,6 +214,14 @@ export async function sendPaymentReminder({
     });
   }
   if (!firebase?.accessToken || !firebase?.projectId) {
+    if (storedInInbox) {
+      return finishInAppOnlyReminder({
+        supabaseUrl,
+        serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl
+      });
+    }
     await deleteReminderReservation({
       supabaseUrl,
       serviceRoleKey,
@@ -265,6 +284,14 @@ export async function sendPaymentReminder({
   }
 
   if (!delivered) {
+    if (storedInInbox) {
+      return finishInAppOnlyReminder({
+        supabaseUrl,
+        serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl
+      });
+    }
     await deleteReminderReservation({
       supabaseUrl,
       serviceRoleKey,
@@ -292,6 +319,31 @@ export async function sendPaymentReminder({
       delivered,
       inbox: storedInInbox,
       recipientParticipantId: senderTransfer.fromParticipantId
+    }
+  };
+}
+
+async function finishInAppOnlyReminder({
+  supabaseUrl,
+  serviceRoleKey,
+  reminderId,
+  fetchImpl
+}) {
+  await completeReminderReservation({
+    supabaseUrl,
+    serviceRoleKey,
+    reminderId,
+    delivered: 0,
+    fetchImpl
+  });
+  return {
+    ok: true,
+    status: 200,
+    payload: {
+      ok: true,
+      delivered: 0,
+      inbox: true,
+      reason: "in-app-only"
     }
   };
 }
@@ -376,19 +428,34 @@ async function loadAuthoritativeSharedEvent({
   serviceRoleKey,
   eventId,
   workspaceEvent,
+  senderUserId,
   fetchImpl
 }) {
   const spaceId = String(workspaceEvent?.sharedSpaceId ?? "").trim();
-  const spaceKey = String(workspaceEvent?.sharedSpaceKey ?? "").trim();
-  if (!isSafeSharedIdentifier(spaceId) || !isSafeSharedIdentifier(spaceKey)) {
+  if (!isSafeSharedIdentifier(spaceId)) {
     return null;
   }
+
+  // A shared link key can rotate while a member's personal workspace still
+  // contains the previous key. Notification authorization must therefore use
+  // the canonical membership registry, not a stale copy of the invitation key.
+  // Passing the sender as both parties performs a strict active-member check;
+  // the sender/recipient pair is checked again after the transfer is resolved.
+  const senderIsCanonicalMember = await verifyCanonicalNotificationMembership({
+    supabaseUrl,
+    serviceRoleKey,
+    snapshotId: spaceId,
+    senderUserId,
+    recipientUserId: senderUserId,
+    fetchImpl
+  });
+  if (!senderIsCanonicalMember) return null;
 
   const params = new URLSearchParams({
     id: `eq.${spaceId}`,
     owner_user_id: "is.null",
     snapshot_kind: "eq.shared_event",
-    select: "state,access_key_hash",
+    select: "state",
     limit: "1"
   });
   const response = await fetchImpl(
@@ -399,8 +466,6 @@ async function loadAuthoritativeSharedEvent({
 
   const rows = await response.json().catch(() => []);
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
-  const expectedHash = createHash("sha256").update(spaceKey).digest("hex");
-  if (!secureHashEquals(snapshot?.access_key_hash, expectedHash)) return null;
   return eventFromState(snapshot?.state, eventId);
 }
 
@@ -410,13 +475,6 @@ function isActiveEventParticipant(event, participantId) {
     event?.participantIds?.includes(participantId) &&
     !(event.inactiveParticipantIds ?? []).includes(participantId)
   );
-}
-
-function secureHashEquals(left, right) {
-  const leftBuffer = Buffer.from(String(left ?? ""));
-  const rightBuffer = Buffer.from(String(right ?? ""));
-  return leftBuffer.length === rightBuffer.length &&
-    timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 async function loadPaymentReminderDevices({

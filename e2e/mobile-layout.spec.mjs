@@ -5,6 +5,7 @@ import { calculateSettlement } from "../src/domain/settlement.mjs";
 const EVENT_ID = "event-layout-ci";
 const OWNER_ID = "person-owner";
 const MAOR_ID = "account-12345678-1234-4123-8123-123456789abc";
+const AVAILABLE_FRIEND_ID = "account-87654321-4321-4321-8321-cba987654321";
 let runtimeIssues = [];
 
 const participants = [
@@ -137,17 +138,214 @@ test.afterEach(() => {
   expect(runtimeIssues, "the core mobile journey must not emit browser runtime errors").toEqual([]);
 });
 
+test("participant pictures never cover the event title or participant count", async ({
+  page,
+  request
+}) => {
+  const largeState = structuredClone(seededState);
+  const extraParticipants = Array.from({ length: 121 }, (_, index) => ({
+    id: `person-scale-${index + 1}`,
+    displayName: `משתתף ${index + 1}`,
+    kind: "guest"
+  }));
+  largeState.participants.push(...extraParticipants);
+  largeState.events[0].participantIds.push(
+    ...extraParticipants.map((participant) => participant.id)
+  );
+  await request.put("/api/state", { data: largeState });
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript((nextState) => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
+  }, largeState);
+  await page.reload();
+
+  const eventRow = page.locator(`[data-event-id="${EVENT_ID}"]`).first();
+  const stack = eventRow.locator(".avatar-stack");
+  const count = eventRow.locator(".event-row-meta > span").last();
+  await expect(stack.locator(":scope > .avatar")).toHaveCount(3);
+  await expect(stack.locator(".avatar-more")).toHaveText("+99+");
+  await expect(count).toHaveText("125 משתתפים");
+
+  const geometry = await eventRow.evaluate((element) => {
+    const stackRect = element.querySelector(".avatar-stack")?.getBoundingClientRect();
+    const mainRect = element.querySelector(".event-row-main")?.getBoundingClientRect();
+    const countRect = element.querySelector(".event-row-meta > span:last-child")?.getBoundingClientRect();
+    const overlap = (first, second) => first && second
+      ? Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
+      : -1;
+    return {
+      stackMainOverlap: overlap(stackRect, mainRect),
+      stackCountOverlap: overlap(stackRect, countRect),
+      stackWidth: stackRect?.width ?? 0,
+      rowWidth: element.getBoundingClientRect().width
+    };
+  });
+  expect(geometry.stackMainOverlap).toBe(0);
+  expect(geometry.stackCountOverlap).toBe(0);
+  expect(geometry.stackWidth).toBeLessThan(geometry.rowWidth);
+  await assertLayoutHealth(page, "large event participant count");
+});
+
+test("adding a saved friend requires an explicit confirmation and keeps the picker on-brand", async ({
+  page,
+  request
+}) => {
+  const availableFriend = {
+    id: AVAILABLE_FRIEND_ID,
+    displayName: "נועה חברה",
+    kind: "user",
+    accountLinked: true,
+    username: "noa_friend",
+    avatarPreset: "avatar-3"
+  };
+  const augmentedState = structuredClone(seededState);
+  augmentedState.participants.push(availableFriend);
+  augmentedState.friendContacts = [
+    {
+      participantId: AVAILABLE_FRIEND_ID,
+      active: true,
+      source: "account",
+      updatedAt: "2026-08-03T20:05:00.000Z"
+    }
+  ];
+  await request.put("/api/state", { data: augmentedState });
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript((nextState) => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
+  }, augmentedState);
+  await page.reload();
+
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .locator(".event-row-main")
+    .click();
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page
+    .locator('.event-participant-roster-modal [data-action="open-event-participant-add"]')
+    .click();
+  const addRoute = page.locator(".event-participant-add-route-modal");
+  await addRoute
+    .locator('[data-action="set-event-participant-add-view"][data-participant-view="friends"]')
+    .click();
+
+  await expect(addRoute.locator(".event-modal-header .eyebrow")).toHaveCount(0);
+  const candidate = addRoute.locator(
+    `[data-action="select-event-participant-candidate"][data-participant-id="${AVAILABLE_FRIEND_ID}"]`
+  );
+  const confirm = addRoute.locator('[data-action="confirm-event-participant-add"]');
+  await expect(candidate).toHaveText(/בחר/);
+  await expect(confirm).toBeDisabled();
+
+  await candidate.click();
+  await expect(candidate).toHaveAttribute("aria-pressed", "true");
+  await expect(candidate).toHaveText(/נבחר/);
+  await expect(confirm).toBeEnabled();
+  expect(
+    await page.evaluate(({ eventId, participantId }) => {
+      const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
+      return state.events
+        ?.find((event) => event.id === eventId)
+        ?.participantIds?.includes(participantId);
+    }, { eventId: EVENT_ID, participantId: AVAILABLE_FRIEND_ID })
+  ).toBe(false);
+  await assertLayoutHealth(page, "saved friend confirmation");
+
+  await confirm.click();
+  const roster = page.locator(".event-participant-roster-modal");
+  await expect(roster).toBeVisible();
+  await expect(
+    roster.locator(
+      `.event-participant-roster-row[data-participant-id="${AVAILABLE_FRIEND_ID}"]`
+    )
+  ).toBeVisible();
+});
+
+test("an event without expenses presents one clear empty summary card", async ({ page, request }) => {
+  const emptyState = structuredClone(seededState);
+  emptyState.events[0].expenses = [];
+  emptyState.events[0].transfers = [];
+  await request.put("/api/state", { data: emptyState });
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript((nextState) => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(nextState));
+  }, emptyState);
+  await page.reload();
+
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .locator(".event-row-main")
+    .click();
+  await page.locator('[data-action="settle"]').first().click();
+
+  const emptySummary = page.locator(".event-empty-expense-summary");
+  await expect(emptySummary).toBeVisible();
+  await expect(emptySummary.locator("h2")).toHaveText("אין עדיין סיכום");
+  await expect(emptySummary.locator(".event-empty-expense-eyebrow")).toHaveCount(0);
+  await expect(emptySummary.locator('[data-action="show-expense-form"]')).toBeVisible();
+  await assertLayoutHealth(page, "empty summary card");
+});
+
 test("another person's picture alone opens shared statistics while editable text stays selectable", async ({
   page
 }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await page
     .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
     .first()
     .click();
+
+  const currentParticipantRow = page.locator(
+    `[data-action="open-event-settings"][data-participant-id="${OWNER_ID}"]`
+  );
+  const currentParticipantAvatar = currentParticipantRow.locator(
+    '.avatar[data-action="edit-profile"]'
+  );
+  await expect(currentParticipantAvatar).toHaveAttribute("aria-label", "פתיחת הפרופיל שלך");
+  const currentParticipantAvatarImage = currentParticipantAvatar.locator("img");
+  await expect(currentParticipantAvatarImage).toBeVisible();
+  const currentParticipantAvatarRendering = await currentParticipantAvatar.evaluate((avatar) => {
+    const image = avatar.querySelector("img");
+    const imageStyle = image ? getComputedStyle(image) : null;
+    const interactionTargetStyle = getComputedStyle(avatar, "::before");
+    const statusMarkerStyle = getComputedStyle(avatar, "::after");
+    return {
+      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      imageDisplay: imageStyle?.display,
+      imageVisibility: imageStyle?.visibility,
+      interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
+      interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
+      statusMarkerWidth: statusMarkerStyle.width,
+      statusMarkerHeight: statusMarkerStyle.height
+    };
+  });
+  expect(currentParticipantAvatarRendering).toEqual(
+    expect.objectContaining({
+      imageLoaded: true,
+      imageDisplay: "block",
+      imageVisibility: "visible"
+    })
+  );
+  expect(currentParticipantAvatarRendering.interactionTargetWidth).toBeGreaterThanOrEqual(44);
+  expect(currentParticipantAvatarRendering.interactionTargetHeight).toBeGreaterThanOrEqual(44);
+  expect(currentParticipantAvatarRendering.statusMarkerWidth).not.toBe("44px");
+  expect(currentParticipantAvatarRendering.statusMarkerHeight).not.toBe("44px");
+  await currentParticipantRow.locator(".event-participant-person-copy").click();
+  await expect(page.locator('.event-settings-modal[role="region"]')).toBeVisible();
+  await page.goBack();
+  await expect(currentParticipantRow).toBeVisible();
+  await currentParticipantAvatar.click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.goBack();
+  await expect(currentParticipantRow).toBeVisible();
 
   const participantRow = page.locator(
     `[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`
@@ -190,6 +388,25 @@ test("another person's picture alone opens shared statistics while editable text
       };
     });
   expect(comparisonSides.currentX).toBeGreaterThan(comparisonSides.targetX);
+  const comparisonValueAlignment = await statisticsScreen
+    .locator(".relationship-comparison-values")
+    .first()
+    .evaluate((element) => {
+      const current = element.querySelector('[data-relationship-person="current"]');
+      const target = element.querySelector('[data-relationship-person="target"]');
+      const currentValue = current?.querySelector(".font-num");
+      const targetValue = target?.querySelector(".font-num");
+      const currentRect = current?.getBoundingClientRect();
+      const targetRect = target?.getBoundingClientRect();
+      const currentValueRect = currentValue?.getBoundingClientRect();
+      const targetValueRect = targetValue?.getBoundingClientRect();
+      return {
+        currentEdgeGap: Math.abs((currentRect?.right ?? 0) - (currentValueRect?.right ?? 0)),
+        targetEdgeGap: Math.abs((targetValueRect?.left ?? 0) - (targetRect?.left ?? 0))
+      };
+    });
+  expect(comparisonValueAlignment.currentEdgeGap).toBeLessThanOrEqual(2);
+  expect(comparisonValueAlignment.targetEdgeGap).toBeLessThanOrEqual(2);
   if (process.env.CAPTURE_PARTICIPANT_STATS === "1") {
     await page.screenshot({
       path: `design-audits/participant-statistics-${test.info().project.name}.png`,
@@ -232,19 +449,102 @@ test("another person's picture alone opens shared statistics while editable text
   expect(editableSelection).toEqual({ canceled: false, css: "text" });
 });
 
-test("iPad event screens use the tablet canvas instead of a phone column", async ({ page }, testInfo) => {
+test("iPad event screens use the same compact canvas as iPhone", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit");
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
 
   const layout = await page.locator('.screen[data-screen-kind="event"]').evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { width: rect.width, viewportWidth: window.innerWidth };
   });
-  expect(layout.width).toBeGreaterThanOrEqual(Math.min(640, layout.viewportWidth - 56));
-  expect(layout.width).toBeLessThanOrEqual(722);
+  expect(layout.width).toBeGreaterThanOrEqual(390);
+  expect(layout.width).toBeLessThanOrEqual(432);
+});
+
+test("iPad home, notifications and profile share a stable phone canvas", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "ipad-webkit");
+
+  for (const viewport of [
+    { width: 834, height: 1194 },
+    { width: 1194, height: 834 }
+  ]) {
+    await page.setViewportSize(viewport);
+    if (!(await page.locator('#app .screen[data-screen-kind="home"]').isVisible())) {
+      await page.locator('[data-nav-destination="home"]').click();
+    }
+    await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+
+    const homeWidth = await page.locator('#app .screen[data-screen-kind="home"]').evaluate(
+      (element) => element.getBoundingClientRect().width
+    );
+    expect(homeWidth).toBeGreaterThanOrEqual(390);
+    expect(homeWidth).toBeLessThanOrEqual(432);
+    await assertLayoutHealth(page, `iPad home ${viewport.width}x${viewport.height}`);
+
+    await page.locator('[data-nav-destination="notifications"]').click();
+    const notifications = page.locator('.screen[data-screen-kind="notifications"]');
+    await expect(notifications).toBeVisible();
+    const notificationTopState = await page.evaluate(() => ({
+      scrollY: Math.round(window.scrollY),
+      screenTop: Math.round(document.querySelector('.screen[data-screen-kind="notifications"]')?.getBoundingClientRect().top ?? -1),
+      identityTop: Math.round(document.querySelector('.screen[data-screen-kind="notifications"] > .product-app-identity')?.getBoundingClientRect().top ?? -1),
+      brandTop: Math.round(document.querySelector('.screen[data-screen-kind="notifications"] > .product-app-identity > .product-brand-lockup')?.getBoundingClientRect().top ?? -1)
+    }));
+    expect(notificationTopState).toEqual({
+      scrollY: 0,
+      screenTop: expect.any(Number),
+      identityTop: expect.any(Number),
+      brandTop: expect.any(Number)
+    });
+    expect(notificationTopState.screenTop).toBeGreaterThanOrEqual(0);
+    expect(notificationTopState.identityTop).toBeGreaterThanOrEqual(0);
+    expect(notificationTopState.brandTop).toBeGreaterThanOrEqual(0);
+    const notificationsWidth = await notifications.evaluate(
+      (element) => element.getBoundingClientRect().width
+    );
+    expect(notificationsWidth).toBeGreaterThanOrEqual(390);
+    expect(notificationsWidth).toBeLessThanOrEqual(432);
+    await assertLayoutHealth(page, `iPad notifications ${viewport.width}x${viewport.height}`);
+
+    await page.locator('[data-nav-destination="profile"]').click();
+    const profile = page.locator('.screen[data-screen-kind="profile"]');
+    await expect(profile).toBeVisible();
+    const profileWidth = await profile.evaluate(
+      (element) => element.getBoundingClientRect().width
+    );
+    expect(profileWidth).toBeGreaterThanOrEqual(390);
+    expect(profileWidth).toBeLessThanOrEqual(432);
+    await assertLayoutHealth(page, `iPad profile ${viewport.width}x${viewport.height}`);
+  }
+});
+
+test("iPad new-event steps always start inside the visible canvas", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "ipad-webkit");
+
+  await page.locator('[data-action="new-event"]').first().click();
+  await expect(page.locator('[data-event-creation-step="type"]')).toBeVisible();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  const details = page.locator('[data-event-creation-step="details"]');
+  await expect(details).toBeVisible();
+
+  await expect.poll(async () => page.evaluate(() => Math.round(window.scrollY))).toBe(0);
+  const topState = await details.evaluate((element) => {
+    const identity = element.querySelector(':scope > .product-app-identity');
+    const hero = element.querySelector(':scope > .top');
+    return {
+      screenTop: Math.round(element.getBoundingClientRect().top),
+      identityTop: Math.round(identity?.getBoundingClientRect().top ?? -1),
+      heroTop: Math.round(hero?.getBoundingClientRect().top ?? -1)
+    };
+  });
+  expect(topState.screenTop).toBeGreaterThanOrEqual(0);
+  expect(topState.identityTop).toBeGreaterThanOrEqual(0);
+  expect(topState.heroTop).toBeGreaterThanOrEqual(0);
+  await assertLayoutHealth(page, "iPad new event details visible top");
 });
 
 test("offline mode keeps shared event changes local-first until sync access returns", async ({
@@ -254,6 +554,7 @@ test("offline mode keeps shared event changes local-first until sync access retu
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await page
     .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
@@ -295,6 +596,7 @@ test("routine background sync never opens a sync surface", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await page
     .locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`)
@@ -316,10 +618,11 @@ test("routine background sync never opens a sync surface", async ({ page }) => {
   }
 });
 
-test("expense notes save and close smoothly", async ({ page }) => {
+test("expense notes and image stay visible after save and resume sync", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
 
   const expense = page.locator('[data-expense-id="expense-taxi"]');
@@ -329,6 +632,15 @@ test("expense notes save and close smoothly", async ({ page }) => {
   const dialog = page.locator(".expense-notes-modal");
   await expect(dialog).toBeVisible();
   await dialog.locator('[data-action="expense-notes"]').fill("איסוף מטרמינל שלוש");
+  await dialog.locator('[data-action="expense-attachment-image"]:not([data-image-source])').setInputFiles({
+    name: "receipt.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR42mP8z8DAwMAAAAYAAQHLR3cAAAAASUVORK5CYII=",
+      "base64"
+    )
+  });
+  await expect(dialog.locator(".expense-attachment-preview")).toBeVisible();
   await dialog.locator('[data-action="save-expense"]').click();
 
   await expect(dialog).toBeHidden();
@@ -336,14 +648,94 @@ test("expense notes save and close smoothly", async ({ page }) => {
   await expect(expense.locator(".expense-saved-notes")).toHaveText(
     "איסוף מטרמינל שלוש"
   );
+  await expect(expense.locator(".expense-saved-image")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("settle-friends:native-resume"));
+  });
+  await expect(expense.locator(".expense-saved-image")).toBeVisible();
 });
 
-test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInfo) => {
+test("expense overflow visually matches the event image menu", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .locator(".event-row-main")
+    .click();
+
+  const menu = page.locator('[data-expense-id="expense-taxi"] .expense-row-actions-menu');
+  await menu.locator(":scope > summary").click();
+  await expect(menu).toHaveAttribute("open", "");
+  await expect
+    .poll(() =>
+      menu
+        .locator(":scope > summary")
+        .evaluate((element) => getComputedStyle(element).backgroundColor)
+    )
+    .toBe("rgb(255, 255, 255)");
+
+  const presentation = await menu.evaluate((element) => {
+    const trigger = element.querySelector(":scope > summary");
+    const panel = element.querySelector(":scope > div");
+    const firstAction = panel?.querySelector("button");
+    const dangerAction = panel?.querySelector('[data-action="delete-expense"]');
+    const triggerStyle = getComputedStyle(trigger);
+    const panelStyle = getComputedStyle(panel);
+    const actionStyle = getComputedStyle(firstAction);
+    const dangerStyle = getComputedStyle(dangerAction);
+    return {
+      trigger: {
+        width: triggerStyle.width,
+        height: triggerStyle.height,
+        radius: triggerStyle.borderRadius,
+        background: triggerStyle.backgroundColor
+      },
+      panel: {
+        width: panelStyle.width,
+        padding: panelStyle.padding,
+        radius: panelStyle.borderRadius,
+        background: panelStyle.backgroundColor
+      },
+      action: {
+        minHeight: actionStyle.minHeight,
+        borderWidth: actionStyle.borderTopWidth,
+        radius: actionStyle.borderRadius,
+        background: actionStyle.backgroundColor
+      },
+      dangerColor: dangerStyle.color
+    };
+  });
+
+  expect(presentation).toEqual({
+    trigger: {
+      width: "44px",
+      height: "44px",
+      radius: "12px",
+      background: "rgb(255, 255, 255)"
+    },
+    panel: {
+      width: "166px",
+      padding: "8px",
+      radius: "12px",
+      background: "rgb(255, 255, 255)"
+    },
+    action: {
+      minHeight: "44px",
+      borderWidth: "0px",
+      radius: "10px",
+      background: "rgba(0, 0, 0, 0)"
+    },
+    dangerColor: "rgb(163, 58, 50)"
+  });
+});
+
+test("iPad landscape keeps expense entry inside the centered phone canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit", "iPad-specific landscape guard");
   await page.setViewportSize({ width: 1194, height: 834 });
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await page
     .locator(`[data-action="show-expense-form"][data-event-id="${EVENT_ID}"]`)
@@ -365,8 +757,10 @@ test("iPad landscape keeps expense entry edge to edge", async ({ page }, testInf
     };
   });
   expect(rect.top).toBeLessThanOrEqual(4);
-  expect(rect.left).toBeLessThanOrEqual(4);
-  expect(rect.right).toBeGreaterThanOrEqual(1190);
+  expect(rect.left).toBeGreaterThanOrEqual(380);
+  expect(rect.left).toBeLessThanOrEqual(384);
+  expect(rect.right).toBeGreaterThanOrEqual(810);
+  expect(rect.right).toBeLessThanOrEqual(814);
   const navTop = await nav.evaluate((element) =>
     Math.round(element.getBoundingClientRect().top)
   );
@@ -381,11 +775,13 @@ test("close-event action and its floating feedback stay polished on every mobile
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
-  await page
+  const summaryTab = page
     .locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`)
-    .first()
-    .click();
+    .first();
+  await summaryTab.scrollIntoViewIfNeeded();
+  await summaryTab.click();
 
   const closeButton = page.locator(".settlement-close-primary").first();
   await expect(closeButton).toBeVisible();
@@ -471,6 +867,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
     .toBeVisible();
@@ -505,12 +902,14 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     });
   }
 
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page
     .locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`)
     .first()
     .click();
   await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
   await expect(page.locator(".event-workspace-nav")).toBeVisible();
+  await expect(page.locator(".event-workspace-nav")).toHaveCSS("position", "static");
   await assertLayoutHealth(page, "event summary");
   await assertCompactSettlementFirstView(page);
 
@@ -558,6 +957,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     });
   }
 
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page
     .locator(`[data-action="back-to-event"][data-event-id="${EVENT_ID}"]`)
     .first()
@@ -929,6 +1329,16 @@ async function assertSingleDecisionExpenseStep(page) {
 
   expect(layout.step).toBe("amount");
   expect(layout.visibleFields, "each expense step asks for one decision at a time").toBe(1);
+}
+
+async function settleServiceWorkerBeforeReload(page) {
+  await page.evaluate(async () => {
+    if (!("serviceWorker" in navigator)) return;
+    await Promise.race([
+      navigator.serviceWorker.ready.catch(() => null),
+      new Promise((resolve) => setTimeout(resolve, 2_000))
+    ]);
+  });
 }
 
 async function assertExpenseStepStartsAtTop(page, step) {

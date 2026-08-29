@@ -99,3 +99,23 @@ test("the backup image is published from main without embedding secrets", async 
   assert.match(workflow, /secrets\.GITHUB_TOKEN/);
   assert.doesNotMatch(workflow, /SUPABASE_SERVICE_ROLE_KEY/);
 });
+
+test("the non-Apple release gate blocks continuity and delivery regressions", async () => {
+  const [script, pkg, runbook] = await Promise.all([
+    readFile("scripts/verify-operational-readiness-live.mjs", "utf8"),
+    readFile("package.json", "utf8").then(JSON.parse),
+    readFile("docs/production-resilience.md", "utf8")
+  ]);
+
+  assert.match(script, /admin_operational_health/);
+  assert.match(script, /accountsWithoutWorkspace/);
+  assert.match(script, /eventsWithoutActiveMembers/);
+  assert.match(script, /activeMembershipsMissingPersonalIndex/);
+  assert.match(script, /stalePushReservations/);
+  assert.match(script, /rls_forced/);
+  assert.doesNotMatch(script, /select\s+.*\bstate\b/is);
+  assert.match(pkg.scripts["qa:release:core"], /qa:operations -- --strict/);
+  assert.match(pkg.scripts["qa:release:core"], /qa:production:strict/);
+  assert.match(pkg.scripts["qa:release:core"], /qa:store -- --android/);
+  assert.match(runbook, /Operational release gate/);
+});

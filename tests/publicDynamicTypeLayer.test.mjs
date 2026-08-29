@@ -98,6 +98,10 @@ test("large text mode releases rigid controls and protects fixed bottom navigati
   assert.match(layer, /overflow: visible !important/);
   assert.match(layer, /height: auto !important/);
   assert.match(layer, /min-height: max\(48px, 2\.85rem\)/);
+  assert.match(
+    layer,
+    /:where\(\.expense-row-actions-menu > summary, \.event-cover-menu-button\) \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important;[\s\S]*?max-height: 44px !important;/
+  );
   assert.match(layer, /\.event-action-dock \{[\s\S]*?position: static !important/);
   assert.match(
     layer,

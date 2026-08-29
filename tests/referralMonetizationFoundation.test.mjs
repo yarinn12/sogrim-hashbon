@@ -352,11 +352,24 @@ test("referral UI and AdMob foundation preserve financial focus", async () => {
   assert.match(referralLayer, /visibilitychange/);
   assert.match(referralLayer, /addEventListener\("online"/);
   assert.match(referralLayer, /PENDING_REFERRAL_CODE_KEY/);
+  assert.match(referralLayer, /PENDING_REFERRAL_QUALIFICATION_KEY/);
   assert.match(referralLayer, /PENDING_REFERRAL_MAX_AGE_MS/);
+  assert.match(
+    referralLayer,
+    /PENDING_REFERRAL_MAX_AGE_MS = 30 \* 24 \* 60 \* 60 \* 1000/
+  );
   assert.match(referralLayer, /JSON\.stringify\(\{\s*code: normalizedCode,\s*savedAt: Date\.now\(\)/);
   assert.match(referralLayer, /isTerminalReferralClaimError/);
   assert.match(referralLayer, /recoverReferralAfterReconnect/);
   assert.match(referralLayer, /savePendingReferralCode\(referralCodeFromCurrentUrl\)/);
+  assert.ok(
+    referralLayer.indexOf("savePendingReferralCode(referralCodeFromCurrentUrl)") <
+      referralLayer.indexOf("if (!referralProgramAvailable(runtimeConfig))"),
+    "the invite must be persisted before a new user is asked to sign in"
+  );
+  assert.match(referralLayer, /savePendingReferralQualification\(eventId\)/);
+  assert.match(referralLayer, /retryPendingReferralQualification\(\)/);
+  assert.match(referralLayer, /\["rewarded", "rejected"\]\.includes\(result\?\.status\)/);
   assert.match(referralLayer, /if \(refreshRequest\) return refreshRequest/);
   assert.match(referralLayer, /referralStatus\.status === "ready"/);
   assert.match(referralLayer, /refreshReferralStatus\(\);/);

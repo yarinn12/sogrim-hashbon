@@ -101,7 +101,7 @@ test("app bootstraps only after render-time constants are initialized", async ()
   );
   assert.match(
     app,
-    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory\s*\? CACHED_ACCOUNT_CLOUD_WAIT_MS\s*: EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\);\s*const sharedState = startupState\.state;/
+    /async function hydrateAppForActiveAccount\(\) \{\s*localProfile = loadLocalProfile\(\);[\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: 0\s*\}\);\s*const sharedState = startupState\.state;/
   );
 });
 
@@ -184,7 +184,7 @@ test("expense saving ignores duplicate or stale save actions", async () => {
   assert.match(saveExpense, /finally \{\s*expenseSaveInProgress = false/);
 });
 
-test("regular expense flow uses app-like back navigation while restaurant keeps its close action", async () => {
+test("every expense route uses the same app-like navigation shell", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const regularExpense = sourceBetween(
     app,
@@ -201,8 +201,11 @@ test("regular expense flow uses app-like back navigation while restaurant keeps 
   assert.match(regularExpense, /expense-accessibility-button/);
   assert.match(regularExpense, /aria-label="חזרה לאירוע"/);
   assert.match(regularExpense, /renderEventRoutePrimaryNav\(\)/);
-  assert.match(quickExpense, /modal-close-button/);
-  assert.match(quickExpense, /aria-label="סגירת חלון ההוצאה"/);
+  assert.match(quickExpense, /expense-route-backdrop/);
+  assert.match(quickExpense, /expense-accessibility-button/);
+  assert.match(quickExpense, /aria-label="חזרה לאירוע"/);
+  assert.match(quickExpense, /renderEventRoutePrimaryNav\(\)/);
+  assert.doesNotMatch(quickExpense, /modal-close-button/);
   assert.doesNotMatch(quickExpense, /modal-back-button-label/);
 });
 
@@ -518,7 +521,30 @@ test("participant manager distinguishes connected accounts from manually added n
   assert.match(app, /class="event-participant-roster-identity-group is-\$\{identity\}"/);
   assert.match(app, /משתמשים באפליקציה/);
   assert.match(app, /שמות אופליין/);
-  assert.match(app, /class="event-participant-current-label">אתה</);
+  assert.match(
+    app,
+    /class="event-participant-status-tag event-participant-current-label">אתה</
+  );
+  assert.match(
+    app,
+    /class="event-participant-status-tag event-participant-role">\$\{roleLabel\}</
+  );
+  assert.match(
+    app,
+    /class="event-participant-status-tag event-participant-friend-hint is-\$\{friendship\.kind\}"/
+  );
+  assert.match(
+    app,
+    /const rowAction = isCurrentParticipant[\s\S]*?"open-event-settings"[\s\S]*?"open-event-participant-profile"/
+  );
+  assert.match(
+    app,
+    /renderAvatar\(participant\.id, event, \{ openCurrentProfile: isCurrentParticipant \}\)/
+  );
+  assert.match(
+    app,
+    /data-action="edit-profile" role="button" tabindex="0" aria-label="פתיחת הפרופיל שלך"/
+  );
   assert.match(design, /\.event-participant-roster-identity-heading \{/);
   assert.match(design, /background: var\(--ledger-surface-soft\) !important/);
   assert.match(design, /\.participant-username \{/);
@@ -699,9 +725,17 @@ test("participant manager separates the current roster from saved names", async 
   assert.match(addDialog, /backLabel: "חזרה למשתתפים"/);
   assert.match(addDialog, /showClose: false/);
   assert.match(addDialog, /event-participant-add-route-modal/);
+  assert.match(addDialog, /eyebrow: ""/);
   assert.match(app, /data-event-participant-roster/);
   assert.match(app, />בחר מרשימת החברים</);
   assert.match(app, /data-action="add-event-participant"/);
+  assert.match(app, /data-action="select-event-participant-candidate"/);
+  assert.match(app, /data-action="confirm-event-participant-add"/);
+  assert.match(app, /pendingParticipantId/);
+  assert.match(app, /אישור והוספה לאירוע/);
+  assert.match(app, /aria-pressed="\$\{selected\}"/);
+  assert.match(design, /\.event-participant-selection-button\.is-selected/);
+  assert.match(design, /\.event-participant-add-confirmation/);
   assert.match(app, /data-action="remove-event-participant"/);
   assert.match(app, /data-action="restore-event-participant"/);
   assert.match(app, /data-participant-search-for="event-participant-roster"/);
@@ -709,7 +743,7 @@ test("participant manager separates the current roster from saved names", async 
   assert.doesNotMatch(participantRow, /באירוע עכשיו/);
   assert.doesNotMatch(participantRow, /אורחים ללא חשבון/);
   assert.match(participantRow, /class="event-participant-roster-row/);
-  assert.match(participantRow, /data-action="open-event-participant-profile"/);
+  assert.match(participantRow, /const rowAction = isCurrentParticipant[\s\S]*?"open-event-participant-profile"/);
   assert.match(participantRow, /class="event-participant-roster-chevron"/);
   assert.doesNotMatch(participantRow, /event-participant-membership-button/);
   assert.doesNotMatch(participantRow, /data-action="remove-event-participant"/);
@@ -770,7 +804,7 @@ test("offline names can be renamed from the event without changing participant i
   );
 
   assert.match(row, /<button[\s\S]*?class="event-participant-roster-row/);
-  assert.match(row, /data-action="open-event-participant-profile"/);
+  assert.match(row, /const rowAction = isCurrentParticipant[\s\S]*?"open-event-participant-profile"/);
   assert.match(offlineProfile, /data-action="open-offline-participant-rename"/);
   assert.match(offlineProfile, /commandIconSvgs\.edit/);
   assert.match(offlineProfile, /data-participant-detail-view="offline"/);
@@ -1023,6 +1057,11 @@ test("new expenses exclude removed historical participants while edits keep refe
   assert.match(
     startExpense,
     /sharedByParticipantIds: activeEventParticipants\(event\)\.map/
+  );
+  assert.match(
+    startExpense,
+    /if \(existingExpense\) \{[\s\S]*?flowStep: "review"/,
+    "editing an existing expense opens directly on the final review step"
   );
   assert.match(app, /function selectableEventParticipants\(event, selectedIds = \[\]\)/);
   assert.match(app, /selectedParticipantIds\.has\(participant\.id\)/);
@@ -1452,7 +1491,7 @@ test("event screen uses one focused start action instead of a repeated command g
   assert.doesNotMatch(app, /function renderEventCommandGrid/);
 });
 
-test("home event rows prioritize selection details, participants, and status without decorative attention dots", async () => {
+test("home event rows prioritize selection details, participants, and one quiet options chevron", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const row = sourceBetween(app, "function renderEventRow(event)", "function ensureNewEventDraft");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
@@ -1467,36 +1506,39 @@ test("home event rows prioritize selection details, participants, and status wit
   assert.match(row, /const participants = activeEventParticipants\(event\)/);
   assert.match(
     row,
-    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event\)/
+    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event, \{[\s\S]*?suppressParticipantAction: true[\s\S]*?\}\)/
   );
   assert.doesNotMatch(row, /event-row-balance amount|amountToPay|amountToReceive/);
   assert.doesNotMatch(row, /event-type-chip/);
   assert.match(row, /eventRowDisplayName\(event\)/);
   assert.match(row, /renderEventRowMeta\(event, participants\)/);
-  assert.match(row, /event-status-indicator/);
+  assert.match(row, /event-row-options-chevron/);
+  assert.doesNotMatch(row, /event-status-indicator|statusLabel/);
   assert.match(home, /showEventStatusFilter = statusCounts\.open > 0 && statusCounts\.closed > 0/);
   assert.match(home, /showEventStatusFilter\s+\? renderEventStatusFilter\(sortedEvents\)/);
   assert.match(home, /class="event-list-count \$\{eventListCountClass\}"/);
 });
 
-test("home status control requires an explicit choice and keeps lifecycle safeguards", async () => {
+test("home event options expose the shared invitation flow and guarded removal", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /action === "event-status-select"/);
   assert.match(app, /function renderEventStatusMenu\(\)/);
-  assert.match(app, /data-action="choose-event-status"/);
-  assert.match(app, /data-event-status="\$\{status\}"/);
+  assert.match(app, /data-action="share-event-from-list"/);
+  assert.match(app, /function openEventParticipantAddFromHomeMenu\(eventId\)/);
+  assert.match(app, /kind: "participants-add",\s*returnKind: "home"/);
+  assert.match(app, /renderEventParticipantAddRoutes/);
+  assert.match(app, /שתף קישור או QR/);
+  assert.match(app, /בחר מחברים/);
+  assert.match(app, /הוסף שם ידנית/);
   assert.match(app, /data-action="remove-event-from-list"/);
   assert.match(app, /class="event-status-danger-zone"/);
   assert.match(app, /function openEventStatusMenu\(eventId, trigger\)/);
-  assert.match(app, /async function chooseEventStatusFromMenu\(eventId, nextStatus, trigger\)/);
-  assert.match(app, /async function setEventStatusFromHome\(eventId, nextStatus, trigger\)/);
-  assert.match(app, /\["open", "closed"\]\.includes\(nextStatus\)/);
-  assert.match(app, /if \(nextStatus === currentStatus\)/);
-  assert.match(app, /await reopenCurrentEvent\(eventId\)/);
-  assert.match(app, /kind: "close-event-from-home"/);
-  assert.match(app, /עדיין יהיה אפשר לסמן אותן כשולמו אחרי הסגירה/);
-  assert.match(app, /closeCurrentEvent\(action\.payload\.eventId, \{ destination: "home" \}\)/);
+  assert.match(app, /if \(canCurrentParticipantManage\(selectedEvent\)\)/);
+  assert.doesNotMatch(
+    sourceBetween(app, "function renderEventStatusMenu()", "function renderImportantActionDialog"),
+    /choose-event-status|renderOption\("open"|renderOption\("closed"/
+  );
 });
 
 test("home screen separates open and closed event history", async () => {
@@ -1545,10 +1587,18 @@ test("home dashboard only renders for actionable balances or pending transfers",
 test("home screen keeps creation primary and exposes a secondary friends entry", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
+  const createAction = sourceBetween(
+    app,
+    "function renderHomeCreateEventAction()",
+    "function renderRecentEventShortcut"
+  );
 
-  assert.equal([...home.matchAll(/data-action="new-event"/g)].length, 1);
-  assert.match(home, /<button class="home-quick-action is-primary" data-action="new-event"/);
-  assert.match(home, /<span class="home-quick-action-icon" aria-hidden="true">/);
+  assert.match(home, /class="screen font-hebrew product-home-screen\$\{sortedEvents\.length \? "" : " product-empty-home"\}"/);
+  assert.match(home, /data-product-screen="home"/);
+  assert.match(home, /\$\{renderHomeCreateEventAction\(\)\}/);
+  assert.equal([...createAction.matchAll(/data-action="new-event"/g)].length, 1);
+  assert.match(createAction, /<button class="home-quick-action is-primary home-create-event-action" data-action="new-event"/);
+  assert.match(createAction, /<span class="home-quick-action-icon" aria-hidden="true">/);
   assert.match(home, /<section class="home-benefit-actions" aria-label="הטבות וחברים">/);
   assert.doesNotMatch(home, /renderHomeEventTools/);
   assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
@@ -1617,6 +1667,13 @@ test("settlement screen can close an event and share it to WhatsApp", async () =
   assert.match(app, /requestCloseCurrentEvent\(target\.dataset\.eventId\)/);
   assert.match(app, /data-action="confirm-close-event"/);
   assert.match(app, /data-action="reopen-event"/);
+  assert.match(app, /בואו נסגור חשבון/);
+  assert.match(app, /בואו נסגור חשבון\?/);
+  assert.match(app, /סוגרים חשבון/);
+  assert.match(
+    app,
+    /class="secondary-button settlement-reopen-action" data-action="reopen-event"[^>]*>פתח אירוע מחדש/
+  );
   assert.match(app, /data-action="share-whatsapp"/);
   assert.match(app, /settlement-screen" data-screen-kind="event" data-event-view="summary" data-event-id=/);
   assert.match(app, /https:\/\/wa\.me\/\?text=/);
@@ -1640,8 +1697,18 @@ test("empty expenses and empty summary share one add-expense pattern", async () 
   assert.match(sharedEmptyState, /event-empty-expense-state/);
   assert.match(sharedEmptyState, /renderCommandIcon\("expense"\)/);
   assert.match(sharedEmptyState, /data-action="show-expense-form"/);
+  assert.match(sharedEmptyState, /canReopenFromEmptySummary/);
+  assert.match(sharedEmptyState, /settlement-reopen-action/);
+  assert.match(sharedEmptyState, /פתח אירוע מחדש/);
   assert.match(settlementHero, /renderEventEmptyExpenseState\(event/);
   assert.match(settlementHero, /context: "summary"/);
+  assert.match(settlementHero, /eyebrow: ""/);
+  assert.match(settlementHero, /title: "אין עדיין סיכום"/);
+  assert.match(
+    settlementHero,
+    /הוסף הוצאה ראשונה כדי לראות כאן מי שילם וכמה נשאר להתחשבן/
+  );
+  assert.match(sharedEmptyState, /eyebrow \? `<span class="event-empty-expense-eyebrow/);
 });
 
 test("new event creation makes a one-person roster explicit", async () => {

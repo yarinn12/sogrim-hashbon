@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=387"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=396"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -491,6 +491,26 @@ test("Google sign-in never spends the first browser tap loading its real button"
   assert.match(
     layer,
     /prepareNativeGoogleSignIn\(\)\.catch\(\(\) => \{\}\);/
+  );
+  assert.match(
+    layer,
+    /control\.classList\.contains\("is-google-ready"\)[\s\S]*?control\.classList\.contains\("is-google-rendering"\)/
+  );
+  assert.match(
+    layer,
+    /Preserve that exact node[\s\S]*?existingGoogle\.classList\.contains\("is-google-ready"\)/
+  );
+  assert.match(
+    layer,
+    /showWebGoogleCompletionState\(\)[\s\S]*?משלימים את הכניסה…/
+  );
+  assert.match(
+    layer,
+    /Google has already authenticated this account[\s\S]*?saveAccountSession\(accountSession\);[\s\S]*?renderAccountRecoveryGate\(\)/
+  );
+  assert.match(
+    layer,
+    /\.account-google-official iframe \{[\s\S]*?-webkit-tap-highlight-color: transparent !important;/
   );
 });
 

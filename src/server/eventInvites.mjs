@@ -400,6 +400,18 @@ export async function redeemEventInvite({
       code: "EVENT_INVITE_INVALIDATED"
     });
   }
+  const indexed = await indexSharedEventForMember({
+    ...context,
+    snapshotId: spaceId,
+    userId: recipient.id,
+    fetchImpl
+  });
+  if (!indexed) {
+    return failure(503, "The event is still being added to this account", {
+      code: "EVENT_MEMBERSHIP_INDEX_PENDING",
+      retryable: true
+    });
+  }
 
   return success({
     eventId: normalizedEventId,
@@ -493,10 +505,11 @@ export async function activateEventInviteMembership({
   supabaseUrl,
   serviceRoleKey,
   invite,
+  snapshotId,
   userId,
   fetchImpl = fetch
 }) {
-  return activateInviteMembership({
+  const activated = await activateInviteMembership({
     supabaseUrl,
     serviceRoleKey,
     inviteId: invite?.id,
@@ -504,6 +517,50 @@ export async function activateEventInviteMembership({
     userId,
     fetchImpl
   });
+  if (!activated) return false;
+  return indexSharedEventForMember({
+    supabaseUrl,
+    serviceRoleKey,
+    snapshotId,
+    userId,
+    fetchImpl
+  });
+}
+
+export async function indexSharedEventForMember({
+  supabaseUrl,
+  serviceRoleKey,
+  snapshotId,
+  userId,
+  fetchImpl = fetch
+}) {
+  if (
+    !isSafeSharedIdentifier(String(snapshotId ?? "")) ||
+    !UUID_PATTERN.test(String(userId ?? ""))
+  ) {
+    return false;
+  }
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/rpc/index_shared_event_for_member`,
+    {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
+      body: JSON.stringify({
+        p_snapshot_id: snapshotId,
+        p_user_id: userId
+      })
+    }
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    console.error("Shared event member index update failed", {
+      status: response.status,
+      snapshotId,
+      userId,
+      detail: detail.slice(0, 500)
+    });
+  }
+  return response.ok;
 }
 
 function serverContext(runtimeConfig, env) {

@@ -52,6 +52,11 @@ create index if not exists app_snapshots_owner_user_id_idx
   on public.app_snapshots (owner_user_id)
   where owner_user_id is not null;
 
+create unique index if not exists app_snapshots_shared_event_event_id_uidx
+  on public.app_snapshots ((state #>> '{events,0,id}'))
+  where snapshot_kind = 'shared_event'
+    and nullif(state #>> '{events,0,id}', '') is not null;
+
 alter table public.app_snapshots
   drop constraint if exists app_snapshots_state_size_check;
 alter table public.app_snapshots
@@ -195,6 +200,7 @@ as $$
 declare
   actor_id uuid := auth.uid();
   expected_participant_id text;
+  invalid_active_event_id text;
 begin
   if new.owner_user_id is null then
     return new;
@@ -226,6 +232,46 @@ begin
     or coalesce(new.state ->> 'currentParticipantId', '') <> expected_participant_id then
     raise exception 'Personal workspace payload is invalid'
       using errcode = '22023';
+  end if;
+  if tg_op = 'UPDATE' then
+    select shared_event.value ->> 'id'
+    into invalid_active_event_id
+    from private.shared_snapshot_members as member
+    join public.app_snapshots as shared
+      on shared.id = member.snapshot_id
+     and shared.snapshot_kind = 'shared_event'
+    cross join lateral pg_catalog.jsonb_array_elements(
+      coalesce(shared.state -> 'events', '[]'::jsonb)
+    ) as shared_event(value)
+    where member.user_id = actor_id
+      and member.status = 'active'
+      and member.removed_at is null
+      and coalesce(shared_event.value -> 'participantIds', '[]'::jsonb)
+        ? member.participant_id
+      and not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(
+          coalesce(new.state -> 'events', '[]'::jsonb)
+        ) as personal_event(value)
+          where personal_event.value ->> 'id' = shared_event.value ->> 'id'
+            and coalesce(
+              personal_event.value -> 'participantIds',
+              '[]'::jsonb
+            ) ? member.participant_id
+            and not (
+              coalesce(
+                personal_event.value -> 'inactiveParticipantIds',
+                '[]'::jsonb
+              ) ? member.participant_id
+            )
+      )
+    limit 1;
+
+    if invalid_active_event_id is not null then
+      raise exception 'Active shared member must remain active in its personal event'
+        using errcode = '23503',
+          detail = invalid_active_event_id;
+    end if;
   end if;
   if tg_op = 'INSERT' and exists (
     select 1
@@ -867,6 +913,180 @@ exception
 end;
 $$;
 
+create or replace function private.is_safe_transfer_status_only_update(
+  p_snapshot_id text,
+  p_old_state jsonb,
+  p_new_state jsonb,
+  p_actor_participant_id text
+)
+returns boolean
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  old_event jsonb := coalesce(p_old_state -> 'events' -> 0, '{}'::jsonb);
+  new_event jsonb := coalesce(p_new_state -> 'events' -> 0, '{}'::jsonb);
+  old_activity jsonb := case
+    when pg_catalog.jsonb_typeof(old_event -> 'activityLog') = 'array'
+      then old_event -> 'activityLog'
+    else '[]'::jsonb
+  end;
+  new_activity jsonb := case
+    when pg_catalog.jsonb_typeof(new_event -> 'activityLog') = 'array'
+      then new_event -> 'activityLog'
+    else '[]'::jsonb
+  end;
+  changed_transfer_count integer := 0;
+  added_activity_count integer := 0;
+  removed_activity_count integer := 0;
+begin
+  if coalesce(p_snapshot_id, '') = ''
+    or coalesce(p_actor_participant_id, '') = ''
+    or p_old_state - 'events' is distinct from p_new_state - 'events'
+    or old_event - array[
+      'updatedAt',
+      'transfers',
+      'transferStatusUpdates',
+      'activityLog'
+    ] is distinct from new_event - array[
+      'updatedAt',
+      'transfers',
+      'transferStatusUpdates',
+      'activityLog'
+    ]
+    or pg_catalog.jsonb_typeof(old_event -> 'transfers') <> 'array'
+    or pg_catalog.jsonb_typeof(new_event -> 'transfers') <> 'array'
+    or pg_catalog.jsonb_typeof(new_event -> 'transferStatusUpdates') <> 'array'
+    or pg_catalog.jsonb_array_length(old_event -> 'transfers')
+      <> pg_catalog.jsonb_array_length(new_event -> 'transfers')
+    or not (
+      p_actor_participant_id = any(private.active_event_participant_ids(p_old_state))
+    ) then
+    return false;
+  end if;
+
+  if not private.has_authorized_transfer_status_changes(
+    p_old_state,
+    p_new_state,
+    p_actor_participant_id,
+    p_snapshot_id
+  ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(old_event -> 'transfers') as old_item(value)
+    where not exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(new_event -> 'transfers') as new_item(value)
+      where new_item.value ->> 'id' = old_item.value ->> 'id'
+    )
+  ) then
+    return false;
+  end if;
+
+  select count(*) into changed_transfer_count
+  from pg_catalog.jsonb_array_elements(new_event -> 'transfers') as new_item(value)
+  join pg_catalog.jsonb_array_elements(old_event -> 'transfers') as old_item(value)
+    on old_item.value ->> 'id' = new_item.value ->> 'id'
+  where old_item.value is distinct from new_item.value;
+
+  if changed_transfer_count < 1 then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(new_event -> 'transfers') as new_item(value)
+    join pg_catalog.jsonb_array_elements(old_event -> 'transfers') as old_item(value)
+      on old_item.value ->> 'id' = new_item.value ->> 'id'
+    where old_item.value is distinct from new_item.value
+      and p_actor_participant_id is distinct from new_item.value ->> 'fromParticipantId'
+      and p_actor_participant_id is distinct from new_item.value ->> 'toParticipantId'
+      and not (
+        p_actor_participant_id = any(private.event_admin_ids(p_old_state))
+      )
+  ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(new_activity) as current_entry(value)
+    join pg_catalog.jsonb_array_elements(old_activity) as previous_entry(value)
+      on previous_entry.value ->> 'id' = current_entry.value ->> 'id'
+    where previous_entry.value is distinct from current_entry.value
+  ) then
+    return false;
+  end if;
+
+  select count(*) into added_activity_count
+  from pg_catalog.jsonb_array_elements(new_activity) as current_entry(value)
+  where not exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(old_activity) as previous_entry(value)
+    where previous_entry.value = current_entry.value
+  );
+
+  select count(*) into removed_activity_count
+  from pg_catalog.jsonb_array_elements(old_activity) as previous_entry(value)
+  where not exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(new_activity) as current_entry(value)
+    where current_entry.value = previous_entry.value
+  );
+
+  if added_activity_count <> changed_transfer_count
+    or (
+      removed_activity_count > 0
+      and not (
+        pg_catalog.jsonb_array_length(old_activity) = 100
+        and pg_catalog.jsonb_array_length(new_activity) = 100
+        and removed_activity_count = added_activity_count
+      )
+    ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(new_activity) as activity(value)
+    where not exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(old_activity) as previous(value)
+      where previous.value = activity.value
+    )
+      and not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(new_event -> 'transferStatusUpdates') as status(value)
+        join pg_catalog.jsonb_array_elements(new_event -> 'transfers') as transfer(value)
+          on transfer.value ->> 'id' = status.value ->> 'id'
+        join pg_catalog.jsonb_array_elements(old_event -> 'transfers') as old_transfer(value)
+          on old_transfer.value ->> 'id' = transfer.value ->> 'id'
+        where old_transfer.value is distinct from transfer.value
+          and activity.value ->> 'entityId' = transfer.value ->> 'id'
+          and activity.value ->> 'actorParticipantId' = p_actor_participant_id
+          and activity.value ->> 'fromParticipantId' = transfer.value ->> 'fromParticipantId'
+          and activity.value ->> 'toParticipantId' = transfer.value ->> 'toParticipantId'
+          and activity.value ->> 'occurredAt' = status.value ->> 'updatedAt'
+          and activity.value ->> 'kind' = case
+            when status.value ->> 'status' = 'paid' then 'transfer-paid'
+            else 'transfer-pending'
+          end
+      )
+  ) then
+    return false;
+  end if;
+
+  return true;
+exception
+  when others then
+    return false;
+end;
+$$;
+
 create or replace function private.guard_shared_snapshot_update()
 returns trigger
 language plpgsql
@@ -891,6 +1111,7 @@ declare
   actor_is_leaving boolean;
   actor_is_adding_offline_guests boolean;
   actor_is_updating_own_profile boolean;
+  actor_is_updating_transfer_status boolean;
 begin
   if old.snapshot_kind <> new.snapshot_kind then
     raise exception 'Snapshot kind cannot be changed'
@@ -941,6 +1162,15 @@ begin
     old_event := old_event - 'transferStatusUpdates';
     new_event := new_event - 'transferStatusUpdates';
   end if;
+
+  actor_is_updating_transfer_status :=
+    actor_participant_id = any(old_active_ids)
+    and private.is_safe_transfer_status_only_update(
+      new.id,
+      old.state,
+      new.state,
+      actor_participant_id
+    );
 
   if exists (
     select 1
@@ -1178,6 +1408,7 @@ begin
     and not actor_is_admin
     and not actor_is_leaving
     and not actor_is_joining
+    and not actor_is_updating_transfer_status
     and not (
       actor_is_updating_own_profile
       and old.state - 'participants' is not distinct from
@@ -2671,6 +2902,27 @@ create unique index if not exists push_devices_token_key
 create index if not exists push_devices_user_enabled_idx
   on public.push_devices (user_id, enabled);
 
+create table if not exists public.broadcast_notification_deliveries (
+  campaign_id text not null,
+  device_id uuid not null references public.push_devices(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  reserved_at timestamptz not null default now(),
+  delivered_at timestamptz,
+  primary key (campaign_id, device_id),
+  constraint broadcast_notification_campaign_id_check check (
+    char_length(campaign_id) between 1 and 80
+    and campaign_id ~ '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+  )
+);
+
+create index if not exists broadcast_notification_deliveries_user_idx
+  on public.broadcast_notification_deliveries (user_id, reserved_at desc);
+
+alter table public.broadcast_notification_deliveries enable row level security;
+alter table public.broadcast_notification_deliveries force row level security;
+revoke all on table public.broadcast_notification_deliveries from public, anon, authenticated;
+grant select, insert, update, delete on table public.broadcast_notification_deliveries to service_role;
+
 alter table public.push_devices enable row level security;
 alter table public.push_devices force row level security;
 
@@ -3944,6 +4196,202 @@ $$;
 revoke all on function public.admin_analytics_overview(integer)
   from public, anon, authenticated;
 grant execute on function public.admin_analytics_overview(integer)
+  to service_role;
+
+create or replace function public.admin_operational_health(
+  p_window_days integer default 30
+)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  with parameters as (
+    select least(90, greatest(1, coalesce(p_window_days, 30)))::integer
+      as window_days
+  ),
+  window_metrics as (
+    select metric.*
+    from public.product_metrics as metric
+    cross join parameters
+    where metric.received_at >= pg_catalog.now()
+      - pg_catalog.make_interval(days => parameters.window_days)
+  ),
+  deferred_operations as (
+    select detail, pg_catalog.count(*)::bigint as deferred_count
+    from window_metrics
+    where event_name = 'operation_deferred'
+    group by detail
+    order by deferred_count desc, detail
+  ),
+  client_error_groups as (
+    select platform, screen, pg_catalog.count(*)::bigint as error_count
+    from window_metrics
+    where event_name = 'client_error'
+    group by platform, screen
+    order by error_count desc, platform, screen
+    limit 10
+  ),
+  delivery_health as (
+    select
+      pg_catalog.count(*) filter (
+        where delivery.reserved_at >= pg_catalog.now()
+          - pg_catalog.make_interval(days => parameters.window_days)
+      )::bigint as reserved,
+      pg_catalog.count(*) filter (
+        where delivery.reserved_at >= pg_catalog.now()
+          - pg_catalog.make_interval(days => parameters.window_days)
+          and delivery.delivered_at is not null
+      )::bigint as delivered,
+      pg_catalog.count(*) filter (
+        where delivery.delivered_at is null
+          and delivery.reserved_at < pg_catalog.now() - interval '10 minutes'
+      )::bigint as stale_pending
+    from public.broadcast_notification_deliveries as delivery
+    cross join parameters
+  ),
+  continuity_health as (
+    select
+      (select pg_catalog.max(snapshot.updated_at) from public.app_snapshots as snapshot)
+        as latest_snapshot_at,
+      (
+        select pg_catalog.count(*)::bigint
+        from auth.users as account
+        where not exists (
+          select 1
+          from public.app_snapshots as workspace
+          where workspace.owner_user_id = account.id
+            and workspace.snapshot_kind = 'workspace'
+        )
+      ) as accounts_without_workspace,
+      (
+        select pg_catalog.count(*)::bigint
+        from public.app_snapshots as snapshot
+        where snapshot.snapshot_kind = 'shared_event'
+          and pg_catalog.jsonb_typeof(snapshot.state -> 'events') = 'array'
+          and pg_catalog.jsonb_array_length(snapshot.state -> 'events') = 1
+          and exists (
+            select 1
+            from pg_catalog.jsonb_array_elements(
+              case
+                when pg_catalog.jsonb_typeof(snapshot.state -> 'participants') = 'array'
+                  then snapshot.state -> 'participants'
+                else '[]'::jsonb
+              end
+            ) as participant(value)
+            join auth.users as account
+              on participant.value ->> 'id' = 'account-' || account.id::text
+          )
+          and (
+            exists (
+              select 1
+              from public.app_snapshots as workspace
+              cross join lateral pg_catalog.jsonb_array_elements(
+                case
+                  when pg_catalog.jsonb_typeof(workspace.state -> 'events') = 'array'
+                    then workspace.state -> 'events'
+                  else '[]'::jsonb
+                end
+              ) as workspace_event(value)
+              where workspace.snapshot_kind = 'workspace'
+                and workspace_event.value ->> 'sharedSpaceId' = snapshot.id
+            )
+            or exists (
+              select 1
+              from public.event_invite_tokens as invite
+              where invite.space_id = snapshot.id
+                and invite.revoked_at is null
+                and (invite.expires_at is null or invite.expires_at > pg_catalog.now())
+            )
+          )
+          and not exists (
+            select 1
+            from private.shared_snapshot_members as member
+            where member.snapshot_id = snapshot.id
+              and member.status = 'active'
+              and member.removed_at is null
+          )
+      ) as events_without_active_members
+  )
+  select pg_catalog.jsonb_build_object(
+    'telemetry', pg_catalog.jsonb_build_object(
+      'lastReceivedAt', (
+        select pg_catalog.max(metric.received_at) from public.product_metrics as metric
+      ),
+      'eventsLast24Hours', (
+        select pg_catalog.count(*)::bigint
+        from public.product_metrics as metric
+        where metric.received_at >= pg_catalog.now() - interval '24 hours'
+      ),
+      'failuresLast24Hours', (
+        select pg_catalog.count(*)::bigint
+        from public.product_metrics as metric
+        where metric.event_name in ('client_error', 'operation_failure')
+          and metric.received_at >= pg_catalog.now() - interval '24 hours'
+      ),
+      'deferredLast24Hours', (
+        select pg_catalog.count(*)::bigint
+        from public.product_metrics as metric
+        where metric.event_name = 'operation_deferred'
+          and metric.received_at >= pg_catalog.now() - interval '24 hours'
+      ),
+      'clientErrorsDuringWindow', (
+        select pg_catalog.count(*)::bigint
+        from window_metrics
+        where event_name = 'client_error'
+      )
+    ),
+    'pushDelivery', (
+      select pg_catalog.jsonb_build_object(
+        'reservedDuringWindow', reserved,
+        'deliveredDuringWindow', delivered,
+        'stalePending', stale_pending,
+        'deliveryRate', case
+          when reserved = 0 then null
+          else pg_catalog.round(delivered::numeric / reserved, 4)
+        end
+      )
+      from delivery_health
+    ),
+    'dataContinuity', (
+      select pg_catalog.jsonb_build_object(
+        'latestSnapshotAt', latest_snapshot_at,
+        'accountsWithoutWorkspace', accounts_without_workspace,
+        'eventsWithoutActiveMembers', events_without_active_members
+      )
+      from continuity_health
+    ),
+    'deferredOperations', coalesce(
+      (
+        select pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_object('operation', detail, 'count', deferred_count)
+          order by deferred_count desc, detail
+        )
+        from deferred_operations
+      ),
+      '[]'::jsonb
+    ),
+    'clientErrors', coalesce(
+      (
+        select pg_catalog.jsonb_agg(
+          pg_catalog.jsonb_build_object(
+            'platform', platform,
+            'screen', screen,
+            'count', error_count
+          )
+          order by error_count desc, platform, screen
+        )
+        from client_error_groups
+      ),
+      '[]'::jsonb
+    )
+  )
+  from parameters;
+$$;
+
+revoke all on function public.admin_operational_health(integer)
+  from public, anon, authenticated;
+grant execute on function public.admin_operational_health(integer)
   to service_role;
 
 create or replace function public.delete_account_data(
@@ -6107,6 +6555,236 @@ revoke all on function private.has_preserved_paid_transfer_history(jsonb, jsonb)
   from public, anon, authenticated;
 revoke all on function private.guard_shared_event_history_and_limits()
   from public, anon, authenticated;
+
+
+-- A payment reversal keeps its audit entries and is authorized independently
+-- from ordinary event editing, including centrally managed events.
+create or replace function private.guard_shared_event_history_and_limits()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_event jsonb := coalesce(new.state -> 'events' -> 0, '{}'::jsonb);
+  account_link jsonb := case when tg_op = 'UPDATE' then
+    private.authorized_shared_event_account_link(
+      new.id,
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+  else null end;
+begin
+  if new.owner_user_id is not null or new.snapshot_kind <> 'shared_event' then
+    return new;
+  end if;
+
+  if pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transfers', '[]'::jsonb)
+    ) > 500
+    or pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transferStatusUpdates', '[]'::jsonb)
+    ) > 500 then
+    raise exception 'Shared event transfer history is too large'
+      using errcode = '22023';
+  end if;
+
+  if tg_op = 'UPDATE'
+    and not private.is_safe_shared_event_deletion(
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+    and not private.is_safe_transfer_status_only_update(
+      new.id,
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+    and not private.has_preserved_paid_transfer_history(old.state, new.state)
+    and not private.has_preserved_paid_history_for_account_link(
+      old.state,
+      new.state,
+      account_link
+    ) then
+    raise exception 'Completed payment history cannot be removed or rewritten'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.guard_shared_event_history_and_limits()
+  from public, anon, authenticated;
+
+
+-- An administrator may delete a whole shared event, including one with paid
+-- history, only when the live payload is replaced by one exact tombstone.
+-- Every partial edit still has to preserve completed payment history.
+create or replace function private.is_safe_shared_event_deletion(
+  p_old_state jsonb,
+  p_new_state jsonb,
+  p_actor_participant_id text
+)
+returns boolean
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  old_event jsonb := p_old_state -> 'events' -> 0;
+  old_event_id text := old_event ->> 'id';
+  target_tombstone jsonb;
+  target_deleted_at timestamptz;
+begin
+  if old_event is null
+    or coalesce(old_event_id, '') = ''
+    or coalesce(p_actor_participant_id, '') = ''
+    or not (
+      p_actor_participant_id = any(private.event_admin_ids(p_old_state))
+    )
+    or pg_catalog.jsonb_typeof(p_new_state -> 'events') <> 'array'
+    or p_new_state -> 'events' is distinct from '[]'::jsonb
+    or p_new_state -> 'participants' is distinct from '[]'::jsonb
+    or p_new_state -> 'groups' is distinct from '[]'::jsonb
+    or coalesce(p_new_state ->> 'currentParticipantId', '') <> ''
+    or pg_catalog.jsonb_typeof(p_new_state -> 'deletedEvents') <> 'array'
+    or exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(
+        coalesce(p_old_state -> 'deletedEvents', '[]'::jsonb)
+      ) as old_deletion(value)
+      where old_deletion.value ->> 'id' = old_event_id
+    )
+    or p_new_state - array[
+      'events',
+      'participants',
+      'groups',
+      'currentParticipantId',
+      'deletedEvents'
+    ] is distinct from p_old_state - array[
+      'events',
+      'participants',
+      'groups',
+      'currentParticipantId',
+      'deletedEvents'
+    ] then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(
+      coalesce(p_old_state -> 'deletedEvents', '[]'::jsonb)
+    ) as old_deletion(value)
+    where not exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(p_new_state -> 'deletedEvents')
+        as new_deletion(value)
+      where new_deletion.value = old_deletion.value
+    )
+  ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(p_new_state -> 'deletedEvents')
+      as new_deletion(value)
+    where new_deletion.value ->> 'id' is distinct from old_event_id
+      and not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(
+          coalesce(p_old_state -> 'deletedEvents', '[]'::jsonb)
+        ) as old_deletion(value)
+        where old_deletion.value = new_deletion.value
+      )
+  ) then
+    return false;
+  end if;
+
+  select deletion.value into target_tombstone
+  from pg_catalog.jsonb_array_elements(p_new_state -> 'deletedEvents')
+    as deletion(value)
+  where deletion.value ->> 'id' = old_event_id;
+
+  if target_tombstone is null
+    or target_tombstone - array['id', 'deletedAt'] <> '{}'::jsonb
+    or pg_catalog.jsonb_typeof(target_tombstone -> 'deletedAt') <> 'string'
+    or (
+      select pg_catalog.count(*)
+      from pg_catalog.jsonb_array_elements(p_new_state -> 'deletedEvents')
+        as deletion(value)
+      where deletion.value ->> 'id' = old_event_id
+    ) <> 1 then
+    return false;
+  end if;
+
+  target_deleted_at := (target_tombstone ->> 'deletedAt')::timestamptz;
+  return target_deleted_at is not null;
+exception
+  when others then
+    return false;
+end;
+$$;
+
+create or replace function private.guard_shared_event_history_and_limits()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_event jsonb := coalesce(new.state -> 'events' -> 0, '{}'::jsonb);
+  account_link jsonb := case when tg_op = 'UPDATE' then
+    private.authorized_shared_event_account_link(
+      new.id,
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+  else null end;
+begin
+  if new.owner_user_id is not null or new.snapshot_kind <> 'shared_event' then
+    return new;
+  end if;
+
+  if pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transfers', '[]'::jsonb)
+    ) > 500
+    or pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transferStatusUpdates', '[]'::jsonb)
+    ) > 500 then
+    raise exception 'Shared event transfer history is too large'
+      using errcode = '22023';
+  end if;
+
+  if tg_op = 'UPDATE'
+    and not private.is_safe_shared_event_deletion(
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+    and not private.has_preserved_paid_transfer_history(old.state, new.state)
+    and not private.has_preserved_paid_history_for_account_link(
+      old.state,
+      new.state,
+      account_link
+    ) then
+    raise exception 'Completed payment history cannot be removed or rewritten'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.is_safe_shared_event_deletion(jsonb, jsonb, text)
+  from public, anon, authenticated;
+revoke all on function private.guard_shared_event_history_and_limits()
+  from public, anon, authenticated;
 create or replace function private.guard_friendship_pair_write()
 returns trigger
 language plpgsql
@@ -8123,6 +8801,11 @@ begin
   end if;
 
   if tg_op = 'UPDATE'
+    and not private.is_safe_shared_event_deletion(
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
     and not private.has_preserved_paid_transfer_history(old.state, new.state)
     and not private.has_preserved_paid_history_for_account_link(
       old.state,
@@ -8141,6 +8824,8 @@ revoke all on function private.authorized_shared_event_account_link(text, jsonb,
   from public, anon, authenticated;
 revoke all on function private.has_authorized_transfer_status_changes(jsonb, jsonb, text, text)
   from public, anon, authenticated;
+revoke all on function private.is_safe_transfer_status_only_update(text, jsonb, jsonb, text)
+  from public, anon, authenticated;
 revoke all on function private.guard_shared_event_financial_integrity()
   from public, anon, authenticated;
 revoke all on function private.revoke_event_invites_after_member_removal()
@@ -8149,3 +8834,252 @@ revoke all on function private.has_preserved_paid_history_for_account_link(jsonb
   from public, anon, authenticated;
 revoke all on function private.guard_shared_event_history_and_limits()
   from public, anon, authenticated;
+
+
+-- A payment reversal keeps its audit entries and is authorized independently
+-- from ordinary event editing, including centrally managed events.
+create or replace function private.guard_shared_event_history_and_limits()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  new_event jsonb := coalesce(new.state -> 'events' -> 0, '{}'::jsonb);
+  account_link jsonb := case when tg_op = 'UPDATE' then
+    private.authorized_shared_event_account_link(
+      new.id,
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+  else null end;
+begin
+  if new.owner_user_id is not null or new.snapshot_kind <> 'shared_event' then
+    return new;
+  end if;
+
+  if pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transfers', '[]'::jsonb)
+    ) > 500
+    or pg_catalog.jsonb_array_length(
+      coalesce(new_event -> 'transferStatusUpdates', '[]'::jsonb)
+    ) > 500 then
+    raise exception 'Shared event transfer history is too large'
+      using errcode = '22023';
+  end if;
+
+  if tg_op = 'UPDATE'
+    and not private.is_safe_shared_event_deletion(
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+    and not private.is_safe_transfer_status_only_update(
+      new.id,
+      old.state,
+      new.state,
+      private.current_actor_participant_id()
+    )
+    and not private.has_preserved_paid_transfer_history(old.state, new.state)
+    and not private.has_preserved_paid_history_for_account_link(
+      old.state,
+      new.state,
+      account_link
+    ) then
+    raise exception 'Completed payment history cannot be removed or rewritten'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function private.guard_shared_event_history_and_limits()
+  from public, anon, authenticated;
+-- Operational guard: active shared-event memberships must be visible from
+-- their owners' personal workspace indexes.
+create or replace function public.admin_shared_event_index_health()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select pg_catalog.jsonb_build_object(
+    'activeMembershipsMissingPersonalIndex', pg_catalog.count(*)::integer,
+    'checkedAt', pg_catalog.now()
+  )
+  from private.shared_snapshot_members as member
+  join public.app_snapshots as shared
+    on shared.id = member.snapshot_id
+   and shared.snapshot_kind = 'shared_event'
+  join auth.users as account on account.id = member.user_id
+  join public.app_snapshots as workspace
+    on workspace.id = account.raw_user_meta_data ->> 'account_space_id'
+   and workspace.snapshot_kind = 'workspace'
+   and workspace.owner_user_id = account.id
+  cross join lateral pg_catalog.jsonb_array_elements(
+    coalesce(shared.state -> 'events', '[]'::jsonb)
+  ) as shared_event(value)
+  where member.status = 'active'
+    and coalesce(shared_event.value -> 'participantIds', '[]'::jsonb)
+      ? member.participant_id
+    and not exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(
+        coalesce(workspace.state -> 'events', '[]'::jsonb)
+      ) as personal_event(value)
+      where personal_event.value ->> 'id' = shared_event.value ->> 'id'
+    );
+$$;
+
+revoke all on function public.admin_shared_event_index_health()
+  from public, anon, authenticated;
+grant execute on function public.admin_shared_event_index_health()
+  to service_role;
+
+-- Keep a newly activated shared-event membership visible in the member's
+-- personal workspace immediately. Canonical membership remains the authority;
+-- the personal event entry is only the device-facing index.
+create or replace function public.index_shared_event_for_member(
+  p_snapshot_id text,
+  p_user_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  member private.shared_snapshot_members%rowtype;
+  shared_state jsonb;
+  shared_event jsonb;
+  workspace public.app_snapshots%rowtype;
+  existing_event jsonb;
+  indexed_event jsonb;
+  missing_participants jsonb := '[]'::jsonb;
+  next_state jsonb;
+begin
+  select row.* into member
+  from private.shared_snapshot_members as row
+  where row.snapshot_id = p_snapshot_id
+    and row.user_id = p_user_id
+    and row.status = 'active'
+  for update;
+
+  if member.user_id is null then
+    raise exception 'Active shared event membership is required'
+      using errcode = '42501';
+  end if;
+
+  select snapshot.state into shared_state
+  from public.app_snapshots as snapshot
+  where snapshot.id = p_snapshot_id
+    and snapshot.snapshot_kind = 'shared_event'
+    and snapshot.owner_user_id is null
+  for update;
+
+  shared_event := shared_state -> 'events' -> 0;
+  if shared_event is null
+    or not coalesce(shared_event -> 'participantIds', '[]'::jsonb)
+      ? member.participant_id then
+    raise exception 'Shared event membership payload is invalid'
+      using errcode = '22023';
+  end if;
+
+  select snapshot.* into workspace
+  from public.app_snapshots as snapshot
+  left join auth.users as account on account.id = snapshot.owner_user_id
+  where snapshot.owner_user_id = p_user_id
+    and snapshot.snapshot_kind = 'workspace'
+  order by
+    case
+      when snapshot.id = account.raw_user_meta_data ->> 'account_space_id'
+      then 0 else 1
+    end,
+    snapshot.updated_at desc
+  limit 1
+  for update of snapshot;
+
+  if workspace.id is null then
+    raise exception 'Account workspace is unavailable'
+      using errcode = 'P0002';
+  end if;
+
+  select event.value into existing_event
+  from pg_catalog.jsonb_array_elements(
+    coalesce(workspace.state -> 'events', '[]'::jsonb)
+  ) as event(value)
+  where event.value ->> 'id' = shared_event ->> 'id'
+  limit 1;
+
+  if existing_event is not null then
+    if coalesce(existing_event ->> 'sharedSpaceId', p_snapshot_id)
+      <> p_snapshot_id then
+      raise exception 'Event identifier belongs to another shared snapshot'
+        using errcode = '23505';
+    end if;
+    return pg_catalog.jsonb_build_object(
+      'status', 'existing',
+      'snapshotId', p_snapshot_id,
+      'workspaceId', workspace.id
+    );
+  end if;
+
+  select coalesce(pg_catalog.jsonb_agg(candidate.value), '[]'::jsonb)
+  into missing_participants
+  from pg_catalog.jsonb_array_elements(
+    coalesce(shared_state -> 'participants', '[]'::jsonb)
+  ) as candidate(value)
+  where not exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(
+      coalesce(workspace.state -> 'participants', '[]'::jsonb)
+    ) as current_participant(value)
+    where current_participant.value ->> 'id' = candidate.value ->> 'id'
+  );
+
+  indexed_event := shared_event || pg_catalog.jsonb_build_object(
+    'sharedSpaceId', p_snapshot_id,
+    'sharedSpaceKey', 'member_access_recovery_v1_key_0001'
+  );
+  next_state := pg_catalog.jsonb_set(
+    workspace.state,
+    '{participants}',
+    coalesce(workspace.state -> 'participants', '[]'::jsonb)
+      || missing_participants,
+    true
+  );
+  next_state := pg_catalog.jsonb_set(
+    next_state,
+    '{events}',
+    pg_catalog.jsonb_build_array(indexed_event)
+      || coalesce(workspace.state -> 'events', '[]'::jsonb),
+    true
+  );
+
+  -- Workspace update guards intentionally require the exact owner subject.
+  perform pg_catalog.set_config(
+    'request.jwt.claim.sub',
+    p_user_id::text,
+    true
+  );
+  update public.app_snapshots
+  set state = next_state,
+      updated_at = pg_catalog.now()
+  where id = workspace.id;
+
+  return pg_catalog.jsonb_build_object(
+    'status', 'indexed',
+    'snapshotId', p_snapshot_id,
+    'workspaceId', workspace.id,
+    'eventId', shared_event ->> 'id'
+  );
+end;
+$$;
+
+revoke all on function public.index_shared_event_for_member(text, uuid)
+  from public, anon, authenticated;
+grant execute on function public.index_shared_event_for_member(text, uuid)
+  to service_role;

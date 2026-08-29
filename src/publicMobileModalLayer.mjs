@@ -172,6 +172,22 @@ const CSS = `
 
     html.ledger-workspace-v1 body #app
       .expense-route-backdrop
+      .expense-modal:not(.expense-step-modal) {
+      height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      min-height: 0 !important;
+      max-height: calc(
+        100dvh - var(--event-route-nav-safe-height, 96px) -
+          env(safe-area-inset-bottom)
+      ) !important;
+      overflow-y: auto !important;
+      scroll-padding-block-end: 24px !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .expense-route-backdrop
       .expense-step-modal
       > .expense-flow-fields {
       min-height: 0 !important;
@@ -255,10 +271,71 @@ const CSS = `
       > .event-settings-menu {
       height: max-content !important;
     }
+
+  }
+
+  /* iPad deliberately uses the proven phone canvas. This keeps every route,
+     safe area and action in the same geometry users already see on iPhone. */
+  @media (min-width: 721px) and (max-width: 1366px) {
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .screen.screen,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .friends-hub-screen,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .product-home-screen.product-home-screen {
+      box-sizing: border-box !important;
+      width: min(calc(100% - 32px), 430px) !important;
+      max-width: 430px !important;
+      margin-inline: auto !important;
+      padding-inline: 16px !important;
+    }
+
+    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-route-controls,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-route-controls[hidden] {
+      right: auto !important;
+      left: max(20px, calc((100vw - 430px) / 2 + 16px)) !important;
+    }
+
+    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-app-nav,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 .event-route-primary-nav {
+      width: min(390px, calc(100vw - 40px)) !important;
+      max-width: 390px !important;
+      right: auto !important;
+      left: 50% !important;
+      transform: translateX(-50%) !important;
+      pointer-events: auto !important;
+    }
+
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .expense-modal-backdrop,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .event-modal-backdrop {
+      width: min(100vw, 430px) !important;
+      max-width: 430px !important;
+      top: 0 !important;
+      right: auto !important;
+      bottom: 0 !important;
+      left: max(0px, calc((100vw - 430px) / 2)) !important;
+      transform: none !important;
+    }
+
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .expense-modal,
+    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .event-modal {
+      width: 100% !important;
+      max-width: 430px !important;
+    }
   }
 `;
 
+syncCompactTabletPhoneShell();
 injectMobileModalStyles();
+window.addEventListener("resize", syncCompactTabletPhoneShell, { passive: true });
+
+function syncCompactTabletPhoneShell() {
+  const isTabletViewport = window.innerWidth >= 721 && window.innerWidth <= 1366;
+  const userAgent = String(globalThis.navigator?.userAgent ?? "");
+  const hasTouch =
+    Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0 || /iPad|Mobile\//i.test(userAgent);
+  document.documentElement.classList.toggle(
+    "compact-tablet-phone-shell",
+    isTabletViewport && hasTouch
+  );
+}
 
 function injectMobileModalStyles() {
   document.getElementById(STYLE_ID)?.remove();

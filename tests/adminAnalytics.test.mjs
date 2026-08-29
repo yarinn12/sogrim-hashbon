@@ -53,6 +53,10 @@ test("admin analytics return aggregate data without exposing the service key", a
     accounts: { registered: 11 },
     sessions: { total: 2, affected: 1, errorFreeRate: 0.5 }
   };
+  const operational = {
+    telemetry: { failuresLast24Hours: 1 },
+    pushDelivery: { stalePending: 0 }
+  };
   const result = await getAdminAnalyticsOverview({
     runtimeConfig,
     env,
@@ -63,16 +67,25 @@ test("admin analytics return aggregate data without exposing the service key", a
       if (url.endsWith("/auth/v1/user")) {
         return jsonResponse({ id: "owner", email: "OWNER@example.com" });
       }
+      if (url.endsWith("/admin_operational_health")) {
+        return jsonResponse(operational);
+      }
       return jsonResponse(overview);
     }
   });
 
   assert.equal(result.status, 200);
-  assert.deepEqual(result.payload, { ok: true, overview });
-  assert.equal(requests.length, 2);
+  assert.deepEqual(result.payload, {
+    ok: true,
+    overview: { ...overview, ...operational }
+  });
+  assert.equal(requests.length, 3);
   assert.match(requests[1].url, /\/rest\/v1\/rpc\/admin_analytics_overview$/);
-  assert.deepEqual(JSON.parse(requests[1].options.body), { p_window_days: 90 });
-  assert.equal(requests[1].options.headers.authorization, "Bearer service-key");
+  assert.match(requests[2].url, /\/rest\/v1\/rpc\/admin_operational_health$/);
+  for (const request of requests.slice(1)) {
+    assert.deepEqual(JSON.parse(request.options.body), { p_window_days: 90 });
+    assert.equal(request.options.headers.authorization, "Bearer service-key");
+  }
   assert.doesNotMatch(JSON.stringify(result.payload), /service-key|owner@example\.com/i);
 });
 

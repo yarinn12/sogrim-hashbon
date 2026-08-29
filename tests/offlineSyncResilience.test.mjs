@@ -90,6 +90,25 @@ test("an unsent change is queued locally before the cloud write is attempted", (
   assert.match(save, /publishSyncStatus\("saved"\)/);
 });
 
+test("a signed-in mutation reaches the durable outbox before runtime config can suspend", () => {
+  const save = localStore.slice(
+    localStore.indexOf("export async function saveSharedState(state)"),
+    localStore.indexOf("export async function flushPendingSharedState")
+  );
+  const crashSafeWrite = save.indexOf("const crashSafePendingStateSaved = Boolean(");
+  const firstRuntimeAwait = save.indexOf("await loadRuntimeConfig()");
+
+  assert.ok(crashSafeWrite >= 0, "the crash-safe outbox write must exist");
+  assert.ok(
+    crashSafeWrite < firstRuntimeAwait,
+    "mobile suspension cannot happen before the mutation reaches the outbox"
+  );
+  assert.match(
+    save,
+    /toSharedState\(cleanState, \{ preserveCurrentParticipantId: true \}\)/
+  );
+});
+
 test("the pending snapshot is only cleared when it is the payload that succeeded", () => {
   const save = localStore.slice(
     localStore.indexOf("export async function saveSharedState(state)"),
@@ -366,7 +385,7 @@ test("temporary runtime-config fallback still queues the local snapshot", () => 
   );
 
   assert.match(save, /if \(runtimeConfigUsedFallback\) \{/);
-  assert.match(save, /savePendingSharedState\(pendingConfig, sharedState\);/);
+  assert.match(save, /savePendingSharedState\(pendingConfig, sharedState\)/);
   assert.match(save, /\{ ok: true, mode: "local", pending: true \}/);
 });
 

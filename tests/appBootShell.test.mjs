@@ -85,6 +85,8 @@ test("the app shows one branded splash only while the first real screen loads", 
     /if \(dismissed \|\| !applicationIsReady\(\)\) return;[\s\S]*?dismiss\(\);/
   );
   assert.match(splashLayer, /account-auth-pending/);
+  assert.match(splashLayer, /native-styles-pending/);
+  assert.match(splashLayer, /sogrim:native-styles-ready/);
   assert.match(splashLayer, /account-auth-ready/);
   assert.match(
     splashLayer,

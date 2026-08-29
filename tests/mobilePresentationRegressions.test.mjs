@@ -152,7 +152,7 @@ test("settlement completion feedback stays roomy and branded across mobile sizes
   );
 });
 
-test("event workspace controls stay stable above sticky mobile chrome", async () => {
+test("event workspace controls stay in the document flow above mobile chrome", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const ledgerLayer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
@@ -173,8 +173,15 @@ test("event workspace controls stay stable above sticky mobile chrome", async ()
   assert.match(app, /menu\.style\.setProperty\("--expense-menu-top"/);
   assert.match(
     ledgerLayer,
-    /body #app \.screen\[data-screen-kind="event"\] \.event-workspace-nav \{[\s\S]*?position: sticky !important;[\s\S]*?inset-block-start: calc\(68px \+ env\(safe-area-inset-top\)\) !important;[\s\S]*?z-index: 60 !important;/
+    /body #app \.screen\[data-screen-kind="event"\] \.event-workspace-nav \{[\s\S]*?position: static !important;[\s\S]*?inset: auto !important;[\s\S]*?z-index: auto !important;/
   );
+  assert.match(
+    ledgerLayer,
+    /\.screen:is\(\[data-screen-kind="settlement"\], \[data-event-view="summary"\]\)[\s\S]*?\.event-workspace-nav \{[\s\S]*?position: static !important;/
+  );
+  assert.match(ledgerLayer, /function syncWorkspaceNavigationOcclusion\(\)/);
+  assert.match(ledgerLayer, /--event-nav-route-occlusion/);
+  assert.match(ledgerLayer, /workspaceNavigation\.dataset\.routeFullyOccluded = "true"/);
   assert.match(
     ledgerLayer,
     /\.event-action-dock \{[\s\S]*?position: relative !important;[\s\S]*?z-index: auto !important;/
@@ -193,12 +200,28 @@ test("close-event confirmation uses the branded floating card with an explicit d
   assert.match(confirmation, /aria-modal="true"/);
   assert.match(confirmation, /class="app-toast-close settlement-close-confirmation-dismiss"/);
   assert.match(confirmation, /data-action="cancel-close-event-confirmation"/);
-  assert.match(confirmation, /פעולה חשובה/);
+  assert.doesNotMatch(confirmation, /פעולה חשובה/);
+  assert.doesNotMatch(confirmation, /settlement-close-confirmation-icon/);
+  assert.match(confirmation, /בואו נסגור חשבון\?/);
+  assert.match(confirmation, /סוגרים חשבון/);
   assert.doesNotMatch(confirmation, /role="region"/);
   assert.match(
     coherenceLayer,
-    /\.settlement-close-confirmation-backdrop \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 240 !important;[\s\S]*?background: rgba\(7, 27, 24, 0\.14\) !important;[\s\S]*?pointer-events: auto !important;/
+    /\.settlement-close-confirmation-backdrop \{[\s\S]*?position: fixed !important;[\s\S]*?z-index: 240 !important;[\s\S]*?place-items: center !important;[\s\S]*?background: rgba\(7, 27, 24, 0\.14\) !important;[\s\S]*?pointer-events: auto !important;/
   );
+  const settlement = app.slice(
+    app.indexOf("function renderSettlement(event)"),
+    app.indexOf("function renderExpenseParticipants")
+  );
+  const hero = app.slice(
+    app.indexOf("function renderSettlementHero"),
+    app.indexOf("function renderSettlementCloseConfirmation")
+  );
+  assert.match(
+    settlement,
+    /<\/section>[\s\S]*?renderSettlementCloseConfirmation\(event, pendingTransfers, pendingTotal\)/
+  );
+  assert.doesNotMatch(hero, /renderSettlementCloseConfirmation\(/);
   assert.match(
     coherenceLayer,
     /\.settlement-close-confirmation \{[\s\S]*?background: #fbfefd !important;[\s\S]*?pointer-events: auto !important;/

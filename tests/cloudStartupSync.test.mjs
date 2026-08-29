@@ -52,7 +52,7 @@ test("concurrent startup readers share one cloud-state request", async () => {
   assert.match(localStore, /return sharedStateLoadPromise/);
 });
 
-test("native startup briefly waits for a current cloud profile before rendering cached account state", async () => {
+test("account bootstrap waits once and app hydration does not repeat the cloud wait", async () => {
   const [localStore, app, accountAuth] = await Promise.all([
     readFile("src/data/localStore.mjs", "utf8"),
     readFile("src/app.mjs", "utf8"),
@@ -78,9 +78,19 @@ test("native startup briefly waits for a current cloud profile before rendering 
   );
   assert.match(
     app,
-    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory\s*\? CACHED_ACCOUNT_CLOUD_WAIT_MS\s*: EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
+    /const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: 0\s*\}\)/
   );
+  assert.doesNotMatch(app, /const CACHED_ACCOUNT_CLOUD_WAIT_MS/);
+  assert.doesNotMatch(app, /const EMPTY_ACCOUNT_CLOUD_WAIT_MS/);
   assert.match(app, /refreshStartupSharedState\(startupState\.refresh\)/);
+  assert.match(
+    app,
+    /function refreshStartupSharedState[\s\S]*?const saveRevisionAtRequest = sharedStateSaveRevision\(\);[\s\S]*?if \(saveRevisionAtRequest !== sharedStateSaveRevision\(\)\) return;/
+  );
+  assert.match(
+    localStore,
+    /export function sharedStateSaveRevision\(\) \{\s*return sharedStateSaveGeneration;\s*\}/
+  );
   assert.match(
     app,
     /function refreshStartupSharedState[\s\S]*?hasSharedStateChanged\(state, nextState\)[\s\S]*?state = nextState;[\s\S]*?render\(\)/

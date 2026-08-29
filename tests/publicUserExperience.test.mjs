@@ -210,14 +210,21 @@ test("public home keeps one primary action, a secondary friends entry and a comp
 test("an empty home reuses the approved compact home hero copy", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
+  const createAction = sourceBetween(
+    app,
+    "function renderHomeCreateEventAction()",
+    "function renderRecentEventShortcut"
+  );
 
   assert.match(home, /const homeTitle = "מה סוגרים היום\?"/);
   assert.match(
     home,
     /const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה\."/
   );
-  assert.match(home, /const newEventLabel = "אירוע חדש"/);
-  assert.doesNotMatch(home, /מתחילים מאירוע ראשון|פתח אירוע ראשון/);
+  assert.match(home, /\$\{renderHomeCreateEventAction\(\)\}/);
+  assert.match(createAction, /const label = "אירוע חדש"/);
+  assert.match(createAction, /home-create-event-action/);
+  assert.doesNotMatch(`${home}\n${createAction}`, /מתחילים מאירוע ראשון|פתח אירוע ראשון/);
 });
 
 test("public modal close actions replace history instead of reopening stale dialogs", async () => {

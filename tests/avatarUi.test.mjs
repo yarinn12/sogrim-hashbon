@@ -63,7 +63,10 @@ test("gallery avatars stay out of auth metadata while syncing to the public prof
     app,
     /forceSharedParticipantIds: \[participantId\],[\s\S]*?suppressRevertNotice: true/
   );
-  assert.match(app, /CACHED_ACCOUNT_CLOUD_WAIT_MS = 1_200/);
+  assert.match(
+    app,
+    /loadSharedStateForStartup\(\{\s*maxWaitMs: 0\s*\}\)[\s\S]*?await hydrateOwnPublicAvatarBeforeFirstRender\(\)[\s\S]*?appBootHydrated = true/
+  );
   assert.match(localStore, /profileUpdatedAtField\(profile\.profileUpdatedAt\)/);
   assert.match(
     sharedEventStore,
@@ -77,7 +80,7 @@ test("gallery avatars stay out of auth metadata while syncing to the public prof
 
 test("participant avatars render branded images instead of initials", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const start = app.indexOf("function renderAvatar(participantId, event = null)");
+  const start = app.indexOf("function renderAvatar(");
   const end = app.indexOf("function canCurrentParticipantEdit", start);
   const renderer = app.slice(start, end);
 
@@ -106,13 +109,41 @@ test("only another participant's picture opens the shared statistics screen", as
   assert.match(attributes, /data-action="open-participant-statistics"/);
   assert.match(attributes, /role="button" tabindex="0"/);
   assert.match(attributes, /פתיחת הסטטיסטיקה בינך לבין/);
+  assert.match(app, /suppressParticipantAction = false/);
+  assert.match(app, /data-action="\$\{participantAction\}"/);
+  assert.match(
+    app,
+    /renderAvatar\(participantId, event, \{ suppressParticipantAction: true \}\)/
+  );
   assert.match(action, /event\.preventDefault\(\)/);
   assert.match(action, /event\.stopPropagation\(\)/);
   assert.match(action, /screen = \{ name: "friend-profile", participantId \}/);
   assert.match(app, /function handleParticipantAvatarKeydown\(event\)/);
-  assert.match(layer, /\.avatar\.is-participant-statistics-action:active \{[\s\S]*?scale: 0\.96 !important/);
+  assert.match(
+    layer,
+    /\.avatar\.is-participant-statistics-action:active,[\s\S]*?\.avatar\.is-current-profile-action:active \{[\s\S]*?scale: 0\.96 !important/
+  );
   assert.match(layer, /width: max\(100%, 44px\) !important/);
   assert.match(layer, /height: max\(100%, 44px\) !important/);
+  assert.match(layer, /\.avatar\.is-participant-statistics-action::before,/);
+  assert.match(layer, /\.avatar\.is-current-profile-action::before \{/);
+  assert.doesNotMatch(layer, /\.avatar\.is-current-profile-action::after \{/);
+  assert.match(
+    app,
+    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event, \{[\s\S]*?suppressParticipantAction: true[\s\S]*?\}\)/
+  );
+  assert.match(
+    layer,
+    /Home event pictures belong to the event-card action[\s\S]*?grid-template-columns: 104px minmax\(0, 1fr\) !important;[\s\S]*?margin-inline-start: -14px !important;/
+  );
+  assert.match(app, /const visibleLimit = participantIds\.length > 3 \? 2 : 3/);
+  assert.match(app, /const visibleIds = participantIds\.slice\(0, visibleLimit\)/);
+  assert.match(app, /hiddenCount > 99 \? "\+99\+" : `\+\$\{hiddenCount\}`/);
+  assert.match(app, /formatCount\(hiddenCount, "משתתף נוסף", "משתתפים נוספים"\)/);
+  assert.match(
+    layer,
+    /\.transfer-participant-avatar-action > \.avatar \{[\s\S]*?pointer-events: none !important;/
+  );
 });
 
 test("every signed-in screen carries the selected profile picture and greeting into the app header", async () => {
@@ -141,6 +172,9 @@ test("every signed-in screen carries the selected profile picture and greeting i
   assert.match(brandLayer, /const greeting = firstName \? `היי, \$\{firstName\}` : APP_TAGLINE/);
   assert.match(brandLayer, /if \(subtitle\.textContent !== greeting\)/);
   assert.match(brandLayer, /subtitle\.textContent = greeting/);
+  assert.match(brandLayer, /const usesHomeIdentityOrder = isHome \|\| kind === "notifications"/);
+  assert.match(brandLayer, /is-profile-first-context/);
+  assert.match(ledgerLayer, /\.product-app-identity\.is-profile-first-context[\s\S]*?small \{[\s\S]*?order: -1 !important;/);
   assert.doesNotMatch(brandLayer, /if \(!isHome\) \{[\s\S]*?existingAvatar\?\.remove/);
   assert.match(brandLayer, /product-header-profile-avatar/);
   assert.match(brandLayer, /document\.createElement\("button"\)/);

@@ -26,7 +26,9 @@ try {
       configured.owner_user_id as configured_owner_user_id,
       configured.id is not null as configured_snapshot_exists,
       coalesce(owned.owned_count, 0)::integer as owned_count,
-      coalesce(referenced.reference_count, 0)::integer as reference_count
+      coalesce(referenced.reference_count, 0)::integer as reference_count,
+      coalesce(shared_memberships.membership_count, 0)::integer as membership_count,
+      coalesce(shared_references.reference_count, 0)::integer as shared_reference_count
     from auth.users as users
     left join public.app_snapshots as configured
       on configured.id = users.raw_user_meta_data ->> 'account_space_id'
@@ -46,16 +48,46 @@ try {
           where participant ->> 'authSubject' = users.id::text
         )
     ) as referenced on true
-    where nullif(users.raw_user_meta_data ->> 'account_space_id', '') is not null
+    left join lateral (
+      select count(*) as membership_count
+      from private.shared_snapshot_members as member
+      where member.user_id = users.id
+    ) as shared_memberships on true
+    left join lateral (
+      select count(*) as reference_count
+      from public.app_snapshots as snapshot
+      where snapshot.snapshot_kind = 'shared_event'
+        and exists (
+          select 1
+          from jsonb_array_elements(
+            case
+              when jsonb_typeof(snapshot.state -> 'participants') = 'array'
+                then snapshot.state -> 'participants'
+              else '[]'::jsonb
+            end
+          ) as participant
+          where participant ->> 'id' = 'account-' || users.id::text
+        )
+    ) as shared_references on true
+    where users.confirmed_at is not null
+      and not exists (
+        select 1
+        from public.app_snapshots as existing_workspace
+        where existing_workspace.owner_user_id = users.id
+          and existing_workspace.snapshot_kind = 'workspace'
+      )
       and (
         configured.id is null
-        or (configured.owner_user_id is not null and configured.owner_user_id <> users.id)
+        or configured.owner_user_id is distinct from users.id
       )
     order by users.created_at
   `;
 
   const unsafe = candidates.filter((candidate) => (
-    candidate.owned_count !== 0 || candidate.reference_count !== 0
+    candidate.owned_count !== 0 ||
+    candidate.reference_count !== 0 ||
+    candidate.membership_count !== 0 ||
+    candidate.shared_reference_count !== 0
   ));
   if (unsafe.length) {
     throw new Error(`Refusing repair: ${unsafe.length} account(s) have possible recoverable history`);

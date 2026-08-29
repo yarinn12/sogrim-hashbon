@@ -1,6 +1,7 @@
 from base64 import b64encode
 from io import BytesIO
 from pathlib import Path
+import runpy
 
 import numpy as np
 from PIL import Image, ImageDraw
@@ -253,6 +254,10 @@ def build():
     save_png(icon_canvas(mark, 512), ROOT / "docs" / "store-assets" / "google-play-icon-512.png")
     save_png(splash(lockup, 2732, 2732), ROOT / "docs" / "store-assets" / "launch-screen.png")
     update_store_screenshot_icons(master)
+    runpy.run_path(
+        str(ROOT / "scripts" / "install-exterior-app-icon.py"),
+        run_name="__main__",
+    )
 
 
 if __name__ == "__main__":

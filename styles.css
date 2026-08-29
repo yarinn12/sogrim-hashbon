@@ -3828,7 +3828,7 @@ html body .status-chip.is-warn {
 
 .admin-reliability-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   border-radius: 10px;
@@ -3885,6 +3885,10 @@ html body .status-chip.is-warn {
   color: var(--accent-ink);
   font-size: 0.9rem;
   font-weight: 800;
+}
+
+.admin-breakdown-list.is-deferred span {
+  color: var(--muted);
 }
 
 .admin-platform-list > div {
@@ -4081,6 +4085,10 @@ html body .status-chip.is-warn {
 
   .admin-reliability-section {
     padding: 17px;
+  }
+
+  .admin-reliability-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-section-heading-row {

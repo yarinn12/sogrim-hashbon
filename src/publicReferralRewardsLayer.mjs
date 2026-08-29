@@ -26,7 +26,9 @@ const ACTIVITY_EVENT = "settle-friends:qualifying-activity";
 const ENTITLEMENT_EVENT = "settle-friends:entitlements-changed";
 const STATUS_REFRESH_INTERVAL_MS = 60_000;
 const PENDING_REFERRAL_CODE_KEY = "settle-friends-pending-referral-code";
-const PENDING_REFERRAL_MAX_AGE_MS = 2 * 60 * 60 * 1000;
+const PENDING_REFERRAL_QUALIFICATION_KEY =
+  "settle-friends-pending-referral-qualification";
+const PENDING_REFERRAL_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 let runtimeConfig = null;
 let referralStatus = emptyReferralProgramStatus();
@@ -37,6 +39,8 @@ let dialogReturnFocus = null;
 let dialogReturnContext = "";
 let referralDialogOpen = false;
 let refreshRequest = null;
+let initializationRequest = null;
+let qualificationRequest = null;
 let lastStatusRefreshAt = 0;
 
 setupReferralRewards();
@@ -50,7 +54,7 @@ function setupReferralRewards() {
   window.addEventListener("settle-friends:native-back", handleNativeBack);
   window.addEventListener("online", recoverReferralAfterReconnect);
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") refreshReferralStatusIfStale();
+    if (document.visibilityState === "visible") recoverReferralAfterReconnect();
   });
   document.addEventListener("keydown", handleReferralKeydown);
 
@@ -61,12 +65,29 @@ function setupReferralRewards() {
   };
 
   runAfterFirstInteractiveScreen(() => {
-    initializeReferralProgram().catch(() => {});
+    initializeReferralProgramSafely()
+      .then(() => retryPendingReferralQualification())
+      .catch(() => {});
     enhanceReferralEntryPoints();
   });
 }
 
+function initializeReferralProgramSafely() {
+  if (initializationRequest) return initializationRequest;
+  initializationRequest = initializeReferralProgram().finally(() => {
+    initializationRequest = null;
+  });
+  return initializationRequest;
+}
+
 async function initializeReferralProgram() {
+  const referralCodeFromCurrentUrl = referralCodeFromUrl(window.location.href);
+  if (referralCodeFromCurrentUrl) {
+    savePendingReferralCode(referralCodeFromCurrentUrl);
+    const cleanedUrl = withoutReferralAttribution(window.location.href);
+    window.history.replaceState(window.history.state, "", cleanedUrl);
+  }
+
   runtimeConfig = await loadRuntimeConfig();
   if (!referralProgramAvailable(runtimeConfig)) {
     referralStatus = emptyReferralProgramStatus("signed-out");
@@ -75,10 +96,6 @@ async function initializeReferralProgram() {
     return;
   }
 
-  const referralCodeFromCurrentUrl = referralCodeFromUrl(window.location.href);
-  if (referralCodeFromCurrentUrl) {
-    savePendingReferralCode(referralCodeFromCurrentUrl);
-  }
   const incomingCode =
     referralCodeFromCurrentUrl || loadPendingReferralCode();
   if (incomingCode) {
@@ -91,11 +108,6 @@ async function initializeReferralProgram() {
     } catch (error) {
       referralNotice = friendlyClaimMessage(error);
       if (isTerminalReferralClaimError(error)) clearPendingReferralCode();
-    } finally {
-      if (referralCodeFromCurrentUrl) {
-        const cleanedUrl = withoutReferralAttribution(window.location.href);
-        window.history.replaceState(window.history.state, "", cleanedUrl);
-      }
     }
   }
 
@@ -176,11 +188,12 @@ function refreshReferralStatusIfStale() {
 }
 
 function recoverReferralAfterReconnect() {
-  if (loadPendingReferralCode()) {
-    initializeReferralProgram().catch(() => {});
-    return;
-  }
-  refreshReferralStatusIfStale();
+  const recovery = loadPendingReferralCode()
+    ? initializeReferralProgramSafely()
+    : Promise.resolve(refreshReferralStatusIfStale());
+  Promise.resolve(recovery)
+    .then(() => retryPendingReferralQualification())
+    .catch(() => {});
 }
 
 function savePendingReferralCode(code) {
@@ -230,18 +243,79 @@ async function handleQualifyingActivity(event) {
   const eventId = String(event.detail?.eventId ?? "").trim();
   if (!eventId) return;
 
+  savePendingReferralQualification(eventId);
+  await qualifyReferralActivity(eventId);
+}
+
+async function qualifyReferralActivity(eventId) {
+  if (qualificationRequest) return qualificationRequest;
+
+  qualificationRequest = (async () => {
+    try {
+      runtimeConfig = await loadRuntimeConfig();
+      const result = await qualifyReferral(runtimeConfig, eventId);
+      if (result?.status === "rewarded") {
+        referralNotice = "הפעילות אושרה וההטבה נפתחה אצל החבר שהזמין אותך.";
+      }
+      if (["rewarded", "rejected"].includes(result?.status)) {
+        clearPendingReferralQualification();
+      }
+      if (!["not_claimed", "unavailable"].includes(result?.status)) {
+        await refreshReferralStatus({ force: true });
+      }
+      return result;
+    } catch {
+      // The saved activity is retried after sign-in, reconnect or foregrounding.
+      return { status: "retry-pending" };
+    } finally {
+      qualificationRequest = null;
+    }
+  })();
+
+  return qualificationRequest;
+}
+
+function retryPendingReferralQualification() {
+  const pending = loadPendingReferralQualification();
+  if (!pending?.eventId) return Promise.resolve({ status: "not-pending" });
+  return qualifyReferralActivity(pending.eventId);
+}
+
+function savePendingReferralQualification(eventId) {
   try {
-    runtimeConfig ??= await loadRuntimeConfig();
-    const result = await qualifyReferral(runtimeConfig, eventId);
-    if (result?.status === "rewarded") {
-      referralNotice = "הפעילות אושרה וההטבה נפתחה אצל החבר שהזמין אותך.";
+    localStorage.setItem(
+      PENDING_REFERRAL_QUALIFICATION_KEY,
+      JSON.stringify({ eventId, savedAt: Date.now() })
+    );
+  } catch {}
+}
+
+function loadPendingReferralQualification() {
+  try {
+    const rawValue = localStorage.getItem(PENDING_REFERRAL_QUALIFICATION_KEY);
+    if (!rawValue) return null;
+    const pending = JSON.parse(rawValue);
+    const eventId = String(pending?.eventId ?? "").trim();
+    const savedAt = Number(pending?.savedAt);
+    if (
+      !eventId ||
+      !Number.isFinite(savedAt) ||
+      Date.now() - savedAt > PENDING_REFERRAL_MAX_AGE_MS
+    ) {
+      clearPendingReferralQualification();
+      return null;
     }
-    if (!["not_claimed", "unavailable"].includes(result?.status)) {
-      await refreshReferralStatus({ force: true });
-    }
+    return { eventId, savedAt };
   } catch {
-    // Qualification is retried after the next eligible activity.
+    clearPendingReferralQualification();
+    return null;
   }
+}
+
+function clearPendingReferralQualification() {
+  try {
+    localStorage.removeItem(PENDING_REFERRAL_QUALIFICATION_KEY);
+  } catch {}
 }
 
 function publishEntitlementStatus() {

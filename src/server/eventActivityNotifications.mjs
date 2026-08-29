@@ -157,6 +157,7 @@ export async function sendEventActivityNotification({
           supabaseUrl,
           serviceRoleKey,
           invite: privateInvite,
+          snapshotId: senderEvent.sharedSpaceId,
           userId: recipientUserId,
           fetchImpl
         });

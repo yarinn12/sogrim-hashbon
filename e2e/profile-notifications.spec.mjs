@@ -58,6 +58,8 @@ test.beforeEach(async ({ page }) => {
   yesterday.setHours(12, 0, 0, 0);
   const twoMinutesAgo = new Date(Date.now() - 2 * 60_000).toISOString();
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+  const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
+  const fourHoursAgo = new Date(Date.now() - 4 * 60 * 60_000).toISOString();
   const inboxItems = [
     {
       id: "notification-expense",
@@ -81,6 +83,30 @@ test.beforeEach(async ({ page }) => {
       view: "event",
       action_url: "",
       created_at: twoHoursAgo,
+      read_at: new Date().toISOString()
+    },
+    {
+      id: "notification-closed",
+      event_id: EVENT_ID,
+      activity_id: "activity-closed",
+      kind: "event-closed",
+      title: "האירוע נסגר",
+      body: "אפשר לראות עכשיו מי מעביר למי",
+      view: "event",
+      action_url: "",
+      created_at: threeHoursAgo,
+      read_at: new Date().toISOString()
+    },
+    {
+      id: "notification-payment",
+      event_id: EVENT_ID,
+      activity_id: "activity-payment",
+      kind: "payment-reminder",
+      title: "תזכורת לסגירת חשבון",
+      body: "מחכה לך העברה באירוע",
+      view: "event",
+      action_url: "",
+      created_at: fourHoursAgo,
       read_at: new Date().toISOString()
     },
     {
@@ -238,6 +264,7 @@ test.beforeEach(async ({ page }) => {
 test("profile keeps sensitive account actions behind one clear disclosure", async ({ page }) => {
   await page.locator('[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await expect(page.locator('.profile-edit-screen > .top .eyebrow')).toHaveCount(0);
 
   const accountDetails = page.locator("[data-account-controls]");
   await expect(accountDetails).toBeVisible();
@@ -279,6 +306,127 @@ test("full name and username are full-width rows stacked in reading order", asyn
   expect(Math.abs(nameBox.x - usernameBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
+  await assertNoHorizontalOverflow(page);
+});
+
+test("profile sections use one visual surface system without changing their order", async ({ page }) => {
+  await page.evaluate(() => {
+    globalThis.SogrimNative = {
+      ...(globalThis.SogrimNative ?? {}),
+      notifications: {
+        ...(globalThis.SogrimNative?.notifications ?? {}),
+        available: true
+      }
+    };
+  });
+  await page.locator('[data-nav-destination="profile"]').click();
+  const profile = page.locator('[data-screen-kind="profile"]');
+  await expect(profile).toBeVisible();
+  await expect(profile.locator('.referral-reward-card.is-profile')).toBeVisible();
+  await expect(profile.locator('.notification-settings-card')).toBeVisible();
+  await expect(profile.locator('.account-profile-controls')).toBeVisible();
+
+  const profileHeader = profile.locator(':scope > .product-app-identity');
+  await expect(profileHeader).toBeVisible();
+  await expect
+    .poll(() => profileHeader.evaluate((element) => getComputedStyle(element).backgroundColor))
+    .not.toBe("rgba(0, 0, 0, 0)");
+
+  const presentation = await profile.evaluate((screen) => {
+    const styleOf = (selector) => {
+      const element = screen.querySelector(selector);
+      const style = getComputedStyle(element);
+      return {
+        borderWidth: style.borderTopWidth,
+        borderColor: style.borderTopColor,
+        radius: style.borderRadius,
+        background: style.backgroundColor,
+        shadow: style.boxShadow
+      };
+    };
+    const titleStyleOf = (selector) => {
+      const style = getComputedStyle(screen.querySelector(selector));
+      return {
+        color: style.color,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight
+      };
+    };
+    const panelStyle = getComputedStyle(screen.querySelector(':scope > .profile-setup-panel'));
+    return {
+      panel: {
+        display: panelStyle.display,
+        gap: panelStyle.gap,
+        padding: panelStyle.padding,
+        borderWidth: panelStyle.borderTopWidth,
+        background: panelStyle.backgroundColor,
+        shadow: panelStyle.boxShadow
+      },
+      surfaces: [
+        '.profile-avatar-picker-shell',
+        '.profile-identity-summary',
+        '.profile-shortcuts',
+        '.referral-reward-card.is-profile',
+        '.notification-settings-card',
+        '.account-profile-controls'
+      ].map(styleOf),
+      titles: [
+        '.referral-reward-copy strong',
+        '.notification-settings-copy strong',
+        '.account-profile-controls-summary-copy strong'
+      ].map(titleStyleOf)
+    };
+  });
+
+  expect(presentation.panel).toEqual({
+    display: "grid",
+    gap: "12px",
+    padding: "0px",
+    borderWidth: "0px",
+    background: "rgba(0, 0, 0, 0)",
+    shadow: "none"
+  });
+  expect(new Set(presentation.surfaces.map((surface) => JSON.stringify(surface))).size).toBe(1);
+  expect(presentation.surfaces[0]).toEqual({
+    borderWidth: "1px",
+    borderColor: "rgb(226, 232, 240)",
+    radius: "12px",
+    background: "rgb(255, 255, 255)",
+    shadow: "rgba(15, 23, 42, 0.05) 0px 1px 3px 0px"
+  });
+  expect(new Set(presentation.titles.map((title) => JSON.stringify(title))).size).toBe(1);
+  expect(presentation.titles[0]).toEqual({
+    color: "rgb(15, 23, 42)",
+    fontSize: "16px",
+    fontWeight: "650",
+    lineHeight: "21.6px"
+  });
+
+  await page.evaluate(() => window.scrollTo({ top: 420, behavior: "instant" }));
+  const stickyHeader = await profileHeader.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const hit = document.elementFromPoint(
+      Math.max(1, Math.min(innerWidth - 1, rect.left + rect.width / 2)),
+      Math.max(1, Math.min(innerHeight - 1, rect.top + rect.height / 2))
+    );
+    return {
+      top: Math.round(rect.top),
+      background: style.backgroundColor,
+      ownsHitTarget: Boolean(hit && (hit === element || element.contains(hit)))
+    };
+  });
+  expect(stickyHeader.top).toBeGreaterThanOrEqual(0);
+  expect(stickyHeader.top).toBeLessThanOrEqual(1);
+  expect(stickyHeader.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(stickyHeader.ownsHitTarget).toBe(true);
+  if (process.env.CAPTURE_PROFILE_UNIFIED === "1") {
+    await page.screenshot({
+      path: `design-audits/profile-unified-${test.info().project.name}.png`,
+      fullPage: true
+    });
+  }
   await assertNoHorizontalOverflow(page);
 });
 
@@ -572,7 +720,8 @@ test("notification inbox stays readable and completes its main mobile actions", 
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
   await page.locator('[data-nav-destination="notifications"]').click();
   await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
-  await expect(page.locator(".notification-inbox-item")).toHaveCount(3);
+  await expect(page.locator('.notification-inbox-header .eyebrow')).toHaveCount(0);
+  await expect(page.locator(".notification-inbox-item")).toHaveCount(5);
 
   const primaryNavigation = page.locator(".product-app-nav");
   await expect(primaryNavigation.locator(".product-nav-button:visible")).toHaveCount(4);
@@ -590,7 +739,7 @@ test("notification inbox stays readable and completes its main mobile actions", 
   }
 
   await page.locator('[data-action="mark-all-notifications-read"]').click();
-  await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(3);
+  await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(5);
   await expect(primaryNavigation.locator(".product-nav-badge")).toBeHidden();
 
   await page.locator(".notification-inbox-item").first().click();
@@ -598,6 +747,38 @@ test("notification inbox stays readable and completes its main mobile actions", 
     .toBeVisible();
   await page.locator('[data-action="go-back"]').click();
   await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+});
+
+test("every notification opens the surface described by its message", async ({ page }) => {
+  const openNotifications = async () => {
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+  };
+
+  await openNotifications();
+  await page.locator('[data-notification-id="notification-expense"]').click();
+  await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
+    .toBeVisible();
+
+  await openNotifications();
+  await page.locator('[data-notification-id="notification-participant"]').click();
+  await expect(page.locator(".event-participant-roster-modal")).toBeVisible();
+  await page.locator('[data-action="event-participants-back"]').click();
+
+  await openNotifications();
+  await page.locator('[data-notification-id="notification-invite"]').click();
+  await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
+    .toBeVisible();
+
+  await openNotifications();
+  await page.locator('[data-notification-id="notification-closed"]').click();
+  await expect(page.locator(`[data-event-view="summary"][data-event-id="${EVENT_ID}"]`))
+    .toBeVisible();
+
+  await openNotifications();
+  await page.locator('[data-notification-id="notification-payment"]').click();
+  await expect(page.locator(`[data-event-view="summary"][data-event-id="${EVENT_ID}"]`))
+    .toBeVisible();
 });
 
 async function assertNoHorizontalOverflow(page) {

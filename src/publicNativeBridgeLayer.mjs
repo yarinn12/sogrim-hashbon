@@ -33,6 +33,7 @@ function setupNativeBridge() {
   const hapticsPlugin = plugins.Haptics;
   const sharePlugin = plugins.Share;
   const pushPlugin = plugins.PushNotifications;
+  const cameraPlugin = plugins.Camera;
   const capabilitiesPlugin = plugins.SogrimCapabilities;
   const contactPickerPlugin = plugins.SogrimContactPicker;
   const nativePlatform = globalThis.Capacitor?.getPlatform?.() ?? "";
@@ -73,6 +74,7 @@ function setupNativeBridge() {
       await sharePlugin.share(options);
       return true;
     },
+    camera: createNativeCameraApi(cameraPlugin),
     contacts: {
       available: Boolean(contactPickerPlugin?.pickContact),
       async pick() {
@@ -175,6 +177,59 @@ function setupNativeBridge() {
     if (primaryAction) hapticsPlugin?.impact?.({ style: "LIGHT" }).catch?.(() => {});
 
   }, true);
+}
+
+function createNativeCameraApi(cameraPlugin) {
+  if (!cameraPlugin?.takePhoto) {
+    return {
+      available: false,
+      takePhoto: async () => null
+    };
+  }
+
+  return {
+    available: true,
+    async takePhoto() {
+      let media;
+      try {
+        media = await cameraPlugin.takePhoto({
+          quality: 90,
+          targetWidth: 1600,
+          targetHeight: 1200,
+          correctOrientation: true,
+          encodingType: 0,
+          saveToGallery: false,
+          cameraDirection: "REAR",
+          editable: "no",
+          presentationStyle: "fullscreen",
+          includeMetadata: true
+        });
+      } catch (error) {
+        if (String(error?.code ?? "") === "OS-PLUG-CAMR-0006") return null;
+        throw error;
+      }
+
+      const webPath = String(media?.webPath ?? "").trim();
+      if (!webPath) throw new Error("Native camera returned no image path");
+      const response = await fetch(webPath);
+      if (!response.ok) throw new Error("Native camera image could not be read");
+      const blob = await response.blob();
+      const format = String(media?.metadata?.format ?? "jpeg")
+        .toLowerCase()
+        .replace("jpg", "jpeg");
+      const mimeType = blob.type.startsWith("image/")
+        ? blob.type
+        : `image/${format}`;
+      if (!mimeType.startsWith("image/")) {
+        throw new Error("Native camera returned a non-image file");
+      }
+      const extension = format === "png" ? "png" : "jpg";
+      return new File([blob], `expense-camera-${Date.now()}.${extension}`, {
+        type: mimeType,
+        lastModified: Date.now()
+      });
+    }
+  };
 }
 
 function normalizeNativeContactName(value) {

@@ -64,7 +64,8 @@ export async function sendBroadcastNotification({
         targetedUsers: 0,
         delivered: 0,
         failed: 0,
-        disabledInvalid: 0
+        disabledInvalid: 0,
+        suppressedDuplicates: 0
       }
     };
   }
@@ -82,8 +83,25 @@ export async function sendBroadcastNotification({
   let delivered = 0;
   let failed = 0;
   let disabledInvalid = 0;
+  let suppressedDuplicates = 0;
 
   for (const device of devices) {
+    const reservation = await reserveBroadcastDelivery({
+      supabaseUrl,
+      serviceRoleKey,
+      campaignId: notification.campaignId,
+      device,
+      fetchImpl
+    });
+    if (!reservation.ok) {
+      failed += 1;
+      continue;
+    }
+    if (!reservation.reserved) {
+      suppressedDuplicates += 1;
+      continue;
+    }
+
     const response = await fetchImpl(
       `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
       {
@@ -104,10 +122,16 @@ export async function sendBroadcastNotification({
               campaign: notification.campaignId
             },
             android: {
+              collapse_key: notification.campaignId,
               priority: "high",
               notification: {
                 channel_id: "event-updates",
                 sound: "default"
+              }
+            },
+            apns: {
+              headers: {
+                "apns-collapse-id": notification.campaignId
               }
             }
           }
@@ -117,6 +141,13 @@ export async function sendBroadcastNotification({
 
     if (response.ok) {
       delivered += 1;
+      await markBroadcastDeliveryCompleted({
+        supabaseUrl,
+        serviceRoleKey,
+        campaignId: notification.campaignId,
+        deviceId: device.id,
+        fetchImpl
+      });
       continue;
     }
 
@@ -133,21 +164,79 @@ export async function sendBroadcastNotification({
     }
   }
 
+  const safelyHandled = delivered > 0 || (
+    suppressedDuplicates === devices.length && failed === 0
+  );
   return {
-    status: delivered ? 200 : 502,
+    status: safelyHandled ? 200 : 502,
     payload: {
-      ok: delivered > 0,
+      ok: safelyHandled,
       targetedDevices: devices.length,
       targetedUsers,
       delivered,
       failed,
       disabledInvalid,
-      ...(delivered ? {} : {
+      suppressedDuplicates,
+      ...(safelyHandled ? {} : {
         error: "No device accepted the notification",
         code: "DELIVERY_FAILED"
       })
     }
   };
+}
+
+async function reserveBroadcastDelivery({
+  supabaseUrl,
+  serviceRoleKey,
+  campaignId,
+  device,
+  fetchImpl
+}) {
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?on_conflict=campaign_id,device_id`,
+    {
+      method: "POST",
+      headers: {
+        ...serviceHeaders(serviceRoleKey),
+        prefer: "resolution=ignore-duplicates,return=representation"
+      },
+      body: JSON.stringify([{
+        campaign_id: campaignId,
+        device_id: device.id,
+        user_id: device.user_id
+      }])
+    }
+  );
+  if (!response.ok) return { ok: false, reserved: false };
+  const payload = await response.json().catch(() => []);
+  return {
+    ok: true,
+    reserved: Array.isArray(payload) && payload.length > 0
+  };
+}
+
+async function markBroadcastDeliveryCompleted({
+  supabaseUrl,
+  serviceRoleKey,
+  campaignId,
+  deviceId,
+  fetchImpl
+}) {
+  const params = new URLSearchParams({
+    campaign_id: `eq.${campaignId}`,
+    device_id: `eq.${deviceId}`
+  });
+  await fetchImpl(
+    `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?${params}`,
+    {
+      method: "PATCH",
+      headers: {
+        ...serviceHeaders(serviceRoleKey),
+        prefer: "return=minimal"
+      },
+      body: JSON.stringify({ delivered_at: new Date().toISOString() })
+    }
+  ).catch(() => {});
 }
 
 export function broadcastAuthorizationToken(serviceRoleKey) {

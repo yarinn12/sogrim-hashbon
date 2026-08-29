@@ -81,6 +81,9 @@ const publicRootFiles = new Set([
   "/icon-192.png",
   "/icon-512.png",
   "/icon-maskable-512.png",
+  "/app-icon-exterior-192.png",
+  "/app-icon-exterior-512.png",
+  "/app-icon-exterior-maskable-512.png",
   "/sogrim-logo-lockup.png",
   "/sogrim-share-logo.png",
   "/sogrim-home-hero.png"
@@ -124,6 +127,7 @@ export function createAppHandler({
   openEventInviteService = manageOpenEventInvite,
   eventInviteRedemptionService = redeemEventInvite,
   serverErrorLogger = console.error,
+  serverRequestLogger = isDeployedRuntime(env) ? console.info : null,
   requestRateLimiter = createRequestRateLimiter(),
   durableApiRateLimitService = reserveDurableApiRateLimit,
   durableRateLimitRequired = isDeployedRuntime(env),
@@ -661,6 +665,21 @@ export function createAppHandler({
 
   return function appHandler(request, response) {
     const requestId = requestCorrelationId(request);
+    const requestStartedAt = Date.now();
+    let requestCompletionLogged = false;
+    const logCompletion = (outcome = "completed") => {
+      if (requestCompletionLogged) return;
+      requestCompletionLogged = true;
+      logApiRequestCompletion(serverRequestLogger, request, response, {
+        requestId,
+        requestStartedAt,
+        outcome
+      });
+    };
+    response.once?.("finish", () => logCompletion("completed"));
+    response.once?.("close", () => logCompletion(
+      response.writableEnded ? "completed" : "aborted"
+    ));
     response.setHeader?.("x-sogrim-request-id", requestId);
     return handleRequest(request, response).catch((error) => {
       try {
@@ -882,6 +901,24 @@ function logUnhandledRequestFailure(logger, request, requestId, error) {
       message: String(error?.message ?? "Unknown server error").slice(0, 500),
       stack: String(error?.stack ?? "").slice(0, 2_000)
     }
+  });
+}
+
+function logApiRequestCompletion(logger, request, response, {
+  requestId,
+  requestStartedAt,
+  outcome
+}) {
+  if (typeof logger !== "function") return;
+  const requestPath = String(request?.url ?? "/").split("?", 1)[0].slice(0, 512);
+  if (!requestPath.startsWith("/api/")) return;
+  logger("[server] API request", {
+    requestId,
+    method: String(request?.method ?? "GET").toUpperCase().slice(0, 16),
+    path: requestPath,
+    status: Number(response?.statusCode ?? 0) || 0,
+    durationMs: Math.max(0, Date.now() - Number(requestStartedAt || Date.now())),
+    outcome: outcome === "aborted" ? "aborted" : "completed"
   });
 }
 

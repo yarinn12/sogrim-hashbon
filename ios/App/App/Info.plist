@@ -43,6 +43,12 @@
 	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>המצלמה משמשת לצילום קבלות ותמונות שמצורפות להוצאות ולאירועים.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>האפליקציה שומרת תמונה בספרייה רק אם תבחרו בכך במפורש.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ספריית התמונות משמשת לבחירת קבלות ותמונות לפרופיל ולאירועים.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-
 import { sendPaymentReminder as sendClientPaymentReminder } from "../src/data/paymentReminders.mjs";
 import { sendPaymentReminder } from "../src/server/paymentReminders.mjs";
 
@@ -27,7 +25,11 @@ function runtimeConfig() {
   };
 }
 
-function accountState({ includeEvent = true, transferStatus = "pending" } = {}) {
+function accountState({
+  includeEvent = true,
+  transferStatus = "pending",
+  sharedSpaceKey = SHARED_SPACE_KEY
+} = {}) {
   return {
     currentParticipantId: CREDITOR_PARTICIPANT_ID,
     participants: [
@@ -49,7 +51,7 @@ function accountState({ includeEvent = true, transferStatus = "pending" } = {}) 
             name: "ארוחת שישי",
             currency: "ILS",
             sharedSpaceId: SHARED_SPACE_ID,
-            sharedSpaceKey: SHARED_SPACE_KEY,
+            sharedSpaceKey,
             participantIds: [
               CREDITOR_PARTICIPANT_ID,
               DEBTOR_PARTICIPANT_ID
@@ -95,10 +97,13 @@ function jsonResponse(payload, status = 200) {
 
 function createReminderFetch({
   actorId = CREDITOR_USER_ID,
+  senderState = accountState(),
   recipientState = accountState(),
   authoritativeState = accountState(),
   canonicalMembership = true,
-  reservation = { allowed: true, reminder_id: REMINDER_ID }
+  reservation = { allowed: true, reminder_id: REMINDER_ID },
+  reservationStatus = 200,
+  pushResponseStatus = 200
 } = {}) {
   const requests = [];
   const fetchImpl = async (url, options = {}) => {
@@ -111,17 +116,14 @@ function createReminderFetch({
     if (address.includes("/rest/v1/app_snapshots?")) {
       if (address.includes("snapshot_kind=eq.shared_event")) {
         return jsonResponse([{
-          state: authoritativeState,
-          access_key_hash: createHash("sha256")
-            .update(SHARED_SPACE_KEY)
-            .digest("hex")
+          state: authoritativeState
         }]);
       }
       const isRecipient = address.includes(
         encodeURIComponent(`eq.${DEBTOR_USER_ID}`)
       );
       return jsonResponse([
-        { state: isRecipient ? recipientState : accountState() }
+        { state: isRecipient ? recipientState : senderState }
       ]);
     }
     if (address.includes("/rest/v1/push_devices?")) {
@@ -133,7 +135,7 @@ function createReminderFetch({
       ]);
     }
     if (address.endsWith("/rest/v1/rpc/reserve_payment_reminder")) {
-      return jsonResponse(reservation);
+      return jsonResponse(reservation, reservationStatus);
     }
     if (address.endsWith("/rest/v1/rpc/verify_shared_event_notification_parties")) {
       return jsonResponse(canonicalMembership);
@@ -145,7 +147,9 @@ function createReminderFetch({
       return new Response(null, { status: 201 });
     }
     if (address.includes("fcm.googleapis.com/")) {
-      return jsonResponse({ name: "projects/demo/messages/1" });
+      return pushResponseStatus >= 200 && pushResponseStatus < 300
+        ? jsonResponse({ name: "projects/demo/messages/1" }, pushResponseStatus)
+        : jsonResponse({ error: { status: "UNAVAILABLE" } }, pushResponseStatus);
     }
     if (
       address.includes("/rest/v1/payment_reminders?") &&
@@ -258,6 +262,34 @@ test("server fails closed when the authoritative shared transfer is already paid
   assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
 });
 
+test("server authorizes a canonical member when a rotated link left a stale workspace key", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    senderState: accountState({ sharedSpaceKey: "stale-rotated-link-key" })
+  });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.recipientParticipantId, DEBTOR_PARTICIPANT_ID);
+  assert.equal(
+    requests.filter((request) =>
+      request.url.endsWith("/rest/v1/rpc/verify_shared_event_notification_parties")
+    ).length,
+    2
+  );
+});
+
 test("server rejects a reminder when canonical shared membership is missing", async () => {
   const { fetchImpl, requests } = createReminderFetch({
     canonicalMembership: false
@@ -308,12 +340,128 @@ test("server enforces the reminder cooldown before contacting Firebase", async (
   );
 });
 
-test("client reminder store sends only account-authenticated requests", async () => {
+test("server reports reminder storage outages instead of a false cooldown", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    reservation: { error: "temporary database failure" },
+    reservationStatus: 503
+  });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "REMINDER_STORAGE_UNAVAILABLE");
+  assert.equal(result.payload.retryable, true);
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false
+  );
+});
+
+test("server keeps the in-app reminder available when system push is unavailable", async () => {
+  const { fetchImpl, requests } = createReminderFetch();
+  const config = runtimeConfig();
+  config.launch.pushDeliveryReady = false;
+  const result = await sendPaymentReminder({
+    runtimeConfig: config,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.payload, {
+    ok: true,
+    delivered: 0,
+    inbox: true,
+    reason: "in-app-only"
+  });
+  assert.equal(
+    requests.some((request) => request.url.includes("/rest/v1/notification_inbox?")),
+    true
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("/rest/v1/push_devices?")),
+    false
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false
+  );
+});
+
+test("server reports success when inbox delivery works but every push attempt fails", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    pushResponseStatus: 503
+  });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.payload, {
+    ok: true,
+    delivered: 0,
+    inbox: true,
+    reason: "in-app-only"
+  });
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/payment_reminders?") &&
+      request.options.method === "PATCH"
+    ),
+    true
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/payment_reminders?") &&
+      request.options.method === "DELETE"
+    ),
+    false
+  );
+});
+
+test("server falls back to the inbox when Firebase credentials are temporarily unavailable", async () => {
+  const { fetchImpl } = createReminderFetch();
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    accessTokenProvider: async () => {
+      throw new Error("temporary Firebase outage");
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.reason, "in-app-only");
+});
+
+test("client reminder store requests in-app delivery without a device push capability", async () => {
   const calls = [];
   const result = await sendClientPaymentReminder(
     {
       apiBaseUrl: "https://sogrim.example",
-      launch: { pushDeliveryReady: true },
+      launch: { pushDeliveryReady: false },
       storage: {
         account: {
           userId: CREDITOR_USER_ID,

@@ -32,22 +32,34 @@ export async function getAdminAnalyticsOverview({
   if (!user?.id || !email) return failure(401, "Account identity is unavailable");
   if (!adminEmails.has(email)) return failure(403, "Admin access is required");
 
-  const overviewResponse = await fetchImpl(
-    `${String(supabaseUrl).replace(/\/+$/, "")}/rest/v1/rpc/admin_analytics_overview`,
-    {
+  const rpcBaseUrl = `${String(supabaseUrl).replace(/\/+$/, "")}/rest/v1/rpc`;
+  const rpcBody = JSON.stringify({
+    p_window_days: normalizeWindowDays(windowDays)
+  });
+  const [overviewResponse, operationalResponse] = await Promise.all([
+    fetchImpl(`${rpcBaseUrl}/admin_analytics_overview`, {
       method: "POST",
       headers: serviceHeaders(serviceRoleKey),
-      body: JSON.stringify({
-        p_window_days: normalizeWindowDays(windowDays)
-      })
-    }
-  );
-  if (!overviewResponse.ok) {
+      body: rpcBody
+    }),
+    fetchImpl(`${rpcBaseUrl}/admin_operational_health`, {
+      method: "POST",
+      headers: serviceHeaders(serviceRoleKey),
+      body: rpcBody
+    })
+  ]);
+  if (!overviewResponse.ok || !operationalResponse.ok) {
     return failure(502, "Admin analytics could not be loaded");
   }
 
-  const overview = await overviewResponse.json().catch(() => null);
-  if (!overview || typeof overview !== "object" || Array.isArray(overview)) {
+  const [overview, operational] = await Promise.all([
+    overviewResponse.json().catch(() => null),
+    operationalResponse.json().catch(() => null)
+  ]);
+  if (
+    !isRecord(overview) ||
+    !isRecord(operational)
+  ) {
     return failure(502, "Admin analytics returned an invalid response");
   }
 
@@ -56,9 +68,16 @@ export async function getAdminAnalyticsOverview({
     status: 200,
     payload: {
       ok: true,
-      overview
+      overview: {
+        ...overview,
+        ...operational
+      }
     }
   };
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 export function parseAdminEmails(value) {

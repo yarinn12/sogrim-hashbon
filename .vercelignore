@@ -43,6 +43,9 @@ server-*.log
 !icon-192.png
 !icon-512.png
 !icon-maskable-512.png
+!app-icon-exterior-192.png
+!app-icon-exterior-512.png
+!app-icon-exterior-maskable-512.png
 !apple-touch-icon.png
 !sogrim-logo-lockup.png
 !sogrim-share-logo.png

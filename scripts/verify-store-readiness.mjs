@@ -281,6 +281,16 @@ async function checkPng(name, relativePath, expectedWidth, expectedHeight, maxBy
 async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionName }) {
   const bundlePath = join(root, "android", "app", "build", "outputs", "bundle", "release", "app-release.aab");
   const evidencePath = join(root, "android", "app", "build", "outputs", "bundle", "release", "release-manifest.json");
+  const nativeDebugSymbolsPath = join(
+    root,
+    "android",
+    "app",
+    "build",
+    "outputs",
+    "native-debug-symbols",
+    "release",
+    "native-debug-symbols.zip"
+  );
   if (!existsSync(bundlePath) || !existsSync(evidencePath)) {
     localChecks.push({ name: "Android AAB matches current version, hash, signing certificate and source", ok: false });
     return;
@@ -296,6 +306,10 @@ async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionN
     ]);
     const evidence = JSON.parse(evidenceText);
     const digest = createHash("sha256").update(bundleBytes).digest("hex").toUpperCase();
+    const nativeDebugSymbolsEvidenceValid = await validateNativeDebugSymbolsEvidence(
+      evidence.nativeDebugSymbols,
+      nativeDebugSymbolsPath
+    );
     localChecks.push({
       name: "Android AAB matches current version, hash, signing certificate and source",
       ok:
@@ -308,7 +322,8 @@ async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionN
         evidence.sourceSha256 === source.sha256 &&
         evidence.sourceFileCount === source.fileCount &&
         evidence.minSdkVersion === 24 &&
-        evidence.targetSdkVersion === 36
+        evidence.targetSdkVersion === 36 &&
+        nativeDebugSymbolsEvidenceValid
     });
   } catch {
     localChecks.push({ name: "Android AAB matches current version, hash, signing certificate and source", ok: false });
@@ -318,6 +333,22 @@ async function checkAndroidReleaseEvidence({ androidVersionCode, androidVersionN
 async function fetchWithTimeout(url, options = {}) {
   const signal = AbortSignal.timeout(10_000);
   return fetch(url, { ...options, signal });
+}
+
+async function validateNativeDebugSymbolsEvidence(evidence, path) {
+  if (evidence?.available === true) {
+    if (!existsSync(path)) return false;
+    const [bytes, file] = await Promise.all([readFile(path), stat(path)]);
+    const digest = createHash("sha256").update(bytes).digest("hex").toUpperCase();
+    return evidence.bytes === file.size && evidence.sha256 === digest;
+  }
+  return evidence?.available === false &&
+    evidence?.reason === "prestripped-third-party-libraries" &&
+    JSON.stringify(evidence?.libraries) === JSON.stringify([
+      "libdatastore_shared_counter.so",
+      "libimage_processing_util_jni.so",
+      "libsurface_util_jni.so"
+    ]);
 }
 
 async function fetchWithRetry(url, options = {}, attempts = 3) {

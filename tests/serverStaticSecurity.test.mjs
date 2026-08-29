@@ -138,6 +138,46 @@ test("unexpected server failures carry a safe correlation id and structured log"
   assert.doesNotMatch(JSON.stringify(logs), /must-not-be-logged/);
 });
 
+test("production API requests emit redacted completion diagnostics", async () => {
+  const logs = [];
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    env: { NODE_ENV: "production" },
+    serverRequestLogger: (...entry) => logs.push(entry)
+  }));
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    await fetch(`http://127.0.0.1:${port}/api/health?token=must-not-be-logged`, {
+      headers: { "x-sogrim-request-id": "qa-request-5678" }
+    });
+    assert.equal(logs.length, 1);
+    assert.equal(logs[0][0], "[server] API request");
+    assert.deepEqual(
+      {
+        requestId: logs[0][1].requestId,
+        method: logs[0][1].method,
+        path: logs[0][1].path,
+        outcome: logs[0][1].outcome
+      },
+      {
+        requestId: "qa-request-5678",
+        method: "GET",
+        path: "/api/health",
+        outcome: "completed"
+      }
+    );
+    assert.ok(Number.isInteger(logs[0][1].status));
+    assert.ok(Number.isInteger(logs[0][1].durationMs));
+    assert.doesNotMatch(JSON.stringify(logs), /must-not-be-logged/);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("production public config and invite metadata never derive from Host", async () => {
   const handler = createAppHandler({
     root: process.cwd(),

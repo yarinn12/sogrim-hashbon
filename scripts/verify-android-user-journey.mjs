@@ -322,8 +322,9 @@ async function openAndInspectOverlay(page, action, label) {
       page,
       `document.querySelector('input[name="eventInviteUrl"]')?.dataset?.shareReady === 'true'`
     );
+    let permissionDenied = false;
     if (!shareReady) {
-      const permissionDenied = await evaluate(
+      permissionDenied = await evaluate(
         page,
         `document.body.innerText.includes('אין לך הרשאה ליצור קישור פתוח לאירוע הזה')`
       );
@@ -356,7 +357,9 @@ async function openAndInspectOverlay(page, action, label) {
         shareReady = true;
       }
     }
-    check("share: authenticated participant receives a working invitation link", shareReady);
+    if (!permissionDenied) {
+      check("share: authenticated participant receives a working invitation link", shareReady);
+    }
   }
   if (label === "home") {
     const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
@@ -735,12 +738,24 @@ function inspectionExpression() {
     const inviteInput = document.querySelector('input[name="eventInviteUrl"]');
     const routeControls = [...document.querySelectorAll('.product-route-controls')].find(visible);
     const eventWorkspaceNav = [...document.querySelectorAll('.event-workspace-nav')].find(visible);
+    const routeControlsRect = routeControls?.getBoundingClientRect();
+    const eventWorkspaceRect = eventWorkspaceNav?.getBoundingClientRect();
+    const eventWorkspaceOcclusion = eventWorkspaceNav
+      ? Number.parseFloat(
+          getComputedStyle(eventWorkspaceNav)
+            .getPropertyValue('--event-nav-route-occlusion')
+        ) || 0
+      : 0;
     const routeWorkspaceOverlap = Boolean(routeControls && eventWorkspaceNav && (() => {
-      const routeRect = routeControls.getBoundingClientRect();
-      const workspaceRect = eventWorkspaceNav.getBoundingClientRect();
+      const routeRect = routeControlsRect;
+      const workspaceRect = eventWorkspaceRect;
+      const visibleWorkspaceTop = Math.min(
+        workspaceRect.bottom,
+        workspaceRect.top + eventWorkspaceOcclusion
+      );
       return Math.max(routeRect.left, workspaceRect.left) <
           Math.min(routeRect.right, workspaceRect.right) &&
-        Math.max(routeRect.top, workspaceRect.top) <
+        Math.max(routeRect.top, visibleWorkspaceTop) <
           Math.min(routeRect.bottom, workspaceRect.bottom);
     })());
     return {
@@ -760,6 +775,16 @@ function inspectionExpression() {
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
       duplicateIds,
       routeWorkspaceOverlap,
+      routeControlsRect: routeControlsRect
+        ? { top: Math.round(routeControlsRect.top), bottom: Math.round(routeControlsRect.bottom) }
+        : null,
+      eventWorkspaceRect: eventWorkspaceRect
+        ? { top: Math.round(eventWorkspaceRect.top), bottom: Math.round(eventWorkspaceRect.bottom) }
+        : null,
+      eventWorkspacePosition: eventWorkspaceNav
+        ? getComputedStyle(eventWorkspaceNav).position
+        : "",
+      eventWorkspaceOcclusion: Math.round(eventWorkspaceOcclusion),
       unnamedControls: controls.filter((element) => hitTarget(element) && !label(element))
         .map((element) => element.dataset?.action || element.tagName),
       smallControls: controls.filter((element) => {

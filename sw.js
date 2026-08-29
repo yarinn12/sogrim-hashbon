@@ -1,5 +1,5 @@
-const PWA_RELEASE = "387";
-const CACHE_NAME = "settle-friends-live-v387";
+const PWA_RELEASE = "396";
+const CACHE_NAME = "settle-friends-live-v396";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -13,6 +13,9 @@ const CACHE_FILES = [
   "/icon-192.png",
   "/icon-512.png",
   "/icon-maskable-512.png",
+  "/app-icon-exterior-192.png",
+  "/app-icon-exterior-512.png",
+  "/app-icon-exterior-maskable-512.png",
   "/apple-touch-icon.png",
   "/sogrim-logo-lockup.png",
   "/sogrim-share-logo.png",
@@ -87,6 +90,7 @@ const CACHE_FILES = [
   "/src/domain/launchReadiness.mjs",
   "/src/domain/money.mjs",
   "/src/domain/nativeDeepLinks.mjs",
+  "/src/domain/notificationInboxDestination.mjs",
   "/src/domain/notificationTargets.mjs",
   "/src/domain/entitlements.mjs",
   "/src/domain/permissions.mjs",
@@ -101,6 +105,7 @@ const CACHE_FILES = [
   "/src/domain/sharedStateMerge.mjs",
   "/src/domain/stateBackup.mjs",
   "/src/domain/userProfile.mjs",
+  "/src/domain/userNoticePolicy.mjs",
   "/src/domain/usernames.mjs",
   "/src/domain/validation.mjs",
   "/src/publicAdvancedWorkflowLayer.mjs",

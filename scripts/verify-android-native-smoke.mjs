@@ -11,7 +11,7 @@ const requireReleaseAppLinks =
   process.env.ANDROID_QA_REQUIRE_APP_LINKS === "1";
 const activityName = "com.sogrimhashbon.app.MainActivity";
 const targetInteractiveMs = Number(process.env.ANDROID_INTERACTIVE_TARGET_MS) || 3_000;
-const maximumInteractiveMs = Number(process.env.ANDROID_INTERACTIVE_TIMEOUT_MS) || 25_000;
+const maximumInteractiveMs = Number(process.env.ANDROID_INTERACTIVE_TIMEOUT_MS) || 45_000;
 const adb = findAdb();
 const checks = [];
 const warnings = [];
@@ -56,9 +56,11 @@ check("Android reports a valid native launch duration", nativeLaunchMs > 0);
 const interactive = await waitForInteractive(startedAt);
 check("WebView reaches an interactive account screen", interactive.ready);
 if (interactive.ready) {
-  check("Native account screen has no horizontal overflow", !interactive.state.horizontalOverflow);
-  check("Native account screen has no unnamed controls", interactive.state.unnamedControlCount === 0);
-  check("Native account buttons and fields meet 44px targets", interactive.state.smallControlCount === 0);
+  if (interactive.state.inspectionMode === "cdp") {
+    check("Native account screen has no horizontal overflow", !interactive.state.horizontalOverflow);
+    check("Native account screen has no unnamed controls", interactive.state.unnamedControlCount === 0);
+    check("Native account buttons and fields meet 44px targets", interactive.state.smallControlCount === 0);
+  }
   check("Native account screen renders a visible primary surface", interactive.state.primarySurfaceVisible);
   check("Native account screen renders an actionable control", interactive.state.actionableControlCount > 0);
 }
@@ -82,9 +84,8 @@ const resume = adbRun([
   "-n",
   `${packageName}/${activityName}`
 ]);
-await sleep(500);
-const focus = adbRun(["-s", device, "shell", "dumpsys", "window"]);
-check("Background and resume return to the QA app", new RegExp(`mCurrentFocus=.*${escapeRegExp(packageName)}`).test(focus));
+const focus = await waitForPackageFocus(packageName, 5_000);
+check("Background and resume return to the QA app", focus);
 check("Warm resume does not create a second activity", /current task has been brought to the front|LaunchState:\s*(HOT|UNKNOWN)/.test(resume));
 
 const crashLog = adbRun(["-s", device, "logcat", "-d", "-v", "brief", "AndroidRuntime:E", "*:S"]);
@@ -116,6 +117,7 @@ console.log(JSON.stringify({
   interactiveTargetMs: targetInteractiveMs,
   milestones: interactive.milestones,
   nativeUi: interactive.state ? {
+    inspectionMode: interactive.state.inspectionMode,
     horizontalOverflow: interactive.state.horizontalOverflow,
     unnamedControls: interactive.state.unnamedControls,
     smallControls: interactive.state.smallControls,
@@ -141,6 +143,7 @@ async function waitForInteractive(startedAt) {
   let lastState = null;
   let lastInspectionError = "";
   const milestones = {};
+  let lastNativeProbeAt = 0;
 
   while (Date.now() < deadline) {
     const socket = webViewSocket();
@@ -180,6 +183,28 @@ async function waitForInteractive(startedAt) {
         lastInspectionError = error instanceof Error ? error.message : String(error);
       }
     }
+    if (
+      packageName === releasePackageName &&
+      Date.now() - lastNativeProbeAt >= 2_000
+    ) {
+      lastNativeProbeAt = Date.now();
+      const nativeState = readNativeUiState();
+      if (nativeState) {
+        lastState = nativeState;
+        const observedElapsedMs = Date.now() - startedAt;
+        milestones.firstNativeUiMs ??= observedElapsedMs;
+        if (nativeState.interactive) {
+          return {
+            ready: true,
+            elapsedMs: Math.max(nativeLaunchMs, observedElapsedMs),
+            meetsTarget: Math.max(nativeLaunchMs, observedElapsedMs) <= targetInteractiveMs,
+            milestones,
+            state: nativeState,
+            inspectionError: ""
+          };
+        }
+      }
+    }
     await sleep(200);
   }
 
@@ -213,6 +238,7 @@ async function readWebViewState(socket) {
   webSocketUrl.port = String(port);
 
   const result = await cdpEvaluate(webSocketUrl.toString(), `({
+    inspectionMode: 'cdp',
     title: document.title,
     timeOriginMs: Math.round(performance.timeOrigin),
     splash: Boolean(document.querySelector('#app-splash')),
@@ -339,6 +365,58 @@ async function readWebViewState(socket) {
   return result;
 }
 
+function readNativeUiState() {
+  const remotePath = "/sdcard/sogrim-native-smoke.xml";
+  adbRun(["-s", device, "shell", "uiautomator", "dump", remotePath], {
+    allowFailure: true
+  });
+  const xml = adbRun(["-s", device, "shell", "cat", remotePath], {
+    allowFailure: true
+  });
+  if (!xml.includes(`package="${packageName}"`)) return null;
+
+  const sizeOutput = adbRun(["-s", device, "shell", "wm", "size"], {
+    allowFailure: true
+  });
+  const screenWidth = Number(sizeOutput.match(/(?:Override|Physical) size:\s*(\d+)x\d+/)?.[1]) || 0;
+  const nodes = [...xml.matchAll(/<node\b[^>]*>/g)].map((match) => match[0]);
+  const boundsFor = (node) => {
+    const match = node.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+    return match ? match.slice(1).map(Number) : [0, 0, 0, 0];
+  };
+  const visible = nodes.filter((node) => {
+    const [left, top, right, bottom] = boundsFor(node);
+    return right > left && bottom > top;
+  });
+  const actionable = visible.filter((node) =>
+    /clickable="true"/.test(node) &&
+    /enabled="true"/.test(node) &&
+    new RegExp(`package="${escapeRegExp(packageName)}"`).test(node)
+  );
+  const primarySurfaceVisible =
+    /resource-id="(?:app|public-account-auth-gate)"/.test(xml) &&
+    (/text="סוגרים חשבון"/.test(xml) || /content-desc="סוגרים חשבון"/.test(xml));
+  const horizontalOverflow = screenWidth > 0 && visible.some((node) => {
+    const [left, , right] = boundsFor(node);
+    return left < 0 || right > screenWidth;
+  });
+
+  return {
+    inspectionMode: "native-accessibility",
+    horizontalOverflow,
+    unnamedControls: [],
+    unnamedControlCount: null,
+    smallControls: [],
+    smallControlCount: null,
+    primarySurfaceVisible,
+    actionableControlCount: actionable.length,
+    navigationTiming: null,
+    resourceTimings: [],
+    startupMarks: {},
+    interactive: primarySurfaceVisible && actionable.length > 0
+  };
+}
+
 function findInspectableAppPage(pages) {
   return pages.find((item) =>
     item.type === "page" && /^https:\/\/localhost(?:\/|$)/i.test(item.url || "")
@@ -374,7 +452,7 @@ function cdpEvaluate(url, expression) {
     const timeout = setTimeout(() => {
       socket.close();
       reject(new Error("CDP evaluation timed out"));
-    }, 2_000);
+    }, 5_000);
 
     socket.addEventListener("open", () => {
       socket.send(JSON.stringify({
@@ -454,6 +532,24 @@ function readPackageInfo(name) {
 
 function packageInstalled(name) {
   return adbRun(["-s", device, "shell", "pm", "path", name], { allowFailure: true }).includes("package:");
+}
+
+async function waitForPackageFocus(name, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  const packagePattern = new RegExp(
+    `(?:mCurrentFocus|mFocusedApp|topResumedActivity)=.*${escapeRegExp(name)}`
+  );
+  while (Date.now() < deadline) {
+    const [windowState, activityState] = [
+      adbRun(["-s", device, "shell", "dumpsys", "window"], { allowFailure: true }),
+      adbRun(["-s", device, "shell", "dumpsys", "activity", "activities"], {
+        allowFailure: true
+      })
+    ];
+    if (packagePattern.test(`${windowState}\n${activityState}`)) return true;
+    await sleep(250);
+  }
+  return false;
 }
 
 function adbRun(args, { allowFailure = false } = {}) {

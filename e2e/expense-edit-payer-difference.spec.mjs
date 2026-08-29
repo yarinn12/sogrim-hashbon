@@ -85,6 +85,8 @@ test("editing a multi-payer expense asks who owns the added amount", async ({ pa
   await expenseRow.locator('[data-action="edit-expense"]').click();
 
   const dialog = page.locator(".expense-modal");
+  await expect(dialog).toHaveAttribute("data-expense-step", "review");
+  await dialog.locator('[data-action="expense-step-edit"][data-step="amount"]').click();
   await dialog.locator('[data-action="expense-total"]').fill("140");
   await dialog.locator('[data-action="expense-step-next"]').click();
   await dialog.locator('[data-action="expense-step-next"]').click();
@@ -116,6 +118,8 @@ test("editing a single-payer expense assigns the added amount automatically", as
   await expenseRow.locator('[data-action="edit-expense"]').click();
 
   const dialog = page.locator(".expense-modal");
+  await expect(dialog).toHaveAttribute("data-expense-step", "review");
+  await dialog.locator('[data-action="expense-step-edit"][data-step="amount"]').click();
   await dialog.locator('[data-action="expense-total"]').fill("120");
   await dialog.locator('[data-action="expense-step-next"]').click();
   await dialog.locator('[data-action="expense-step-next"]').click();

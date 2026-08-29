@@ -166,12 +166,15 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(appPrivacy, /לא נעשה שימוש במידע למעקב/);
   assert.match(releaseBuilder, /rmSync\(bundle, \{ force: true \}\)/);
   assert.match(releaseBuilder, /release-manifest\.json/);
+  assert.match(releaseBuilder, /native-debug-symbols/);
+  assert.match(releaseBuilder, /Android native debug symbols are missing for unapproved libraries/);
   assert.match(releaseBuilder, /android-upload-certificate-sha256\.txt/);
   assert.match(releaseBuilder, /fingerprintAndroidReleaseSource/);
   assert.match(releaseBuilder, /Android merged release manifest/);
   assert.match(releaseBuilder, /Another Android release build is already running/);
   assert.match(releaseBuilder, /"clean", "bundleRelease", "lintRelease", "--no-daemon"/);
   assert.match(readinessCheck, /Android AAB matches current version, hash, signing certificate and source/);
+  assert.match(readinessCheck, /validateNativeDebugSymbolsEvidence/);
   assert.match(readinessCheck, /localReady, liveReady, submissionReady/);
   assert.match(readinessCheck, /process\.argv\.includes\("--android"\)/);
   assert.match(readinessCheck, /androidReady/);

@@ -72,6 +72,15 @@ export function normalizeAdminAnalyticsOverview(value) {
   const metrics = overview.metrics && typeof overview.metrics === "object"
     ? overview.metrics
     : {};
+  const telemetry = overview.telemetry && typeof overview.telemetry === "object"
+    ? overview.telemetry
+    : {};
+  const pushDelivery = overview.pushDelivery && typeof overview.pushDelivery === "object"
+    ? overview.pushDelivery
+    : {};
+  const dataContinuity = overview.dataContinuity && typeof overview.dataContinuity === "object"
+    ? overview.dataContinuity
+    : {};
 
   return {
     generatedAt: validIsoDate(overview.generatedAt),
@@ -126,11 +135,44 @@ export function normalizeAdminAnalyticsOverview(value) {
       affected: nonNegativeInteger(sessions.affected),
       errorFreeRate: normalizedRate(sessions.errorFreeRate)
     },
+    telemetry: {
+      lastReceivedAt: validIsoDate(telemetry.lastReceivedAt),
+      eventsLast24Hours: nonNegativeInteger(telemetry.eventsLast24Hours),
+      failuresLast24Hours: nonNegativeInteger(telemetry.failuresLast24Hours),
+      deferredLast24Hours: nonNegativeInteger(telemetry.deferredLast24Hours),
+      clientErrorsDuringWindow: nonNegativeInteger(
+        telemetry.clientErrorsDuringWindow
+      )
+    },
+    pushDelivery: {
+      reservedDuringWindow: nonNegativeInteger(
+        pushDelivery.reservedDuringWindow
+      ),
+      deliveredDuringWindow: nonNegativeInteger(
+        pushDelivery.deliveredDuringWindow
+      ),
+      stalePending: nonNegativeInteger(pushDelivery.stalePending),
+      deliveryRate: normalizedRate(pushDelivery.deliveryRate)
+    },
+    dataContinuity: {
+      latestSnapshotAt: validIsoDate(dataContinuity.latestSnapshotAt),
+      accountsWithoutWorkspace: nonNegativeInteger(
+        dataContinuity.accountsWithoutWorkspace
+      ),
+      eventsWithoutActiveMembers: nonNegativeInteger(
+        dataContinuity.eventsWithoutActiveMembers
+      )
+    },
     platforms: normalizeCountRows(overview.platforms, "platform"),
     operationFailures: normalizeCountRows(
       overview.operationFailures,
       "operation"
-    )
+    ),
+    deferredOperations: normalizeCountRows(
+      overview.deferredOperations,
+      "operation"
+    ),
+    clientErrors: normalizeClientErrorRows(overview.clientErrors)
   };
 }
 
@@ -143,6 +185,17 @@ function normalizeCountRows(value, labelKey) {
       affected: nonNegativeInteger(item?.affected)
     }))
     .filter((item) => item[labelKey]);
+}
+
+function normalizeClientErrorRows(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => ({
+      platform: String(item?.platform ?? "").trim().toLowerCase(),
+      screen: String(item?.screen ?? "").trim().toLowerCase(),
+      count: nonNegativeInteger(item?.count)
+    }))
+    .filter((item) => item.platform && item.screen);
 }
 
 function normalizeWindowDays(value) {

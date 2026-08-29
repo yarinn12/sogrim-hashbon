@@ -175,6 +175,13 @@ function createActivityFetch({
         participantId: RECIPIENT_PARTICIPANT_ID
       });
     }
+    if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
+      return jsonResponse({
+        status: "indexed",
+        snapshotId: "shared-event-space",
+        eventId: EVENT_ID
+      });
+    }
     if (
       address.includes("/rest/v1/event_invite_tokens") &&
       ["PATCH", "POST"].includes(options.method)
@@ -549,6 +556,13 @@ test("a pending friendship cannot strand an active event participant", async () 
   );
   assert.match(membershipBody.p_token_hash, /^[a-f0-9]{64}$/);
   assert.equal(membershipBody.p_user_id, RECIPIENT_USER_ID);
+  const membershipIndex = requests.find((request) =>
+    request.url.endsWith("/rest/v1/rpc/index_shared_event_for_member")
+  );
+  assert.deepEqual(JSON.parse(membershipIndex.options.body), {
+    p_snapshot_id: "shared-event-space",
+    p_user_id: RECIPIENT_USER_ID
+  });
   assert.equal(
     requests.some((request) =>
       request.url.includes("/rest/v1/notification_inbox?")

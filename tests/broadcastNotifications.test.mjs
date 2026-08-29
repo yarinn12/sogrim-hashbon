@@ -36,6 +36,10 @@ test("broadcast notifications deliver once per enabled device token", async () =
   const firebaseMessages = [];
   const fetchImpl = async (url, options = {}) => {
     const target = String(url);
+    if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
+      if (options.method === "PATCH") return new Response(null, { status: 204 });
+      return Response.json(JSON.parse(options.body));
+    }
     if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
       return Response.json([
         { id: "1", user_id: "user-1", token: "token-1", platform: "android" },
@@ -70,7 +74,8 @@ test("broadcast notifications deliver once per enabled device token", async () =
     targetedUsers: 2,
     delivered: 2,
     failed: 0,
-    disabledInvalid: 0
+    disabledInvalid: 0,
+    suppressedDuplicates: 0
   });
   assert.equal(firebaseMessages.length, 2);
   assert.equal(
@@ -81,6 +86,91 @@ test("broadcast notifications deliver once per enabled device token", async () =
     firebaseMessages[0].message.data.campaign,
     "close-account-test"
   );
+  assert.equal(
+    firebaseMessages[0].message.android.collapse_key,
+    "close-account-test"
+  );
+  assert.equal(
+    firebaseMessages[0].message.apns.headers["apns-collapse-id"],
+    "close-account-test"
+  );
+});
+
+test("broadcast notifications suppress a campaign already reserved for the device", async () => {
+  let firebaseCalls = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url);
+    if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
+      return Response.json([
+        { id: "device-1", user_id: "user-1", token: "token-1", platform: "ios" }
+      ]);
+    }
+    if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
+      return Response.json([]);
+    }
+    if (target.includes("fcm.googleapis.com")) {
+      firebaseCalls += 1;
+      return Response.json({ name: "message-id" });
+    }
+    throw new Error(`Unexpected request: ${target}`);
+  };
+
+  const result = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "already-sent",
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "firebase-project"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.delivered, 0);
+  assert.equal(result.payload.suppressedDuplicates, 1);
+  assert.equal(firebaseCalls, 0);
+});
+
+test("broadcast notifications fail closed when durable anti-spam storage is unavailable", async () => {
+  let firebaseCalls = 0;
+  const fetchImpl = async (url) => {
+    const target = String(url);
+    if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
+      return Response.json([
+        { id: "device-1", user_id: "user-1", token: "token-1", platform: "android" }
+      ]);
+    }
+    if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
+      return Response.json({ error: "unavailable" }, { status: 503 });
+    }
+    if (target.includes("fcm.googleapis.com")) {
+      firebaseCalls += 1;
+      return Response.json({ name: "unexpected" });
+    }
+    throw new Error(`Unexpected request: ${target}`);
+  };
+
+  const result = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "storage-unavailable",
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "firebase-project"
+    })
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.payload.ok, false);
+  assert.equal(result.payload.failed, 1);
+  assert.equal(firebaseCalls, 0);
 });
 
 test("broadcast notification route passes the protected request to the service", async () => {

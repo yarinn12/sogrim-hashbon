@@ -79,10 +79,44 @@ test("profile and event uploads request crop frames while receipt photos remain 
   const receiptStart = app.indexOf('if (action === "expense-attachment-image")');
   const receiptEnd = app.indexOf('if (action === "participant-report-category")', receiptStart);
   const receiptFlow = app.slice(receiptStart, receiptEnd);
+  const attachmentStart = app.indexOf("async function applyExpenseAttachmentImage");
+  const attachmentEnd = app.indexOf("async function updateEventCoverImage", attachmentStart);
+  const attachmentFlow = app.slice(attachmentStart, attachmentEnd);
 
   assert.match(coverFlow, /requestImageCrop\(file, \{[\s\S]*?shape: "rectangle"/);
   assert.match(coverFlow, /aspectRatio: 16 \/ 7/);
   assert.match(coverFlow, /outputWidth: 1280[\s\S]*?outputHeight: 560/);
   assert.doesNotMatch(receiptFlow, /requestImageCrop/);
-  assert.match(receiptFlow, /compressEventCoverImage\(file\)/);
+  assert.match(receiptFlow, /applyExpenseAttachmentImage\(file\)/);
+  assert.doesNotMatch(attachmentFlow, /requestImageCrop/);
+  assert.match(attachmentFlow, /compressEventCoverImage\(file\)/);
+});
+
+test("expense camera is a direct native action with a capture fallback", async () => {
+  const [app, bridge, config, info, packageJson] = await Promise.all([
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/publicNativeBridgeLayer.mjs", "utf8"),
+    readFile("capacitor.config.json", "utf8"),
+    readFile("ios/App/App/Info.plist", "utf8"),
+    readFile("package.json", "utf8")
+  ]);
+
+  assert.match(app, /data-action="capture-expense-attachment"[^>]*aria-label="פתיחת המצלמה"/);
+  assert.match(app, /<span>מצלמה<\/span>/);
+  assert.doesNotMatch(app, /צילום עכשיו/);
+  assert.doesNotMatch(app, /data-action="capture-expense-attachment"[\s\S]{0,240}?צילום עכשיו/);
+  assert.match(app, /data-image-source="camera-fallback"[^>]*accept="image\/\*"[^>]*capture="environment"/);
+  assert.match(app, /globalThis\.SogrimNative\?\.camera/);
+  assert.match(app, /await nativeCamera\.takePhoto\(\)/);
+  assert.match(app, /await applyExpenseAttachmentImage\(file\)/);
+  assert.match(bridge, /const cameraPlugin = plugins\.Camera/);
+  assert.match(bridge, /camera: createNativeCameraApi\(cameraPlugin\)/);
+  assert.match(bridge, /cameraPlugin\.takePhoto\(\{[\s\S]*?cameraDirection: "REAR"/);
+  assert.match(bridge, /OS-PLUG-CAMR-0006/);
+  assert.doesNotMatch(bridge, /cameraPlugin\.chooseFromGallery/);
+  assert.match(config, /"@capacitor\/camera"/);
+  assert.match(packageJson, /"@capacitor\/camera"/);
+  assert.match(info, /<key>NSCameraUsageDescription<\/key>/);
+  assert.match(info, /<key>NSPhotoLibraryUsageDescription<\/key>/);
+  assert.match(info, /<key>NSPhotoLibraryAddUsageDescription<\/key>/);
 });

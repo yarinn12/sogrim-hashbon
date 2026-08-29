@@ -124,6 +124,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
     .first()
+    .locator(".event-row-main")
     .click();
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
     .toBeVisible();

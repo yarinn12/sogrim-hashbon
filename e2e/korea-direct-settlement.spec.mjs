@@ -90,7 +90,11 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test("Korea summary keeps the direct reimbursement between Yarin and Maor", async ({ page }) => {
-  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .locator(".event-row-main")
+    .click();
   await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
 
   const yarinToMaor = page

@@ -26,7 +26,11 @@ test("mobile modal layer loads last so phone dialogs open full screen", async ()
   assert.match(layer, /border-radius:\s*0 !important/);
   assert.match(layer, /\.expense-modal-actions/);
   assert.match(layer, /position:\s*static !important/);
-  assert.doesNotMatch(layer, /\.expense-modal-actions,[\s\S]*?bottom:\s*0 !important/);
+  const expenseActionsRule = layer.slice(
+    layer.indexOf(".expense-modal-actions,"),
+    layer.indexOf("html.product-v2-live .expense-modal", layer.indexOf(".expense-modal-actions,"))
+  );
+  assert.doesNotMatch(expenseActionsRule, /bottom:\s*0 !important/);
   assert.doesNotMatch(productV1, /\.screen \{[\s\S]*?animation: product-v1-enter/);
   assert.doesNotMatch(fintech, /\.premium-app-shell \.screen,[\s\S]*?animation: fintech-float-in/);
   assert.doesNotMatch(baseStyles, /\.screen \{[\s\S]*?animation: surface-in/);

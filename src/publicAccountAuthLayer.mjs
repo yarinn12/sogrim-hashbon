@@ -1601,8 +1601,17 @@ function isNativeAndroid() {
 async function renderWebGoogleButton() {
   const control = document.querySelector("[data-account-google-control]");
   const target = control?.querySelector("[data-account-google-button]");
-  if (!control || !target || isNativeAndroid()) return;
+  if (
+    !control ||
+    !target ||
+    isNativeAndroid() ||
+    control.classList.contains("is-google-ready") ||
+    control.classList.contains("is-google-rendering")
+  ) {
+    return;
+  }
 
+  control.classList.add("is-google-rendering");
   setWebGoogleLoadingState(control);
   try {
     await initializeWebGoogleIdentity();
@@ -1626,6 +1635,8 @@ async function renderWebGoogleButton() {
     control.classList.remove("is-google-ready");
     setWebGoogleRetryState(control);
     throw error;
+  } finally {
+    control.classList.remove("is-google-rendering");
   }
 }
 
@@ -1647,6 +1658,21 @@ function setWebGoogleRetryState(control) {
   fallback.classList.remove("account-google-loading");
   fallback.disabled = false;
   fallback.setAttribute("aria-busy", "false");
+}
+
+function showWebGoogleCompletionState() {
+  const control = document.querySelector("[data-account-google-control]");
+  if (!control) return;
+  control.classList.add("is-google-signing-in");
+  const fallback = control.querySelector(".account-google-fallback");
+  if (fallback instanceof HTMLButtonElement) {
+    fallback.replaceChildren();
+    const label = document.createElement("span");
+    label.textContent = "משלימים את הכניסה…";
+    fallback.append(label);
+    fallback.disabled = true;
+    fallback.setAttribute("aria-busy", "true");
+  }
 }
 
 function initializeWebGoogleIdentity() {
@@ -1730,6 +1756,7 @@ async function createWebGoogleNonce() {
 async function handleWebGoogleCredential(response) {
   if (authBusy) return;
   setAuthBusy(true);
+  showWebGoogleCompletionState();
   try {
     const idToken = String(response?.credential ?? "").trim();
     if (!idToken) throw new Error("Google identity token is unavailable");
@@ -1824,10 +1851,25 @@ async function completeGoogleIdTokenSignIn({
     scheduleAccountSessionRefresh();
     await connectAccountToApp(accountSession, { forceReload: true });
   } catch (error) {
-    if (!canResumeOffline(accountSession, error)) throw error;
-    resumeAccountLocally(accountSession);
-    watchAccountControls();
-    enhanceAccountControls();
+    if (accountSession?.user && accountProfileNeedsCompletion(error)) {
+      throw error;
+    }
+    if (canResumeOffline(accountSession, error)) {
+      resumeAccountLocally(accountSession);
+      watchAccountControls();
+      enhanceAccountControls();
+      return;
+    }
+    if (accountSession?.user) {
+      // Google has already authenticated this account. A later workspace or
+      // network failure must never send the user back to the provider button
+      // and make a second sign-in look necessary.
+      saveAccountSession(accountSession);
+      emitOperationFailure("auth", { screen: "auth", error });
+      renderAccountRecoveryGate();
+      return;
+    }
+    throw error;
   }
 }
 
@@ -2434,8 +2476,39 @@ async function refreshProviderOptions() {
 function enableProviderOptions() {
   const slot = document.querySelector("[data-google-auth-slot]");
   if (!slot) return;
-  slot.innerHTML = providerOptionsMarkup();
-  renderWebGoogleButton().catch(() => {});
+  const googleSelector = isNativeAndroid()
+    ? '[data-account-action="google"]'
+    : "[data-account-google-control]";
+  const existingGoogle = slot.querySelector(googleSelector);
+
+  // Provider discovery can finish while a finger is already pressing the
+  // Google control. Preserve that exact node (and Google's iframe) instead of
+  // replacing it and silently consuming the tap.
+  if (!googleEnabled || !existingGoogle) {
+    slot.innerHTML = providerOptionsMarkup();
+    renderWebGoogleButton().catch(() => {});
+    return;
+  }
+
+  const existingApple = slot.querySelector('[data-account-action="apple"]');
+  if (appleEnabled && !existingApple) {
+    slot.insertAdjacentHTML("beforeend", appleProviderMarkup());
+  } else if (!appleEnabled) {
+    existingApple?.remove();
+  }
+
+  if (
+    !isNativeAndroid() &&
+    !existingGoogle.classList.contains("is-google-ready")
+  ) {
+    renderWebGoogleButton().catch(() => {});
+  }
+}
+
+function appleProviderMarkup() {
+  return `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
+    <img class="account-apple-button-art" src="./assets/sign-in-with-apple-iw.png" alt="" width="375" height="56" />
+  </button>`;
 }
 
 function providerOptionsMarkup() {
@@ -2455,11 +2528,7 @@ function providerOptionsMarkup() {
     googleEnabled
       ? googleMarkup
       : "",
-    appleEnabled
-      ? `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
-          <img class="account-apple-button-art" src="./assets/sign-in-with-apple-iw.png" alt="" width="375" height="56" />
-        </button>`
-      : ""
+    appleEnabled ? appleProviderMarkup() : ""
   ].filter(Boolean).join("");
   return buttons;
 }
@@ -2992,6 +3061,8 @@ function injectStyle() {
       min-height: 48px;
       display: grid;
       place-items: stretch;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     .account-google-control > * {
@@ -3004,6 +3075,18 @@ function injectStyle() {
       place-items: center;
       overflow: hidden;
       border-radius: 8px;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .account-google-official iframe {
+      outline: none !important;
+      -webkit-tap-highlight-color: transparent !important;
+    }
+
+    .account-google-official:focus-within {
+      outline: none;
+      box-shadow: none;
     }
 
     .account-google-control.is-google-ready .account-google-official {
@@ -3012,6 +3095,14 @@ function injectStyle() {
 
     .account-google-control.is-google-ready .account-google-fallback {
       display: none;
+    }
+
+    .account-google-control.is-google-ready.is-google-signing-in .account-google-official {
+      display: none;
+    }
+
+    .account-google-control.is-google-ready.is-google-signing-in .account-google-fallback {
+      display: flex;
     }
 
     .account-google-official > div,
@@ -3039,6 +3130,14 @@ function injectStyle() {
       border-color: #aebfb7;
       box-shadow: 0 6px 16px rgba(20, 59, 49, .08);
       transform: translateY(-1px);
+    }
+
+    .account-google-button:active {
+      border-color: #cfdbd5;
+      color: #17201d;
+      background: #ffffff;
+      box-shadow: none;
+      transform: scale(.985);
     }
 
     .account-google-loading {

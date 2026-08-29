@@ -31,6 +31,18 @@ const accountLinkMigration = await readFile(
   "supabase/migrations/20260826223000_allow_guarded_event_account_links.sql",
   "utf8"
 );
+const adminEventDeletionMigration = await readFile(
+  "supabase/migrations/20260827143000_allow_admin_shared_event_deletion.sql",
+  "utf8"
+);
+const transferStatusReversalMigration = await readFile(
+  "supabase/migrations/20260827190000_allow_participant_transfer_status_reversal.sql",
+  "utf8"
+);
+const transferStatusReversalVerification = await readFile(
+  "supabase/verification/verify_20260827190000_participant_transfer_status_reversal.sql",
+  "utf8"
+);
 const app = await readFile("src/app.mjs", "utf8");
 
 test("launch hardening binds personal snapshots to one authenticated account", () => {
@@ -178,12 +190,45 @@ test("account linking preserves financial history through a narrowly authorized 
     "private.has_authorized_transfer_status_changes",
     "private.guard_shared_event_financial_integrity",
     "private.has_preserved_paid_history_for_account_link",
-    "private.guard_shared_event_history_and_limits",
     "private.revoke_event_invites_after_member_removal"
   ]) {
     assert.equal(lastFunctionSource(schema, name), functionSource(accountLinkMigration, name));
   }
+  assert.equal(
+    lastFunctionSource(schema, "private.guard_shared_event_history_and_limits"),
+    functionSource(transferStatusReversalMigration, "private.guard_shared_event_history_and_limits")
+  );
+  assert.match(adminEventDeletionMigration, /private\.is_safe_shared_event_deletion/);
 });
+
+test("payment status reversal is narrow, attributable, and compatible with centralized events", () => {
+  assert.match(transferStatusReversalMigration, /^begin;/);
+  assert.match(transferStatusReversalMigration, /commit;\s*$/);
+  const statusOnlyGuard = functionSource(
+    transferStatusReversalMigration,
+    "private.is_safe_transfer_status_only_update"
+  );
+  assert.match(statusOnlyGuard, /p_old_state - 'events' is distinct from p_new_state - 'events'/);
+  assert.match(statusOnlyGuard, /p_actor_participant_id is distinct from new_item\.value ->> 'fromParticipantId'/);
+  assert.match(statusOnlyGuard, /p_actor_participant_id is distinct from new_item\.value ->> 'toParticipantId'/);
+  assert.match(statusOnlyGuard, /activity\.value ->> 'actorParticipantId' = p_actor_participant_id/);
+  assert.match(statusOnlyGuard, /transfer-paid/);
+  assert.match(statusOnlyGuard, /transfer-pending/);
+  assert.equal(
+    normalizeSql(functionSource(schema, "private.is_safe_transfer_status_only_update")),
+    normalizeSql(statusOnlyGuard)
+  );
+  assert.equal(
+    normalizeSql(functionSource(schema, "private.guard_shared_snapshot_update")),
+    normalizeSql(functionSource(transferStatusReversalMigration, "private.guard_shared_snapshot_update"))
+  );
+  assert.match(transferStatusReversalVerification, /involved participant cannot reverse/);
+  assert.match(transferStatusReversalVerification, /unrelated participant can rewrite/);
+});
+
+function normalizeSql(sql) {
+  return sql.replace(/\r\n/g, "\n");
+}
 
 function functionSource(sql, qualifiedName) {
   const marker = `create or replace function ${qualifiedName}`;

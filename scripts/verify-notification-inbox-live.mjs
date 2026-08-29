@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 
 import { signInWithPassword } from "../src/data/accountAuth.mjs";
-import { saveCloudState } from "../src/data/cloudStore.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
+import { loadCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
 import { sendEventActivityNotification } from "../src/data/eventActivityNotifications.mjs";
 import {
   mergeSharedEventIntoState,
@@ -112,8 +113,8 @@ try {
   const recipientEmptyState = accountState(recipient, [
     participants.find((participant) => participant.id === recipientParticipantId)
   ], [], false);
-  await saveCloudState(accountCloudConfig(sender), senderInviteState);
-  await saveCloudState(accountCloudConfig(recipient), recipientEmptyState);
+  await saveAccountState(sender, senderInviteState);
+  await saveAccountState(recipient, recipientEmptyState);
   await saveSharedEventState(
     accountCloudConfig(sender),
     senderInviteState,
@@ -194,7 +195,7 @@ try {
       recipientParticipantId
     )
   );
-  await saveCloudState(accountCloudConfig(recipient), recipientJoinedState);
+  await saveAccountState(recipient, recipientJoinedState);
   await adminRequest(
     `/rest/v1/notification_inbox?recipient_user_id=eq.${encodeURIComponent(recipient.userId)}&kind=eq.event-invite`,
     { method: "DELETE" }
@@ -386,11 +387,20 @@ async function saveBothAccountStates({
     eventId
   );
   for (const account of accounts) {
-    await saveCloudState(
-      accountCloudConfig(account),
+    await saveAccountState(
+      account,
       accountState(account, participants, expenses, true, eventOptions)
     );
   }
+}
+
+async function saveAccountState(account, state) {
+  const config = accountCloudConfig(account);
+  return saveCloudStateWithConflictRetry({
+    state,
+    loadLatest: (fallbackState) => loadCloudState(config, fallbackState),
+    save: (candidate) => saveCloudState(config, candidate)
+  });
 }
 
 function accountState(

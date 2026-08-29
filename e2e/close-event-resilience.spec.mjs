@@ -81,17 +81,42 @@ test("event closing remains responsive behind a stale sync lock", async ({ page 
   await page.locator('[data-action="close-event"]').first().click();
   const confirmation = page.locator(".settlement-close-confirmation");
   await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText("בואו נסגור חשבון?");
+  const confirmationCenterOffset = await confirmation.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2);
+  });
+  expect(confirmationCenterOffset).toBeLessThan(36);
 
   const confirmButton = confirmation.locator('[data-action="confirm-close-event"]');
+  await expect(confirmButton).toHaveText("סוגרים חשבון");
   await expect(confirmButton).not.toHaveAttribute("aria-disabled", "true");
   await confirmButton.click({ timeout: 5000 });
 
   await expect(confirmation).toHaveCount(0);
   await expect(page.locator(".settlement-screen")).toContainText("האירוע נסגר");
+  const reopenButton = page.locator(
+    ".settlement-hero-actions > .settlement-reopen-action"
+  );
+  await expect(reopenButton).toBeVisible();
+  await expect(reopenButton).toHaveText("פתח אירוע מחדש");
   await expect.poll(async () =>
     page.evaluate(({ eventId }) => {
       const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
       return state.events?.find((event) => event.id === eventId)?.locked;
     }, { eventId: EVENT_ID })
   ).toBe(true);
+
+  await expect(page.locator('[data-app-dialog-inert], [data-app-dialog-inert-container]')).toHaveCount(0);
+  await expect(page.locator("body")).not.toHaveClass(/app-dialog-open/);
+
+  const homeButton = page.locator('.product-app-nav [data-action="home"]').first();
+  await expect(homeButton).toBeEnabled();
+  await homeButton.click();
+  await expect(page.locator("#app")).toHaveAttribute("data-screen", "home");
+
+  const profileButton = page.locator('.product-app-nav [data-action="edit-profile"]').first();
+  await expect(profileButton).toBeEnabled();
+  await profileButton.click();
+  await expect(page.locator("#app")).toHaveAttribute("data-screen", "profile");
 });

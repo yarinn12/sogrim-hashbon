@@ -22,13 +22,50 @@ test("mobile headers, tablet workspaces and compact actions keep safe geometry",
   );
   assert.match(
     ledger,
-    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?\.screen\[data-screen-kind="event"\][\s\S]*?max-width: 720px !important;/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?body #app \.screen,[\s\S]*?max-width: 430px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 430px !important;/
+  );
+  assert.match(
+    ledger,
+    /\.product-route-controls\[hidden\] \{[\s\S]*?calc\(\(100vw - 430px\) \/ 2 \+ 16px\)/
   );
   assert.match(ledger, /\.expense-row-actions-menu button \{[\s\S]*?min-height: 44px !important;/);
   assert.match(coherence, /--app-danger: #b94739/);
   assert.match(
     coherence,
     /\.event-participant-account-link-button\) \{[\s\S]*?min-height: 44px !important;/
+  );
+});
+
+test("expense overflow reuses the event image action-menu presentation", async () => {
+  const layer = await readFile("src/publicDesignCoherenceLayer.mjs", "utf8");
+  const approvedRule = layer.slice(
+    layer.indexOf("Expense overflow matches the established event-image action menu")
+  );
+
+  assert.match(
+    approvedRule,
+    /\.expense-row-actions-menu[\s\S]*?> summary \{[\s\S]*?width: 44px !important;[\s\S]*?height: 44px !important;[\s\S]*?border-radius: 12px !important;[\s\S]*?background: #ffffff !important;/
+  );
+  assert.match(
+    approvedRule,
+    /\.expense-row-actions-menu[\s\S]*?> div \{[\s\S]*?width: 166px !important;[\s\S]*?padding: 8px !important;[\s\S]*?border-radius: var\(--app-radius-panel\) !important;[\s\S]*?background: #ffffff !important;/
+  );
+  assert.match(
+    approvedRule,
+    /> div[\s\S]*?> button\.secondary-button \{[\s\S]*?min-height: 44px !important;[\s\S]*?border: 0 !important;[\s\S]*?border-radius: 10px !important;[\s\S]*?background: transparent !important;/
+  );
+  assert.match(
+    approvedRule,
+    /> button\[data-action="delete-expense"\] \{[\s\S]*?color: #a33a32 !important;/
+  );
+});
+
+test("expense overflow dots are optically centered in their square control", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /\.screen\[data-screen-kind="event"\] \.expense-row-actions-icon \{[\s\S]*?width: 20px !important;[\s\S]*?height: 20px !important;[\s\S]*?display: grid !important;[\s\S]*?place-items: center !important;[\s\S]*?line-height: 0 !important;/
   );
 });
 
@@ -51,7 +88,10 @@ test("ledger workspace is the final public design layer", async () => {
   assert.match(layer, /"product-studio-v3"/);
   assert.match(layer, /"public-product-v1-layer-style"/);
   assert.match(layer, /document\.documentElement\.classList\.add\("product-v1", "ledger-workspace-v1"\)/);
-  assert.match(layer, /new MutationObserver\(activateLedgerWorkspace\)/);
+  assert.match(
+    layer,
+    /new MutationObserver\(\(\) => \{\s*activateLedgerWorkspace\(\);\s*scheduleWorkspaceNavigationOcclusion\(\);\s*\}\)/
+  );
 });
 
 test("ledger workspace uses a distinctive editorial financial product system", async () => {
@@ -168,7 +208,7 @@ test("approved mobile reference drives the home hero, shortcuts, event ledger, a
   assert.match(layer, /\.home-invite-shortcuts/);
   assert.match(
     app,
-    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event\)/
+    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event, \{[\s\S]*?suppressParticipantAction: true[\s\S]*?\}\)/
   );
   assert.match(brand, /syncHeaderIdentity/);
 });
@@ -793,7 +833,29 @@ test("shared route and progress controls keep Android touch targets at least 44p
   );
   assert.match(
     layer,
-    /Participant statistics belong to the picture itself[\s\S]*?\.avatar\.is-participant-statistics-action::after \{[\s\S]*?width: max\(100%, 44px\) !important;[\s\S]*?height: max\(100%, 44px\) !important/
+    /Participant statistics belong to the picture itself[\s\S]*?\.avatar\.is-participant-statistics-action::before,[\s\S]*?\.avatar\.is-current-profile-action::before \{[\s\S]*?width: max\(100%, 44px\) !important;[\s\S]*?height: max\(100%, 44px\) !important/
+  );
+});
+
+test("participant role and friendship tags share one compact visual component", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /Participant status tags share one visual language[\s\S]*?\.event-participant-status-tag \{[\s\S]*?min-height: 22px !important;[\s\S]*?padding: 3px 7px !important;[\s\S]*?border-radius: 999px !important;[\s\S]*?font-size: 10\.5px !important/
+  );
+});
+
+test("relationship comparison values stay attached to their people instead of the center", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /\.relationship-comparison-values[\s\S]*?> \[data-relationship-person="current"\] \{[\s\S]*?justify-items: start !important/
+  );
+  assert.match(
+    layer,
+    /\.relationship-comparison-values[\s\S]*?> \[data-relationship-person="target"\] \{[\s\S]*?justify-items: end !important/
   );
 });
 

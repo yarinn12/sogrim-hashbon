@@ -41,27 +41,31 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=387");
+  assert.equal(manifest.start_url, "./?pwa_release=396");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=387&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=396&action=new-event");
   assert.ok(
     manifest.icons.some(
-      (icon) => icon.src === "./icon-maskable-512.png" && icon.purpose.includes("maskable")
+      (icon) => icon.src === "./app-icon-exterior-maskable-512.png" && icon.purpose.includes("maskable")
     )
   );
-  assert.ok(manifest.icons.some((icon) => icon.src === "./icon-192.png" && icon.sizes === "192x192"));
-  assert.ok(manifest.icons.some((icon) => icon.src === "./icon-512.png" && icon.sizes === "512x512"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-192.png" && icon.sizes === "192x192"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-512.png" && icon.sizes === "512x512"));
 });
 
 test("index links the manifest and mobile app metadata", async () => {
   const html = await readFile("index.html", "utf8");
+  const currentRelease = html.match(/data-pwa-release="(\d+)"/)?.[1];
+  const referencedReleases = [...html.matchAll(/pwa_release=(\d+)/g)].map((match) => match[1]);
 
+  assert.ok(currentRelease);
+  assert.deepEqual([...new Set(referencedReleases)], [currentRelease]);
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=387"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=396"/
   );
-  assert.match(html, /data-pwa-release="387"/);
+  assert.match(html, /data-pwa-release="396"/);
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
@@ -69,11 +73,11 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.match(html, /name="format-detection" content="telephone=no"/);
   assert.match(html, /viewport-fit=cover/);
   assert.doesNotMatch(html, /interactive-widget/);
-  assert.match(html, /rel="icon" href="\.\/icon-192\.png" type="image\/png"/);
+  assert.match(html, /rel="icon" href="\.\/app-icon-exterior-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=387"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=387"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=387/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=396"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=396"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=396/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -84,6 +88,8 @@ test("server serves install icons with the correct image type", async () => {
   assert.ok(config.builds.some((entry) => entry.src === "*.png" && entry.use === "@vercel/static"));
   assert.match(await readFile(".vercelignore", "utf8"), /^!icon-192\.png$/m);
   assert.match(await readFile(".vercelignore", "utf8"), /^!icon-maskable-512\.png$/m);
+  assert.match(await readFile(".vercelignore", "utf8"), /^!app-icon-exterior-192\.png$/m);
+  assert.match(await readFile(".vercelignore", "utf8"), /^!app-icon-exterior-maskable-512\.png$/m);
   assert.match(await readFile(".vercelignore", "utf8"), /^!apple-touch-icon\.png$/m);
 });
 
@@ -115,6 +121,7 @@ test("service worker precaches the app shell", async () => {
   assert.match(sw, /"\/sogrim-logo-lockup\.png"/);
   assert.match(sw, /"\/sogrim-share-logo\.png"/);
   assert.match(sw, /"\/icon-192.png"/);
+  assert.match(sw, /"\/app-icon-exterior-192.png"/);
   assert.match(sw, /event\.request\.mode === "navigate"/);
 });
 
@@ -136,7 +143,7 @@ test("service worker loads heavy brand media on demand and reuses it", async () 
 test("service worker precaches every browser module used by the public app", async () => {
   const html = await readFile("index.html", "utf8");
   const sw = await readFile("sw.js", "utf8");
-  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=387)?"><\/script>/g)]
+  const entryPaths = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)(?:\?pwa_release=\d+)?"><\/script>/g)]
     .map((match) => match[1]);
   const modulePaths = await collectBrowserModules(entryPaths);
 
@@ -252,8 +259,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=387"/);
-  assert.match(recovery, /const PWA_RELEASE = "387"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=396"/);
+  assert.match(recovery, /const PWA_RELEASE = "396"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);

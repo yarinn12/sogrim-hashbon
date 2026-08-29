@@ -145,6 +145,18 @@ test("event details open settlement before participant management", async () => 
   assert.match(app, /function syncNewEventDraftFromRenderedDetails\(\)/);
   assert.match(
     app,
+    /function render\(\) \{[\s\S]*?syncNewEventDraftFromRenderedDetails\(\)/
+  );
+  assert.match(
+    app,
+    /syncNewEventDraftFromRenderedDetails\(\)[\s\S]*?newEventDraft\.guestName = guestNameInput\.value/
+  );
+  assert.match(
+    app,
+    /function addGuestToDraft\(draft\)[\s\S]*?draft\.guestName = "";[\s\S]*?guestNameInput\.value = "";[\s\S]*?render\(\)/
+  );
+  assert.match(
+    app,
     /if \(action === "open-new-event-settlement"\) \{[\s\S]*?syncNewEventDraftFromRenderedDetails\(\)/
   );
   assert.match(
@@ -206,6 +218,22 @@ test("new event participants offer friends, offline names, and an invite link or
     /state = stateBeforeCreate;\s+saveState\(stateBeforeCreate\);\s+newEventDraft = submittedDraft/
   );
   assert.match(createFlow, /if \(!inviteAfterCreate \|\| saveResult\?\.pending\) return/);
+  assert.match(
+    createFlow,
+    /const invitedAccountParticipants = event\.participantIds[\s\S]*?accountUserIdFromParticipantId/
+  );
+  assert.match(
+    createFlow,
+    /rememberPendingEventMembershipInvitation\(event\.id, participant\.id\)/
+  );
+  assert.match(
+    createFlow,
+    /if \(!saveResult\?\.pending\) \{[\s\S]*?await publishEventInvitation\(event\.id, participant,[\s\S]*?showMessage: false/
+  );
+  assert.ok(
+    createFlow.indexOf("await publishEventInvitation") <
+      createFlow.indexOf("if (!inviteAfterCreate || saveResult?.pending) return")
+  );
   assert.ok(
     createFlow.indexOf("const saveResult = await saveRequest") <
       createFlow.indexOf('screen = { name: "event", eventId: event.id }')

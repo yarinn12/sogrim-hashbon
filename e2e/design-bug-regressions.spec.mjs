@@ -129,7 +129,7 @@ test("expense templates preserve a custom name and still switch templates", asyn
   await expect(expenseName).toHaveValue("שתייה");
 });
 
-test("restaurant expense back and close controls never overlap", async ({ page }) => {
+test("restaurant expense back and accessibility controls never overlap", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${RESTAURANT_EVENT_ID}"]`)
     .first()
@@ -141,16 +141,22 @@ test("restaurant expense back and close controls never overlap", async ({ page }
   await page.locator('[data-action="restaurant-split-mode"][data-mode="equal"]').click();
 
   const back = page.locator('.expense-modal-step-header [data-action="expense-step-back"]');
-  const close = page.locator('.expense-modal-step-header [data-action="cancel-expense"]');
+  const accessibility = page.locator('.expense-modal-step-header .expense-accessibility-button');
   await expect(back).toBeVisible();
-  await expect(close).toBeVisible();
-  const [backBox, closeBox] = await Promise.all([back.boundingBox(), close.boundingBox()]);
+  await expect(accessibility).toBeVisible();
+  await expect(
+    page.locator('.expense-modal-step-header [data-action="cancel-expense"]')
+  ).toHaveCount(0);
+  const [backBox, accessibilityBox] = await Promise.all([
+    back.boundingBox(),
+    accessibility.boundingBox()
+  ]);
   expect(backBox).not.toBeNull();
-  expect(closeBox).not.toBeNull();
+  expect(accessibilityBox).not.toBeNull();
   const separated =
-    backBox.x + backBox.width <= closeBox.x ||
-    closeBox.x + closeBox.width <= backBox.x;
-  expect(separated, "back and close controls must occupy separate header columns").toBe(true);
+    backBox.x + backBox.width <= accessibilityBox.x ||
+    accessibilityBox.x + accessibilityBox.width <= backBox.x;
+  expect(separated, "back and accessibility controls must occupy separate header columns").toBe(true);
 });
 
 test("a failed share link stops loading and explains the unavailable action", async ({ page }) => {

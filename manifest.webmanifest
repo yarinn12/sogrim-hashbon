@@ -2,7 +2,7 @@
   "name": "סוגרים חשבון",
   "short_name": "סוגרים חשבון",
   "description": "ניהול הוצאות אירוע וסגירת חובות בין חברים.",
-  "start_url": "./?pwa_release=387",
+  "start_url": "./?pwa_release=396",
   "scope": "./",
   "id": "./",
   "display": "standalone",
@@ -18,10 +18,10 @@
       "name": "אירוע חדש",
       "short_name": "אירוע",
       "description": "פתיחת אירוע חדש לחברים.",
-      "url": "./?pwa_release=387&action=new-event",
+      "url": "./?pwa_release=396&action=new-event",
       "icons": [
         {
-          "src": "./icon-192.png",
+          "src": "./app-icon-exterior-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -30,19 +30,19 @@
   ],
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "./app-icon-exterior-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png",
+      "src": "./app-icon-exterior-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-maskable-512.png",
+      "src": "./app-icon-exterior-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"

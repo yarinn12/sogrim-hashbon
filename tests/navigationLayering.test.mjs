@@ -222,12 +222,12 @@ test("mobile modals go full screen and lock background scrolling", () => {
   assert.match(mobileModalLayer, /height: 100dvh !important;/);
 });
 
-test("the dialog-open body class is cleared when no dialog remains", () => {
+test("dialog state and inert controls are cleared when no dialog remains", () => {
   const render = slice(app, "function render()", "function commitRenderedScreen");
 
   assert.match(
     render,
-    /!eventDialog &&\s*!expenseDraft &&\s*!importantActionDialog &&\s*!eventStatusMenu &&\s*!settlementCelebration &&\s*!settlementCloseConfirmation\s*\) \{\s*document\.body\.classList\.remove\("app-dialog-open"\);/
+    /!eventDialog &&\s*!expenseDraft &&\s*!importantActionDialog &&\s*!eventStatusMenu &&\s*!settlementCelebration &&\s*!settlementCloseConfirmation\s*\) \{\s*document\.body\.classList\.remove\("app-dialog-open"\);\s*clearDialogBackgroundInert\(\);/
   );
 });
 

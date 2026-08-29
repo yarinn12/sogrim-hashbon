@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import postgres from "postgres";
 
 import { eventShareCredentials, mergeSharedEventIntoState } from "../src/data/sharedEventStore.mjs";
+import { RECOVERED_MEMBER_SPACE_KEY } from "../src/data/cloudStore.mjs";
 import { validateSharedStateFinancials } from "../src/domain/sharedStateMerge.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
 
@@ -12,9 +13,13 @@ loadEnvFile(".env.local");
 loadEnvFile(".env");
 
 const eventId = argumentValue("--event-id");
+const targetUserId = argumentValue("--user-id");
 const apply = process.argv.includes("--apply");
 if (!eventId) {
-  throw new Error("Usage: node scripts/repair-shared-event-workspaces.mjs --event-id <id> [--apply]");
+  throw new Error(
+    "Usage: node scripts/repair-shared-event-workspaces.mjs --event-id <id> " +
+      "[--user-id <uuid>] [--apply]"
+  );
 }
 
 const databaseUrl =
@@ -56,16 +61,10 @@ try {
       order by (revoked_at is null) desc, updated_at desc
       limit 1
     `;
-    const credentials = {
+    const recoveryCredentials = {
       id: sharedRow.id,
-      key: String(inviteRows[0]?.space_key ?? "")
+      key: String(inviteRows[0]?.space_key ?? RECOVERED_MEMBER_SPACE_KEY)
     };
-    if (!eventShareCredentials({
-      sharedSpaceId: credentials.id,
-      sharedSpaceKey: credentials.key
-    })) {
-      throw new Error("Shared event recovery credentials are unavailable.");
-    }
 
     const members = await transaction`
       select user_id, participant_id, role
@@ -74,7 +73,15 @@ try {
         and status = 'active'
       order by joined_at
     `;
-    const memberUserIds = members.map((member) => member.user_id);
+    const selectedMembers = targetUserId
+      ? members.filter((member) => String(member.user_id) === targetUserId)
+      : members;
+    if (targetUserId && selectedMembers.length !== 1) {
+      throw new Error(
+        `Expected one active membership for ${targetUserId}, found ${selectedMembers.length}.`
+      );
+    }
+    const memberUserIds = selectedMembers.map((member) => member.user_id);
     const workspaceRows = memberUserIds.length
       ? await transaction`
           select workspace.id, workspace.owner_user_id, workspace.state, workspace.updated_at
@@ -92,11 +99,24 @@ try {
     const workspacesByOwner = new Map(
       workspaceRows.map((row) => [String(row.owner_user_id), row])
     );
-    const repaired = members.map((member) => {
+    const repaired = selectedMembers.map((member) => {
       const workspace = workspacesByOwner.get(String(member.user_id));
       if (!workspace) {
         throw new Error(`Active member ${member.user_id} has no account workspace.`);
       }
+      const existingEvent = workspace.state.events?.find(
+        (event) => event.id === eventId
+      );
+      const existingCredentials = eventShareCredentials(existingEvent);
+      if (
+        existingCredentials &&
+        existingCredentials.id !== sharedRow.id
+      ) {
+        throw new Error(
+          `${workspace.id} points ${eventId} at a different shared snapshot.`
+        );
+      }
+      const credentials = existingCredentials ?? recoveryCredentials;
       const mergedState = mergeSharedEventIntoState(
         workspace.state,
         sharedRow.state,
@@ -120,6 +140,11 @@ try {
         ...workspace,
         participantId: member.participant_id,
         role: member.role,
+        credentialMode: existingCredentials
+          ? "preserved"
+          : inviteRows[0]?.space_key
+            ? "invite"
+            : "membership-recovery",
         nextState,
         changed: !repairStatesEqual(nextState, workspace.state)
       };
@@ -131,11 +156,14 @@ try {
       eventName: sharedEvent.name,
       sharedSnapshotId: sharedRow.id,
       activeMemberCount: members.length,
+      selectedMemberCount: selectedMembers.length,
+      targetUserId: targetUserId || null,
       changedWorkspaceCount: changedRows.length,
       workspaces: repaired.map((row) => ({
         snapshotId: row.id,
         participantId: row.participantId,
         role: row.role,
+        credentialMode: row.credentialMode,
         changed: row.changed,
         changedPaths: row.changed
           ? changedValuePaths(row.state, row.nextState).slice(0, 20)
@@ -156,6 +184,15 @@ try {
 
     const backupPath = await writeBackup(changedRows);
     for (const row of changedRows) {
+      // Preserve the production ownership guard: each workspace update runs
+      // under the exact authenticated subject that owns that workspace.
+      await transaction`
+        select pg_catalog.set_config(
+          'request.jwt.claim.sub',
+          ${String(row.owner_user_id)},
+          true
+        )
+      `;
       await transaction`
         update public.app_snapshots
         set state = ${transaction.json(row.nextState)}, updated_at = pg_catalog.now()

@@ -8,6 +8,7 @@ import {
   signInWithPassword
 } from "../src/data/accountAuth.mjs";
 import { loadCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 import { deleteEvent } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
@@ -172,8 +173,15 @@ try {
   assert.equal(updatedSharedEvent.events[0].expenses[0].total, 12346);
 
   const deletedState = deleteEvent(reloadedState, eventId);
-  await saveCloudState(cloudConfig, deletedState);
-  await syncSharedEvents(cloudConfig, deletedState);
+  await syncSharedEvents(cloudConfig, deletedState, undefined, {
+    eventIds: [],
+    deletedEventIds: [eventId]
+  });
+  await saveCloudStateWithConflictRetry({
+    state: deletedState,
+    loadLatest: (fallbackState) => loadCloudState(cloudConfig, fallbackState),
+    save: (candidate) => saveCloudState(cloudConfig, candidate)
+  });
 
   const deletedSharedEvent = await readSharedEventState(
     cloudConfig,

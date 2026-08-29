@@ -80,7 +80,22 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 test("a manager can reimburse only net funders without reciprocal transfers", async ({ page }) => {
-  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  const eventOpenAction = page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first();
+  const eventAvatarStack = eventOpenAction.locator(".avatar-stack");
+  const eventMain = eventOpenAction.locator(".event-row-main");
+  const [avatarBox, mainBox] = await Promise.all([
+    eventAvatarStack.boundingBox(),
+    eventMain.boundingBox()
+  ]);
+  expect(avatarBox).not.toBeNull();
+  expect(mainBox).not.toBeNull();
+  expect(
+    Math.min(avatarBox.x + avatarBox.width, mainBox.x + mainBox.width) -
+      Math.max(avatarBox.x, mainBox.x)
+  ).toBeLessThanOrEqual(0.5);
+  await eventMain.click();
   await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
   await expect(page.getByText("חלוקת ההחזרים", { exact: true })).toBeVisible();
   await page.locator('[data-settings-section="repayment"]').click();

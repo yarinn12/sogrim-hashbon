@@ -196,7 +196,7 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(settlement.locator(".settlement-hero")).toBeVisible();
   await expect(firstTransfer.locator('[data-action="mark-paid"]')).toHaveCount(0);
   await settlement.locator('[data-action="close-event"]').first().click();
-  await settlement.locator('[data-action="confirm-close-event"]').click();
+  await page.locator('[data-action="confirm-close-event"]').click();
   await expect(
     firstTransfer.locator('[data-action="mark-paid"]')
   ).toBeVisible();

@@ -3494,6 +3494,450 @@ const CSS = `
     line-height: 1.35 !important;
   }
 
+  /* The profile keeps its approved content order while every module shares one
+     product surface, type hierarchy, icon treatment and interaction language. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    > .product-app-identity {
+    position: sticky !important;
+    inset-block-start: 0 !important;
+    isolation: isolate !important;
+    background: var(--app-canvas) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    > .profile-setup-panel {
+    width: min(100%, 680px) !important;
+    display: grid !important;
+    gap: 12px !important;
+    margin-inline: auto !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-grid {
+    gap: 12px !important;
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(
+      .profile-avatar-picker-shell,
+      .profile-identity-summary,
+      .profile-shortcuts,
+      .referral-reward-card.is-profile,
+      .notification-settings-card,
+      .premium-billing-section,
+      .account-profile-controls,
+      .profile-admin-entry
+    ) {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface) !important;
+    background-image: none !important;
+    box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-summary {
+    min-height: 96px !important;
+    padding: 14px !important;
+    box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-copy {
+    gap: 4px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-copy
+    > span {
+    color: var(--app-muted) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-copy
+    > strong {
+    color: var(--app-ink) !important;
+    font-size: 17px !important;
+    font-weight: 650 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-identity-edit {
+    min-height: 44px !important;
+    border-color: var(--app-line-strong) !important;
+    border-radius: var(--app-radius-control) !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.profile-avatar-picker-shell, .account-profile-controls) {
+    overflow: hidden !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.profile-avatar-picker-summary, .account-profile-controls-summary) {
+    transition-property: background-color !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  @media (hover: hover) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .profile-edit-screen
+      :is(.profile-avatar-picker-summary, .account-profile-controls-summary):hover {
+      background: var(--app-surface-soft) !important;
+    }
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.profile-avatar-picker-summary, .account-profile-controls-summary):focus-visible {
+    position: relative !important;
+    z-index: 1 !important;
+    outline: 2px solid rgba(22, 78, 63, 0.38) !important;
+    outline-offset: -3px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-shortcut-icon {
+    color: var(--app-brand) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .profile-admin-entry {
+    min-height: 60px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .referral-reward-card.is-profile {
+    display: grid !important;
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 14px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.referral-reward-icon, .notification-settings-icon, .premium-billing-icon) {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    border: 0 !important;
+    border-radius: var(--app-radius-control) !important;
+    color: #ffffff !important;
+    background: var(--app-brand) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.referral-reward-icon, .notification-settings-icon, .premium-billing-icon)
+    svg {
+    width: 21px !important;
+    height: 21px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(
+      .referral-reward-copy strong,
+      .notification-settings-copy strong,
+      .premium-billing-copy strong,
+      .account-profile-controls-summary-copy strong
+    ) {
+    margin: 0 !important;
+    color: var(--app-ink) !important;
+    font-size: 16px !important;
+    font-weight: 650 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(
+      .referral-reward-detail,
+      .notification-settings-copy small,
+      .premium-billing-copy p,
+      .account-profile-controls-summary-copy small
+    ) {
+    margin: 0 !important;
+    color: var(--app-muted) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    line-height: 1.45 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.referral-reward-eyebrow, .premium-billing-copy small) {
+    color: var(--app-brand) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .referral-reward-days-text {
+    margin-top: 5px !important;
+    color: var(--app-brand) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .referral-reward-action.primary-button {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-height: 48px !important;
+    margin: 4px 0 0 !important;
+    border: 1px solid var(--app-brand) !important;
+    border-radius: var(--app-radius-control) !important;
+    background: var(--app-brand) !important;
+    box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-settings-card,
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-settings-card.is-enabled {
+    gap: 12px !important;
+    padding: 14px !important;
+    border-color: var(--app-line) !important;
+    background: var(--app-surface) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-settings-heading {
+    grid-template-columns: 44px minmax(0, 1fr) auto !important;
+    gap: 12px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    :is(.notification-master-switch, .notification-preference-switch) {
+    border-color: var(--app-line-strong) !important;
+    background: var(--app-line) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-master-control[aria-checked="true"]
+    .notification-master-switch,
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preference-control
+    input:checked
+    + .notification-preference-switch {
+    border-color: var(--app-brand) !important;
+    background: var(--app-brand) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preferences {
+    padding-top: 4px !important;
+    border-top-color: var(--app-line) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preferences
+    > legend {
+    color: var(--app-muted) !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preference-row
+    + .notification-preference-row {
+    border-top-color: var(--app-line) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preference-copy
+    strong {
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .notification-preference-copy
+    small {
+    color: var(--app-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .premium-billing-section {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    padding: 14px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-profile-controls {
+    display: block !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-profile-controls-summary {
+    min-height: 72px !important;
+    padding: 12px 14px !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-profile-controls-body {
+    gap: 12px !important;
+    padding: 14px !important;
+    border-top: 1px solid var(--app-line) !important;
+    background: var(--app-surface) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-profile-email {
+    color: var(--app-muted) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry {
+    min-height: 72px !important;
+    padding: 12px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-control) !important;
+    color: var(--app-ink) !important;
+    background: var(--app-surface-soft) !important;
+    box-shadow: none !important;
+    transition-property: background-color, border-color, transform !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry:is(:hover, :focus-visible) {
+    border-color: var(--app-line-strong) !important;
+    background: var(--app-accent-soft) !important;
+    transform: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry:active {
+    transform: scale(0.96) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry-icon {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: var(--app-radius-control) !important;
+    color: var(--app-brand) !important;
+    background: var(--app-surface) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry-copy
+    strong {
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-feedback-entry-copy
+    small {
+    color: var(--app-muted) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-data-links {
+    gap: 8px 14px !important;
+    padding-top: 4px !important;
+    border-top-color: var(--app-line) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-data-link {
+    color: var(--app-muted) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    text-decoration-color: var(--app-line-strong) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen
+    .account-danger-zone {
+    border-top-color: var(--app-line) !important;
+  }
+
   @media (max-width: 720px) {
     html.design-coherence-v1.ledger-workspace-v1 body #app
       .profile-avatar-options {
@@ -3770,9 +4214,12 @@ const CSS = `
     inset: 0 !important;
     z-index: 240 !important;
     display: grid !important;
-    place-items: end center !important;
+    place-items: center !important;
     box-sizing: border-box !important;
-    padding: 16px 14px calc(env(safe-area-inset-bottom) + 96px) !important;
+    padding:
+      calc(16px + env(safe-area-inset-top))
+      14px
+      calc(16px + env(safe-area-inset-bottom)) !important;
     background: rgba(7, 27, 24, 0.14) !important;
     pointer-events: auto !important;
   }
@@ -3781,7 +4228,7 @@ const CSS = `
     width: min(520px, calc(100vw - 28px)) !important;
     max-width: calc(100vw - 28px) !important;
     display: grid !important;
-    gap: 14px !important;
+    gap: 12px !important;
     box-sizing: border-box !important;
     padding: 14px !important;
     overflow: hidden !important;
@@ -3798,9 +4245,9 @@ const CSS = `
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-heading {
     display: grid !important;
-    grid-template-columns: 44px minmax(0, 1fr) 44px !important;
+    grid-template-columns: minmax(0, 1fr) 44px !important;
     align-items: center !important;
-    gap: 10px !important;
+    gap: 8px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-icon {
@@ -3830,8 +4277,8 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-copy h2 {
     margin: 0 !important;
     color: var(--app-ink) !important;
-    font-size: 16px !important;
-    font-weight: 600 !important;
+    font-size: 18px !important;
+    font-weight: 650 !important;
     line-height: 1.3 !important;
   }
 
@@ -3997,6 +4444,214 @@ const CSS = `
 
     html.design-coherence-v1.ledger-workspace-v1 body #app .settlement-close-confirmation-actions {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  /* Route headers use one canonical brand mark. Earlier screen-specific layers
+     must not crop or scale the same asset differently between app sections. */
+  html.design-coherence-v1 body #app
+    .screen:is(
+      [data-screen-kind="home"],
+      [data-screen-kind="notifications"],
+      [data-screen-kind="profile"]
+    )
+    > .product-app-identity
+    .product-brand-mark {
+    position: relative !important;
+    width: 42px !important;
+    min-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .screen:is(
+      [data-screen-kind="home"],
+      [data-screen-kind="notifications"],
+      [data-screen-kind="profile"]
+    )
+    > .product-app-identity
+    .product-brand-image {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    border-radius: 12px !important;
+    object-fit: contain !important;
+    outline: 0 !important;
+    filter: drop-shadow(0 5px 7px rgba(11, 74, 56, 0.22)) !important;
+    transform: none !important;
+  }
+
+  /* Event-list actions are one component; destructive intent changes color,
+     not geometry or hierarchy. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    :is(.event-share-option, .event-removal-option) {
+    width: 100% !important;
+    min-height: 64px !important;
+    display: grid !important;
+    grid-template-columns: 44px minmax(0, 1fr) 24px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    :is(.event-share-option, .event-removal-option)
+    > span:not(.command-card-icon):not(.event-share-route-chevron) {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 3px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    :is(.event-share-option, .event-removal-option) small {
+    color: var(--app-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-status-danger-zone {
+    display: grid !important;
+    gap: 10px !important;
+    margin-top: 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-removal-option {
+    color: var(--app-danger) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-removal-option .command-card-icon {
+    color: var(--app-danger) !important;
+    background: #fff4f2 !important;
+  }
+
+  /* Expense overflow matches the established event-image action menu. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu
+    > summary {
+    width: 44px !important;
+    height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    align-self: center !important;
+    justify-self: center !important;
+    padding: 0 !important;
+    border: 1px solid var(--app-line-strong) !important;
+    border-radius: 12px !important;
+    color: var(--app-brand) !important;
+    background: #ffffff !important;
+    box-shadow: var(--app-shadow-card) !important;
+    cursor: pointer !important;
+    list-style: none !important;
+    transition-property: transform, background-color, box-shadow !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu[open]
+    > summary {
+    border-color: var(--app-brand) !important;
+    color: var(--app-brand) !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 16px rgba(22, 78, 63, 0.14) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu
+    > summary:active {
+    transform: scale(0.96) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu
+    > div {
+    width: 166px !important;
+    height: auto !important;
+    max-height: none !important;
+    display: grid !important;
+    gap: 4px !important;
+    padding: 8px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    color: var(--ledger-ink) !important;
+    background: #ffffff !important;
+    box-shadow: 0 18px 38px -20px rgba(4, 35, 29, 0.42) !important;
+    overflow: visible !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu
+    > div
+    > button.secondary-button {
+    width: 100% !important;
+    min-height: 44px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding: 0 12px !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    color: var(--ledger-ink) !important;
+    background: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+    text-align: start !important;
+    cursor: pointer !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-row-actions-menu
+    > div
+    > button[data-action="delete-expense"] {
+    color: #a33a32 !important;
+  }
+
+  @media (hover: hover) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-screen-kind="event"]
+      .expense-row-actions-menu
+      > summary:hover,
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-screen-kind="event"]
+      .expense-row-actions-menu[open]
+      > summary:hover {
+      border-color: var(--app-brand) !important;
+      color: var(--app-brand) !important;
+      background: #ffffff !important;
+      box-shadow: 0 6px 16px rgba(22, 78, 63, 0.14) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .screen[data-screen-kind="event"]
+      .expense-row-actions-menu
+      > div
+      > button.secondary-button:hover {
+      background: var(--ledger-surface-soft) !important;
     }
   }
 

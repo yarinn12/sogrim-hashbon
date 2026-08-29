@@ -13,6 +13,7 @@ import {
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
+import { RECOVERED_MEMBER_SPACE_KEY } from "../src/data/cloudStore.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
 
 test("membership recovery rebuilds a missing personal event index", async () => {
@@ -53,6 +54,55 @@ test("membership recovery rebuilds a missing personal event index", async () => 
 
   assert.equal(recovered.events[0].name, "קוריאה");
   assert.equal(recovered.events[0].sharedSpaceId, "shared-event-korea");
+});
+
+test("membership recovery restores the signed-in member inside a stale personal event", () => {
+  const participantId = "account-user-one";
+  const recovered = mergeSharedEventIntoState(
+    {
+      currentParticipantId: participantId,
+      participants: [
+        { id: participantId, displayName: "משתמש" },
+        { id: "account-user-two", displayName: "חבר" }
+      ],
+      groups: [],
+      events: [{
+        id: "event-korea",
+        participantIds: ["account-user-two"],
+        inactiveParticipantIds: [],
+        membershipUpdatedAtByParticipant: {
+          [participantId]: "2026-08-28T18:30:00.000Z"
+        },
+        expenses: [],
+        transfers: []
+      }]
+    },
+    {
+      participants: [
+        { id: participantId, displayName: "משתמש" },
+        { id: "account-user-two", displayName: "חבר" }
+      ],
+      groups: [],
+      events: [{
+        id: "event-korea",
+        participantIds: ["account-user-two", participantId],
+        inactiveParticipantIds: [],
+        membershipUpdatedAtByParticipant: {
+          [participantId]: "2026-08-28T18:20:00.000Z"
+        },
+        expenses: [],
+        transfers: []
+      }]
+    },
+    {
+      id: "shared-event-korea",
+      key: "event_share_key_12345678901234567890"
+    }
+  );
+
+  assert.ok(recovered.events[0].participantIds.includes(participantId));
+  assert.ok(!recovered.events[0].inactiveParticipantIds.includes(participantId));
+  assert.equal(recovered.currentParticipantId, participantId);
 });
 
 test("membership recovery never replaces an event's existing raw credentials", async () => {
@@ -584,6 +634,161 @@ test("a new shared event is created atomically with its authenticated owner", as
     ),
     false
   );
+});
+
+test("a lost local event credential reuses the accessible canonical snapshot", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000031";
+  const participantId = `account-${accountUserId}`;
+  const eventId = "event-recover-canonical-before-create";
+  const canonicalSnapshotId = "event-space-canonical-existing";
+  const event = {
+    id: eventId,
+    name: "Canonical event",
+    participantIds: [participantId],
+    inactiveParticipantIds: [],
+    adminIds: [participantId],
+    createdByParticipantId: participantId,
+    expenses: [],
+    transfers: []
+  };
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Creator", accountLinked: true }],
+    groups: [],
+    events: [{
+      ...event,
+      sharedSpaceId: "event-space-stale-local",
+      sharedSpaceKey: "event-share-key-stale-local-123456789012"
+    }]
+  };
+  const canonicalState = {
+    currentParticipantId: "",
+    participants: state.participants,
+    groups: [],
+    events: [event]
+  };
+  const requests = [];
+
+  const saved = await saveSharedEventState(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    eventId,
+    async (url, options = {}) => {
+      requests.push({ url, options });
+      if (url.includes("/rpc/join_shared_event")) {
+        return jsonResponse({ status: "active" });
+      }
+      if (url.includes("/rpc/update_shared_event_snapshot")) {
+        assert.equal(JSON.parse(options.body).p_snapshot_id, canonicalSnapshotId);
+        return jsonResponse({
+          status: "updated",
+          updatedAt: "2026-08-28T21:00:01.000Z"
+        });
+      }
+      if (url.includes("snapshot_kind=eq.shared_event")) {
+        return jsonResponse([{
+          id: canonicalSnapshotId,
+          state: canonicalState,
+          updated_at: "2026-08-28T21:00:00.000Z"
+        }]);
+      }
+      return jsonResponse([]);
+    }
+  );
+
+  assert.equal(saved.events[0].sharedSpaceId, canonicalSnapshotId);
+  assert.equal(saved.events[0].sharedSpaceKey, RECOVERED_MEMBER_SPACE_KEY);
+  assert.equal(
+    requests.some(({ url }) => url.includes("/rpc/create_shared_event_snapshot")),
+    false
+  );
+});
+
+test("a concurrent shared-event create recovers the snapshot won by another device", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000032";
+  const participantId = `account-${accountUserId}`;
+  const eventId = "event-create-race-canonical";
+  const canonicalSnapshotId = "event-space-race-winner";
+  const event = {
+    id: eventId,
+    name: "Race-safe event",
+    participantIds: [participantId],
+    inactiveParticipantIds: [],
+    adminIds: [participantId],
+    createdByParticipantId: participantId,
+    expenses: [],
+    transfers: []
+  };
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Creator", accountLinked: true }],
+    groups: [],
+    events: [{
+      ...event,
+      sharedSpaceId: "event-space-race-loser",
+      sharedSpaceKey: "event-share-key-race-loser-123456789012"
+    }]
+  };
+  const canonicalState = {
+    currentParticipantId: "",
+    participants: state.participants,
+    groups: [],
+    events: [event]
+  };
+  let recoveryReadCount = 0;
+  let createCount = 0;
+
+  const saved = await saveSharedEventState(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    eventId,
+    async (url) => {
+      if (url.includes("/rpc/join_shared_event")) {
+        return jsonResponse({ status: "active" });
+      }
+      if (url.includes("/rpc/update_shared_event_snapshot")) {
+        return jsonResponse({
+          status: "updated",
+          updatedAt: "2026-08-28T21:30:01.000Z"
+        });
+      }
+      if (url.includes("/rpc/create_shared_event_snapshot")) {
+        createCount += 1;
+        return jsonResponse({ code: "23505" }, 409);
+      }
+      if (url.includes("snapshot_kind=eq.shared_event")) {
+        recoveryReadCount += 1;
+        return recoveryReadCount === 1
+          ? jsonResponse([])
+          : jsonResponse([{
+            id: canonicalSnapshotId,
+            state: canonicalState,
+            updated_at: "2026-08-28T21:30:00.000Z"
+          }]);
+      }
+      return jsonResponse([]);
+    }
+  );
+
+  assert.equal(createCount, 1);
+  assert.equal(saved.events[0].sharedSpaceId, canonicalSnapshotId);
+  assert.equal(saved.events[0].sharedSpaceKey, RECOVERED_MEMBER_SPACE_KEY);
 });
 
 test("shared event creation surfaces an expired account session", async () => {

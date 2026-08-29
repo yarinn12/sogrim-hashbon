@@ -33,8 +33,8 @@ test("installed app assets include Android, maskable and Apple icons", async () 
   const manifest = JSON.parse(await readFile("manifest.webmanifest", "utf8"));
   const html = await readFile("index.html", "utf8");
 
-  assert.ok(manifest.icons.some((icon) => icon.src === "./icon-192.png"));
-  assert.ok(manifest.icons.some((icon) => icon.src === "./icon-512.png"));
-  assert.ok(manifest.icons.some((icon) => icon.src === "./icon-maskable-512.png" && icon.purpose === "maskable"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-192.png"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-512.png"));
+  assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-maskable-512.png" && icon.purpose === "maskable"));
   assert.match(html, /apple-touch-icon\.png/);
 });

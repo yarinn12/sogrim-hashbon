@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -21,6 +22,31 @@ const gradle = process.platform === "win32"
   : join(androidRoot, "gradlew");
 const bundle = join(androidRoot, "app", "build", "outputs", "bundle", "release", "app-release.aab");
 const releaseManifest = join(androidRoot, "app", "build", "outputs", "bundle", "release", "release-manifest.json");
+const nativeDebugSymbols = join(
+  androidRoot,
+  "app",
+  "build",
+  "outputs",
+  "native-debug-symbols",
+  "release",
+  "native-debug-symbols.zip"
+);
+const mergedNativeLibraries = join(
+  androidRoot,
+  "app",
+  "build",
+  "intermediates",
+  "merged_native_libs",
+  "release",
+  "mergeReleaseNativeLibs",
+  "out",
+  "lib"
+);
+const allowedPrestrippedNativeLibraries = [
+  "libdatastore_shared_counter.so",
+  "libimage_processing_util_jni.so",
+  "libsurface_util_jni.so"
+];
 const mergedManifest = join(
   androidRoot,
   "app",
@@ -56,6 +82,7 @@ if (!env.ANDROID_HOME && process.platform === "win32") {
 acquireBuildLock();
 rmSync(bundle, { force: true });
 rmSync(releaseManifest, { force: true });
+rmSync(nativeDebugSymbols, { force: true });
 const buildStartedAt = Date.now();
 
 const command = process.platform === "win32" ? "cmd.exe" : gradle;
@@ -73,8 +100,24 @@ if (!existsSync(bundle)) throw new Error("Android release bundle was not created
 if (!existsSync(mergedManifest)) throw new Error("Android merged release manifest was not created.");
 
 const bundleStat = statSync(bundle);
+const nativeDebugSymbolsAvailable = existsSync(nativeDebugSymbols);
+const nativeDebugSymbolsStat = nativeDebugSymbolsAvailable
+  ? statSync(nativeDebugSymbols)
+  : null;
+const nativeLibraryNames = listNativeLibraryNames(mergedNativeLibraries);
+const unknownPrestrippedLibraries = nativeLibraryNames.filter(
+  (library) => !allowedPrestrippedNativeLibraries.includes(library)
+);
 if (bundleStat.mtimeMs + 2_000 < buildStartedAt) {
   throw new Error("Android release bundle is older than the current build run.");
+}
+if (nativeDebugSymbolsStat && nativeDebugSymbolsStat.mtimeMs + 2_000 < buildStartedAt) {
+  throw new Error("Android native debug symbols are older than the current build run.");
+}
+if (!nativeDebugSymbolsAvailable && unknownPrestrippedLibraries.length) {
+  throw new Error(
+    `Android native debug symbols are missing for unapproved libraries: ${unknownPrestrippedLibraries.join(", ")}`
+  );
 }
 
 const keytool = javaHome
@@ -101,6 +144,12 @@ if (signingSha256 !== expectedUploadSha256) {
 }
 
 const sha256 = createHash("sha256").update(readFileSync(bundle)).digest("hex").toUpperCase();
+const nativeDebugSymbolsSha256 = nativeDebugSymbolsAvailable
+  ? createHash("sha256")
+    .update(readFileSync(nativeDebugSymbols))
+    .digest("hex")
+    .toUpperCase()
+  : "";
 const mergedManifestText = readFileSync(mergedManifest, "utf8");
 verifyMergedManifest(mergedManifestText, { versionCode, versionName });
 const source = await fingerprintAndroidReleaseSource(root);
@@ -113,12 +162,26 @@ writeFileSync(releaseManifest, `${JSON.stringify({
   builtAt: new Date(bundleStat.mtimeMs).toISOString(),
   bytes: bundleStat.size,
   sha256,
+  nativeDebugSymbols: {
+    available: nativeDebugSymbolsAvailable,
+    ...(nativeDebugSymbolsAvailable ? {
+      path: "android/app/build/outputs/native-debug-symbols/release/native-debug-symbols.zip",
+      bytes: nativeDebugSymbolsStat.size,
+      sha256: nativeDebugSymbolsSha256
+    } : {
+      reason: "prestripped-third-party-libraries",
+      libraries: nativeLibraryNames
+    })
+  },
   signingSha256,
   sourceSha256: source.sha256,
   sourceFileCount: source.fileCount
 }, null, 2)}\n`, "utf8");
 
 console.log(`Signed Android App Bundle ${versionName} (${versionCode}) is ready: ${bundle}`);
+console.log(nativeDebugSymbolsAvailable
+  ? `Native crash symbols are ready: ${nativeDebugSymbols}`
+  : `Native symbols unavailable for approved pre-stripped libraries: ${nativeLibraryNames.join(", ")}`);
 console.log(`Release evidence: ${releaseManifest}`);
 releaseBuildLock();
 
@@ -149,6 +212,15 @@ function verifyMergedManifest(manifest, expected) {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function listNativeLibraryNames(directory) {
+  if (!existsSync(directory)) return [];
+  return [...new Set(
+    readdirSync(directory, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".so"))
+      .map((entry) => entry.name)
+  )].sort();
 }
 
 function acquireBuildLock() {

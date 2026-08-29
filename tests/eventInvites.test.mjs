@@ -544,6 +544,9 @@ test("a recovered member can create and redeem the first stable invite without p
       membershipActivated = true;
       return jsonResponse(true);
     }
+    if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
+      return jsonResponse({ status: "indexed", snapshotId: SPACE_ID });
+    }
     throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
   };
 
@@ -635,6 +638,9 @@ test("a recovered member replaces an existing invite with canonical credentials 
       assert.equal(body.p_user_id, OTHER_USER_ID);
       membershipActivated = true;
       return jsonResponse(true);
+    }
+    if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
+      return jsonResponse({ status: "indexed", snapshotId: SPACE_ID });
     }
     throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
   };
@@ -1021,6 +1027,9 @@ test("an active participant can redeem a private event invite while friendship i
       }
       if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
         return jsonResponse({ status: "active" });
+      }
+      if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
+        return jsonResponse({ status: "indexed", snapshotId: SPACE_ID });
       }
       if (
         address.includes("/rest/v1/event_invite_tokens?") &&

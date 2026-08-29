@@ -89,6 +89,124 @@ test("an expired cloud token refreshes once and retries with the same account", 
   }
 });
 
+test("a recovered event stays visible when persisting its personal index is temporarily unavailable", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = new MemoryStorage();
+  const userId = "user-visible";
+  const participantId = `account-${userId}`;
+  const spaceId = "account-space-visible";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyz_visible_123456";
+  const personalState = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Visible User", kind: "user" }],
+    groups: [],
+    events: []
+  };
+  const sharedState = {
+    currentParticipantId: "",
+    participants: [{ id: participantId, displayName: "Visible User", kind: "user" }],
+    groups: [],
+    events: [{
+      id: "event-visible",
+      name: "Recovered Event",
+      participantIds: [participantId],
+      adminIds: [participantId],
+      createdByParticipantId: participantId,
+      expenses: [],
+      transfers: []
+    }]
+  };
+
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(personalState));
+  storage.setItem(
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "visible-token",
+      refresh_token: "visible-refresh",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: {
+        id: userId,
+        user_metadata: {
+          account_space_id: spaceId,
+          account_space_key: spaceKey
+        }
+      }
+    })
+  );
+
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  globalThis.window = {
+    localStorage: storage,
+    location,
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots"
+        }
+      });
+    }
+    if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
+    if (address.includes("snapshot_kind=eq.shared_event")) {
+      return jsonResponse([{
+        id: "shared-space-visible",
+        state: sharedState,
+        updated_at: "2026-08-28T07:00:00.000Z"
+      }]);
+    }
+    if (address.includes("id=eq.shared-space-visible")) {
+      return jsonResponse([{
+        state: sharedState,
+        updated_at: "2026-08-28T07:00:00.000Z"
+      }]);
+    }
+    if (options.method === "PATCH" || options.method === "POST") {
+      return { ok: false, status: 503 };
+    }
+    return jsonResponse([{
+      state: personalState,
+      updated_at: "2026-08-28T06:59:00.000Z"
+    }]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?recovered-event-visible=${Date.now()}`
+    );
+    const loaded = await localStore.loadSharedState();
+
+    assert.equal(loaded.events.length, 1);
+    assert.equal(loaded.events[0].name, "Recovered Event");
+    assert.ok(
+      storage.getItem(`settle-friends-pending-sync:${spaceId}`),
+      "the recovered index is queued for a background retry"
+    );
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("an account workspace persists the signed-in participant instead of the first event member", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;

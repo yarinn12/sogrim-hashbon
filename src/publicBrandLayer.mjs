@@ -88,9 +88,11 @@ function syncHeaderIdentity(screen, identity, kind) {
   if (!identity) return;
 
   const isHome = kind === "home";
+  const usesHomeIdentityOrder = isHome || kind === "notifications";
   syncIdentityRouteControls(screen, identity);
   const profileIdentity = resolveHeaderProfileIdentity(screen);
   identity.classList.toggle("is-home-context", isHome);
+  identity.classList.toggle("is-profile-first-context", usesHomeIdentityOrder);
   syncHeaderProfileAvatar(identity, profileIdentity.avatarSource);
 
   const subtitle = identity.querySelector(".product-brand-copy small");

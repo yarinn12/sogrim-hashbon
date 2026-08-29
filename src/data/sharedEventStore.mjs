@@ -173,27 +173,73 @@ export async function saveSharedEventState(
   eventId,
   fetchImpl = fetch
 ) {
-  const event = state?.events?.find((item) => item.id === eventId);
-  const credentials = eventShareCredentials(event);
-  const payload = buildSharedEventState(state, eventId);
-  const config = eventCloudConfig(runtimeConfig, credentials);
+  let workingState = state;
+  const event = workingState?.events?.find((item) => item.id === eventId);
+  let credentials = eventShareCredentials(event);
+  let payload = buildSharedEventState(workingState, eventId);
+  let config = eventCloudConfig(runtimeConfig, credentials);
   if (!config || !payload) return state;
 
-  const remote = await readCloudState(config, fetchImpl);
+  let remote = await readCloudState(config, fetchImpl);
   if (!remote) {
-    await createSharedEventSnapshot(
+    const recovered = await findAccessibleSharedEvent(
       runtimeConfig,
-      credentials,
-      payload,
+      eventId,
       fetchImpl
     );
-    const created = await readCloudState(config, fetchImpl);
-    if (!created) {
-      const error = new Error("The shared event was created but could not be verified");
-      error.code = "SHARED_EVENT_CREATE_UNVERIFIED";
-      throw error;
+    if (recovered) {
+      credentials = {
+        id: recovered.id,
+        key: RECOVERED_MEMBER_SPACE_KEY
+      };
+      workingState = attachSharedEventCredentials(
+        workingState,
+        eventId,
+        credentials
+      );
+      payload = buildSharedEventState(workingState, eventId);
+      config = eventCloudConfig(runtimeConfig, credentials);
+      remote = recovered.state;
+    } else {
+      try {
+        await createSharedEventSnapshot(
+          runtimeConfig,
+          credentials,
+          payload,
+          fetchImpl
+        );
+      } catch (error) {
+        if (error?.code === "CLOUD_STATE_AUTH_EXPIRED") throw error;
+        const raced = await findAccessibleSharedEvent(
+          runtimeConfig,
+          eventId,
+          fetchImpl
+        );
+        if (!raced) throw error;
+        credentials = {
+          id: raced.id,
+          key: RECOVERED_MEMBER_SPACE_KEY
+        };
+        workingState = attachSharedEventCredentials(
+          workingState,
+          eventId,
+          credentials
+        );
+        payload = buildSharedEventState(workingState, eventId);
+        config = eventCloudConfig(runtimeConfig, credentials);
+        remote = raced.state;
+      }
+
+      if (!remote) {
+        const created = await readCloudState(config, fetchImpl);
+        if (!created) {
+          const error = new Error("The shared event was created but could not be verified");
+          error.code = "SHARED_EVENT_CREATE_UNVERIFIED";
+          throw error;
+        }
+        return mergeSharedEventIntoState(workingState, created, credentials);
+      }
     }
-    return mergeSharedEventIntoState(state, created, credentials);
   }
 
   await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
@@ -214,7 +260,17 @@ export async function saveSharedEventState(
     )
   });
 
-  return mergeSharedEventIntoState(state, saved.state, credentials);
+  return mergeSharedEventIntoState(workingState, saved.state, credentials);
+}
+
+async function findAccessibleSharedEvent(
+  runtimeConfig,
+  eventId,
+  fetchImpl = fetch
+) {
+  if (!eventId || runtimeConfig?.storage?.mode !== "supabase") return null;
+  const rows = await readAccessibleSharedCloudStates(runtimeConfig, fetchImpl);
+  return rows.find((row) => row?.state?.events?.[0]?.id === eventId) ?? null;
 }
 
 function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
@@ -664,19 +720,53 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
     deletedParticipants
   };
   const merged = mergeSharedStates(state, eventOnlyState);
+  const currentParticipantId = String(state.currentParticipantId ?? "").trim();
+  const sharedCurrentParticipantIsActive = Boolean(
+    currentParticipantId &&
+    (sharedEvent.participantIds ?? []).includes(currentParticipantId) &&
+    !(sharedEvent.inactiveParticipantIds ?? []).includes(currentParticipantId)
+  );
   return {
     ...merged,
     currentParticipantId:
       merged.currentParticipantId || state.currentParticipantId,
     events: merged.events.map((event) =>
       event.id === eventId
-        ? {
+        ? restoreAuthenticatedEventMembership({
             ...event,
             [EVENT_SPACE_ID_FIELD]: credentials.id,
             [EVENT_SPACE_KEY_FIELD]: credentials.key
-          }
+          }, sharedEvent, currentParticipantId, sharedCurrentParticipantIsActive)
         : event
     )
+  };
+}
+
+function restoreAuthenticatedEventMembership(
+  event,
+  sharedEvent,
+  participantId,
+  shouldRestore
+) {
+  if (!shouldRestore) return event;
+
+  const sharedMembershipUpdatedAt =
+    sharedEvent.membershipUpdatedAtByParticipant?.[participantId] ??
+    sharedEvent.membershipUpdatedAt;
+  return {
+    ...event,
+    participantIds: [...new Set([...(event.participantIds ?? []), participantId])],
+    inactiveParticipantIds: (event.inactiveParticipantIds ?? []).filter(
+      (id) => id !== participantId
+    ),
+    ...(sharedMembershipUpdatedAt
+      ? {
+          membershipUpdatedAtByParticipant: {
+            ...(event.membershipUpdatedAtByParticipant ?? {}),
+            [participantId]: sharedMembershipUpdatedAt
+          }
+        }
+      : {})
   };
 }
 

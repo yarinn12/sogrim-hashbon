@@ -33,6 +33,12 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /<details class="transfer-paid-history" open>/);
   assert.match(app, /data-action="mark-pending"[\s\S]*?>בטל סימון<\/button>/);
   assert.match(app, /reconcileEventTransfers\(updatedEvent, updatedEvent\?\.transfers \?\? \[\]\)/);
+  assert.match(app, /function canCurrentParticipantUpdateTransfer\(event, transfer\)/);
+  assert.match(app, /transfer\.fromParticipantId === participantId/);
+  assert.match(app, /transfer\.toParticipantId === participantId/);
+  assert.match(app, /const previousState = cloneNavigationValue\(state\)/);
+  assert.match(app, /const result = await saveRequest/);
+  assert.match(app, /לא הצלחנו לשמור את סימון התשלום\. המצב הקודם נשמר/);
 });
 
 test("reopening asks whether to keep or reset recorded payments", async () => {

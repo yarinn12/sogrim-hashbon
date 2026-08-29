@@ -78,6 +78,7 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
         window.google = { accounts: { id: {
           initialize(options) { window.__googleIdentityOptions = options; },
           renderButton(target) {
+            window.__googleButtonRenderCount = (window.__googleButtonRenderCount || 0) + 1;
             const button = document.createElement("button");
             button.type = "button";
             button.textContent = "המשך עם Google";
@@ -90,16 +91,19 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
       `
     });
   });
-  await page.route(`${AUTH_ORIGIN}/**`, (route) => {
+  await page.route(`${AUTH_ORIGIN}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (request.method() === "OPTIONS") {
       return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
     }
     if (url.pathname.endsWith("/auth/v1/settings")) {
+      // Provider discovery finishes after the Google control is already
+      // usable. Adding Apple must not replace the control under the tap.
+      await new Promise((resolve) => setTimeout(resolve, 350));
       return route.fulfill({
         headers: corsHeaders,
-        json: { external: { google: true, apple: false } }
+        json: { external: { google: true, apple: true } }
       });
     }
     if (
@@ -143,7 +147,7 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   });
 
-  const pageLoaded = page.goto("/?pwa_release=387");
+  const pageLoaded = page.goto("/?pwa_release=396");
   await googleScriptRequested;
   const loadingPlaceholder = page.locator("[data-account-google-placeholder]");
   await expect(loadingPlaceholder).toBeVisible();
@@ -166,6 +170,8 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     fedCmButton: true,
     autoSelect: false
   });
+  await expect(page.getByRole("button", { name: "המשך עם Apple" })).toBeVisible();
+  expect(await page.evaluate(() => window.__googleButtonRenderCount)).toBe(1);
 
   await googleButton.click();
   await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);

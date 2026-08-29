@@ -166,7 +166,7 @@ test("home keeps event selection calm while event actions remain available", asy
   assert.doesNotMatch(row, /event-row-balance/);
   assert.match(
     row,
-    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event\)/
+    /renderAvatarStack\(participants\.map\(\(participant\) => participant\.id\), event, \{[\s\S]*?suppressParticipantAction: true[\s\S]*?\}\)/
   );
   assert.match(event, /renderEventActionDock\(event, total, canEdit\)/);
   assert.doesNotMatch(event, /summary-item summary-personal|renderEventInsightPanel/);

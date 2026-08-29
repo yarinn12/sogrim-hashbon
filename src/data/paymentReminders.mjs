@@ -7,7 +7,6 @@ export async function sendPaymentReminder(
   const normalizedEventId = String(eventId ?? "").trim();
   const normalizedTransferId = String(transferId ?? "").trim();
   if (
-    !config?.launch?.pushDeliveryReady ||
     !account?.userId ||
     !account?.accessToken ||
     !normalizedEventId ||
@@ -37,6 +36,7 @@ export async function sendPaymentReminder(
     payload?.error || "Payment reminder could not be sent"
   );
   error.code = payload?.code || "REMINDER_FAILED";
+  error.status = response.status;
   error.retryAt = payload?.retryAt || "";
   error.retryable = Boolean(payload?.retryable);
   throw error;

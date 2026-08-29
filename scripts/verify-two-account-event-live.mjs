@@ -22,6 +22,7 @@ import {
   deactivateEventParticipant,
   linkParticipantAccountInEvent,
   reopenEvent,
+  removeExpense,
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
@@ -245,6 +246,73 @@ try {
     new Set(joinerState.events[0].expenses.map((expense) => expense.id))
   );
 
+  // Collaborative mode must let a regular member edit an existing expense,
+  // not only create a new one. This covers the exact non-admin iPhone report.
+  const ownerExpenseId = `expense-owner-${suffix}`;
+  const joinerEditedState = structuredClone(joinerState);
+  const expenseEditedByJoiner = joinerEditedState.events[0].expenses.find(
+    (expense) => expense.id === ownerExpenseId
+  );
+  assert.ok(expenseEditedByJoiner);
+  expenseEditedByJoiner.name = "ארוחה עודכנה על ידי חבר";
+  expenseEditedByJoiner.updatedAt = "2026-08-03T12:05:01.500Z";
+  joinerState = await saveSharedEventState(
+    joinerConfig,
+    joinerEditedState,
+    eventId
+  );
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  assert.equal(
+    ownerState.events[0].expenses.find((expense) => expense.id === ownerExpenseId)?.name,
+    "ארוחה עודכנה על ידי חבר"
+  );
+
+  // A deletion from one phone must become canonical before a stale device can
+  // publish its older copy. The tombstone must remain visible to both users.
+  const deletedExpenseId = `expense-delete-${suffix}`;
+  joinerState = addExpense(joinerState, {
+    id: deletedExpenseId,
+    name: "הוצאה למחיקה",
+    total: 900,
+    payers: [{ participantId: joinerProfile.participantId, amount: 900 }],
+    sharedByParticipantIds: [ownerProfile.participantId, joinerProfile.participantId],
+    createdByParticipantId: joinerProfile.participantId,
+    createdAt: "2026-08-03T12:05:02.000Z",
+    updatedAt: "2026-08-03T12:05:02.000Z"
+  });
+  joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  const staleOwnerBeforeDeletion = structuredClone(ownerState);
+
+  joinerState = removeExpense(
+    joinerState,
+    eventId,
+    deletedExpenseId,
+    "2026-08-03T12:05:03.000Z"
+  );
+  joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
+  ownerState = await saveSharedEventState(
+    ownerConfig,
+    staleOwnerBeforeDeletion,
+    eventId
+  );
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  for (const syncedState of [ownerState, joinerState]) {
+    assert.equal(
+      syncedState.events[0].expenses.some(
+        (expense) => expense.id === deletedExpenseId
+      ),
+      false
+    );
+    assert.equal(
+      syncedState.events[0].deletedExpenses.some(
+        (deletion) => deletion.id === deletedExpenseId
+      ),
+      true
+    );
+  }
+
   ownerState = linkParticipantAccountInEvent(
     ownerState,
     eventId,
@@ -414,8 +482,10 @@ try {
       productionIphoneLoginJoinedFromNewLink: true,
       connectedParticipantJoined: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
+      nonAdminExistingExpenseEditSynced: true,
       offlineAccountLinkPersistedCanonically: true,
       concurrentExpensesMerged: true,
+      expenseDeletionSurvivesStaleDeviceWrite: true,
       settlementMatchedBothAccounts: true,
       transferStatusSynced: true,
       eventClosureSynced: true,

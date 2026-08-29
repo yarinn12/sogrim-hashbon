@@ -224,6 +224,65 @@ async function withFreshCloudAccount(config, request) {
   }
 }
 
+async function hydrateAccessibleSharedEventState(config, initialState) {
+  let state = initialState;
+  try {
+    state = await withFreshCloudAccount(config, (freshConfig) =>
+      recoverAccessibleSharedEvents(freshConfig, state)
+    );
+  } catch (error) {
+    reportPartialStateLoadFailure(error);
+    return state;
+  }
+
+  try {
+    state = await withFreshCloudAccount(config, (freshConfig) =>
+      refreshSharedEvents(freshConfig, state)
+    );
+  } catch (error) {
+    reportPartialStateLoadFailure(error);
+  }
+  return state;
+}
+
+async function persistRecoveredEventIndex(config, previousState, recoveredState) {
+  if (!hasCloudStateChanged(recoveredState, previousState)) return recoveredState;
+
+  try {
+    const saved = await saveCloudStateWithRetry(
+      config,
+      toCloudState(config, recoveredState)
+    );
+    return mergeSharedStates(saved.state, recoveredState);
+  } catch (error) {
+    const retryable = isRetryablePendingSyncFailure(error);
+    const queued = retryable && savePendingSharedState(
+      config,
+      toCloudState(config, recoveredState)
+    );
+    if (queued) {
+      publishSyncStatus("reconnecting");
+      schedulePendingSharedStateRetry();
+      logQueuedSync(error, {
+        sharedEventMutation: false,
+        pending: true,
+        partial: true,
+        reverted: false
+      });
+      emitOperationDeferred("state_load", { screen: "boot", error });
+    } else {
+      reportPartialStateLoadFailure(error);
+    }
+    return recoveredState;
+  }
+}
+
+function reportPartialStateLoadFailure(error) {
+  (isRetryablePendingSyncFailure(error)
+    ? emitOperationDeferred
+    : emitOperationFailure)("state_load", { screen: "boot", error });
+}
+
 if (typeof window !== "undefined") {
   activateStoredAccountWorkspace();
 }
@@ -544,8 +603,17 @@ async function loadSharedStateOnce(requestScope) {
         clearPendingSharedState(runtimeConfig);
         resetPendingSharedStateRetry();
         publishSyncStatus("saved");
+        const recoveredState = await hydrateAccessibleSharedEventState(
+          runtimeConfig,
+          syncedState
+        );
+        const visibleState = await persistRecoveredEventIndex(
+          runtimeConfig,
+          syncedState,
+          recoveredState
+        );
         const syncedStateWithIdentity = applyLocalParticipantId(
-          cleanLegacyStarterData(syncedState, loadProtectedParticipantId()),
+          cleanLegacyStarterData(visibleState, loadProtectedParticipantId()),
           loadLocalParticipantId()
         );
         saveStateForScope(syncedStateWithIdentity, requestScope);
@@ -592,20 +660,11 @@ async function loadSharedStateOnce(requestScope) {
         attachStoredAccountIdentity(runtimeConfig)
       );
       const accountState = state;
-      state = await recoverAccessibleSharedEvents(runtimeConfig, state);
-      state = await withFreshCloudAccount(runtimeConfig, (freshConfig) =>
-        refreshSharedEvents(freshConfig, state)
-      );
+      state = await hydrateAccessibleSharedEventState(runtimeConfig, state);
       runtimeConfig = activateClientSpace(
         attachStoredAccountIdentity(runtimeConfig)
       );
-      if (hasCloudStateChanged(state, accountState)) {
-        const saved = await saveCloudStateWithRetry(
-          runtimeConfig,
-          toCloudState(runtimeConfig, state)
-        );
-        state = mergeSharedStates(saved.state, state);
-      }
+      state = await persistRecoveredEventIndex(runtimeConfig, accountState, state);
       const localStateWithIdentity = applyLocalParticipantId(
         state,
         loadLocalParticipantId()
@@ -673,6 +732,21 @@ export async function saveSharedState(state) {
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length
   );
   const localSaved = saveState(cleanState);
+  // Persist an account-scoped outbox before the first await. Mobile WebViews
+  // can be suspended immediately after a destructive action; without this
+  // synchronous write, a deletion can look complete locally yet never reach
+  // the canonical event when the app is backgrounded in that small window.
+  const crashSafePendingConfig = requestAccountUserId
+    ? pendingSyncConfig(LOCAL_RUNTIME_CONFIG)
+    : null;
+  const crashSafePendingStateSaved = Boolean(
+    localSaved &&
+    crashSafePendingConfig &&
+    savePendingSharedState(
+      crashSafePendingConfig,
+      toSharedState(cleanState, { preserveCurrentParticipantId: true })
+    )
+  );
   const requestSaveGeneration = ++sharedStateSaveGeneration;
   const requestAccountGeneration = accountStorageGeneration;
   const stateSnapshot = clone(cleanState);
@@ -690,7 +764,9 @@ export async function saveSharedState(state) {
   }
 
   if (runtimeConfig.storage?.mode === "supabase") {
-    let pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
+    let pendingStateSaved =
+      savePendingSharedState(runtimeConfig, sharedState) ||
+      crashSafePendingStateSaved;
     publishSyncStatus("saving");
 
     const pendingPayload = JSON.stringify(sharedState);
@@ -816,8 +892,10 @@ export async function saveSharedState(state) {
 
   if (runtimeConfigUsedFallback) {
     const pendingConfig = pendingSyncConfig(runtimeConfig);
-    if (pendingConfig) {
-      const pendingStateSaved = savePendingSharedState(pendingConfig, sharedState);
+    if (pendingConfig || crashSafePendingStateSaved) {
+      const pendingStateSaved =
+        (pendingConfig && savePendingSharedState(pendingConfig, sharedState)) ||
+        crashSafePendingStateSaved;
       if (localSaved && pendingStateSaved) {
         publishSyncStatus("reconnecting");
         schedulePendingSharedStateRetry();
@@ -948,6 +1026,10 @@ async function flushPendingSharedStateOnce() {
     );
     return { ok: false, error };
   }
+}
+
+export function sharedStateSaveRevision() {
+  return sharedStateSaveGeneration;
 }
 
 export async function resetSharedState() {

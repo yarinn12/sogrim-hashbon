@@ -39,6 +39,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.deepEqual(config.ios.includePlugins, [
     "@capacitor/app",
     "@capacitor/browser",
+    "@capacitor/camera",
     "@capacitor/haptics",
     "@capacitor/share"
   ]);
@@ -54,7 +55,18 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /await cp\(join\(root, "src"\)/);
   assert.match(buildScript, /from "esbuild"/);
   assert.match(buildScript, /from "lightningcss"/);
-  assert.match(buildScript, /minifyStaticCssTemplatesPlugin/);
+  assert.match(buildScript, /extractNativeStaticCss/);
+  assert.match(buildScript, /extractStaticCssTemplatesPlugin/);
+  assert.match(buildScript, /native-layers\.css/);
+  assert.match(buildScript, /native-style-loader\.mjs/);
+  assert.match(buildScript, /rel=\"preload\" as=\"style\"/);
+  assert.match(buildScript, /native-styles-pending/);
+  assert.match(buildScript, /sogrim:native-styles-ready/);
+  assert.match(buildScript, /stylesheet\.media = "print"/);
+  assert.match(buildScript, /stylesheet\.media = "all"/);
+  assert.match(buildScript, /requestAnimationFrame\(\(\) => requestAnimationFrame\(complete\)\)/);
+  assert.match(buildScript, /orderedCss\.join\("\\n"\)/);
+  assert.match(buildScript, /if \(css\.includes\("\$\{"\)\) return match/);
   assert.match(buildScript, /native-prelude\.mjs/);
   assert.match(buildScript, /native-core\.mjs/);
   assert.match(buildScript, /native-auth\.mjs/);
@@ -79,12 +91,13 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeSmoke, /account-auth-pending/);
   assert.match(nativeSmoke, /timeOriginMs: Math\.round\(performance\.timeOrigin\)/);
   assert.match(nativeSmoke, /startupElapsedMs\(state, startedAt\)/);
-  assert.match(nativeSmoke, /25_000/);
+  assert.match(nativeSmoke, /45_000/);
   assert.match(nativeSmoke, /ANDROID_QA_DEVICE/);
   assert.match(androidQaMetrics, /Multiple Android devices are connected/);
   assert.match(nativeSmoke, /ro\.product\.model/);
   assert.match(nativeSmoke, /primarySurfaceVisible/);
   assert.match(nativeSmoke, /public-account-auth-gate/);
+  assert.match(nativeSmoke, /resource-id="\(\?:app\|public-account-auth-gate\)"/);
   assert.match(nativeSmoke, /actionableControlCount/);
   assert.match(nativeSmoke, /resourceTimings/);
   assert.match(nativeSmoke, /navigationTiming/);

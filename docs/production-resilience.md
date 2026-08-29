@@ -54,6 +54,22 @@ documented in [`public-domain-cutover-he.md`](./public-domain-cutover-he.md).
 4. If Supabase is affected, leave clients in local pending-sync mode and avoid destructive retries.
 5. After recovery, run `npm test`, `npm run qa:mobile`, `npm run qa:recovery:strict` and one two-account invitation journey before resuming store rollout.
 
+## Operational release gate
+
+Before a Web or Android release, run `npm run qa:release:core`. The gate combines
+the automated test suite, mobile layout checks, account-memory isolation, the
+live operational audit, production availability, public-origin checks and the
+Android store evidence check. Apple remains a separate gate while the developer
+account is pending.
+
+The live operational audit is deliberately aggregate-only. It verifies forced
+RLS on the operational tables, a workspace for every account, active membership
+for every current shared event, the latest cloud snapshot and the absence of
+stale Push reservations. It never prints snapshot content, email addresses,
+device tokens or user identifiers. Run it directly with
+`npm run qa:operations -- --strict` when investigating synchronization or
+notification incidents.
+
 ## Backup-host environment
 
 The container requires the same production values used by the current server. At minimum:

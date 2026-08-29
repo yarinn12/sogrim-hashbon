@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-test("home event rows expose one accessible action menu from status and long press", async () => {
+test("home event rows expose one accessible share/removal menu from a chevron and long press", async () => {
   const [app, styles] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("styles.css", "utf8")
@@ -18,14 +18,18 @@ test("home event rows expose one accessible action menu from status and long pre
   assert.match(app, /class="event-status-menu"/);
   assert.match(app, /role="dialog"/);
   assert.match(app, /aria-modal="true"/);
-  assert.match(app, /data-action="choose-event-status"/);
-  assert.match(app, /renderOption\("open", "פתוח"/);
-  assert.match(app, /renderOption\("closed", "סגור"/);
+  assert.match(app, /class="event-row-options-chevron"/);
+  assert.match(app, /data-action="share-event-from-list"/);
+  assert.match(app, /function openEventParticipantAddFromHomeMenu\(eventId\)/);
+  assert.match(app, /kind: "participants-add",\s*returnKind: "home"/);
+  assert.doesNotMatch(app, /class="status-chip event-status-toggle/);
+  assert.doesNotMatch(app, /renderOption\("open", "פתוח"/);
   assert.match(app, /data-action="remove-event-from-list"/);
   assert.match(app, /data-action="cancel-event-status-menu"/);
   assert.match(app, /openEventStatusMenu\(eventId, trigger\)/);
   assert.match(app, /openEventStatusMenu\(target\.dataset\.eventId, target\)/);
   assert.match(styles, /\.event-status-menu-backdrop/);
+  assert.match(app, /class="event-home-menu-actions"/);
   assert.match(styles, /\.event-status-danger-zone/);
   assert.match(styles, /\.event-removal-option:active:not\(:disabled\)/);
 });

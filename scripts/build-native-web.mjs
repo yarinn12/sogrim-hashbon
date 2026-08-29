@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import { transform as transformCss } from "lightningcss";
 import { loadEnvFile } from "../src/server/envFile.mjs";
@@ -35,6 +35,9 @@ const publicFiles = [
   "icon-192.png",
   "icon-512.png",
   "icon-maskable-512.png",
+  "app-icon-exterior-192.png",
+  "app-icon-exterior-512.png",
+  "app-icon-exterior-maskable-512.png",
   "apple-touch-icon.png",
   "sogrim-logo-lockup.png",
   "sogrim-share-logo.png",
@@ -110,20 +113,29 @@ async function bundleNativeModules() {
   const experience = application.slice(accountEndIndex + 1);
   const assetsDir = join(output, "assets");
   const bootstrapConfig = await loadNativeBootstrapRuntimeConfig();
+  const extractedCssPaths = await extractNativeStaticCss(moduleScripts, assetsDir);
 
   await Promise.all([
-    bundleEntries(prelude, join(assetsDir, "native-prelude.mjs"), "native-prelude-entry.mjs"),
-    bundleEntries(authBootstrap, join(assetsDir, "native-auth.mjs"), "native-auth-entry.mjs"),
-    bundleEntries(core, join(assetsDir, "native-core.mjs"), "native-core-entry.mjs"),
-    bundleEntries(account, join(assetsDir, "native-account.mjs"), "native-account-entry.mjs"),
-    bundleEntries(experience, join(assetsDir, "native-experience.mjs"), "native-experience-entry.mjs")
+    bundleEntries(prelude, join(assetsDir, "native-prelude.mjs"), "native-prelude-entry.mjs", extractedCssPaths),
+    bundleEntries(authBootstrap, join(assetsDir, "native-auth.mjs"), "native-auth-entry.mjs", extractedCssPaths),
+    bundleEntries(core, join(assetsDir, "native-core.mjs"), "native-core-entry.mjs", extractedCssPaths),
+    bundleEntries(account, join(assetsDir, "native-account.mjs"), "native-account-entry.mjs", extractedCssPaths),
+    bundleEntries(experience, join(assetsDir, "native-experience.mjs"), "native-experience-entry.mjs", extractedCssPaths)
   ]);
 
   let nativeHtml = html;
+  nativeHtml = nativeHtml.replace(
+    "</head>",
+    '    <link rel="preload" as="style" href="./assets/native-layers.css" />\n  </head>'
+  );
+  nativeHtml = nativeHtml.replace(
+    /(<html\b[^>]*\bclass=")([^"]*)"/,
+    "$1$2 native-styles-pending\""
+  );
   nativeHtml = replaceModuleGroup(
     nativeHtml,
     prelude,
-    '<script type="module" src="./assets/native-prelude.mjs"></script>'
+    '<script type="module" src="./assets/native-style-loader.mjs"></script>\n<script type="module" src="./assets/native-prelude.mjs"></script>'
   );
   nativeHtml = replaceModuleGroup(
     nativeHtml,
@@ -222,7 +234,7 @@ function nativeBootstrapScript(config) {
   return `<script>globalThis.SogrimNativeRuntimeConfig=Object.freeze(${serialized});</script>`;
 }
 
-async function bundleEntries(entries, outfile, sourcefile) {
+async function bundleEntries(entries, outfile, sourcefile, extractedCssPaths) {
   if (!entries.length) throw new Error(`No native entries found for ${sourcefile}`);
   await build({
     stdin: {
@@ -236,27 +248,89 @@ async function bundleEntries(entries, outfile, sourcefile) {
     target: "chrome120",
     minify: true,
     legalComments: "none",
-    plugins: [minifyStaticCssTemplatesPlugin()],
+    plugins: [extractStaticCssTemplatesPlugin(extractedCssPaths)],
     outfile
   });
 }
 
-function minifyStaticCssTemplatesPlugin() {
+async function extractNativeStaticCss(entries, assetsDir) {
+  const extractedPaths = new Set();
+  const orderedCss = [];
+
+  for (const entry of entries) {
+    const sourcePath = resolve(root, entry.path);
+    const source = await readFile(sourcePath, "utf8");
+    const staticCss = [];
+    source.replace(/const CSS = `([\s\S]*?)`;/g, (match, css) => {
+      if (!css.includes("${")) staticCss.push(css);
+      return match;
+    });
+    if (!staticCss.length) continue;
+
+    extractedPaths.add(sourcePath);
+    for (const css of staticCss) {
+      const result = transformCss({
+        filename: `${sourcePath}.css`,
+        code: Buffer.from(css),
+        minify: true
+      });
+      orderedCss.push(result.code.toString());
+    }
+  }
+
+  if (!orderedCss.length) {
+    throw new Error("Native CSS extraction did not find any static layer styles.");
+  }
+  await writeFile(
+    join(assetsDir, "native-layers.css"),
+    `${orderedCss.join("\n")}\n`,
+    "utf8"
+  );
+  await writeFile(
+    join(assetsDir, "native-style-loader.mjs"),
+    nativeStyleLoaderSource(),
+    "utf8"
+  );
+  return extractedPaths;
+}
+
+function nativeStyleLoaderSource() {
+  return `const root = document.documentElement;
+const stylesheet = document.createElement("link");
+stylesheet.rel = "stylesheet";
+stylesheet.href = "./assets/native-layers.css";
+stylesheet.media = "print";
+stylesheet.dataset.nativeLayers = "true";
+let completed = false;
+const complete = () => {
+  if (completed) return;
+  completed = true;
+  root.classList.remove("native-styles-pending");
+  document.dispatchEvent(new Event("sogrim:native-styles-ready"));
+};
+stylesheet.addEventListener("load", () => {
+  stylesheet.media = "all";
+  requestAnimationFrame(() => requestAnimationFrame(complete));
+}, { once: true });
+stylesheet.addEventListener("error", complete, { once: true });
+document.head.append(stylesheet);
+`;
+}
+
+function extractStaticCssTemplatesPlugin(extractedCssPaths) {
   return {
-    name: "minify-static-css-templates",
+    name: "extract-static-css-templates",
     setup(context) {
       context.onLoad({ filter: /public.*Layer\.mjs$/ }, async ({ path }) => {
         const source = await readFile(path, "utf8");
+        if (!extractedCssPaths.has(resolve(path))) {
+          return { contents: source, loader: "js" };
+        }
         const contents = source.replace(
           /const CSS = `([\s\S]*?)`;/g,
           (match, css) => {
             if (css.includes("${")) return match;
-            const result = transformCss({
-              filename: `${path}.css`,
-              code: Buffer.from(css),
-              minify: true
-            });
-            return `const CSS = ${JSON.stringify(result.code.toString())};`;
+            return 'const CSS = "";';
           }
         );
         return { contents, loader: "js" };

@@ -175,6 +175,10 @@ test("native resume refreshes shared state without duplicate concurrent syncs", 
   assert.match(app, /addEventListener\(NATIVE_RESUME_EVENT, requestResumeSync\)/);
   assert.match(app, /if \(resumeSyncRequest\) return resumeSyncRequest/);
   assert.match(app, /loadSharedState\(\)/);
+  assert.match(
+    app,
+    /function requestResumeSync[\s\S]*?const saveRevisionAtRequest = sharedStateSaveRevision\(\);[\s\S]*?if \(saveRevisionAtRequest !== sharedStateSaveRevision\(\)\) return;/
+  );
   assert.match(app, /hasSharedStateChanged\(state, nextState\)/);
   assert.match(app, /document\.visibilityState === "visible"/);
 });

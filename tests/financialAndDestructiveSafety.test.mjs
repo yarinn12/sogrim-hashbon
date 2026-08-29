@@ -276,7 +276,7 @@ test("expense saving is guarded against concurrent submits", () => {
 });
 
 test("the event action menu explains removal scope before confirmation", () => {
-  assert.match(app, /const removesForEveryone = canManageStatus;/);
+  assert.match(app, /const removesForEveryone = canCurrentParticipantManage\(event\);/);
   assert.match(app, /מחיקה לכל המשתתפים, לאחר אישור נוסף/);
   assert.match(app, /הסרה מהאירועים שלי, לאחר אישור נוסף/);
 });

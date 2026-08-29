@@ -292,6 +292,22 @@ function injectDynamicTypeStyles(document) {
       min-height: max(48px, 2.85rem) !important;
     }
 
+    /* Icon-only overflow triggers keep a square hit target at enlarged text
+       sizes; they do not contain readable copy that needs to reflow. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+      :where(.expense-row-actions-menu > summary, .event-cover-menu-button) {
+      width: 44px !important;
+      min-width: 44px !important;
+      max-width: 44px !important;
+      height: 44px !important;
+      min-height: 44px !important;
+      max-height: 44px !important;
+      padding: 0 !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+      flex: 0 0 44px !important;
+    }
+
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
       .product-header-profile-avatar {
       width: 48px !important;
@@ -721,7 +737,7 @@ function injectDynamicTypeStyles(document) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
         .event-row {
         display: grid !important;
-        grid-template-columns: minmax(0, 1fr) !important;
+        grid-template-columns: minmax(0, 1fr) 52px !important;
         gap: 8px !important;
       }
 
@@ -735,9 +751,10 @@ function injectDynamicTypeStyles(document) {
         .event-status-toggle {
         position: static !important;
         inset: auto !important;
-        width: auto !important;
-        min-width: max-content !important;
-        justify-self: start !important;
+        width: 52px !important;
+        min-width: 52px !important;
+        min-height: 44px !important;
+        justify-self: stretch !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
