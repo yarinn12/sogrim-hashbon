@@ -309,6 +309,49 @@ test("product metrics retry transient failures and drain large queues in bounded
   stop();
 });
 
+test("local browser QA does not pollute production metrics while native localhost still reports", async () => {
+  let browserRequests = 0;
+  const browserHarness = createTransportHarness({
+    fetchImpl: async () => {
+      browserRequests += 1;
+      return { ok: true, status: 202 };
+    }
+  });
+  browserHarness.windowRef.location = {
+    protocol: "http:",
+    hostname: "127.0.0.1"
+  };
+
+  const stopBrowser = startProductMetricTransport(browserHarness.options);
+  browserHarness.documentRef.emit("sogrim:product-metric", {
+    detail: { eventName: "operation_failure", screen: "auth", detail: "auth:unknown" }
+  });
+  assert.equal(browserHarness.timerCount(), 0);
+  assert.equal(browserRequests, 0);
+  stopBrowser();
+
+  let nativeRequests = 0;
+  const nativeHarness = createTransportHarness({
+    fetchImpl: async () => {
+      nativeRequests += 1;
+      return { ok: true, status: 202 };
+    }
+  });
+  nativeHarness.windowRef.location = {
+    protocol: "http:",
+    hostname: "localhost"
+  };
+  nativeHarness.windowRef.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "ios"
+  };
+
+  const stopNative = startProductMetricTransport(nativeHarness.options);
+  await nativeHarness.runNextTimer();
+  assert.equal(nativeRequests, 1);
+  stopNative();
+});
+
 test("product metrics recover when a transport request never responds", async () => {
   const harness = createTransportHarness({
     fetchImpl: async () => new Promise(() => {})

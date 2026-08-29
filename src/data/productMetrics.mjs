@@ -85,7 +85,12 @@ export function startProductMetricTransport({
   cryptoRef = globalThis.crypto,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
 } = {}) {
-  if (!documentRef?.addEventListener || !windowRef?.addEventListener || typeof fetchImpl !== "function") {
+  if (
+    !documentRef?.addEventListener ||
+    !windowRef?.addEventListener ||
+    typeof fetchImpl !== "function" ||
+    isLocalBrowserQaRuntime(windowRef)
+  ) {
     return () => {};
   }
 
@@ -276,4 +281,20 @@ function normalizeVersion(value) {
 function normalizeBuild(value) {
   const build = Number(value ?? 0);
   return Number.isSafeInteger(build) && build >= 0 && build <= 10_000_000 ? build : 0;
+}
+
+function isLocalBrowserQaRuntime(windowRef) {
+  const protocol = String(windowRef?.location?.protocol ?? "").toLowerCase();
+  const hostname = String(windowRef?.location?.hostname ?? "").toLowerCase();
+  if (!["http:", "https:"].includes(protocol)) return false;
+  if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) return false;
+
+  try {
+    if (windowRef?.Capacitor?.isNativePlatform?.() === true) return false;
+    if (["android", "ios"].includes(windowRef?.Capacitor?.getPlatform?.())) return false;
+  } catch {
+    // If a partial development bridge throws, treat it as a browser runtime so
+    // local QA cannot contaminate production health metrics.
+  }
+  return true;
 }
