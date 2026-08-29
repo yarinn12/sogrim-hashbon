@@ -27,6 +27,10 @@ import {
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
+import {
+  addEventNote,
+  updateEventNote
+} from "../src/domain/eventNotes.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
 import {
   manageOpenEventInvite,
@@ -459,6 +463,38 @@ try {
     joinerProfile.participantId
   );
 
+  const sharedNoteId = `note-two-account-${suffix}`;
+  ownerState = addEventNote(ownerState, eventId, {
+    id: sharedNoteId,
+    title: "פרטי הטיסה",
+    body: "טרמינל 3",
+    participantId: ownerProfile.participantId,
+    createdAt: "2026-08-03T12:12:00.000Z"
+  });
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(
+    joinerState.events[0].notes?.find((note) => note.id === sharedNoteId)?.body,
+    "טרמינל 3"
+  );
+
+  joinerState = updateEventNote(joinerState, eventId, sharedNoteId, {
+    body: "טרמינל 3 · להגיע שלוש שעות לפני",
+    pinned: true,
+    participantId: joinerProfile.participantId,
+    updatedAt: "2026-08-03T12:13:00.000Z"
+  });
+  joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  const synchronizedNote = ownerState.events[0].notes?.find(
+    (note) => note.id === sharedNoteId
+  );
+  assert.equal(synchronizedNote?.pinned, true);
+  assert.equal(
+    synchronizedNote?.body,
+    "טרמינל 3 · להגיע שלוש שעות לפני"
+  );
+
   ownerState = closeEvent(ownerState, eventId, "2026-08-03T12:15:00.000Z");
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
   joinerState = await refreshSharedEvents(joinerConfig, joinerState);
@@ -599,6 +635,7 @@ try {
       expenseDeletionSurvivesStaleDeviceWrite: true,
       settlementMatchedBothAccounts: true,
       transferStatusSynced: true,
+      sharedNotesCreateEditAndPinSynced: true,
       eventClosureSynced: true,
       bothAccountWorkspacesReloaded: true,
       nonAdminLeftWithMoneyHistoryPreservedOffline: true,

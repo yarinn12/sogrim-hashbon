@@ -14,6 +14,7 @@ export function addEventNote(
     id,
     title = "",
     body = "",
+    pinned = false,
     participantId = state?.currentParticipantId,
     createdAt = new Date().toISOString()
   } = {}
@@ -37,6 +38,7 @@ export function addEventNote(
   const note = {
     id,
     ...content,
+    ...(pinned === true ? { pinned: true } : {}),
     createdAt: savedAt,
     updatedAt: savedAt,
     createdByParticipantId: participantId,
@@ -56,6 +58,7 @@ export function updateEventNote(
   {
     title,
     body,
+    pinned,
     participantId = state?.currentParticipantId,
     updatedAt = new Date().toISOString()
   } = {}
@@ -72,9 +75,13 @@ export function updateEventNote(
     body: body === undefined ? currentNote.body : body
   });
   if (!content) return state;
+  const nextPinned = pinned === undefined
+    ? currentNote.pinned === true
+    : pinned === true;
   if (
     content.title === String(currentNote.title ?? "") &&
-    content.body === String(currentNote.body ?? "")
+    content.body === String(currentNote.body ?? "") &&
+    nextPinned === (currentNote.pinned === true)
   ) {
     return state;
   }
@@ -87,6 +94,7 @@ export function updateEventNote(
         ? {
             ...note,
             ...content,
+            ...(nextPinned ? { pinned: true } : { pinned: false }),
             updatedAt: savedAt,
             updatedByParticipantId: participantId
           }
@@ -210,6 +218,9 @@ function validateNoteCollection(notes, path, { maxItems, knownParticipantIds, er
     if (!String(note.title ?? "").trim() && !String(note.body ?? "").trim()) {
       errors.push(`${notePath} must contain a title or body.`);
     }
+    if (note.pinned !== undefined && typeof note.pinned !== "boolean") {
+      errors.push(`${notePath}.pinned must be a boolean when provided.`);
+    }
     validateTimestamp(note.createdAt, `${notePath}.createdAt`, errors);
     validateTimestamp(note.updatedAt, `${notePath}.updatedAt`, errors);
     validateKnownParticipant(
@@ -318,6 +329,7 @@ function stableItemKey(item) {
     item?.id,
     item?.title,
     item?.body,
+    item?.pinned,
     item?.createdAt,
     item?.updatedAt,
     item?.createdByParticipantId,

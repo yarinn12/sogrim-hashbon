@@ -96,6 +96,13 @@ import {
   updateExpense
 } from "./domain/appActions.mjs";
 import {
+  MAX_EVENT_NOTE_BODY_LENGTH,
+  MAX_EVENT_NOTE_TITLE_LENGTH,
+  addEventNote,
+  removeEventNote,
+  updateEventNote
+} from "./domain/eventNotes.mjs";
+import {
   bindStateBackupToCurrentParticipant,
   parseStateBackup,
   serializeStateBackup
@@ -268,6 +275,7 @@ const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
   "home",
   "event",
+  "event-notes",
   "settlement",
   "notifications",
   "profile",
@@ -472,6 +480,7 @@ let appBootHydrationPromise = null;
 let appBootHydrated = false;
 
 app.addEventListener("click", handleClick);
+app.addEventListener("submit", handleSubmit);
 app.addEventListener("keydown", handleParticipantAvatarKeydown);
 app.addEventListener("input", handleInput);
 app.addEventListener("change", handleChange);
@@ -676,6 +685,11 @@ function render() {
     return;
   }
 
+  if (screen.name === "event-notes") {
+    commitRenderedScreen(renderEventNotes(event));
+    return;
+  }
+
   if (screen.name === "settlement") {
     commitRenderedScreen(renderSettlement(event));
   }
@@ -783,7 +797,7 @@ function ensureRenderableScreen() {
     return;
   }
 
-  if (!["event", "settlement"].includes(screen.name)) return;
+  if (!["event", "event-notes", "settlement"].includes(screen.name)) return;
   const currentEvent = getEvent(screen.eventId);
   if (
     currentEvent &&
@@ -820,6 +834,7 @@ function productMetricScreen(screenName) {
   }
   if (screenName === "join-event") return "invite";
   if (screenName === "admin-overview") return "profile";
+  if (screenName === "event-notes") return "event";
   return [
     "auth",
     "home",
@@ -858,7 +873,7 @@ function syncBrowserHistory() {
 }
 
 function renderDetachedEventDialog() {
-  if (!eventDialog || ["event", "settlement"].includes(screen.name)) return "";
+  if (!eventDialog || ["event", "event-notes", "settlement"].includes(screen.name)) return "";
   const event = getEvent(eventDialog.eventId);
   return event ? renderEventDialog(event) : "";
 }
@@ -1175,6 +1190,7 @@ function eventDialogHistoryKey(dialog) {
     kind: dialog.kind ?? "",
     returnKind: dialog.returnKind ?? "",
     participantId: dialog.participantId ?? "",
+    noteId: dialog.noteId ?? "",
     shareView: dialog.shareView ?? ""
   };
 }
@@ -4321,6 +4337,7 @@ function renderEventTypeGuide(event) {
 
 function renderEventWorkspaceNav(event, activeView = "expenses") {
   const summaryIsActive = activeView === "summary";
+  const notesAreActive = activeView === "notes";
   const expenseTabContent = `
     ${renderCommandIcon("expense")}
     <strong>הוצאות</strong>
@@ -4328,7 +4345,7 @@ function renderEventWorkspaceNav(event, activeView = "expenses") {
   return `
     <nav class="event-workspace-nav" aria-label="ניווט באירוע" data-active-event-view="${escapeAttribute(activeView)}">
       ${
-        summaryIsActive
+        summaryIsActive || notesAreActive
           ? `<button type="button" class="event-workspace-tab event-workspace-expenses" data-action="back-to-event" data-event-id="${event.id}">${expenseTabContent}</button>`
           : `<a class="event-workspace-tab event-workspace-expenses is-active" href="#event-expenses" aria-current="page">${expenseTabContent}</a>`
       }
@@ -4341,11 +4358,132 @@ function renderEventWorkspaceNav(event, activeView = "expenses") {
         ${renderCommandIcon("summary")}
         <strong>סיכום</strong>
       </button>
+      <button type="button" class="event-workspace-tab event-workspace-notes${notesAreActive ? " is-active" : ""}"
+        data-action="open-event-notes"
+        data-event-id="${event.id}"
+        ${notesAreActive ? 'aria-current="page"' : ""}
+        aria-label="${notesAreActive ? "פתקים, המסך הנוכחי" : "פתיחת פתקים משותפים"}"
+      >
+        <span class="command-card-icon" aria-hidden="true">${iconSvg("message")}</span>
+        <strong>פתקים</strong>
+      </button>
     </nav>
   `;
 }
 
 function renderEventInsightPanel(event, insights) {
+  return renderEventInsightPanelContent(event, insights);
+}
+
+function renderEventNotes(event) {
+  rememberRecentEvent(event.id);
+  const notes = [...(event.notes ?? [])].sort((first, second) => {
+    const pinnedDifference = Number(second.pinned === true) - Number(first.pinned === true);
+    if (pinnedDifference) return pinnedDifference;
+    const timeDifference = Date.parse(second.updatedAt) - Date.parse(first.updatedAt);
+    return (Number.isFinite(timeDifference) ? timeDifference : 0) ||
+      String(first.id).localeCompare(String(second.id));
+  });
+  const pinnedNotes = notes.filter((note) => note.pinned === true);
+  const otherNotes = notes.filter((note) => note.pinned !== true);
+  const canEdit = canCurrentParticipantEdit(event);
+
+  return `
+    <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
+      <header class="top event-notes-hero">
+        ${renderAppBackButton()}
+        <div class="brand event-notes-hero-copy">
+          <p class="eyebrow">${escapeHtml(event.name)}</p>
+          <h1>פתקים משותפים</h1>
+          <p class="muted">פתקים משותפים לאירוע</p>
+        </div>
+        <button class="primary-button event-notes-create" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
+          <span aria-hidden="true">${iconSvg("edit")}</span>
+          <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
+        </button>
+      </header>
+
+      ${renderNotice()}
+      <section class="event-notes-content" aria-labelledby="event-notes-list-title">
+        <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
+        ${notes.length
+          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים", false)}`
+          : renderEventNotesEmptyState(event, canEdit)}
+      </section>
+
+      ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
+    </section>
+  `;
+}
+
+function renderEventNotesSection(event, notes, label, pinnedSection) {
+  if (!notes.length) return "";
+  const sectionLabel = label || "פתקים";
+  return `
+    <section class="event-notes-section${pinnedSection ? " is-pinned" : ""}" aria-label="${escapeAttribute(sectionLabel)}">
+      ${label ? `<div class="event-notes-section-label">
+        ${pinnedSection ? `<span aria-hidden="true">${iconSvg("pin")}</span>` : ""}
+        <strong>${escapeHtml(label)}</strong>
+      </div>` : ""}
+      <div class="event-notes-list">
+        ${notes.map((note) => renderEventNoteRow(event, note)).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderEventNoteRow(event, note) {
+  const title = String(note.title ?? "").trim() || "פתק ללא כותרת";
+  const body = String(note.body ?? "").trim();
+  const participantIds = [
+    ...new Set([note.createdByParticipantId, note.updatedByParticipantId].filter(Boolean))
+  ];
+  const updatedBy = participantName(note.updatedByParticipantId, event);
+  const updatedLabel = formatEventNoteUpdatedAt(note.updatedAt);
+
+  return `
+    <article class="event-note-row${note.pinned === true ? " is-pinned" : ""}" data-note-id="${escapeAttribute(note.id)}">
+      <button class="event-note-open" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">
+        <span class="event-note-copy">
+          <span class="event-note-title-line">
+            <strong>${escapeHtml(title)}</strong>
+            ${note.pinned === true ? `<span class="event-note-pin" aria-label="פתק מוצמד">${iconSvg("pin")}</span>` : ""}
+          </span>
+          ${body ? `<span class="event-note-preview">${escapeHtml(body)}</span>` : ""}
+          <small>${escapeHtml(updatedBy)} · ${escapeHtml(updatedLabel)}</small>
+        </span>
+      </button>
+      <span class="event-note-avatars">${renderAvatarStack(participantIds, event)}</span>
+      <button class="event-note-chevron" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">${iconSvg("chevron-left")}</button>
+    </article>
+  `;
+}
+
+function renderEventNotesEmptyState(event, canEdit) {
+  return `
+    <section class="panel event-notes-empty">
+      <span class="event-notes-empty-icon" aria-hidden="true">${iconSvg("message")}</span>
+      <h2>עוד אין פתקים משותפים</h2>
+      <p>אפשר לשמור כאן פרטי טיסה, רשימת ציוד, כתובות וכל דבר שחשוב לכל משתתפי האירוע.</p>
+      <button class="primary-button" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
+        ${canEdit ? "כתבו את הפתק הראשון" : "האירוע סגור"}
+      </button>
+    </section>
+  `;
+}
+
+function formatEventNoteUpdatedAt(value, now = Date.now()) {
+  const updatedAt = Date.parse(value);
+  if (!Number.isFinite(updatedAt)) return "עודכן לאחרונה";
+  const elapsedMinutes = Math.max(0, Math.floor((now - updatedAt) / 60_000));
+  if (elapsedMinutes < 1) return "עודכן עכשיו";
+  if (elapsedMinutes < 60) return `עודכן לפני ${elapsedMinutes} ${elapsedMinutes === 1 ? "דקה" : "דקות"}`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `עודכן לפני ${elapsedHours} ${elapsedHours === 1 ? "שעה" : "שעות"}`;
+  return `עודכן ${formatRelativeCalendarDate(value)}`;
+}
+
+function renderEventInsightPanelContent(event, insights) {
   const message = eventInsightMessage(insights.status);
   const primaryAction = eventInsightPrimaryAction(event, insights.status);
 
@@ -4456,6 +4594,7 @@ function renderEventDialog(event) {
   if (eventDialog.kind === "participant-link") {
     return renderEventParticipantLinkDialog(event);
   }
+  if (eventDialog.kind === "note-editor") return renderEventNoteDialog(event);
   if (eventDialog.kind === "share") return renderEventShareDialog(event);
   if (eventDialog.kind === "settings") return renderEventSettingsDialog(event);
   if (eventDialog.kind === "settings-management") {
@@ -6330,6 +6469,61 @@ function renderEventParticipantAddEditor(event, participants, canEdit, participa
     `;
   }
   return "";
+}
+
+function renderEventNoteDialog(event) {
+  const note = (event.notes ?? []).find((item) => item.id === eventDialog.noteId);
+  const isNew = !eventDialog.noteId;
+  const canEdit = canCurrentParticipantEdit(event);
+  const title = isNew ? "פתק חדש" : canEdit ? "עריכת פתק" : "פתק משותף";
+  const body = `
+    <form class="event-note-editor" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId ?? "")}">
+      <label class="field event-note-title-field">
+        <span>כותרת</span>
+        <input
+          data-action="event-note-title"
+          type="text"
+          name="eventNoteTitle"
+          maxlength="${MAX_EVENT_NOTE_TITLE_LENGTH}"
+          value="${escapeAttribute(eventDialog.titleDraft ?? note?.title ?? "")}"
+          placeholder="למשל פרטי הטיסה"
+          ${canEdit ? "" : "readonly"}
+        />
+      </label>
+      <label class="field event-note-body-field">
+        <span>תוכן הפתק</span>
+        <textarea
+          data-action="event-note-body"
+          name="eventNoteBody"
+          maxlength="${MAX_EVENT_NOTE_BODY_LENGTH}"
+          rows="8"
+          placeholder="כתבו כאן מידע שכולם צריכים לראות…"
+          ${canEdit ? "" : "readonly"}
+        >${escapeHtml(eventDialog.bodyDraft ?? note?.body ?? "")}</textarea>
+      </label>
+      ${canEdit ? `
+        <button class="event-note-pin-toggle${eventDialog.pinned ? " is-active" : ""}" type="button" data-action="toggle-event-note-pin" aria-pressed="${eventDialog.pinned ? "true" : "false"}">
+          <span aria-hidden="true">${iconSvg("pin")}</span>
+          <span>${eventDialog.pinned ? "הפתק מוצמד" : "הצמד לראש הרשימה"}</span>
+        </button>
+      ` : note?.pinned === true ? `<p class="event-note-readonly-pin"><span aria-hidden="true">${iconSvg("pin")}</span> פתק מוצמד</p>` : ""}
+      ${eventDialog.error ? `<p class="field-error" id="event-note-error" role="alert">${escapeHtml(eventDialog.error)}</p>` : ""}
+      ${canEdit ? `
+        <div class="event-note-editor-actions">
+          ${isNew ? "" : `<button class="secondary-button event-note-delete" type="button" data-action="request-delete-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId)}">${iconSvg("trash")}<span>מחק פתק</span></button>`}
+          <button class="primary-button" type="submit" data-action="save-event-note" data-event-id="${escapeAttribute(event.id)}" ${eventDialog.saving ? "disabled" : ""}>${eventDialog.saving ? "שומרים…" : "שמור פתק"}</button>
+        </div>
+      ` : ""}
+    </form>
+  `;
+
+  return renderEventDialogShell({
+    eyebrow: event.name,
+    title,
+    description: canEdit ? "השינויים יופיעו אצל כל משתתפי האירוע." : "האירוע סגור ולכן הפתק מוצג לקריאה בלבד.",
+    body,
+    modalClass: "event-note-modal"
+  });
 }
 
 function renderEventShareMenu(event) {
@@ -11803,6 +11997,79 @@ async function handleClick(event) {
     render();
   }
 
+  if (action === "open-event-notes") {
+    const eventId = target.dataset.eventId;
+    if (!getEvent(eventId)) return;
+    notice = "";
+    expenseDraft = null;
+    eventDialog = null;
+    screen = { name: "event-notes", eventId };
+    rememberRecentEvent(eventId);
+    render();
+    return;
+  }
+
+  if (action === "new-event-note") {
+    const eventId = target.dataset.eventId;
+    const selectedEvent = getEvent(eventId);
+    if (!selectedEvent || !canCurrentParticipantEdit(selectedEvent)) return;
+    openEventDialogWithDetails(eventId, "note-editor", target, {
+      noteId: "",
+      titleDraft: "",
+      bodyDraft: "",
+      pinned: false,
+      error: "",
+      saving: false
+    });
+    return;
+  }
+
+  if (action === "open-event-note") {
+    const eventId = target.dataset.eventId;
+    const noteId = target.dataset.noteId;
+    const selectedEvent = getEvent(eventId);
+    const note = selectedEvent?.notes?.find((item) => item.id === noteId);
+    if (!selectedEvent || !note) return;
+    openEventDialogWithDetails(eventId, "note-editor", target, {
+      noteId,
+      titleDraft: note.title ?? "",
+      bodyDraft: note.body ?? "",
+      pinned: note.pinned === true,
+      error: "",
+      saving: false
+    });
+    return;
+  }
+
+  if (action === "toggle-event-note-pin") {
+    if (eventDialog?.kind !== "note-editor") return;
+    event.preventDefault();
+    eventDialog.pinned = !eventDialog.pinned;
+    eventDialog.error = "";
+    render();
+    reactivateDialogAfterRender(
+      ".event-note-modal",
+      '[data-action="toggle-event-note-pin"]'
+    );
+    return;
+  }
+
+  if (action === "save-event-note") {
+    event.preventDefault();
+    await saveEventNoteFromDialog(target.dataset.eventId);
+    return;
+  }
+
+  if (action === "request-delete-event-note") {
+    event.preventDefault();
+    requestEventNoteDeletion(
+      target.dataset.eventId,
+      target.dataset.noteId,
+      target
+    );
+    return;
+  }
+
   if (action === "new-event-add-guest") {
     if (!newEventDraft) return;
     newEventDraft.participantView = "manual";
@@ -12825,6 +13092,13 @@ async function handleClick(event) {
   }
 }
 
+async function handleSubmit(event) {
+  const form = event.target.closest?.(".event-note-editor");
+  if (!form) return;
+  event.preventDefault();
+  await saveEventNoteFromDialog(form.dataset.eventId);
+}
+
 function closeOpenTransientMenus(exceptMenu = null) {
   let closedMenu = false;
   for (const menu of app.querySelectorAll(
@@ -13167,6 +13441,13 @@ function goBackInApp() {
     return;
   }
 
+  if (screen.name === "event-notes" && screen.eventId) {
+    screen = { name: "event", eventId: screen.eventId };
+    eventDialog = null;
+    renderHistoryFallback();
+    return;
+  }
+
   if (screen.name === "join-event") {
     screen = { name: "home" };
     renderHistoryFallback();
@@ -13356,6 +13637,20 @@ function handleInput(event) {
   }
   if (action === "new-event-name" && newEventDraft) {
     newEventDraft.name = target.value;
+    scheduleBrowserHistoryReplacement();
+    return;
+  }
+  if (action === "event-note-title") {
+    if (eventDialog?.kind !== "note-editor") return;
+    eventDialog.titleDraft = target.value.slice(0, MAX_EVENT_NOTE_TITLE_LENGTH);
+    eventDialog.error = "";
+    scheduleBrowserHistoryReplacement();
+    return;
+  }
+  if (action === "event-note-body") {
+    if (eventDialog?.kind !== "note-editor") return;
+    eventDialog.bodyDraft = target.value.slice(0, MAX_EVENT_NOTE_BODY_LENGTH);
+    eventDialog.error = "";
     scheduleBrowserHistoryReplacement();
     return;
   }
@@ -15344,6 +15639,130 @@ function requestExpenseDeletion(eventId, expenseId, trigger) {
   );
 }
 
+async function saveEventNoteFromDialog(eventId) {
+  const event = getEvent(eventId);
+  if (
+    !event ||
+    eventDialog?.kind !== "note-editor" ||
+    eventDialog.eventId !== eventId ||
+    eventDialog.saving ||
+    !canCurrentParticipantEdit(event)
+  ) {
+    return;
+  }
+
+  const title = String(eventDialog.titleDraft ?? "").trim();
+  const body = String(eventDialog.bodyDraft ?? "").trim();
+  if (!title && !body) {
+    eventDialog.error = "צריך לכתוב כותרת או תוכן לפני השמירה.";
+    render();
+    reactivateDialogAfterRender(".event-note-modal", '[data-action="event-note-title"]');
+    return;
+  }
+
+  const previousState = cloneNavigationValue(state);
+  const noteId = eventDialog.noteId || makeId("note");
+  const nextState = eventDialog.noteId
+    ? updateEventNote(state, eventId, noteId, {
+        title,
+        body,
+        pinned: eventDialog.pinned === true,
+        participantId: state.currentParticipantId
+      })
+    : addEventNote(state, eventId, {
+        id: noteId,
+        title,
+        body,
+        pinned: eventDialog.pinned === true,
+        participantId: state.currentParticipantId
+      });
+
+  if (nextState === state) {
+    if (eventDialog.noteId) {
+      eventDialog = null;
+      closeDialogWithHistory();
+      return { ok: true, unchanged: true };
+    }
+    eventDialog.error = "לא הצלחנו להכין את הפתק לשמירה. אפשר לנסות שוב.";
+    render();
+    reactivateDialogAfterRender(".event-note-modal");
+    return;
+  }
+
+  state = nextState;
+  eventDialog.saving = true;
+  render();
+  reactivateDialogAfterRender(".event-note-modal");
+  const result = await completedSaveResult(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+
+  if (!result?.ok) {
+    state = previousState;
+    eventDialog.saving = false;
+    eventDialog.error = "הפתק לא נשמר כדי למנוע הבדל בין המכשירים. בדקו את החיבור ונסו שוב.";
+    render();
+    reactivateDialogAfterRender(".event-note-modal");
+    return result;
+  }
+
+  eventDialog = null;
+  closeDialogWithHistory();
+  return result;
+}
+
+function requestEventNoteDeletion(eventId, noteId, trigger) {
+  const event = getEvent(eventId);
+  const note = event?.notes?.find((item) => item.id === noteId);
+  if (!event || !note || !canCurrentParticipantEdit(event)) return;
+  const title = String(note.title ?? "").trim() || "הפתק הזה";
+  openImportantActionDialog(
+    {
+      kind: "delete-event-note",
+      label: "פתק משותף",
+      title: `למחוק את "${title}"?`,
+      description: "הפתק יוסר אצל כל משתתפי האירוע. אי אפשר לבטל את הפעולה.",
+      confirmLabel: "מחק פתק",
+      payload: { eventId, noteId }
+    },
+    trigger
+  );
+}
+
+async function deleteEventNote(eventId, noteId) {
+  const event = getEvent(eventId);
+  if (!event || !canCurrentParticipantEdit(event)) return;
+  const previousState = cloneNavigationValue(state);
+  const editorSnapshot = cloneNavigationValue(eventDialog);
+  const nextState = removeEventNote(state, eventId, noteId, {
+    participantId: state.currentParticipantId
+  });
+  if (nextState === state) return;
+
+  state = nextState;
+  const result = await completedSaveResult(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  if (!result?.ok) {
+    state = previousState;
+    eventDialog = {
+      ...editorSnapshot,
+      saving: false,
+      error: "לא הצלחנו למחוק את הפתק. לא בוצע שינוי ואפשר לנסות שוב."
+    };
+  } else {
+    eventDialog = null;
+  }
+  render();
+  return result;
+}
+
 function requestEventLeave(eventId, trigger) {
   const event = getEvent(eventId);
   if (!event) return;
@@ -15603,6 +16022,11 @@ async function executeImportantAction(action) {
 
   if (action.kind === "delete-expense") {
     await deleteExpense(action.payload.eventId, action.payload.expenseId);
+    return;
+  }
+
+  if (action.kind === "delete-event-note") {
+    await deleteEventNote(action.payload.eventId, action.payload.noteId);
     return;
   }
 
@@ -18368,6 +18792,7 @@ async function deleteCurrentEvent(eventId) {
     notice = "לא הצלחנו להשלים את מחיקת האירוע. האירוע נשאר שמור ואפשר לנסות שוב.";
     render();
   }
+
   return result;
 }
 
@@ -20940,6 +21365,7 @@ function requestVisibleEventSync() {
     !appBootHydrated ||
     !VISIBLE_BACKGROUND_SYNC_SCREENS.has(screen.name) ||
     expenseDraft ||
+    eventDialog?.kind === "note-editor" ||
     profileNameEditing ||
     profileUsernameEditing ||
     groupDraft ||

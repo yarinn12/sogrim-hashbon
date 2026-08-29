@@ -342,3 +342,41 @@ final result: passed
 - Automated suite: 886 passed, 0 failed.
 
 final result: passed
+
+---
+
+# Design QA — Shared Event Notes
+
+## Source and implementation
+
+- Design source: `C:/Users/A/AppData/Local/Temp/codex-clipboard-6a7415db-fd9d-4ea4-b905-af1f78f6bd2d.png`
+- Design source pixels: 853 × 1876
+- Implementation capture: `C:/Users/A/Documents/Codex/2026-05-23/new-chat/design-qa-notes-mobile-final.jpg`
+- Implementation pixels: 393 × 852
+- Comparison viewport: 393 × 852 CSS pixels
+- State: signed-in mobile account, open event, three shared notes, first note pinned
+
+## Comparison artifacts
+
+- Full view: `C:/Users/A/Documents/Codex/2026-05-23/new-chat/design-qa-notes-comparison-final.png`
+- Focused hero and note-list region: `C:/Users/A/Documents/Codex/2026-05-23/new-chat/design-qa-notes-comparison-focus.png`
+
+## Findings and iteration history
+
+1. P1 — The floating “פתק חדש” CTA was clipped by a later high-specificity hero rule. Fixed by making the approved notes hero overflow visible and applying the selected dimensions at the winning specificity.
+2. P2 — The first implementation repeated the internal event navigation and made the screen denser than the selected direction. Removed the duplicate workspace navigation while retaining the event-level notes entry point and native back route.
+3. P2 — The extra “כל הפתקים” divider did not appear in the selected direction. Removed it when a pinned section is present, while retaining the accessible section label.
+4. P2 — A desktop-style scrollbar reduced the mobile canvas and shifted the screen. Hidden only while the notes workspace is active; the final screen uses the full 393-pixel viewport without horizontal overflow.
+5. Dynamic differences such as participant portraits, event name, updater name and timestamps are expected product data rather than visual mismatches.
+
+## Functional verification
+
+- Create, open, edit, pin and return flows work through the real UI.
+- An edit appears immediately without reloading and persists after leaving and reopening the screen.
+- Browser console: no warnings or errors during the verified flow.
+- Two-account live verification: note creation, second-account edit, pinning and owner refresh all synchronized successfully.
+- No horizontal overflow at 393 × 852.
+
+## Final result
+
+passed

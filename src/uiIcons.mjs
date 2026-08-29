@@ -23,6 +23,7 @@ const iconShapes = {
   "log-out": '<path d="M19 12H9"/><path d="m13 8-4 4 4 4"/><path d="M8 5H5.8A1.8 1.8 0 0 0 4 6.8v10.4A1.8 1.8 0 0 0 5.8 19H8"/>',
   more: '<circle cx="5" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1.35" fill="currentColor" stroke="none"/>',
   message: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4A2.5 2.5 0 0 1 4 12.5z"/><path d="M8 8h8M8 11h5"/>',
+  pin: '<path d="M12 17v5"/><path d="M5 17h14"/><path d="m6 3 1 9-2 3h14l-2-3 1-9Z"/>',
   "plus-square": '<rect x="5" y="5" width="14" height="14" rx="3"/><path d="M12 8.5v7M8.5 12h7"/>',
   receipt: '<path d="M8 4.5h8A2.5 2.5 0 0 1 18.5 7v13l-2.7-1.5L13.2 20 12 19.3 10.8 20l-2.6-1.5L5.5 20V7A2.5 2.5 0 0 1 8 4.5Z"/><path d="M9.5 9h5M9.5 13h5M9.5 17h3"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/>',

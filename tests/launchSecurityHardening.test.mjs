@@ -231,7 +231,12 @@ test("payment status reversal is narrow, attributable, and compatible with centr
     normalizeSql(statusOnlyGuard)
   );
   assert.equal(
-    normalizeSql(functionSource(schema, "private.guard_shared_snapshot_update")),
+    normalizeSql(
+      functionSource(schema, "private.guard_shared_snapshot_update").replace(
+        /,\n\s*'notes',\n\s*'deletedNotes'/g,
+        ""
+      )
+    ),
     normalizeSql(
       functionSource(
         transferStatusReversalMigration,

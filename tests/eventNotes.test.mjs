@@ -93,6 +93,29 @@ test("editing a note is monotonic and records the editor", () => {
   assert.equal(edited.events[0].notes[0].updatedByParticipantId, "friend");
 });
 
+test("pinning a note is a conflict-safe edit", () => {
+  const original = withNote(baseState(), note("note-1", "2026-08-29T10:00:00.000Z"));
+  const pinned = updateEventNote(original, "event-1", "note-1", {
+    pinned: true,
+    participantId: "friend",
+    updatedAt: "2026-08-29T10:01:00.000Z"
+  });
+
+  assert.equal(pinned.events[0].notes[0].pinned, true);
+  assert.equal(pinned.events[0].notes[0].updatedByParticipantId, "friend");
+  assert.equal(pinned.events[0].notes[0].updatedAt, "2026-08-29T10:01:00.000Z");
+  assert.equal(
+    mergeSharedStates(original, pinned).events[0].notes[0].pinned,
+    true
+  );
+
+  const unpinned = updateEventNote(pinned, "event-1", "note-1", {
+    pinned: false,
+    updatedAt: "2026-08-29T10:02:00.000Z"
+  });
+  assert.equal(unpinned.events[0].notes[0].pinned, false);
+});
+
 test("deleting a note records a tombstone and remains idempotent", () => {
   const state = withNote(baseState(), note("note-1", "2026-08-29T10:00:00.000Z"));
   const removed = removeEventNote(state, "event-1", "note-1", {
