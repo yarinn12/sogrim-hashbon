@@ -20162,6 +20162,80 @@ const CSS = `
       grid-template-columns: 1fr !important;
     }
   }
+
+  /* Notes share the event workspace shell: same header, tabs, cards and
+     spacing as Expenses and Summary. Keep the content distinct, not the
+     surrounding product language. */
+  html.ledger-workspace-v1 .event-notes-screen {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-screen .event-workspace-nav {
+    margin-top: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro {
+    min-height: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 16px !important;
+    margin: 14px 0 0 !important;
+    padding: 18px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: var(--ledger-task-radius) !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-task-shadow) !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro > div {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 4px !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro .eyebrow {
+    margin: 0 !important;
+    color: var(--ledger-brand) !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro h2,
+  html.ledger-workspace-v1 .event-notes-intro p {
+    margin: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro h2 {
+    color: var(--ledger-ink) !important;
+    font-size: 18px !important;
+    line-height: 1.3 !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro .primary-button {
+    flex: 0 0 auto !important;
+    min-height: 46px !important;
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-content {
+    margin-top: 14px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: var(--ledger-task-radius) !important;
+    overflow: hidden !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-task-shadow) !important;
+  }
+
+  @media (max-width: 430px) {
+    html.ledger-workspace-v1 .event-notes-intro {
+      align-items: stretch !important;
+      flex-direction: column !important;
+    }
+
+    html.ledger-workspace-v1 .event-notes-intro .primary-button {
+      width: 100% !important;
+    }
+  }
 `;
 
 const RETIRED_ROOT_CLASSES = [

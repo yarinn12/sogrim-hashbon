@@ -30,7 +30,9 @@ test("shared notes are a first-class synchronized event workspace", () => {
 });
 
 test("the approved notes layout includes pinned, empty and editor states", () => {
-  assert.match(app, /event-notes-hero/);
+  assert.match(app, /event-notes-intro/);
+  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
+  assert.match(app, /renderEventWorkspaceNav\(event, "notes"\)/);
   assert.match(app, /event-notes-section-label/);
   assert.match(app, /עוד אין פתקים משותפים/);
   assert.match(app, /event-note-pin-toggle/);

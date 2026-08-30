@@ -4406,20 +4406,20 @@ function renderEventNotes(event) {
 
   return `
     <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
-      <header class="top event-notes-hero">
-        ${renderAppBackButton()}
-        <div class="brand event-notes-hero-copy">
-          <p class="eyebrow">${escapeHtml(event.name)}</p>
-          <h1>פתקים משותפים</h1>
-          <p class="muted">פתקים משותפים לאירוע</p>
+      ${renderEventHeader(event, activeEventParticipants(event))}
+      ${renderNotice()}
+      ${renderEventWorkspaceNav(event, "notes")}
+      <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
+        <div>
+          <p class="eyebrow">פתקים משותפים</p>
+          <h2 id="event-notes-title">כל מה שחשוב לאירוע, במקום אחד</h2>
+          <p class="muted">כל משתתף באירוע רואה את העדכונים.</p>
         </div>
-        <button class="primary-button event-notes-create" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
+        <button class="primary-button" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
           <span aria-hidden="true">${iconSvg("edit")}</span>
           <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
         </button>
-      </header>
-
-      ${renderNotice()}
+      </section>
       <section class="event-notes-content" aria-labelledby="event-notes-list-title">
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
         ${notes.length
