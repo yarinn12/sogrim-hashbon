@@ -5,6 +5,11 @@ const ROW_SELECTOR = [
   ".expense-row[data-expense-id]",
   ".transfer-row",
   ".group-row",
+  ".friend-row",
+  ".notification-inbox-item",
+  ".event-note-row",
+  ".event-participant-candidate-row",
+  ".personal-action-card",
   ".event-participant-roster-row",
   ".event-participant-link-candidate"
 ].join(",");
@@ -12,16 +17,46 @@ const DIALOG_SELECTOR = [
   ".expense-modal-backdrop",
   ".event-modal-backdrop",
   ".important-action-dialog-backdrop",
-  ".event-removal-menu-backdrop"
+  ".event-removal-menu-backdrop",
+  ".event-status-menu-backdrop",
+  ".settlement-close-confirmation-backdrop",
+  ".settlement-celebration-backdrop",
+  ".accessibility-center-backdrop",
+  ".install-app-backdrop",
+  ".app-choice-picker-backdrop",
+  "[data-account-delete-dialog]"
+].join(",");
+const MONEY_SELECTOR = [
+  ".amount",
+  ".summary-value",
+  "[data-money]",
+  "[data-motion-money]",
+  ".transfer-amount",
+  ".expense-row-amount",
+  ".personal-action-amount",
+  ".relationship-scorecard-value"
+].join(",");
+const SELECTION_SELECTOR = [
+  "[role='radio']",
+  "[role='checkbox']",
+  "[role='switch']",
+  "[aria-pressed]",
+  "[aria-selected]",
+  ".event-management-option",
+  ".event-type-option",
+  ".friend-add-mode-button",
+  ".friends-hub-tab",
+  ".event-note-pin-toggle"
 ].join(",");
 
 const CSS = `
   html.motion-polish-v2 {
     --motion-fast: 110ms;
     --motion-state: 190ms;
+    --motion-layout: 280ms;
     --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
-    --motion-accent: #21aaa6;
-    --motion-focus: rgba(33, 170, 166, 0.18);
+    --motion-accent: var(--app-accent, var(--accent, #087b74));
+    --motion-focus: rgba(8, 123, 116, 0.18);
   }
 
   html.motion-polish-v2 :where(
@@ -32,7 +67,17 @@ const CSS = `
     .event-row,
     .group-row,
     .event-workspace-tab,
-    .product-nav-button
+    .product-nav-button,
+    .friends-hub-tab,
+    .friend-add-mode-button,
+    .event-management-option,
+    .event-type-option,
+    .event-note-pin-toggle,
+    [role="radio"],
+    [role="checkbox"],
+    [role="switch"],
+    [aria-pressed],
+    [aria-selected]
   ) {
     transition-property: color, background-color, border-color, box-shadow, opacity, transform;
     transition-duration: var(--motion-state);
@@ -59,6 +104,55 @@ const CSS = `
 
   html.motion-polish-v2 :where(input, select, textarea):focus {
     box-shadow: 0 0 0 3px var(--motion-focus) !important;
+  }
+
+  html.motion-polish-v2 :where(
+    [role="radio"],
+    [role="checkbox"],
+    [role="switch"],
+    [aria-pressed],
+    [aria-selected],
+    .event-management-option,
+    .event-type-option,
+    .friend-add-mode-button,
+    .friends-hub-tab,
+    .event-note-pin-toggle
+  ) :where(svg, .command-card-icon, .event-management-option-icon) {
+    transition-property: color, opacity, transform;
+    transition-duration: var(--motion-state);
+    transition-timing-function: var(--motion-ease);
+    transform-origin: center;
+  }
+
+  html.motion-polish-v2 :where(
+    [aria-checked="true"],
+    [aria-pressed="true"],
+    [aria-selected="true"],
+    .is-selected,
+    .is-active
+  ) :where(svg, .command-card-icon, .event-management-option-icon) {
+    transform: scale(1.06);
+  }
+
+  html.motion-polish-v2 :where(
+    [aria-expanded] [class*="chevron"],
+    details > summary [class*="chevron"]
+  ) {
+    transition-property: opacity, transform;
+    transition-duration: var(--motion-state);
+    transition-timing-function: var(--motion-ease);
+    transform-origin: center;
+  }
+
+  html.motion-polish-v2 :where(
+    [aria-expanded="true"] [class*="chevron"],
+    details[open] > summary [class*="chevron"]
+  ) {
+    transform: rotate(-90deg);
+  }
+
+  html.motion-polish-v2 .motion-control-busy {
+    animation: motion-control-busy 920ms ease-in-out infinite alternate;
   }
 
   html.motion-polish-v2 .product-nav-button {
@@ -140,6 +234,15 @@ const CSS = `
     }
   }
 
+  @keyframes motion-control-busy {
+    from {
+      opacity: 0.72;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
   @media (hover: hover) {
     html.motion-polish-v2 :where(.primary-button, .secondary-button):hover:not(:disabled) {
       transform: translateY(-1px);
@@ -166,17 +269,12 @@ let lastParticipantDetailSignature = "";
 let lastParticipantAddSignature = "";
 let lastExpenseStepSignature = "";
 let lastAnimatedHomeHeroSignature = "";
+let lastValidationSignature = "";
 const animatedFallbackRows = new WeakSet();
-
-activateMotionPolish();
-
-new MutationObserver(scheduleFramerMotionEnhancement).observe(document.body, {
-  childList: true,
-  subtree: true,
-  attributes: true,
-  attributeFilter: ["class", "aria-current"]
-});
-scheduleFramerMotionEnhancement();
+const selectionStates = new WeakMap();
+const disclosureStates = new WeakMap();
+let moneyValues = new Map();
+let moneyStateReady = false;
 
 function activateMotionPolish() {
   document.documentElement.classList.add(ROOT_CLASS);
@@ -202,6 +300,11 @@ function scheduleFramerMotionEnhancement() {
     animateParticipantAdd();
     animateNewRows();
     animateNotice();
+    animateSelectionChanges();
+    animateDisclosureChanges();
+    animateValidationChange();
+    animateMoneyChanges();
+    syncBusyStates();
   });
 }
 
@@ -297,7 +400,7 @@ function animateDialogOpen() {
 
   const motion = globalThis.Motion;
   const panel = backdrop.querySelector(
-    ".expense-modal, .event-modal, .important-action-dialog, .event-removal-menu"
+    '[role="dialog"], [role="alertdialog"], .expense-modal, .event-modal, .important-action-dialog, .event-removal-menu'
   );
   if (!motion?.animate || !panel) return;
 
@@ -508,3 +611,244 @@ function animateExpenseStep() {
     { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
   );
 }
+
+function animateActionFeedback(event) {
+  if (prefersReducedMotion()) return;
+  const trigger = event.target?.closest?.(
+    'button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary'
+  );
+  if (!trigger) return;
+
+  if (trigger.matches("summary")) {
+    requestAnimationFrame(() => {
+      const disclosure = trigger.closest("details");
+      if (disclosure?.open) animateDisclosurePanel(disclosure);
+    });
+  }
+
+  const motion = globalThis.Motion;
+  if (!motion?.animate) return;
+  motion.animate(
+    trigger,
+    { scale: [0.97, 1] },
+    { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
+  );
+}
+
+function selectedState(control) {
+  return Boolean(
+    control.matches(
+      '[aria-checked="true"], [aria-pressed="true"], [aria-selected="true"], [aria-current="page"], .is-selected, .is-active'
+    )
+  );
+}
+
+function animateSelectionChanges() {
+  const controls = [...document.querySelectorAll(SELECTION_SELECTOR)].slice(0, 140);
+  const motion = globalThis.Motion;
+
+  controls.forEach((control) => {
+    const selected = selectedState(control);
+    const previous = selectionStates.get(control);
+    selectionStates.set(control, selected);
+    if (previous === undefined || previous === selected || !selected) return;
+    if (prefersReducedMotion() || !motion?.animate) return;
+
+    motion.animate(
+      control,
+      { scale: [0.985, 1.015, 1] },
+      { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+    );
+    const icon = control.querySelector("svg, .command-card-icon, .event-management-option-icon");
+    if (icon) {
+      motion.animate(
+        icon,
+        { opacity: [0.65, 1], scale: [0.9, 1.06] },
+        { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+      );
+    }
+  });
+}
+
+function animateDisclosureChanges() {
+  const disclosures = [...document.querySelectorAll("details")].slice(0, 80);
+  disclosures.forEach((disclosure) => {
+    const open = disclosure.open;
+    const previous = disclosureStates.get(disclosure);
+    disclosureStates.set(disclosure, open);
+    if (previous === undefined || previous === open || !open) return;
+    animateDisclosurePanel(disclosure);
+  });
+
+  const expandedControls = [...document.querySelectorAll('[aria-expanded][aria-controls]')].slice(0, 40);
+  expandedControls.forEach((control) => {
+    const expanded = control.getAttribute("aria-expanded") === "true";
+    const previous = disclosureStates.get(control);
+    disclosureStates.set(control, expanded);
+    if (previous === undefined || previous === expanded || !expanded) return;
+    const panelId = control.getAttribute("aria-controls");
+    const panel = panelId ? document.getElementById(panelId) : null;
+    if (panel) animateDisclosureElements([panel]);
+  });
+}
+
+function animateDisclosurePanel(disclosure) {
+  const elements = [...disclosure.children]
+    .filter((element) => !element.matches("summary"))
+    .slice(0, 4);
+  animateDisclosureElements(elements);
+}
+
+function animateDisclosureElements(elements) {
+  if (!elements.length || prefersReducedMotion()) return;
+  const motion = globalThis.Motion;
+  if (!motion?.animate) return;
+  elements.forEach((element, index) => {
+    motion.animate(
+      element,
+      { opacity: [0.82, 1], y: [6, 0] },
+      {
+        duration: 0.24,
+        delay: Math.min(index * 0.025, 0.075),
+        ease: [0.22, 1, 0.36, 1]
+      }
+    );
+  });
+}
+
+function animateValidationChange() {
+  const invalid = document.querySelector('#app [aria-invalid="true"]');
+  if (!invalid) {
+    lastValidationSignature = "";
+    return;
+  }
+
+  const descriptionId = invalid.getAttribute("aria-describedby") || "";
+  const description = descriptionId
+    ? document.getElementById(descriptionId)?.textContent?.trim() || ""
+    : "";
+  const signature = [
+    currentMotionScreenKey(),
+    invalid.getAttribute("name") || invalid.id || invalid.getAttribute("data-action") || "field",
+    description
+  ].join(":");
+  if (signature === lastValidationSignature) return;
+  lastValidationSignature = signature;
+  if (prefersReducedMotion()) return;
+
+  const motion = globalThis.Motion;
+  if (!motion?.animate) return;
+  motion.animate(
+    invalid,
+    { x: [0, -4, 3, -2, 0] },
+    { duration: 0.24, ease: [0.25, 1, 0.5, 1] }
+  );
+}
+
+function currentMotionScreenKey() {
+  const screen = document.querySelector("#app > .screen");
+  if (!screen) return "app";
+  return [
+    screen.getAttribute("data-screen-kind") || "screen",
+    screen.getAttribute("data-event-id") || "",
+    screen.getAttribute("data-event-creation-step") || ""
+  ].join(":");
+}
+
+function moneyMotionKey(element, index) {
+  const scope = element.closest(
+    "[data-expense-id], [data-transfer-id], [data-event-id], [data-participant-id], [data-group-id]"
+  );
+  const scopeKey = scope
+    ? [
+        scope.getAttribute("data-expense-id") || "",
+        scope.getAttribute("data-transfer-id") || "",
+        scope.getAttribute("data-event-id") || "",
+        scope.getAttribute("data-participant-id") || "",
+        scope.getAttribute("data-group-id") || ""
+      ].join(":")
+    : `position-${index}`;
+  const classKey = [...element.classList].slice(0, 3).join(".") || element.tagName.toLowerCase();
+  return `${currentMotionScreenKey()}|${scopeKey}|${classKey}|${index}`;
+}
+
+function animateMoneyChanges() {
+  const elements = [...document.querySelectorAll(MONEY_SELECTOR)].slice(0, 120);
+  const nextValues = new Map();
+  const changed = [];
+
+  elements.forEach((element, index) => {
+    const key = moneyMotionKey(element, index);
+    const value = element.textContent?.replace(/\s+/g, " ").trim() || "";
+    nextValues.set(key, value);
+    if (moneyStateReady && moneyValues.has(key) && moneyValues.get(key) !== value) {
+      changed.push(element);
+    }
+  });
+
+  moneyValues = nextValues;
+  if (!moneyStateReady) {
+    moneyStateReady = true;
+    return;
+  }
+  if (!changed.length || prefersReducedMotion()) return;
+
+  const motion = globalThis.Motion;
+  if (!motion?.animate) return;
+  changed.slice(0, 10).forEach((element) => {
+    motion.animate(
+      element,
+      { opacity: [0.68, 1], y: [-3, 0], scale: [0.985, 1] },
+      { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+    );
+  });
+}
+
+function syncBusyStates() {
+  const busyText = /(?:טוענ|שומר|מחשב|מעלה|מעבד|מתחבר|שולח|מעדכן|יוצר|סוגר|loading|saving|sending|processing)/i;
+  const candidates = [...document.querySelectorAll('#app [aria-busy], #app button[disabled]')]
+    .slice(0, 120);
+  const active = new Set();
+
+  candidates.forEach((element) => {
+    const isBusy =
+      element.getAttribute("aria-busy") === "true" ||
+      (element.matches("button:disabled") && busyText.test(element.textContent || ""));
+    if (!isBusy) return;
+    active.add(element);
+    element.classList.add("motion-control-busy");
+  });
+
+  document.querySelectorAll(".motion-control-busy").forEach((element) => {
+    if (!active.has(element)) element.classList.remove("motion-control-busy");
+  });
+}
+
+function startMotionPolish() {
+  activateMotionPolish();
+  new MutationObserver(scheduleFramerMotionEnhancement).observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: [
+      "class",
+      "aria-current",
+      "aria-checked",
+      "aria-pressed",
+      "aria-selected",
+      "aria-expanded",
+      "aria-invalid",
+      "aria-busy",
+      "disabled",
+      "open"
+    ]
+  });
+  document.addEventListener("click", animateActionFeedback, true);
+  scheduleFramerMotionEnhancement();
+}
+
+// Keep all WebKit-visible side effects after every declaration and state
+// container has initialized. This prevents Safari from running the first
+// animation frame against a partially evaluated module during app startup.
+startMotionPolish();

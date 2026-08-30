@@ -46,3 +46,52 @@ test("public Framer Motion layer adds purposeful product motion without changing
   assert.doesNotMatch(layer, /transition:\s*all/);
   assert.doesNotMatch(layer, /innerHTML|insertAdjacentHTML/);
 });
+
+test("public motion covers app-wide state feedback without animating layout properties", async () => {
+  const layer = await readFile("src/publicFramerMotionLayer.mjs", "utf8");
+
+  assert.match(layer, /function animateActionFeedback/);
+  assert.ok(
+    layer.indexOf('document.addEventListener("click", animateActionFeedback, true)') >
+      layer.indexOf("function animateActionFeedback"),
+    "WebKit must see the action feedback declaration before it is registered"
+  );
+  assert.ok(
+    layer.lastIndexOf("startMotionPolish();") >
+      layer.indexOf("function animateSelectionChanges"),
+    "WebKit side effects must start only after every motion handler is declared"
+  );
+  assert.ok(
+    layer.lastIndexOf("startMotionPolish();") >
+      layer.indexOf("const rememberedRowKeys"),
+    "WebKit side effects must start only after motion state containers initialize"
+  );
+  assert.match(layer, /function animateSelectionChanges/);
+  assert.match(layer, /function animateDisclosureChanges/);
+  assert.match(layer, /function animateValidationChange/);
+  assert.match(layer, /function animateMoneyChanges/);
+  assert.match(layer, /function syncBusyStates/);
+  assert.match(layer, /aria-checked/);
+  assert.match(layer, /aria-expanded/);
+  assert.match(layer, /aria-invalid/);
+  assert.match(layer, /aria-busy/);
+  assert.match(layer, /motion-control-busy/);
+  assert.match(layer, /characterData: true/);
+  assert.doesNotMatch(layer, /transition-property:[^;]*(?:width|height|top|left|margin)/);
+  assert.doesNotMatch(layer, /(?:bounce|elastic)/i);
+});
+
+test("all app dialog families share the motion and reduced-motion contract", async () => {
+  const layer = await readFile("src/publicFramerMotionLayer.mjs", "utf8");
+
+  assert.match(layer, /settlement-close-confirmation-backdrop/);
+  assert.match(layer, /accessibility-center-backdrop/);
+  assert.match(layer, /install-app-backdrop/);
+  assert.match(layer, /app-choice-picker-backdrop/);
+  assert.match(layer, /\[role="dialog"\], \[role="alertdialog"\]/);
+  assert.match(
+    layer,
+    /@media \(prefers-reduced-motion: reduce\)[\s\S]*?animation-duration: 1ms !important;[\s\S]*?transition-duration: 1ms !important;/
+  );
+  assert.match(layer, /accessibility-reduced-motion/);
+});

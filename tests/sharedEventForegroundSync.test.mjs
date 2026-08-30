@@ -108,3 +108,37 @@ test("opening event workspaces renders immediately and then forces a fresh read"
     );
   }
 });
+
+test("participant and share controls open immediately while refresh continues behind them", () => {
+  const participantsStart = appSource.indexOf(
+    'if (action === "open-event-participants")'
+  );
+  const participantsEnd = appSource.indexOf(
+    '\n  if (action ===',
+    participantsStart + 1
+  );
+  const participantsHandler = appSource.slice(participantsStart, participantsEnd);
+  const addStart = appSource.indexOf(
+    'if (action === "open-event-participant-add")'
+  );
+  const addEnd = appSource.indexOf('\n  if (action ===', addStart + 1);
+  const addHandler = appSource.slice(addStart, addEnd);
+
+  assert.ok(participantsStart >= 0, "participant action exists");
+  assert.ok(addStart >= 0, "share action exists");
+  assert.ok(
+    participantsHandler.indexOf("openEventDialog(") <
+      participantsHandler.indexOf("requestResumeSync("),
+    "the participant roster must render before network refresh"
+  );
+  assert.ok(
+    addHandler.indexOf("render();") < addHandler.indexOf("requestResumeSync("),
+    "the share routes must render before network refresh"
+  );
+  assert.doesNotMatch(participantsHandler, /await requestResumeSync/);
+  assert.doesNotMatch(addHandler, /await requestResumeSync/);
+  assert.match(
+    appSource,
+    /const DIALOG_OPEN_ACTIONS = new Set\(\[[\s\S]*?"open-event-participant-add"/
+  );
+});

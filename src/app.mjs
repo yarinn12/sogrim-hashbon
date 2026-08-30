@@ -302,6 +302,7 @@ const DIALOG_OPEN_ACTIONS = new Set([
   "show-expense-form",
   "edit-expense",
   "open-event-participants",
+  "open-event-participant-add",
   "review-duplicate-participants",
   "open-event-share",
   "open-event-settings"
@@ -12370,13 +12371,15 @@ async function handleClick(event) {
   }
 
   if (action === "open-event-participants") {
-    await requestResumeSync({ force: true });
-    openEventDialog(target.dataset.eventId, "participants", target);
+    const eventId = target.dataset.eventId;
+    if (!getEvent(eventId)) return;
+    openEventDialog(eventId, "participants", target);
+    requestResumeSync({ force: true, includeSecondary: false }).catch(() => {});
+    return;
   }
 
   if (action === "open-event-participant-add") {
     const eventId = target.dataset.eventId;
-    await requestResumeSync({ force: true });
     if (!getEvent(eventId)) return;
     const returnKind = eventDialog?.kind === "share" ? "share" : "participants";
     eventDialog = {
@@ -12389,6 +12392,7 @@ async function handleClick(event) {
     };
     render();
     reactivateDialogAfterRender(".event-modal");
+    requestResumeSync({ force: true }).catch(() => {});
     return;
   }
 

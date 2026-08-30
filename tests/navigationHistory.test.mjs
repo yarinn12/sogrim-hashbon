@@ -185,7 +185,7 @@ test("screen navigation resets scroll without disturbing dialogs on the same scr
 test("closing a dialog restores the exact action that opened it", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
-  assert.match(app, /openEventDialog\(target\.dataset\.eventId, "participants", target\)/);
+  assert.match(app, /openEventDialog\(eventId, "participants", target\)/);
   assert.match(app, /startExpenseDraft\(target\.dataset\.eventId, null, target\)/);
   assert.match(app, /function closeDialogWithHistory\(rewindSteps = 1\)/);
   assert.match(app, /deactivateDialog\(\{ deferFocus \}\)/);

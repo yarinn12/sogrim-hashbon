@@ -120,3 +120,48 @@ test("event closing remains responsive behind a stale sync lock", async ({ page 
   await profileButton.click();
   await expect(page.locator("#app")).toHaveAttribute("data-screen", "profile");
 });
+
+async function delayBackgroundRequests(page, delayMs = 2500) {
+  await page.route("**/*", async (route) => {
+    const resourceType = route.request().resourceType();
+    if (resourceType !== "fetch" && resourceType !== "xhr") {
+      await route.continue();
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "simulated slow sync" })
+    });
+  });
+}
+
+test("participants open immediately while the foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  await page.locator('[data-action="open-event-participants"]').click();
+  await expect(page.locator(".event-participant-roster-modal")).toBeVisible({
+    timeout: 800
+  });
+});
+
+test("share opens immediately while the foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  await page
+    .locator('.event-header-actions [data-action="open-event-participant-add"]')
+    .click();
+  const shareDialog = page.locator(".event-participant-add-route-modal");
+  await expect(shareDialog).toBeVisible({ timeout: 800 });
+  await expect(shareDialog).toContainText("מי מצטרף לאירוע?");
+});
