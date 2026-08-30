@@ -101,6 +101,13 @@ test("expenses and summary keep the exact same mobile event header", async () =>
   );
 });
 
+test("expense date dividers remain in document flow while the list scrolls", () => {
+  assert.match(
+    coherenceLayer,
+    /\.screen\[data-screen-kind="event"\][\s\S]*?\.expense-day-heading \{[\s\S]*?position: static !important;[\s\S]*?inset-block-start: auto !important;[\s\S]*?z-index: auto !important;/
+  );
+});
+
 test("mobile share choices remain separate when text grows", () => {
   const shareSection = coherenceLayer.slice(
     coherenceLayer.indexOf(".event-share-modal"),

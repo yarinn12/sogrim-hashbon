@@ -8203,7 +8203,7 @@ const CSS = `
 
   /* Event utilities stay recognizable without making the event hero noisy. */
   html.product-v1.ledger-workspace-v1.circle-design-v1
-    .screen[data-screen-kind="event"]
+    .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
     > .top
     .hero-actions.event-header-actions {
     width: 100% !important;
@@ -8213,7 +8213,7 @@ const CSS = `
   }
 
   html.product-v1.ledger-workspace-v1.circle-design-v1
-    .screen[data-screen-kind="event"]
+    .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
     > .top
     .hero-actions.event-header-actions
     .secondary-button.event-header-utility-button {
@@ -8230,7 +8230,7 @@ const CSS = `
   }
 
   html.product-v1.ledger-workspace-v1.circle-design-v1
-    .screen[data-screen-kind="event"]
+    .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
     > .top
     .hero-actions.event-header-actions
     .secondary-button.event-header-utility-button
@@ -8241,7 +8241,7 @@ const CSS = `
   }
 
   html.product-v1.ledger-workspace-v1.circle-design-v1
-    .screen[data-screen-kind="event"]
+    .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
     > .top
     .hero-actions.event-header-actions
     .secondary-button.event-header-utility-button
@@ -8253,7 +8253,7 @@ const CSS = `
   }
 
   html.product-v1.ledger-workspace-v1.circle-design-v1
-    .screen[data-screen-kind="event"]
+    .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
     > .top
     .hero-actions.event-header-actions
     .secondary-button.event-header-utility-button
@@ -20185,6 +20185,59 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-notes-screen .event-workspace-nav {
     margin-top: 0 !important;
+  }
+
+  /* The shared event header must not change shape when Notes is selected. */
+  html.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event-notes"]
+    > .top.event-overview-header {
+    min-height: 140px !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event-notes"]
+    > .top.event-overview-header
+    .hero-actions.event-header-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event-notes"]
+    > .top.event-overview-header
+    .hero-actions.event-header-actions
+    .secondary-button.event-header-utility-button {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    height: 54px !important;
+    min-height: 54px !important;
+    display: inline-flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 2px !important;
+    padding: 5px 4px !important;
+    border-radius: 14px !important;
+  }
+
+  html.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event-notes"]
+    > .top.event-overview-header
+    .event-header-utility-button
+    .event-header-action-label {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    clip: auto !important;
+    color: inherit !important;
+    font-size: 11px !important;
+    font-weight: 750 !important;
+    white-space: nowrap !important;
   }
 
   html.ledger-workspace-v1 .event-notes-intro {

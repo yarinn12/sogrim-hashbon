@@ -344,7 +344,7 @@ function prefersReducedMotion() {
 function renderBrandMark() {
   return `
     <span class="product-brand-mark" aria-hidden="true">
-      <img class="product-brand-image" src="./icon-192.png" alt="" width="192" height="192" />
+      <img class="product-brand-image" src="./app-icon-exterior-192.png" alt="" width="192" height="192" />
     </span>
   `;
 }

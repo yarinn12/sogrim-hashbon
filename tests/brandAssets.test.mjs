@@ -32,6 +32,20 @@ test("the new brand source drives every public logo format", async () => {
   assert.deepEqual(pngDimensions(appleIcon), { width: 180, height: 180 });
 });
 
+test("the app header uses the current exterior brand mark", async () => {
+  const [brandLayer, circleLayer] = await Promise.all([
+    readFile("src/publicBrandLayer.mjs", "utf8"),
+    readFile("src/publicCircleDesignLayer.mjs", "utf8")
+  ]);
+
+  assert.match(brandLayer, /product-brand-image[^>]+src="\.\/app-icon-exterior-192\.png"/);
+  assert.doesNotMatch(brandLayer, /product-brand-image[^>]+src="\.\/icon-192\.png"/);
+  assert.match(
+    circleLayer,
+    /querySelectorAll\("\.product-brand-image"\)[\s\S]+?setAttribute\("src", "\.\/app-icon-exterior-192\.png"\)/
+  );
+});
+
 test("native launcher and store icons use platform-safe versions of the same brand mark", async () => {
   const [installer, iosIcon, androidIcon, androidRoundIcon, adaptiveIcon, monochromeIcon, playIcon, exteriorIcon, manifest] = await Promise.all([
     readFile("scripts/install-exterior-app-icon.py", "utf8"),

@@ -4192,6 +4192,15 @@ const CSS = `
     box-sizing: border-box !important;
   }
 
+  /* Date dividers stay in the expense list flow instead of following the viewport. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-screen-kind="event"]
+    .expense-day-heading {
+    position: static !important;
+    inset-block-start: auto !important;
+    z-index: auto !important;
+  }
+
   /* Expense overflow menus are viewport-positioned above sticky actions and navigation. */
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .screen[data-screen-kind="event"]

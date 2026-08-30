@@ -136,13 +136,12 @@ test("an installed iPhone app keeps its session and restores cloud history", asy
   await expect(page.getByText(EVENT_NAME, { exact: true })).toBeVisible();
   expect(refreshRequests).toBe(1);
 
-  const savedAccessToken = await page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const session = JSON.parse(
       localStorage.getItem("settle-friends-account-session") || "null"
     );
     return session?.access_token ?? "";
-  });
-  expect(savedAccessToken).toBe("fresh-access-token");
+  })).toBe("fresh-access-token");
 
   await page.reload();
   await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);

@@ -172,6 +172,14 @@ test("native projects include store signing and Apple privacy requirements", asy
   );
   assert.match(androidActivity, /SplashScreen\.installSplashScreen\(this\)/);
   assert.match(androidActivity, /setBackgroundColor\(Color\.WHITE\)/);
+  assert.match(
+    androidActivity,
+    /if \(savedInstanceState == null && shouldRefreshWebBundleCache\(\)\)/
+  );
+  assert.match(androidActivity, /installedVersion == BuildConfig\.VERSION_CODE/);
+  assert.match(androidActivity, /putInt\(WEB_BUNDLE_VERSION_KEY, BuildConfig\.VERSION_CODE\)/);
+  assert.match(androidActivity, /clearCache\(true\)/);
+  assert.match(androidActivity, /post\(appWebView::reload\)/);
   assert.match(androidActivity, /setKeepOnScreenCondition/);
   assert.match(androidActivity, /return !webSplashReady/);
   assert.match(androidActivity, /SPLASH_SAFETY_TIMEOUT_MS = 2_500L/);

@@ -310,6 +310,27 @@ test("product metrics retry transient failures and drain large queues in bounded
 });
 
 test("local browser QA does not pollute production metrics while native localhost still reports", async () => {
+  let productionQaRequests = 0;
+  const productionQaHarness = createTransportHarness({
+    fetchImpl: async () => {
+      productionQaRequests += 1;
+      return { ok: true, status: 202 };
+    }
+  });
+  productionQaHarness.windowRef.location = {
+    protocol: "https:",
+    hostname: "sogrim-hesbon-app.vercel.app"
+  };
+  productionQaHarness.windowRef.__SOGRIM_AUTOMATED_QA__ = true;
+
+  const stopProductionQa = startProductMetricTransport(productionQaHarness.options);
+  productionQaHarness.documentRef.emit("sogrim:product-metric", {
+    detail: { eventName: "operation_failure", screen: "auth", detail: "auth:unknown" }
+  });
+  assert.equal(productionQaHarness.timerCount(), 0);
+  assert.equal(productionQaRequests, 0);
+  stopProductionQa();
+
   let browserRequests = 0;
   const browserHarness = createTransportHarness({
     fetchImpl: async () => {

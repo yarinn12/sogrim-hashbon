@@ -381,7 +381,7 @@ test("public first run and expense forms do not invent sample people or amounts"
   assert.match(brandLayer, /product-brand-lockup/);
   assert.match(brandLayer, /product-brand-mark/);
   assert.match(brandLayer, /product-brand-image/);
-  assert.match(brandLayer, /icon-192\.png/);
+  assert.match(brandLayer, /app-icon-exterior-192\.png/);
   assert.doesNotMatch(app, /placeholder="למשל דני"/);
   assert.doesNotMatch(app, /name: "מונית"/);
   assert.doesNotMatch(app, /total: "110"/);

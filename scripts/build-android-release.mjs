@@ -85,17 +85,13 @@ rmSync(releaseManifest, { force: true });
 rmSync(nativeDebugSymbols, { force: true });
 const buildStartedAt = Date.now();
 
-const command = process.platform === "win32" ? "cmd.exe" : gradle;
-const args = process.platform === "win32"
-  ? ["/d", "/s", "/c", gradle, "clean", "bundleRelease", "lintRelease", "--no-daemon", "--no-parallel"]
-  : ["clean", "bundleRelease", "lintRelease", "--no-daemon", "--no-parallel"];
-const result = spawnSync(command, args, {
-  cwd: androidRoot,
-  env,
-  stdio: "inherit",
-  shell: false
-});
-if (result.status !== 0) process.exit(result.status ?? 1);
+runGradle(["clean", "--no-daemon", "--no-parallel"]);
+// Keep packaging and lint in separate Gradle invocations. Capacitor plugins
+// share generated/intermediate directories between the two task graphs, and
+// running both in one graph can make lint observe files while packaging is
+// replacing them on Windows.
+runGradle(["bundleRelease", "--no-daemon", "--no-parallel"]);
+runGradle(["lintRelease", "--no-daemon", "--no-parallel"]);
 if (!existsSync(bundle)) throw new Error("Android release bundle was not created.");
 if (!existsSync(mergedManifest)) throw new Error("Android merged release manifest was not created.");
 
@@ -254,4 +250,18 @@ function isProcessRunning(pid) {
   } catch {
     return false;
   }
+}
+
+function runGradle(tasks) {
+  const command = process.platform === "win32" ? "cmd.exe" : gradle;
+  const args = process.platform === "win32"
+    ? ["/d", "/s", "/c", gradle, ...tasks]
+    : tasks;
+  const result = spawnSync(command, args, {
+    cwd: androidRoot,
+    env,
+    stdio: "inherit",
+    shell: false
+  });
+  if (result.status !== 0) process.exit(result.status ?? 1);
 }

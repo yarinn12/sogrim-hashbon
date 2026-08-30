@@ -1722,6 +1722,11 @@ test("empty expenses and empty summary share one add-expense pattern", async () 
     "function renderEventEmptyExpenseState",
     "function renderEventTypeGuide"
   );
+  const expenseEmptyState = sourceBetween(
+    app,
+    "function renderEventStartPanel",
+    "function renderEventCover"
+  );
   const settlementHero = sourceBetween(
     app,
     "function renderSettlementHero",
@@ -1739,13 +1744,15 @@ test("empty expenses and empty summary share one add-expense pattern", async () 
   assert.doesNotMatch(sharedEmptyState, /settlement-hero is-empty/);
   assert.match(settlementHero, /renderEventEmptyExpenseState\(event/);
   assert.match(settlementHero, /context: "summary"/);
-  assert.match(settlementHero, /eyebrow: eventTypeConfig\(event\.eventType\)\.label/);
+  assert.doesNotMatch(expenseEmptyState, /eyebrow:/);
+  assert.doesNotMatch(settlementHero, /eyebrow:/);
   assert.match(settlementHero, /title: "אין עדיין סיכום"/);
   assert.match(
     settlementHero,
     /הוסף הוצאה כדי לראות סיכום/
   );
-  assert.match(sharedEmptyState, /eyebrow \? `<span class="event-empty-expense-eyebrow/);
+  assert.doesNotMatch(sharedEmptyState, /event-empty-expense-eyebrow/);
+  assert.doesNotMatch(sharedEmptyState, /event-type-chip/);
 });
 
 test("new event creation makes a one-person roster explicit", async () => {

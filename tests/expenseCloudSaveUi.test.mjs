@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 
-test("expense save waits for cloud confirmation before closing", () => {
+test("expense save closes after a durable bounded save while cloud sync continues", () => {
   const start = appSource.indexOf("async function saveExpense(");
   const end = appSource.indexOf("\nfunction continueExpenseEntry", start);
   assert.notEqual(start, -1);
@@ -15,6 +15,16 @@ test("expense save waits for cloud confirmation before closing", () => {
   const closeDialog = source.indexOf("expenseDraft = null;");
   assert.ok(awaitSave > -1);
   assert.ok(closeDialog > awaitSave);
+  assert.match(
+    appSource,
+    /const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;/
+  );
+  assert.match(
+    source,
+    /foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS/
+  );
+  assert.match(source, /forceSharedEventIds: \[eventId\]/);
+  assert.doesNotMatch(source, /awaitCloud:\s*true/);
 });
 
 test("failed shared expense sync stays retryable after the durable state is restored", () => {
@@ -30,6 +40,16 @@ test("failed shared expense sync stays retryable after the durable state is rest
     source.indexOf("delete expenseDraft.id;") <
       source.indexOf("expenseDraft = null;")
   );
+});
+
+test("expense save gives immediate busy feedback and blocks duplicate taps", () => {
+  const start = appSource.indexOf("function syncExpenseSaveState()");
+  const end = appSource.indexOf("\nasync function saveExpense", start);
+  const source = appSource.slice(start, end);
+
+  assert.match(source, /expenseSaveInProgress \|\|/);
+  assert.match(source, /button\.textContent = "שומרים…"/);
+  assert.match(source, /button\.setAttribute\("aria-busy", "true"\)/);
 });
 
 test("expense deletion waits for the durable cloud outcome", () => {

@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=415"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=425"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -28,6 +28,40 @@ test("a fresh signup never inherits the previous device owner's name", async () 
     /name="displayName"[\s\S]*?value="\$\{escapeAttribute\(values\.displayName \?\? ""\)\}"/
   );
   assert.doesNotMatch(accountGate, /loadLocalProfile|previousProfile/);
+});
+
+test("a valid returning session paints local state before remote reconciliation", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const setup = layer.slice(
+    layer.indexOf("async function setupAccountAuth"),
+    layer.indexOf("function isLocalDevelopmentOrigin")
+  );
+  const reconcile = layer.slice(
+    layer.indexOf("async function reconcileResumedAccountSession"),
+    layer.indexOf("function lockForAccountSessionChange")
+  );
+
+  assert.match(
+    setup,
+    /!callbackSession &&[\s\S]*?!callbackCode &&[\s\S]*?!callbackType &&[\s\S]*?!recoverySessionActive &&[\s\S]*?!pendingEventInvite &&[\s\S]*?canResumeStoredSessionImmediately\(accountSession\)/
+  );
+  assert.ok(
+    setup.indexOf("resumeAccountLocally(resumedSession)") <
+      setup.indexOf("reconcileResumedAccountSession(resumedSession)"),
+    "the cached account must become interactive before cloud validation starts"
+  );
+  assert.match(
+    layer,
+    /function canResumeStoredSessionImmediately\(session\)[\s\S]*?!isExpiring\(session\)[\s\S]*?isFullProfileName\(accountProfile\.displayName\)[\s\S]*?normalizeUsername\(accountProfile\.username\)/
+  );
+  assert.match(
+    reconcile,
+    /restoreAccountSession\(resumedSession\)[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\([\s\S]*?restoreAccountSession\(refreshedSession\)/
+  );
+  assert.match(
+    reconcile,
+    /isTransientAccountError\(error\)[\s\S]*?scheduleAccountSessionRefresh\(ACCOUNT_REFRESH_RETRY_MS\)/
+  );
 });
 
 test("signup requires a username and keeps it through validation and account completion", async () => {

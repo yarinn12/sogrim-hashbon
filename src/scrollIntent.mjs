@@ -87,7 +87,11 @@ export function createScrollIntentTracker({
 
   function cancel({ id = 0, target = null, at = now() } = {}) {
     if (!activeGesture || activeGesture.id !== id) return false;
-    activeGesture.moved = true;
+    // Android WebView may cancel a stationary pointer when focus moves away
+    // from an input or the IME changes visibility. The browser can still emit
+    // the intended click afterwards. Treating every cancellation as a scroll
+    // consumed that first click, so suppress only gestures that actually moved
+    // or scrolled before they were cancelled.
     return end({ id, target, at });
   }
 

@@ -245,6 +245,26 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
 
   if (accountSession) {
+    const recoverySessionActive =
+      !callbackSession && loadAccountRecoverySession(accountSession);
+    const pendingEventInvite = parseInviteEventId(
+      pendingInviteUrl(window.location.href)
+    );
+    if (
+      !callbackSession &&
+      !callbackCode &&
+      !callbackType &&
+      !recoverySessionActive &&
+      !pendingEventInvite &&
+      canResumeStoredSessionImmediately(accountSession)
+    ) {
+      const resumedSession = accountSession;
+      resumeAccountLocally(resumedSession);
+      watchAccountControls();
+      enhanceAccountControls();
+      reconcileResumedAccountSession(resumedSession).catch(() => {});
+      return;
+    }
     if (!callbackSession && accountSession.user && navigator.onLine === false) {
       resumeAccountLocally(accountSession);
       watchAccountControls();
@@ -757,6 +777,65 @@ function resumeAccountLocally(session) {
   });
   unlockAccountGate();
   publishAccountSessionSync(session);
+}
+
+function canResumeStoredSessionImmediately(session) {
+  const accountProfile = accountProfileFromUser(session?.user);
+  return Boolean(
+    navigator.onLine !== false &&
+    !isExpiring(session) &&
+    accountProfile?.participantId &&
+    isFullProfileName(accountProfile.displayName) &&
+    normalizeUsername(accountProfile.username)
+  );
+}
+
+async function reconcileResumedAccountSession(resumedSession) {
+  const requestGeneration = accountRefreshGeneration;
+  try {
+    let restoredSession;
+    try {
+      restoredSession = await restoreAccountSession(resumedSession);
+    } catch (error) {
+      if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) {
+        throw error;
+      }
+      const refreshedSession = await refreshAccountSession(
+        runtimeConfig,
+        resumedSession,
+        globalThis.fetch,
+        { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+      );
+      if (!refreshedSession) throw error;
+      restoredSession = await restoreAccountSession(refreshedSession);
+    }
+
+    if (
+      requestGeneration !== accountRefreshGeneration ||
+      accountSession !== resumedSession
+    ) {
+      return null;
+    }
+    accountSession = saveAccountSession(restoredSession);
+    scheduleAccountSessionRefresh();
+    publishAccountSessionSync(accountSession);
+    return accountSession;
+  } catch (error) {
+    if (
+      requestGeneration !== accountRefreshGeneration ||
+      accountSession !== resumedSession
+    ) {
+      return null;
+    }
+    if (isTransientAccountError(error)) {
+      scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
+      return null;
+    }
+    clearAccountSession();
+    clearAccountRecoverySession();
+    lockForAccountSessionChange();
+    return null;
+  }
 }
 
 function lockForAccountSessionChange() {

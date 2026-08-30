@@ -704,7 +704,8 @@ function inspectionExpression() {
     };
     const bottomNav = [...document.querySelectorAll('.product-app-nav')].find(visible) || null;
     const settlementTail = document.querySelector('.settlement-stage > :last-child') ||
-      document.querySelector('.settlement-screen > .settlement-hero');
+      document.querySelector('.settlement-screen > .settlement-hero') ||
+      document.querySelector('.settlement-screen > .event-empty-expense-state');
     const bottomContentClearance = bottomNav && settlementTail
       ? Math.round(
           bottomNav.getBoundingClientRect().top -

@@ -29,7 +29,7 @@ test("public brand layer gives the app name a visible logo lockup", async () => 
   assert.doesNotMatch(brandLayer, /product-app-identity" aria-label=/);
   assert.match(brandLayer, /product-app-nav/);
   assert.match(brandLayer, /product-brand-image/);
-  assert.match(brandLayer, /icon-192\.png/);
+  assert.match(brandLayer, /app-icon-exterior-192\.png/);
   assert.match(brandLayer, /product-hero-artwork/);
   assert.match(brandLayer, /product-home-artwork/);
   assert.match(brandLayer, /product-empty-icon/);

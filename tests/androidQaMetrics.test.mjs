@@ -90,3 +90,14 @@ test("Android WebView QA ignores ad pages and selects the Capacitor app", async 
     assert.doesNotMatch(source, /pages\.find\(\(item\) => item\.type === "page"\)/);
   }
 });
+
+test("release startup QA separates UIAutomator latency from app launch time", async () => {
+  const smoke = await readFile("scripts/verify-android-native-smoke.mjs", "utf8");
+
+  assert.match(smoke, /interactiveObservationMs: interactive\.observedElapsedMs/);
+  assert.match(smoke, /const elapsedMs = nativeLaunchMs \|\| observedElapsedMs/);
+  assert.doesNotMatch(
+    smoke,
+    /elapsedMs: Math\.max\(nativeLaunchMs, observedElapsedMs\)/
+  );
+});

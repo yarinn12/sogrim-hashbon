@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 
 test("open shared events refresh quietly while the app remains visible", () => {
-  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_500;/);
+  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;/);
   assert.match(appSource, /window\.addEventListener\("focus", requestVisibleEventSync\);/);
   assert.match(
     appSource,
@@ -13,7 +13,15 @@ test("open shared events refresh quietly while the app remains visible", () => {
   );
   assert.match(
     appSource,
-    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*profileNameEditing[\s\S]*return requestResumeSync\(\{ includeSecondary: false \}\);[\s\S]*\}/
+    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*profileNameEditing[\s\S]*readSharedEventState\(config, credentials, eventId\)[\s\S]*mergeSharedEventIntoState\(state, sharedEventState, credentials\)[\s\S]*saveState\(state\);[\s\S]*render\(\);[\s\S]*\}/
+  );
+  assert.match(
+    appSource,
+    /if \(!eventId \|\| !credentials \|\| resumeSyncRequest\) \{[\s\S]*?return requestResumeSync\(\{ includeSecondary: false \}\);/
+  );
+  assert.match(
+    appSource,
+    /if \(saveRevisionAtRequest !== sharedStateSaveRevision\(\)\) \{[\s\S]*?queueForcedResumeSync\(\{ includeSecondary: false \}\)/
   );
   assert.doesNotMatch(
     appSource.slice(
@@ -78,9 +86,7 @@ test("a remote read discarded after a local save is immediately retried", () => 
 
 test("event entry points read the canonical event before editing or settling", () => {
   for (const action of [
-    "new-event-note",
     "open-event-note",
-    "settle",
     "show-expense-form",
     "continue-event-expense",
     "edit-expense"
@@ -94,6 +100,40 @@ test("event entry points read the canonical event before editing or settling", (
       `${action} must refresh the canonical shared event first`
     );
   }
+});
+
+test("creating a note opens the editor before refreshing shared state", () => {
+  const actionStart = appSource.indexOf('if (action === "new-event-note")');
+  const nextAction = appSource.indexOf("\n  if (action ===", actionStart + 1);
+  const handler = appSource.slice(actionStart, nextAction);
+
+  assert.ok(actionStart >= 0, "new note action exists");
+  assert.ok(
+    handler.indexOf('openEventDialogWithDetails(eventId, "note-editor"') <
+      handler.indexOf("requestResumeSync("),
+    "the note editor must render before network refresh"
+  );
+  assert.doesNotMatch(handler, /await requestResumeSync/);
+  assert.match(
+    handler,
+    /requestResumeSync\(\{ force: true, includeSecondary: false \}\)\.catch/
+  );
+});
+
+test("opening the settlement screen is never blocked by a shared-state refresh", () => {
+  const actionStart = appSource.indexOf('if (action === "settle")');
+  const nextAction = appSource.indexOf("\n  if (action ===", actionStart + 1);
+  const handler = appSource.slice(actionStart, nextAction);
+
+  assert.ok(actionStart >= 0, "settlement action exists");
+  assert.ok(
+    handler.indexOf("prepareSettlement(eventId)") <
+      handler.indexOf("requestResumeSync("),
+    "the settlement screen must render before network refresh"
+  );
+  assert.doesNotMatch(handler, /await requestResumeSync/);
+  assert.match(handler, /screen\.name !== "settlement" \|\| screen\.eventId !== eventId/);
+  assert.match(handler, /prepareEventTransfers\(syncedEvent\)/);
 });
 
 test("opening event workspaces renders immediately and then forces a fresh read", () => {

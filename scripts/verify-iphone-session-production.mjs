@@ -91,6 +91,27 @@ try {
 
   browser = await webkit.launch({ headless: true });
   const context = await browser.newContext({ ...devices["iPhone 13"] });
+  await context.addInitScript(() => {
+    Object.defineProperty(globalThis, "__SOGRIM_AUTOMATED_QA__", {
+      value: true,
+      configurable: false,
+      writable: false
+    });
+    const browserFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (input, init) => {
+      const requestUrl = input instanceof Request ? input.url : String(input ?? "");
+      if (new URL(requestUrl, globalThis.location.href).pathname === "/api/product-metrics") {
+        return Promise.resolve(new Response(JSON.stringify({ ok: true, qaSuppressed: true }), {
+          status: 202,
+          headers: { "content-type": "application/json" }
+        }));
+      }
+      return browserFetch(input, init);
+    };
+  });
+  await context.route("**/api/product-metrics", (route) =>
+    route.fulfill({ status: 202, json: { ok: true, qaSuppressed: true } })
+  );
   let page = await context.newPage();
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
   const gate = page.locator("#public-account-auth-gate");

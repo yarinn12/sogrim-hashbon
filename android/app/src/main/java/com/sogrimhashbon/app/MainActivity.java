@@ -1,5 +1,6 @@
 package com.sogrimhashbon.app;
 
+import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -12,6 +13,8 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
 
     private static final long SPLASH_SAFETY_TIMEOUT_MS = 2_500L;
+    private static final String WEB_BUNDLE_CACHE_PREFS = "sogrim_web_bundle_cache";
+    private static final String WEB_BUNDLE_VERSION_KEY = "installed_version_code";
     private boolean lightStatusBars = true;
     private volatile boolean webSplashReady = false;
 
@@ -36,7 +39,18 @@ public class MainActivity extends BridgeActivity {
         }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
-            getBridge().getWebView().setBackgroundColor(Color.WHITE);
+            WebView appWebView = getBridge().getWebView();
+            appWebView.setBackgroundColor(Color.WHITE);
+
+            // Capacitor serves bundled files through a local WebView origin. Android can
+            // otherwise retain an older HTTP response after an in-place app update even
+            // though the APK already contains the new assets. Clear only the WebView's
+            // resource cache (not cookies, localStorage, or app data) and reload once when
+            // the installed version changes so users always see the bundled update.
+            if (savedInstanceState == null && shouldRefreshWebBundleCache()) {
+                appWebView.clearCache(true);
+                appWebView.post(appWebView::reload);
+            }
         }
     }
 
@@ -53,6 +67,22 @@ public class MainActivity extends BridgeActivity {
 
     public void setWebSplashReady() {
         webSplashReady = true;
+    }
+
+    private boolean shouldRefreshWebBundleCache() {
+        if (BuildConfig.NATIVE_QA_WEBVIEW) return true;
+
+        SharedPreferences preferences = getSharedPreferences(
+            WEB_BUNDLE_CACHE_PREFS,
+            MODE_PRIVATE
+        );
+        int installedVersion = preferences.getInt(WEB_BUNDLE_VERSION_KEY, -1);
+        if (installedVersion == BuildConfig.VERSION_CODE) return false;
+
+        preferences.edit()
+            .putInt(WEB_BUNDLE_VERSION_KEY, BuildConfig.VERSION_CODE)
+            .apply();
+        return true;
     }
 
     private void applySystemBarStyle() {

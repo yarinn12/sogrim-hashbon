@@ -89,6 +89,7 @@ export function startProductMetricTransport({
     !documentRef?.addEventListener ||
     !windowRef?.addEventListener ||
     typeof fetchImpl !== "function" ||
+    windowRef?.__SOGRIM_AUTOMATED_QA__ === true ||
     isLocalBrowserQaRuntime(windowRef)
   ) {
     return () => {};

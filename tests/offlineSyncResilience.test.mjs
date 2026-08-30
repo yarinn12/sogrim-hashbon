@@ -502,6 +502,14 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);
   assert.match(localStore, /const FOREGROUND_SAVE_BUDGET_MS = 1_500;/);
   assert.match(localStore, /awaitCloud\s*\? cloudWriteQueue\s*:\s*settleSaveWithinUiBudget\(/);
+  assert.match(
+    localStore,
+    /foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS/
+  );
+  assert.match(
+    localStore,
+    /Boolean\(localSaved && pendingStateSaved\),\s*foregroundSaveBudgetMs/
+  );
   assert.match(localStore, /resetPendingSharedStateRetry\(\);/);
 });
 
@@ -961,7 +969,7 @@ test("a temporary workspace-only failure is accepted and schedules an automatic 
   }
 });
 
-test("a stalled cloud write returns control after the foreground budget without a failure", async () => {
+test("a stalled cloud write obeys a shorter requested foreground budget", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -1019,15 +1027,17 @@ test("a stalled cloud write returns control after the foreground budget without 
       `../src/data/localStore.mjs?stalled-cloud-write=${Date.now()}`
     );
     const startedAt = Date.now();
-    const result = await store.saveSharedState(changedState);
+    const result = await store.saveSharedState(changedState, {
+      foregroundSaveBudgetMs: 350
+    });
     const elapsedMs = Date.now() - startedAt;
 
     assert.equal(result.ok, true);
     assert.equal(result.mode, "queued");
     assert.equal(result.pending, true);
     assert.ok(result.completion instanceof Promise);
-    assert.ok(elapsedMs >= 1_000, `foreground budget returned too early (${elapsedMs}ms)`);
-    assert.ok(elapsedMs < 3_000, `foreground budget blocked too long (${elapsedMs}ms)`);
+    assert.ok(elapsedMs >= 250, `foreground budget returned too early (${elapsedMs}ms)`);
+    assert.ok(elapsedMs < 1_000, `foreground budget blocked too long (${elapsedMs}ms)`);
     assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`));
     assert.equal(
       dispatched.some((event) => event.detail?.status === "reconnecting"),

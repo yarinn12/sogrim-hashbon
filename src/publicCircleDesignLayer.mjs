@@ -8134,8 +8134,8 @@ function scheduleRefresh() {
 
 function keepBrandAssetsCurrent() {
   document.querySelectorAll(".product-brand-image").forEach((image) => {
-    if (image.getAttribute("src") !== "./icon-192.png") {
-      image.setAttribute("src", "./icon-192.png");
+    if (image.getAttribute("src") !== "./app-icon-exterior-192.png") {
+      image.setAttribute("src", "./app-icon-exterior-192.png");
     }
   });
 

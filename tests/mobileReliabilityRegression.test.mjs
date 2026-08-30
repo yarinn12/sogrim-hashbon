@@ -68,7 +68,11 @@ test("quick expense batches wait for a durable result and emit one bounded activ
   );
 
   assert.match(quickSave, /if \(!expenseDraft \|\| expenseSaveInProgress\) return/);
-  assert.match(quickSave, /const saveResult = await persistState\(\{[\s\S]*?awaitCloud: true/);
+  assert.match(
+    quickSave,
+    /const saveResult = await persistState\(\{[\s\S]*?forceSharedEventIds: \[eventId\]/
+  );
+  assert.doesNotMatch(quickSave, /awaitCloud:\s*true/);
   assert.match(quickSave, /if \(!saveResult\?\.ok\)/);
   assert.match(quickSave, /state = previousState/);
   assert.match(quickSave, /publishReferralActivityAfterSave\(/);

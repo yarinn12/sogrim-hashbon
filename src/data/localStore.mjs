@@ -732,7 +732,8 @@ export async function saveSharedState(state) {
     forceSharedParticipantIds = [],
     forceSharedEventIds = [],
     suppressRevertNotice = false,
-    awaitCloud = false
+    awaitCloud = false,
+    foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS
   } = arguments[1] ?? {};
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
@@ -924,7 +925,8 @@ export async function saveSharedState(state) {
       ? cloudWriteQueue
       : settleSaveWithinUiBudget(
           cloudWriteQueue,
-          Boolean(localSaved && pendingStateSaved)
+          Boolean(localSaved && pendingStateSaved),
+          foregroundSaveBudgetMs
         );
   }
 
@@ -1511,7 +1513,11 @@ function shouldDeferPendingSharedStateRetry() {
   );
 }
 
-async function settleSaveWithinUiBudget(saveRequest, durablePendingSaved) {
+async function settleSaveWithinUiBudget(
+  saveRequest,
+  durablePendingSaved,
+  foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS
+) {
   if (!durablePendingSaved || typeof globalThis.setTimeout !== "function") {
     return saveRequest;
   }
@@ -1526,7 +1532,7 @@ async function settleSaveWithinUiBudget(saveRequest, durablePendingSaved) {
         pending: true,
         completion: saveRequest
       });
-    }, FOREGROUND_SAVE_BUDGET_MS);
+    }, Math.max(0, Number(foregroundSaveBudgetMs) || 0));
   });
   try {
     return await Promise.race([saveRequest, queuedResult]);

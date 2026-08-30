@@ -49,7 +49,7 @@ test("a tap, small finger drift and keyboard activation remain clickable", () =>
   );
 });
 
-test("a touch-driven scroll and pointer cancellation cannot activate the touched control", () => {
+test("a touch-driven scroll and moved pointer cancellation cannot activate the touched control", () => {
   let clock = 300;
   const tracker = createScrollIntentTracker({ now: () => clock });
   const button = createTarget();
@@ -61,8 +61,21 @@ test("a touch-driven scroll and pointer cancellation cannot activate the touched
   assert.equal(tracker.shouldSuppressClick({ target: button, detail: 1 }), true);
 
   tracker.begin({ id: 4, x: 0, y: 0, target: button });
+  tracker.move({ id: 4, x: 0, y: 18, target: button });
   assert.equal(tracker.cancel({ id: 4, target: button }), true);
   assert.equal(tracker.shouldSuppressClick({ target: button, detail: 1 }), true);
+});
+
+test("a stationary WebView pointer cancellation does not consume the intended click", () => {
+  const tracker = createScrollIntentTracker();
+  const button = createTarget();
+
+  tracker.begin({ id: 9, x: 40, y: 80, target: button });
+  assert.equal(tracker.cancel({ id: 9, target: button }), false);
+  assert.equal(
+    tracker.shouldSuppressClick({ target: button, detail: 1, pointerType: "touch" }),
+    false
+  );
 });
 
 test("an unrelated scroll during a stationary tap does not consume its first click", () => {
@@ -104,7 +117,7 @@ test("the global guard loads before the app click layers and ships offline", asy
   assert.ok(guardIndex >= 0);
   assert.ok(guardIndex < appIndex);
   assert.ok(guardIndex < accountIndex);
-  assert.match(serviceWorker, /settle-friends-live-v415/);
+  assert.match(serviceWorker, /settle-friends-live-v425/);
   assert.match(serviceWorker, /publicScrollIntentLayer\.mjs/);
   assert.match(serviceWorker, /scrollIntent\.mjs/);
 });

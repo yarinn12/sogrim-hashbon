@@ -281,7 +281,7 @@ const RESUME_SYNC_COOLDOWN_MS = 1_000;
 // Shared state is the product's source of truth across devices. Poll an open
 // event frequently enough that a completed action on another phone appears as
 // live UI, while friends and notifications keep their lower background rate.
-const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_500;
+const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
   "home",
@@ -419,6 +419,7 @@ let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
 let expenseSaveInProgress = false;
+const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;
 const expenseDeleteRequests = new Set();
 let paymentReminderBusyId = "";
 const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
@@ -527,6 +528,7 @@ let resumeSyncRequest = null;
 let resumeSyncFollowUpRequest = null;
 let resumeSyncFollowUpPending = false;
 let resumeSyncFollowUpIncludeSecondary = false;
+let visibleEventSyncRequest = null;
 let pendingEventMembershipRetryRequest = null;
 let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
@@ -4312,7 +4314,6 @@ function renderEventStartPanel(event) {
   const participantCount = activeEventParticipants(event).length;
   return renderEventEmptyExpenseState(event, {
     context: "expenses",
-    eyebrow: type.label,
     title: "אין עדיין הוצאות",
     description: formatCount(participantCount, "משתתף", "משתתפים"),
     actionLabel: type.actionLabel.replace("מסעדה", "").trim() || "הוסף הוצאה"
@@ -4340,7 +4341,6 @@ function renderEventCover(event) {
 
 function renderEventEmptyExpenseState(event, {
   context,
-  eyebrow,
   title,
   description,
   actionLabel = "הוסף הוצאה"
@@ -4353,7 +4353,6 @@ function renderEventEmptyExpenseState(event, {
   return `
     <section class="panel event-empty-expense-state event-empty-expense-${escapeAttribute(context)}" ${context === "expenses" ? 'id="event-expenses"' : ""} aria-labelledby="${titleId}">
       <div class="event-empty-expense-copy">
-        ${eyebrow ? `<span class="event-empty-expense-eyebrow event-type-chip">${escapeHtml(eyebrow)}</span>` : ""}
         <h2 id="${titleId}">${escapeHtml(title)}</h2>
         <p class="muted">${escapeHtml(description)}</p>
       </div>
@@ -4467,7 +4466,7 @@ function renderEventNotes(event) {
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
         ${notes.length
           ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים", false)}`
-          : renderEventNotesEmptyState(event, canEdit)}
+          : renderEventNotesEmptyState()}
       </section>
 
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
@@ -4518,15 +4517,12 @@ function renderEventNoteRow(event, note) {
   `;
 }
 
-function renderEventNotesEmptyState(event, canEdit) {
+function renderEventNotesEmptyState() {
   return `
     <section class="panel event-notes-empty">
       <span class="event-notes-empty-icon" aria-hidden="true">${iconSvg("message")}</span>
       <h2>עוד אין פתקים משותפים</h2>
       <p>אפשר לשמור כאן פרטי טיסה, רשימת ציוד, כתובות וכל דבר שחשוב לכל משתתפי האירוע.</p>
-      <button class="primary-button" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
-        ${canEdit ? "כתבו את הפתק הראשון" : "האירוע סגור"}
-      </button>
     </section>
   `;
 }
@@ -9912,7 +9908,6 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
   if (!hasExpenses) {
     return renderEventEmptyExpenseState(event, {
       context: "summary",
-      eyebrow: eventTypeConfig(event.eventType).label,
       title: "אין עדיין סיכום",
       description: "הוסף הוצאה כדי לראות סיכום"
     });
@@ -12106,7 +12101,6 @@ async function handleClick(event) {
 
   if (action === "new-event-note") {
     const eventId = target.dataset.eventId;
-    await requestResumeSync({ force: true, includeSecondary: false });
     const selectedEvent = getEvent(eventId);
     if (!selectedEvent || !canCurrentParticipantEdit(selectedEvent)) return;
     openEventDialogWithDetails(eventId, "note-editor", target, {
@@ -12117,6 +12111,7 @@ async function handleClick(event) {
       error: "",
       saving: false
     });
+    requestResumeSync({ force: true, includeSecondary: false }).catch(() => {});
     return;
   }
 
@@ -13127,8 +13122,18 @@ async function handleClick(event) {
   if (action === "settle") {
     notice = "";
     eventDialog = null;
-    await requestResumeSync({ force: true, includeSecondary: false });
-    prepareSettlement(target.dataset.eventId);
+    const eventId = target.dataset.eventId;
+    prepareSettlement(eventId);
+    requestResumeSync({ force: true, includeSecondary: false })
+      .then(() => {
+        if (screen.name !== "settlement" || screen.eventId !== eventId) return;
+        const syncedEvent = getEvent(eventId);
+        if (!syncedEvent) return;
+        prepareEventTransfers(syncedEvent);
+        persistState();
+        render();
+      })
+      .catch(() => {});
     return;
   }
 
@@ -18221,11 +18226,22 @@ function syncExpenseConfirmationSummary() {
 
 function syncExpenseSaveState() {
   if (!expenseDraft) return;
-  const isDisabled = !hasPositiveExpenseTotal(expenseDraft.total);
+  const isDisabled =
+    expenseSaveInProgress || !hasPositiveExpenseTotal(expenseDraft.total);
   app
     .querySelectorAll('[data-action="save-expense"], [data-action="save-expense-and-continue"]')
     .forEach((button) => {
       button.disabled = isDisabled;
+      if (expenseSaveInProgress) {
+        button.dataset.idleLabel ||= button.textContent.trim();
+        button.textContent = "שומרים…";
+        button.setAttribute("aria-busy", "true");
+      } else {
+        if (button.dataset.idleLabel) {
+          button.textContent = button.dataset.idleLabel;
+        }
+        button.removeAttribute("aria-busy");
+      }
     });
 }
 
@@ -18243,6 +18259,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
   }
 
   expenseSaveInProgress = true;
+  syncExpenseSaveState();
   try {
     const total = parseMoneyInput(expenseDraft.total);
     const payers = mergePayers(
@@ -18291,7 +18308,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     );
     reconcileEventTransfers(getEvent(eventId), previousTransfers);
     const saveRequest = persistState({
-      awaitCloud: true,
+      foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
       forceSharedEventIds: [eventId]
     });
     const saveResult = await saveRequest;
@@ -18342,6 +18359,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     }
   } finally {
     expenseSaveInProgress = false;
+    if (expenseDraft) syncExpenseSaveState();
   }
 }
 
@@ -18405,6 +18423,7 @@ async function saveQuickExpenses(eventId) {
   }
 
   expenseSaveInProgress = true;
+  syncExpenseSaveState();
   const previousState = cloneNavigationValue(state);
   try {
     const result = buildQuickItemExpenses({
@@ -18445,7 +18464,7 @@ async function saveQuickExpenses(eventId) {
     }
     reconcileEventTransfers(event, previousTransfers);
     const saveResult = await persistState({
-      awaitCloud: true,
+      foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
       forceSharedEventIds: [eventId]
     });
     if (!saveResult?.ok) {
@@ -18484,6 +18503,7 @@ async function saveQuickExpenses(eventId) {
     return { ok: false, error };
   } finally {
     expenseSaveInProgress = false;
+    if (expenseDraft) syncExpenseSaveState();
   }
 }
 
@@ -21593,7 +21613,43 @@ function requestVisibleEventSync() {
     return Promise.resolve();
   }
 
-  return requestResumeSync({ includeSecondary: false });
+  const eventId = String(screen.eventId ?? "").trim();
+  const event = eventId ? getEvent(eventId) : null;
+  const credentials = eventShareCredentials(event);
+  if (!eventId || !credentials || resumeSyncRequest) {
+    return requestResumeSync({ includeSecondary: false });
+  }
+  if (visibleEventSyncRequest) return visibleEventSyncRequest;
+
+  const saveRevisionAtRequest = sharedStateSaveRevision();
+  visibleEventSyncRequest = loadRuntimeConfig()
+    .then((config) => {
+      runtimeConfig = config;
+      return readSharedEventState(config, credentials, eventId);
+    })
+    .then((sharedEventState) => {
+      if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
+        void queueForcedResumeSync({ includeSecondary: false });
+        return;
+      }
+      if (!sharedEventState) {
+        return requestResumeSync({ force: true, includeSecondary: false });
+      }
+
+      const nextState = syncLocalProfile(
+        mergeSharedEventIntoState(state, sharedEventState, credentials)
+      );
+      if (!hasSharedStateChanged(state, nextState)) return;
+      state = nextState;
+      saveState(state);
+      render();
+    })
+    .catch(() => requestResumeSync({ includeSecondary: false }))
+    .finally(() => {
+      visibleEventSyncRequest = null;
+    });
+
+  return visibleEventSyncRequest;
 }
 
 bootstrapApp();

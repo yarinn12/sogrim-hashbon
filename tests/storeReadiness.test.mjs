@@ -172,7 +172,9 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(releaseBuilder, /fingerprintAndroidReleaseSource/);
   assert.match(releaseBuilder, /Android merged release manifest/);
   assert.match(releaseBuilder, /Another Android release build is already running/);
-  assert.match(releaseBuilder, /"clean", "bundleRelease", "lintRelease", "--no-daemon"/);
+  assert.match(releaseBuilder, /runGradle\(\["clean", "--no-daemon", "--no-parallel"\]\)/);
+  assert.match(releaseBuilder, /runGradle\(\["bundleRelease", "--no-daemon", "--no-parallel"\]\)/);
+  assert.match(releaseBuilder, /runGradle\(\["lintRelease", "--no-daemon", "--no-parallel"\]\)/);
   assert.match(readinessCheck, /Android AAB matches current version, hash, signing certificate and source/);
   assert.match(readinessCheck, /validateNativeDebugSymbolsEvidence/);
   assert.match(readinessCheck, /localReady, liveReady, submissionReady/);
