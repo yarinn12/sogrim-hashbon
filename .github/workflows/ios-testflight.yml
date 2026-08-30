@@ -7,11 +7,11 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.15"
+        default: "4.16"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "143"
+        default: "144"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true

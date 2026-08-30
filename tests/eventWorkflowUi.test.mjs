@@ -1734,9 +1734,12 @@ test("empty expenses and empty summary share one add-expense pattern", async () 
   assert.match(sharedEmptyState, /canReopenFromEmptySummary/);
   assert.match(sharedEmptyState, /settlement-reopen-action/);
   assert.match(sharedEmptyState, /פתח אירוע מחדש/);
+  assert.doesNotMatch(sharedEmptyState, /event-start-panel/);
+  assert.doesNotMatch(sharedEmptyState, /event-start-copy/);
+  assert.doesNotMatch(sharedEmptyState, /settlement-hero is-empty/);
   assert.match(settlementHero, /renderEventEmptyExpenseState\(event/);
   assert.match(settlementHero, /context: "summary"/);
-  assert.match(settlementHero, /eyebrow: ""/);
+  assert.match(settlementHero, /eyebrow: eventTypeConfig\(event\.eventType\)\.label/);
   assert.match(settlementHero, /title: "אין עדיין סיכום"/);
   assert.match(
     settlementHero,

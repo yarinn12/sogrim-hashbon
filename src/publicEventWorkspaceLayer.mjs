@@ -36,7 +36,7 @@ function enhanceEventWorkspace() {
 
   const state = loadState();
   const event = state.events?.find((item) => item.id === eventId);
-  if (!event || app.querySelector(".settlement-hero")) return;
+  if (!event || app.querySelector(".settlement-hero, .event-empty-expense-state")) return;
 
   const summary = app.querySelector(".summary-strip");
   if (!summary) return;
@@ -47,7 +47,7 @@ function enhanceEventWorkspace() {
 
 function enhanceSettlementWorkspace() {
   const copyButton = app.querySelector('[data-action="copy-settlement"][data-event-id]');
-  if (!copyButton || app.querySelector(".settlement-hero")) return;
+  if (!copyButton || app.querySelector(".settlement-hero, .event-empty-expense-state")) return;
 
   const state = loadState();
   const event = state.events?.find((item) => item.id === copyButton.dataset.eventId);

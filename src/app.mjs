@@ -4351,8 +4351,8 @@ function renderEventEmptyExpenseState(event, {
     isEventClosed(event) &&
     canCurrentParticipantManage(event);
   return `
-    <section class="panel event-empty-expense-state event-empty-expense-${escapeAttribute(context)} ${context === "expenses" ? "event-start-panel" : "settlement-hero is-empty"}" ${context === "expenses" ? 'id="event-expenses"' : ""} aria-labelledby="${titleId}">
-      <div class="event-empty-expense-copy ${context === "expenses" ? "event-start-copy" : ""}">
+    <section class="panel event-empty-expense-state event-empty-expense-${escapeAttribute(context)}" ${context === "expenses" ? 'id="event-expenses"' : ""} aria-labelledby="${titleId}">
+      <div class="event-empty-expense-copy">
         ${eyebrow ? `<span class="event-empty-expense-eyebrow event-type-chip">${escapeHtml(eyebrow)}</span>` : ""}
         <h2 id="${titleId}">${escapeHtml(title)}</h2>
         <p class="muted">${escapeHtml(description)}</p>
@@ -9912,7 +9912,7 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
   if (!hasExpenses) {
     return renderEventEmptyExpenseState(event, {
       context: "summary",
-      eyebrow: "",
+      eyebrow: eventTypeConfig(event.eventType).label,
       title: "אין עדיין סיכום",
       description: "הוסף הוצאה ראשונה כדי לראות כאן מי שילם וכמה נשאר להתחשבן."
     });

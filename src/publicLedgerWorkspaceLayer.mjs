@@ -19069,10 +19069,6 @@ const CSS = `
     min-height: 48px !important;
   }
 
-  html.ledger-workspace-v1 .event-empty-expense-summary .event-empty-expense-copy {
-    gap: 7px !important;
-  }
-
   html.ledger-workspace-v1 .event-empty-expense-summary .event-empty-expense-copy h2 {
     color: var(--ledger-ink) !important;
   }
