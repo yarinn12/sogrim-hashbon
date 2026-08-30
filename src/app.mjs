@@ -273,11 +273,15 @@ const APP_HISTORY_STATE_KEY = "settleFriendsAppHistory";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_DESTINATION_EVENT = "settle-friends:native-destination";
 const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
-const RESUME_SYNC_COOLDOWN_MS = 5_000;
-// Shared state is the product's source of truth across devices. Six seconds is
-// short enough for a foreground phone to feel live while the separate friend
-// and notification refreshes remain on their lower-frequency interval.
-const ACTIVE_EVENT_SYNC_INTERVAL_MS = 6_000;
+// iOS may suspend a PWA while it is still visually in the foreground. Keep the
+// cooldown deliberately short, and force a read when Safari reports that the
+// document became visible again, so a second device never has to wait for the
+// next background polling window to see a completed action.
+const RESUME_SYNC_COOLDOWN_MS = 1_000;
+// Shared state is the product's source of truth across devices. A three-second
+// foreground poll keeps two phones feeling live without polling friends and
+// notifications at the same rate.
+const ACTIVE_EVENT_SYNC_INTERVAL_MS = 3_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
   "home",
@@ -513,7 +517,7 @@ window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted)
 window.addEventListener("focus", requestVisibleEventSync);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    requestResumeSync();
+    requestResumeSync({ force: true });
     retryPendingEventMembershipInvitations();
     retryPendingEventJoins();
     retryPendingAccountLinks();

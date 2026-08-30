@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 
 test("open shared events refresh quietly while the app remains visible", () => {
-  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 6_000;/);
+  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 3_000;/);
   assert.match(appSource, /window\.addEventListener\("focus", requestVisibleEventSync\);/);
   assert.match(
     appSource,
@@ -43,5 +43,13 @@ test("a received push forces the shared event to refresh before the inbox opens"
   assert.match(
     appSource,
     /if \(!force && Date\.now\(\) - lastResumeSyncAt < RESUME_SYNC_COOLDOWN_MS\)/
+  );
+});
+
+test("an iPhone returning to the foreground bypasses the polling cooldown", () => {
+  assert.match(appSource, /const RESUME_SYNC_COOLDOWN_MS = 1_000;/);
+  assert.match(
+    appSource,
+    /document\.addEventListener\("visibilitychange", \(\) => \{[\s\S]*?document\.visibilityState === "visible"[\s\S]*?requestResumeSync\(\{ force: true \}\)/
   );
 });
