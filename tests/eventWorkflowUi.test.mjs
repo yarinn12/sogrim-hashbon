@@ -1743,7 +1743,7 @@ test("empty expenses and empty summary share one add-expense pattern", async () 
   assert.match(settlementHero, /title: "אין עדיין סיכום"/);
   assert.match(
     settlementHero,
-    /הוסף הוצאה ראשונה כדי לראות כאן מי שילם וכמה נשאר להתחשבן/
+    /הוסף הוצאה כדי לראות סיכום/
   );
   assert.match(sharedEmptyState, /eyebrow \? `<span class="event-empty-expense-eyebrow/);
 });

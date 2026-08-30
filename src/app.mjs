@@ -9914,7 +9914,7 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
       context: "summary",
       eyebrow: eventTypeConfig(event.eventType).label,
       title: "אין עדיין סיכום",
-      description: "הוסף הוצאה ראשונה כדי לראות כאן מי שילם וכמה נשאר להתחשבן."
+      description: "הוסף הוצאה כדי לראות סיכום"
     });
   }
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");

@@ -87,8 +87,8 @@ const buildStartedAt = Date.now();
 
 const command = process.platform === "win32" ? "cmd.exe" : gradle;
 const args = process.platform === "win32"
-  ? ["/d", "/s", "/c", gradle, "clean", "bundleRelease", "lintRelease", "--no-daemon"]
-  : ["clean", "bundleRelease", "lintRelease", "--no-daemon"];
+  ? ["/d", "/s", "/c", gradle, "clean", "bundleRelease", "lintRelease", "--no-daemon", "--no-parallel"]
+  : ["clean", "bundleRelease", "lintRelease", "--no-daemon", "--no-parallel"];
 const result = spawnSync(command, args, {
   cwd: androidRoot,
   env,
