@@ -278,10 +278,10 @@ const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 // document became visible again, so a second device never has to wait for the
 // next background polling window to see a completed action.
 const RESUME_SYNC_COOLDOWN_MS = 1_000;
-// Shared state is the product's source of truth across devices. A three-second
-// foreground poll keeps two phones feeling live without polling friends and
-// notifications at the same rate.
-const ACTIVE_EVENT_SYNC_INTERVAL_MS = 3_000;
+// Shared state is the product's source of truth across devices. Poll an open
+// event frequently enough that a completed action on another phone appears as
+// live UI, while friends and notifications keep their lower background rate.
+const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_500;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
   "home",

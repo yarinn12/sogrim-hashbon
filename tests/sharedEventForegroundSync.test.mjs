@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 
 test("open shared events refresh quietly while the app remains visible", () => {
-  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 3_000;/);
+  assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_500;/);
   assert.match(appSource, /window\.addEventListener\("focus", requestVisibleEventSync\);/);
   assert.match(
     appSource,

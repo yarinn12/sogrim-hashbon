@@ -43,6 +43,9 @@ loadEnvFile(".env");
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey = process.env.SUPABASE_ANON_KEY || requiredEnv("SUPABASE_PUBLISHABLE_KEY");
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+const browserOrigin = String(
+  process.env.TWO_ACCOUNT_QA_ORIGIN || "https://sogrim-hesbon-app.vercel.app"
+).replace(/\/+$/, "");
 const suffix = `${Date.now()}-${randomBytes(4).toString("hex")}`;
 const eventId = `event-two-account-${suffix}`;
 const eventCredentials = {
@@ -228,7 +231,68 @@ try {
     username: joiner.username,
     eventId,
     eventName: "בדיקת שני חשבונות",
-    token: openInvite.payload.token
+    token: openInvite.payload.token,
+    afterJoin: async (page) => {
+      await page
+        .locator(`[data-action="open-event"][data-event-id="${eventId}"]`)
+        .first()
+        .click();
+      await page
+        .locator(`[data-screen-kind="event"][data-event-id="${eventId}"]`)
+        .first()
+        .waitFor({ timeout: 10_000 });
+
+      const foregroundExpenseId = `expense-foreground-${suffix}`;
+      const foregroundExpenseName = `בדיקת רענון חי ${suffix}`;
+      ownerState = addExpense(ownerState, {
+        id: foregroundExpenseId,
+        name: foregroundExpenseName,
+        total: 1_234,
+        payers: [{ participantId: ownerProfile.participantId, amount: 1_234 }],
+        sharedByParticipantIds: [
+          ownerProfile.participantId,
+          joinerProfile.participantId
+        ],
+        createdByParticipantId: ownerProfile.participantId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      const foregroundCreateStartedAt = performance.now();
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page
+        .getByText(foregroundExpenseName, { exact: true })
+        .waitFor({ timeout: 10_000 });
+      const foregroundCreateElapsed = performance.now() - foregroundCreateStartedAt;
+      recordSyncTiming(
+        "foreground-expense-create-to-open-iphone",
+        foregroundCreateStartedAt
+      );
+      assert.ok(
+        foregroundCreateElapsed <= 3_500,
+        `Open iPhone did not show the new expense within 3.5 seconds (${foregroundCreateElapsed.toFixed(1)}ms)`
+      );
+
+      ownerState = removeExpense(
+        ownerState,
+        eventId,
+        foregroundExpenseId,
+        new Date().toISOString()
+      );
+      const foregroundDeleteStartedAt = performance.now();
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page
+        .getByText(foregroundExpenseName, { exact: true })
+        .waitFor({ state: "detached", timeout: 10_000 });
+      const foregroundDeleteElapsed = performance.now() - foregroundDeleteStartedAt;
+      recordSyncTiming(
+        "foreground-expense-delete-from-open-iphone",
+        foregroundDeleteStartedAt
+      );
+      assert.ok(
+        foregroundDeleteElapsed <= 3_500,
+        `Open iPhone did not remove the deleted expense within 3.5 seconds (${foregroundDeleteElapsed.toFixed(1)}ms)`
+      );
+    }
   });
   let joinerState = await loadCloudState(
     joinerConfig,
@@ -672,6 +736,8 @@ try {
       replacementInviteRevokesPreviousLink: true,
       newlyGeneratedInviteRedeemed: true,
       productionIphoneLoginJoinedFromNewLink: true,
+      openIphoneForegroundCreateAutoSynced: true,
+      openIphoneForegroundDeleteAutoSynced: true,
       connectedParticipantJoined: true,
       collaborativeMemberAddedAcceptedFriend: true,
       collaborativeMemberRemovalBlocked: true,
@@ -762,7 +828,8 @@ async function joinThroughProductionBrowser({
   username,
   eventId,
   eventName,
-  token
+  token,
+  afterJoin = null
 }) {
   const browser = await webkit.launch({ headless: true });
   try {
@@ -788,7 +855,7 @@ async function joinThroughProductionBrowser({
       authDiagnostics.push(entry);
       if (response.status() >= 400) failedResponses.push(entry);
     });
-    const inviteUrl = `https://sogrim-hesbon-app.vercel.app/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(token)}`;
+    const inviteUrl = `${browserOrigin}/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(token)}`;
     await invitePage.goto(inviteUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await invitePage.locator("#public-account-auth-gate").waitFor({ timeout: 20_000 });
 
@@ -796,7 +863,7 @@ async function joinThroughProductionBrowser({
     // invitation address is no longer visible. The account gate must recover
     // the durable handoff before authentication and profile completion.
     page = await context.newPage();
-    await page.goto("https://sogrim-hesbon-app.vercel.app/", {
+    await page.goto(`${browserOrigin}/`, {
       waitUntil: "domcontentloaded",
       timeout: 30_000
     });
@@ -833,6 +900,7 @@ async function joinThroughProductionBrowser({
     }
     await page.getByText(eventName, { exact: true }).first().waitFor({ timeout: 30_000 });
     assert.equal(await page.locator("#app").getAttribute("inert"), null);
+    if (typeof afterJoin === "function") await afterJoin(page);
     await context.close();
   } finally {
     await browser.close();
