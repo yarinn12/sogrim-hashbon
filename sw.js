@@ -1,5 +1,5 @@
-const PWA_RELEASE = "403";
-const CACHE_NAME = "settle-friends-live-v403";
+const PWA_RELEASE = "404";
+const CACHE_NAME = "settle-friends-live-v404";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -56,6 +56,7 @@ const CACHE_FILES = [
   "/src/data/eventInvites.mjs",
   "/src/data/openInviteTokenStore.mjs",
   "/src/data/pendingAccountLinks.mjs",
+  "/src/data/pendingEventJoins.mjs",
   "/src/data/notificationInbox.mjs",
   "/src/data/paymentReminders.mjs",
   "/src/data/productMetrics.mjs",

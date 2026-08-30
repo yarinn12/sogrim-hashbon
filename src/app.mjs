@@ -153,6 +153,12 @@ import {
   rememberPendingAccountLink
 } from "./data/pendingAccountLinks.mjs";
 import {
+  forgetPendingEventJoin,
+  loadPendingEventJoins,
+  markPendingEventJoinAttempt,
+  rememberPendingEventJoin
+} from "./data/pendingEventJoins.mjs";
+import {
   loadNotificationInbox,
   markAllNotificationsRead,
   markNotificationRead
@@ -192,6 +198,7 @@ import {
   eventShareCredentials,
   mergeSharedEventIntoState,
   readSharedEventState,
+  recoverAccessibleSharedEvents,
   saveSharedEventState
 } from "./data/sharedEventStore.mjs";
 import {
@@ -473,6 +480,7 @@ let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let resumeSyncRequest = null;
 let pendingEventMembershipRetryRequest = null;
+let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
 let mergeParticipantsRequest = null;
 let lastResumeSyncAt = 0;
@@ -496,8 +504,10 @@ window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
 window.addEventListener(NATIVE_RESUME_EVENT, retryPendingEventMembershipInvitations);
+window.addEventListener(NATIVE_RESUME_EVENT, retryPendingEventJoins);
 window.addEventListener(NATIVE_RESUME_EVENT, retryPendingAccountLinks);
 window.addEventListener("online", retryPendingEventMembershipInvitations);
+window.addEventListener("online", retryPendingEventJoins);
 window.addEventListener("online", retryPendingAccountLinks);
 window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted);
 window.addEventListener("focus", requestVisibleEventSync);
@@ -505,6 +515,7 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
     requestResumeSync();
     retryPendingEventMembershipInvitations();
+    retryPendingEventJoins();
     retryPendingAccountLinks();
   }
 });
@@ -520,6 +531,7 @@ document.addEventListener("account-auth-ready", () => {
   hydrateAppAfterAccountReady()
     .then(() => Promise.all([
       retryPendingEventMembershipInvitations(),
+      retryPendingEventJoins(),
       retryPendingAccountLinks()
     ]))
     .catch(renderScopedLocalFallback);
@@ -14195,6 +14207,12 @@ async function joinExistingEventFromDraft() {
     if (!inviteCredentials?.id || !inviteCredentials?.key) {
       throw new Error("Invite credentials are unavailable");
     }
+    // The server has now redeemed the token and activated membership. Keep a
+    // small, owner-scoped receipt before any further reads or writes: iOS can
+    // suspend the page here, and the next resume must still recover the event
+    // from the canonical membership index instead of making the user open the
+    // link again.
+    rememberPendingIncomingEventJoin(eventId, joinRuntimeConfig);
     const sharedEventState = await readSharedEventState(
       joinRuntimeConfig,
       inviteCredentials,
@@ -14266,6 +14284,7 @@ async function joinExistingEventFromDraft() {
         "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ולחצו שוב.";
       return;
     }
+    forgetPendingIncomingEventJoin(eventId, joinRuntimeConfig);
     joinEventDraft = null;
     newEventDraft = null;
     screen = { name: "event", eventId };
@@ -20061,6 +20080,71 @@ function pendingEventMembershipOwnerId() {
   ).trim();
 }
 
+function rememberPendingIncomingEventJoin(eventId, config = runtimeConfig) {
+  const ownerUserId = String(config?.storage?.account?.userId ?? "").trim();
+  if (!ownerUserId || !eventId) return false;
+  return rememberPendingEventJoin({
+    ownerUserId,
+    eventId,
+    queuedAt: new Date().toISOString()
+  });
+}
+
+function forgetPendingIncomingEventJoin(eventId, config = runtimeConfig) {
+  const ownerUserId = String(config?.storage?.account?.userId ?? "").trim();
+  if (!ownerUserId || !eventId) return false;
+  return forgetPendingEventJoin({ ownerUserId, eventId });
+}
+
+function retryPendingEventJoins() {
+  if (
+    pendingEventJoinRetryRequest ||
+    !appBootHydrated ||
+    navigator.onLine === false
+  ) {
+    return pendingEventJoinRetryRequest ?? Promise.resolve();
+  }
+
+  const ownerUserId = pendingEventMembershipOwnerId();
+  const pendingEntries = loadPendingEventJoins(window.localStorage, ownerUserId);
+  if (!ownerUserId || !pendingEntries.length) return Promise.resolve();
+
+  pendingEventJoinRetryRequest = (async () => {
+    runtimeConfig = await loadRuntimeConfig();
+    if (runtimeConfig?.storage?.account?.userId !== ownerUserId) return;
+
+    for (const entry of pendingEntries) {
+      markPendingEventJoinAttempt(entry, window.localStorage);
+      try {
+        state = syncLocalProfile(
+          await recoverAccessibleSharedEvents(runtimeConfig, state)
+        );
+        const event = getEvent(entry.eventId);
+        const participantId = state.currentParticipantId;
+        if (!event || !participantId || !isActiveEventParticipant(event, participantId)) {
+          continue;
+        }
+        const result = await saveSharedState(state, {
+          awaitCloud: true,
+          suppressRevertNotice: true,
+          forceSharedEventIds: [entry.eventId]
+        });
+        // A confirmed server membership is already canonical. Once the local
+        // account save is accepted or queued, normal outbox recovery owns the
+        // remaining write and this receipt must not trigger duplicate joins.
+        if (result?.ok || result?.pending || result?.partial) {
+          forgetPendingEventJoin(entry, window.localStorage);
+        }
+      } catch (error) {
+        emitOperationDeferred("event_join", { screen: "invite", error });
+      }
+    }
+  })().finally(() => {
+    pendingEventJoinRetryRequest = null;
+  });
+  return pendingEventJoinRetryRequest;
+}
+
 function loadPendingEventMembershipInvitations() {
   try {
     const parsed = JSON.parse(
@@ -20370,14 +20454,17 @@ async function hydrateIncomingSharedEvent(nextState) {
       inviteUrl
     );
     if (!credentials) return nextState;
+    rememberPendingIncomingEventJoin(eventId, inviteRuntimeConfig);
     const sharedEventState = await readSharedEventState(
       inviteRuntimeConfig,
       credentials,
       eventId
     );
-    return sharedEventState
-      ? mergeSharedEventIntoState(nextState, sharedEventState, credentials)
-      : nextState;
+    if (!sharedEventState) return nextState;
+    const merged = mergeSharedEventIntoState(nextState, sharedEventState, credentials);
+    // Startup still needs to persist the user profile into the event. Keep the
+    // receipt until the normal join or resume path confirms that durable save.
+    return merged;
   } catch {
     return nextState;
   }
