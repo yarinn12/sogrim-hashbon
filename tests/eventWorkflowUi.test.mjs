@@ -140,12 +140,12 @@ test("home screen stays focused on event actions and the event list", async () =
   assert.doesNotMatch(home, /event-search/);
 });
 
-test("visible event counts use correct Hebrew singular and plural labels", async () => {
+test("home event stages use clear Hebrew action labels", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /function formatCount\(count, singular, plural\)/);
-  assert.match(app, /formatCount\(statusCounts\.open, "פתוח", "פתוחים"\)/);
-  assert.match(app, /formatCount\(statusCounts\.closed, "סגור", "סגורים"\)/);
+  assert.match(app, /return "מוסיפים הוצאות"/);
+  assert.match(app, /return hasPendingTransfers \? "מתחשבנים" : "הכול שולם"/);
   assert.doesNotMatch(app, /visibleEventCount/);
   assert.match(app, /צפויה אליך העברה מאת/);
   assert.doesNotMatch(app, /אמור להעביר אליך/);
@@ -1541,10 +1541,11 @@ test("home event rows prioritize selection details, participants, and one quiet 
   assert.match(row, /eventRowDisplayName\(event\)/);
   assert.match(row, /renderEventRowMeta\(event, participants\)/);
   assert.match(row, /event-row-options-chevron/);
-  assert.doesNotMatch(row, /event-status-indicator|statusLabel/);
-  assert.match(home, /showEventStatusFilter = statusCounts\.open > 0 && statusCounts\.closed > 0/);
-  assert.match(home, /showEventStatusFilter\s+\? renderEventStatusFilter\(sortedEvents\)/);
-  assert.match(home, /class="event-list-count \$\{eventListCountClass\}"/);
+  assert.doesNotMatch(row, /event-status-indicator|status-chip/);
+  assert.match(row, /renderEventRowMeta\(event, participants\)/);
+  assert.match(home, /personalArchivedEventIds\(\)/);
+  assert.match(home, /eventStatusFilter === "archive"/);
+  assert.match(home, /renderEventStatusFilter\(sortedEvents\)/);
 });
 
 test("home event options expose the shared invitation flow and guarded removal", async () => {
@@ -1560,6 +1561,8 @@ test("home event options expose the shared invitation flow and guarded removal",
   assert.match(app, /בחר מחברים/);
   assert.match(app, /הוסף שם ידנית/);
   assert.match(app, /data-action="remove-event-from-list"/);
+  assert.match(app, /data-action="toggle-personal-event-archive"/);
+  assert.match(app, /האירוע יעבור לארכיון רק אצלך/);
   assert.match(app, /class="event-status-danger-zone"/);
   assert.match(app, /function openEventStatusMenu\(eventId, trigger\)/);
   assert.match(app, /if \(canCurrentParticipantManage\(selectedEvent\)\)/);
@@ -1569,15 +1572,18 @@ test("home event options expose the shared invitation flow and guarded removal",
   );
 });
 
-test("home screen separates open and closed event history", async () => {
+test("home screen separates the personal event list from the personal archive", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const styles = await readFile("styles.css", "utf8");
 
   assert.match(app, /EVENT_STATUS_FILTERS/);
-  assert.match(app, /filterEventsByStatus/);
+  assert.match(app, /\{ id: "events", label: "אירועים" \}/);
+  assert.match(app, /\{ id: "archive", label: "ארכיון" \}/);
   assert.match(app, /data-action="event-status-filter"/);
-  assert.match(app, /class="segmented-control" role="group" aria-label="סינון אירועים"/);
+  assert.match(app, /class="segmented-control" role="group" aria-label="אירועים וארכיון"/);
   assert.match(app, /aria-pressed="\$\{eventStatusFilter === filter\.id\}"/);
+  assert.match(app, /PERSONAL_EVENT_ARCHIVE_STORAGE_PREFIX/);
+  assert.match(app, /setEventPersonallyArchived/);
   assert.match(styles, /\.segmented-control/);
 });
 

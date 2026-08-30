@@ -7,7 +7,8 @@ test("home lists every event without a separate recent-event card", async () => 
   const home = app.match(/function renderHome\(\) \{[\s\S]*?(?=\nfunction renderRecentEventShortcut)/);
 
   assert.ok(home);
-  assert.match(home[0], /filterEventsByStatus\(sortedEvents, eventStatusFilter\)/);
+  assert.match(home[0], /personalArchivedEventIds\(\)/);
+  assert.match(home[0], /eventStatusFilter === "archive"/);
   assert.match(home[0], /events\.map\(renderEventRow\)/);
   assert.doesNotMatch(home[0], /recentEvent|renderRecentEventShortcut|listEvents/);
 });

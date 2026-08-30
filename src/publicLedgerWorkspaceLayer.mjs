@@ -15406,6 +15406,23 @@ const CSS = `
     line-height: 1.4 !important;
   }
 
+  html.ledger-workspace-v1 .event-row-state {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 22px !important;
+    padding: 3px 8px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 8px !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+    font-family: inherit !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
   html.ledger-workspace-v1 .event-row-meta-time {
     unicode-bidi: isolate !important;
   }
@@ -20176,17 +20193,16 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-notes-intro {
     min-height: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: space-between !important;
-    gap: 16px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 14px !important;
     margin: 14px 0 0 !important;
-    padding: 18px !important;
+    padding: 18px 16px 16px !important;
     border: 1px solid var(--ledger-line) !important;
-    border-radius: var(--ledger-task-radius) !important;
+    border-radius: 16px !important;
     color: var(--ledger-ink) !important;
-    background: var(--ledger-surface) !important;
-    box-shadow: var(--ledger-task-shadow) !important;
+    background: #ffffff !important;
+    box-shadow: 0 8px 22px rgba(18, 58, 46, 0.06) !important;
   }
 
   html.ledger-workspace-v1 .event-notes-intro > div {
@@ -20196,7 +20212,9 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-notes-intro .eyebrow {
-    margin: 0 !important;
+    width: max-content !important;
+    display: inline-flex !important;
+    margin: 0 0 2px !important;
     color: var(--ledger-brand) !important;
   }
 
@@ -20207,13 +20225,19 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-notes-intro h2 {
     color: var(--ledger-ink) !important;
-    font-size: 18px !important;
-    line-height: 1.3 !important;
+    font-size: 21px !important;
+    line-height: 1.25 !important;
+  }
+
+  html.ledger-workspace-v1 .event-notes-intro .muted {
+    color: var(--ledger-muted) !important;
+    line-height: 1.45 !important;
   }
 
   html.ledger-workspace-v1 .event-notes-intro .primary-button {
-    flex: 0 0 auto !important;
-    min-height: 46px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
     white-space: nowrap !important;
   }
 
@@ -20226,16 +20250,6 @@ const CSS = `
     box-shadow: var(--ledger-task-shadow) !important;
   }
 
-  @media (max-width: 430px) {
-    html.ledger-workspace-v1 .event-notes-intro {
-      align-items: stretch !important;
-      flex-direction: column !important;
-    }
-
-    html.ledger-workspace-v1 .event-notes-intro .primary-button {
-      width: 100% !important;
-    }
-  }
 `;
 
 const RETIRED_ROOT_CLASSES = [

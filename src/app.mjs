@@ -297,6 +297,7 @@ const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
 ]);
 const OWN_PROFILE_STARTUP_WAIT_MS = 3_000;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
+const PERSONAL_EVENT_ARCHIVE_STORAGE_PREFIX = "settle-friends-personal-event-archive-v1";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
 const DIALOG_OPEN_ACTIONS = new Set([
   "show-expense-form",
@@ -308,9 +309,8 @@ const DIALOG_OPEN_ACTIONS = new Set([
   "open-event-settings"
 ]);
 const EVENT_STATUS_FILTERS = [
-  { id: "open", label: "פתוחים" },
-  { id: "closed", label: "סגורים" },
-  { id: "all", label: "הכל" }
+  { id: "events", label: "אירועים" },
+  { id: "archive", label: "ארכיון" }
 ];
 const NEW_EVENT_FLOW_SCREENS = new Set([
   "new-event-type",
@@ -333,6 +333,46 @@ const EVENT_LONG_PRESS_MOVE_TOLERANCE_PX = 12;
 
 function eventCurrency(event) {
   return normalizeCurrency(event?.currency);
+}
+
+function personalEventArchiveStorageKey() {
+  const participantId = String(state?.currentParticipantId ?? "local").trim() || "local";
+  return `${PERSONAL_EVENT_ARCHIVE_STORAGE_PREFIX}:${participantId}`;
+}
+
+function personalArchivedEventIds() {
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(personalEventArchiveStorageKey()) || "[]"
+    );
+    return new Set(Array.isArray(parsed) ? parsed.map(String) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function isEventPersonallyArchived(eventId) {
+  return personalArchivedEventIds().has(String(eventId ?? ""));
+}
+
+function setEventPersonallyArchived(eventId, archived) {
+  const normalizedEventId = String(eventId ?? "").trim();
+  if (!normalizedEventId) return;
+  const archivedIds = personalArchivedEventIds();
+  if (archived) archivedIds.add(normalizedEventId);
+  else archivedIds.delete(normalizedEventId);
+  window.localStorage.setItem(
+    personalEventArchiveStorageKey(),
+    JSON.stringify([...archivedIds])
+  );
+}
+
+function eventHomeStatusLabel(event) {
+  if (!isEventClosed(event)) return "מוסיפים הוצאות";
+  const hasPendingTransfers = (event?.transfers ?? []).some(
+    (transfer) => transfer.status !== "paid"
+  );
+  return hasPendingTransfers ? "מתחשבנים" : "הכול שולם";
 }
 
 function formatEventMoney(event, amount) {
@@ -468,7 +508,7 @@ let runtimeConfig = {
     shareLinksReady: false
   }
 };
-let eventStatusFilter = "open";
+let eventStatusFilter = "events";
 let appHistoryDepth = 0;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
@@ -2045,15 +2085,12 @@ function renderHome() {
     );
   const homeDialogEvent =
     eventDialog?.kind === "share" ? getEvent(eventDialog.eventId) : null;
-  const statusCounts = countEventsByStatus(sortedEvents);
-  const showEventStatusFilter = statusCounts.open > 0 && statusCounts.closed > 0;
-  const events = showEventStatusFilter
-    ? filterEventsByStatus(sortedEvents, eventStatusFilter)
-    : sortedEvents;
-  const eventListCountLabel = statusCounts.open
-    ? formatCount(statusCounts.open, "פתוח", "פתוחים")
-    : formatCount(statusCounts.closed, "סגור", "סגורים");
-  const eventListCountClass = statusCounts.open ? "is-open" : "is-closed";
+  const archivedEventIds = personalArchivedEventIds();
+  const events = sortedEvents.filter((event) =>
+    eventStatusFilter === "archive"
+      ? archivedEventIds.has(event.id)
+      : !archivedEventIds.has(event.id)
+  );
   const homeParticipant = state.participants.find(
     (participant) => participant.id === state.currentParticipantId
   );
@@ -2091,17 +2128,13 @@ function renderHome() {
                 <div>
                   <h2>אירועים</h2>
                 </div>
-                ${
-                  showEventStatusFilter
-                    ? renderEventStatusFilter(sortedEvents)
-                    : `<span class="event-list-count ${eventListCountClass}">${escapeHtml(eventListCountLabel)}</span>`
-                }
+                ${renderEventStatusFilter(sortedEvents)}
               </div>
               <div class="event-list">
                 ${
                   events.length
                     ? events.map(renderEventRow).join("")
-                    : `<div class="empty-state">אין אירועים שמתאימים לסינון הזה</div>`
+                    : `<div class="empty-state">${eventStatusFilter === "archive" ? "אין אירועים בארכיון" : "אין אירועים להצגה"}</div>`
                 }
               </div>
             </section>
@@ -2420,10 +2453,8 @@ function renderPersonalTransferAction(action) {
 }
 
 function renderEventStatusFilter(events) {
-  const counts = countEventsByStatus(events);
-
   return `
-    <div class="segmented-control" role="group" aria-label="סינון אירועים">
+    <div class="segmented-control" role="group" aria-label="אירועים וארכיון">
       ${EVENT_STATUS_FILTERS.map(
         (filter) => `
           <button
@@ -2434,7 +2465,6 @@ function renderEventStatusFilter(events) {
             aria-pressed="${eventStatusFilter === filter.id}"
           >
             <span>${filter.label}</span>
-            <span class="font-num">${counts[filter.id]}</span>
           </button>
         `
       ).join("")}
@@ -3745,13 +3775,20 @@ function eventRowDisplayName(event) {
 
 function renderEventRowMeta(event, participants) {
   const date = creationDate(event.createdAt, event.id);
+  const statusLabel = eventHomeStatusLabel(event);
+  const statusClass =
+    statusLabel === "מוסיפים הוצאות"
+      ? "is-adding"
+      : statusLabel === "מתחשבנים"
+        ? "is-settling"
+        : "is-paid";
   const participantLabel = formatCount(
     participants.length,
     "משתתף",
     "משתתפים"
   );
   if (!date) {
-    return `<span class="event-row-meta"><span>${escapeHtml(participantLabel)}</span></span>`;
+    return `<span class="event-row-meta"><span class="event-row-state ${statusClass}">${escapeHtml(statusLabel)}</span><span class="event-row-meta-separator" aria-hidden="true">·</span><span>${escapeHtml(participantLabel)}</span></span>`;
   }
 
   const dateLabel = formatRelativeCalendarDate(date);
@@ -3761,6 +3798,8 @@ function renderEventRowMeta(event, participants) {
 
   return `
     <span class="event-row-meta">
+      <span class="event-row-state ${statusClass}">${escapeHtml(statusLabel)}</span>
+      <span class="event-row-meta-separator" aria-hidden="true">·</span>
       <time datetime="${escapeAttribute(date.toISOString())}">${renderedDate}</time>
       <span class="event-row-meta-separator" aria-hidden="true">·</span>
       <time class="event-row-meta-time" datetime="${escapeAttribute(date.toISOString())}" dir="ltr"><span class="font-num">${escapeHtml(formatClockTime(date))}</span></time>
@@ -4673,8 +4712,8 @@ function renderSettlementCelebration() {
         <h2 id="settlement-celebration-title">כל ההעברות הושלמו</h2>
         <p id="settlement-celebration-description">
           ${isClosed
-            ? `החשבון של "${escapeHtml(event.name)}" סגור ומסודר בהיסטוריה.`
-            : `החשבון של "${escapeHtml(event.name)}" מאוזן. אפשר לסגור אותו ולשמור בהיסטוריה.`}
+            ? `החשבון של "${escapeHtml(event.name)}" שולם ונשאר ברשימת האירועים שלך.`
+            : `החשבון של "${escapeHtml(event.name)}" מאוזן. אפשר לסגור אותו; המעבר לארכיון תמיד ידני.`}
         </p>
         <div class="settlement-celebration-actions">
           <button
@@ -4682,7 +4721,7 @@ function renderSettlementCelebration() {
             type="button"
             data-action="archive-settled-event"
             data-event-id="${escapeAttribute(event.id)}"
-          >${isClosed ? "חזרה לאירועים" : "סגור והעבר להיסטוריה"}</button>
+          >${isClosed ? "חזרה לאירועים" : "סגור חשבון"}</button>
           <button
             class="secondary-button"
             type="button"
@@ -4714,6 +4753,7 @@ function renderEventStatusMenu() {
     : isEventClosed(event)
       ? "כדי להזמין משתתפים צריך לפתוח את האירוע מחדש"
       : "רק מנהל יכול להזמין משתתפים במצב הנוכחי";
+  const isPersonallyArchived = isEventPersonallyArchived(event.id);
 
   return `
     <section class="event-status-menu-backdrop" aria-label="אפשרויות לאירוע ${escapeAttribute(event.name)}">
@@ -4744,6 +4784,19 @@ function renderEventStatusMenu() {
             <span>
               <strong>שיתוף</strong>
               <small>${escapeHtml(shareDescription)}</small>
+            </span>
+            <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
+          <button
+            class="event-share-option"
+            type="button"
+            data-action="toggle-personal-event-archive"
+            data-event-id="${escapeAttribute(event.id)}"
+          >
+            ${renderCommandIcon("archive")}
+            <span>
+              <strong>${isPersonallyArchived ? "החזר לאירועים" : "העבר לארכיון"}</strong>
+              <small>${isPersonallyArchived ? "האירוע יחזור לרשימה שלך בלבד" : "האירוע יעבור לארכיון רק אצלך"}</small>
             </span>
             <span class="event-share-route-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
           </button>
@@ -11413,6 +11466,20 @@ async function handleClick(event) {
     return;
   }
 
+  if (action === "toggle-personal-event-archive") {
+    const selectedEvent = getEvent(target.dataset.eventId);
+    if (!selectedEvent) return;
+    const archive = !isEventPersonallyArchived(selectedEvent.id);
+    setEventPersonallyArchived(selectedEvent.id, archive);
+    eventStatusMenu = null;
+    closeDialogWithHistory();
+    notice = archive
+      ? `"${selectedEvent.name}" עבר לארכיון שלך.`
+      : `"${selectedEvent.name}" חזר לאירועים שלך.`;
+    render();
+    return;
+  }
+
   if (action === "choose-event-status") {
     await chooseEventStatusFromMenu(
       target.dataset.eventId,
@@ -11839,7 +11906,7 @@ async function handleClick(event) {
   }
 
   if (action === "event-status-filter") {
-    eventStatusFilter = target.dataset.filter ?? "open";
+    eventStatusFilter = target.dataset.filter === "archive" ? "archive" : "events";
     render();
   }
 
@@ -19348,7 +19415,7 @@ function archiveSettledEvent(eventId) {
   try {
     if (wasClosed) {
       screen = { name: "home" };
-      notice = `"${event.name}" שמור בהיסטוריה.`;
+      notice = `"${event.name}" שולם ונשאר באירועים שלך.`;
       render();
     } else {
       void closeCurrentEvent(eventId, { destination: "home" });

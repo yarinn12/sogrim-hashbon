@@ -393,8 +393,9 @@ function simplifyEmptyHome() {
 
   const hasEventRows = Boolean(screen.querySelector(".event-row"));
   const hasRecentEvent = Boolean(screen.querySelector(".recent-event-shortcut"));
-  const hasStoredEvents = [...screen.querySelectorAll('[data-action="event-status-filter"] strong')]
-    .some((count) => Number.parseInt(count.textContent?.trim() || "0", 10) > 0);
+  const hasStoredEvents = Boolean(
+    screen.querySelector('[data-action="event-status-filter"]')
+  );
   const shouldSimplify = !hasEventRows && !hasRecentEvent && !hasStoredEvents;
   const dashboard = screen.querySelector(".personal-dashboard");
   const personalActions = screen.querySelector(".personal-actions-section, .public-personal-actions");

@@ -68,7 +68,7 @@ test("settlement transfer identity and disclosure stay platform-neutral", async 
   );
 });
 
-test("the final paid transfer opens one completion celebration with a history action", async () => {
+test("the final paid transfer opens one completion celebration without automatic archiving", async () => {
   const [app, styles] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("styles.css", "utf8")
@@ -81,7 +81,8 @@ test("the final paid transfer opens one completion celebration with a history ac
   assert.match(app, /const completedAllTransfers = Boolean/);
   assert.match(app, /settlementCelebration = \{ eventId: event\.id \}/);
   assert.match(app, /data-action="archive-settled-event"/);
-  assert.match(app, /סגור והעבר להיסטוריה/);
+  assert.match(app, /סגור חשבון/);
+  assert.match(app, /המעבר לארכיון תמיד ידני/);
   assert.match(app, /closeCurrentEvent\(eventId, \{ destination: "home" \}\)/);
   assert.match(
     app,

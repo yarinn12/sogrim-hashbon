@@ -52,15 +52,16 @@ test("Hebrew font loading does not block the app from rendering", async () => {
   assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
   assert.match(html, /as="style"/);
   assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=408"/);
+  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=413"/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
   assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
   assert.match(loader, /fontStylesheet\.media = "all"/);
   assert.match(html, /<noscript>[\s\S]*fonts\.googleapis\.com[\s\S]*<\/noscript>/);
 });
 
-test("event rows render participants and a quiet options chevron without status or financial clutter", async () => {
+test("event rows render participants, a uniform text status, and a quiet options chevron", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 
   assert.match(app, /class="event-row-main"/);
   assert.doesNotMatch(app, /event-row-attention/);
@@ -70,6 +71,9 @@ test("event rows render participants and a quiet options chevron without status 
   );
   assert.doesNotMatch(app, /event-row-balance amount/);
   assert.match(app, /class="event-row-options-chevron"/);
+  assert.match(app, /function eventHomeStatusLabel\(event\)/);
+  assert.match(app, /class="event-row-state \$\{statusClass\}"/);
+  assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-state \{[\s\S]*?border: 1px solid var\(--ledger-line\) !important;[\s\S]*?border-radius: 8px !important;[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?box-shadow: var\(--ledger-shadow-border\) !important;/);
   assert.doesNotMatch(
     app.slice(app.indexOf("function renderEventRow(event)"), app.indexOf("function ensureNewEventDraft")),
     /status-chip|event-status-indicator|isEventClosed\(event\) \? "סגור" : "פתוח"/
