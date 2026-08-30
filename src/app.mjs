@@ -483,6 +483,9 @@ let eventLongPressStartPoint = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let resumeSyncRequest = null;
+let resumeSyncFollowUpRequest = null;
+let resumeSyncFollowUpPending = false;
+let resumeSyncFollowUpIncludeSecondary = false;
 let pendingEventMembershipRetryRequest = null;
 let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
@@ -12012,6 +12015,8 @@ async function handleClick(event) {
     eventDialog = null;
     editingGroupDraft = null;
     render();
+    await requestResumeSync({ force: true, includeSecondary: false });
+    return;
   }
 
   if (action === "open-event-notes") {
@@ -12023,11 +12028,13 @@ async function handleClick(event) {
     screen = { name: "event-notes", eventId };
     rememberRecentEvent(eventId);
     render();
+    await requestResumeSync({ force: true, includeSecondary: false });
     return;
   }
 
   if (action === "new-event-note") {
     const eventId = target.dataset.eventId;
+    await requestResumeSync({ force: true, includeSecondary: false });
     const selectedEvent = getEvent(eventId);
     if (!selectedEvent || !canCurrentParticipantEdit(selectedEvent)) return;
     openEventDialogWithDetails(eventId, "note-editor", target, {
@@ -12044,6 +12051,7 @@ async function handleClick(event) {
   if (action === "open-event-note") {
     const eventId = target.dataset.eventId;
     const noteId = target.dataset.noteId;
+    await requestResumeSync({ force: true, includeSecondary: false });
     const selectedEvent = getEvent(eventId);
     const note = selectedEvent?.notes?.find((item) => item.id === noteId);
     if (!selectedEvent || !note) return;
@@ -12677,6 +12685,7 @@ async function handleClick(event) {
   }
 
   if (action === "show-expense-form") {
+    await requestResumeSync({ force: true, includeSecondary: false });
     const event = getEvent(target.dataset.eventId);
     if (event && canCurrentParticipantEdit(event)) {
       notice = "";
@@ -12688,6 +12697,7 @@ async function handleClick(event) {
   }
 
   if (action === "continue-event-expense") {
+    await requestResumeSync({ force: true, includeSecondary: false });
     const event = getEvent(target.dataset.eventId);
     if (event && canCurrentParticipantEdit(event)) {
       notice = "";
@@ -12699,6 +12709,7 @@ async function handleClick(event) {
   }
 
   if (action === "edit-expense") {
+    await requestResumeSync({ force: true, includeSecondary: false });
     const event = getEvent(target.dataset.eventId);
     if (event && canCurrentParticipantEdit(event)) {
       eventDialog = null;
@@ -13041,7 +13052,9 @@ async function handleClick(event) {
   if (action === "settle") {
     notice = "";
     eventDialog = null;
+    await requestResumeSync({ force: true, includeSecondary: false });
     prepareSettlement(target.dataset.eventId);
+    return;
   }
 
   if (action === "toggle-lock") {
@@ -21422,7 +21435,11 @@ function renderScopedLocalFallback(error) {
 }
 
 function requestResumeSync({ force = false, includeSecondary = true } = {}) {
-  if (resumeSyncRequest) return resumeSyncRequest;
+  if (resumeSyncRequest) {
+    return force
+      ? queueForcedResumeSync({ includeSecondary })
+      : resumeSyncRequest;
+  }
   if (!force && Date.now() - lastResumeSyncAt < RESUME_SYNC_COOLDOWN_MS) {
     return Promise.resolve();
   }
@@ -21431,7 +21448,10 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
   const saveRevisionAtRequest = sharedStateSaveRevision();
   resumeSyncRequest = loadSharedState()
     .then((sharedState) => {
-      if (saveRevisionAtRequest !== sharedStateSaveRevision()) return;
+      if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
+        void queueForcedResumeSync({ includeSecondary: false });
+        return;
+      }
       const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) return;
       state = nextState;
@@ -21449,6 +21469,35 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
     });
 
   return resumeSyncRequest;
+}
+
+function queueForcedResumeSync({ includeSecondary = false } = {}) {
+  resumeSyncFollowUpPending = true;
+  resumeSyncFollowUpIncludeSecondary ||= includeSecondary;
+  if (resumeSyncFollowUpRequest) return resumeSyncFollowUpRequest;
+
+  const activeRequest = resumeSyncRequest ?? Promise.resolve();
+  resumeSyncFollowUpRequest = Promise.resolve(activeRequest)
+    .catch(() => {})
+    .then(() => {
+      const shouldIncludeSecondary = resumeSyncFollowUpIncludeSecondary;
+      resumeSyncFollowUpPending = false;
+      resumeSyncFollowUpIncludeSecondary = false;
+      return requestResumeSync({
+        force: true,
+        includeSecondary: shouldIncludeSecondary
+      });
+    })
+    .finally(() => {
+      resumeSyncFollowUpRequest = null;
+      if (resumeSyncFollowUpPending) {
+        void queueForcedResumeSync({
+          includeSecondary: resumeSyncFollowUpIncludeSecondary
+        });
+      }
+    });
+
+  return resumeSyncFollowUpRequest;
 }
 
 function requestVisibleEventSync() {
