@@ -26,6 +26,12 @@ export async function loadCloudState(config, fallbackState, fetchImpl = fetch) {
   const state = await readCloudState(config, fetchImpl);
   if (state) return state;
 
+  // Production no longer allows clients to create ownerless workspaces. A
+  // signed-out browser can still carry an old space id in local storage, so a
+  // missing row must stay local instead of retrying a guaranteed 401 every
+  // time the foreground sync runs.
+  if (!config.storage.account?.accessToken) return fallbackState;
+
   // A newly authenticated account can reach the cloud loader before the
   // account participant has been added to its fresh local state. The server
   // correctly rejects that empty personal snapshot. Do not keep retrying an

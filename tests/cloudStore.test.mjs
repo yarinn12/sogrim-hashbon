@@ -102,23 +102,17 @@ test("cloud requests identify an expired account token for one safe refresh", as
   );
 });
 
-test("loadCloudState creates a snapshot when the space does not exist yet", async () => {
-  const config = createConfig("friends-create");
+test("a signed-out browser does not retry creation of a missing ownerless snapshot", async () => {
+  const config = createConfig("missing-ownerless-space");
   const requests = [];
   const loaded = await loadCloudState(config, state, async (url, options) => {
     requests.push({ url, options });
-    return requests.length === 1
-      ? jsonResponse([])
-      : jsonResponse([{ updated_at: "2026-07-17T10:00:00.000Z" }]);
+    return jsonResponse([]);
   });
 
   assert.deepEqual(loaded, state);
-  assert.equal(requests[1].options.method, "POST");
-  assert.equal(requests[1].options.headers.prefer, "return=representation");
-  const body = JSON.parse(requests[1].options.body);
-  assert.equal(body.id, "friends-create");
-  assert.deepEqual(body.state, state);
-  assert.match(body.access_key_hash, /^[a-f0-9]{64}$/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].options.method, undefined);
 });
 
 test("a fresh account waits for its participant before creating a personal snapshot", async () => {
