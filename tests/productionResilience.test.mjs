@@ -122,3 +122,33 @@ test("the non-Apple release gate blocks continuity and delivery regressions", as
   assert.match(pkg.scripts["qa:release:core"], /qa:store -- --android/);
   assert.match(runbook, /Operational release gate/);
 });
+
+test("operational workspace continuity ignores incomplete email signups", async () => {
+  const [schema, migration, verification, applyScript] = await Promise.all([
+    readFile("supabase/schema.sql", "utf8"),
+    readFile(
+      "supabase/migrations/20260830110000_scope_operational_health_to_confirmed_accounts.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/verification/verify_20260830110000_operational_health_confirmed_accounts.sql",
+      "utf8"
+    ),
+    readFile("scripts/apply-operational-health-account-scope.mjs", "utf8")
+  ]);
+  const confirmedAccountContinuity =
+    /from auth\.users as account\s+where account\.confirmed_at is not null\s+and not exists/;
+
+  assert.match(schema, confirmedAccountContinuity);
+  assert.match(migration, confirmedAccountContinuity);
+  assert.match(verification, /expected_missing/);
+  assert.match(verification, /accountsWithoutWorkspace/);
+  assert.match(
+    applyScript,
+    /20260830110000_scope_operational_health_to_confirmed_accounts\.sql/
+  );
+  assert.match(
+    applyScript,
+    /verify_20260830110000_operational_health_confirmed_accounts\.sql/
+  );
+});

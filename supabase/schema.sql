@@ -4502,7 +4502,8 @@ as $$
       (
         select pg_catalog.count(*)::bigint
         from auth.users as account
-        where not exists (
+        where account.confirmed_at is not null
+          and not exists (
           select 1
           from public.app_snapshots as workspace
           where workspace.owner_user_id = account.id
