@@ -1,4 +1,4 @@
-import { parseMoneyInput, splitEvenly } from "./money.mjs";
+import { parseMoneyInput, splitEvenly, sumMoneyAmounts } from "./money.mjs";
 
 export const QUICK_ITEM_ALL_PARTICIPANTS = "__all__";
 export const QUICK_ITEM_CUSTOM_PARTICIPANTS = "__custom__";
@@ -26,6 +26,7 @@ export function buildQuickItemExpenses({
   }
 
   const expenses = [];
+  let billTotal = 0;
 
   for (let index = 0; index < activeItems.length; index += 1) {
     const item = activeItems[index];
@@ -40,6 +41,12 @@ export function buildQuickItemExpenses({
 
     if (total <= 0) {
       return { expenses: [], error: `המחיר בשורה ${index + 1} חייב להיות גדול מאפס.` };
+    }
+
+    try {
+      billTotal = sumMoneyAmounts([billTotal, total]);
+    } catch {
+      return { expenses: [], error: "סכום החשבון הכולל גדול מדי." };
     }
 
     const sharedByParticipantIds = quickItemParticipantIds(item, [...knownParticipantIds]);
@@ -117,11 +124,34 @@ export function summarizeQuickItemShares(items, participantIds) {
       continue;
     }
 
-    const shares = splitEvenly(amount, sharedByParticipantIds);
-    for (const [participantId, share] of Object.entries(shares)) {
-      totals[participantId] += share;
+    let nextBillTotal;
+    try {
+      nextBillTotal = sumMoneyAmounts([billTotal, amount]);
+    } catch {
+      error ||= "סכום החשבון הכולל גדול מדי.";
+      continue;
     }
-    billTotal += amount;
+
+    const shares = splitEvenly(amount, sharedByParticipantIds);
+    const nextTotals = { ...totals };
+    let totalsAreSafe = true;
+    for (const [participantId, share] of Object.entries(shares)) {
+      try {
+        nextTotals[participantId] = sumMoneyAmounts([
+          nextTotals[participantId],
+          share
+        ]);
+      } catch {
+        totalsAreSafe = false;
+        break;
+      }
+    }
+    if (!totalsAreSafe) {
+      error ||= "סכום החשבון הכולל גדול מדי.";
+      continue;
+    }
+    Object.assign(totals, nextTotals);
+    billTotal = nextBillTotal;
   }
 
   return { totals, billTotal, error };

@@ -5,6 +5,7 @@ import {
   settlementOptionsForEvent
 } from "./domain/settlement.mjs";
 import { formatCurrency, normalizeCurrency } from "./domain/currencies.mjs";
+import { sumMoneyAmounts } from "./domain/money.mjs";
 
 const app = document.querySelector("#app");
 let eventWorkspaceScheduled = false;
@@ -83,7 +84,9 @@ function renderInsightPanel(state, event) {
     settlementOptionsForEvent(event)
   ).transfers;
   const pendingTransfers = transfers.filter((transfer) => transfer.status !== "paid");
-  const totalExpenses = (event.expenses ?? []).reduce((sum, expense) => sum + expense.total, 0);
+  const totalExpenses = sumMoneyAmounts(
+    (event.expenses ?? []).map((expense) => expense.total)
+  );
   const issueCount = settlement.issues?.length ?? 0;
   const status = eventStatus(event, settlement, pendingTransfers);
   const message = statusMessage(status);
@@ -221,7 +224,9 @@ function statusMessage(status) {
 }
 
 function sumPending(transfers) {
-  return transfers.reduce((sum, transfer) => sum + (transfer.amount ?? 0), 0);
+  return sumMoneyAmounts(
+    (transfers ?? []).map((transfer) => transfer.amount ?? 0)
+  );
 }
 
 function isEventClosed(event) {

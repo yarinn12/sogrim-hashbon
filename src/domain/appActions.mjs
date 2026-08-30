@@ -16,6 +16,7 @@ import {
   usesDirectSettlementTransfers,
   usesRoundedSettlementTransfers
 } from "./settlement.mjs";
+import { sumMoneyAmounts } from "./money.mjs";
 
 export function createGroup(
   state,
@@ -1251,7 +1252,10 @@ function mergeParticipantMembershipTimestamps(
 function mergeExpensePayers(payers) {
   const totals = new Map();
   for (const payer of payers) {
-    totals.set(payer.participantId, (totals.get(payer.participantId) ?? 0) + payer.amount);
+    totals.set(
+      payer.participantId,
+      sumMoneyAmounts([totals.get(payer.participantId) ?? 0, payer.amount])
+    );
   }
   return [...totals.entries()].map(([participantId, amount]) => ({ participantId, amount }));
 }

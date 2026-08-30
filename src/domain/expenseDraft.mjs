@@ -1,4 +1,4 @@
-import { formatMoney, parseMoneyInput } from "./money.mjs";
+import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./money.mjs";
 
 export function createPayerDraft(participantId, amount = "", options = {}) {
   return {
@@ -25,10 +25,16 @@ export function balancePayerAmounts(totalInput, payers, preferredIndex = payers.
   const targetIndex = findAutoPayerIndex(payers, preferredIndex);
   if (total <= 0 || targetIndex === -1) return payers;
 
-  const otherTotal = payers.reduce((sum, payer, index) => {
-    if (index === targetIndex) return sum;
-    return sum + readDraftAmount(payer.amount);
-  }, 0);
+  let otherTotal;
+  try {
+    otherTotal = sumMoneyAmounts(
+      payers
+        .filter((_, index) => index !== targetIndex)
+        .map((payer) => readDraftAmount(payer.amount))
+    );
+  } catch {
+    return payers;
+  }
   const remaining = Math.max(total - otherTotal, 0);
 
   return payers.map((payer, index) =>
@@ -107,12 +113,19 @@ export function summarizePayerDraft(totalInput, payers) {
     ? payers.map((payer) => readDraftAmountResult(payer.amount))
     : [];
   const total = totalResult.amount;
-  const paid = payerResults.reduce((sum, result) => sum + result.amount, 0);
+  let paid = 0;
+  let paidTotalIsSafe = true;
+  try {
+    paid = sumMoneyAmounts(payerResults.map((result) => result.amount));
+  } catch {
+    paidTotalIsSafe = false;
+  }
   const difference = total - paid;
   const valid =
     totalResult.valid &&
     payerResults.length > 0 &&
-    payerResults.every((result) => result.valid);
+    payerResults.every((result) => result.valid) &&
+    paidTotalIsSafe;
 
   return {
     total,

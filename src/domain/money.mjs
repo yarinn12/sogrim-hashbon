@@ -23,6 +23,21 @@ export function formatMoney(amount) {
   return `${sign}${whole}.${cents}`;
 }
 
+export function sumMoneyAmounts(amounts) {
+  let total = 0;
+  for (const amount of amounts ?? []) {
+    if (!Number.isSafeInteger(amount)) {
+      throw new TypeError("Money amounts must be safe integer agorot.");
+    }
+    const nextTotal = total + amount;
+    if (!Number.isSafeInteger(nextTotal)) {
+      throw new RangeError("Money total exceeds the safe integer range.");
+    }
+    total = nextTotal;
+  }
+  return total;
+}
+
 export function splitEvenly(amount, participantIds) {
   const uniqueParticipantIds = [...new Set(participantIds.filter(Boolean))];
 

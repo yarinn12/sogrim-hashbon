@@ -6,6 +6,7 @@ import {
 import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
+import { sumMoneyAmounts } from "./money.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const ENTITY_COLLECTION_KEYS = [
@@ -173,6 +174,10 @@ export function validateSharedStateIdentifiers(state, label = "state") {
 export function validateSharedStateFinancials(state, label = "state") {
   if (!state || typeof state !== "object" || Array.isArray(state)) return [];
   const errors = [];
+  let accountExpenseTotal = 0;
+  let accountTransferTotal = 0;
+  let accountExpenseTotalIsSafe = true;
+  let accountTransferTotalIsSafe = true;
   const participants = Array.isArray(state.participants)
     ? state.participants
     : [];
@@ -297,8 +302,15 @@ export function validateSharedStateFinancials(state, label = "state") {
           `${expenseLabel}.createdByParticipantId must belong to the event.`
         );
       }
-      if (!Number.isInteger(expense.total) || expense.total <= 0) {
-        errors.push(`${expenseLabel}.total must be a positive integer.`);
+      if (!Number.isSafeInteger(expense.total) || expense.total <= 0) {
+        errors.push(`${expenseLabel}.total must be a positive integer within the safe money range.`);
+      } else if (accountExpenseTotalIsSafe) {
+        try {
+          accountExpenseTotal = sumMoneyAmounts([accountExpenseTotal, expense.total]);
+        } catch {
+          accountExpenseTotalIsSafe = false;
+          errors.push(`${label}.expenses exceed the safe cumulative money range.`);
+        }
       }
 
       const sharedBy = Array.isArray(expense.sharedByParticipantIds)
@@ -324,7 +336,7 @@ export function validateSharedStateFinancials(state, label = "state") {
         payers.some(
           (payer) =>
             !eventParticipantIds.has(payer?.participantId) ||
-            !Number.isInteger(payer?.amount) ||
+            !Number.isSafeInteger(payer?.amount) ||
             payer.amount <= 0
         )
       ) {
@@ -332,12 +344,17 @@ export function validateSharedStateFinancials(state, label = "state") {
           `${expenseLabel}.payers must use event participants and positive integer amounts.`
         );
       }
-      const payerTotal = payers.reduce(
-        (sum, payer) =>
-          sum + (Number.isInteger(payer?.amount) ? payer.amount : 0),
-        0
-      );
-      if (Number.isInteger(expense.total) && payerTotal !== expense.total) {
+      let payerTotal = null;
+      try {
+        payerTotal = sumMoneyAmounts(
+          payers.map((payer) =>
+            Number.isSafeInteger(payer?.amount) ? payer.amount : 0
+          )
+        );
+      } catch {
+        errors.push(`${expenseLabel}.payers exceed the safe cumulative money range.`);
+      }
+      if (Number.isSafeInteger(expense.total) && payerTotal !== null && payerTotal !== expense.total) {
         errors.push(`${expenseLabel}.payers must add up to total.`);
       }
     }
@@ -355,8 +372,18 @@ export function validateSharedStateFinancials(state, label = "state") {
         errors.push(`${eventLabel}.transfers must use unique ids.`);
       }
       if (transfer.id) transferIds.add(transfer.id);
-      if (!Number.isInteger(transfer.amount) || transfer.amount <= 0) {
-        errors.push(`${transferLabel}.amount must be a positive integer.`);
+      if (!Number.isSafeInteger(transfer.amount) || transfer.amount <= 0) {
+        errors.push(`${transferLabel}.amount must be a positive integer within the safe money range.`);
+      } else if (accountTransferTotalIsSafe) {
+        try {
+          accountTransferTotal = sumMoneyAmounts([
+            accountTransferTotal,
+            transfer.amount
+          ]);
+        } catch {
+          accountTransferTotalIsSafe = false;
+          errors.push(`${label}.transfers exceed the safe cumulative money range.`);
+        }
       }
       if (
         !eventParticipantIds.has(transfer.fromParticipantId) ||
@@ -1221,11 +1248,10 @@ function mergeRemappedPayers(payers, redirects, deletedParticipantIds) {
   for (const payer of payers ?? []) {
     const participantId = remapParticipantId(payer?.participantId, redirects);
     if (!participantId || deletedParticipantIds.has(participantId)) continue;
-    totals.set(
-      participantId,
-      (totals.get(participantId) ?? 0) +
-        (Number.isInteger(payer?.amount) ? payer.amount : 0)
-    );
+    totals.set(participantId, sumMoneyAmounts([
+      totals.get(participantId) ?? 0,
+      Number.isSafeInteger(payer?.amount) ? payer.amount : 0
+    ]));
   }
   return [...totals].map(([participantId, amount]) => ({
     participantId,

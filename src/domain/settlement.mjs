@@ -1,4 +1,4 @@
-import { splitEvenly } from "./money.mjs";
+import { splitEvenly, sumMoneyAmounts } from "./money.mjs";
 
 const WHOLE_CURRENCY_UNIT = 100;
 
@@ -10,37 +10,8 @@ export function calculateSettlement(
   const validParticipants = (participants ?? []).filter(
     (participant) => participant?.id
   );
-  const knownParticipantIds = new Set(
-    validParticipants.map((participant) => participant.id)
-  );
-  const balances = Object.fromEntries(
-    validParticipants.map((participant) => [participant.id, 0])
-  );
-  const issues = [];
-
-  for (const expense of expenses ?? []) {
-    const normalizedExpense = normalizeExpenseForSettlement(expense, knownParticipantIds);
-    if (normalizedExpense.issue) {
-      issues.push({
-        expenseId: expense?.id ?? "",
-        reason: normalizedExpense.issue
-      });
-      continue;
-    }
-
-    const shares = splitEvenly(
-      normalizedExpense.total,
-      normalizedExpense.sharedByParticipantIds
-    );
-    for (const [participantId, share] of Object.entries(shares)) {
-      balances[participantId] = (balances[participantId] ?? 0) - share;
-    }
-
-    for (const payer of normalizedExpense.payers) {
-      balances[payer.participantId] =
-        (balances[payer.participantId] ?? 0) + payer.amount;
-    }
-  }
+  const ledger = buildSettlementLedger(validParticipants, expenses);
+  const { balances, issues } = ledger;
 
   const transferBalances = roundTransfers
     ? roundSettlementBalances(balances)
@@ -48,7 +19,7 @@ export function calculateSettlement(
   const transfers = directTransfers
     ? buildDirectTransfersFromBalances(
         transferBalances,
-        buildDirectRoutePreferences(validParticipants, expenses),
+        buildDirectRoutePreferencesFromLedger(ledger.acceptedExpenses),
         roundTransfers ? WHOLE_CURRENCY_UNIT : 1
       )
     : buildTransfersFromBalances(transferBalances);
@@ -80,6 +51,7 @@ export function reconcileSettlementTransfers(
   const paidTransfers = [];
   const usedTransferIds = new Set();
   const appliedPaymentKeys = new Set();
+  let paidHistoryTotal = 0;
 
   for (const transfer of previousTransfers ?? []) {
     if (
@@ -101,9 +73,48 @@ export function reconcileSettlementTransfers(
       usedTransferIds,
       "history"
     );
+    const nextFromBalance = safeMoneySum(
+      outstandingBalances[transfer.fromParticipantId],
+      transfer.amount
+    );
+    const nextToBalance = safeMoneySum(
+      outstandingBalances[transfer.toParticipantId],
+      -transfer.amount
+    );
+    if (nextFromBalance === null || nextToBalance === null) {
+      return {
+        ...settlement,
+        transfers: (previousTransfers ?? []).map((item) => ({ ...item })),
+        issues: [{
+          transferId: transfer.id ?? "",
+          reason: "unsafe-paid-history"
+        }]
+      };
+    }
+    const nextPaidHistoryTotal = safeMoneySum(paidHistoryTotal, transfer.amount);
+    if (nextPaidHistoryTotal === null) {
+      return {
+        ...settlement,
+        transfers: (previousTransfers ?? []).map((item) => ({ ...item })),
+        issues: [{
+          transferId: transfer.id ?? "",
+          reason: "unsafe-paid-history"
+        }]
+      };
+    }
+
     paidTransfers.push({ ...transfer, id, status: "paid" });
-    outstandingBalances[transfer.fromParticipantId] += transfer.amount;
-    outstandingBalances[transfer.toParticipantId] -= transfer.amount;
+    paidHistoryTotal = nextPaidHistoryTotal;
+    outstandingBalances[transfer.fromParticipantId] = nextFromBalance;
+    outstandingBalances[transfer.toParticipantId] = nextToBalance;
+  }
+
+  if (!hasSafeBalancedExposure(outstandingBalances)) {
+    return {
+      ...settlement,
+      transfers: (previousTransfers ?? []).map((item) => ({ ...item })),
+      issues: [{ reason: "unsafe-paid-history" }]
+    };
   }
 
   const pendingBalances = roundTransfers
@@ -172,9 +183,8 @@ export function groupSettlementTransfersForDisplay(transfers = []) {
       return [{
         transfer: {
           ...transfer,
-          amount: routePaidTransfers.reduce(
-            (sum, paidTransfer) => sum + paidTransfer.amount,
-            0
+          amount: sumMoneyAmounts(
+            routePaidTransfers.map((paidTransfer) => paidTransfer.amount)
           )
         },
         paidHistory: [],
@@ -215,6 +225,9 @@ export function roundSettlementBalances(
   if (!Number.isSafeInteger(unit) || unit <= 0) {
     return { ...(balances ?? {}) };
   }
+  if (!hasSafeBalancedExposure(balances)) {
+    return { ...(balances ?? {}) };
+  }
 
   const entries = Object.entries(balances ?? {}).map(
     ([participantId, balance], index) => {
@@ -227,11 +240,7 @@ export function roundSettlementBalances(
       };
     }
   );
-  const totalBalance = Object.values(balances ?? {}).reduce(
-    (sum, balance) => sum + balance,
-    0
-  );
-  if (totalBalance !== 0 || entries.some(({ floorUnits }) => !Number.isSafeInteger(floorUnits))) {
+  if (entries.some(({ floorUnits }) => !Number.isSafeInteger(floorUnits))) {
     return { ...(balances ?? {}) };
   }
 
@@ -249,10 +258,11 @@ export function roundSettlementBalances(
   );
 
   return Object.fromEntries(
-    entries.map((entry) => [
-      entry.participantId,
-      (entry.floorUnits + Number(incrementedParticipantIds.has(entry.participantId))) * unit
-    ])
+    entries.map((entry) => {
+      const roundedBalance =
+        (entry.floorUnits + Number(incrementedParticipantIds.has(entry.participantId))) * unit;
+      return [entry.participantId, roundedBalance === 0 ? 0 : roundedBalance];
+    })
   );
 }
 
@@ -292,10 +302,14 @@ function buildDirectTransfersFromBalances(
       amount,
       status: "pending"
     });
-    remainingBalances[fromParticipantId] =
-      (remainingBalances[fromParticipantId] ?? 0) + amount;
-    remainingBalances[toParticipantId] =
-      (remainingBalances[toParticipantId] ?? 0) - amount;
+    remainingBalances[fromParticipantId] = sumMoneyAmounts([
+      remainingBalances[fromParticipantId] ?? 0,
+      amount
+    ]);
+    remainingBalances[toParticipantId] = sumMoneyAmounts([
+      remainingBalances[toParticipantId] ?? 0,
+      -amount
+    ]);
   }
 
   const remainingEntries = Object.entries(remainingBalances)
@@ -327,7 +341,7 @@ function buildDirectRoutePreferences(participants, expenses) {
   const knownParticipantIds = new Set(
     (participants ?? []).map((participant) => participant?.id).filter(Boolean)
   );
-  const routeAmounts = new Map();
+  const acceptedExpenses = [];
 
   for (const expense of expenses ?? []) {
     const normalizedExpense = normalizeExpenseForSettlement(
@@ -336,12 +350,26 @@ function buildDirectRoutePreferences(participants, expenses) {
     );
     if (normalizedExpense.issue) continue;
 
-    const expenseBalances = Object.fromEntries(
-      [...knownParticipantIds].map((participantId) => [participantId, 0])
-    );
     const shares = splitEvenly(
       normalizedExpense.total,
       normalizedExpense.sharedByParticipantIds
+    );
+    acceptedExpenses.push({ normalizedExpense, shares });
+  }
+
+  return buildDirectRoutePreferencesFromLedger(acceptedExpenses);
+}
+
+function buildDirectRoutePreferencesFromLedger(acceptedExpenses) {
+  const routeAmounts = new Map();
+
+  for (const { normalizedExpense, shares } of acceptedExpenses ?? []) {
+    const participantIds = new Set([
+      ...normalizedExpense.sharedByParticipantIds,
+      ...normalizedExpense.payers.map((payer) => payer.participantId)
+    ]);
+    const expenseBalances = Object.fromEntries(
+      [...participantIds].map((participantId) => [participantId, 0])
     );
     for (const [participantId, share] of Object.entries(shares)) {
       expenseBalances[participantId] -= share;
@@ -355,7 +383,7 @@ function buildDirectRoutePreferences(participants, expenses) {
         .filter(([, balance]) => balance !== 0)
         .map(([participantId, balance]) => ({ participantId, balance }))
     )) {
-      addNettedRoutePreference(routeAmounts, transfer);
+      if (!addNettedRoutePreference(routeAmounts, transfer)) return new Map();
     }
   }
 
@@ -364,7 +392,7 @@ function buildDirectRoutePreferences(participants, expenses) {
 
 function addNettedRoutePreference(routeAmounts, transfer) {
   const route = settlementTransferRoute(transfer);
-  if (!route || !isPositiveAgoraAmount(transfer.amount)) return;
+  if (!route || !isPositiveAgoraAmount(transfer.amount)) return true;
   const reverseRoute = `${transfer.toParticipantId}\u0000${transfer.fromParticipantId}`;
   const reverseAmount = routeAmounts.get(reverseRoute) ?? 0;
   const canceledAmount = Math.min(reverseAmount, transfer.amount);
@@ -380,8 +408,14 @@ function addNettedRoutePreference(routeAmounts, transfer) {
 
   const remainingAmount = transfer.amount - canceledAmount;
   if (remainingAmount > 0) {
-    routeAmounts.set(route, (routeAmounts.get(route) ?? 0) + remainingAmount);
+    const combinedAmount = safeMoneySum(
+      routeAmounts.get(route) ?? 0,
+      remainingAmount
+    );
+    if (combinedAmount === null) return false;
+    routeAmounts.set(route, combinedAmount);
   }
+  return true;
 }
 
 function buildOutstandingTransfers(
@@ -409,6 +443,12 @@ function buildOutstandingTransfers(
       ];
     })
   );
+  const unchangedPreviousPlan = preserveExactPreviousPendingPlan(
+    balances,
+    blockedRoutes,
+    previousTransfers
+  );
+  if (unchangedPreviousPlan) return unchangedPreviousPlan;
 
   let preferred = baseline;
   if (
@@ -449,6 +489,56 @@ function buildOutstandingTransfers(
       doesNotReintroduceBlockedRoutes
     ? stableCandidate
     : preferred;
+}
+
+function preserveExactPreviousPendingPlan(
+  balances,
+  blockedRoutes,
+  previousTransfers
+) {
+  const remainingBalances = { ...(balances ?? {}) };
+  const pendingTransfers = [];
+  const routes = new Set();
+
+  for (const transfer of previousTransfers ?? []) {
+    if (transfer?.status === "paid") continue;
+    const route = settlementTransferRoute(transfer);
+    if (
+      !route ||
+      routes.has(route) ||
+      routes.has(`${transfer.toParticipantId}\u0000${transfer.fromParticipantId}`) ||
+      blockedRoutes.has(route) ||
+      !isPositiveAgoraAmount(transfer.amount) ||
+      !Object.hasOwn(remainingBalances, transfer.fromParticipantId) ||
+      !Object.hasOwn(remainingBalances, transfer.toParticipantId) ||
+      transfer.fromParticipantId === transfer.toParticipantId
+    ) {
+      return null;
+    }
+    routes.add(route);
+
+    const nextFromBalance = safeMoneySum(
+      remainingBalances[transfer.fromParticipantId],
+      transfer.amount
+    );
+    const nextToBalance = safeMoneySum(
+      remainingBalances[transfer.toParticipantId],
+      -transfer.amount
+    );
+    if (nextFromBalance === null || nextToBalance === null) return null;
+
+    remainingBalances[transfer.fromParticipantId] = nextFromBalance;
+    remainingBalances[transfer.toParticipantId] = nextToBalance;
+    pendingTransfers.push({
+      ...transfer,
+      id: transfer.id || transferIdFor(transfer),
+      status: "pending"
+    });
+  }
+
+  return Object.values(remainingBalances).every((balance) => balance === 0)
+    ? pendingTransfers
+    : null;
 }
 
 function buildTransfersFavoringPreviousRoutes(
@@ -493,8 +583,14 @@ function buildTransfersFavoringPreviousRoutes(
       amount,
       status: "pending"
     });
-    remainingBalances[previousTransfer.fromParticipantId] += amount;
-    remainingBalances[previousTransfer.toParticipantId] -= amount;
+    remainingBalances[previousTransfer.fromParticipantId] = sumMoneyAmounts([
+      remainingBalances[previousTransfer.fromParticipantId],
+      amount
+    ]);
+    remainingBalances[previousTransfer.toParticipantId] = sumMoneyAmounts([
+      remainingBalances[previousTransfer.toParticipantId],
+      -amount
+    ]);
   }
 
   const remainingTransfers = blockedRoutes.size
@@ -592,8 +688,14 @@ function buildTransfersAvoidingRoutes(balances, blockedRoutes, buildTransfers) {
   });
   const remainingBalances = { ...(balances ?? {}) };
   for (const transfer of allowedTransfers) {
-    remainingBalances[transfer.fromParticipantId] += transfer.amount;
-    remainingBalances[transfer.toParticipantId] -= transfer.amount;
+    remainingBalances[transfer.fromParticipantId] = sumMoneyAmounts([
+      remainingBalances[transfer.fromParticipantId],
+      transfer.amount
+    ]);
+    remainingBalances[transfer.toParticipantId] = sumMoneyAmounts([
+      remainingBalances[transfer.toParticipantId],
+      -transfer.amount
+    ]);
   }
 
   return combineTransfersByRoute([
@@ -646,7 +748,7 @@ function combineTransfersByRoute(transfers) {
     if (!route || !isPositiveAgoraAmount(transfer.amount)) continue;
     const existing = combined.get(route);
     if (existing) {
-      existing.amount += transfer.amount;
+      existing.amount = sumMoneyAmounts([existing.amount, transfer.amount]);
       existing.id = transferIdFor(existing);
       continue;
     }
@@ -673,12 +775,12 @@ function netTransfersByRoute(transfers) {
 }
 
 function amountOnRoutes(transfers, routes) {
-  return (transfers ?? []).reduce(
-    (sum, transfer) =>
+  return sumMoneyAmounts(
+    (transfers ?? []).flatMap((transfer) =>
       routes.has(settlementTransferRoute(transfer))
-        ? sum + transfer.amount
-        : sum,
-    0
+        ? [transfer.amount]
+        : []
+    )
   );
 }
 
@@ -759,48 +861,35 @@ function findMaximumZeroSumPartition(entries) {
 export function pendingBalanceForParticipant(transfers, participantId) {
   if (!participantId) return 0;
 
-  return (transfers ?? [])
+  return sumMoneyAmounts((transfers ?? [])
     .filter((transfer) => transfer?.status !== "paid")
-    .reduce((balance, transfer) => {
-      const amount = Number.isInteger(transfer?.amount) ? transfer.amount : 0;
-      if (transfer?.toParticipantId === participantId) return balance + amount;
-      if (transfer?.fromParticipantId === participantId) return balance - amount;
-      return balance;
-    }, 0);
+    .map((transfer) => {
+      const amount = Number.isSafeInteger(transfer?.amount) ? transfer.amount : 0;
+      if (transfer?.toParticipantId === participantId) return amount;
+      if (transfer?.fromParticipantId === participantId) return -amount;
+      return 0;
+    }));
 }
 
 export function buildParticipantSettlementBreakdown(participants, expenses, participantId) {
-  const knownParticipantIds = new Set(
-    (participants ?? []).map((participant) => participant.id).filter(Boolean)
-  );
+  const ledger = buildSettlementLedger(participants, expenses);
   const expenseShares = [];
-  const issues = [];
+  const issues = [...ledger.issues];
   let paidTotal = 0;
   let shareTotal = 0;
 
-  for (const expense of expenses ?? []) {
-    const normalizedExpense = normalizeExpenseForSettlement(expense, knownParticipantIds);
-    if (normalizedExpense.issue) {
-      issues.push({
-        expenseId: expense?.id ?? "",
-        reason: normalizedExpense.issue
-      });
-      continue;
-    }
-
-    const shares = splitEvenly(
-      normalizedExpense.total,
-      normalizedExpense.sharedByParticipantIds
+  for (const { expense, normalizedExpense, shares } of ledger.acceptedExpenses) {
+    const participantPaid = sumMoneyAmounts(
+      normalizedExpense.payers
+        .filter((payer) => payer.participantId === participantId)
+        .map((payer) => payer.amount)
     );
-    const participantPaid = normalizedExpense.payers
-      .filter((payer) => payer.participantId === participantId)
-      .reduce((sum, payer) => sum + payer.amount, 0);
     const participantShare = shares[participantId] ?? 0;
 
     if (participantPaid === 0 && participantShare === 0) continue;
 
-    paidTotal += participantPaid;
-    shareTotal += participantShare;
+    paidTotal = sumMoneyAmounts([paidTotal, participantPaid]);
+    shareTotal = sumMoneyAmounts([shareTotal, participantShare]);
     expenseShares.push({
       expenseId: expense?.id ?? "",
       name: expense?.name ?? "הוצאה",
@@ -819,6 +908,88 @@ export function buildParticipantSettlementBreakdown(participants, expenses, part
     expenseShares,
     issues
   };
+}
+
+function buildSettlementLedger(participants, expenses) {
+  const validParticipants = (participants ?? []).filter(
+    (participant) => participant?.id
+  );
+  const knownParticipantIds = new Set(
+    validParticipants.map((participant) => participant.id)
+  );
+  let balances = Object.fromEntries(
+    validParticipants.map((participant) => [participant.id, 0])
+  );
+  let grossTotal = 0;
+  const acceptedExpenses = [];
+  const issues = [];
+
+  for (const expense of expenses ?? []) {
+    const normalizedExpense = normalizeExpenseForSettlement(
+      expense,
+      knownParticipantIds
+    );
+    if (normalizedExpense.issue) {
+      issues.push({
+        expenseId: expense?.id ?? "",
+        reason: normalizedExpense.issue
+      });
+      continue;
+    }
+
+    const nextGrossTotal = safeMoneySum(grossTotal, normalizedExpense.total);
+    if (nextGrossTotal === null) {
+      issues.push({
+        expenseId: expense?.id ?? "",
+        reason: "unsafe-event-total"
+      });
+      continue;
+    }
+
+    const shares = splitEvenly(
+      normalizedExpense.total,
+      normalizedExpense.sharedByParticipantIds
+    );
+    const nextBalances = { ...balances };
+    let unsafeBalance = false;
+
+    for (const [participantId, share] of Object.entries(shares)) {
+      const nextBalance = safeMoneySum(nextBalances[participantId] ?? 0, -share);
+      if (nextBalance === null) {
+        unsafeBalance = true;
+        break;
+      }
+      nextBalances[participantId] = nextBalance;
+    }
+
+    if (!unsafeBalance) {
+      for (const payer of normalizedExpense.payers) {
+        const nextBalance = safeMoneySum(
+          nextBalances[payer.participantId] ?? 0,
+          payer.amount
+        );
+        if (nextBalance === null) {
+          unsafeBalance = true;
+          break;
+        }
+        nextBalances[payer.participantId] = nextBalance;
+      }
+    }
+
+    if (unsafeBalance || !hasSafeBalancedExposure(nextBalances)) {
+      issues.push({
+        expenseId: expense?.id ?? "",
+        reason: "unsafe-balance-total"
+      });
+      continue;
+    }
+
+    balances = nextBalances;
+    grossTotal = nextGrossTotal;
+    acceptedExpenses.push({ expense, normalizedExpense, shares });
+  }
+
+  return { balances, acceptedExpenses, issues };
 }
 
 function normalizeExpenseForSettlement(expense, knownParticipantIds) {
@@ -853,7 +1024,12 @@ function normalizeExpenseForSettlement(expense, knownParticipantIds) {
     return { issue: "invalid-payer-amount" };
   }
 
-  const paidTotal = payers.reduce((sum, payer) => sum + payer.amount, 0);
+  let paidTotal;
+  try {
+    paidTotal = sumMoneyAmounts(payers.map((payer) => payer.amount));
+  } catch {
+    return { issue: "unsafe-payer-total" };
+  }
   if (paidTotal !== expense.total) {
     return { issue: "payer-total-mismatch" };
   }
@@ -886,6 +1062,30 @@ function paidTransferKey(transfer) {
 
 function transferIdFor(transfer) {
   return `transfer-${transfer.fromParticipantId}-${transfer.toParticipantId}-${transfer.amount}`;
+}
+
+function safeMoneySum(...amounts) {
+  try {
+    return sumMoneyAmounts(amounts);
+  } catch {
+    return null;
+  }
+}
+
+function hasSafeBalancedExposure(balances) {
+  let credits = 0;
+  let debts = 0;
+  for (const balance of Object.values(balances ?? {})) {
+    if (!Number.isSafeInteger(balance)) return false;
+    if (balance > 0) {
+      credits = safeMoneySum(credits, balance);
+      if (credits === null) return false;
+    } else if (balance < 0) {
+      debts = safeMoneySum(debts, -balance);
+      if (debts === null) return false;
+    }
+  }
+  return credits === debts;
 }
 
 function settlementTransferRoute(transfer) {

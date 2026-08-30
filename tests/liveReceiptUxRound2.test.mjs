@@ -141,7 +141,7 @@ test("trip ledger day separators show both daily count and subtotal", async () =
     "function renderExpensePayerSummary"
   );
 
-  assert.match(groups, /const groupTotal = group\.expenses\.reduce/);
+  assert.match(groups, /const groupTotal = sumMoneyAmounts/);
   assert.match(groups, /class="expense-day-summary"/);
   assert.match(groups, /formatEventMoney\(event, groupTotal\)/);
   assert.match(design, /\.expense-day-heading \{[\s\S]*?position: sticky !important/);

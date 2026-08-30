@@ -1,4 +1,4 @@
-import { formatMoney, parseMoneyInput } from "./domain/money.mjs";
+import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { noticePresentation } from "./domain/userNoticePolicy.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
@@ -4088,7 +4088,7 @@ function renderEvent(event) {
   rememberRecentEvent(event.id);
   const participants = eventParticipants(event);
   const activeParticipants = activeEventParticipants(event);
-  const total = event.expenses.reduce((sum, expense) => sum + expense.total, 0);
+  const total = sumMoneyAmounts(event.expenses.map((expense) => expense.total));
   const canEdit = canCurrentParticipantEdit(event);
   const canManage = canCurrentParticipantManage(event);
   const adminNames =
@@ -5615,10 +5615,13 @@ function participantRelationshipOpenBalance(event, targetParticipantId) {
         (transfer.fromParticipantId === currentParticipantId &&
           transfer.toParticipantId === targetParticipantId))
   );
-  const net = transfers.reduce((sum, transfer) => {
-    if (transfer.fromParticipantId === targetParticipantId) return sum + transfer.amount;
-    return sum - transfer.amount;
-  }, 0);
+  const net = sumMoneyAmounts(
+    transfers.map((transfer) =>
+      transfer.fromParticipantId === targetParticipantId
+        ? transfer.amount
+        : -transfer.amount
+    )
+  );
 
   return {
     amount: Math.abs(net),
@@ -9101,7 +9104,9 @@ function renderEventExpenseGroups(event) {
 
   return groups
     .map((group) => {
-      const groupTotal = group.expenses.reduce((sum, expense) => sum + expense.total, 0);
+      const groupTotal = sumMoneyAmounts(
+        group.expenses.map((expense) => expense.total)
+      );
       return `
         <section class="expense-day-group${showDayHeadings ? " has-day-heading" : ""}" role="list">
           ${
@@ -9287,9 +9292,11 @@ function renderSettlement(event) {
   const orderedTransfers = orderSettlementTransfers(transfers);
   const displayTransfers = groupSettlementTransfersForDisplay(orderedTransfers);
   const hasTransfers = displayTransfers.length > 0;
-  const pendingTotal = transfers
-    .filter((transfer) => transfer.status !== "paid")
-    .reduce((sum, transfer) => sum + transfer.amount, 0);
+  const pendingTotal = sumMoneyAmounts(
+    transfers
+      .filter((transfer) => transfer.status !== "paid")
+      .map((transfer) => transfer.amount)
+  );
 
   return `
     <section class="screen font-hebrew settlement-screen" data-screen-kind="event" data-event-view="summary" data-event-id="${escapeAttribute(event.id)}">
@@ -9873,13 +9880,11 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
   const personalReceipts = personalPendingTransfers.filter(
     (transfer) => transfer.toParticipantId === state.currentParticipantId
   );
-  const personalPaymentTotal = personalPayments.reduce(
-    (sum, transfer) => sum + transfer.amount,
-    0
+  const personalPaymentTotal = sumMoneyAmounts(
+    personalPayments.map((transfer) => transfer.amount)
   );
-  const personalReceiptTotal = personalReceipts.reduce(
-    (sum, transfer) => sum + transfer.amount,
-    0
+  const personalReceiptTotal = sumMoneyAmounts(
+    personalReceipts.map((transfer) => transfer.amount)
   );
   const singlePersonalPayment =
     personalPayments.length === 1 && !personalReceipts.length
@@ -10422,9 +10427,8 @@ function renderTransferPaidHistory(
 ) {
   if (!paidHistory.length) return "";
 
-  const total = paidHistory.reduce(
-    (sum, transfer) => sum + transfer.amount,
-    0
+  const total = sumMoneyAmounts(
+    paidHistory.map((transfer) => transfer.amount)
   );
   return `
     <details class="transfer-paid-history" open>
@@ -18533,7 +18537,9 @@ async function setEventStatusFromHome(eventId, nextStatus, trigger) {
     return;
   }
 
-  const pendingTotal = pendingTransfers.reduce((sum, transfer) => sum + transfer.amount, 0);
+  const pendingTotal = sumMoneyAmounts(
+    pendingTransfers.map((transfer) => transfer.amount)
+  );
   const transferDescription = pendingTransfers.length === 1
     ? `נותרה העברה פתוחה בסך ${formatEventMoney(event, pendingTotal)}. עדיין יהיה אפשר לסמן אותה כשולמה אחרי הסגירה.`
     : `נותרו ${pendingTransfers.length} העברות פתוחות בסך ${formatEventMoney(event, pendingTotal)}. עדיין יהיה אפשר לסמן אותן כשולמו אחרי הסגירה.`;

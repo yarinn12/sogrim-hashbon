@@ -53,6 +53,9 @@ export function currencySelectLabel(value) {
 }
 
 export function formatCurrency(amount, currency = DEFAULT_CURRENCY) {
+  if (!Number.isSafeInteger(amount)) {
+    throw new TypeError("Currency amounts must be safe integer minor units.");
+  }
   const config = currencyConfig(currency);
   const sign = amount < 0 ? "-" : "";
   const separator = config.symbol.length > 1 ? " " : "";

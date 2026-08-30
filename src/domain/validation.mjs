@@ -1,3 +1,5 @@
+import { sumMoneyAmounts } from "./money.mjs";
+
 export function validateExpense(expense, context = {}) {
   const errors = [];
   const participantIds = context.participantIds ?? [];
@@ -38,8 +40,13 @@ export function validateExpense(expense, context = {}) {
     errors.push("יש בהוצאה משתתף שלא נמצא באירוע.");
   }
 
-  const paidTotal = expense.payers.reduce((sum, payer) => sum + payer.amount, 0);
-  if (paidTotal !== expense.total) {
+  let paidTotal = null;
+  try {
+    paidTotal = sumMoneyAmounts(expense.payers.map((payer) => payer.amount));
+  } catch {
+    errors.push("סכום המשלמים גדול מדי.");
+  }
+  if (paidTotal !== null && paidTotal !== expense.total) {
     errors.push("סכום המשלמים חייב להיות שווה לסכום ההוצאה.");
   }
 
