@@ -51,6 +51,30 @@ const eventCredentials = {
 };
 const createdUserIds = [];
 const createdSpaceIds = new Set([eventCredentials.id]);
+const syncTimings = [];
+
+function recordSyncTiming(name, startedAt) {
+  syncTimings.push({
+    name,
+    milliseconds: Math.round((performance.now() - startedAt) * 10) / 10
+  });
+}
+
+function summarizeSyncTimings(samples) {
+  const values = samples
+    .map((sample) => sample.milliseconds)
+    .sort((left, right) => left - right);
+  const percentile = (ratio) => values[Math.min(
+    values.length - 1,
+    Math.max(0, Math.ceil(values.length * ratio) - 1)
+  )] ?? 0;
+  return {
+    samples: values.length,
+    p50: percentile(0.5),
+    p95: percentile(0.95),
+    max: values.at(-1) ?? 0
+  };
+}
 
 try {
   const owner = await createTemporaryAccount("owner", "בעל אירוע בדיקה");
@@ -129,6 +153,7 @@ try {
     },
     prefer: "return=representation"
   });
+  const publicationStartedAt = performance.now();
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
 
   const atomicallyGrantedEvents = await readAccessibleSharedCloudStates(joinerConfig);
@@ -137,6 +162,7 @@ try {
     true,
     "Canonical event publication did not atomically grant the connected participant access"
   );
+  recordSyncTiming("event-publication-to-member-read", publicationStartedAt);
 
   const directInviteResponse = await fetch(
     "https://sogrim-hesbon-app.vercel.app/api/notifications/event-activity",
@@ -332,6 +358,7 @@ try {
   assert.ok(expenseEditedByJoiner);
   expenseEditedByJoiner.name = "ארוחה עודכנה על ידי חבר";
   expenseEditedByJoiner.updatedAt = "2026-08-03T12:05:01.500Z";
+  const expenseEditStartedAt = performance.now();
   joinerState = await saveSharedEventState(
     joinerConfig,
     joinerEditedState,
@@ -342,6 +369,7 @@ try {
     ownerState.events[0].expenses.find((expense) => expense.id === ownerExpenseId)?.name,
     "ארוחה עודכנה על ידי חבר"
   );
+  recordSyncTiming("expense-edit-to-owner-read", expenseEditStartedAt);
 
   // A deletion from one phone must become canonical before a stale device can
   // publish its older copy. The tombstone must remain visible to both users.
@@ -366,6 +394,7 @@ try {
     deletedExpenseId,
     "2026-08-03T12:05:03.000Z"
   );
+  const expenseDeletionStartedAt = performance.now();
   joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
   ownerState = await saveSharedEventState(
     ownerConfig,
@@ -388,6 +417,7 @@ try {
       true
     );
   }
+  recordSyncTiming("expense-delete-to-both-reads", expenseDeletionStartedAt);
 
   ownerState = linkParticipantAccountInEvent(
     ownerState,
@@ -455,6 +485,7 @@ try {
     // Payment-status writes are intentionally freshness-checked by Supabase.
     markedAt: new Date().toISOString()
   });
+  const transferStatusStartedAt = performance.now();
   joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.equal(ownerState.events[0].transfers[0].status, "paid");
@@ -462,6 +493,7 @@ try {
     ownerState.events[0].transfers[0].markedPaidByParticipantId,
     joinerProfile.participantId
   );
+  recordSyncTiming("transfer-status-to-owner-read", transferStatusStartedAt);
 
   const sharedNoteId = `note-two-account-${suffix}`;
   ownerState = addEventNote(ownerState, eventId, {
@@ -471,12 +503,14 @@ try {
     participantId: ownerProfile.participantId,
     createdAt: "2026-08-03T12:12:00.000Z"
   });
+  const noteCreateStartedAt = performance.now();
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
   joinerState = await refreshSharedEvents(joinerConfig, joinerState);
   assert.equal(
     joinerState.events[0].notes?.find((note) => note.id === sharedNoteId)?.body,
     "טרמינל 3"
   );
+  recordSyncTiming("note-create-to-member-read", noteCreateStartedAt);
 
   joinerState = updateEventNote(joinerState, eventId, sharedNoteId, {
     body: "טרמינל 3 · להגיע שלוש שעות לפני",
@@ -484,6 +518,7 @@ try {
     participantId: joinerProfile.participantId,
     updatedAt: "2026-08-03T12:13:00.000Z"
   });
+  const noteEditStartedAt = performance.now();
   joinerState = await saveSharedEventState(joinerConfig, joinerState, eventId);
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   const synchronizedNote = ownerState.events[0].notes?.find(
@@ -494,12 +529,15 @@ try {
     synchronizedNote?.body,
     "טרמינל 3 · להגיע שלוש שעות לפני"
   );
+  recordSyncTiming("note-edit-to-owner-read", noteEditStartedAt);
 
   ownerState = closeEvent(ownerState, eventId, "2026-08-03T12:15:00.000Z");
+  const closeEventStartedAt = performance.now();
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
   joinerState = await refreshSharedEvents(joinerConfig, joinerState);
   assert.equal(joinerState.events[0].locked, true);
   assert.equal(joinerState.events[0].closedAt, "2026-08-03T12:15:00.000Z");
+  recordSyncTiming("event-close-to-member-read", closeEventStartedAt);
 
   await saveCloudState(ownerConfig, ownerState);
   await saveCloudState(joinerConfig, joinerState);
@@ -537,6 +575,7 @@ try {
       joinerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
     true
   );
+  const leaveEventStartedAt = performance.now();
   await saveSharedEventState(joinerConfig, joinerState, eventId);
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   assert.equal(
@@ -544,6 +583,7 @@ try {
       ownerState.events[0].inactiveParticipantIds?.includes(joinerProfile.participantId),
     true
   );
+  recordSyncTiming("member-leave-to-owner-read", leaveEventStartedAt);
 
   joinerState = await refreshSharedEvents(joinerConfig, joinerState);
   const revokedEvent = joinerState.events.find((event) => event.id === eventId);
@@ -614,8 +654,16 @@ try {
     true
   );
 
+  const syncLatencyMs = summarizeSyncTimings(syncTimings);
+  assert.ok(
+    syncLatencyMs.max <= 5_000,
+    `Two-account synchronization exceeded 5 seconds: ${JSON.stringify(syncTimings)}`
+  );
+
   console.log(JSON.stringify({
     ok: true,
+    syncLatencyMs,
+    syncTimings,
     checks: {
       separateAccountIdentities: true,
       canonicalPublicationGrantedMembershipAtomically: true,
