@@ -96,6 +96,7 @@ const ACCOUNT_NOTICE_MARKER = "settle-friends-account-notice";
 const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
 const APP_NOTICE_EVENT = "settle-friends:notice";
 const ACCOUNT_SETUP_TIMEOUT_MS = 12_000;
+const STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500;
 const ACCOUNT_DELETE_HISTORY_KEY = "settleFriendsAccountDelete";
 const ACCOUNT_FEEDBACK_HISTORY_KEY = "settleFriendsAccountFeedback";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
@@ -244,6 +245,12 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
 
   if (accountSession) {
+    if (!callbackSession && accountSession.user && navigator.onLine === false) {
+      resumeAccountLocally(accountSession);
+      watchAccountControls();
+      enhanceAccountControls();
+      return;
+    }
     try {
       accountSession = await restoreAccountSession(accountSession, {
         previousSession: sessionBeforeCallback,
@@ -305,7 +312,12 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         isUnauthorizedAccountError(error)
       ) {
         try {
-          accountSession = await refreshAccountSession(runtimeConfig, accountSession);
+          accountSession = await refreshAccountSession(
+            runtimeConfig,
+            accountSession,
+            globalThis.fetch,
+            { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+          );
           accountSession = saveAccountSession(accountSession);
           scheduleAccountSessionRefresh();
           await connectAccountToApp(accountSession, {
@@ -379,12 +391,22 @@ async function restoreAccountSession(
 ) {
   let nextSession = session;
   if (isExpiring(session)) {
-    nextSession = await refreshAccountSession(runtimeConfig, session);
+    nextSession = await refreshAccountSession(
+      runtimeConfig,
+      session,
+      globalThis.fetch,
+      { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+    );
   }
   // User metadata can be repaired server-side while an installed PWA still
   // holds an older session object. Always refresh the authenticated user so a
   // corrected workspace becomes active without requiring sign-out.
-  const user = await loadAccountUser(runtimeConfig, nextSession);
+  const user = await loadAccountUser(
+    runtimeConfig,
+    nextSession,
+    globalThis.fetch,
+    { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+  );
   nextSession = { ...nextSession, user };
   const normalizedExpectedEmail = String(expectedEmail).trim().toLowerCase();
   const normalizedSessionEmail = String(nextSession?.user?.email ?? "")
@@ -404,7 +426,9 @@ async function restoreAccountSession(
     previousSession,
     nextSession
   );
-  nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession);
+  nextSession = await ensureAccountWorkspace(runtimeConfig, nextSession, {
+    requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS
+  });
   if (switchedAccount) {
     publishAccountSessionSync(nextSession, { reason: "switching" });
   }
@@ -716,6 +740,7 @@ function resumeAccountLocally(session) {
   }
 
   saveAccountSession(session);
+  scheduleAccountSessionRefresh();
   const storedProfile = loadLocalProfile();
   const storedAvatarImage =
     storedProfile?.participantId === accountProfile.participantId

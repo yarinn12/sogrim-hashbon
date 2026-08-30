@@ -6660,6 +6660,15 @@ const CSS = `
     border-top: 1px solid var(--ledger-line) !important;
   }
 
+  html.ledger-workspace-v1 .expense-participants-list-title {
+    margin: 0 !important;
+    padding: 12px 4px 8px !important;
+    color: var(--ledger-muted) !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    line-height: 1.4 !important;
+  }
+
   html.ledger-workspace-v1 .expense-participant-item {
     min-width: 0 !important;
     min-height: 54px !important;
@@ -19055,7 +19064,7 @@ const CSS = `
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 
-  html.ledger-workspace-v1 .screen[data-screen-kind="event"] :is(.event-workspace-expenses, .event-workspace-summary) {
+  html.ledger-workspace-v1 .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) :is(.event-workspace-expenses, .event-workspace-summary, .event-workspace-notes) {
     min-width: 0 !important;
     min-height: 56px !important;
     padding-inline: 14px !important;
@@ -19066,7 +19075,7 @@ const CSS = `
     box-shadow: 0 1px 2px rgba(2, 31, 27, 0.06) !important;
   }
 
-  html.ledger-workspace-v1 .screen[data-screen-kind="event"] :is(.event-workspace-expenses, .event-workspace-summary):is(.is-active, [aria-current="page"]) {
+  html.ledger-workspace-v1 .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) :is(.event-workspace-expenses, .event-workspace-summary, .event-workspace-notes):is(.is-active, [aria-current="page"]) {
     border-color: var(--ledger-brand) !important;
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
@@ -19733,8 +19742,8 @@ const CSS = `
     border-radius: 28px !important;
     color: #ffffff !important;
     background:
-      radial-gradient(circle at 18% 18%, rgba(31, 139, 111, 0.28), transparent 38%),
-      linear-gradient(138deg, #073b2f 0%, #07513f 56%, #0a634b 100%) !important;
+      linear-gradient(128deg, #071b18 0%, #064b43 58%, #087b74 100%),
+      #064b43 !important;
     box-shadow: 0 18px 40px rgba(5, 66, 51, 0.18) !important;
   }
 
@@ -19751,8 +19760,8 @@ const CSS = `
     border-radius: 28px !important;
     color: #ffffff !important;
     background:
-      radial-gradient(circle at 18% 18%, rgba(31, 139, 111, 0.28), transparent 38%),
-      linear-gradient(138deg, #073b2f 0%, #07513f 56%, #0a634b 100%) !important;
+      linear-gradient(128deg, #071b18 0%, #064b43 58%, #087b74 100%),
+      #064b43 !important;
     box-shadow: 0 18px 40px rgba(5, 66, 51, 0.18) !important;
   }
 

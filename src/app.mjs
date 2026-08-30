@@ -9203,7 +9203,8 @@ function renderExpenseRow(event, expense) {
         </summary>
         ${expense.notes ? `<p class="expense-saved-notes">${escapeHtml(expense.notes)}</p>` : ""}
         ${expense.attachmentImage ? `<img class="expense-saved-image" src="${escapeAttribute(expense.attachmentImage)}" alt="תמונה מצורפת להוצאה ${escapeAttribute(expense.name)}" />` : ""}
-        <div class="expense-participants-list" role="list" aria-label="שותפים בהוצאה ${escapeAttribute(expense.name)}"></div>
+        <p class="expense-participants-list-title" id="expense-participants-title-${escapeAttribute(expense.id)}">רשימת משתתפים</p>
+        <div class="expense-participants-list" role="list" aria-labelledby="expense-participants-title-${escapeAttribute(expense.id)}"></div>
       </details>
     </article>
   `;
@@ -9238,7 +9239,7 @@ function renderExpenseParticipant(event, participantId) {
         <strong>${escapeHtml(participantName(participantId, event))}</strong>
         <span class="expense-participant-meta">
           ${isCurrentParticipant ? '<span class="expense-participant-you">אתה</span>' : ""}
-          ${participant ? renderParticipantConnectionBadge(participant) : ""}
+          ${participant && !isCurrentParticipant ? renderParticipantConnectionBadge(participant) : ""}
         </span>
       </span>
     </div>

@@ -339,28 +339,47 @@ export async function signInWithIdToken(
   return sessionFromAuthResponse(response);
 }
 
-export async function refreshAccountSession(config, session, fetchImpl = fetch) {
+export async function refreshAccountSession(
+  config,
+  session,
+  fetchImpl = fetch,
+  requestOptions = {}
+) {
   if (!session?.refresh_token) return null;
   const response = await authRequest(config, "/token?grant_type=refresh_token", {
     method: "POST",
-    body: { refresh_token: session.refresh_token }
+    body: { refresh_token: session.refresh_token },
+    timeoutMs: requestOptions.timeoutMs
   }, fetchImpl);
   return sessionFromAuthResponse(response);
 }
 
-export async function loadAccountUser(config, session, fetchImpl = fetch) {
+export async function loadAccountUser(
+  config,
+  session,
+  fetchImpl = fetch,
+  requestOptions = {}
+) {
   if (!session?.access_token) return null;
   return authRequest(config, "/user", {
     method: "GET",
-    accessToken: session.access_token
+    accessToken: session.access_token,
+    timeoutMs: requestOptions.timeoutMs
   }, fetchImpl);
 }
 
-export async function updateAccountUser(config, session, data, fetchImpl = fetch) {
+export async function updateAccountUser(
+  config,
+  session,
+  data,
+  fetchImpl = fetch,
+  requestOptions = {}
+) {
   const user = await authRequest(config, "/user", {
     method: "PUT",
     accessToken: session.access_token,
-    body: { data }
+    body: { data },
+    timeoutMs: requestOptions.timeoutMs
   }, fetchImpl);
   return {
     ...session,
@@ -438,11 +457,17 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
       currentUrl: options.currentUrl
     });
     const currentMetadata = nextSession?.user?.user_metadata ?? {};
-    nextSession = await updateAccountUser(config, nextSession, {
-      ...currentMetadata,
-      account_space_id: workspace.id,
-      account_space_key: workspace.key
-    }, options.fetchImpl ?? fetch);
+    nextSession = await updateAccountUser(
+      config,
+      nextSession,
+      {
+        ...currentMetadata,
+        account_space_id: workspace.id,
+        account_space_key: workspace.key
+      },
+      options.fetchImpl ?? fetch,
+      { timeoutMs: options.requestTimeoutMs }
+    );
     saveAccountSession(nextSession, options.storage);
   }
 
@@ -454,7 +479,8 @@ export async function ensureAccountWorkspace(config, session, options = {}) {
     config,
     nextSession,
     workspace,
-    options.fetchImpl ?? fetch
+    options.fetchImpl ?? fetch,
+    options.requestTimeoutMs
   );
   activateAccountWorkspace(workspace, {
     storage: options.storage,
@@ -467,7 +493,8 @@ async function ensureAccountWorkspaceRecord(
   config,
   session,
   workspace,
-  fetchImpl
+  fetchImpl,
+  requestTimeoutMs
 ) {
   if (
     config?.storage?.mode !== "supabase" ||
@@ -490,7 +517,8 @@ async function ensureAccountWorkspaceRecord(
         "content-type": "application/json"
       },
       body: JSON.stringify({ p_space_id: workspace.id })
-    }
+    },
+    requestTimeoutMs
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !["created", "existing"].includes(payload?.status)) {
@@ -934,7 +962,7 @@ async function authRequest(config, path, options, fetchImpl) {
         : {})
     },
     ...(options.body ? { body: JSON.stringify(options.body) } : {})
-  });
+  }, options.timeoutMs);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = new Error(

@@ -9,8 +9,10 @@ const VIDEO_LOAD_TIMEOUT_MS = 6000;
 const VIDEO_PROGRESS_TIMEOUT_MS = 4500;
 const VIDEO_STALL_TIMEOUT_MS = 2400;
 const VIDEO_WATCHDOG_INTERVAL_MS = 800;
-const VIDEO_PRESENTATION_GRACE_MS = 1200;
-const MIN_VIDEO_PRESENTATION_MS = 1700;
+// Hand the native splash over quickly, then give the branded loop a short,
+// stable presentation without holding an already interactive app for seconds.
+const VIDEO_PRESENTATION_GRACE_MS = 650;
+const MIN_VIDEO_PRESENTATION_MS = 800;
 const MAX_SPLASH_WAIT_MS = 5500;
 const MAX_SPLASH_RENDER_RETRY_MS = 750;
 const SPLASH_EXIT_MS = 100;
@@ -44,6 +46,11 @@ function installSplash({ showPosterOnly = false } = {}) {
 
   setNativeSystemBarStyle(true);
   document.documentElement.classList.add("app-splash-active");
+  // The web splash is already rendered by index.html. Releasing the Android
+  // system splash here avoids waiting for video decoding before the WebView can
+  // become visible; the branded web splash remains in place until the app is
+  // actually ready.
+  notifyNativeWebSplashReady();
 
   const appObserver = new MutationObserver(() => {
     dismissWhenReady();

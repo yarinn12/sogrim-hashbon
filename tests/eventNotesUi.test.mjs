@@ -38,4 +38,9 @@ test("the approved notes layout includes pinned, empty and editor states", () =>
   assert.match(layer, /\.event-notes-hero/);
   assert.match(layer, /\.event-note-row/);
   assert.match(layer, /\.event-note-editor/);
+  assert.match(
+    layer,
+    /\.screen:is\(\[data-screen-kind="event"\], \[data-screen-kind="event-notes"\]\) :is\(\.event-workspace-expenses, \.event-workspace-summary, \.event-workspace-notes\)/
+  );
+  assert.match(layer, /linear-gradient\(128deg, #071b18 0%, #064b43 58%, #087b74 100%\)/);
 });

@@ -32,13 +32,14 @@ test("the new brand source drives every public logo format", async () => {
   assert.deepEqual(pngDimensions(appleIcon), { width: 180, height: 180 });
 });
 
-test("native launcher and store icons use the same square brand mark", async () => {
-  const [installer, iosIcon, androidIcon, androidRoundIcon, adaptiveIcon, playIcon, exteriorIcon, manifest] = await Promise.all([
+test("native launcher and store icons use platform-safe versions of the same brand mark", async () => {
+  const [installer, iosIcon, androidIcon, androidRoundIcon, adaptiveIcon, monochromeIcon, playIcon, exteriorIcon, manifest] = await Promise.all([
     readFile("scripts/install-exterior-app-icon.py", "utf8"),
     readFile("ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"),
     readFile("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"),
     readFile("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png"),
     readFile("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_foreground.png"),
+    readFile("android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_monochrome.png"),
     readFile("docs/store-assets/google-play-icon-512.png"),
     readFile("app-icon-exterior-512.png"),
     readFile("manifest.webmanifest", "utf8").then(JSON.parse)
@@ -48,9 +49,11 @@ test("native launcher and store icons use the same square brand mark", async () 
   assert.deepEqual(pngDimensions(androidIcon), { width: 192, height: 192 });
   assert.deepEqual(pngDimensions(androidRoundIcon), { width: 192, height: 192 });
   assert.deepEqual(pngDimensions(adaptiveIcon), { width: 432, height: 432 });
+  assert.deepEqual(pngDimensions(monochromeIcon), { width: 432, height: 432 });
   assert.notDeepEqual(androidRoundIcon, androidIcon);
-  assert.match(installer, /adaptive_safe = inset_for_launcher\(source, 0\.76, transparent=True\)/);
-  assert.match(installer, /launcher_safe = inset_for_launcher\(source, 0\.90\)/);
+  assert.match(installer, /safe_size = round\(size \* \(66 \/ 108\)\)/);
+  assert.match(installer, /full_bleed_artwork\(source, mark\)/);
+  assert.doesNotMatch(installer, /inset_for_launcher/);
   assert.deepEqual(pngDimensions(playIcon), { width: 512, height: 512 });
   assert.deepEqual(pngDimensions(exteriorIcon), { width: 512, height: 512 });
   assert.ok(manifest.icons.some((icon) => icon.src === "./app-icon-exterior-maskable-512.png"));

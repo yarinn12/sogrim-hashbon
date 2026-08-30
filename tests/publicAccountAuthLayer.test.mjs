@@ -136,8 +136,17 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.ok(
     restoreSession.indexOf("clearPreviousAccountAfterSwitch(") <
-      restoreSession.indexOf("ensureAccountWorkspace(runtimeConfig, nextSession)"),
+      restoreSession.indexOf("ensureAccountWorkspace(runtimeConfig, nextSession, {"),
     "the previous account must be cleared before a workspace is assigned to the new user"
+  );
+  assert.match(layer, /STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500/);
+  assert.match(
+    layer,
+    /!callbackSession && accountSession\.user && navigator\.onLine === false[\s\S]*?resumeAccountLocally\(accountSession\)/
+  );
+  assert.match(
+    restoreSession,
+    /loadAccountUser\([\s\S]*?timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS[\s\S]*?ensureAccountWorkspace\([\s\S]*?requestTimeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS/
   );
   assert.match(
     restoreSession,
@@ -372,7 +381,7 @@ test("account gate protects private content and preserves interrupted form work"
   );
   assert.match(
     layer,
-    /accountSession\?\.refresh_token &&[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\(runtimeConfig, accountSession\)[\s\S]*?saveAccountSession\(accountSession\)[\s\S]*?connectAccountToApp\(accountSession/
+    /accountSession\?\.refresh_token &&[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\([\s\S]*?runtimeConfig,[\s\S]*?accountSession,[\s\S]*?STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS[\s\S]*?saveAccountSession\(accountSession\)[\s\S]*?connectAccountToApp\(accountSession/
   );
   assert.match(layer, /function isTransientAccountError\(error\)/);
   assert.match(

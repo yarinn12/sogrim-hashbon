@@ -873,6 +873,26 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     .toBeVisible();
   await assertLayoutHealth(page, "event expenses");
 
+  const inactiveWorkspaceTabs = page.locator(
+    ".event-workspace-tab:is(.event-workspace-summary, .event-workspace-notes)"
+  );
+  const inactiveTabPresentation = await inactiveWorkspaceTabs.evaluateAll((elements) =>
+    elements.map((element) => {
+      const style = getComputedStyle(element);
+      return {
+        minHeight: style.minHeight,
+        paddingInline: style.paddingInline,
+        border: style.border,
+        borderRadius: style.borderRadius,
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        boxShadow: style.boxShadow
+      };
+    })
+  );
+  expect(inactiveTabPresentation).toHaveLength(2);
+  expect(inactiveTabPresentation[0]).toEqual(inactiveTabPresentation[1]);
+
   const firstExpenseRow = page.locator(".expense-row").first();
   const firstExpenseParticipants = firstExpenseRow.locator(".expense-participants-details");
   const firstExpenseDisclosure = firstExpenseRow.locator(
@@ -883,6 +903,15 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await firstExpenseDisclosure.click();
   await expect(firstExpenseDisclosure).toHaveAttribute("aria-expanded", "true");
   await expect(firstExpenseParticipants).toHaveAttribute("open", "");
+  await expect(firstExpenseParticipants.locator(".expense-participants-list-title"))
+    .toHaveText("רשימת משתתפים");
+  const currentExpenseParticipant = firstExpenseParticipants.locator(
+    ".expense-participant-item.is-current"
+  );
+  await expect(currentExpenseParticipant.locator(".expense-participant-you"))
+    .toHaveText("אתה");
+  await expect(currentExpenseParticipant.locator(".participant-connection-badge"))
+    .toHaveCount(0);
   await assertLayoutHealth(page, "expanded expense participants");
   await firstExpenseDisclosure.click();
   await expect(firstExpenseParticipants).not.toHaveAttribute("open", "");

@@ -33,8 +33,8 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(splashLayer, /VIDEO_STALL_TIMEOUT_MS = 2400/);
   assert.match(splashLayer, /VIDEO_WATCHDOG_INTERVAL_MS = 800/);
   assert.doesNotMatch(splashLayer, /APP_READY_VIDEO_GRACE_MS/);
-  assert.match(splashLayer, /VIDEO_PRESENTATION_GRACE_MS = 1200/);
-  assert.match(splashLayer, /MIN_VIDEO_PRESENTATION_MS = 1700/);
+  assert.match(splashLayer, /VIDEO_PRESENTATION_GRACE_MS = 650/);
+  assert.match(splashLayer, /MIN_VIDEO_PRESENTATION_MS = 800/);
   assert.match(splashLayer, /MAX_SPLASH_WAIT_MS = 5500/);
   assert.match(splashLayer, /MAX_SPLASH_RENDER_RETRY_MS = 750/);
   assert.match(splashLayer, /SPLASH_EXIT_MS = 100/);
@@ -136,6 +136,10 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.equal(splashLayer.match(/setNativeSystemBarStyle\(true\)/g)?.length, 2);
   assert.match(splashLayer, /notifyNativeWebSplashReady/);
   assert.match(splashLayer, /SogrimCapabilities\?\.notifyWebSplashReady/);
+  assert.match(
+    splashLayer,
+    /document\.documentElement\.classList\.add\("app-splash-active"\);[\s\S]*?notifyNativeWebSplashReady\(\);/
+  );
   assert.doesNotMatch(splashLayer, /setNativeSystemBarStyle\(false\)/);
   assert.match(index, /width="1080"[\s\S]*?height="1920"/);
   assert.match(styles, /html\.app-splash-active body \{[\s\S]*?background: #fff/);

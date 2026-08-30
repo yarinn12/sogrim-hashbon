@@ -351,6 +351,34 @@ test("every completed sign-in verifies an existing metadata workspace on the ser
   assert.equal(storage.getItem(CLIENT_SPACE_STORAGE_KEY), workspace.id);
 });
 
+test("startup workspace verification honors its short request budget", async () => {
+  const session = {
+    access_token: "access-token",
+    refresh_token: "refresh-token",
+    user: {
+      id: "existing-user",
+      user_metadata: {
+        account_space_id: "space-existing-account",
+        account_space_key: "abcdefghijklmnopqrstuvwxyzABCDEF"
+      }
+    }
+  };
+
+  await assert.rejects(
+    ensureAccountWorkspace(config, session, {
+      storage: memoryStorage(),
+      requestTimeoutMs: 5,
+      fetchImpl: async (_url, request) =>
+        new Promise((_resolve, reject) => {
+          request.signal.addEventListener("abort", () => reject(request.signal.reason), {
+            once: true
+          });
+        })
+    }),
+    /timed out/i
+  );
+});
+
 test("sign-in fails visibly when the account workspace cannot be validated", async () => {
   const session = {
     access_token: "access-token",

@@ -67,6 +67,8 @@ test("expense rows reveal every shared participant from the uncluttered row", as
   );
 
   assert.match(expenseRow, /class="expense-participants-details"/);
+  assert.match(expenseRow, /class="expense-participants-list-title"[^>]*>רשימת משתתפים<\/p>/);
+  assert.match(expenseRow, /participant && !isCurrentParticipant \? renderParticipantConnectionBadge\(participant\) : ""/);
   assert.match(expenseRow, /data-action="toggle-expense-participants"/);
   assert.match(expenseRow, /aria-expanded="false"/);
   assert.match(app, /openExpenseParticipantIds:[\s\S]*?expense-participants-details\[open\]/);

@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.11"
+        default: "4.14"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "133"
+        default: "142"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תיקנו עדכון PWA שנשאר על גרסה ישנה ב-iPhone וב-iPad, חיזקנו כניסה עם Google ושמירת משתתפים והוצאות בין מכשירים, והוספנו התאוששות בטוחה מכשלי סנכרון."
+        default: "שיפרנו את מהירות הטעינה והסנכרון בין מכשירים, חיזקנו הזמנות וקישורים לאירועים, והוספנו פתקים משותפים לאירוע. עודכנו גם נכסי האפליקציה והתאמה טובה יותר ל-iPhone, iPad ו-Android."
 
 permissions:
   contents: read
