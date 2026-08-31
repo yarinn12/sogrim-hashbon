@@ -15394,8 +15394,9 @@ const CSS = `
   html.ledger-workspace-v1 .event-row-meta {
     min-width: 0 !important;
     display: flex !important;
-    align-items: baseline !important;
-    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
     gap: 4px !important;
     overflow: hidden !important;
     color: var(--ledger-muted) !important;
@@ -15420,6 +15421,15 @@ const CSS = `
     font-size: inherit !important;
     line-height: inherit !important;
     font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
+  html.ledger-workspace-v1 .event-row-details {
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: baseline !important;
+    flex-wrap: nowrap !important;
+    gap: 4px !important;
     white-space: nowrap !important;
   }
 
@@ -16363,6 +16373,71 @@ const CSS = `
     background: #ffffff !important;
     box-shadow: inset -3px 0 0 #08745d !important;
     transform: none !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field {
+    margin: 18px 16px 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field > legend {
+    width: 100% !important;
+    margin: 0 0 10px !important;
+    padding: 0 2px !important;
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 750 !important;
+    line-height: 1.4 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-options {
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-option {
+    min-height: 78px !important;
+    padding: 14px 16px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 16px !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+    scale: 1 !important;
+    transition-property: background-color, border-color, box-shadow, color, scale !important;
+    transition-duration: 160ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-option:active:not(:disabled) {
+    scale: 0.96 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-option:is(.is-active, [aria-checked="true"]) {
+    border-color: rgba(8, 116, 93, 0.34) !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-surface-soft) !important;
+    box-shadow:
+      0 0 0 1px rgba(8, 116, 93, 0.08),
+      var(--ledger-shadow-border) !important;
+    transform: none !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-copy {
+    gap: 4px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-copy strong {
+    font-size: 15px !important;
+    font-weight: 750 !important;
+    line-height: 1.35 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-management-field .event-management-copy small {
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.45 !important;
   }
 
   html.ledger-workspace-v1 .new-event-inline-picker details {
@@ -18034,6 +18109,111 @@ const CSS = `
     scale: 1 !important;
   }
 
+  /* Every event-settings subroute shares the management screen's quiet card
+     vocabulary while retaining the control best suited to its content. */
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-settings-card {
+    margin: 18px 16px 0 !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 16px !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-currency-field {
+    display: grid !important;
+    gap: 10px !important;
+    padding: 16px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-currency-field > span {
+    color: var(--ledger-ink) !important;
+    font-size: 15px !important;
+    font-weight: 750 !important;
+    line-height: 1.4 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-currency-field > select {
+    width: 100% !important;
+    min-height: 48px !important;
+    padding: 10px 13px !important;
+    border: 1px solid var(--ledger-line-strong) !important;
+    border-radius: 12px !important;
+    color: var(--ledger-ink) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: none !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-currency-field > select:focus-visible {
+    border-color: var(--ledger-accent) !important;
+    outline: 3px solid rgba(8, 116, 93, 0.16) !important;
+    outline-offset: 1px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-currency-field > small {
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-note {
+    margin: 10px 18px 0 !important;
+    padding: 12px 14px !important;
+    border: 0 !important;
+    border-radius: 12px !important;
+    color: var(--ledger-muted) !important;
+    background: var(--ledger-surface-soft) !important;
+    box-shadow: none !important;
+    font-size: 12px !important;
+    line-height: 1.55 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-more {
+    margin: 8px 18px 0 !important;
+    color: var(--ledger-muted) !important;
+    font-size: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-more > summary {
+    width: max-content !important;
+    padding: 4px 0 !important;
+    color: var(--ledger-brand) !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-more > p {
+    margin: 6px 0 0 !important;
+    padding: 10px 12px !important;
+    border-radius: 10px !important;
+    background: var(--ledger-surface-soft) !important;
+    line-height: 1.55 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-activity-panel {
+    overflow: hidden !important;
+    border-radius: 16px !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-focus-status {
+    padding: 16px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-primary-action {
+    margin: 12px 16px 0 !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-setting-primary-action > button {
+    width: 100% !important;
+    min-height: 48px !important;
+    border-radius: 12px !important;
+  }
+
+  html.ledger-workspace-v1 .event-settings-route-backdrop .event-danger-zone {
+    border-radius: 16px !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+  }
+
   /* Event creation must remain operable above the persistent mobile navigation. */
   @media (max-width: 720px) {
     html.ledger-workspace-v1 .screen[data-event-creation-step] {
@@ -18873,6 +19053,14 @@ const CSS = `
     background: #ffffff !important;
   }
 
+  @media (max-width: 720px) {
+    html.ledger-workspace-v1 .event-status-menu {
+      max-height: calc(100dvh - max(28px, env(safe-area-inset-bottom))) !important;
+      padding-block-end: max(36px, calc(18px + env(safe-area-inset-bottom))) !important;
+      scroll-padding-block-end: max(36px, calc(18px + env(safe-area-inset-bottom))) !important;
+    }
+  }
+
   html.ledger-workspace-v1 .event-status-options {
     display: grid !important;
     gap: 8px !important;
@@ -19037,6 +19225,76 @@ const CSS = `
     stroke: currentColor !important;
   }
 
+  /* The share friend picker uses the same calm individual-card language as
+     the rest of the app, without changing its one-tap invitation flow. */
+  html.ledger-workspace-v1 .event-share-friends {
+    padding: 2px 0 4px !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-share-friend-list {
+    display: grid !important;
+    gap: 10px !important;
+    overflow: visible !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-candidate-row {
+    min-height: 74px !important;
+    padding: 12px 14px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 16px !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
+    transition-property: border-color, background-color, scale !important;
+    transition-duration: 160ms !important;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-candidate-row + .event-participant-candidate-row {
+    border-block-start: 1px solid var(--ledger-line) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-candidate-row:has(button:focus-visible) {
+    border-color: rgba(8, 116, 93, 0.42) !important;
+    background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-add-button {
+    width: 96px !important;
+    min-width: 96px !important;
+    min-height: 44px !important;
+    display: grid !important;
+    place-items: center !important;
+    justify-self: center !important;
+    padding: 0 !important;
+    border: 1px solid rgba(8, 116, 93, 0.28) !important;
+    border-radius: 12px !important;
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-accent-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-add-button .participant-membership-status {
+    width: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: inherit !important;
+    background: transparent !important;
+    font-size: 12px !important;
+    font-weight: 760 !important;
+    line-height: 1.2 !important;
+    text-align: center !important;
+  }
+
+  html.ledger-workspace-v1 .event-share-friends .event-participant-add-button:active:not(:disabled) {
+    scale: 0.96 !important;
+  }
+
   html.ledger-workspace-v1 .event-participant-add-confirmation {
     display: grid !important;
     gap: 12px !important;
@@ -19086,6 +19344,10 @@ const CSS = `
     color: var(--ledger-brand) !important;
     background: #ffffff !important;
     box-shadow: 0 1px 2px rgba(2, 31, 27, 0.06) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-event-id] {
+    touch-action: pan-y !important;
   }
 
   html.ledger-workspace-v1 .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) :is(.event-workspace-expenses, .event-workspace-summary, .event-workspace-notes):is(.is-active, [aria-current="page"]) {

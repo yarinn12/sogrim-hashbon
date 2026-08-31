@@ -206,10 +206,10 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   );
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("נבחר כרגע: החזר לפי מי ששילם");
+  await expect(repaymentDialog).toContainText("ההחזרים יועברו ישירות למי ששילם");
   await optimized.click();
   await expect(optimized).toHaveAttribute("aria-checked", "true");
-  await expect(repaymentDialog).toContainText("נבחר כרגע: קיזוז חכם");
+  await expect(repaymentDialog).toContainText("המערכת תאזן את החובות ותציע כמה שפחות העברות");
   await direct.click();
   await expect(direct).toHaveAttribute("aria-checked", "true");
   await expect(direct).toBeFocused();

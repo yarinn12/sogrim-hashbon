@@ -52,7 +52,7 @@ test("Hebrew font loading does not block the app from rendering", async () => {
   assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
   assert.match(html, /as="style"/);
   assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=425"/);
+  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=429"/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
   assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
   assert.match(loader, /fontStylesheet\.media = "all"/);
@@ -73,6 +73,10 @@ test("event rows render participants, a uniform text status, and a quiet options
   assert.match(app, /class="event-row-options-chevron"/);
   assert.match(app, /function eventHomeStatusLabel\(event\)/);
   assert.match(app, /class="event-row-state \$\{statusClass\}"/);
+  assert.match(app, /class="event-row-state \$\{statusClass\}">סטטוס: \$\{escapeHtml\(statusLabel\)\}/);
+  assert.match(app, /class="event-row-details"/);
+  assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-meta \{[\s\S]*?flex-direction: column !important;[\s\S]*?flex-wrap: nowrap !important;/);
+  assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-details \{[\s\S]*?flex-wrap: nowrap !important;[\s\S]*?white-space: nowrap !important;/);
   assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-state \{[\s\S]*?border: 1px solid var\(--ledger-line\) !important;[\s\S]*?border-radius: 8px !important;[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?box-shadow: var\(--ledger-shadow-border\) !important;/);
   assert.doesNotMatch(
     app.slice(app.indexOf("function renderEventRow(event)"), app.indexOf("function ensureNewEventDraft")),

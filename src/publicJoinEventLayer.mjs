@@ -16,6 +16,7 @@ import {
   mergeSharedEventIntoState,
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
+import { loadStoredAccountSession } from "./data/accountAuth.mjs";
 
 const app = document.querySelector("#app");
 const STYLE_ID = "public-join-event-layer-style";
@@ -27,6 +28,7 @@ const MODE_STORAGE_KEY = "sogrimNewEventMode";
 
 let requestedEventMode = readRequestedEventMode();
 let joinEnhancementScheduled = false;
+let publicJoinBusy = false;
 
 injectJoinEventStyle();
 document.addEventListener("click", rememberRequestedEventMode, true);
@@ -348,94 +350,129 @@ function focusJoinEventPanel() {
 }
 
 async function joinExistingEventFromPublicPanel() {
+  if (publicJoinBusy) return;
+  publicJoinBusy = true;
+  const joinButtons = [
+    ...document.querySelectorAll(
+      "[data-public-submit-join], [data-public-join-existing-event]"
+    )
+  ];
+  joinButtons.forEach((button) => {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+  });
   const input = document.querySelector("[data-public-join-event-link]");
   const error = document.querySelector("[data-public-join-event-error]");
   const link = input?.value.trim() ?? "";
 
-  setJoinError(error, "");
-  if (!link) {
-    setJoinError(error, "צריך להדביק קישור הצטרפות.");
-    return;
-  }
-
-  const eventId = parseEventId(link);
-  if (!eventId) {
-    setJoinError(error, "הקישור לא נראה כמו קישור הצטרפות תקין.");
-    return;
-  }
-
-  const joinRuntimeConfig = await loadRuntimeConfig();
-  const inviteCredentials = await resolveEventInviteCredentials(
-    joinRuntimeConfig,
-    link
-  );
-  if (!inviteCredentials?.id || !inviteCredentials?.key) {
-    setJoinError(error, "הקישור לא תקין או שכבר בוטל. בקשו קישור חדש ממנהל האירוע.");
-    return;
-  }
-
-  let sharedEventState;
   try {
-    sharedEventState = await readSharedEventState(
-      joinRuntimeConfig,
-      inviteCredentials,
-      eventId
-    );
-  } catch {
-    setJoinError(error, "לא הצלחנו לאמת את ההזמנה כרגע. בדקו את החיבור ונסו שוב.");
-    return;
-  }
-  if (!sharedEventState) {
-    setJoinError(error, "האירוע כבר לא זמין או שהקישור בוטל.");
-    return;
-  }
+    setJoinError(error, "");
+    if (!link) {
+      setJoinError(error, "צריך להדביק קישור הצטרפות.");
+      return;
+    }
 
-  let state = mergeSharedEventIntoState(
-    loadState(),
-    sharedEventState,
-    inviteCredentials
-  );
-  saveState(state);
-  let targetEvent = findEvent(state, eventId);
-  if (!targetEvent) {
-    state = mergeSharedEventIntoState(
-      await loadSharedState(),
+    const eventId = parseEventId(link);
+    if (!eventId) {
+      setJoinError(error, "הקישור לא נראה כמו קישור הצטרפות תקין.");
+      return;
+    }
+
+    const joinRuntimeConfig = await loadRuntimeConfig();
+    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+    const inviteCredentials = await resolveEventInviteCredentials(
+      joinRuntimeConfig,
+      link
+    );
+    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+    if (!inviteCredentials?.id || !inviteCredentials?.key) {
+      setJoinError(error, "הקישור לא תקין או שכבר בוטל. בקשו קישור חדש ממנהל האירוע.");
+      return;
+    }
+
+    let sharedEventState;
+    try {
+      sharedEventState = await readSharedEventState(
+        joinRuntimeConfig,
+        inviteCredentials,
+        eventId
+      );
+    } catch {
+      setJoinError(error, "לא הצלחנו לאמת את ההזמנה כרגע. בדקו את החיבור ונסו שוב.");
+      return;
+    }
+    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+    if (!sharedEventState) {
+      setJoinError(error, "האירוע כבר לא זמין או שהקישור בוטל.");
+      return;
+    }
+
+    let state = mergeSharedEventIntoState(
+      loadState(),
       sharedEventState,
       inviteCredentials
     );
     saveState(state);
-    targetEvent = findEvent(state, eventId);
-  }
-
-  if (!targetEvent) {
-    setJoinError(error, "לא מצאנו אירוע לפי הקישור הזה. כדאי לוודא שהקישור הועתק במלואו.");
-    return;
-  }
-
-  const profile = loadLocalProfile();
-  if (profile) {
-    state = ensureNamedParticipant(
-      state,
-      {
-        ...profile,
-        id: profile.participantId,
-        displayName: profile.displayName
-      },
-      eventId,
-      { reactivateInactive: false }
-    );
-    saveState(state);
-    const saveResult = await saveSharedState(state, { awaitCloud: true });
-    if (!saveResult?.ok && !saveResult?.partial) {
-      setJoinError(
-        error,
-        "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ונסו שוב."
+    let targetEvent = findEvent(state, eventId);
+    if (!targetEvent) {
+      const latestState = await loadSharedState();
+      if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+      state = mergeSharedEventIntoState(
+        latestState,
+        sharedEventState,
+        inviteCredentials
       );
+      saveState(state);
+      targetEvent = findEvent(state, eventId);
+    }
+
+    if (!targetEvent) {
+      setJoinError(error, "לא מצאנו אירוע לפי הקישור הזה. כדאי לוודא שהקישור הועתק במלואו.");
       return;
     }
-  }
 
-  window.location.href = buildEventInviteUrl(window.location.href, eventId);
+    const profile = loadLocalProfile();
+    if (profile) {
+      state = ensureNamedParticipant(
+        state,
+        {
+          ...profile,
+          id: profile.participantId,
+          displayName: profile.displayName
+        },
+        eventId,
+        { reactivateInactive: false }
+      );
+      saveState(state);
+      const saveResult = await saveSharedState(state, { awaitCloud: true });
+      if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+      if (!saveResult?.ok && !saveResult?.partial) {
+        setJoinError(
+          error,
+          "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ונסו שוב."
+        );
+        return;
+      }
+    }
+
+    window.location.href = buildEventInviteUrl(window.location.href, eventId);
+  } finally {
+    publicJoinBusy = false;
+    joinButtons.forEach((button) => {
+      if (!button.isConnected) return;
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    });
+  }
+}
+
+function joinRuntimeOwnerIsActive(config) {
+  const expectedUserId = String(config?.storage?.account?.userId ?? "").trim();
+  if (!expectedUserId) return true;
+  const activeUserId = String(
+    loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
+  ).trim();
+  return activeUserId === expectedUserId;
 }
 
 function parseEventId(value) {

@@ -262,6 +262,57 @@ test("server rotates open links atomically and stores only the token hash", asyn
   assert.notEqual(body.p_token_hash, TOKEN);
 });
 
+test("server batches independent open-invite verification reads", async () => {
+  let activeVerificationReads = 0;
+  let maxConcurrentVerificationReads = 0;
+  const fetchImpl = async (url) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) {
+      return jsonResponse({ id: USER_ID });
+    }
+    if (
+      address.includes("/rest/v1/app_snapshots?") &&
+      address.includes("owner_user_id")
+    ) {
+      return jsonResponse([{ state: serverState() }]);
+    }
+    if (
+      address.includes("/rest/v1/app_snapshots?") ||
+      address.includes("/rest/v1/event_invite_tokens?")
+    ) {
+      activeVerificationReads += 1;
+      maxConcurrentVerificationReads = Math.max(
+        maxConcurrentVerificationReads,
+        activeVerificationReads
+      );
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      activeVerificationReads -= 1;
+      return address.includes("/rest/v1/app_snapshots?")
+        ? jsonResponse([sharedSnapshot()])
+        : jsonResponse([]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      return jsonResponse("33333333-3333-4333-8333-333333333333");
+    }
+    throw new Error(`Unexpected request: ${address}`);
+  };
+
+  const result = await manageOpenEventInvite({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl
+  });
+
+  assert.equal(result.status, 200);
+  assert.ok(
+    maxConcurrentVerificationReads >= 3,
+    `expected batched verification reads, observed ${maxConcurrentVerificationReads}`
+  );
+});
+
 test("server recovers an active open link during ensure when this device lost its token", async () => {
   let rotationAttempted = false;
   const result = await manageOpenEventInvite({
@@ -365,7 +416,7 @@ test("server recreates the same open link on another device without rotating it"
   assert.equal(second.status, 200);
   assert.equal(second.payload.token, first.payload.token);
   assert.equal(rotations, 1);
-  assert.equal(tokenHashes.at(-1), activeHash);
+  assert.ok(tokenHashes.includes(activeHash));
 });
 
 test("a deliberately rotated link survives Postgres timestamp reserialization on another device", async () => {

@@ -103,12 +103,44 @@ export async function manageOpenEventInvite({
       code: "EVENT_INVITE_NOT_ALLOWED"
     });
   }
-  const inviteAnchor = await loadInviteEventAnchor({
-    ...context,
+
+  const stableToken = createStableOpenInviteToken({
+    secret: context.serviceRoleKey,
     eventId: normalizedEventId,
     spaceId,
-    fetchImpl
+    spaceKey
   });
+  const tokenCandidates = normalizedOperation === "ensure"
+    ? [...new Set([normalizedCandidate, stableToken].filter(Boolean))]
+    : [];
+  const [inviteAnchor, activeInvites, activeOpenInvite] = await Promise.all([
+    loadInviteEventAnchor({
+      ...context,
+      eventId: normalizedEventId,
+      spaceId,
+      fetchImpl
+    }),
+    Promise.all(
+      tokenCandidates.map((token) =>
+        loadActiveInviteByToken({
+          ...context,
+          eventId: normalizedEventId,
+          spaceId,
+          token,
+          kind: "open",
+          fetchImpl
+        })
+      )
+    ),
+    normalizedOperation === "ensure"
+      ? loadActiveOpenInvite({
+          ...context,
+          eventId: normalizedEventId,
+          spaceId,
+          fetchImpl
+        })
+      : Promise.resolve(null)
+  ]);
   if (
     inviteAnchor &&
     !sameInviteCredentials(inviteAnchor, { spaceId, spaceKey })
@@ -117,23 +149,15 @@ export async function manageOpenEventInvite({
       code: "EVENT_INVITE_INVALIDATED"
     });
   }
-
-  const stableToken = createStableOpenInviteToken({
-    secret: context.serviceRoleKey,
-    eventId: normalizedEventId,
-    spaceId,
-    spaceKey
-  });
+  const activeInviteByToken = new Map(
+    tokenCandidates.map((token, index) => [
+      token,
+      activeInvites[index] ?? null
+    ])
+  );
   if (normalizedOperation === "ensure") {
     for (const token of [normalizedCandidate, stableToken].filter(Boolean)) {
-      const active = await loadActiveInviteByToken({
-        ...context,
-        eventId: normalizedEventId,
-        spaceId,
-        token,
-        kind: "open",
-        fetchImpl
-      });
+      const active = activeInviteByToken.get(token) ?? null;
       if (
         active &&
         active.space_id === spaceId &&
@@ -150,12 +174,7 @@ export async function manageOpenEventInvite({
   }
 
   if (normalizedOperation === "ensure") {
-    const active = await loadActiveOpenInvite({
-      ...context,
-      eventId: normalizedEventId,
-      spaceId,
-      fetchImpl
-    });
+    const active = activeOpenInvite;
     if (active) {
       const recoverableToken = createRotatedOpenInviteToken({
         secret: context.serviceRoleKey,
@@ -754,6 +773,7 @@ async function loadMemberAccessibleSharedEvent({
   accessToken,
   eventId,
   spaceId,
+  inviteAnchor: providedInviteAnchor,
   fetchImpl
 }) {
   const permissionResponse = await fetchImpl(
@@ -790,13 +810,15 @@ async function loadMemberAccessibleSharedEvent({
   // snapshot directly. After the caller proves live membership, recover the
   // canonical key from the server-only invite history and bind it back to the
   // snapshot hash before allowing any new invite to be created.
-  const inviteAnchor = await loadInviteEventAnchor({
-    supabaseUrl,
-    serviceRoleKey,
-    eventId,
-    spaceId,
-    fetchImpl
-  });
+  const inviteAnchor = providedInviteAnchor === undefined
+    ? await loadInviteEventAnchor({
+        supabaseUrl,
+        serviceRoleKey,
+        eventId,
+        spaceId,
+        fetchImpl
+      })
+    : providedInviteAnchor;
   const canonicalSpaceKey = String(inviteAnchor?.space_key ?? "").trim();
   if (!event) {
     return null;

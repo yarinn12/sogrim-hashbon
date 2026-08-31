@@ -4,6 +4,8 @@ const EVENT_ID = "event-identity-journey";
 const OWNER_ID = "account-11111111-1111-4111-8111-111111111111";
 const OFFLINE_ID = "guest-ariel-offline";
 const ACCOUNT_ID = "account-22222222-2222-4222-8222-222222222222";
+const HGG_ID = "guest-hgg";
+const NIZRI_ID = "account-33333333-3333-4333-8333-333333333333";
 let runtimeIssues = [];
 
 const seededState = {
@@ -85,8 +87,30 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     }
   });
 
-  const stateForTest = testInfo.title.includes("outside the friends list")
+  const stateForTest = testInfo.title.includes("HGG")
     ? {
+        ...seededState,
+        participants: [
+          seededState.participants[0],
+          { id: HGG_ID, displayName: "HGG", kind: "guest" },
+          {
+            id: NIZRI_ID,
+            displayName: "אריאל ניזרי",
+            kind: "member",
+            accountLinked: true,
+            authSubject: "33333333-3333-4333-8333-333333333333"
+          }
+        ],
+        events: seededState.events.map((event) => ({
+          ...event,
+          name: "יציאה",
+          participantIds: [OWNER_ID, HGG_ID],
+          expenses: [],
+          transfers: []
+        }))
+      }
+    : testInfo.title.includes("outside the friends list")
+      ? {
         ...seededState,
         participants: seededState.participants.filter((participant) => participant.id !== ACCOUNT_ID),
         events: seededState.events.map((event) => ({
@@ -99,8 +123,8 @@ test.beforeEach(async ({ page, request }, testInfo) => {
             )
           }))
         }))
-      }
-    : seededState;
+        }
+      : seededState;
 
   await request.post("/api/reset");
   await request.put("/api/state", { data: stateForTest });
@@ -154,7 +178,7 @@ test("an offline name links to its connected account without losing money", asyn
     .click();
   const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
   await expect(confirmation).toBeVisible();
-  await expect(confirmation).toContainText("לפני האיחוד");
+  await expect(confirmation).toContainText("אישור קישור");
   await expect(confirmation).toContainText("1");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
@@ -187,7 +211,15 @@ test("an offline name links to its connected account without losing money", asyn
   const savedState = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("settle-friends-state") || "{}")
   );
-  expect(savedState.participants.some((participant) => participant.id === OFFLINE_ID)).toBe(false);
+  expect(savedState.participants.some((participant) => participant.id === OFFLINE_ID)).toBe(true);
+  expect(savedState.events[0].participantIds).not.toContain(OFFLINE_ID);
+  expect(savedState.events[0].participantAccountLinks).toEqual([
+    expect.objectContaining({
+      sourceParticipantId: OFFLINE_ID,
+      targetParticipantId: ACCOUNT_ID,
+      linkedByParticipantId: OWNER_ID
+    })
+  ]);
   expect(savedState.events[0].expenses[0].total).toBe(9_000);
 });
 
@@ -247,6 +279,71 @@ test("the explicit account-link confirmation works on the first tap", async ({ p
     targetActive: true,
     expensePayerId: ACCOUNT_ID,
     linked: true
+  });
+});
+
+test("HGG can link only to Yarin when Nizri is not in the event", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`)
+    .click();
+  await page
+    .locator(`[data-action="open-event-participant-profile"][data-participant-id="${HGG_ID}"]`)
+    .click();
+  await page
+    .locator('[data-action="open-event-participant-link"]')
+    .click();
+
+  const linkDialog = page.locator(".event-participant-link-screen");
+  await expect(linkDialog).toBeVisible();
+  await expect(linkDialog).toContainText("ירין יצחק");
+  await expect(linkDialog).not.toContainText("ניזרי");
+  const candidates = linkDialog.locator(
+    '[data-action="link-offline-participant-account"]'
+  );
+  await expect(candidates).toHaveCount(1);
+  await expect(candidates).toHaveAttribute("data-source-participant-id", HGG_ID);
+  await expect(candidates).toHaveAttribute("data-target-participant-id", OWNER_ID);
+  await candidates.click();
+
+  const confirmation = page.locator('.important-action-dialog[role="alertdialog"]');
+  await expect(confirmation).toContainText("לקשר את HGG לחשבון של ירין יצחק?");
+  await expect(confirmation).not.toContainText("ניזרי");
+  await confirmation.locator('[data-action="confirm-important-action"]').click();
+
+  const participantDialog = page.locator(".event-participant-route-modal");
+  await expect(participantDialog).toContainText(
+    /(קישרנו את HGG לחשבון של ירין יצחק|החיבור של HGG לחשבון של ירין יצחק)/
+  );
+  await expect(participantDialog).not.toContainText("ניזרי");
+  await expect.poll(async () =>
+    page.evaluate(({ eventId, sourceId, targetId, unrelatedId }) => {
+      const saved = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");
+      const event = saved.events?.find((item) => item.id === eventId);
+      return {
+        currentParticipantId: saved.currentParticipantId,
+        sourceActive: event?.participantIds?.includes(sourceId),
+        targetActive: event?.participantIds?.includes(targetId),
+        unrelatedActive: event?.participantIds?.includes(unrelatedId),
+        links: event?.participantAccountLinks ?? []
+      };
+    }, {
+      eventId: EVENT_ID,
+      sourceId: HGG_ID,
+      targetId: OWNER_ID,
+      unrelatedId: NIZRI_ID
+    })
+  ).toEqual({
+    currentParticipantId: OWNER_ID,
+    sourceActive: false,
+    targetActive: true,
+    unrelatedActive: false,
+    links: [
+      expect.objectContaining({
+        sourceParticipantId: HGG_ID,
+        targetParticipantId: OWNER_ID,
+        linkedByParticipantId: OWNER_ID
+      })
+    ]
   });
 });
 

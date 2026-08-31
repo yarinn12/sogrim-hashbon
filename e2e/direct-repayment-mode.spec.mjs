@@ -107,6 +107,7 @@ test("a manager can reimburse only net funders without reciprocal transfers", as
   await expect(directOption).toContainText("לפי מי ששילם");
   await directOption.click();
   await expect(directOption).toHaveAttribute("aria-checked", "true");
+  await page.getByText("מידע נוסף", { exact: true }).click();
   await expect(page.getByText("סימוני תשלום שכבר בוצעו נשמרים")).toBeVisible();
 
   const savedDirectMode = await page.evaluate((eventId) => {

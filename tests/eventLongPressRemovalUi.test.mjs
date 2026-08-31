@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("home event rows expose one accessible share/removal menu from a chevron and long press", async () => {
-  const [app, styles] = await Promise.all([
+  const [app, styles, ledgerStyles] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
-    readFile("styles.css", "utf8")
+    readFile("styles.css", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
   ]);
 
   assert.match(app, /const EVENT_LONG_PRESS_DELAY_MS = 560/);
@@ -29,6 +30,10 @@ test("home event rows expose one accessible share/removal menu from a chevron an
   assert.match(app, /openEventStatusMenu\(eventId, trigger\)/);
   assert.match(app, /openEventStatusMenu\(target\.dataset\.eventId, target\)/);
   assert.match(styles, /\.event-status-menu-backdrop/);
+  assert.match(
+    ledgerStyles,
+    /@media \(max-width: 720px\) \{[\s\S]*?\.event-status-menu \{[\s\S]*?padding-block-end: max\(36px, calc\(18px \+ env\(safe-area-inset-bottom\)\)\) !important;/
+  );
   assert.match(app, /class="event-home-menu-actions"/);
   assert.match(styles, /\.event-status-danger-zone/);
   assert.match(styles, /\.event-removal-option:active:not\(:disabled\)/);

@@ -174,10 +174,20 @@ test("concurrent share preparations reuse a single in-flight promise", () => {
   );
 
   assert.match(prepare, /const activePreparation = eventSharePreparationPromises\.get\(eventId\);/);
-  assert.match(prepare, /if \(activePreparation\) return activePreparation;/);
+  assert.match(
+    prepare,
+    /if \(activePreparation\) \{[\s\S]*?return waitForEventSharePreparation\(eventId, activePreparation, \{/
+  );
+  assert.match(prepare, /eventSharePreparationPromises\.set\(eventId, preparation\);/);
+  assert.match(
+    prepare,
+    /if \(eventSharePreparationPromises\.get\(eventId\) === preparation\) \{[\s\S]*?eventSharePreparationPromises\.delete\(eventId\);/
+  );
+  assert.match(prepare, /markEventShareDelayed\(event\)/);
+  assert.match(prepare, /refreshEventShareDialogAfterPreparation\(/);
 });
 
-test("invite preparation cannot remain busy forever and waits for referral attribution", () => {
+test("invite preparation has a bounded UI wait while referral attribution stays off the critical path", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const prepare = app.slice(
     app.indexOf("function prepareEventShare(eventId)"),
@@ -191,7 +201,12 @@ test("invite preparation cannot remain busy forever and waits for referral attri
   assert.match(prepare, /settleEventSharePreparation\(/);
   assert.match(prepare, /EVENT_INVITE_TIMEOUT/);
   assert.match(prepare, /Promise\.race\(\[task, timeout\]\)/);
-  assert.match(referral, /await monetization\.refresh\(\)/);
+  assert.match(prepare, /settleEventSharePreparation\(preparation, 8_000\)/);
+  assert.match(referral, /timeoutMs = 1_500/);
+  assert.match(referral, /Promise\.race\(\[refresh, timeout\]\)/);
+  assert.match(referral, /\.then\(\(\) => monetization\.refresh\(\)\)/);
+  assert.match(app, /const referralPreparation = prepareReferralForEventInvite\(\);/);
+  assert.match(app, /await referralPreparation;/);
 });
 
 test("native sharing publishes new events without rewriting established shared events", () => {
@@ -313,7 +328,10 @@ test("invite preparation recovers when an iOS resume briefly exposes fallback co
   assert.match(prepare, /await refreshRuntimeConfigNow\(\)/);
   assert.match(prepare, /freshRuntimeConfig\?\.storage\?\.mode === "supabase"/);
   assert.match(prepare, /freshUserId === expectedUserId/);
-  assert.match(prepare, /return await prepareEventShareWithCurrentSession\(eventId\)/);
+  assert.match(
+    prepare,
+    /return await prepareEventShareWithCurrentSession\(eventId, \{\s*referralPreparation\s*\}\)/
+  );
 });
 
 test("invite preparation refreshes an expired account session once and retries", () => {
@@ -332,7 +350,7 @@ test("invite preparation refreshes an expired account session once and retries",
   assert.match(prepare, /freshUserId !== expectedUserId/);
   assert.equal(
     prepare.match(
-      /return (?:await )?prepareEventShareWithCurrentSession\(eventId\)/g
+      /return (?:await )?prepareEventShareWithCurrentSession\(eventId, \{\s*referralPreparation\s*\}\)/g
     )?.length,
     3,
     "invite preparation has one initial attempt and one bounded retry for each recoverable boundary"
@@ -411,12 +429,17 @@ test("existing shared events only republish after the invite server reports a mi
   assert.match(prepare, /const hadSharedCredentials = Boolean\(/);
   assert.match(
     prepare,
-    /if \(!hadSharedCredentials\) \{\s*shareRuntimeConfig = await prepareSharedEventForInvitation\(eventId\);/
+    /if \(!hadSharedCredentials\) \{\s*shareRuntimeConfig = await prepareSharedEventForInvitation\(eventId, \{\s*awaitAccountCloud: false\s*\}\);/
   );
   assert.match(prepare, /hadSharedCredentials &&/);
   assert.match(prepare, /EVENT_INVITE_NOT_READY/);
   assert.match(prepare, /EVENT_INVITE_NOT_ALLOWED/);
   assert.match(prepare, /publishExisting: true/);
+  assert.equal(
+    prepare.match(/awaitAccountCloud: false/g)?.length,
+    2,
+    "public link preparation never waits on the duplicate personal-workspace save"
+  );
   assert.equal(
     prepare.match(/publishExisting: true/g)?.length,
     1,
@@ -479,7 +502,7 @@ test("a cleaned invite address can retry its cloud import after reconnecting", a
 
   assert.match(
     layer,
-    /window\.addEventListener\("online", \(\) => \{\s*recoverPendingInviteAfterReconnect\(\)/
+    /window\.addEventListener\("online", \(\) => \{\s*recoverPendingInviteAfterReconnect\(\{ resetBackoff: true \}\)/
   );
   assert.match(
     reconnect,
@@ -595,4 +618,108 @@ test("malformed invite payloads are rejected instead of merged", () => {
   assert.equal(parseInviteEventId("not a url"), null);
   assert.equal(mergeInviteSnapshotIntoState(state, null), state);
   assert.throws(() => buildEventInviteUrl(ORIGIN, "../etc/passwd"), TypeError);
+});
+
+test("an authenticated cold start recovers every pending invite mutation", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const bootstrap = app.slice(
+    app.indexOf("function bootstrapApp()"),
+    app.indexOf("function hydrateAppAfterAccountReady()")
+  );
+  const recovery = app.slice(
+    app.indexOf("function recoverPendingMutations"),
+    app.indexOf("function pendingEventJoinRecord")
+  );
+
+  assert.match(
+    bootstrap,
+    /hydrateAppAfterAccountReady\(\)\s*\.then\(\(\) => recoverPendingMutations\(\{ resetBackoff: true \}\)\)/,
+    "an already authenticated app must not wait for another resume before restoring a redeemed invite"
+  );
+  assert.match(recovery, /Promise\.allSettled\(\[/);
+  assert.match(recovery, /retryPendingEventMembershipInvitations\(\)/);
+  assert.match(recovery, /retryPendingEventJoins\(\)/);
+  assert.match(recovery, /retryPendingAccountLinks\(\)/);
+});
+
+test("pending invite mutations retry after transient server failures without user action", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const scheduler = app.slice(
+    app.indexOf("function schedulePendingMutationRecovery"),
+    app.indexOf("function pendingEventJoinRecord")
+  );
+  const invitationPublish = app.slice(
+    app.indexOf("async function publishEventInvitation"),
+    app.indexOf("async function sendEventActivityNotificationWithAccountRecovery")
+  );
+
+  assert.match(app, /const PENDING_MUTATION_RETRY_BASE_MS = 5_000;/);
+  assert.match(app, /const PENDING_MUTATION_RETRY_MAX_MS = 60_000;/);
+  assert.match(scheduler, /window\.setTimeout\(/);
+  assert.match(
+    scheduler,
+    /Math\.min\(\s*PENDING_MUTATION_RETRY_MAX_MS,\s*delayMs \* 2\s*\)/
+  );
+  assert.match(scheduler, /if \(pendingMutationRecoveryCount\(\) > 0\)/);
+  assert.match(
+    invitationPublish,
+    /schedulePendingMutationRecovery\(\{\s*resetBackoff: !pendingMutationRecoveryRequest\s*\}\)/,
+    "a retry failure must preserve the increasing backoff"
+  );
+});
+
+test("foreground and connectivity signals share the same pending mutation recovery", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const listeners = app.slice(
+    app.indexOf('window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync)'),
+    app.indexOf('document.addEventListener("settle-friends:push-status"')
+  );
+
+  assert.match(
+    listeners,
+    /window\.addEventListener\(NATIVE_RESUME_EVENT, \(\) => \{\s*recoverPendingMutations\(\{ resetBackoff: true \}\)/
+  );
+  assert.match(
+    listeners,
+    /window\.addEventListener\("online", \(\) => \{\s*recoverPendingMutations\(\{ resetBackoff: true \}\)/
+  );
+  assert.match(
+    listeners,
+    /visibilityState === "visible"[\s\S]*recoverPendingMutations\(\{ resetBackoff: true \}\)/
+  );
+});
+
+test("late invite recovery cannot cross an account switch", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const accountLinkRecovery = app.slice(
+    app.indexOf("async function confirmPendingAccountLink"),
+    app.indexOf("async function publishEventInvitation")
+  );
+  const joinRecovery = app.slice(
+    app.indexOf("function retryPendingEventJoins"),
+    app.indexOf("function loadPendingEventMembershipInvitations")
+  );
+  const ownerGuard = app.slice(
+    app.indexOf("function pendingMutationOwnerIsActive"),
+    app.indexOf("function rememberPendingIncomingEventJoin")
+  );
+
+  assert.match(ownerGuard, /loadStoredAccountSession\(window\.localStorage\)/);
+  assert.match(ownerGuard, /activeUserId === ownerUserId/);
+  assert.ok(
+    accountLinkRecovery.indexOf("pendingMutationOwnerIsActive(receipt?.ownerUserId)") <
+      accountLinkRecovery.indexOf("readSharedEventState("),
+    "account-link confirmation checks the active session before reading"
+  );
+  assert.ok(
+    accountLinkRecovery.lastIndexOf("pendingMutationOwnerIsActive(receipt.ownerUserId)") >
+      accountLinkRecovery.indexOf("readSharedEventState("),
+    "account-link confirmation checks the active session again after its cloud wait"
+  );
+  assert.match(joinRecovery, /const recoveredState = await recoverAccessibleSharedEvents/);
+  assert.ok(
+    joinRecovery.indexOf("if (!pendingMutationOwnerIsActive(ownerUserId)) return;", joinRecovery.indexOf("const recoveredState")) <
+      joinRecovery.indexOf("state = syncLocalProfile(recoveredState)"),
+    "join recovery discards an old account response before mutating current state"
+  );
 });

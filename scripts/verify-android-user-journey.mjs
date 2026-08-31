@@ -26,6 +26,11 @@ await waitFor(
 
 await ensureQaAccount(page);
 
+if (process.argv.includes("--login-only")) {
+  console.log("Android QA account is signed in.");
+  process.exit(0);
+}
+
 await waitFor(
   () => evaluate(page, `!document.querySelector('#app-splash')`),
   8_000

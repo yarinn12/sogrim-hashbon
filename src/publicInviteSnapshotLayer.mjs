@@ -28,16 +28,30 @@ import {
   rememberPendingInviteUrl
 } from "./data/pendingInvite.mjs";
 import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
+import { loadStoredAccountSession } from "./data/accountAuth.mjs";
+
+const PENDING_INVITE_RETRY_BASE_MS = 5_000;
+const PENDING_INVITE_RETRY_MAX_MS = 60_000;
 
 let inviteSnapshotScheduled = false;
 let runtimeConfig = null;
 let inviteJoinBusy = false;
 let pendingInviteReconnectRequest = null;
+let pendingInviteRetryTimer = null;
+let pendingInviteRetryDelayMs = PENDING_INVITE_RETRY_BASE_MS;
 
 rememberPendingInviteUrl();
 startInviteImportAfterAccountReady();
 window.addEventListener("online", () => {
-  recoverPendingInviteAfterReconnect().catch(() => {});
+  recoverPendingInviteAfterReconnect({ resetBackoff: true }).catch(() => {});
+});
+window.addEventListener("settle-friends:native-resume", () => {
+  recoverPendingInviteAfterReconnect({ resetBackoff: true }).catch(() => {});
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    recoverPendingInviteAfterReconnect({ resetBackoff: true }).catch(() => {});
+  }
 });
 document.addEventListener("click", handleInviteCopyClick, true);
 document.addEventListener("click", handleInviteSnapshotJoinClick, true);
@@ -66,7 +80,12 @@ async function initializeInviteImport() {
   const config = await loadRuntimeConfig();
   runtimeConfig = config;
   const imported = await importIncomingSharedEvent(config);
-  if (imported) cleanInviteAddress();
+  if (imported) {
+    resetPendingInviteRetry();
+    cleanInviteAddress();
+  } else {
+    schedulePendingInviteRetry();
+  }
   scheduleInviteSnapshotEnhancement();
 }
 
@@ -231,31 +250,80 @@ function openVerifiedCachedEvent(eventId) {
   return true;
 }
 
-function recoverPendingInviteAfterReconnect() {
+function recoverPendingInviteAfterReconnect({ resetBackoff = false } = {}) {
+  if (resetBackoff) resetPendingInviteRetry();
   if (pendingInviteReconnectRequest) return pendingInviteReconnectRequest;
+  if (document.documentElement.classList.contains("account-auth-pending")) {
+    return Promise.resolve(false);
+  }
 
   const rememberedInviteUrl = pendingInviteUrl(window.location.href);
   const eventId = parseInviteEventId(rememberedInviteUrl);
-  if (!eventId) return Promise.resolve();
+  if (!eventId) {
+    resetPendingInviteRetry();
+    return Promise.resolve(false);
+  }
 
   pendingInviteReconnectRequest = loadRuntimeConfig()
     .then(async (config) => {
       runtimeConfig = config;
       const imported = await importIncomingSharedEvent(config, rememberedInviteUrl);
-      if (imported) cleanInviteAddress();
+      if (imported) {
+        resetPendingInviteRetry();
+        cleanInviteAddress();
+      }
       return imported;
     })
     .finally(() => {
       pendingInviteReconnectRequest = null;
+      if (parseInviteEventId(pendingInviteUrl(window.location.href))) {
+        schedulePendingInviteRetry();
+      }
     });
 
   return pendingInviteReconnectRequest;
+}
+
+function resetPendingInviteRetry() {
+  pendingInviteRetryDelayMs = PENDING_INVITE_RETRY_BASE_MS;
+  if (pendingInviteRetryTimer !== null) {
+    window.clearTimeout(pendingInviteRetryTimer);
+    pendingInviteRetryTimer = null;
+  }
+}
+
+function schedulePendingInviteRetry() {
+  if (
+    pendingInviteRetryTimer !== null ||
+    navigator.onLine === false ||
+    !parseInviteEventId(pendingInviteUrl(window.location.href))
+  ) return;
+
+  const delayMs = pendingInviteRetryDelayMs;
+  pendingInviteRetryTimer = window.setTimeout(() => {
+    pendingInviteRetryTimer = null;
+    recoverPendingInviteAfterReconnect().catch(() => {});
+  }, delayMs);
+  pendingInviteRetryDelayMs = Math.min(
+    PENDING_INVITE_RETRY_MAX_MS,
+    delayMs * 2
+  );
+}
+
+function inviteImportOwnerIsActive(config) {
+  const expectedUserId = String(config?.storage?.account?.userId ?? "").trim();
+  if (!expectedUserId) return true;
+  const activeUserId = String(
+    loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
+  ).trim();
+  return activeUserId === expectedUserId;
 }
 
 async function importIncomingSharedEvent(
   config,
   inviteUrl = pendingInviteUrl(window.location.href)
 ) {
+  if (!inviteImportOwnerIsActive(config)) return false;
   const url = new URL(inviteUrl, window.location.origin);
   const eventId = parseInviteEventId(url);
   let credentials = null;
@@ -264,10 +332,12 @@ async function importIncomingSharedEvent(
   } catch {
     return false;
   }
+  if (!inviteImportOwnerIsActive(config)) return false;
   if (!eventId || !credentials) return false;
 
   try {
     const sharedEventState = await readSharedEventState(config, credentials, eventId);
+    if (!inviteImportOwnerIsActive(config)) return false;
     if (!sharedEventState) return false;
     let state = mergeSharedEventIntoState(loadState(), sharedEventState, credentials);
     const profile = loadLocalProfile();

@@ -36,6 +36,18 @@ const seededState = {
           updatedAt: "2026-08-27T08:10:00.000Z"
         }
       ],
+      notes: [
+        {
+          id: "note-close-resilience",
+          title: "פרטי טיסה",
+          body: "טרמינל 3",
+          pinned: false,
+          createdByParticipantId: OWNER_ID,
+          updatedByParticipantId: OWNER_ID,
+          createdAt: "2026-08-27T08:05:00.000Z",
+          updatedAt: "2026-08-27T08:05:00.000Z"
+        }
+      ],
       transfers: [],
       activityLog: []
     }
@@ -164,4 +176,60 @@ test("share opens immediately while the foreground sync is slow", async ({ page 
   const shareDialog = page.locator(".event-participant-add-route-modal");
   await expect(shareDialog).toBeVisible({ timeout: 800 });
   await expect(shareDialog).toContainText("מי מצטרף לאירוע?");
+});
+
+test("new expense opens immediately while the foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  await page.locator('[data-action="show-expense-form"]').first().click();
+  await expect(page.locator(".expense-modal")).toBeVisible({ timeout: 800 });
+});
+
+test("expense editing opens immediately while the foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  const expense = page.locator('[data-expense-id="expense-close-resilience"]');
+  await expense.locator(".expense-row-actions-menu > summary").click();
+  await expense.locator('[data-action="edit-expense"]').click();
+  await expect(page.locator(".expense-modal")).toBeVisible({ timeout: 800 });
+});
+
+test("the entire existing note card opens immediately while the foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await page.locator('[data-action="open-event-notes"]').click();
+  await delayBackgroundRequests(page);
+
+  const noteCard = page.locator(
+    '.event-note-row[data-action="open-event-note"][data-note-id="note-close-resilience"]'
+  );
+  await noteCard.locator(".event-note-avatars").click();
+  await expect(page.locator(".event-note-modal")).toBeVisible({ timeout: 800 });
+});
+
+test("event workspace tabs remain responsive while foreground sync is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  await page.locator('[data-action="open-event-notes"]').click();
+  await expect(page.locator('[data-screen-kind="event-notes"]')).toBeVisible({ timeout: 800 });
+
+  await page.locator('[data-action="back-to-event"]').click();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible({ timeout: 800 });
+
+  await page.locator('.event-workspace-summary[data-action="settle"]').click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible({ timeout: 800 });
 });

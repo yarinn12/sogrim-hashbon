@@ -65,7 +65,8 @@ test("public invite snapshot layer upgrades links but imports only verified even
     "function scheduleInviteSnapshotEnhancement()"
   );
   assert.match(initializeFlow, /const imported = await importIncomingSharedEvent\(config\)/);
-  assert.match(initializeFlow, /if \(imported\) cleanInviteAddress\(\)/);
+  assert.match(initializeFlow, /if \(imported\) \{[\s\S]*cleanInviteAddress\(\)/);
+  assert.match(initializeFlow, /else \{\s*schedulePendingInviteRetry\(\)/);
   assert.doesNotMatch(layer, /function importIncomingInviteSnapshot/);
   assert.doesNotMatch(layer, /mergeInviteSnapshotIntoState/);
 });
@@ -75,7 +76,7 @@ test("snapshot joining refreshes the account token before reading the event clou
   const joinFlow = sourceBetween(
     layer,
     "async function handleInviteSnapshotJoinClick(event)",
-    "function recoverPendingInviteAfterReconnect()"
+    "function recoverPendingInviteAfterReconnect"
   );
 
   assert.match(joinFlow, /const joinRuntimeConfig = await loadRuntimeConfig\(\)/);
@@ -120,6 +121,15 @@ test("the public join panel persists only a server-verified event", async () => 
   assert.match(joinFlow, /readSharedEventState\(/);
   assert.match(joinFlow, /mergeSharedEventIntoState\(/);
   assert.match(joinFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(joinFlow, /if \(publicJoinBusy\) return;/);
+  assert.match(joinFlow, /button\.setAttribute\("aria-busy", "true"\)/);
+  assert.match(joinFlow, /finally \{[\s\S]*publicJoinBusy = false/);
+  assert.match(joinFlow, /joinRuntimeOwnerIsActive\(joinRuntimeConfig\)/);
+  assert.ok(
+    joinFlow.lastIndexOf("joinRuntimeOwnerIsActive(joinRuntimeConfig)") >
+      joinFlow.indexOf("saveSharedState(state, { awaitCloud: true })"),
+    "a late join save is discarded if the account changed"
+  );
   assert.ok(
     joinFlow.indexOf("resolveEventInviteCredentials(") <
       joinFlow.indexOf("readSharedEventState(")
@@ -139,7 +149,7 @@ test("offline invite fallback opens only an already verified cached event", asyn
   const cachedFlow = sourceBetween(
     layer,
     "function openVerifiedCachedEvent(eventId)",
-    "function recoverPendingInviteAfterReconnect()"
+    "function recoverPendingInviteAfterReconnect"
   );
 
   assert.match(cachedFlow, /eventShareCredentials\(cachedEvent\)/);
@@ -151,7 +161,7 @@ test("reconnecting refreshes config once while retaining compact invite credenti
   const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
   const reconnectFlow = sourceBetween(
     layer,
-    "function recoverPendingInviteAfterReconnect()",
+    "function recoverPendingInviteAfterReconnect",
     "async function importIncomingSharedEvent"
   );
 
@@ -172,7 +182,7 @@ test("reconnecting refreshes config once while retaining compact invite credenti
     reconnectFlow,
     /importIncomingSharedEvent\(\s*config,\s*rememberedInviteUrl\s*\)/
   );
-  assert.match(reconnectFlow, /if \(imported\) cleanInviteAddress\(\)/);
+  assert.match(reconnectFlow, /if \(imported\) \{[\s\S]*cleanInviteAddress\(\)/);
   assert.match(
     reconnectFlow,
     /\.finally\(\(\) => \{\s*pendingInviteReconnectRequest = null;/
@@ -196,6 +206,34 @@ test("a successful invite import cannot leak into the next account", async () =>
   );
 
   assert.match(importFlow, /clearPendingInviteUrl\(\);\s*return true;/);
+  assert.match(importFlow, /if \(!inviteImportOwnerIsActive\(config\)\) return false;/);
+  assert.ok(
+    importFlow.lastIndexOf("inviteImportOwnerIsActive(config)") >
+      importFlow.indexOf("readSharedEventState("),
+    "the active account is verified again after the cloud read"
+  );
+});
+
+test("a transient invite import failure retries while the device stays online", async () => {
+  const layer = await readFile("src/publicInviteSnapshotLayer.mjs", "utf8");
+  const retry = sourceBetween(
+    layer,
+    "function resetPendingInviteRetry()",
+    "function inviteImportOwnerIsActive"
+  );
+
+  assert.match(layer, /const PENDING_INVITE_RETRY_BASE_MS = 5_000;/);
+  assert.match(layer, /const PENDING_INVITE_RETRY_MAX_MS = 60_000;/);
+  assert.match(retry, /window\.setTimeout\(/);
+  assert.match(retry, /recoverPendingInviteAfterReconnect\(\)\.catch/);
+  assert.match(
+    retry,
+    /Math\.min\(\s*PENDING_INVITE_RETRY_MAX_MS,\s*delayMs \* 2\s*\)/
+  );
+  assert.match(
+    layer,
+    /settle-friends:native-resume[\s\S]*recoverPendingInviteAfterReconnect\(\{ resetBackoff: true \}\)/
+  );
 });
 
 test("a successful token-path import removes the raw token from browser history", async () => {

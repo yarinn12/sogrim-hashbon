@@ -84,22 +84,29 @@ test("a remote read discarded after a local save is immediately retried", () => 
   );
 });
 
-test("event entry points read the canonical event before editing or settling", () => {
-  for (const action of [
-    "open-event-note",
-    "show-expense-form",
-    "continue-event-expense",
-    "edit-expense"
-  ]) {
+test("event editing entry points render immediately while canonical refresh continues", () => {
+  for (const action of ["show-expense-form", "continue-event-expense", "edit-expense"]) {
     const actionStart = appSource.indexOf(`if (action === "${action}")`);
     const nextAction = appSource.indexOf("\n  if (action ===", actionStart + 1);
     const handler = appSource.slice(actionStart, nextAction);
-    assert.match(
-      handler,
-      /await requestResumeSync\(\{ force: true, includeSecondary: false \}\)/,
-      `${action} must refresh the canonical shared event first`
+    assert.ok(
+      handler.indexOf("startExpenseDraft(") < handler.indexOf("requestResumeSyncAfterPaint("),
+      `${action} must show the expense editor before network refresh`
     );
+    assert.doesNotMatch(handler, /await requestResumeSync/);
+    assert.match(handler, /requestResumeSyncAfterPaint\(\{ force: true, includeSecondary: false \}\)/);
   }
+
+  const noteStart = appSource.indexOf('if (action === "open-event-note")');
+  const noteEnd = appSource.indexOf("\n  if (action ===", noteStart + 1);
+  const noteHandler = appSource.slice(noteStart, noteEnd);
+  assert.ok(
+    noteHandler.indexOf('openEventDialogWithDetails(eventId, "note-editor"') <
+      noteHandler.indexOf("requestResumeSyncAfterPaint("),
+    "opening a note must show the editor before network refresh"
+  );
+  assert.doesNotMatch(noteHandler, /await requestResumeSync/);
+  assert.match(noteHandler, /requestResumeSyncAfterPaint\(\{ force: true, includeSecondary: false \}\)/);
 });
 
 test("creating a note opens the editor before refreshing shared state", () => {
@@ -110,14 +117,34 @@ test("creating a note opens the editor before refreshing shared state", () => {
   assert.ok(actionStart >= 0, "new note action exists");
   assert.ok(
     handler.indexOf('openEventDialogWithDetails(eventId, "note-editor"') <
-      handler.indexOf("requestResumeSync("),
+      handler.indexOf("requestResumeSyncAfterPaint("),
     "the note editor must render before network refresh"
   );
   assert.doesNotMatch(handler, /await requestResumeSync/);
   assert.match(
     handler,
-    /requestResumeSync\(\{ force: true, includeSecondary: false \}\)\.catch/
+    /requestResumeSyncAfterPaint\(\{ force: true, includeSecondary: false \}\)/
   );
+});
+
+test("stale editors cannot overwrite an item deleted on another device", () => {
+  const noteSaveStart = appSource.indexOf("async function saveEventNoteFromDialog");
+  const noteSaveEnd = appSource.indexOf("function requestEventNoteDeletion", noteSaveStart);
+  const noteSave = appSource.slice(noteSaveStart, noteSaveEnd);
+  assert.match(
+    noteSave,
+    /eventDialog\.noteId[\s\S]*?!event\.notes\?\.some\(\(note\) => note\.id === eventDialog\.noteId\)/
+  );
+  assert.match(noteSave, /return \{ ok: false, conflict: true \};/);
+
+  const expenseSaveStart = appSource.indexOf("async function saveExpense");
+  const expenseSaveEnd = appSource.indexOf("function publishReferralActivityAfterSave", expenseSaveStart);
+  const expenseSave = appSource.slice(expenseSaveStart, expenseSaveEnd);
+  assert.match(
+    expenseSave,
+    /expenseDraft\.id[\s\S]*?!event\.expenses\.some\(\(expense\) => expense\.id === expenseDraft\.id\)/
+  );
+  assert.match(expenseSave, /לא שמרנו עותק ישן מעל המחיקה/);
 });
 
 test("opening the settlement screen is never blocked by a shared-state refresh", () => {
@@ -128,7 +155,7 @@ test("opening the settlement screen is never blocked by a shared-state refresh",
   assert.ok(actionStart >= 0, "settlement action exists");
   assert.ok(
     handler.indexOf("prepareSettlement(eventId)") <
-      handler.indexOf("requestResumeSync("),
+      handler.indexOf("requestResumeSyncAfterPaint("),
     "the settlement screen must render before network refresh"
   );
   assert.doesNotMatch(handler, /await requestResumeSync/);
@@ -143,10 +170,27 @@ test("opening event workspaces renders immediately and then forces a fresh read"
     const handler = appSource.slice(actionStart, nextAction);
     assert.match(
       handler,
-      /render\(\);[\s\S]*?await requestResumeSync\(\{ force: true, includeSecondary: false \}\)/,
-      `${action} must show the screen without delay and refresh it immediately`
+      /render\(\);[\s\S]*?requestResumeSyncAfterPaint\(\{ force: true, includeSecondary: false \}\)/,
+      `${action} must paint the screen before starting its refresh`
     );
+    assert.doesNotMatch(handler, /await requestResumeSync/);
   }
+});
+
+test("foreground event refresh yields a browser paint before local or cloud sync work", () => {
+  const helperStart = appSource.indexOf("function requestResumeSyncAfterPaint");
+  const helperEnd = appSource.indexOf("\nfunction queueForcedResumeSync", helperStart);
+  const helper = appSource.slice(helperStart, helperEnd);
+
+  assert.ok(helperStart >= 0, "after-paint refresh helper exists");
+  assert.ok(
+    helper.indexOf("requestAnimationFrame") < helper.indexOf("setTimeout"),
+    "the refresh waits for the next frame"
+  );
+  assert.ok(
+    helper.indexOf("setTimeout") < helper.indexOf("requestResumeSync(options)"),
+    "sync work starts in a new task after the frame can be painted"
+  );
 });
 
 test("participant and share controls open immediately while refresh continues behind them", () => {

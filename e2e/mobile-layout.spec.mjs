@@ -161,7 +161,7 @@ test("participant pictures never cover the event title or participant count", as
 
   const eventRow = page.locator(`[data-event-id="${EVENT_ID}"]`).first();
   const stack = eventRow.locator(".avatar-stack");
-  const count = eventRow.locator(".event-row-meta > span").last();
+  const count = eventRow.locator(".event-row-details > span").last();
   await expect(stack.locator(":scope > .avatar")).toHaveCount(3);
   await expect(stack.locator(".avatar-more")).toHaveText("+99+");
   await expect(count).toHaveText("125 משתתפים");
@@ -169,7 +169,7 @@ test("participant pictures never cover the event title or participant count", as
   const geometry = await eventRow.evaluate((element) => {
     const stackRect = element.querySelector(".avatar-stack")?.getBoundingClientRect();
     const mainRect = element.querySelector(".event-row-main")?.getBoundingClientRect();
-    const countRect = element.querySelector(".event-row-meta > span:last-child")?.getBoundingClientRect();
+    const countRect = element.querySelector(".event-row-details > span:last-child")?.getBoundingClientRect();
     const overlap = (first, second) => first && second
       ? Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left))
       : -1;

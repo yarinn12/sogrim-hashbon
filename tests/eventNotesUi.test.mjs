@@ -21,6 +21,10 @@ test("shared notes are a first-class synchronized event workspace", () => {
   assert.match(app, /data-action="open-event-notes"/);
   assert.match(app, /data-action="new-event-note"/);
   assert.match(app, /data-action="open-event-note"/);
+  assert.match(
+    app,
+    /class="event-note-row[\s\S]*?data-action="open-event-note"[\s\S]*?renderAvatarStack\(participantIds, event, \{ suppressParticipantAction: true \}\)/
+  );
   assert.match(app, /data-action="save-event-note"/);
   assert.match(app, /forceSharedEventIds: \[eventId\]/);
   assert.match(clickHandler, /action === "open-event-notes"/);

@@ -865,11 +865,11 @@ test("account linking waits for a confirmed cloud save before reporting success"
   const app = await readFile("src/app.mjs", "utf8");
   const mergeFlow = sourceBetween(
     app,
-    "async function mergeParticipantsInStateNow()",
+    "async function mergeParticipantsInStateNow(pendingMerge)",
     "function dropParticipantFromDrafts"
   );
 
-  assert.match(app, /await mergeParticipantsInState\(\)/);
+  assert.match(app, /await mergeParticipantsInState\(mergeParticipantsDraft\)/);
   assert.match(mergeFlow, /prepareSharedEventForInvitation\(pendingMerge\.eventId/);
   assert.match(mergeFlow, /forceSharedEventIds: \[pendingMerge\.eventId\]/);
   assert.match(mergeFlow, /confirmPendingAccountLink\(accountLinkReceipt\)/);
@@ -879,7 +879,11 @@ test("account linking waits for a confirmed cloud save before reporting success"
   assert.match(mergeFlow, /emitOperationFailure\("account_link"/);
   assert.ok(
     mergeFlow.indexOf("await saveSharedState") <
-      mergeFlow.indexOf("dropParticipantFromDrafts(source.id)")
+      mergeFlow.indexOf("dropParticipantFromDrafts(")
+  );
+  assert.match(
+    mergeFlow,
+    /dropParticipantFromDrafts\([\s\S]*?eventScoped: true, eventId: pendingMerge\.eventId/
   );
 });
 
@@ -1388,7 +1392,8 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /title: "עיגול סכומים"/);
   assert.match(app, /data-action="set-event-rounding-mode"/);
   assert.match(app, /data-rounding-mode="\$\{option\.id\}"/);
-  assert.match(app, /סכומי ההוצאות תמיד נשמרים בדיוק כפי שהוזנו/);
+  assert.match(app, /סכומי ההוצאות נשמרים בדיוק כפי שהוזנו/);
+  assert.match(app, /<details class="event-setting-more">/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
   assert.match(roundingHandler, /const previousState = state/);
   assert.match(roundingHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
@@ -1504,7 +1509,7 @@ test("settlement exposes the active repayment mode without burying it in setting
   assert.match(ledgerStyles, /min-height: 44px !important/);
   assert.match(app, /<h2 id="settlement-transfers-title">מי מעביר למי<\/h2>/);
   assert.match(app, /המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם/);
-  assert.match(app, /דני חייב למאור 50 ₪/);
+  assert.match(app, /המערכת תאזן את החובות ותציע כמה שפחות העברות/);
   assert.match(app, /<small>\$\{canManage \? "הסבר ושינוי" : "הסבר"\}<\/small>/);
 });
 
@@ -1885,5 +1890,81 @@ test("the focused expense notes dialog saves back to its event", async () => {
   assert.match(
     dialog,
     /data-action="save-expense" data-event-id="\$\{escapeAttribute\(event\.id\)\}"/
+  );
+});
+
+test("event workspaces support deliberate horizontal swipes between expenses, summary, and notes", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(app, /app\.addEventListener\("pointerdown", handleEventWorkspaceSwipeStart\)/);
+  assert.match(app, /app\.addEventListener\("pointerup", handleEventWorkspaceSwipeEnd\)/);
+  assert.match(app, /const views = \["event", "settlement", "event-notes"\]/);
+  assert.match(app, /horizontalDistance < 64 \|\| horizontalDistance < verticalDistance \* 1\.35/);
+  assert.match(app, /navigateEventWorkspaceBySwipe\(deltaX < 0 \? "next" : "previous"\)/);
+  assert.match(ledgerCss, /\.screen\[data-event-id\] \{[\s\S]*?touch-action: pan-y !important;/);
+});
+
+test("event management settings reuse the app card and selection language", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(app, /className: "event-settings-management-field"/);
+  assert.match(
+    ledgerCss,
+    /\.event-settings-management-field \.event-management-option \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?transition-property: background-color, border-color, box-shadow, color, scale !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-settings-management-field \.event-management-option:is\(\.is-active, \[aria-checked="true"\]\) \{[\s\S]*?background: var\(--ledger-surface-soft\) !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-settings-management-field \.event-management-option:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96 !important;/
+  );
+});
+
+test("event settings subroutes share one surface and control vocabulary", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(app, /event-currency-field event-settings-card/);
+  assert.match(app, /event-repayment-field event-settings-management-field/);
+  assert.match(app, /event-rounding-field event-settings-management-field/);
+  assert.match(app, /event-activity-panel event-settings-card/);
+  assert.match(app, /event-setting-focus-status event-settings-card/);
+  assert.match(app, /event-danger-zone event-settings-card/);
+  assert.match(
+    ledgerCss,
+    /\.event-settings-route-backdrop \.event-settings-card \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-surface\) !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-settings-route-backdrop \.event-currency-field > select \{[\s\S]*?min-height: 48px !important;[\s\S]*?border-radius: 12px !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-settings-route-backdrop \.event-setting-primary-action > button \{[\s\S]*?width: 100% !important;[\s\S]*?min-height: 48px !important;/
+  );
+});
+
+test("share friend picker centers its action in app-language cards", async () => {
+  const ledgerCss = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    ledgerCss,
+    /\.event-share-friends \.event-share-friend-list \{[\s\S]*?gap: 10px !important;[\s\S]*?background: transparent !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-share-friends \.event-participant-candidate-row \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-surface\) !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-share-friends \.event-participant-add-button \{[\s\S]*?display: grid !important;[\s\S]*?place-items: center !important;[\s\S]*?justify-self: center !important;/
+  );
+  assert.match(
+    ledgerCss,
+    /\.event-share-friends \.event-participant-add-button \.participant-membership-status \{[\s\S]*?width: 100% !important;[\s\S]*?place-items: center !important;[\s\S]*?text-align: center !important;/
   );
 });
