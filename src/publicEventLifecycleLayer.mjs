@@ -1,4 +1,6 @@
 import { loadState } from "./data/localStore.mjs";
+import { canLeaveEvent } from "./domain/appActions.mjs";
+import { canManageEventSettings } from "./domain/permissions.mjs";
 
 const STYLE_ID = "sogrim-event-lifecycle-style";
 const ACTIONS_CLASS = "event-lifecycle-actions";
@@ -43,14 +45,18 @@ function enhanceSettingsDialogs() {
       const event = state.events.find((item) => item.id === eventId);
       if (!event) return;
 
-      const canLeave = canLeaveEvent(state, event, state.currentParticipantId);
-      const canDelete = canManageEvent(state, event, state.currentParticipantId);
+      const canLeave = canLeaveEvent(state, event.id, state.currentParticipantId);
+      const canDelete = canManageEventSettings(
+        state,
+        event,
+        state.currentParticipantId
+      );
       const zone = document.createElement("section");
       zone.className = `${ACTIONS_CLASS} event-danger-zone section`;
       zone.innerHTML = `
         <div>
           <strong>עזיבה ומחיקה</strong>
-          <p class="muted">עזיבה אפשרית רק כשאין הוצאות או העברות על שמך. מחיקה זמינה למנהל בלבד.</p>
+          <p class="muted">בעזיבה נשמרת היסטוריה כספית בשם לא מחובר. מחיקה זמינה למנהל בלבד.</p>
         </div>
         <div class="actions">
           <button class="secondary-button danger-button" data-action="leave-event" data-event-id="${escapeAttribute(eventId)}" ${canLeave ? "" : "disabled"}>עזוב אירוע</button>
@@ -61,52 +67,6 @@ function enhanceSettingsDialogs() {
       const actions = settingsButton.closest(".actions");
       actions?.after(zone) ?? dialog.append(zone);
     });
-}
-
-function canLeaveEvent(state, event, participantId) {
-  if (!event?.participantIds?.includes(participantId)) return false;
-  if (event.createdByParticipantId === participantId) return false;
-  if (participantHasEventMoneyHistory(event, participantId)) return false;
-
-  const managerIds = eventManagerIds(state, event);
-  return !managerIds.includes(participantId) || managerIds.some((id) => id !== participantId);
-}
-
-function canManageEvent(state, event, participantId) {
-  return eventManagerIds(state, event).includes(participantId);
-}
-
-function participantHasEventMoneyHistory(event, participantId) {
-  const expenses = event.expenses ?? [];
-  const transfers = event.transfers ?? [];
-
-  return (
-    expenses.some(
-      (expense) =>
-        expense.createdByParticipantId === participantId ||
-        expense.sharedByParticipantIds?.includes(participantId) ||
-        expense.payers?.some((payer) => payer.participantId === participantId)
-    ) ||
-    transfers.some(
-      (transfer) =>
-        transfer.fromParticipantId === participantId ||
-        transfer.toParticipantId === participantId ||
-        transfer.markedPaidByParticipantId === participantId
-    )
-  );
-}
-
-function eventManagerIds(state, event) {
-  const group = state.groups?.find((item) => item.id === event.groupId);
-  if (group?.adminIds?.length) return uniqueIds(group.adminIds);
-  if (event.adminIds?.length) return uniqueIds(event.adminIds);
-  return event.createdByParticipantId
-    ? [event.createdByParticipantId]
-    : event.participantIds?.slice(0, 1) ?? [];
-}
-
-function uniqueIds(ids) {
-  return [...new Set((ids ?? []).filter(Boolean))];
 }
 
 function injectStyles() {

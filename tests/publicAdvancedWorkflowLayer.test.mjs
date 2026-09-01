@@ -31,3 +31,18 @@ test("advanced workflows use the account-aware state store", async () => {
   assert.doesNotMatch(layer, /localStorage\.setItem/);
   assert.doesNotMatch(layer, /fetch\("\/api\/state"/);
 });
+
+test("advanced workflows delegate lifecycle mutations to the native app flow", async () => {
+  const layer = await readFile("src/publicAdvancedWorkflowLayer.mjs", "utf8");
+  const lifecycle = layer.slice(
+    layer.indexOf("function setEventClosed"),
+    layer.indexOf("async function mergeSelectedParticipants")
+  );
+
+  assert.match(layer, /function findNativeLifecycleAction/);
+  assert.match(lifecycle, /nativeAction\?\.click\(\)/);
+  assert.doesNotMatch(lifecycle, /\bcloseEvent\(/);
+  assert.doesNotMatch(lifecycle, /\breopenEvent\(/);
+  assert.doesNotMatch(lifecycle, /window\.location\.reload\(\)/);
+  assert.doesNotMatch(lifecycle, /events:\s*\(state\.events \?\? \[\]\)\.map/);
+});

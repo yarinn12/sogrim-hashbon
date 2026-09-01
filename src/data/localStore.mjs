@@ -1225,11 +1225,30 @@ export function loadLocalProfile() {
   }
   if (!raw) return null;
 
-  const profile = parseLocalProfile(raw);
+  let profile = parseLocalProfile(raw);
   if (accountUserId && !profileBelongsToAccount(profile, accountUserId)) {
     window.localStorage.removeItem(storageKey);
     window.localStorage.removeItem(participantStorageKey(accountUserId));
     return null;
+  }
+
+  // An authenticated account always owns one deterministic participant id.
+  // Older builds could keep a pre-login/offline participant id in an otherwise
+  // valid account-scoped profile. Every UI layer reading that profile would then
+  // disagree with the account workspace about who the current user is.
+  if (accountUserId && profile) {
+    const accountParticipantId = `account-${accountUserId}`;
+    if (profile.participantId !== accountParticipantId) {
+      profile = {
+        ...profile,
+        participantId: accountParticipantId
+      };
+      window.localStorage.setItem(storageKey, JSON.stringify(profile));
+      window.localStorage.setItem(
+        participantStorageKey(accountUserId),
+        accountParticipantId
+      );
+    }
   }
 
   return profile;
@@ -1239,37 +1258,55 @@ export function saveLocalProfile(profile) {
   synchronizeAccountStorageScope();
   const displayName = normalizeProfileName(profile.displayName);
   if (!isFullProfileName(displayName) || !profile.participantId) return null;
+  const accountUserId = activeAccountUserId();
+  const suppliedAuthSubject = normalizeAccountUserId(profile.authSubject);
+  const suppliedParticipantId = String(profile.participantId).trim();
+  if (
+    accountUserId &&
+    (
+      (suppliedAuthSubject && suppliedAuthSubject !== accountUserId) ||
+      (
+        suppliedParticipantId.startsWith("account-") &&
+        suppliedParticipantId !== `account-${accountUserId}`
+      )
+    )
+  ) {
+    return null;
+  }
+  const participantId = accountUserId
+    ? `account-${accountUserId}`
+    : suppliedParticipantId;
   const previousProfile = loadLocalProfile();
 
   const nextProfile = {
-    participantId: profile.participantId,
+    participantId,
     displayName,
     ...profileAvatarFields({
       avatarPreset:
         profile.avatarPreset ??
         (
-          previousProfile?.participantId === profile.participantId
+          previousProfile?.participantId === participantId
             ? previousProfile.avatarPreset
             : ""
         ),
       avatarImage:
         profile.avatarImage ??
         (
-          previousProfile?.participantId === profile.participantId
+          previousProfile?.participantId === participantId
             ? previousProfile.avatarImage
             : ""
         ),
       avatarImageUpdatedAt:
         profile.avatarImageUpdatedAt ??
         (
-          previousProfile?.participantId === profile.participantId
+          previousProfile?.participantId === participantId
             ? previousProfile.avatarImageUpdatedAt
             : ""
         ),
       profileUpdatedAt:
         profile.profileUpdatedAt ??
         (
-          previousProfile?.participantId === profile.participantId
+          previousProfile?.participantId === participantId
             ? previousProfile.profileUpdatedAt
             : ""
         )
@@ -1277,7 +1314,7 @@ export function saveLocalProfile(profile) {
     ...profileUpdatedAtField(
       profile.profileUpdatedAt ??
         (
-          previousProfile?.participantId === profile.participantId
+          previousProfile?.participantId === participantId
             ? previousProfile.profileUpdatedAt
             : ""
         )
@@ -1407,6 +1444,10 @@ export function cleanLegacyStarterData(state, protectedParticipantId = "") {
 
 function loadLocalParticipantId() {
   const accountUserId = activeAccountUserId();
+  // Never let an obsolete device identity override the authenticated account.
+  // This is intentionally checked before both the stored participant marker and
+  // the local profile, because those values may have been written by old builds.
+  if (accountUserId) return `account-${accountUserId}`;
   const storedParticipantId = window.localStorage.getItem(
     participantStorageKey(accountUserId)
   );
@@ -1414,7 +1455,7 @@ function loadLocalParticipantId() {
 
   const profileParticipantId = loadLocalProfile()?.participantId;
   if (profileParticipantId) return profileParticipantId;
-  return accountUserId ? `account-${accountUserId}` : "";
+  return "";
 }
 
 function stateStorageKey() {
@@ -1711,8 +1752,12 @@ function sharedSaveFailureKind(error) {
 }
 
 function saveLocalParticipantId(participantId) {
-  if (!participantId) return;
-  window.localStorage.setItem(participantStorageKey(), participantId);
+  const accountUserId = activeAccountUserId();
+  const resolvedParticipantId = accountUserId
+    ? `account-${accountUserId}`
+    : participantId;
+  if (!resolvedParticipantId) return;
+  window.localStorage.setItem(participantStorageKey(), resolvedParticipantId);
 }
 
 function parseLocalProfile(raw) {

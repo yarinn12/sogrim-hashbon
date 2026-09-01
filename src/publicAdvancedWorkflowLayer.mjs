@@ -74,12 +74,13 @@ function enhanceSettlement() {
 
   const state = loadState();
   const event = findEvent(state, copyButton.dataset.eventId);
+  const lifecycleAction = findNativeLifecycleAction(event);
   const actions = document.createElement("div");
   actions.className = "actions advanced-settlement-actions";
   actions.innerHTML = `
     <button class="secondary-button whatsapp-button" data-advanced-action="whatsapp" data-event-id="${escapeAttribute(copyButton.dataset.eventId)}">שלח בוואטסאפ</button>
     ${
-      canManageEventSettings(state, event, state.currentParticipantId)
+      lifecycleAction && canManageEventSettings(state, event, state.currentParticipantId)
         ? `<button class="secondary-button" data-advanced-action="${isClosed(event) ? "reopen" : "close"}" data-event-id="${escapeAttribute(copyButton.dataset.eventId)}">
             ${isClosed(event) ? "פתח לעריכה" : "סגור אירוע"}
           </button>`
@@ -202,7 +203,7 @@ function shareEventOnWhatsApp(eventId) {
   window.open(`https://wa.me/?text=${encodeURIComponent(summary)}`, "_blank", "noopener");
 }
 
-async function setEventClosed(eventId, closed) {
+function setEventClosed(eventId, closed) {
   const state = loadState();
   const selectedEvent = findEvent(state, eventId);
   if (!selectedEvent || !canManageEventSettings(
@@ -210,30 +211,14 @@ async function setEventClosed(eventId, closed) {
     selectedEvent,
     state.currentParticipantId
   )) return;
-  const statusUpdatedAt = new Date().toISOString();
-  const nextState = {
-    ...state,
-    events: (state.events ?? []).map((event) => {
-      if (event.id !== eventId) return event;
-      if (closed) {
-        return {
-          ...event,
-          locked: true,
-          closedAt: statusUpdatedAt,
-          statusUpdatedAt
-        };
-      }
-      return {
-        ...event,
-        locked: false,
-        closedAt: null,
-        statusUpdatedAt
-      };
-    })
-  };
+  const nativeAction = findNativeLifecycleAction(selectedEvent, closed);
+  nativeAction?.click();
+}
 
-  await saveState(nextState);
-  window.location.reload();
+function findNativeLifecycleAction(event, closed = !isClosed(event)) {
+  const actionName = closed ? "close-event" : "reopen-event";
+  return [...document.querySelectorAll(`[data-action="${actionName}"][data-event-id]`)]
+    .find((button) => button.dataset.eventId === event?.id && !button.disabled) ?? null;
 }
 
 async function mergeSelectedParticipants() {

@@ -257,6 +257,110 @@ test("a profile accidentally stored under the wrong account repairs itself", () 
   });
 });
 
+test("an authenticated profile self-heals an obsolete offline participant id", () => {
+  withLocalStorage(() => {
+    setAccountSession("user-yarin");
+    const profileKey = "settle-friends-local-profile:account:user-yarin";
+    const participantKey =
+      "settle-friends-current-participant:account:user-yarin";
+    window.localStorage.setItem(
+      profileKey,
+      JSON.stringify({
+        participantId: "offline-yarin-before-login",
+        displayName: "ירין יצחק",
+        authProvider: "google",
+        authSubject: "user-yarin",
+        email: "yarin@example.com"
+      })
+    );
+    window.localStorage.setItem(participantKey, "offline-yarin-before-login");
+
+    const profile = loadLocalProfile();
+
+    assert.equal(profile.participantId, "account-user-yarin");
+    assert.equal(
+      JSON.parse(window.localStorage.getItem(profileKey)).participantId,
+      "account-user-yarin"
+    );
+    assert.equal(
+      window.localStorage.getItem(participantKey),
+      "account-user-yarin"
+    );
+  });
+});
+
+test("saving an authenticated profile canonicalizes an offline participant id immediately", () => {
+  withLocalStorage(() => {
+    setAccountSession("user-yarin");
+
+    const profile = saveLocalProfile({
+      participantId: "offline-yarin-before-login",
+      displayName: "ירין יצחק",
+      authProvider: "google",
+      authSubject: "user-yarin",
+      email: "yarin@example.com"
+    });
+
+    assert.equal(profile.participantId, "account-user-yarin");
+    assert.equal(loadLocalProfile().participantId, "account-user-yarin");
+    assert.equal(
+      window.localStorage.getItem(
+        "settle-friends-current-participant:account:user-yarin"
+      ),
+      "account-user-yarin"
+    );
+  });
+});
+
+test("a stale account save cannot overwrite the active account profile", () => {
+  withLocalStorage(() => {
+    setAccountSession("user-yarin");
+    const current = saveLocalProfile({
+      participantId: "account-user-yarin",
+      displayName: "ירין יצחק",
+      authProvider: "google",
+      authSubject: "user-yarin",
+      email: "yarin@example.com"
+    });
+
+    const staleSave = saveLocalProfile({
+      participantId: "account-user-dani",
+      displayName: "דני כהן",
+      authProvider: "google",
+      authSubject: "user-dani",
+      email: "dani@example.com"
+    });
+
+    assert.equal(staleSave, null);
+    assert.deepEqual(loadLocalProfile(), current);
+  });
+});
+
+test("authenticated state ignores a stale device participant marker", () => {
+  withLocalStorage(() => {
+    setAccountSession("user-yarin");
+    window.localStorage.setItem("settle-friends-cloud-space", "space-yarin");
+    window.localStorage.setItem(
+      "settle-friends-current-participant:account:user-yarin",
+      "offline-yarin-before-login"
+    );
+    window.localStorage.setItem(
+      "settle-friends-state:space-yarin",
+      JSON.stringify({
+        currentParticipantId: "offline-yarin-before-login",
+        participants: [
+          { id: "offline-yarin-before-login", displayName: "ירין הישן", kind: "guest" },
+          { id: "account-user-yarin", displayName: "ירין יצחק", kind: "user" }
+        ],
+        groups: [],
+        events: []
+      })
+    );
+
+    assert.equal(loadState().currentParticipantId, "account-user-yarin");
+  });
+});
+
 test("local shared state migrates into a remembered cloud space", () => {
   withLocalStorage(() => {
     const localState = {

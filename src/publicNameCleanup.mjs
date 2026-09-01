@@ -235,50 +235,6 @@ function addId(ids, id) {
   if (id) ids.add(id);
 }
 
-function removeParticipantFromGroup(group, participantId) {
-  const memberIds = uniqueIds((group.memberIds ?? []).filter((id) => id !== participantId));
-  const adminIds = uniqueIds((group.adminIds ?? []).filter((id) => memberIds.includes(id)));
-
-  return {
-    ...group,
-    memberIds,
-    adminIds: adminIds.length ? adminIds : memberIds.slice(0, 1),
-    archived: memberIds.length ? group.archived : true
-  };
-}
-
-function removeParticipantFromEvent(event, participantId) {
-  const participantIds = uniqueIds((event.participantIds ?? []).filter((id) => id !== participantId));
-  const adminIds = uniqueIds((event.adminIds ?? []).filter((id) => participantIds.includes(id)));
-
-  return {
-    ...event,
-    participantIds,
-    adminIds: adminIds.length ? adminIds : participantIds.slice(0, 1),
-    transfers: []
-  };
-}
-
-function participantHasMoneyHistory(state, participantId) {
-  return (state.events ?? []).some((event) => {
-    const appearsInExpenses = (event.expenses ?? []).some(
-      (expense) =>
-        expense.createdByParticipantId === participantId ||
-        (expense.sharedByParticipantIds ?? []).includes(participantId) ||
-        (expense.payers ?? []).some((payer) => payer.participantId === participantId)
-    );
-
-    const appearsInTransfers = (event.transfers ?? []).some(
-      (transfer) =>
-        transfer.fromParticipantId === participantId ||
-        transfer.toParticipantId === participantId ||
-        transfer.markedPaidByParticipantId === participantId
-    );
-
-    return appearsInExpenses || appearsInTransfers;
-  });
-}
-
 function readStoredState() {
   return loadState();
 }
