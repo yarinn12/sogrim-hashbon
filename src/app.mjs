@@ -19928,11 +19928,15 @@ async function setEventManagementMode(eventId, mode) {
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
       : "לא הצלחנו לשנות את אופן הניהול. לא בוצע שינוי.";
+  } else if (result?.pending) {
+    notice = adminsCanEditOnly
+      ? "המעבר לניהול מרוכז נשמר במכשיר ויסתנכרן עם שאר המשתתפים אוטומטית."
+      : "המעבר לניהול משותף נשמר במכשיר ויסתנכרן עם שאר המשתתפים אוטומטית.";
   } else {
     notice = adminsCanEditOnly
       ? "ניהול מרוכז הופעל ונשמר."

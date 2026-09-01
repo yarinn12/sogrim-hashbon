@@ -222,6 +222,25 @@ test("queued event lifecycle changes never masquerade as cloud-confirmed", () =>
   );
 });
 
+test("queued management-mode changes stay visibly pending across devices", () => {
+  const managementMode = sourceBetween(
+    app,
+    "async function setEventManagementMode",
+    "async function toggleEventParticipantAdmin"
+  );
+
+  assert.match(managementMode, /awaitCloud: true/);
+  assert.match(managementMode, /forceSharedEventIds: \[eventId\]/);
+  assert.match(managementMode, /else if \(result\?\.pending\)/);
+  assert.match(managementMode, /המעבר לניהול מרוכז נשמר במכשיר ויסתנכרן/);
+  assert.match(managementMode, /המעבר לניהול משותף נשמר במכשיר ויסתנכרן/);
+  assert.ok(
+    managementMode.indexOf("הופעל ונשמר") >
+      managementMode.indexOf("await persistState"),
+    "management mode is confirmed only after the canonical save result"
+  );
+});
+
 test("inline expense participants cannot silently diverge from the shared event", () => {
   const payerGuest = sourceBetween(
     app,

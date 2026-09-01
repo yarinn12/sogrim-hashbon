@@ -13,6 +13,9 @@ import {
   saveCloudState
 } from "../src/data/cloudStore.mjs";
 import {
+  saveCloudStateWithConflictRetry
+} from "../src/data/cloudConflictRetry.mjs";
+import {
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
@@ -24,6 +27,7 @@ import {
   linkParticipantAccountInEvent,
   reopenEvent,
   removeExpense,
+  setEventAdminsCanEditOnly,
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
@@ -464,6 +468,41 @@ try {
   );
   recordSyncTiming("expense-edit-to-owner-read", expenseEditStartedAt);
 
+  // Switching to centralized management must propagate to the second account
+  // before it can make another event edit. The server remains the final guard,
+  // so a stale or modified client cannot bypass the selected management mode.
+  ownerState = setEventAdminsCanEditOnly(ownerState, eventId, true);
+  const centralizedModeStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].adminsCanEditOnly, true);
+  recordSyncTiming("centralized-mode-to-member-read", centralizedModeStartedAt);
+
+  const unauthorizedCentralizedEdit = addExpense(joinerState, {
+    id: `expense-centralized-block-${suffix}`,
+    name: "הוצאה שחבר רגיל לא רשאי להוסיף",
+    total: 100,
+    payers: [{ participantId: joinerProfile.participantId, amount: 100 }],
+    sharedByParticipantIds: [
+      ownerProfile.participantId,
+      joinerProfile.participantId
+    ],
+    createdByParticipantId: joinerProfile.participantId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+  await assert.rejects(
+    saveSharedEventState(joinerConfig, unauthorizedCentralizedEdit, eventId),
+    (error) => error?.status === 403 || error?.status === 400
+  );
+
+  ownerState = setEventAdminsCanEditOnly(ownerState, eventId, false);
+  const collaborativeModeStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].adminsCanEditOnly, false);
+  recordSyncTiming("collaborative-mode-to-member-read", collaborativeModeStartedAt);
+
   // A deletion from one phone must become canonical before a stale device can
   // publish its older copy. The tombstone must remain visible to both users.
   const deletedExpenseId = `expense-delete-${suffix}`;
@@ -632,8 +671,18 @@ try {
   assert.equal(joinerState.events[0].closedAt, "2026-08-03T12:15:00.000Z");
   recordSyncTiming("event-close-to-member-read", closeEventStartedAt);
 
-  await saveCloudState(ownerConfig, ownerState);
-  await saveCloudState(joinerConfig, joinerState);
+  ownerState = (await saveCloudStateWithConflictRetry({
+    state: ownerState,
+    loadLatest: (fallbackState) =>
+      loadCloudState(ownerConfig, fallbackState, qaFetch),
+    save: (candidate) => saveCloudState(ownerConfig, candidate, qaFetch)
+  })).state;
+  joinerState = (await saveCloudStateWithConflictRetry({
+    state: joinerState,
+    loadLatest: (fallbackState) =>
+      loadCloudState(joinerConfig, fallbackState, qaFetch),
+    save: (candidate) => saveCloudState(joinerConfig, candidate, qaFetch)
+  })).state;
   const ownerReloaded = await loadCloudState(ownerConfig, null);
   const joinerReloaded = await loadCloudState(joinerConfig, null);
   assert.equal(ownerReloaded.currentParticipantId, ownerProfile.participantId);
@@ -772,6 +821,8 @@ try {
       collaborativeMemberAddedAcceptedFriend: true,
       collaborativeMemberRemovalBlocked: true,
       collaborativeMemberPromotionBlocked: true,
+      centralizedModeSyncedAndBlockedMemberEdit: true,
+      collaborativeModeRestoredMemberEditing: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
       nonAdminExistingExpenseEditSynced: true,
       offlineAccountLinkPersistedCanonically: true,

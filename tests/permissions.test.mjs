@@ -146,6 +146,53 @@ test("setEventAdminsCanEditOnly updates only the selected event", () => {
   assert.equal(nextState.events[1].adminsCanEditOnly, false);
 });
 
+test("switching management mode updates admin and member capabilities immediately", () => {
+  const restricted = baseState();
+  const collaborative = setEventAdminsCanEditOnly(
+    restricted,
+    "event-1",
+    false
+  );
+  const collaborativeEvent = collaborative.events[0];
+
+  assert.equal(
+    canManageEventSettings(collaborative, collaborativeEvent, "yarin"),
+    true
+  );
+  assert.equal(
+    canManageEventSettings(collaborative, collaborativeEvent, "dani"),
+    false
+  );
+  assert.equal(canEditEvent(collaborative, collaborativeEvent, "yarin"), true);
+  assert.equal(canEditEvent(collaborative, collaborativeEvent, "dani"), true);
+  assert.equal(
+    canAddEventParticipant(collaborative, collaborativeEvent, "dani"),
+    true
+  );
+
+  const centralized = setEventAdminsCanEditOnly(
+    collaborative,
+    "event-1",
+    true
+  );
+  const centralizedEvent = centralized.events[0];
+
+  assert.equal(canEditEvent(centralized, centralizedEvent, "yarin"), true);
+  assert.equal(canEditEvent(centralized, centralizedEvent, "dani"), false);
+  assert.equal(
+    canAddEventParticipant(centralized, centralizedEvent, "dani"),
+    false
+  );
+  assert.equal(
+    canEditEvent(
+      centralized,
+      { ...centralizedEvent, locked: true },
+      "yarin"
+    ),
+    false
+  );
+});
+
 test("event participant admin changes override inherited group managers", () => {
   const state = baseState();
   const promoted = setEventParticipantAdmin(
