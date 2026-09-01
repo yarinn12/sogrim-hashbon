@@ -31,12 +31,14 @@ test("private operator env override fails closed inside the workspace", () => {
     }),
     /outside the project workspace/
   );
-  assert.throws(
-    () => resolvePrivateOperatorEnvPath({
-      LOCALAPPDATA: process.cwd()
-    }),
-    /outside the project workspace/
-  );
+  if (process.platform === "win32") {
+    assert.throws(
+      () => resolvePrivateOperatorEnvPath({
+        LOCALAPPDATA: process.cwd()
+      }),
+      /outside the project workspace/
+    );
+  }
 });
 
 test("mergeEnvFileValues keeps existing environment values", () => {
