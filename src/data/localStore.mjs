@@ -121,6 +121,7 @@ let pendingSyncRetryTimer = 0;
 let pendingSyncRetryAttempt = 0;
 let pendingSyncRetryNotBefore = 0;
 let activeAccountStorageScope = "";
+const recoveredEventIndexPersistJobs = new Map();
 
 async function loadCloudState(config, fallbackState) {
   return withFreshCloudAccount(config, (freshConfig) =>
@@ -241,7 +242,7 @@ async function hydrateAccessibleSharedEventState(config, initialState) {
   }
 }
 
-async function persistRecoveredEventIndex(config, previousState, recoveredState) {
+function persistRecoveredEventIndex(config, previousState, recoveredState) {
   const recoveredStateWithIdentity = applyLocalParticipantId(
     recoveredState,
     loadLocalParticipantId()
@@ -250,33 +251,93 @@ async function persistRecoveredEventIndex(config, previousState, recoveredState)
     return recoveredStateWithIdentity;
   }
 
-  try {
-    const saved = await saveCloudStateWithRetry(
-      config,
-      toCloudState(config, recoveredStateWithIdentity)
-    );
-    return mergeSharedStates(saved.state, recoveredStateWithIdentity);
-  } catch (error) {
-    const retryable = isRetryablePendingSyncFailure(error);
-    const queued = retryable && savePendingSharedState(
-      config,
-      toCloudState(config, recoveredStateWithIdentity)
-    );
-    if (queued) {
-      publishSyncStatus("reconnecting");
-      schedulePendingSharedStateRetry();
-      logQueuedSync(error, {
-        sharedEventMutation: false,
-        pending: true,
-        partial: true,
-        reverted: false
-      });
-      emitOperationDeferred("state_load", { screen: "boot", error });
-    } else {
-      reportPartialStateLoadFailure(error);
-    }
-    return recoveredStateWithIdentity;
+  scheduleRecoveredEventIndexPersistence(config, recoveredStateWithIdentity);
+  return recoveredStateWithIdentity;
+}
+
+function scheduleRecoveredEventIndexPersistence(config, recoveredState) {
+  const jobKey = [
+    config?.storage?.url,
+    config?.storage?.table,
+    config?.storage?.spaceId,
+    config?.storage?.account?.userId
+  ].map((value) => String(value ?? "")).join("\u0000");
+  if (!jobKey.replaceAll("\u0000", "")) return;
+
+  const stateSnapshot = clone(recoveredState);
+  const cloudState = toCloudState(config, stateSnapshot);
+  const fingerprint = JSON.stringify(cloudState);
+  let job = recoveredEventIndexPersistJobs.get(jobKey);
+  if (!job) {
+    job = {
+      activeFingerprint: "",
+      pending: null,
+      promise: null
+    };
+    recoveredEventIndexPersistJobs.set(jobKey, job);
   }
+  if (
+    job.activeFingerprint === fingerprint ||
+    job.pending?.fingerprint === fingerprint
+  ) {
+    return;
+  }
+
+  job.pending = {
+    config: cloneCloudConfig(config),
+    state: cloudState,
+    fingerprint,
+    eventCount: stateSnapshot.events?.length ?? 0
+  };
+  if (job.promise) return;
+
+  job.promise = drainRecoveredEventIndexPersistence(job)
+    .finally(() => {
+      job.promise = null;
+      recoveredEventIndexPersistJobs.delete(jobKey);
+    });
+}
+
+async function drainRecoveredEventIndexPersistence(job) {
+  while (job.pending) {
+    const request = job.pending;
+    job.pending = null;
+    job.activeFingerprint = request.fingerprint;
+    try {
+      await saveCloudStateWithRetry(request.config, request.state);
+    } catch (error) {
+      reportPartialStateLoadFailure(error);
+      globalThis.console?.warn?.(
+        "[sync] Recovered event index persistence deferred",
+        {
+          code: String(error?.code ?? "UNKNOWN"),
+          status: Number(error?.status ?? 0) || undefined,
+          eventCount: request.eventCount
+        }
+      );
+    } finally {
+      job.activeFingerprint = "";
+    }
+  }
+}
+
+function cloneCloudConfig(config) {
+  return {
+    ...config,
+    storage: {
+      ...(config?.storage ?? {}),
+      ...(config?.storage?.account
+        ? { account: { ...config.storage.account } }
+        : {})
+    }
+  };
+}
+
+export function waitForRecoveredEventIndexPersistence() {
+  const requests = [...recoveredEventIndexPersistJobs.values()]
+    .map((job) => job.promise)
+    .filter(Boolean);
+  return Promise.allSettled(requests);
 }
 
 function reportPartialStateLoadFailure(error) {

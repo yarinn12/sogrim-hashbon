@@ -265,11 +265,145 @@ test("a recovered event stays visible when persisting its personal index is temp
 
     assert.equal(loaded.events.length, 1);
     assert.equal(loaded.events[0].name, "Recovered Event");
-    assert.ok(
+    await localStore.waitForRecoveredEventIndexPersistence();
+    assert.equal(
       storage.getItem(`settle-friends-pending-sync:${spaceId}`),
-      "the recovered index is queued for a background retry"
+      null,
+      "a best-effort cache index must not replace a newer durable outbox"
     );
   } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a hanging personal index write never delays a newly recovered event", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = new MemoryStorage();
+  const userId = "user-fast-visible";
+  const participantId = `account-${userId}`;
+  const spaceId = "account-space-fast-visible";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyz_fast_visible_123456";
+  const personalState = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Fast User", kind: "user" }],
+    groups: [],
+    events: []
+  };
+  const sharedState = {
+    currentParticipantId: "",
+    participants: [{ id: participantId, displayName: "Fast User", kind: "user" }],
+    groups: [],
+    events: [{
+      id: "event-fast-visible",
+      name: "Immediate Event",
+      participantIds: [participantId],
+      adminIds: [participantId],
+      createdByParticipantId: participantId,
+      expenses: [],
+      transfers: []
+    }]
+  };
+
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(personalState));
+  storage.setItem(
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "fast-visible-token",
+      refresh_token: "fast-visible-refresh",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: {
+        id: userId,
+        user_metadata: {
+          account_space_id: spaceId,
+          account_space_key: spaceKey
+        }
+      }
+    })
+  );
+
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  globalThis.window = {
+    localStorage: storage,
+    location,
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+
+  let releaseWorkspaceWrite;
+  let markWorkspaceWriteStarted;
+  const workspaceWriteStarted = new Promise((resolve) => {
+    markWorkspaceWriteStarted = resolve;
+  });
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots"
+        }
+      });
+    }
+    if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
+    if (address.includes("snapshot_kind=eq.shared_event")) {
+      return jsonResponse([{
+        id: "shared-space-fast-visible",
+        state: sharedState,
+        updated_at: "2026-09-01T20:30:00.000Z"
+      }]);
+    }
+    if (options.method === "PATCH" || options.method === "POST") {
+      markWorkspaceWriteStarted();
+      return new Promise((resolve) => {
+        releaseWorkspaceWrite = () => resolve(jsonResponse([{
+          updated_at: "2026-09-01T20:30:01.000Z"
+        }]));
+      });
+    }
+    return jsonResponse([{
+      state: personalState,
+      updated_at: "2026-09-01T20:29:59.000Z"
+    }]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?hanging-index=${Date.now()}`
+    );
+    let timeoutId;
+    const loaded = await Promise.race([
+      localStore.loadSharedState(),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error("recovered event remained blocked by index persistence")),
+          500
+        );
+      })
+    ]);
+    clearTimeout(timeoutId);
+
+    assert.equal(loaded.events[0]?.name, "Immediate Event");
+    await workspaceWriteStarted;
+    releaseWorkspaceWrite();
+    await localStore.waitForRecoveredEventIndexPersistence();
+  } finally {
+    releaseWorkspaceWrite?.();
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
     restoreGlobal("localStorage", previousLocalStorage);

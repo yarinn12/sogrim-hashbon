@@ -132,11 +132,20 @@ test("home never presents a cloud-loading account as a new empty account", async
 
 test("membership recovery restores the account identity before persisting its index", async () => {
   const localStore = await readFile("src/data/localStore.mjs", "utf8");
-  const start = localStore.indexOf("async function persistRecoveredEventIndex");
+  const start = localStore.indexOf("function persistRecoveredEventIndex");
   const end = localStore.indexOf("function reportPartialStateLoadFailure", start);
   const helper = localStore.slice(start, end);
 
   assert.match(helper, /applyLocalParticipantId\([\s\S]*?loadLocalParticipantId\(\)/);
-  assert.match(helper, /toCloudState\(config, recoveredStateWithIdentity\)/);
+  assert.match(
+    helper,
+    /scheduleRecoveredEventIndexPersistence\(config, recoveredStateWithIdentity\)/
+  );
+  assert.match(helper, /toCloudState\(config, stateSnapshot\)/);
+  assert.ok(
+    helper.indexOf("return recoveredStateWithIdentity") <
+      helper.indexOf("async function drainRecoveredEventIndexPersistence"),
+    "membership recovery becomes visible before its personal cache index is persisted"
+  );
   assert.doesNotMatch(helper, /toCloudState\(config, recoveredState\)/);
 });
