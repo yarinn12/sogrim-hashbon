@@ -82,8 +82,12 @@ async function initializeNotifications() {
     notificationError = "";
     renderNotificationSettings();
 
+    if (!notificationPreferenceEnabled(session.user.id)) {
+      await retryDisabledNotificationCleanup(session.user.id);
+      return;
+    }
+
     if (
-      notificationPreferenceEnabled(session.user.id) &&
       permissionState === "granted"
     ) {
       await api.registerIfGranted();
@@ -101,6 +105,32 @@ async function initializeNotifications() {
   } catch {
     notificationError = "לא הצלחנו לבדוק את מצב ההתראות.";
     renderNotificationSettings();
+  }
+}
+
+async function retryDisabledNotificationCleanup(userId) {
+  const token = storedPushToken(userId);
+  if (!token) return true;
+
+  try {
+    await nativeNotificationApi()?.disable?.();
+  } catch {
+    // Server cleanup is still required even if the native plugin cannot
+    // repeat an unregister call for a token that is already inactive.
+  }
+
+  try {
+    const config = await loadRuntimeConfig();
+    const result = await disablePushDevice(config, token);
+    if (!result.ok) return false;
+    clearStoredPushToken(userId);
+    registeredForCurrentAccount = false;
+    return true;
+  } catch {
+    // Keep the token locally. Online/resume initialization will retry the
+    // remote cleanup without re-enabling notifications on the device.
+    registeredForCurrentAccount = false;
+    return false;
   }
 }
 

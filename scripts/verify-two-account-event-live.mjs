@@ -28,6 +28,10 @@ import {
   reopenEvent,
   removeExpense,
   setEventAdminsCanEditOnly,
+  setEventCurrency,
+  setEventDirectSettlementTransfers,
+  setEventParticipantAdmin,
+  setEventRoundSettlementTransfers,
   updateTransferStatus
 } from "../src/domain/appActions.mjs";
 import { calculateSettlement } from "../src/domain/settlement.mjs";
@@ -503,6 +507,70 @@ try {
   assert.equal(joinerState.events[0].adminsCanEditOnly, false);
   recordSyncTiming("collaborative-mode-to-member-read", collaborativeModeStartedAt);
 
+  // Every event-setting mode must become visible to another account through
+  // the same canonical event state. Toggle and restore each one so this QA run
+  // leaves no special setting behind for the financial scenarios below.
+  ownerState = setEventRoundSettlementTransfers(ownerState, eventId, true);
+  const roundedModeStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].roundSettlementTransfers, true);
+  recordSyncTiming("rounding-setting-to-member-read", roundedModeStartedAt);
+  ownerState = setEventRoundSettlementTransfers(ownerState, eventId, false);
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+
+  ownerState = setEventDirectSettlementTransfers(ownerState, eventId, true);
+  const directModeStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].directSettlementTransfers, true);
+  recordSyncTiming("repayment-setting-to-member-read", directModeStartedAt);
+  ownerState = setEventDirectSettlementTransfers(ownerState, eventId, false);
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+
+  ownerState = setEventCurrency(ownerState, eventId, "USD", {
+    allowExistingExpenses: true
+  });
+  const currencyModeStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].currency, "USD");
+  recordSyncTiming("currency-setting-to-member-read", currencyModeStartedAt);
+  ownerState = setEventCurrency(ownerState, eventId, "ILS", {
+    allowExistingExpenses: true
+  });
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+
+  ownerState = setEventParticipantAdmin(
+    ownerState,
+    eventId,
+    addedFriendProfile.participantId,
+    true
+  );
+  const adminSettingStartedAt = performance.now();
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(
+    joinerState.events[0].adminIds.includes(addedFriendProfile.participantId),
+    true
+  );
+  recordSyncTiming("admin-setting-to-member-read", adminSettingStartedAt);
+  ownerState = setEventParticipantAdmin(
+    ownerState,
+    eventId,
+    addedFriendProfile.participantId,
+    false
+  );
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  joinerState = await refreshSharedEvents(joinerConfig, joinerState);
+  assert.equal(joinerState.events[0].roundSettlementTransfers, false);
+  assert.equal(joinerState.events[0].directSettlementTransfers, false);
+  assert.equal(joinerState.events[0].currency, "ILS");
+  assert.equal(
+    joinerState.events[0].adminIds.includes(addedFriendProfile.participantId),
+    false
+  );
+
   // A deletion from one phone must become canonical before a stale device can
   // publish its older copy. The tombstone must remain visible to both users.
   const deletedExpenseId = `expense-delete-${suffix}`;
@@ -823,6 +891,10 @@ try {
       collaborativeMemberPromotionBlocked: true,
       centralizedModeSyncedAndBlockedMemberEdit: true,
       collaborativeModeRestoredMemberEditing: true,
+      roundingSettingSyncedAndRestored: true,
+      repaymentSettingSyncedAndRestored: true,
+      currencySettingSyncedAndRestored: true,
+      participantAdminSettingSyncedAndRestored: true,
       nonAdminOfflineGuestAndExpenseSynced: true,
       nonAdminExistingExpenseEditSynced: true,
       offlineAccountLinkPersistedCanonically: true,

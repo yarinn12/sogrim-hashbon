@@ -333,6 +333,9 @@ test("public profile save keeps Google identity fields when renaming the visitor
   assert.match(saveProfileFromDraft, /authProvider: participant\?\.authProvider \?\? localProfile\?\.authProvider/);
   assert.match(saveProfileFromDraft, /authSubject: participant\?\.authSubject \?\? localProfile\?\.authSubject/);
   assert.match(saveProfileFromDraft, /email: participant\?\.email \?\? localProfile\?\.email/);
+  assert.match(saveProfileFromDraft, /const sharedProfileSaveResult = await saveSharedState\(state\)/);
+  assert.match(saveProfileFromDraft, /sharedProfileSaveResult\?\.pending !== true/);
+  assert.match(saveProfileFromDraft, /הפרופיל נשמר במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
 });
 
 test("public invite profile setup previews the invited event before naming the visitor", async () => {

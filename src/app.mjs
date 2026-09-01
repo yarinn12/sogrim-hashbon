@@ -9585,18 +9585,18 @@ async function persistProfileAvatarDraft() {
   ]);
   const accountSynced =
     accountResult.status === "fulfilled" && accountResult.value !== false;
-  const stateSynced =
+  const stateSaved =
     stateResult.status === "fulfilled" &&
     stateResult.value !== false &&
-    stateResult.value?.ok !== false &&
-    stateResult.value?.pending !== true;
+    stateResult.value?.ok !== false;
+  const stateSynced = stateSaved && stateResult.value?.pending !== true;
   const friendProfileSynced =
     friendProfileResult.status === "fulfilled" && friendProfileResult.value !== false;
   const fullySynced = accountSynced && stateSynced && friendProfileSynced;
   if (stateSynced) rememberPublishedSharedProfile(state.currentParticipantId);
-  notice = globalThis.navigator?.onLine === false
-    ? "התמונה נשמרה במכשיר ותסתנכרן כשהחיבור יחזור."
-    : "תמונת הפרופיל נשמרה.";
+  notice = fullySynced
+    ? "תמונת הפרופיל נשמרה."
+    : "התמונה נשמרה במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
   return fullySynced;
 }
 
@@ -16503,15 +16503,19 @@ async function applyEventCurrencyChange(
   state = setEventCurrency(state, eventId, nextCurrency, {
     allowExistingExpenses
   });
+  notice = "שומרים את מטבע האירוע...";
+  render();
   const result = await persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
       : "לא הצלחנו לשנות את מטבע האירוע. לא בוצע שינוי.";
+  } else if (result?.pending) {
+    notice = `מטבע האירוע נשמר במכשיר כ${currencySelectLabel(nextCurrency)} ויסתנכרן אוטומטית.`;
   } else {
     notice = `מטבע האירוע עודכן ל${currencySelectLabel(nextCurrency)}.`;
   }
@@ -18309,15 +18313,15 @@ async function saveProfileFromDraft() {
       avatarImage: profileAvatarImageDraft
     }) ?? globalThis.SogrimAccountProfile?.updateDisplayName?.(displayName)
   ]);
-  await saveSharedState(state);
-  if (
-    (
-      profileSaveResult.status === "rejected" ||
-      profileSaveResult.value === false
-    ) &&
-    localProfile?.authSubject
-  ) {
-    notice = "השם נשמר באפליקציה. עדכון החשבון יושלם כשהחיבור יחזור.";
+  const sharedProfileSaveResult = await saveSharedState(state);
+  const accountProfileSynced =
+    profileSaveResult.status === "fulfilled" &&
+    profileSaveResult.value !== false;
+  const sharedProfileSynced =
+    sharedProfileSaveResult?.ok !== false &&
+    sharedProfileSaveResult?.pending !== true;
+  if ((!accountProfileSynced || !sharedProfileSynced) && localProfile?.authSubject) {
+    notice = "הפרופיל נשמר במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
   }
   await refreshFriendNetwork({ preserveNotice: true });
   appHistoryDepth = 0;
@@ -20006,26 +20010,39 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   const previousState = cloneNavigationValue(state);
   state = nextState;
   const participantLabel = participantName(participantId, event);
+  const confirmedMessage = enabled
+    ? `${participantLabel} הוגדר כמנהל אירוע.`
+    : `הרשאת הניהול של ${participantLabel} הוסרה.`;
   eventDialog = eventDialog?.eventId === eventId
     ? {
         ...eventDialog,
-        message: enabled
-          ? `${participantLabel} הוגדר כמנהל אירוע.`
-          : `הרשאת הניהול של ${participantLabel} הוסרה.`
+        message: "שומרים את הרשאת הניהול..."
       }
     : eventDialog;
   notice = "";
+  render();
+  reactivateDialogAfterRender(".event-modal", focusSelector);
   const result = await persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     const failureMessage = "לא הצלחנו לשנות את הרשאת הניהול. לא בוצע שינוי.";
     eventDialog = eventDialog?.eventId === eventId
       ? { ...eventDialog, message: failureMessage }
       : eventDialog;
     notice = eventDialog?.eventId === eventId ? "" : failureMessage;
+  } else {
+    const completionMessage = result?.pending
+      ? enabled
+        ? `${participantLabel} הוגדר כמנהל במכשיר הזה. השינוי יסתנכרן אוטומטית.`
+        : `הרשאת הניהול של ${participantLabel} הוסרה במכשיר הזה. השינוי יסתנכרן אוטומטית.`
+      : confirmedMessage;
+    eventDialog = eventDialog?.eventId === eventId
+      ? { ...eventDialog, message: completionMessage }
+      : eventDialog;
+    notice = eventDialog?.eventId === eventId ? "" : completionMessage;
   }
   render();
   reactivateDialogAfterRender(".event-modal", focusSelector);
@@ -20044,14 +20061,16 @@ async function setEventRoundingMode(eventId, mode) {
 
   const previousState = state;
   state = setEventRoundSettlementTransfers(state, eventId, enabled);
-  notice = enabled
+  const confirmedNotice = enabled
     ? "סכומים נוחים הופעלו. רק ההעברות הסופיות יעוגלו."
     : "עיגול הסכומים בוטל. ההעברות יוצגו בדיוק מלא.";
+  notice = "שומרים את הגדרת עיגול הסכומים...";
+  render();
   const result = await persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
@@ -20063,6 +20082,9 @@ async function setEventRoundingMode(eventId, mode) {
     );
     return;
   }
+  notice = result?.pending
+    ? "הגדרת עיגול הסכומים נשמרה במכשיר ותסתנכרן אוטומטית."
+    : confirmedNotice;
   render();
   requestAnimationFrame(() => {
     app
@@ -22007,13 +22029,14 @@ async function setEventRepaymentMode(eventId, mode) {
   const nextTransfers = eventSettlementTransfers(nextEvent);
   const transferPlanChanged = settlementTransferPlanKey(previousTransfers) !==
     settlementTransferPlanKey(nextTransfers);
-  notice = direct
+  const confirmedNotice = direct
     ? transferPlanChanged
       ? "החזר לפי מי ששילם הופעל וההעברות עודכנו."
       : "החזר לפי מי ששילם הופעל. במקרה הזה סכומי ההעברות כבר היו זהים."
     : transferPlanChanged
       ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
       : "קיזוז חכם הופעל. במקרה הזה כבר לא ניתן לצמצם עוד העברות.";
+  notice = "שומרים את אופן ההחזר...";
   render();
   reactivateDialogAfterRender(
     ".event-modal",
@@ -22025,7 +22048,7 @@ async function setEventRepaymentMode(eventId, mode) {
   });
   if (eventRepaymentModeRequestVersions.get(eventId) !== requestVersion) return;
   eventRepaymentModeRequestVersions.delete(eventId);
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
     state = setEventDirectSettlementTransfers(
       state,
       eventId,
@@ -22041,6 +22064,10 @@ async function setEventRepaymentMode(eventId, mode) {
     );
     return;
   }
+  notice = result?.pending
+    ? "אופן ההחזר נשמר במכשיר ויסתנכרן אוטומטית."
+    : confirmedNotice;
+  render();
   requestAnimationFrame(() => {
     app
       .querySelector(

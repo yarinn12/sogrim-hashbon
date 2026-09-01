@@ -1397,7 +1397,10 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
   assert.match(roundingHandler, /const previousState = state/);
   assert.match(roundingHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
-  assert.match(roundingHandler, /if \(!result\?\.ok\) \{\s*state = previousState/);
+  assert.match(
+    roundingHandler,
+    /if \(!result\?\.ok && !result\?\.pending\) \{\s*state = previousState/
+  );
 });
 
 test("event cover supports reliable gallery and camera replacement", async () => {
@@ -1481,11 +1484,11 @@ test("event settings let managers choose direct payer reimbursements", async () 
   );
   assert.match(
     repaymentHandler,
-    /if \(!result\?\.ok\) \{\s*state = setEventDirectSettlementTransfers\(/
+    /if \(!result\?\.ok && !result\?\.pending\) \{\s*state = setEventDirectSettlementTransfers\(/
   );
   assert.doesNotMatch(
     repaymentHandler,
-    /if \(!result\?\.ok\)[\s\S]*?return;\s*}\s*render\(\);/
+    /if \(!result\?\.ok && !result\?\.pending\)[\s\S]*?return;\s*}\s*render\(\);/
   );
   assert.match(
     ledgerWorkspace,

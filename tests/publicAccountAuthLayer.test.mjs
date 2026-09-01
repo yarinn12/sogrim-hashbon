@@ -388,9 +388,10 @@ test("profile name edits update the authenticated cloud account", async () => {
 
   assert.match(app, /SogrimAccountProfile\?\.updateDisplayName\?\.\(displayName\)/);
   assert.match(app, /Promise\.allSettled/);
-  assert.match(app, /עדכון החשבון יושלם כשהחיבור יחזור/);
+  assert.match(app, /הפרופיל נשמר במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
+  assert.match(app, /sharedProfileSaveResult\?\.pending !== true/);
   assert.match(app, /תמונת הפרופיל נשמרה/);
-  assert.match(app, /תמונת הפרופיל נשמרה/);
+  assert.match(app, /התמונה נשמרה במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
 });
 
 test("account gate protects private content and preserves interrupted form work", async () => {

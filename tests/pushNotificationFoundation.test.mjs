@@ -92,6 +92,9 @@ test("notification preferences are explicit, account scoped, and sign-out safe",
   assert.match(layer, /addEventListener\("online", requestNotificationInitialization\)/);
   assert.match(layer, /addEventListener\(NATIVE_RESUME_EVENT, requestNotificationInitialization\)/);
   assert.match(layer, /if \(notificationInitializationRequest\)/);
+  assert.match(layer, /retryDisabledNotificationCleanup\(session\.user\.id\)/);
+  assert.match(layer, /async function retryDisabledNotificationCleanup/);
+  assert.match(layer, /clearStoredPushToken\(userId\)/);
   assert.match(layer, /function registerPushDeviceWithAccountRecovery/);
   assert.match(layer, /SogrimAccountSession\?\.refresh\?\.\(\)/);
   assert.match(layer, /Account changed during push recovery/);

@@ -241,6 +241,51 @@ test("queued management-mode changes stay visibly pending across devices", () =>
   );
 });
 
+test("every event setting distinguishes queued saves from cloud confirmation", () => {
+  const settings = [
+    {
+      source: sourceBetween(
+        app,
+        "async function applyEventCurrencyChange",
+        "async function resetApplicationState"
+      ),
+      pendingMessage: /מטבע האירוע נשמר במכשיר.*ויסתנכרן אוטומטית/
+    },
+    {
+      source: sourceBetween(
+        app,
+        "async function toggleEventParticipantAdmin",
+        "async function setEventRoundingMode"
+      ),
+      pendingMessage: /השינוי יסתנכרן אוטומטית/
+    },
+    {
+      source: sourceBetween(
+        app,
+        "async function setEventRoundingMode",
+        "function syncSettlementCloseConfirmation"
+      ),
+      pendingMessage: /עיגול הסכומים נשמרה במכשיר ותסתנכרן אוטומטית/
+    },
+    {
+      source: sourceBetween(
+        app,
+        "async function setEventRepaymentMode",
+        "function settlementTransferPlanKey"
+      ),
+      pendingMessage: /אופן ההחזר נשמר במכשיר ויסתנכרן אוטומטית/
+    }
+  ];
+
+  for (const setting of settings) {
+    assert.match(setting.source, /awaitCloud: true/);
+    assert.match(setting.source, /forceSharedEventIds: \[eventId\]/);
+    assert.match(setting.source, /result\?\.pending/);
+    assert.match(setting.source, setting.pendingMessage);
+    assert.match(setting.source, /!result\?\.ok && !result\?\.pending/);
+  }
+});
+
 test("inline expense participants cannot silently diverge from the shared event", () => {
   const payerGuest = sourceBetween(
     app,
