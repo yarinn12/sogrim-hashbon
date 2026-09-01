@@ -1,8 +1,6 @@
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
-
 import { signInWithPassword } from "../src/data/accountAuth.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
+import { readStoreReviewCredentials } from "./privateMaterial.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
@@ -43,11 +41,10 @@ for (const [name, path, expectedText] of [
   check(`${name} is live and current`, page.ok && page.text.includes(expectedText));
 }
 
-const credentialsPath = ".store-review-credentials.json";
 let reviewAccountReady = false;
-if (existsSync(credentialsPath) && supabaseUrl && anonKey) {
+if (supabaseUrl && anonKey) {
   try {
-    const credentials = JSON.parse(await readFile(credentialsPath, "utf8"));
+    const credentials = readStoreReviewCredentials();
     const session = await signInWithPassword(
       { storage: { mode: "supabase", url: supabaseUrl, anonKey } },
       { email: credentials.email, password: credentials.password }

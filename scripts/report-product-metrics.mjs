@@ -11,7 +11,15 @@ loadEnvFile(resolve(root, ".env"));
 const databaseUrl = process.env.POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL;
 if (!databaseUrl) throw new Error("Supabase database URL is not configured");
 
-const requestedDays = Number(process.argv[2] ?? 7);
+const daysFlagIndex = process.argv.findIndex((argument) => argument === "--days");
+const inlineDaysFlag = process.argv.find((argument) => argument.startsWith("--days="));
+const requestedDays = Number(
+  daysFlagIndex >= 0
+    ? process.argv[daysFlagIndex + 1]
+    : inlineDaysFlag
+      ? inlineDaysFlag.slice("--days=".length)
+      : process.argv[2] ?? 7
+);
 const days = Number.isSafeInteger(requestedDays) && requestedDays >= 1 && requestedDays <= 90
   ? requestedDays
   : 7;

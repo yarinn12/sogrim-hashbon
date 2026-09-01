@@ -28,7 +28,6 @@ public class MainActivity extends BridgeActivity {
         });
 
         registerPlugin(SogrimCapabilitiesPlugin.class);
-        registerPlugin(SogrimContactPickerPlugin.class);
         super.onCreate(savedInstanceState);
 
         applySystemBarStyle();

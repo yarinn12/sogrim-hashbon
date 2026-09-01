@@ -557,7 +557,6 @@ html.app-splash-active body {
 }
 
 .app-splash-video,
-.app-splash-poster,
 .app-splash-hold {
   grid-area: 1 / 1;
   width: 100%;
@@ -568,11 +567,6 @@ html.app-splash-active body {
 }
 
 .app-splash-video {
-  opacity: 0;
-  transition: opacity 80ms linear;
-}
-
-.app-splash-poster {
   opacity: 1;
 }
 
@@ -580,16 +574,8 @@ html.app-splash-active body {
   opacity: 0;
 }
 
-.app-splash.is-video-ready .app-splash-video {
-  opacity: 1;
-}
-
 .app-splash.is-fallback .app-splash-video {
   display: none;
-}
-
-.app-splash.is-fallback .app-splash-poster {
-  opacity: 0;
 }
 
 .app-splash.is-fallback .app-splash-hold {

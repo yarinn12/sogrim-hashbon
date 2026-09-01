@@ -84,6 +84,30 @@ test.describe("startup splash", () => {
     expect(runtimeIssues).toEqual([]);
   });
 
+  test("uses the video as the first web splash layer without a static logo swap", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+
+    const splashState = await page.locator("#app-splash").evaluate((splash) => {
+      const video = splash.querySelector(".app-splash-video");
+      const fallback = splash.querySelector(".app-splash-hold");
+      return {
+        posterCount: splash.querySelectorAll(".app-splash-poster").length,
+        videoOpacity: video ? getComputedStyle(video).opacity : "missing",
+        fallbackOpacity: fallback ? getComputedStyle(fallback).opacity : "missing",
+        autoplay: video?.autoplay ?? false,
+        poster: video?.getAttribute("poster") ?? ""
+      };
+    });
+
+    expect(splashState).toEqual({
+      posterCount: 0,
+      videoOpacity: "1",
+      fallbackOpacity: "0",
+      autoplay: true,
+      poster: ""
+    });
+  });
+
   test("falls back cleanly when the intro video cannot load", async ({ page }) => {
     await page.route("**/assets/sogrim-heshbon-loading-loop-v2.mp4", (route) => route.abort());
     await page.goto("/", { waitUntil: "domcontentloaded" });

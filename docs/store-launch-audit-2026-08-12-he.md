@@ -19,7 +19,7 @@
 - [x] Package קבוע: `com.sogrimhashbon.app` ב-`android/app/build.gradle` וב-`capacitor.config.json`.
 - [x] גרסה נוכחית בקוד: `3.48 (71)` ב-`android/app/build.gradle`.
 - [x] Target/Compile API 36 ו-Min API 24 ב-`android/variables.gradle`.
-- [x] חתימת Upload קיימת ומוחרגת מ-Git: `android/keystore.properties`, `android/app/sogrim-upload-key.jks` ו-`.gitignore`.
+- [x] חתימת Upload קיימת מחוץ לתיקיית הפרויקט: קובץ ה־JKS וקובץ הסיסמאות נשמרים בשורשים פרטיים נפרדים ונבדקים דרך `SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE` או נתיב ברירת המחדל המאובטח.
 - [x] טביעת AAB שנבדקה תואמת לתעודת ה-Upload: `D9:BE:...:74:1B`; התוקף עד 4 בדצמבר 2053.
 - [x] Play App Signing fingerprint מתועד ב-`docs/store-submission/android-play-signing-certificate-sha256.txt` ונכלל ב-`.well-known/assetlinks.json`.
 - [x] גיבוי, העברת נתוני מכשיר ו-cleartext כבויים ב-`AndroidManifest.xml` וב-`data_extraction_rules.xml`.

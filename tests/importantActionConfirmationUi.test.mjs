@@ -82,6 +82,22 @@ test("confirmation supports app back, browser back, Escape and focus restoration
   );
 });
 
+test("an unexpected confirmed-action failure always releases the blocking dialog", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const start = app.indexOf("async function confirmImportantAction()");
+  const end = app.indexOf("async function executeImportantAction", start);
+  const confirmation = app.slice(start, end);
+
+  assert.ok(start >= 0 && end > start);
+  assert.match(confirmation, /catch \(error\)/);
+  assert.match(confirmation, /emitOperationFailure\("important_action"/);
+  assert.match(confirmation, /schedulePendingMutationRecovery\(\{ resetBackoff: true \}\)/);
+  assert.match(
+    confirmation,
+    /finally \{[\s\S]*?restoringBrowserHistory = false;[\s\S]*?render\(\);[\s\S]*?\}/
+  );
+});
+
 test("event deletion is optimistic, cloud-confirmed and recoverable on a hard failure", async () => {
   const [app, coherence] = await Promise.all([
     readFile("src/app.mjs", "utf8"),

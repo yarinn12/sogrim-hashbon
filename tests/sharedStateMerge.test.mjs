@@ -79,6 +79,41 @@ test("a stale device cannot hide that a participant linked an account", () => {
   assert.equal(participant.accountLinked, true);
 });
 
+test("a deleted-account tombstone cannot regain profile data from a stale device", () => {
+  const remote = {
+    participants: [{
+      id: "account-00000000-0000-4000-8000-000000000001",
+      displayName: "משתמש שנמחק",
+      kind: "user",
+      accountDeleted: true
+    }],
+    groups: [],
+    events: []
+  };
+  const local = {
+    participants: [{
+      id: "account-00000000-0000-4000-8000-000000000001",
+      displayName: "שם ישן",
+      kind: "user",
+      avatarImage: "data:image/jpeg;base64,private",
+      avatarPreset: "avatar-4",
+      accountLinked: true,
+      profileUpdatedAt: "2026-08-31T10:00:00.000Z"
+    }],
+    groups: [],
+    events: []
+  };
+
+  const [participant] = mergeSharedStates(remote, local).participants;
+
+  assert.deepEqual(participant, {
+    id: "account-00000000-0000-4000-8000-000000000001",
+    displayName: "משתמש שנמחק",
+    kind: "user",
+    accountDeleted: true
+  });
+});
+
 test("an unrelated stale save cannot restore an older profile name or avatar", () => {
   const remote = baseState();
   remote.participants[0] = {

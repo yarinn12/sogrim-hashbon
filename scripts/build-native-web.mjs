@@ -17,7 +17,7 @@ import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibi
 const root = process.cwd();
 const output = join(root, "www");
 const buildEnv = { ...process.env };
-loadEnvFile(join(root, ".env.local"), buildEnv);
+loadEnvFile(join(root, ".env.local"), buildEnv, { loadPrivate: true });
 loadEnvFile(join(root, ".env"), buildEnv);
 const publicAppOrigin = canonicalPublicOrigin(
   buildEnv.APP_PUBLIC_URL,

@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=429"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=433"><\/script>/);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -201,6 +201,8 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /url\.searchParams\.set\("action", "profile"\)/);
   assert.match(layer, /data-account-action="delete-account-open"/);
   assert.match(layer, /data-account-action="delete-account-confirm"/);
+  assert.match(layer, /clearStoredPushData\(accountSession\?\.user\?\.id\)/);
+  assert.match(layer, /clearAllOpenInviteTokens\(\)/);
   assert.match(layer, /deleteAccount/);
   assert.match(layer, /handleAccountDeletionKeydown/);
   assert.match(layer, /let accountDeleteBusy = false/);

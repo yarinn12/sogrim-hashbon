@@ -13,11 +13,19 @@ test("open shared events refresh quietly while the app remains visible", () => {
   );
   assert.match(
     appSource,
-    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*profileNameEditing[\s\S]*readSharedEventState\(config, credentials, eventId\)[\s\S]*mergeSharedEventIntoState\(state, sharedEventState, credentials\)[\s\S]*saveState\(state\);[\s\S]*render\(\);[\s\S]*\}/
+    /function requestVisibleEventSync\(\) \{[\s\S]*!VISIBLE_BACKGROUND_SYNC_SCREENS\.has\(screen\.name\)[\s\S]*expenseDraft[\s\S]*profileNameEditing[\s\S]*readSharedEventStateIfChanged\([\s\S]*observerKey: "visible-event-workspace"[\s\S]*if \(!sharedEventRead\?\.changed\) return;[\s\S]*mergeSharedEventIntoState\(state, sharedEventState, credentials\)[\s\S]*saveState\(state\);[\s\S]*render\(\);[\s\S]*\}/
   );
   assert.match(
     appSource,
-    /if \(!eventId \|\| !credentials \|\| resumeSyncRequest\) \{[\s\S]*?return requestResumeSync\(\{ includeSecondary: false \}\);/
+    /if \(!eventId \|\| !credentials\) \{[\s\S]*?return requestResumeSync\(\{ includeSecondary: false \}\);/
+  );
+  assert.doesNotMatch(
+    appSource.slice(
+      appSource.indexOf("function requestVisibleEventSync"),
+      appSource.indexOf("bootstrapApp();")
+    ),
+    /!credentials \|\| resumeSyncRequest/,
+    "an account/profile refresh must not block canonical event polling"
   );
   assert.match(
     appSource,
@@ -77,10 +85,32 @@ test("a forced refresh queues one fresh read behind an in-flight request", () =>
   );
 });
 
-test("a remote read discarded after a local save is immediately retried", () => {
+test("background sync failures stay silent in the UI but remain observable", () => {
+  const resumeStart = appSource.indexOf("function requestResumeSync(");
+  const resumeEnd = appSource.indexOf("function requestResumeSyncAfterPaint", resumeStart);
+  const resumeSource = appSource.slice(resumeStart, resumeEnd);
+  assert.match(
+    resumeSource,
+    /\.catch\(\(error\) => \{[\s\S]*?emitOperationDeferred\("state_load", \{ error \}\)/
+  );
+
+  const visibleStart = appSource.indexOf("function requestVisibleEventSync(");
+  const visibleEnd = appSource.indexOf("bootstrapApp\(\);", visibleStart);
+  const visibleSource = appSource.slice(visibleStart, visibleEnd);
+  assert.match(
+    visibleSource,
+    /\.catch\(\(error\) => \{[\s\S]*?emitOperationDeferred\("state_load", \{ error \}\);[\s\S]*?requestResumeSync\(\{ includeSecondary: false \}\)/
+  );
+});
+
+test("a remote read racing a local save is merged before an immediate retry", () => {
   assert.match(
     appSource,
-    /saveRevisionAtRequest !== sharedStateSaveRevision\(\)[\s\S]*?queueForcedResumeSync\(\{ includeSecondary: false \}\)/
+    /saveRevisionAtRequest !== sharedStateSaveRevision\(\)[\s\S]*?mergeSharedStates\(sharedState, state\)[\s\S]*?saveState\(state\);[\s\S]*?render\(\);[\s\S]*?queueForcedResumeSync\(\{ includeSecondary: false \}\)/
+  );
+  assert.match(
+    appSource,
+    /const localSaveCompletedDuringRead =\s*saveRevisionAtRequest !== sharedStateSaveRevision\(\);[\s\S]*?mergeSharedEventIntoState\(state, sharedEventState, credentials\)[\s\S]*?render\(\);[\s\S]*?if \(localSaveCompletedDuringRead\)/
   );
 });
 
@@ -224,5 +254,23 @@ test("participant and share controls open immediately while refresh continues be
   assert.match(
     appSource,
     /const DIALOG_OPEN_ACTIONS = new Set\(\[[\s\S]*?"open-event-participant-add"/
+  );
+});
+
+test("event settings paint immediately and refresh permissions in the background", () => {
+  const actionStart = appSource.indexOf('if (action === "open-event-settings")');
+  const nextAction = appSource.indexOf("\n  if (action ===", actionStart + 1);
+  const handler = appSource.slice(actionStart, nextAction);
+
+  assert.ok(actionStart >= 0, "event settings action exists");
+  assert.ok(
+    handler.indexOf('openEventDialog(target.dataset.eventId, "settings", target)') <
+      handler.indexOf("requestResumeSyncAfterPaint("),
+    "event settings must paint before refreshing remote permissions"
+  );
+  assert.doesNotMatch(handler, /await requestResumeSync/);
+  assert.match(
+    handler,
+    /requestResumeSyncAfterPaint\(\{ force: true, includeSecondary: false \}\)/
   );
 });

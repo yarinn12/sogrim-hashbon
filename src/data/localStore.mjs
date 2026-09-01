@@ -39,7 +39,6 @@ import {
 import {
   buildSharedEventSyncSelection,
   recoverAccessibleSharedEvents,
-  refreshSharedEvents,
   syncSharedEvents
 } from "./sharedEventStore.mjs";
 import {
@@ -226,40 +225,36 @@ async function withFreshCloudAccount(config, request) {
 }
 
 async function hydrateAccessibleSharedEventState(config, initialState) {
-  let state = initialState;
   try {
-    state = await withFreshCloudAccount(config, (freshConfig) =>
-      recoverAccessibleSharedEvents(freshConfig, state)
+    return await withFreshCloudAccount(config, (freshConfig) =>
+      recoverAccessibleSharedEvents(freshConfig, initialState)
     );
   } catch (error) {
     reportPartialStateLoadFailure(error);
-    return state;
+    return initialState;
   }
-
-  try {
-    state = await withFreshCloudAccount(config, (freshConfig) =>
-      refreshSharedEvents(freshConfig, state)
-    );
-  } catch (error) {
-    reportPartialStateLoadFailure(error);
-  }
-  return state;
 }
 
 async function persistRecoveredEventIndex(config, previousState, recoveredState) {
-  if (!hasCloudStateChanged(recoveredState, previousState)) return recoveredState;
+  const recoveredStateWithIdentity = applyLocalParticipantId(
+    recoveredState,
+    loadLocalParticipantId()
+  );
+  if (!hasCloudStateChanged(recoveredStateWithIdentity, previousState)) {
+    return recoveredStateWithIdentity;
+  }
 
   try {
     const saved = await saveCloudStateWithRetry(
       config,
-      toCloudState(config, recoveredState)
+      toCloudState(config, recoveredStateWithIdentity)
     );
-    return mergeSharedStates(saved.state, recoveredState);
+    return mergeSharedStates(saved.state, recoveredStateWithIdentity);
   } catch (error) {
     const retryable = isRetryablePendingSyncFailure(error);
     const queued = retryable && savePendingSharedState(
       config,
-      toCloudState(config, recoveredState)
+      toCloudState(config, recoveredStateWithIdentity)
     );
     if (queued) {
       publishSyncStatus("reconnecting");
@@ -274,7 +269,7 @@ async function persistRecoveredEventIndex(config, previousState, recoveredState)
     } else {
       reportPartialStateLoadFailure(error);
     }
-    return recoveredState;
+    return recoveredStateWithIdentity;
   }
 }
 
@@ -508,7 +503,7 @@ function attachStoredAccountIdentity(config) {
   };
 }
 
-export function loadSharedState() {
+function loadSharedStateResult() {
   const requestScope = synchronizeAccountStorageScope();
   if (!sharedStateLoadPromise || sharedStateLoadScope !== requestScope) {
     let requestPromise;
@@ -525,25 +520,41 @@ export function loadSharedState() {
   return sharedStateLoadPromise;
 }
 
+export function loadSharedState() {
+  return loadSharedStateResult().then((result) => result.state);
+}
+
 export async function loadSharedStateForStartup({
   maxWaitMs = STARTUP_SHARED_STATE_WAIT_MS
 } = {}) {
-  const refresh = loadSharedState();
+  const refresh = loadSharedStateResult();
   const elapsedMs = sharedStateLoadStartedAt
     ? Date.now() - sharedStateLoadStartedAt
     : 0;
   const remainingMs = Math.max(0, Number(maxWaitMs) - elapsedMs);
 
   if (remainingMs === 0) {
-    return { state: loadState(), refresh, source: "local" };
+    return {
+      state: loadState(),
+      refresh,
+      source: "local",
+      authoritative: false
+    };
   }
 
   let timeoutId = 0;
   const initial = await Promise.race([
-    refresh.then((state) => ({ state, source: "synced" })),
+    refresh.then((result) => ({
+      ...result,
+      source: result.authoritative ? "synced" : "fallback"
+    })),
     new Promise((resolve) => {
       timeoutId = globalThis.setTimeout(
-        () => resolve({ state: loadState(), source: "local" }),
+        () => resolve({
+          state: loadState(),
+          source: "local",
+          authoritative: false
+        }),
         remainingMs
       );
     })
@@ -553,8 +564,13 @@ export async function loadSharedStateForStartup({
   return {
     state: initial.state,
     refresh: initial.source === "local" ? refresh : null,
-    source: initial.source
+    source: initial.source,
+    authoritative: Boolean(initial.authoritative)
   };
+}
+
+function sharedStateLoadResult(state, authoritative) {
+  return { state, authoritative: Boolean(authoritative) };
 }
 
 async function loadSharedStateOnce(requestScope) {
@@ -590,7 +606,7 @@ async function loadSharedStateOnce(requestScope) {
             requestAccountGeneration,
             requestSaveGeneration
           )) {
-            return loadState();
+            return sharedStateLoadResult(loadState(), false);
           }
           const visiblePendingState = applyLocalParticipantId(
             cleanLegacyStarterData(
@@ -600,14 +616,17 @@ async function loadSharedStateOnce(requestScope) {
             loadLocalParticipantId()
           );
           saveStateForScope(visiblePendingState, requestScope);
-          return visiblePendingState;
+          return sharedStateLoadResult(visiblePendingState, true);
         } catch (error) {
           reportPartialStateLoadFailure(error);
         }
 
-        return applyLocalParticipantId(
-          cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
-          loadLocalParticipantId()
+        return sharedStateLoadResult(
+          applyLocalParticipantId(
+            cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
+            loadLocalParticipantId()
+          ),
+          false
         );
       }
       try {
@@ -631,12 +650,12 @@ async function loadSharedStateOnce(requestScope) {
           requestAccountGeneration,
           requestSaveGeneration
         )) {
-          return loadState();
+          return sharedStateLoadResult(loadState(), false);
         }
         if (pendingPayload !== pendingSharedStateRaw(runtimeConfig)) {
           publishSyncStatus("reconnecting");
           schedulePendingSharedStateRetry();
-          return loadState();
+          return sharedStateLoadResult(loadState(), false);
         }
         clearPendingSharedState(runtimeConfig);
         resetPendingSharedStateRetry();
@@ -655,7 +674,7 @@ async function loadSharedStateOnce(requestScope) {
           loadLocalParticipantId()
         );
         saveStateForScope(syncedStateWithIdentity, requestScope);
-        return syncedStateWithIdentity;
+        return sharedStateLoadResult(syncedStateWithIdentity, true);
       } catch (error) {
         // Keep the pending local snapshot available for a later retry.
         if (isRetryablePendingSyncFailure(error)) {
@@ -680,9 +699,12 @@ async function loadSharedStateOnce(requestScope) {
         }
       }
 
-      return applyLocalParticipantId(
-        cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
-        loadLocalParticipantId()
+      return sharedStateLoadResult(
+        applyLocalParticipantId(
+          cleanLegacyStarterData(pendingState, loadProtectedParticipantId()),
+          loadLocalParticipantId()
+        ),
+        false
       );
     }
 
@@ -712,19 +734,19 @@ async function loadSharedStateOnce(requestScope) {
         requestAccountGeneration,
         requestSaveGeneration
       )) {
-        return loadState();
+        return sharedStateLoadResult(loadState(), false);
       }
       saveStateForScope(localStateWithIdentity, requestScope);
-      return localStateWithIdentity;
+      return sharedStateLoadResult(localStateWithIdentity, true);
     } catch (error) {
       (isRetryablePendingSyncFailure(error)
         ? emitOperationDeferred
         : emitOperationFailure)("state_load", { screen: "boot", error });
-      return localState;
+      return sharedStateLoadResult(localState, false);
     }
   }
 
-  return localState;
+  return sharedStateLoadResult(localState, true);
 }
 
 export async function saveSharedState(state) {

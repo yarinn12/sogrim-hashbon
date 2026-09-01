@@ -18,8 +18,13 @@ test("deployment ignores local secrets and local state files", async () => {
   assert.match(gitignore, /\.qa-\*\//);
   assert.match(gitignore, /\.ux-\*\//);
   assert.match(gitignore, /\*\.zip/);
+  assert.match(gitignore, /audit\/backups\//);
+  assert.match(gitignore, /work\/\*backup\*\.json/);
   assert.match(vercelignore, /\.qa-\*/);
   assert.match(vercelignore, /\.ux-\*/);
   assert.match(vercelignore, /^tests$/m);
   assert.match(vercelignore, /^artifacts$/m);
+  assert.match(vercelignore, /^audit$/m);
+  assert.match(vercelignore, /^work$/m);
+  assert.match(vercelignore, /^\.codex$/m);
 });

@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, unlinkSync } from "node:fs";
 
 import { signInWithPassword } from "../src/data/accountAuth.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
+import {
+  readPrivateCredentials,
+  resolvePrivateCredentialPath,
+  writePrivateCredentials
+} from "./privateMaterial.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
@@ -11,10 +15,10 @@ loadEnvFile(".env");
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey = process.env.SUPABASE_ANON_KEY || requiredEnv("SUPABASE_PUBLISHABLE_KEY");
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-const credentialsPath = resolve(".invite-qa-credentials.json");
+const credentialsPath = resolvePrivateCredentialPath("inviteQa");
 
 if (process.argv.includes("--delete")) {
-  const credentials = readCredentials();
+  const credentials = readPrivateCredentials("inviteQa");
   if (credentials.workspaceId) {
     await adminRequest(`/rest/v1/app_snapshots?id=eq.${encodeURIComponent(credentials.workspaceId)}`, {
       method: "DELETE",
@@ -31,7 +35,7 @@ if (process.argv.includes("--delete")) {
   process.exit(0);
 }
 
-const existingCredentials = readCredentials();
+const existingCredentials = readPrivateCredentials("inviteQa");
 const email = existingCredentials.email || "invite-tester@sogrimhashbon.app";
 const password = existingCredentials.password || `${randomBytes(20).toString("base64url")}Aa1!`;
 const listed = await adminRequest("/auth/v1/admin/users?page=1&per_page=1000");
@@ -63,24 +67,15 @@ const session = await signInWithPassword(
 );
 if (session.user?.id !== user.id) throw new Error("Invite QA account login verification failed.");
 
-writeFileSync(credentialsPath, `${JSON.stringify({
+await writePrivateCredentials("inviteQa", {
   email,
   password,
   userId: user.id,
   workspaceId,
   updatedAt: new Date().toISOString()
-}, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+});
 
 console.log(JSON.stringify({ ok: true, email, credentialsPath }));
-
-function readCredentials() {
-  if (!existsSync(credentialsPath)) return {};
-  try {
-    return JSON.parse(readFileSync(credentialsPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
 
 async function adminRequest(path, { method = "GET", body, prefer } = {}) {
   const response = await fetch(`${supabaseUrl}${path}`, {

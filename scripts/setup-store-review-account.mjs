@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 import { signInWithPassword } from "../src/data/accountAuth.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
+import {
+  readPrivateCredentials,
+  writePrivateCredentials
+} from "./privateMaterial.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
@@ -11,8 +13,7 @@ loadEnvFile(".env");
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey = process.env.SUPABASE_ANON_KEY || requiredEnv("SUPABASE_PUBLISHABLE_KEY");
 const serviceRoleKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-const credentialsPath = resolve(".store-review-credentials.json");
-const existingCredentials = readCredentials();
+const existingCredentials = readPrivateCredentials("storeReview");
 const email = existingCredentials.email || "store-review@sogrimhashbon.app";
 const password = existingCredentials.password || `${randomBytes(20).toString("base64url")}Aa1!`;
 
@@ -43,24 +44,15 @@ const session = await signInWithPassword(
 );
 if (session.user?.id !== user.id) throw new Error("Store review account login verification failed.");
 
-writeFileSync(credentialsPath, `${JSON.stringify({
+const credentialsPath = await writePrivateCredentials("storeReview", {
   email,
   password,
   userId: user.id,
   updatedAt: new Date().toISOString(),
   purpose: "Private App Store Connect and Google Play review credentials"
-}, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+});
 
 console.log(JSON.stringify({ ok: true, email, credentialsPath }));
-
-function readCredentials() {
-  if (!existsSync(credentialsPath)) return {};
-  try {
-    return JSON.parse(readFileSync(credentialsPath, "utf8"));
-  } catch {
-    return {};
-  }
-}
 
 async function adminRequest(path, { method = "GET", body } = {}) {
   const response = await fetch(`${supabaseUrl}${path}`, {

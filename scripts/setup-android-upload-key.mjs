@@ -1,16 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { resolveAndroidJavaHome } from "./androidJava.mjs";
-import { backupAndroidUploadKey } from "./androidUploadKeyBackup.mjs";
+import { resolveAndroidSigningPaths } from "./androidSigningConfig.mjs";
+import { ensurePrivateDirectory } from "./privateMaterial.mjs";
 
 const root = process.cwd();
-const androidRoot = join(root, "android");
-const keystorePath = join(androidRoot, "app", "sogrim-upload-key.jks");
-const propertiesPath = join(androidRoot, "keystore.properties");
+const { keystorePath, propertiesPath } = resolveAndroidSigningPaths({ workspaceRoot: root });
+const legacyKeystorePath = join(root, "android", "app", "sogrim-upload-key.jks");
+const legacyPropertiesPath = join(root, "android", "keystore.properties");
 const associationDir = join(root, ".well-known");
 const assetLinksPath = join(associationDir, "assetlinks.json");
 const certificatePath = join(root, "docs", "store-submission", "android-upload-certificate-sha256.txt");
@@ -19,13 +20,22 @@ const alias = "sogrim-upload";
 const keytool = resolveKeytool();
 
 let password;
+if (existsSync(legacyKeystorePath) || existsSync(legacyPropertiesPath)) {
+  throw new Error("Legacy Android signing material is still inside the workspace. Run npm run security:migrate-private before configuring or building a release.");
+}
+if (existsSync(keystorePath) !== existsSync(propertiesPath)) {
+  throw new Error("Android signing material is incomplete. Restore the matching key and credentials; a replacement upload key will not be generated.");
+}
 if (existsSync(keystorePath) && existsSync(propertiesPath)) {
   const properties = parseProperties(await readFile(propertiesPath, "utf8"));
   password = properties.storePassword;
   if (!password) throw new Error("Android keystore properties are incomplete.");
 } else {
   password = randomBytes(32).toString("base64url");
-  await mkdir(join(androidRoot, "app"), { recursive: true });
+  await Promise.all([
+    ensurePrivateDirectory(dirname(keystorePath)),
+    ensurePrivateDirectory(dirname(propertiesPath))
+  ]);
   const result = spawnSync(keytool, [
     "-genkeypair",
     "-v",
@@ -44,12 +54,16 @@ if (existsSync(keystorePath) && existsSync(propertiesPath)) {
   }
 
   await writeFile(propertiesPath, [
-    `storeFile=app/${basename(keystorePath)}`,
+    `storeFile=${keystorePath.replaceAll("\\", "/")}`,
     `storePassword=${password}`,
     `keyAlias=${alias}`,
     `keyPassword=${password}`,
     ""
   ].join("\n"), "utf8");
+  await Promise.all([
+    chmod(keystorePath, 0o600).catch(() => {}),
+    chmod(propertiesPath, 0o600).catch(() => {})
+  ]);
 }
 
 const certificate = spawnSync(keytool, [
@@ -86,10 +100,8 @@ await writeFile(assetLinksPath, `${JSON.stringify([
 await mkdir(join(root, "docs", "store-submission"), { recursive: true });
 await writeFile(certificatePath, `${fingerprint}\n`, "utf8");
 
-await backupAndroidUploadKey({ keystorePath, propertiesPath });
-
 console.log(
-  "Android upload key is configured with separate JKS and recovery-properties backups."
+  "Android upload key is configured outside the project workspace with separated key and credential paths."
 );
 console.log(`Public certificate fingerprint: ${fingerprint}`);
 
@@ -110,14 +122,8 @@ function resolveKeytool() {
 }
 
 function parseProperties(source) {
-  return Object.fromEntries(
-    source
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"))
-      .map((line) => {
-        const separator = line.indexOf("=");
-        return [line.slice(0, separator), line.slice(separator + 1)];
-      })
-  );
+  return Object.fromEntries(source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const separator = line.indexOf("=");
+    return [line.slice(0, separator), line.slice(separator + 1)];
+  }));
 }

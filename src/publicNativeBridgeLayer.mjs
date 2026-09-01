@@ -36,7 +36,6 @@ function setupNativeBridge() {
   const pushPlugin = plugins.PushNotifications;
   const cameraPlugin = plugins.Camera;
   const capabilitiesPlugin = plugins.SogrimCapabilities;
-  const contactPickerPlugin = plugins.SogrimContactPicker;
   const nativePlatform = globalThis.Capacitor?.getPlatform?.() ?? "";
   let lastOpenedUrl = "";
   let lastOpenedAt = 0;
@@ -76,19 +75,6 @@ function setupNativeBridge() {
       return true;
     },
     camera: createNativeCameraApi(cameraPlugin),
-    contacts: {
-      available: Boolean(contactPickerPlugin?.pickContact),
-      async pick() {
-        if (!contactPickerPlugin?.pickContact) return null;
-        const result = await contactPickerPlugin.pickContact();
-        if (result?.cancelled) return null;
-        const displayName = normalizeNativeContactName(result?.displayName);
-        if (!displayName) return null;
-        return {
-          displayName
-        };
-      }
-    },
     notifications:
       nativePlatform === "android"
         ? createNativeNotificationApi(null)
@@ -236,19 +222,6 @@ function createNativeCameraApi(cameraPlugin) {
       });
     }
   };
-}
-
-function normalizeNativeContactName(value) {
-  return Array.from(
-    String(value ?? "")
-      .slice(0, 256)
-      .replace(/[\p{Cc}\p{Cf}]/gu, "")
-      .trim()
-      .replace(/\s+/g, " ")
-  )
-    .slice(0, 48)
-    .join("")
-    .trim();
 }
 
 async function resolveAndroidPushAvailability(capabilitiesPlugin) {

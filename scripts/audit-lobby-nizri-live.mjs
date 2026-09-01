@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import postgres from "postgres";
+import { loadEnvFile } from "../src/server/envFile.mjs";
 
 import { validateSharedStateFinancials } from "../src/domain/sharedStateMerge.mjs";
 import {
@@ -22,7 +23,9 @@ if (!EVENT_ID) {
   );
 }
 
-const env = await readEnvFile(path.resolve(".env.local"));
+loadEnvFile(".env.local");
+loadEnvFile(".env");
+const env = process.env;
 const databaseUrl = env.SUPABASE_DB_URL || env.DATABASE_URL || env.POSTGRES_URL;
 if (!databaseUrl) throw new Error("Missing Supabase database URL.");
 

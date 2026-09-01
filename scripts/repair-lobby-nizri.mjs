@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import postgres from "postgres";
+import { loadEnvFile } from "../src/server/envFile.mjs";
 import { validateSharedStateFinancials } from "../src/domain/sharedStateMerge.mjs";
 import {
   eventShareCredentials,
@@ -18,7 +19,9 @@ const DUPLICATE_MAOR_IDS = [
 const EXPECTED_EXPENSE_TOTAL = 30_300;
 
 const apply = process.argv.includes("--apply");
-const env = await readEnvFile(path.resolve(".env.local"));
+loadEnvFile(".env.local");
+loadEnvFile(".env");
+const env = process.env;
 const databaseUrl =
   env.SUPABASE_DB_URL || env.DATABASE_URL || env.POSTGRES_URL;
 if (!databaseUrl) throw new Error("Missing Supabase database URL.");

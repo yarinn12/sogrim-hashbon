@@ -21,4 +21,4 @@
 - `store-screenshot-source.html` ו-`store-screenshot-source.mjs` יוצרים את צילומי המסך הממותגים.
 - `generate-store-screenshots.mjs` מפיק צילומי מוצר עדכניים ומרכיב את כל נכסי המסך באופן עקבי.
 
-אין להעלות את `.store-review-credentials.json`. את הפרטים שבתוכו מזינים רק בשדות המאובטחים של App Store Connect ו-Google Play Console.
+פרטי חשבון הבדיקה נשמרים מחוץ לתיקיית הפרויקט באזור הפרטי של מערכת ההפעלה, או מוזרקים במשתני `SOGRIM_STORE_REVIEW_EMAIL` ו־`SOGRIM_STORE_REVIEW_PASSWORD`. את הפרטים מזינים רק בשדות המאובטחים של App Store Connect ו־Google Play Console.

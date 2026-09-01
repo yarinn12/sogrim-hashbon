@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { resolveAndroidJavaHome } from "./androidJava.mjs";
+import { readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
 import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mjs";
 
 const root = process.cwd();
@@ -66,11 +67,11 @@ if (!Number.isSafeInteger(versionCode) || versionCode < 1 || !versionName) {
   throw new Error("Android release version could not be read from android/app/build.gradle.");
 }
 
-if (!existsSync(join(androidRoot, "keystore.properties"))) {
-  throw new Error("Android upload key is missing. Run npm run native:android:key first.");
-}
+const signing = readAndroidSigningConfiguration({ workspaceRoot: root });
+if (!signing.ready) throw new Error("Android upload key is not configured outside the project workspace. Run npm run native:android:key first.");
 
 const env = { ...process.env };
+env.SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE = signing.propertiesPath;
 const javaHome = resolveAndroidJavaHome(env);
 if (javaHome) env.JAVA_HOME = javaHome;
 if (!env.ANDROID_HOME && process.platform === "win32") {

@@ -2,6 +2,7 @@ import {
   CloudStateAuthError,
   readAccessibleSharedCloudStates,
   readCloudState,
+  readCloudStateIfChanged,
   RECOVERED_MEMBER_SPACE_KEY,
   saveCloudState
 } from "./cloudStore.mjs";
@@ -167,6 +168,34 @@ export async function readSharedEventState(
   return sharedState;
 }
 
+export async function readSharedEventStateIfChanged(
+  runtimeConfig,
+  credentials,
+  expectedEventId = "",
+  fetchImpl = fetch,
+  options = {}
+) {
+  const config = eventCloudConfig(runtimeConfig, credentials);
+  if (!config) return { changed: false, missing: false, state: null };
+
+  const result = await readCloudStateIfChanged(config, fetchImpl, options);
+  if (!result.changed || !result.state) return result;
+
+  const expectedEventWasDeleted = Boolean(
+    expectedEventId &&
+      result.state.deletedEvents?.some((item) => item.id === expectedEventId)
+  );
+  if (
+    expectedEventId &&
+    result.state.events?.[0]?.id !== expectedEventId &&
+    !expectedEventWasDeleted
+  ) {
+    return { changed: true, missing: true, state: null };
+  }
+
+  return result;
+}
+
 export async function saveSharedEventState(
   runtimeConfig,
   state,
@@ -242,7 +271,6 @@ export async function saveSharedEventState(
     }
   }
 
-  await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
   const mergeForWrite = (latest, candidate) =>
     mergeSharedEventWriteState(latest, candidate, runtimeConfig);
   const mergedPayload = buildSharedEventState(
@@ -418,9 +446,6 @@ export async function saveSharedEventDeletion(
     ]
   };
   const remote = await readCloudState(config, fetchImpl);
-  if (remote) {
-    await ensureSharedEventMembership(runtimeConfig, credentials, fetchImpl);
-  }
   const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
   await saveCloudStateWithConflictRetry({
     state: mergedPayload,
@@ -583,22 +608,45 @@ export async function recoverAccessibleSharedEvents(
 ) {
   if (runtimeConfig?.storage?.mode !== "supabase") return state;
   const rows = await readAccessibleSharedCloudStates(runtimeConfig, fetchImpl);
-  let nextState = state;
+  const rowsByEventId = new Map();
   for (const row of rows) {
-    const eventId = row.state?.events?.[0]?.id;
+    const eventId =
+      row.state?.events?.[0]?.id ??
+      row.state?.deletedEvents?.find((item) => item?.id)?.id;
     if (!eventId) continue;
+    const matches = rowsByEventId.get(eventId) ?? [];
+    matches.push(row);
+    rowsByEventId.set(eventId, matches);
+  }
+
+  let nextState = state;
+  const representedEventIds = new Set();
+  for (const [eventId, candidates] of rowsByEventId) {
     const existingEvent = nextState.events?.find((event) => event?.id === eventId);
     const existingCredentials = eventShareCredentials(existingEvent);
+    const row = existingCredentials
+      ? candidates.find((candidate) => candidate.id === existingCredentials.id) ?? candidates[0]
+      : candidates[0];
+    representedEventIds.add(eventId);
     // Membership recovery is an index repair, not a credential rotation. A
     // device that already owns the raw event key must keep it; replacing it
     // with the recovery sentinel makes the first invite impossible to issue.
-    // Older duplicate snapshots for the same event must not replace the
-    // namespace that is already attached to the personal event either.
-    if (existingCredentials && existingCredentials.id !== row.id) continue;
+    // If the raw snapshot is no longer accessible but a canonical replacement
+    // is, use the replacement instead of leaving the event permanently stale.
+    const keepExistingCredentials = existingCredentials?.id === row.id;
     nextState = mergeSharedEventIntoState(nextState, row.state, {
-      id: existingCredentials?.id ?? row.id,
-      key: existingCredentials?.key ?? RECOVERED_MEMBER_SPACE_KEY
+      id: keepExistingCredentials ? existingCredentials.id : row.id,
+      key: keepExistingCredentials
+        ? existingCredentials.key
+        : RECOVERED_MEMBER_SPACE_KEY
     });
+  }
+
+  // The membership-filtered list is authoritative. Reconcile removals in the
+  // same request instead of issuing one extra read plus join RPC per event.
+  for (const event of state.events ?? []) {
+    if (!eventShareCredentials(event) || representedEventIds.has(event.id)) continue;
+    nextState = revokeSharedEventAccess(nextState, event.id, runtimeConfig);
   }
   return nextState;
 }
@@ -786,6 +834,14 @@ function eventCloudConfig(runtimeConfig, credentials) {
 }
 
 function sanitizeParticipant(participant) {
+  if (participant?.accountDeleted === true) {
+    return {
+      id: String(participant.id),
+      displayName: "משתמש שנמחק",
+      kind: "user",
+      accountDeleted: true
+    };
+  }
   const avatarPreset = normalizeAvatarPreset(participant?.avatarPreset);
   const avatarImage = normalizeAvatarImage(participant?.avatarImage);
   const profileUpdatedAt = normalizeProfileUpdatedAt(participant?.profileUpdatedAt);

@@ -68,6 +68,35 @@ test("schema deployment verifies the account deletion function that is installed
   assert.doesNotMatch(deployScript, /delete_account_data\(uuid,text,text\)/);
 });
 
+test("deleted account profiles are reduced to a strict tombstone", async () => {
+  const [schema, migration, verification] = await Promise.all([
+    readFile("supabase/schema.sql", "utf8"),
+    readFile(
+      "supabase/migrations/20260831160000_redact_deleted_account_profiles.sql",
+      "utf8"
+    ),
+    readFile(
+      "supabase/verification/verify_20260831160000_redact_deleted_account_profiles.sql",
+      "utf8"
+    )
+  ]);
+
+  for (const source of [schema, migration]) {
+    assert.match(source, /private\.account_deletion_participant_tombstone/);
+    assert.match(source, /'accountDeleted', true/);
+    assert.match(source, /private\.redact_deleted_account_participants/);
+    assert.match(source, /aa_redact_deleted_account_participants/);
+  }
+  assert.match(migration, /^begin;/);
+  assert.match(
+    migration,
+    /disable trigger guard_shared_snapshot_update;[\s\S]*update public\.app_snapshots[\s\S]*enable trigger guard_shared_snapshot_update;/
+  );
+  assert.match(migration, /commit;\s*$/);
+  assert.match(verification, /tombstone retains direct profile data/);
+  assert.match(verification, /redaction trigger is missing/);
+});
+
 test("legacy account deletion overload is removed and independently verified", async () => {
   const migration = await readFile(
     "supabase/migrations/20260815015532_drop_legacy_delete_account_overload.sql",

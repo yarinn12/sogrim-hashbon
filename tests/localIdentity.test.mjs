@@ -123,7 +123,10 @@ test("localStore never requests the retired shared state endpoint", async () => 
   );
 
   assert.match(loadSharedStateSource, /loadSharedStateOnce\(requestScope\)/);
-  assert.match(loadSharedStateSource, /return localState;/);
+  assert.match(
+    loadSharedStateSource,
+    /return sharedStateLoadResult\(localState, true\);/
+  );
   assert.doesNotMatch(loadSharedStateSource, /fetch\("\/api\/state"\)/);
 });
 

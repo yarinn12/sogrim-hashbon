@@ -74,7 +74,7 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /runtimeApiOrigins\(\{ publicUrl: publicAppOrigin \}\)/);
   assert.match(buildScript, /apiBaseUrl/);
   assert.match(buildScript, /globalThis\.SogrimNativeRuntimeConfig/);
-  assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv\)/);
+  assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv, \{ loadPrivate: true \}\)/);
   assert.match(buildScript, /validateNativeBootstrapConfig/);
   assert.match(buildScript, /expectedAndroidBuild: androidBuild/);
   assert.match(buildScript, /nativeRuntimeCompatibility/);
@@ -119,6 +119,28 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(nativeBenchmark, /readExpectedVersionCode/);
   assert.match(nativeBenchmark, /does not match project build/);
   assert.match(nativeBenchmark, /executedRuns/);
+});
+
+test("native launch screens hand directly to the web video without a logo flash", async () => {
+  const [androidStyles, androidColors, androidSplashDrawable, iosLaunchScreen] =
+    await Promise.all([
+      readFile("android/app/src/main/res/values/styles.xml", "utf8"),
+      readFile("android/app/src/main/res/values/colors.xml", "utf8"),
+      readFile("android/app/src/main/res/drawable/splash_transparent.xml", "utf8"),
+      readFile("ios/App/App/Base.lproj/LaunchScreen.storyboard", "utf8")
+    ]);
+
+  assert.match(
+    androidStyles,
+    /windowSplashScreenAnimatedIcon">@drawable\/splash_transparent/
+  );
+  assert.match(androidColors, /<color name="splashBackground">#FFFFFF<\/color>/);
+  assert.match(androidSplashDrawable, /@android:color\/transparent/);
+  assert.doesNotMatch(iosLaunchScreen, /image="Splash"|<image name="Splash"/);
+  assert.match(
+    iosLaunchScreen,
+    /<view key="view"[\s\S]*?<color key="backgroundColor" white="1"/
+  );
 });
 
 test("native projects include store signing and Apple privacy requirements", async () => {

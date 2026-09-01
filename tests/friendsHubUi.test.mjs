@@ -333,3 +333,24 @@ test("friend refresh resolves avatar versions instead of restoring a stale snaps
     /\? normalizeAvatarImage\(profile\.avatar_image\)/
   );
 });
+
+test("relationship statistics use the app surface system and readable fact rows", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /\.relationship-scorecard \{[\s\S]*?border-radius: 16px !important;[\s\S]*?background: var\(--ledger-brand\) !important;[\s\S]*?box-shadow: 0 6px 8px/
+  );
+  assert.match(
+    layer,
+    /\.relationship-comparison \{[\s\S]*?padding: 11px 12px !important;[\s\S]*?background: rgba\(255, 255, 255, 0\.08\) !important;/
+  );
+  assert.match(
+    layer,
+    /\.relationship-facts-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?border-radius: 16px !important;/
+  );
+  assert.match(
+    layer,
+    /\.relationship-fact \{[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important;[\s\S]*?text-align: start !important;/
+  );
+});

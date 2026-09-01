@@ -25,6 +25,32 @@ a {
   text-underline-offset: 3px;
 }
 
+a:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  inset-block-start: 10px;
+  inset-inline-start: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  color: #ffffff;
+  background: #004e49;
+  border-radius: 8px;
+  transform: translateY(-160%);
+  transition: transform 140ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
 .legal-shell {
   min-height: 100vh;
 }
@@ -64,12 +90,18 @@ a {
 }
 
 .legal-back {
-  min-height: 40px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   color: var(--muted);
   font-size: 14px;
   text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
 }
 
 .legal-main {

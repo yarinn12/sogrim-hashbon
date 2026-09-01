@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import postgres from "postgres";
+import { loadEnvFile } from "../src/server/envFile.mjs";
 import {
   buildSharedEventState,
   eventShareCredentials
@@ -15,7 +16,9 @@ const EXPECTED_EXPENSE_COUNT = 3;
 const EXPECTED_EXPENSE_TOTAL = 39_000;
 
 const apply = process.argv.includes("--apply");
-const env = await readEnvFile(path.resolve(".env.local"));
+loadEnvFile(".env.local");
+loadEnvFile(".env");
+const env = process.env;
 const databaseUrl =
   env.SUPABASE_DB_URL ||
   env.DATABASE_URL ||

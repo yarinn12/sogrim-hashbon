@@ -124,6 +124,7 @@ export async function sendEventActivityNotification({
          )
       ];
   const notification = activityMessage(senderEvent, normalizedKind);
+  const privatePushNotification = privateActivityNotification(normalizedKind);
   const eligibleRecipients = [];
   let inboxRecipients = 0;
   let membershipRecipients = 0;
@@ -350,7 +351,7 @@ export async function sendEventActivityNotification({
           body: JSON.stringify({
             message: {
               token: device.token,
-              notification,
+              notification: privatePushNotification,
               data: {
                 eventId: normalizedEventId,
                 activityId: normalizedActivityId,
@@ -614,6 +615,25 @@ async function loadAccountState({
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
     .find((state) => eventFromState(state, eventId)) ?? null;
+}
+
+function privateActivityNotification(kind) {
+  if (kind === "event-invite") {
+    return {
+      title: "הזמנה חדשה בסוגרים חשבון",
+      body: "הזמנה חדשה מחכה לך באפליקציה."
+    };
+  }
+  if (kind === "event-closed") {
+    return {
+      title: "הגיע הזמן לסגור חשבון",
+      body: "פרטי ההתחשבנות מחכים לך באפליקציה."
+    };
+  }
+  return {
+    title: "עדכון חדש בסוגרים חשבון",
+    body: "פרטי האירוע מחכים לך באפליקציה."
+  };
 }
 
 async function loadAuthoritativeSharedEvent({

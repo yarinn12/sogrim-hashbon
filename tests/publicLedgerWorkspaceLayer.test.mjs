@@ -785,6 +785,19 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });
 
+test("new-event participant actions remain above the persistent iPhone navigation", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /Event creation must remain operable above the persistent mobile navigation[\s\S]*?\.screen\[data-event-creation-step="participants"\] \.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ 72px\) !important/
+  );
+  assert.match(
+    layer,
+    /dynamic-type-extra-large[\s\S]*?\.screen\[data-event-creation-step\] \{[\s\S]*?padding-bottom: calc\(232px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?\.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ 148px\) !important/
+  );
+});
+
 test("referral rewards present one focused gift card with progressive details", async () => {
   const [referralLayer, ledgerLayer, coherenceLayer] = await Promise.all([
     readFile("src/publicReferralRewardsLayer.mjs", "utf8"),
@@ -892,7 +905,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   );
   assert.match(
     layer,
-    /\.product-home-screen \.home-quick-action\.is-primary \{[\s\S]*?display: flex !important;[\s\S]*?justify-content: center !important;[\s\S]*?background: #ffffff !important;[\s\S]*?0 14px 32px rgba\(18, 58, 46, 0\.12\)/
+    /\.product-home-screen \.home-quick-action\.is-primary \{[\s\S]*?width: clamp\(174px, 48%, 190px\) !important;[\s\S]*?max-width: calc\(100% - 24px\) !important;[\s\S]*?display: flex !important;[\s\S]*?justify-content: center !important;[\s\S]*?background: #ffffff !important;[\s\S]*?0 14px 32px rgba\(18, 58, 46, 0\.12\)/
   );
   assert.match(
     layer,

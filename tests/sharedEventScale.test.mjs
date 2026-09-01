@@ -19,7 +19,7 @@ test("a regular save syncs only the shared event that changed", () => {
   });
 });
 
-test("selected shared-event sync does not request unchanged event snapshots", async () => {
+test("selected shared-event sync avoids unchanged events and redundant membership RPCs", async () => {
   const state = stateWithSharedEvents(40);
   const requestedKeys = [];
   const membershipRequests = [];
@@ -81,7 +81,7 @@ test("selected shared-event sync does not request unchanged event snapshots", as
     new Set(requestedKeys),
     new Set(["event-share-key-00000000000000017"])
   );
-  assert.deepEqual(membershipRequests, [{ p_snapshot_id: "event-space-17" }]);
+  assert.deepEqual(membershipRequests, []);
 });
 
 test("a large account refresh caps simultaneous shared-event reads", async () => {

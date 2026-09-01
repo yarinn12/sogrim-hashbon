@@ -75,6 +75,8 @@ import { submitAppFeedback } from "./data/appFeedback.mjs";
 import { setFriendUsername } from "./data/friendsStore.mjs";
 import { markStartupMilestone } from "./data/startupMetrics.mjs";
 import { emitOperationFailure } from "./data/productMetrics.mjs";
+import { clearStoredPushData } from "./data/pushDevices.mjs";
+import { clearAllOpenInviteTokens } from "./data/openInviteTokenStore.mjs";
 import {
   ensureNamedParticipant,
   isFullProfileName,
@@ -1689,6 +1691,8 @@ async function handleAccountClick(event) {
       clearAccountReturnUrl();
       clearAccountOAuthFlows();
       clearAccountRecoverySession();
+      clearStoredPushData(accountSession?.user?.id);
+      clearAllOpenInviteTokens();
       clearLocalAccountData();
       clearAccountSession();
       publishAccountSessionSync(null, { reason: "deleted" });

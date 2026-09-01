@@ -10,9 +10,11 @@ import {
 import {
   createPrivateEventInvite,
   manageOpenEventInvite,
+  OPEN_INVITE_REQUEST_TIMEOUT_MS,
   redeemEventInvite
 } from "../src/server/eventInvites.mjs";
 import { buildEventInviteUrl } from "../src/domain/inviteLinks.mjs";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "../src/data/fetchTimeout.mjs";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -260,6 +262,29 @@ test("server rotates open links atomically and stores only the token hash", asyn
   assert.equal(body.p_space_key, SPACE_KEY);
   assert.match(body.p_token_hash, /^[a-f0-9]{64}$/);
   assert.notEqual(body.p_token_hash, TOKEN);
+});
+
+test("server bounds the entire open-link operation when Supabase stops responding", async () => {
+  assert.ok(
+    OPEN_INVITE_REQUEST_TIMEOUT_MS < DEFAULT_REQUEST_TIMEOUT_MS,
+    "the server must give up before the mobile client request expires"
+  );
+  const startedAt = Date.now();
+  await assert.rejects(
+    manageOpenEventInvite({
+      runtimeConfig: runtimeConfig(),
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+      authorization: "Bearer account-token",
+      eventId: EVENT_ID,
+      fetchImpl: async () => new Promise(() => {}),
+      requestTimeoutMs: 20
+    }),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.ok(
+    Date.now() - startedAt < 500,
+    "a hanging invite upstream must release the server promptly"
+  );
 });
 
 test("server batches independent open-invite verification reads", async () => {

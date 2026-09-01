@@ -19,8 +19,7 @@ test("public store readiness pages exist with stable URLs", async () => {
 
   assert.match(privacy, /מדיניות פרטיות/);
   assert.match(privacy, /Google/);
-  assert.match(privacy, /בחירה מאנשי הקשר ב-Android/);
-  assert.match(privacy, /אינה קוראת או שומרת את מספר הטלפון/);
+  assert.doesNotMatch(privacy, /אנשי הקשר|פנקס הכתובות/);
   assert.match(support, /תמיכה/);
   assert.match(support, /קישור הצטרפות/);
   assert.match(terms, /תנאי שימוש/);
@@ -55,6 +54,8 @@ test("legal links and native back navigation resolve inside the static native bu
       /href="\.\/(?:privacy|support|terms|accessibility|account-deletion)"/
     );
     assert.match(page, /<script type="module" src="\.\/legal\.mjs"><\/script>/);
+    assert.match(page, /class="skip-link" href="#legal-main"/);
+    assert.match(page, /<main id="legal-main" class="legal-main" tabindex="-1">/);
   }
 
   assert.match(pages[0], /href="\.\/support\.html"/);
@@ -158,8 +159,9 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(packageJson.scripts["native:ios:association"], /setup-apple-association/);
   assert.match(packageJson.scripts["qa:store"], /verify-store-readiness/);
   assert.match(dataSafety, /Other financial info|מידע פיננסי אחר/);
-  assert.match(dataSafety, /Contacts > Contacts/);
-  assert.match(dataSafety, /READ_CONTACTS/);
+  assert.match(dataSafety, /אינה אוספת אנשי קשר/);
+  assert.match(dataSafety, /אין הרשאת `READ_CONTACTS`/);
+  assert.doesNotMatch(dataSafety, /Contacts > Contacts/);
   assert.match(dataSafety, /account-deletion/);
   assert.match(dataSafety, /אסימון התראות של Android/);
   assert.match(appPrivacy, /NSPrivacyCollectedDataTypeOtherFinancialInfo/);
@@ -176,6 +178,8 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(releaseBuilder, /runGradle\(\["bundleRelease", "--no-daemon", "--no-parallel"\]\)/);
   assert.match(releaseBuilder, /runGradle\(\["lintRelease", "--no-daemon", "--no-parallel"\]\)/);
   assert.match(readinessCheck, /Android AAB matches current version, hash, signing certificate and source/);
+  assert.match(readinessCheck, /Private store review account authenticates successfully/);
+  assert.match(readinessCheck, /signInWithPassword/);
   assert.match(readinessCheck, /validateNativeDebugSymbolsEvidence/);
   assert.match(readinessCheck, /localReady, liveReady, submissionReady/);
   assert.match(readinessCheck, /process\.argv\.includes\("--android"\)/);

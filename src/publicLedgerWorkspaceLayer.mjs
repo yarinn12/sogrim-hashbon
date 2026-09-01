@@ -14271,10 +14271,10 @@ const CSS = `
     gap: 11px !important;
     min-height: 86px !important;
     padding: 10px 14px !important;
-    border-radius: 20px !important;
-    box-shadow:
-      0 18px 44px -38px rgba(5, 62, 55, 0.56),
-      inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 16px !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
   }
 
   html.ledger-workspace-v1
@@ -14364,23 +14364,19 @@ const CSS = `
     position: relative !important;
     overflow: hidden !important;
     display: grid !important;
-    gap: 10px !important;
-    padding: 20px 18px 17px !important;
-    border: 1px solid rgba(112, 207, 181, 0.2) !important;
-    border-radius: 24px !important;
+    gap: 12px !important;
+    padding: 18px 16px 16px !important;
+    border: 0 !important;
+    border-radius: 16px !important;
     color: #ffffff !important;
-    background:
-      linear-gradient(145deg, rgba(22, 130, 108, 0.3), transparent 48%),
-      #064d42 !important;
-    box-shadow:
-      0 26px 54px -38px rgba(3, 59, 51, 0.9),
-      inset 0 1px 0 rgba(255, 255, 255, 0.13) !important;
+    background: var(--ledger-brand) !important;
+    box-shadow: 0 6px 8px rgba(6, 75, 67, 0.16) !important;
   }
 
   html.ledger-workspace-v1 .relationship-scorecard h3 {
     margin: 0 !important;
     color: #ffffff !important;
-    font-size: 23px !important;
+    font-size: 21px !important;
     font-weight: 900 !important;
     line-height: 1.12 !important;
     text-align: center !important;
@@ -14419,7 +14415,10 @@ const CSS = `
 
   html.ledger-workspace-v1 .relationship-comparison {
     display: grid !important;
-    gap: 4px !important;
+    gap: 7px !important;
+    padding: 11px 12px !important;
+    border-radius: 12px !important;
+    background: rgba(255, 255, 255, 0.08) !important;
   }
 
   html.ledger-workspace-v1 .relationship-comparison > strong {
@@ -14514,8 +14513,8 @@ const CSS = `
 
   html.ledger-workspace-v1 .relationship-scorecard-note {
     margin: 0 !important;
-    color: rgba(255, 255, 255, 0.64) !important;
-    font-size: 10px !important;
+    color: rgba(255, 255, 255, 0.78) !important;
+    font-size: 11px !important;
     font-weight: 620 !important;
     line-height: 1.35 !important;
     text-align: center !important;
@@ -14528,9 +14527,9 @@ const CSS = `
     gap: 12px !important;
     padding: 17px !important;
     border: 1px solid var(--ledger-line) !important;
-    border-radius: 20px !important;
-    background: rgba(255, 255, 255, 0.84) !important;
-    box-shadow: 0 18px 38px -34px rgba(4, 64, 56, 0.58) !important;
+    border-radius: 16px !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
   }
 
   html.ledger-workspace-v1 .relationship-habit-icon {
@@ -14577,31 +14576,37 @@ const CSS = `
 
   html.ledger-workspace-v1 .relationship-facts-grid {
     display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     overflow: hidden !important;
     border: 1px solid var(--ledger-line) !important;
-    border-radius: 20px !important;
-    background: rgba(255, 255, 255, 0.84) !important;
-    box-shadow: 0 18px 38px -34px rgba(4, 64, 56, 0.58) !important;
+    border-radius: 16px !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: var(--ledger-shadow-border) !important;
   }
 
   html.ledger-workspace-v1 .relationship-fact {
     min-width: 0 !important;
     display: grid !important;
-    justify-items: center !important;
-    align-content: start !important;
-    gap: 5px !important;
-    padding: 14px 8px !important;
-    text-align: center !important;
+    grid-template-columns: 40px minmax(0, 1fr) auto !important;
+    grid-template-rows: auto auto !important;
+    align-items: center !important;
+    justify-items: start !important;
+    column-gap: 11px !important;
+    row-gap: 2px !important;
+    padding: 13px 14px !important;
+    text-align: start !important;
   }
 
   html.ledger-workspace-v1 .relationship-fact + .relationship-fact {
-    border-inline-start: 1px solid var(--ledger-line) !important;
+    border-inline-start: 0 !important;
+    border-block-start: 1px solid var(--ledger-line) !important;
   }
 
-  html.ledger-workspace-v1 .relationship-fact > span {
-    width: 34px !important;
-    height: 34px !important;
+  html.ledger-workspace-v1 .relationship-fact > span[aria-hidden="true"] {
+    grid-column: 1 !important;
+    grid-row: 1 / span 2 !important;
+    width: 40px !important;
+    height: 40px !important;
     display: grid !important;
     place-items: center !important;
     border-radius: 50% !important;
@@ -14622,7 +14627,7 @@ const CSS = `
   html.ledger-workspace-v1 .relationship-fact small,
   html.ledger-workspace-v1 .relationship-fact > .font-num {
     color: var(--ledger-muted) !important;
-    font-size: 10px !important;
+    font-size: 11px !important;
     font-weight: 620 !important;
     line-height: 1.35 !important;
   }
@@ -15724,9 +15729,28 @@ const CSS = `
     margin: 10px 0 0 auto !important;
     padding: 7px 11px !important;
     border-radius: 10px !important;
-    font-size: 12px !important;
+    font-size: 14px !important;
     font-weight: 700 !important;
     line-height: 1.35 !important;
+  }
+
+  html.ledger-workspace-v1 .relationship-fact > small {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .relationship-fact > strong {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+  }
+
+  html.ledger-workspace-v1 .relationship-fact > .font-num {
+    grid-column: 3 !important;
+    grid-row: 1 / span 2 !important;
+    justify-self: end !important;
+    color: var(--ledger-brand) !important;
+    font-weight: 800 !important;
+    white-space: nowrap !important;
   }
 
   html.ledger-workspace-v1
@@ -16291,7 +16315,7 @@ const CSS = `
     display: grid !important;
     place-items: center !important;
     border: 2px solid rgba(69, 91, 85, 0.28) !important;
-    border-radius: 50% !important;
+    border-radius: 12px !important;
     color: transparent !important;
     background: #ffffff !important;
     transition-property: color, background-color, border-color, transform !important;
@@ -17086,7 +17110,7 @@ const CSS = `
     border: 1px solid var(--ledger-line) !important;
     border-radius: 12px !important;
     color: var(--ledger-muted) !important;
-    text-align: center !important;
+    text-align: start !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-footer {
@@ -17355,13 +17379,15 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary {
-    width: min(48%, 190px) !important;
+    width: clamp(174px, 48%, 190px) !important;
+    max-width: calc(100% - 24px) !important;
+    box-sizing: border-box !important;
     min-height: 56px !important;
     display: flex !important;
     justify-content: center !important;
     align-items: center !important;
     gap: 5px !important;
-    padding: 6px 12px !important;
+    padding: 6px 12px 6px 14px !important;
     border-radius: 999px !important;
     border-color: rgba(10, 82, 63, 0.22) !important;
     color: var(--ledger-brand) !important;
@@ -18219,6 +18245,22 @@ const CSS = `
     html.ledger-workspace-v1 .screen[data-event-creation-step] {
       padding-bottom: calc(156px + env(safe-area-inset-bottom)) !important;
       scroll-padding-bottom: calc(156px + env(safe-area-inset-bottom)) !important;
+    }
+
+    html.ledger-workspace-v1 .screen[data-event-creation-step="participants"] .new-event-participant-footer {
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 72px) !important;
+    }
+
+    html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
+      .screen[data-event-creation-step] {
+      padding-bottom: calc(232px + env(safe-area-inset-bottom)) !important;
+      scroll-padding-bottom: calc(232px + env(safe-area-inset-bottom)) !important;
+    }
+
+    html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
+      .screen[data-event-creation-step="participants"]
+      .new-event-participant-footer {
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 148px) !important;
     }
   }
 

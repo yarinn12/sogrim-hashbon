@@ -192,6 +192,35 @@ try {
     true
   );
 
+  const productionInviteStartedAt = performance.now();
+  const productionInviteResponse = await qaFetch(
+    `${browserOrigin}/api/event-invites/open-link`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${owner.session.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        eventId,
+        candidateToken: "",
+        operation: "ensure"
+      })
+    }
+  );
+  const productionInvitePayload = await productionInviteResponse.json()
+    .catch(() => ({}));
+  recordSyncTiming("production invite endpoint", productionInviteStartedAt);
+  assert.equal(
+    productionInviteResponse.ok,
+    true,
+    JSON.stringify(productionInvitePayload)
+  );
+  assert.match(
+    String(productionInvitePayload?.token ?? ""),
+    /^[A-Za-z0-9_-]{32,128}$/
+  );
+
   const initialInvite = await manageOpenEventInvite({
     runtimeConfig: ownerConfig,
     env: { SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey },
@@ -732,6 +761,7 @@ try {
       separateAccountIdentities: true,
       canonicalPublicationGrantedMembershipAtomically: true,
       directFriendInviteGrantedMembershipWithoutOpeningLink: true,
+      productionInviteEndpointFast: true,
       authenticatedInviteRedeemed: true,
       replacementInviteRevokesPreviousLink: true,
       newlyGeneratedInviteRedeemed: true,
@@ -921,7 +951,20 @@ async function joinThroughProductionBrowser({
     }
     await page.getByText(eventName, { exact: true }).first().waitFor({ timeout: 30_000 });
     assert.equal(await page.locator("#app").getAttribute("inert"), null);
-    if (typeof afterJoin === "function") await afterJoin(page);
+    if (typeof afterJoin === "function") {
+      try {
+        await afterJoin(page);
+      } catch (error) {
+        console.log(JSON.stringify({
+          diagnostic: "post-join-live-sync-failed",
+          currentUrl: page.url(),
+          pageText: (await page.locator("body").innerText().catch(() => "")).slice(0, 1_500),
+          failedResponses,
+          recentSnapshotResponses: authDiagnostics.slice(-20)
+        }));
+        throw error;
+      }
+    }
     await context.close();
   } finally {
     await browser.close();

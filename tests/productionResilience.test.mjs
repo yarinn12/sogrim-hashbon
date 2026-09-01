@@ -118,6 +118,8 @@ test("the non-Apple release gate blocks continuity and delivery regressions", as
   assert.match(script, /rls_forced/);
   assert.doesNotMatch(script, /select\s+.*\bstate\b/is);
   assert.match(pkg.scripts["qa:release:core"], /qa:operations -- --strict/);
+  assert.match(pkg.scripts["qa:release:core"], /qa:accounts-live/);
+  assert.match(pkg.scripts["qa:release:core"], /qa:two-account-live/);
   assert.match(pkg.scripts["qa:release:core"], /qa:production:strict/);
   assert.match(pkg.scripts["qa:release:core"], /qa:store -- --android/);
   assert.match(runbook, /Operational release gate/);

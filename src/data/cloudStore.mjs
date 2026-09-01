@@ -1,6 +1,7 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
 
 const snapshotVersions = new Map();
+const snapshotObserverVersions = new Map();
 export const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 
 export class CloudStateConflictError extends Error {
@@ -66,6 +67,60 @@ export async function readCloudState(config, fetchImpl = fetch) {
 
   forgetSnapshotVersion(config);
   return null;
+}
+
+export async function readCloudStateIfChanged(
+  config,
+  fetchImpl = fetch,
+  { observerKey = "" } = {}
+) {
+  if (config.storage?.mode !== "supabase") {
+    return { changed: false, missing: false, state: null };
+  }
+
+  const normalizedObserverKey = String(observerKey ?? "").trim();
+  const knownVersion = normalizedObserverKey
+    ? snapshotObserverVersions.get(
+        snapshotObserverVersionKey(config, normalizedObserverKey)
+      )
+    : snapshotVersions.get(snapshotVersionKey(config));
+  if (!knownVersion) {
+    const state = await readCloudState(config, fetchImpl);
+    rememberSnapshotObserverVersion(config, normalizedObserverKey);
+    return {
+      changed: Boolean(state),
+      missing: !state,
+      state
+    };
+  }
+
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    snapshotVersionReadUrl(config),
+    { headers: cloudHeaders(config) }
+  );
+  if (!response.ok) {
+    throw cloudResponseError(response, "Cloud state version unavailable");
+  }
+
+  const rows = await response.json();
+  const updatedAt = String(rows[0]?.updated_at ?? "").trim();
+  if (!updatedAt) {
+    forgetSnapshotVersion(config);
+    forgetSnapshotObserverVersion(config, normalizedObserverKey);
+    return { changed: true, missing: true, state: null };
+  }
+  if (updatedAt === knownVersion) {
+    return { changed: false, missing: false, state: null };
+  }
+
+  const state = await readCloudState(config, fetchImpl);
+  rememberSnapshotObserverVersion(config, normalizedObserverKey);
+  return {
+    changed: true,
+    missing: !state,
+    state
+  };
 }
 
 export async function saveCloudState(config, state, fetchImpl = fetch) {
@@ -197,6 +252,10 @@ function snapshotReadUrl(config) {
   return `${snapshotWriteUrl(config)}?id=eq.${encodeURIComponent(config.storage.spaceId)}&select=state,updated_at`;
 }
 
+function snapshotVersionReadUrl(config) {
+  return `${snapshotWriteUrl(config)}?id=eq.${encodeURIComponent(config.storage.spaceId)}&select=updated_at`;
+}
+
 function snapshotUpdateUrl(config, currentVersion) {
   return `${snapshotWriteUrl(config)}?id=eq.${encodeURIComponent(config.storage.spaceId)}&updated_at=eq.${encodeURIComponent(currentVersion)}&select=updated_at`;
 }
@@ -244,13 +303,40 @@ function snapshotVersionKey(config) {
   return `${config.storage.url}/${config.storage.table}/${config.storage.spaceId}`;
 }
 
+function snapshotObserverVersionKey(config, observerKey) {
+  return `${observerKey}\u0000${snapshotVersionKey(config)}`;
+}
+
+function rememberSnapshotObserverVersion(config, observerKey) {
+  if (!observerKey) return;
+  const version = snapshotVersions.get(snapshotVersionKey(config));
+  if (!version) return;
+  snapshotObserverVersions.set(
+    snapshotObserverVersionKey(config, observerKey),
+    version
+  );
+}
+
+function forgetSnapshotObserverVersion(config, observerKey) {
+  if (!observerKey) return;
+  snapshotObserverVersions.delete(
+    snapshotObserverVersionKey(config, observerKey)
+  );
+}
+
 function rememberSnapshotVersion(config, version) {
   if (!version) return;
   snapshotVersions.set(snapshotVersionKey(config), String(version));
 }
 
 function forgetSnapshotVersion(config) {
-  snapshotVersions.delete(snapshotVersionKey(config));
+  const versionKey = snapshotVersionKey(config);
+  snapshotVersions.delete(versionKey);
+  for (const observerVersionKey of snapshotObserverVersions.keys()) {
+    if (observerVersionKey.endsWith(`\u0000${versionKey}`)) {
+      snapshotObserverVersions.delete(observerVersionKey);
+    }
+  }
 }
 
 function cloudResponseError(response, message) {

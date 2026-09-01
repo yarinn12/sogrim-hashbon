@@ -79,6 +79,8 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(submissionCheck, /Sign in with Apple uses accessible approved artwork/);
   assert.match(submissionCheck, /Apple Team ID is configured in both app build configurations/);
   assert.match(submissionCheck, /Apple Universal Links association matches Team ID/);
+  assert.match(submissionCheck, /Native launch screen hands directly to the web intro without a logo flash/);
+  assert.doesNotMatch(submissionCheck, /scaleAspectFit/);
   assert.match(submissionCheck, /sign-in-with-apple-iw\.png/);
   assert.match(artifactCheck, /codesign/);
   assert.match(artifactCheck, /embedded\.mobileprovision/);
@@ -107,8 +109,9 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(project, new RegExp(`MARKETING_VERSION = ${metadata.version.number.replaceAll(".", "\\.")}`));
   assert.match(project, new RegExp(`CURRENT_PROJECT_VERSION = ${metadata.version.build}`));
   assert.match(info, /UISupportedInterfaceOrientations<\/key>\s*<array>\s*<string>UIInterfaceOrientationPortrait<\/string>\s*<\/array>/);
-  assert.match(launchScreen, /contentMode="scaleAspectFit"/);
-  assert.doesNotMatch(launchScreen, /contentMode="scaleAspectFill"/);
+  assert.match(launchScreen, /<view key="view" contentMode="scaleToFill"/);
+  assert.match(launchScreen, /<color key="backgroundColor" white="1"/);
+  assert.doesNotMatch(launchScreen, /image="Splash"|<image name="Splash"/);
   assert.equal(metadata.app.bundleId, "com.sogrimhashbon.app");
   assert.ok(Buffer.byteLength(metadata.version.keywords, "utf8") <= 100);
 });

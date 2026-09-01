@@ -1,6 +1,9 @@
 import postgres from "postgres";
 import { broadcastAuthorizationToken } from
   "../src/server/broadcastNotifications.mjs";
+import { loadPrivateOperatorEnv } from "../src/server/envFile.mjs";
+
+loadPrivateOperatorEnv();
 
 const DEFAULT_TITLE = "זה הזמן לסגור חשבון 👀";
 const DEFAULT_BODY =

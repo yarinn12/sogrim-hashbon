@@ -210,7 +210,8 @@ test("server sends a reminder only after the authoritative shared event approves
   assert.equal(message.data.eventId, EVENT_ID);
   assert.equal(message.data.transferId, TRANSFER_ID);
   assert.equal(message.data.view, "summary");
-  assert.match(message.notification.body, /50\.00/);
+  assert.doesNotMatch(message.notification.body, /50\.00|סוף שבוע בצפון/);
+  assert.match(message.notification.body, /באפליקציה/);
   assert.equal(delivery.options.headers.authorization, "Bearer firebase-access-token");
 
   const inboxWrite = requests.find((request) =>
@@ -222,6 +223,7 @@ test("server sends a reminder only after the authoritative shared event approves
   assert.equal(inboxItem.activity_id, TRANSFER_ID);
   assert.equal(inboxItem.kind, "payment-reminder");
   assert.equal(inboxItem.view, "summary");
+  assert.match(inboxItem.body, /50\.00/);
 });
 
 test("server rejects reminders when the caller is not the creditor", async () => {

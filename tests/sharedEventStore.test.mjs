@@ -10,6 +10,7 @@ import {
   eventShareCredentials,
   mergeSharedEventIntoState,
   recoverAccessibleSharedEvents,
+  readSharedEventStateIfChanged,
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
@@ -54,6 +55,92 @@ test("membership recovery rebuilds a missing personal event index", async () => 
 
   assert.equal(recovered.events[0].name, "קוריאה");
   assert.equal(recovered.events[0].sharedSpaceId, "shared-event-korea");
+});
+
+test("active event polling downloads the shared state only after its version changes", async () => {
+  const runtimeConfig = {
+    storage: {
+      mode: "supabase",
+      url: "https://project.supabase.co",
+      table: "app_snapshots",
+      anonKey: "anon",
+      account: { userId: "user-one", accessToken: "account-token" }
+    }
+  };
+  const credentials = {
+    id: "shared-event-versioned",
+    key: "shared_event_version_key_123456789012345"
+  };
+  const sharedState = {
+    currentParticipantId: "",
+    participants: [],
+    groups: [],
+    events: [{ id: "event-versioned", participantIds: [], expenses: [] }]
+  };
+  const requests = [];
+  const fetchImpl = async (url) => {
+    requests.push(url);
+    if (requests.length === 1) {
+      return jsonResponse([{ state: sharedState, updated_at: "2026-08-31T11:00:00.000Z" }]);
+    }
+    return jsonResponse([{ updated_at: "2026-08-31T11:00:00.000Z" }]);
+  };
+
+  const initial = await readSharedEventStateIfChanged(
+    runtimeConfig,
+    credentials,
+    "event-versioned",
+    fetchImpl
+  );
+  const unchanged = await readSharedEventStateIfChanged(
+    runtimeConfig,
+    credentials,
+    "event-versioned",
+    fetchImpl
+  );
+
+  assert.equal(initial.changed, true);
+  assert.deepEqual(initial.state, sharedState);
+  assert.deepEqual(unchanged, { changed: false, missing: false, state: null });
+  assert.equal(requests.length, 2);
+  assert.match(requests[0], /select=state,updated_at$/);
+  assert.match(requests[1], /select=updated_at$/);
+});
+
+test("membership recovery removes a locally retained event that is no longer accessible", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000014";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Former member" }],
+    groups: [],
+    events: [{
+      id: "event-no-longer-accessible",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      sharedSpaceId: "shared-event-no-longer-accessible",
+      sharedSpaceKey: "shared_event_removed_key_123456789012345"
+    }]
+  };
+
+  const recovered = await recoverAccessibleSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    async () => jsonResponse([])
+  );
+
+  assert.deepEqual(recovered.events[0].inactiveParticipantIds, [participantId]);
+  assert.equal(recovered.events[0].sharedSpaceId, undefined);
+  assert.equal(recovered.events[0].sharedSpaceKey, undefined);
 });
 
 test("membership recovery restores the signed-in member inside a stale personal event", () => {
@@ -323,6 +410,37 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.participants[1].accountLinked, false);
   assert.equal(payload.events[0].groupId, undefined);
   assert.equal(payload.events[0].sharedSpaceKey, undefined);
+});
+
+test("shared event serialization keeps deleted accounts as strict tombstones", () => {
+  const participantId = "account-00000000-0000-4000-8000-000000000001";
+  const payload = buildSharedEventState({
+    participants: [{
+      id: participantId,
+      displayName: "שם ישן",
+      kind: "user",
+      accountDeleted: true,
+      avatarImage: "data:image/jpeg;base64,private",
+      avatarPreset: "avatar-3",
+      accountLinked: true,
+      email: "private@example.com",
+      profileUpdatedAt: "2026-08-31T10:00:00.000Z"
+    }],
+    events: [{
+      id: "event-deleted-account",
+      participantIds: [participantId],
+      adminIds: [participantId],
+      expenses: [],
+      transfers: []
+    }]
+  }, "event-deleted-account");
+
+  assert.deepEqual(payload.participants, [{
+    id: participantId,
+    displayName: "משתמש שנמחק",
+    kind: "user",
+    accountDeleted: true
+  }]);
 });
 
 test("a newer profile image crosses the shared-event snapshot and wins on another device", () => {

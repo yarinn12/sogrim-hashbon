@@ -8,6 +8,9 @@ android
 ios
 tests
 artifacts
+audit
+work
+.codex
 design-plans
 data/app-state.json
 docs/superpowers

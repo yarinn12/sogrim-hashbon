@@ -1260,6 +1260,14 @@ function mergeRemappedPayers(payers, redirects, deletedParticipantIds) {
 }
 
 function mergeParticipant(remoteParticipant, localParticipant) {
+  if (remoteParticipant?.accountDeleted === true) {
+    return {
+      id: String(remoteParticipant.id ?? localParticipant?.id ?? ""),
+      displayName: "משתמש שנמחק",
+      kind: "user",
+      accountDeleted: true
+    };
+  }
   const merged = mergeObjects(remoteParticipant, localParticipant);
   const remoteProfileTime = timestamp(remoteParticipant.profileUpdatedAt);
   const localProfileTime = timestamp(localParticipant.profileUpdatedAt);

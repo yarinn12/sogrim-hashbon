@@ -18,6 +18,9 @@ github-current-sogrim/
 .qa-*/
 .ux-*/
 artifacts/
+audit/backups/
+.codex/qa-screenshots/
+work/*backup*.json
 playwright-report/
 test-results/
 .qa-playwright/

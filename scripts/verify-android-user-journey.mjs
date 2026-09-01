@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
+import { readStoreReviewCredentials } from "./privateMaterial.mjs";
+
 const root = process.cwd();
 const packageName = process.env.ANDROID_QA_PACKAGE || "com.sogrimhashbon.app.debug";
 const activityName = "com.sogrimhashbon.app.MainActivity";
@@ -55,16 +57,11 @@ async function ensureQaAccount(page) {
   );
   if (!accountGateVisible) return;
 
-  const credentialsPath = join(root, ".store-review-credentials.json");
-  if (!existsSync(credentialsPath)) {
-    throw new Error("Clean-install QA requires the private store review account");
-  }
-
-  const credentials = JSON.parse(readFileSync(credentialsPath, "utf8"));
+  const credentials = readStoreReviewCredentials();
   const email = String(credentials?.email ?? "").trim();
   const password = String(credentials?.password ?? "");
   if (!email || password.length < 8) {
-    throw new Error("Store review credentials are incomplete");
+    throw new Error("Clean-install QA requires private store review credentials outside the project workspace");
   }
 
   await evaluate(

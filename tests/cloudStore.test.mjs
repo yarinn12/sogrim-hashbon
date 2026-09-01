@@ -7,6 +7,7 @@ import {
   loadCloudState,
   readAccessibleSharedCloudStates,
   readCloudState,
+  readCloudStateIfChanged,
   saveCloudState
 } from "../src/data/cloudStore.mjs";
 import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
@@ -69,6 +70,88 @@ test("loadCloudState reads the current app snapshot from Supabase REST", async (
   assert.equal(requests[0].options.headers.apikey, "anon-key");
   assert.equal(requests[0].options.headers.authorization, "Bearer anon-key");
   assert.equal(requests[0].options.headers["x-space-key"], config.storage.spaceKey);
+});
+
+test("an unchanged cloud snapshot uses a version-only read", async () => {
+  const config = createConfig("friends-version-only");
+  await readCloudState(config, async () =>
+    jsonResponse([{ state, updated_at: "2026-08-31T10:00:00.000Z" }])
+  );
+  const requests = [];
+  const result = await readCloudStateIfChanged(config, async (url, options) => {
+    requests.push({ url, options });
+    return jsonResponse([{ updated_at: "2026-08-31T10:00:00.000Z" }]);
+  });
+
+  assert.deepEqual(result, { changed: false, missing: false, state: null });
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /select=updated_at$/);
+  assert.doesNotMatch(requests[0].url, /select=state/);
+});
+
+test("a changed cloud snapshot downloads state only after its version changes", async () => {
+  const config = createConfig("friends-version-changed");
+  await readCloudState(config, async () =>
+    jsonResponse([{ state, updated_at: "2026-08-31T10:00:00.000Z" }])
+  );
+  const updatedState = { ...state, groups: [{ id: "group-new", name: "New" }] };
+  const requests = [];
+  const result = await readCloudStateIfChanged(config, async (url, options) => {
+    requests.push({ url, options });
+    return requests.length === 1
+      ? jsonResponse([{ updated_at: "2026-08-31T10:00:01.000Z" }])
+      : jsonResponse([{ state: updatedState, updated_at: "2026-08-31T10:00:01.000Z" }]);
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(result.missing, false);
+  assert.deepEqual(result.state, updatedState);
+  assert.equal(requests.length, 2);
+  assert.match(requests[0].url, /select=updated_at$/);
+  assert.match(requests[1].url, /select=state,updated_at$/);
+});
+
+test("a foreground observer is not silenced by an unrelated background read", async () => {
+  const config = createConfig("shared-observer-race");
+  const originalState = { ...state, groups: [] };
+  const updatedState = { ...state, groups: [{ id: "group-live", name: "Live" }] };
+  const observerKey = "visible-event-workspace";
+
+  const initial = await readCloudStateIfChanged(
+    config,
+    async () => jsonResponse([{
+      state: originalState,
+      updated_at: "2026-08-31T10:00:00.000Z"
+    }]),
+    { observerKey }
+  );
+  assert.equal(initial.changed, true);
+
+  // A separate startup/profile flow downloads the newer snapshot first. That
+  // global read must not advance the visible workspace observer's cursor.
+  await readCloudState(config, async () => jsonResponse([{
+    state: updatedState,
+    updated_at: "2026-08-31T10:00:01.000Z"
+  }]));
+
+  const requests = [];
+  const observed = await readCloudStateIfChanged(
+    config,
+    async (url) => {
+      requests.push(url);
+      return requests.length === 1
+        ? jsonResponse([{ updated_at: "2026-08-31T10:00:01.000Z" }])
+        : jsonResponse([{
+            state: updatedState,
+            updated_at: "2026-08-31T10:00:01.000Z"
+          }]);
+    },
+    { observerKey }
+  );
+
+  assert.equal(observed.changed, true);
+  assert.deepEqual(observed.state, updatedState);
+  assert.equal(requests.length, 2);
 });
 
 test("shared event requests use the signed-in account token when available", async () => {

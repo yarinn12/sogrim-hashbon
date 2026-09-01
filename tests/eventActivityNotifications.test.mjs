@@ -265,7 +265,8 @@ test("server sends a private event update only to a verified connected participa
   assert.equal(message.data.activityId, EXPENSE_ID);
   assert.equal(message.data.view, "event");
   assert.doesNotMatch(message.notification.body, /250|ארוחת ערב/);
-  assert.match(message.notification.body, /סוף שבוע בצפון/);
+  assert.doesNotMatch(message.notification.body, /סוף שבוע בצפון/);
+  assert.match(message.notification.body, /באפליקציה/);
 
   const inboxWrite = requests.find((request) =>
     request.url.includes("/rest/v1/notification_inbox?")
@@ -276,6 +277,7 @@ test("server sends a private event update only to a verified connected participa
   assert.equal(inboxItem.activity_id, EXPENSE_ID);
   assert.equal(inboxItem.view, "event");
   assert.doesNotMatch(inboxItem.body, /250|ארוחת ערב/);
+  assert.match(inboxItem.body, /סוף שבוע בצפון/);
 });
 
 test("server keeps the in-app inbox working when system push is not configured", async () => {
@@ -524,6 +526,7 @@ test("server sends an active online participant a secure event invitation", asyn
   assert.equal(message.data.kind, "event-invite");
   assert.equal(message.data.actionUrl, inboxItem.action_url);
   assert.match(message.notification.title, /הזמנה/);
+  assert.doesNotMatch(message.notification.body, /סוף שבוע בצפון/);
 });
 
 test("a pending friendship cannot strand an active event participant", async () => {

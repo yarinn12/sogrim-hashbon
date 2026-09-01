@@ -163,6 +163,18 @@ test("participants open immediately while the foreground sync is slow", async ({
   });
 });
 
+test("event settings open immediately while the permissions refresh is slow", async ({ page }) => {
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .click();
+  await delayBackgroundRequests(page);
+
+  await page.locator('[data-action="open-event-settings"]').first().click();
+  await expect(page.locator(".event-settings-modal")).toBeVisible({ timeout: 800 });
+  await expect(page.locator(".event-settings-modal")).toContainText("הגדרות האירוע");
+});
+
 test("share opens immediately while the foreground sync is slow", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)

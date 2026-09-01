@@ -1,8 +1,20 @@
 apply plugin: 'com.android.application'
 
 def keystoreProperties = new Properties()
-def keystorePropertiesFile = rootProject.file('keystore.properties')
+def configuredSigningProperties = System.getenv('SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE')
+def keystorePropertiesFile = configuredSigningProperties
+    ? file(configuredSigningProperties)
+    : new File(System.getProperty('user.home'), '.sogrim-hashbon-secrets/android-upload-key/keystore.properties')
+def workspaceRoot = rootProject.projectDir.parentFile.canonicalFile
+def signingPropertiesCanonical = keystorePropertiesFile.canonicalFile
+def pathIsInsideWorkspace = { File candidate ->
+    candidate.canonicalFile.toPath().startsWith(workspaceRoot.toPath())
+}
+if (pathIsInsideWorkspace(signingPropertiesCanonical)) {
+    throw new GradleException('Android signing credentials must be stored outside the project workspace.')
+}
 def releaseSigningReady = keystorePropertiesFile.exists()
+def releaseStoreFile = null
 def firebasePushConfigured = file('google-services.json').exists()
 def localQaBuildRequested = gradle.startParameter.taskNames.any { taskName ->
     def normalized = taskName.toLowerCase()
@@ -11,6 +23,23 @@ def localQaBuildRequested = gradle.startParameter.taskNames.any { taskName ->
 
 if (releaseSigningReady) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    for (requiredSigningProperty in ['storeFile', 'storePassword', 'keyAlias', 'keyPassword']) {
+        if (!String.valueOf(keystoreProperties[requiredSigningProperty] ?: '').trim()) {
+            throw new GradleException("Android signing credentials are missing ${requiredSigningProperty}.")
+        }
+    }
+    def configuredStoreFile = new File(String.valueOf(keystoreProperties['storeFile']))
+    releaseStoreFile = configuredStoreFile.isAbsolute()
+        ? configuredStoreFile.canonicalFile
+        : new File(signingPropertiesCanonical.parentFile, configuredStoreFile.path).canonicalFile
+    if (pathIsInsideWorkspace(releaseStoreFile)) {
+        throw new GradleException('Android upload key must be stored outside the project workspace.')
+    }
+    def signingDirectoryPath = signingPropertiesCanonical.parentFile.canonicalFile.toPath()
+    def keystoreDirectoryPath = releaseStoreFile.parentFile.canonicalFile.toPath()
+    if (signingDirectoryPath.startsWith(keystoreDirectoryPath) || keystoreDirectoryPath.startsWith(signingDirectoryPath)) {
+        throw new GradleException('Android upload key and signing credentials must use separate private directories.')
+    }
 }
 
 android {
@@ -23,8 +52,8 @@ android {
         applicationId "com.sogrimhashbon.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 146
-        versionName "4.18"
+        versionCode 147
+        versionName "4.19"
         buildConfigField "boolean", "FIREBASE_PUSH_CONFIGURED", firebasePushConfigured.toString()
         buildConfigField "boolean", "NATIVE_QA_WEBVIEW", "false"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -39,7 +68,7 @@ android {
             release {
                 keyAlias keystoreProperties['keyAlias']
                 keyPassword keystoreProperties['keyPassword']
-                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storeFile releaseStoreFile
                 storePassword keystoreProperties['storePassword']
             }
         }
@@ -77,7 +106,7 @@ android {
 tasks.configureEach { task ->
     if (task.name in ['bundleRelease', 'assembleRelease'] && !releaseSigningReady) {
         task.doFirst {
-            throw new GradleException('Release signing is not configured. Run npm run native:android:key first.')
+            throw new GradleException('Release signing is not configured outside the project workspace. Run npm run native:android:key first.')
         }
     }
 }

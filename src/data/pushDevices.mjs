@@ -94,6 +94,19 @@ export function clearStoredPushToken(
   } catch {}
 }
 
+export function clearStoredPushData(
+  userId,
+  storage = globalThis.localStorage
+) {
+  const normalizedUserId = String(userId ?? "").trim();
+  if (!normalizedUserId) return;
+  try {
+    storage?.removeItem(`${PUSH_TOKEN_STORAGE_PREFIX}:${normalizedUserId}`);
+    storage?.removeItem(pushPreferenceStorageKey(normalizedUserId));
+    storage?.removeItem(pushPreferencesStorageKey(normalizedUserId));
+  } catch {}
+}
+
 export async function registerPushDevice(
   config,
   {

@@ -78,7 +78,7 @@ function installSplash({ showPosterOnly = false } = {}) {
     video.muted = true;
     video.defaultMuted = true;
     video.playsInline = true;
-    video.autoplay = false;
+    video.autoplay = true;
     video.loop = true;
     video.addEventListener("loadeddata", handleVideoReady, { once: true });
     video.addEventListener("playing", handleVideoPlaying);
@@ -86,6 +86,10 @@ function installSplash({ showPosterOnly = false } = {}) {
     video.addEventListener("error", useFallback, { once: true });
     document.addEventListener("visibilitychange", handleVisibilityChange);
     loadTimeoutId = window.setTimeout(useFallback, VIDEO_LOAD_TIMEOUT_MS);
+    // Start as soon as the browser can decode the first frame. The video is
+    // already the visible splash layer, so there is no static logo-to-video
+    // swap on a normal launch.
+    requestPlayback({ fallbackOnFailure: false });
     if (video.readyState >= 2) {
       handleVideoReady();
     }

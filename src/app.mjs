@@ -38,6 +38,13 @@ import {
   isEventOpen
 } from "./domain/eventFilters.mjs";
 import {
+  ACCOUNT_EVENT_HYDRATION_LOADING,
+  ACCOUNT_EVENT_HYDRATION_READY,
+  ACCOUNT_EVENT_HYDRATION_UNAVAILABLE,
+  accountEventHydrationStatus,
+  canRenderConfirmedEmptyAccount
+} from "./domain/accountEventHydration.mjs";
+import {
   formatEventReport,
   formatSettlementSummary
 } from "./domain/settlementSummary.mjs";
@@ -199,6 +206,7 @@ import {
   eventShareCredentials,
   mergeSharedEventIntoState,
   readSharedEventState,
+  readSharedEventStateIfChanged,
   recoverAccessibleSharedEvents,
   saveSharedEventState
 } from "./data/sharedEventStore.mjs";
@@ -209,6 +217,7 @@ import {
   normalizeProfileUpdatedAt
 } from "./domain/userProfile.mjs";
 import { resolveProfileAvatar } from "./domain/profileAvatarSync.mjs";
+import { mergeSharedStates } from "./domain/sharedStateMerge.mjs";
 import { requestImageCrop } from "./imageCropper.mjs";
 import {
   initializeParticipantMembership,
@@ -287,6 +296,8 @@ const RESUME_SYNC_COOLDOWN_MS = 1_000;
 // Shared state is the product's source of truth across devices. Poll an open
 // event frequently enough that a completed action on another phone appears as
 // live UI, while friends and notifications keep their lower background rate.
+// Keep an event that is open on a second phone perceptibly live. A 2.5s poll
+// could exceed four seconds once a mobile/network round trip was included.
 const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const PENDING_MUTATION_RETRY_BASE_MS = 5_000;
@@ -548,6 +559,8 @@ let mergeParticipantsRequest = null;
 let lastResumeSyncAt = 0;
 let appBootHydrationPromise = null;
 let appBootHydrated = false;
+let accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
+let accountEventsHydrationRetryRequest = null;
 
 app.addEventListener("click", handleClick);
 app.addEventListener("submit", handleSubmit);
@@ -570,9 +583,15 @@ window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest
 window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
 window.addEventListener(NATIVE_RESUME_EVENT, () => {
   recoverPendingMutations({ resetBackoff: true }).catch(() => {});
+  if (accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY) {
+    retryAccountEventHydration().catch(() => {});
+  }
 });
 window.addEventListener("online", () => {
   recoverPendingMutations({ resetBackoff: true }).catch(() => {});
+  if (accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY) {
+    retryAccountEventHydration().catch(() => {});
+  }
 });
 window.addEventListener("sogrim:shared-save-reverted", handleSharedSaveReverted);
 window.addEventListener("focus", requestVisibleEventSync);
@@ -2086,6 +2105,29 @@ function renderInviteProfilePreview(invitedEvent) {
   `;
 }
 
+function renderHomeEventHydrationState() {
+  const unavailable =
+    accountEventsHydrationStatus === ACCOUNT_EVENT_HYDRATION_UNAVAILABLE;
+  return `
+    <section class="section home-empty-events home-event-hydration" aria-live="polite" aria-busy="${unavailable ? "false" : "true"}">
+      <div class="empty-state home-empty-visual">
+        <span class="home-event-hydration-icon" aria-hidden="true">${iconSvg(unavailable ? "calendar" : "history")}</span>
+        <strong>${unavailable ? "האירועים שלך עדיין שמורים" : "טוענים את האירועים שלך…"}</strong>
+        <p class="muted">${
+          unavailable
+            ? "לא הצלחנו להשלים את הטעינה כרגע. אפשר לנסות שוב בלי להתנתק."
+            : "מחברים את החשבון למידע השמור בענן."
+        }</p>
+        ${
+          unavailable
+            ? `<button class="secondary-button" type="button" data-action="retry-account-event-hydration">נסה שוב</button>`
+            : ""
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderHome() {
   const sortedEvents = visibleEventsForParticipant(state, state.currentParticipantId)
     .sort(
@@ -2111,6 +2153,9 @@ function renderHome() {
   );
   const homeTitle = "מה סוגרים היום?";
   const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
+  const awaitingAuthoritativeEvents =
+    sortedEvents.length === 0 &&
+    !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
 
   return `
     <section class="screen font-hebrew product-home-screen${sortedEvents.length ? "" : " product-empty-home"}" data-screen-kind="home" data-product-screen="home" data-profile-avatar-src="${escapeAttribute(homeAvatarSource)}">
@@ -2123,13 +2168,17 @@ function renderHome() {
         </div>
       </header>
       ${renderNotice()}
-      ${renderHomeCreateEventAction()}
-      <section class="home-benefit-actions" aria-label="הטבות וחברים">
-        <button class="home-quick-action home-friends-action" data-action="groups" data-tab="people">
-          <span class="home-quick-action-icon" aria-hidden="true">${iconSvg("users")}</span>
-          <span><strong>חברים</strong></span>
-        </button>
-      </section>
+      ${awaitingAuthoritativeEvents ? "" : renderHomeCreateEventAction()}
+      ${
+        awaitingAuthoritativeEvents
+          ? ""
+          : `<section class="home-benefit-actions" aria-label="הטבות וחברים">
+              <button class="home-quick-action home-friends-action" data-action="groups" data-tab="people">
+                <span class="home-quick-action-icon" aria-hidden="true">${iconSvg("users")}</span>
+                <span><strong>חברים</strong></span>
+              </button>
+            </section>`
+      }
 
       ${
         sortedEvents.length
@@ -2150,7 +2199,9 @@ function renderHome() {
               </div>
             </section>
           `
-          : `
+          : awaitingAuthoritativeEvents
+            ? renderHomeEventHydrationState()
+            : `
             <section class="section home-empty-events">
               <div class="section-title-row">
                 <div>
@@ -3298,10 +3349,12 @@ function participantForStatistics(participantId) {
 
 function canOpenParticipantStatistics(participantId) {
   const normalizedId = String(participantId ?? "").trim();
+  const participant = participantForStatistics(normalizedId);
   return Boolean(
     normalizedId &&
     normalizedId !== state.currentParticipantId &&
-    participantForStatistics(normalizedId)
+    participant &&
+    participant.accountDeleted !== true
   );
 }
 
@@ -10885,6 +10938,14 @@ function participantConnectionStatus(participant) {
 }
 
 function participantConnectionStatusForEvent(participant, event) {
+  if (participant?.accountDeleted === true) {
+    return {
+      connected: false,
+      label: "משתמש שנמחק",
+      className: "is-offline",
+      description: "החשבון נמחק והשם נשמר רק עבור היסטוריית האירוע"
+    };
+  }
   const isCurrentParticipant = participant.id === state.currentParticipantId;
   const isHistoricalOffline = Boolean(
     event && isEventParticipantInactive(event, participant.id)
@@ -11469,6 +11530,12 @@ async function handleClick(event) {
   if (action === "dismiss-notice") {
     event.preventDefault();
     clearRenderedNotice();
+    return;
+  }
+
+  if (action === "retry-account-event-hydration") {
+    event.preventDefault();
+    retryAccountEventHydration().catch(() => {});
     return;
   }
 
@@ -12433,11 +12500,6 @@ async function handleClick(event) {
     return;
   }
 
-  if (action === "pick-event-contact") {
-    await pickEventContact(target.dataset.eventId);
-    return;
-  }
-
   if (action === "add-event-participant") {
     await toggleEventParticipant(
       target.dataset.eventId,
@@ -12657,6 +12719,8 @@ async function handleClick(event) {
 
   if (action === "open-event-settings") {
     openEventDialog(target.dataset.eventId, "settings", target);
+    requestResumeSyncAfterPaint({ force: true, includeSecondary: false });
+    return;
   }
 
   if (action === "open-event-cover-settings") {
@@ -16221,8 +16285,25 @@ async function confirmImportantAction() {
   restoringBrowserHistory = true;
   try {
     await executeImportantAction(pendingAction);
+  } catch (error) {
+    console.error("[important-action] Unexpected action failure", {
+      kind: String(pendingAction.kind ?? "unknown"),
+      error: String(error?.message ?? error ?? "unknown")
+    });
+    emitOperationFailure("important_action", {
+      screen: screen?.name ?? "unknown",
+      error
+    });
+    notice =
+      "הפעולה לא הושלמה בגלל תקלה זמנית. המסך שוחרר ואפשר לנסות שוב.";
+    schedulePendingMutationRecovery({ resetBackoff: true });
   } finally {
     restoringBrowserHistory = false;
+    // The confirmation state is cleared before the async action to make a
+    // double tap harmless. Always repaint here as well: if an unexpected
+    // rejection happens before the action's own render, the stale modal
+    // backdrop would otherwise remain in the DOM and block the entire app.
+    render();
   }
 
   if (underlyingDialogSelector && app.querySelector(underlyingDialogSelector)) {
@@ -16936,54 +17017,6 @@ function dropParticipantFromDrafts(
     if (mergeParticipantsDraft.sourceId === participantId || mergeParticipantsDraft.targetId === participantId) {
       mergeParticipantsDraft = null;
     }
-  }
-}
-
-function nativeContactPickerAvailable() {
-  return Boolean(
-    globalThis.SogrimNative?.contacts?.available &&
-      typeof globalThis.SogrimNative.contacts.pick === "function"
-  );
-}
-
-async function pickEventContact(eventId) {
-  const event = getEvent(eventId);
-  if (!event || !canCurrentParticipantEdit(event) || !nativeContactPickerAvailable()) {
-    return;
-  }
-
-  try {
-    const contact = await globalThis.SogrimNative.contacts.pick();
-    if (!contact) return;
-    const displayName = normalizeProfileName(contact.displayName);
-    if (!displayName) {
-      eventDialog = {
-        ...eventDialog,
-        message: "לאיש הקשר שבחרת אין שם שאפשר להוסיף."
-      };
-      render();
-      return;
-    }
-
-    eventDialog = {
-      ...eventDialog,
-      offlineEntryOpen: true,
-      contactNameDraft: displayName,
-      message: "השם נוסף מהטלפון. המספר עצמו לא נשמר."
-    };
-    render();
-    window.requestAnimationFrame(() => {
-      const input = app.querySelector('[data-action="event-guest-name"]');
-      input?.focus({ preventScroll: true });
-      input?.select?.();
-    });
-  } catch {
-    console.warn("[contacts] Contact selection failed");
-    eventDialog = {
-      ...eventDialog,
-      message: "לא הצלחנו לפתוח את אנשי הקשר כרגע. אפשר להקליד שם ידנית."
-    };
-    render();
   }
 }
 
@@ -21874,6 +21907,16 @@ async function hydrateAppForActiveAccount() {
   const sharedState = startupState.state;
   const hydratedState = await hydrateIncomingSharedEvent(sharedState);
   const nextState = syncLocalProfile(hydratedState);
+  const visibleCachedEventCount = visibleEventsForParticipant(
+    nextState,
+    nextState.currentParticipantId
+  ).length;
+  accountEventsHydrationStatus = accountEventHydrationStatus({
+    authenticated: Boolean(runtimeConfig.storage?.account?.userId),
+    authoritative: startupState.authoritative,
+    cachedEventCount: visibleCachedEventCount,
+    refreshPending: Boolean(startupState.refresh)
+  });
   const shouldSaveJoinedProfile = Boolean(
     localProfile && hasSharedStateChanged(sharedState, nextState)
   );
@@ -22007,18 +22050,66 @@ function refreshStartupSharedState(refreshRequest) {
   if (!refreshRequest) return Promise.resolve();
   const saveRevisionAtRequest = sharedStateSaveRevision();
   return refreshRequest
-    .then((sharedState) => {
+    .then((result) => {
       if (!appBootHydrated) return;
+      const sharedState = result?.state ?? state;
+      if (!result?.authoritative) {
+        if (
+          visibleEventsForParticipant(state, state.currentParticipantId).length === 0
+        ) {
+          accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_UNAVAILABLE;
+          render();
+        }
+        return;
+      }
+      const hydrationStatusChanged =
+        accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY;
+      accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
       // A user save that began after this refresh makes its payload stale.
       // This is especially important after returning from a camera or gallery,
       // where the native resume refresh can finish after the new image is saved.
-      if (saveRevisionAtRequest !== sharedStateSaveRevision()) return;
+      if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
+        if (hydrationStatusChanged) render();
+        return;
+      }
       const nextState = syncLocalProfile(sharedState);
-      if (!hasSharedStateChanged(state, nextState)) return;
+      if (!hasSharedStateChanged(state, nextState)) {
+        if (hydrationStatusChanged) render();
+        return;
+      }
       state = nextState;
       render();
     })
-    .catch(() => {});
+    .catch(() => {
+      if (
+        appBootHydrated &&
+        visibleEventsForParticipant(state, state.currentParticipantId).length === 0
+      ) {
+        accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_UNAVAILABLE;
+        render();
+      }
+    });
+}
+
+function retryAccountEventHydration() {
+  if (accountEventsHydrationRetryRequest) return accountEventsHydrationRetryRequest;
+
+  accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_LOADING;
+  render();
+  accountEventsHydrationRetryRequest = loadSharedStateForStartup({ maxWaitMs: 8_000 })
+    .then((startupResult) => {
+      if (startupResult.authoritative) {
+        return refreshStartupSharedState(Promise.resolve(startupResult));
+      }
+      if (startupResult.refresh) {
+        return refreshStartupSharedState(startupResult.refresh);
+      }
+      return refreshStartupSharedState(Promise.resolve(startupResult));
+    })
+    .finally(() => {
+      accountEventsHydrationRetryRequest = null;
+    });
+  return accountEventsHydrationRetryRequest;
 }
 
 function renderScopedLocalFallback(error) {
@@ -22036,6 +22127,15 @@ function renderScopedLocalFallback(error) {
     normalizeAvatarPreset(localProfile?.avatarPreset) || AVATAR_PRESETS[0].id;
   profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
   state = syncLocalProfile(loadState());
+  accountEventsHydrationStatus = accountEventHydrationStatus({
+    authenticated: Boolean(runtimeConfig.storage?.account?.userId),
+    authoritative: false,
+    cachedEventCount: visibleEventsForParticipant(
+      state,
+      state.currentParticipantId
+    ).length,
+    refreshPending: false
+  });
   appBootHydrated = true;
   render();
 }
@@ -22055,6 +22155,19 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
   resumeSyncRequest = loadSharedState()
     .then((sharedState) => {
       if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
+        // A local save may complete while this remote read is in flight. The
+        // remote payload can still contain newer changes from another phone,
+        // so merge it into the current in-memory state before scheduling the
+        // follow-up read. Discarding it here left localStorage up to date while
+        // the open event screen continued to render the stale state.
+        const mergedState = syncLocalProfile(
+          mergeSharedStates(sharedState, state)
+        );
+        if (hasSharedStateChanged(state, mergedState)) {
+          state = mergedState;
+          saveState(state);
+          render();
+        }
         void queueForcedResumeSync({ includeSecondary: false });
         return;
       }
@@ -22069,7 +22182,13 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
           refreshNotificationInbox({ force: true })
         ])
       : undefined)
-    .catch(() => {})
+    .catch((error) => {
+      // Foreground refresh is intentionally non-blocking, but a swallowed
+      // failure left us blind to devices that repeatedly stayed stale. The
+      // metrics transport deduplicates this signal, so normal offline use does
+      // not create a notification or a telemetry storm.
+      emitOperationDeferred("state_load", { error });
+    })
     .finally(() => {
       resumeSyncRequest = null;
     });
@@ -22135,22 +22254,31 @@ function requestVisibleEventSync() {
   const eventId = String(screen.eventId ?? "").trim();
   const event = eventId ? getEvent(eventId) : null;
   const credentials = eventShareCredentials(event);
-  if (!eventId || !credentials || resumeSyncRequest) {
+  if (!eventId || !credentials) {
     return requestResumeSync({ includeSecondary: false });
   }
+  // Do not make the open event wait behind a slower account/profile refresh.
+  // The canonical event snapshot is independent and can be merged safely even
+  // while that broader request is still running.
   if (visibleEventSyncRequest) return visibleEventSyncRequest;
 
   const saveRevisionAtRequest = sharedStateSaveRevision();
   visibleEventSyncRequest = loadRuntimeConfig()
     .then((config) => {
       runtimeConfig = config;
-      return readSharedEventState(config, credentials, eventId);
+      return readSharedEventStateIfChanged(
+        config,
+        credentials,
+        eventId,
+        globalThis.fetch,
+        { observerKey: "visible-event-workspace" }
+      );
     })
-    .then((sharedEventState) => {
-      if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
-        void queueForcedResumeSync({ includeSecondary: false });
-        return;
-      }
+    .then((sharedEventRead) => {
+      const localSaveCompletedDuringRead =
+        saveRevisionAtRequest !== sharedStateSaveRevision();
+      if (!sharedEventRead?.changed) return;
+      const sharedEventState = sharedEventRead.state;
       if (!sharedEventState) {
         return requestResumeSync({ force: true, includeSecondary: false });
       }
@@ -22162,8 +22290,14 @@ function requestVisibleEventSync() {
       state = nextState;
       saveState(state);
       render();
+      if (localSaveCompletedDuringRead) {
+        void queueForcedResumeSync({ includeSecondary: false });
+      }
     })
-    .catch(() => requestResumeSync({ includeSecondary: false }))
+    .catch((error) => {
+      emitOperationDeferred("state_load", { error });
+      return requestResumeSync({ includeSecondary: false });
+    })
     .finally(() => {
       visibleEventSyncRequest = null;
     });

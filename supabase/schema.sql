@@ -593,6 +593,22 @@ as $$
   end;
 $$;
 
+create or replace function private.account_deletion_participant_tombstone(
+  p_participant jsonb
+)
+returns jsonb
+language sql
+immutable
+set search_path = ''
+as $$
+  select pg_catalog.jsonb_build_object(
+    'id', p_participant ->> 'id',
+    'displayName', 'משתמש שנמחק',
+    'kind', 'user',
+    'accountDeleted', true
+  );
+$$;
+
 create or replace function private.is_safe_account_deletion_anonymization(
   p_old_state jsonb,
   p_new_state jsonb
@@ -637,14 +653,58 @@ as $$
         or new_item.participant is null
         or (
           new_item.participant is distinct from old_item.participant
-          and new_item.participant is distinct from pg_catalog.jsonb_set(
-            old_item.participant - 'email' - 'authProvider' - 'authSubject',
-            '{displayName}',
-            pg_catalog.to_jsonb('משתמש שנמחק'::text),
-            true
-          )
+          and new_item.participant is distinct from
+            private.account_deletion_participant_tombstone(
+              old_item.participant
+            )
         )
     );
+$$;
+
+create or replace function private.redact_deleted_account_participants()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.snapshot_kind <> 'shared_event'
+    or pg_catalog.jsonb_typeof(new.state -> 'participants') <> 'array' then
+    return new;
+  end if;
+
+  new.state := pg_catalog.jsonb_set(
+    new.state,
+    '{participants}',
+    coalesce(
+      (
+        select pg_catalog.jsonb_agg(
+          case
+            when participant.value ->> 'id' ~
+              '^account-[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+              and not exists (
+                select 1
+                from auth.users as account
+                where account.id = pg_catalog.substring(
+                  participant.value ->> 'id',
+                  9
+                )::uuid
+              ) then private.account_deletion_participant_tombstone(
+                participant.value
+              )
+            else participant.value
+          end
+          order by participant.position
+        )
+        from pg_catalog.jsonb_array_elements(new.state -> 'participants')
+          with ordinality as participant(value, position)
+      ),
+      '[]'::jsonb
+    ),
+    true
+  );
+  return new;
+end;
 $$;
 
 create or replace function public.can_write_shared_snapshot(p_snapshot_id text)
@@ -1905,6 +1965,12 @@ create trigger guard_shared_snapshot_update
   before update on public.app_snapshots
   for each row execute function private.guard_shared_snapshot_update();
 
+drop trigger if exists aa_redact_deleted_account_participants
+  on public.app_snapshots;
+create trigger aa_redact_deleted_account_participants
+  before insert or update of snapshot_kind, state on public.app_snapshots
+  for each row execute function private.redact_deleted_account_participants();
+
 create or replace function private.prevent_locked_event_expense_updates()
 returns trigger
 language plpgsql
@@ -1973,6 +2039,10 @@ revoke all on function private.active_event_participant_ids(jsonb) from public, 
 revoke all on function private.event_admin_ids(jsonb) from public, anon, authenticated;
 revoke all on function private.current_actor_participant_id() from public, anon, authenticated;
 revoke all on function private.is_safe_account_deletion_anonymization(jsonb, jsonb)
+  from public, anon, authenticated;
+revoke all on function private.account_deletion_participant_tombstone(jsonb)
+  from public, anon, authenticated;
+revoke all on function private.redact_deleted_account_participants()
   from public, anon, authenticated;
 revoke all on function private.guard_shared_snapshot_update() from public, anon, authenticated;
 revoke all on function private.prevent_locked_event_expense_updates()
@@ -4661,12 +4731,7 @@ begin
           select pg_catalog.jsonb_agg(
             case
               when participant ->> 'id' = participant_id then
-                pg_catalog.jsonb_set(
-                  participant - 'email' - 'authProvider' - 'authSubject',
-                  '{displayName}',
-                  pg_catalog.to_jsonb('משתמש שנמחק'::text),
-                  true
-                )
+                private.account_deletion_participant_tombstone(participant)
               else participant
             end
           )
@@ -9733,6 +9798,22 @@ declare
   active_member record;
 begin
   if new.snapshot_kind <> 'shared_event' then
+    return new;
+  end if;
+
+  -- Expense, note, settlement and presentation edits do not change who can
+  -- discover an event. Avoid scanning every member workspace for those very
+  -- frequent writes; membership changes still reconcile atomically below.
+  if tg_op = 'UPDATE'
+    and old.snapshot_kind is not distinct from new.snapshot_kind
+    and old.state -> 'participants' is not distinct from
+      new.state -> 'participants'
+    and old.state #> '{events,0,participantIds}' is not distinct from
+      new.state #> '{events,0,participantIds}'
+    and old.state #> '{events,0,inactiveParticipantIds}' is not distinct from
+      new.state #> '{events,0,inactiveParticipantIds}'
+    and old.state #> '{events,0,participantAccountLinks}' is not distinct from
+      new.state #> '{events,0,participantAccountLinks}' then
     return new;
   end if;
 

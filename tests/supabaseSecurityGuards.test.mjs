@@ -369,8 +369,10 @@ test("shared-event writes require live server membership instead of the retained
   );
   assert.match(deletionCompatibilityFunction, /p_old_state - 'participants'/);
   assert.match(deletionCompatibilityFunction, /p_new_state - 'participants'/);
-  assert.match(deletionCompatibilityFunction, /'משתמש שנמחק'/);
-  assert.match(deletionCompatibilityFunction, /- 'email' - 'authProvider' - 'authSubject'/);
+  assert.match(
+    deletionCompatibilityFunction,
+    /private\.account_deletion_participant_tombstone/
+  );
 
   const syncFunction = sqlFunction("private.sync_shared_snapshot_members");
   assert.match(syncFunction, /status = case[\s\S]*then 'active'[\s\S]*else 'removed'/);

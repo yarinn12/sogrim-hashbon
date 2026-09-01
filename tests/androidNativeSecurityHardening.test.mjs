@@ -69,20 +69,27 @@ test("upload-key backup separates JKS and properties and migrates the legacy cop
   assert.notEqual(dirname(paths.keystoreBackupPath), dirname(paths.propertiesBackupPath));
 });
 
-test("upload-key setup keeps the project signing properties contract", async () => {
-  const [setup, gradle] = await Promise.all([
+test("upload-key setup keeps signing material outside the project workspace", async () => {
+  const [setup, gradle, signingConfig] = await Promise.all([
     readFile("scripts/setup-android-upload-key.mjs", "utf8"),
-    readFile("android/app/build.gradle", "utf8")
+    readFile("android/app/build.gradle", "utf8"),
+    readFile("scripts/androidSigningConfig.mjs", "utf8")
   ]);
 
-  assert.match(setup, /const propertiesPath = join\(androidRoot, "keystore\.properties"\)/);
-  assert.match(setup, /`storeFile=app\/\$\{basename\(keystorePath\)\}`/);
+  assert.match(setup, /resolveAndroidSigningPaths\(\{ workspaceRoot: root \}\)/);
+  assert.match(setup, /chmod, mkdir, readFile, writeFile/);
+  assert.match(setup, /`storeFile=\$\{keystorePath\.replaceAll/);
   assert.match(setup, /`storePassword=\$\{password\}`/);
   assert.match(setup, /`keyPassword=\$\{password\}`/);
-  assert.match(setup, /await backupAndroidUploadKey\(\{ keystorePath, propertiesPath \}\)/);
-  assert.doesNotMatch(setup, /copyFile\(propertiesPath/);
-  assert.match(gradle, /rootProject\.file\('keystore\.properties'\)/);
-  assert.match(gradle, /storeFile rootProject\.file\(keystoreProperties\['storeFile'\]\)/);
+  assert.doesNotMatch(setup, /androidRoot.*keystore\.properties/);
+  assert.match(signingConfig, /assertOutsideWorkspace\(propertiesPath, workspaceRoot\)/);
+  assert.match(signingConfig, /assertOutsideWorkspace\(keystorePath, workspaceRoot\)/);
+  assert.match(signingConfig, /assertSeparatedSigningDirectories\(propertiesPath, keystorePath\)/);
+  assert.match(gradle, /SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE/);
+  assert.doesNotMatch(gradle, /rootProject\.file\('keystore\.properties'\)/);
+  assert.match(gradle, /storeFile releaseStoreFile/);
+  assert.match(gradle, /pathIsInsideWorkspace/);
+  assert.match(gradle, /must use separate private directories/);
 });
 
 function isWithin(parentPath, candidatePath) {

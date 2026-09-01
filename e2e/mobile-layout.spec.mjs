@@ -138,6 +138,23 @@ test.afterEach(() => {
   expect(runtimeIssues, "the core mobile journey must not emit browser runtime errors").toEqual([]);
 });
 
+test("shared notes keep the exact event header brand mark", async ({ page }) => {
+  const appBrand = await readHeaderBrandPresentation(page);
+  await page
+    .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
+    .first()
+    .locator(".event-row-main")
+    .click();
+
+  const eventBrand = await readHeaderBrandPresentation(page);
+  await page.locator('[data-action="open-event-notes"]').click();
+  await expect(page.locator('[data-screen-kind="event-notes"]')).toBeVisible();
+  const notesBrand = await readHeaderBrandPresentation(page);
+
+  expect(notesBrand).toEqual(eventBrand);
+  expect(notesBrand).toEqual(appBrand);
+});
+
 test("participant pictures never cover the event title or participant count", async ({
   page,
   request
@@ -545,6 +562,53 @@ test("iPad new-event steps always start inside the visible canvas", async ({ pag
   expect(topState.identityTop).toBeGreaterThanOrEqual(0);
   expect(topState.heroTop).toBeGreaterThanOrEqual(0);
   await assertLayoutHealth(page, "iPad new event details visible top");
+});
+
+test("iPhone new-event primary actions stay above the bottom navigation on every step", async ({
+  page
+}, testInfo) => {
+  test.skip(!["iphone-webkit", "iphone-large-text"].includes(testInfo.project.name));
+
+  for (const viewport of [
+    { width: 390, height: 664 },
+    { width: 375, height: 620 }
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.locator('[data-nav-destination="home"]').click();
+    await page.locator('[data-action="new-event"]').first().click();
+    await expect(page.locator('[data-event-creation-step="type"]')).toBeVisible();
+    await assertLayoutHealth(page, `iPhone new event type ${viewport.width}x${viewport.height}`);
+
+    await page
+      .locator('[data-action="new-event-type"][data-event-type="standard"]')
+      .click();
+    await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
+    await assertNewEventActionReachable(
+      page,
+      '[data-action="open-new-event-settlement"]',
+      `details ${viewport.width}x${viewport.height}`
+    );
+
+    await page.locator('[data-action="open-new-event-settlement"]').click();
+    await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+    await assertNewEventActionReachable(
+      page,
+      '[data-action="open-new-event-participants"]',
+      `settlement ${viewport.width}x${viewport.height}`
+    );
+
+    await page.locator('[data-action="open-new-event-participants"]').click();
+    await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
+    await assertNewEventActionReachable(
+      page,
+      '[data-action="create-event"]',
+      `participants ${viewport.width}x${viewport.height}`
+    );
+
+    await page.locator('[data-action="cancel-new-event-participants"]').click();
+    await page.locator('[data-nav-destination="home"]').click();
+    await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
+  }
 });
 
 test("offline mode keeps shared event changes local-first until sync access returns", async ({
@@ -986,11 +1050,12 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     });
   }
 
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page
+  const expensesWorkspaceTab = page
     .locator(`[data-action="back-to-event"][data-event-id="${EVENT_ID}"]`)
-    .first()
-    .click();
+    .first();
+  await expensesWorkspaceTab.scrollIntoViewIfNeeded();
+  await expect(expensesWorkspaceTab).toBeVisible();
+  await expensesWorkspaceTab.click({ timeout: 5_000 });
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
     .toBeVisible();
 
@@ -1552,4 +1617,54 @@ async function assertFocusedControlIsVisible(page) {
   });
   expect(focused.tag).toMatch(/input|button|select|textarea/);
   expect(focused.visible).toBe(true);
+}
+
+async function assertNewEventActionReachable(page, selector, label) {
+  const action = page.locator(selector).first();
+  await action.scrollIntoViewIfNeeded();
+  await expect(action).toBeVisible();
+
+  const geometry = await action.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const navigation = document.querySelector(".product-app-nav");
+    const navigationRect = navigation?.getBoundingClientRect();
+    const screen = element.closest("[data-event-creation-step]");
+    const screenStyle = screen ? getComputedStyle(screen) : null;
+    return {
+      actionTop: Math.round(rect.top),
+      actionBottom: Math.round(rect.bottom),
+      viewportHeight: Math.round(window.visualViewport?.height ?? innerHeight),
+      navigationTop: navigationRect ? Math.round(navigationRect.top) : null,
+      screenPaddingBottom: screenStyle ? Math.round(parseFloat(screenStyle.paddingBottom)) : 0
+    };
+  });
+
+  const visibleBottom = Math.min(
+    geometry.viewportHeight,
+    geometry.navigationTop ?? geometry.viewportHeight
+  );
+  expect(geometry.actionTop, `${label}: the primary action must enter the visible viewport`)
+    .toBeGreaterThanOrEqual(0);
+  expect(geometry.actionBottom, `${label}: the primary action must stay clear of fixed bottom UI`)
+    .toBeLessThanOrEqual(visibleBottom - 8);
+  expect(geometry.screenPaddingBottom, `${label}: the flow needs a durable mobile safe-area buffer`)
+    .toBeGreaterThanOrEqual(96);
+}
+
+async function readHeaderBrandPresentation(page) {
+  return page.locator("#app > .screen > .product-app-identity .product-brand-mark").evaluate((mark) => {
+    const image = mark.querySelector(".product-brand-image");
+    const markStyle = getComputedStyle(mark);
+    const imageStyle = image ? getComputedStyle(image) : null;
+    const rect = mark.getBoundingClientRect();
+    return {
+      source: image?.getAttribute("src") ?? "",
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      padding: markStyle.padding,
+      borderRadius: markStyle.borderRadius,
+      objectFit: imageStyle?.objectFit ?? "",
+      transform: imageStyle?.transform ?? ""
+    };
+  });
 }

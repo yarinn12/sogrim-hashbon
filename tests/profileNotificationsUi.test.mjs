@@ -60,16 +60,16 @@ test("profile and notification headers omit redundant green labels", async () =>
   );
 });
 
-test("home, notifications, and profile share the exact same visible brand mark", async () => {
+test("primary app and event routes share the exact same visible brand mark", async () => {
   const coherenceLayer = await readFile("src/publicDesignCoherenceLayer.mjs", "utf8");
 
   assert.match(
     coherenceLayer,
-    /\.screen:is\([\s\S]*?\[data-screen-kind="home"\],[\s\S]*?\[data-screen-kind="notifications"\],[\s\S]*?\[data-screen-kind="profile"\][\s\S]*?\.product-brand-mark \{[\s\S]*?width: 42px !important;[\s\S]*?height: 42px !important;/
+    /\.screen:is\([\s\S]*?\[data-screen-kind="home"\],[\s\S]*?\[data-screen-kind="notifications"\],[\s\S]*?\[data-screen-kind="profile"\],[\s\S]*?\[data-screen-kind="event"\],[\s\S]*?\[data-screen-kind="event-notes"\],[\s\S]*?\[data-screen-kind="settlement"\][\s\S]*?\.product-brand-mark \{[\s\S]*?width: 42px !important;[\s\S]*?height: 42px !important;/
   );
   assert.match(
     coherenceLayer,
-    /\.screen:is\([\s\S]*?\[data-screen-kind="home"\],[\s\S]*?\[data-screen-kind="notifications"\],[\s\S]*?\[data-screen-kind="profile"\][\s\S]*?\.product-brand-image \{[\s\S]*?object-fit: contain !important;[\s\S]*?transform: none !important;/
+    /\.screen:is\([\s\S]*?\[data-screen-kind="home"\],[\s\S]*?\[data-screen-kind="notifications"\],[\s\S]*?\[data-screen-kind="profile"\],[\s\S]*?\[data-screen-kind="event"\],[\s\S]*?\[data-screen-kind="event-notes"\],[\s\S]*?\[data-screen-kind="settlement"\][\s\S]*?\.product-brand-image \{[\s\S]*?object-fit: contain !important;[\s\S]*?transform: none !important;/
   );
 });
 

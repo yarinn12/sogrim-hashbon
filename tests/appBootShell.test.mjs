@@ -19,10 +19,9 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(index, /class="boot-shell"/);
   assert.match(index, /id="app-splash"/);
   assert.match(index, /assets\/sogrim-heshbon-loading-loop-v2\.mp4/);
-  assert.match(index, /assets\/sogrim-logo-intro-poster\.jpg/);
   assert.match(index, /assets\/sogrim-logo-intro-hold\.jpg/);
-  assert.match(index, /loop[\s\S]*?muted[\s\S]*?playsinline/);
-  assert.doesNotMatch(index, /autoplay/);
+  assert.doesNotMatch(index, /class="app-splash-poster"|poster=/);
+  assert.match(index, /autoplay[\s\S]*?loop[\s\S]*?muted[\s\S]*?playsinline/);
   assert.match(index, /publicAppSplashLayer\.mjs[\s\S]*?src\/app\.mjs/);
   assert.match(app, /app\.classList\.remove\("app-boot"\)/);
   assert.match(app, /app\.removeAttribute\("aria-busy"\)/);
@@ -51,7 +50,7 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(splashLayer, /video\.muted = true/);
   assert.match(splashLayer, /video\.defaultMuted = true/);
   assert.match(splashLayer, /video\.playsInline = true/);
-  assert.match(splashLayer, /video\.autoplay = false/);
+  assert.match(splashLayer, /video\.autoplay = true/);
   assert.match(splashLayer, /video\.loop = true/);
   assert.match(splashLayer, /window\.clearTimeout\(loadTimeoutId\)/);
   assert.match(
@@ -73,6 +72,10 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(splashLayer, /playbackPending = true/);
   assert.match(splashLayer, /\.finally\(\(\) => \{\s*playbackPending = false/);
   assert.match(splashLayer, /requestPlayback\(\{ fallbackOnFailure: true \}\)/);
+  assert.match(
+    splashLayer,
+    /loadTimeoutId = window\.setTimeout\(useFallback, VIDEO_LOAD_TIMEOUT_MS\);[\s\S]*?requestPlayback\(\{ fallbackOnFailure: false \}\)/
+  );
   assert.doesNotMatch(splashLayer, /video\.play\(\)\?\.catch\(useFallback\)/);
   assert.doesNotMatch(splashLayer, /holdFinalFrame|is-video-complete/);
   assert.match(splashLayer, /applicationIsReady/);
@@ -147,9 +150,11 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(styles, /\.app-splash-frame \{[\s\S]*?background: #fff/);
   assert.doesNotMatch(styles, /\.app-splash-frame::after/);
   assert.match(styles, /\.app-splash-video,[\s\S]*?\.app-splash-hold[\s\S]*?background: #fff/);
-  assert.match(styles, /\.app-splash-video \{\s*opacity: 0;/);
-  assert.match(styles, /\.app-splash-video \{[\s\S]*?transition: opacity 80ms linear/);
-  assert.match(styles, /\.app-splash\.is-video-ready \.app-splash-video/);
+  assert.match(styles, /\.app-splash-video \{\s*opacity: 1;/);
+  assert.doesNotMatch(styles, /\.app-splash-video \{[\s\S]*?transition: opacity 80ms linear/);
+  assert.doesNotMatch(styles, /\.app-splash\.is-video-ready \.app-splash-video/);
+  assert.match(styles, /\.app-splash\.is-fallback \.app-splash-video \{[\s\S]*?display: none/);
+  assert.match(styles, /\.app-splash\.is-fallback \.app-splash-hold \{[\s\S]*?opacity: 1/);
   assert.doesNotMatch(styles, /\.app-splash\.is-video-complete/);
   assert.match(styles, /\.app-splash\.is-leaving/);
   assert.match(

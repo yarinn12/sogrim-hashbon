@@ -269,6 +269,23 @@ try {
           and trigger.tgrelid = 'public.app_snapshots'::regclass
           and not trigger.tgisinternal
       ) as shared_membership_triggers_ready,
+      pg_catalog.strpos(
+        pg_catalog.lower(pg_catalog.pg_get_functiondef(
+          'private.reconcile_shared_snapshot_member_workspaces()'::regprocedure
+        )),
+        'tg_op = ''update'''
+      ) > 0
+        and pg_catalog.strpos(
+          pg_catalog.lower(pg_catalog.pg_get_functiondef(
+            'private.reconcile_shared_snapshot_member_workspaces()'::regprocedure
+          )),
+          'participantaccountlinks'
+        ) > 0
+        and not pg_catalog.has_function_privilege(
+          'authenticated',
+          'private.reconcile_shared_snapshot_member_workspaces()',
+          'execute'
+        ) as shared_reconciliation_load_guard_ready,
       to_regprocedure('public.delete_account_data(uuid)') is not null as deletion_ready,
       exists (
         select 1
@@ -912,6 +929,7 @@ try {
     !result?.shared_self_profile_ready ||
     !result?.event_invite_membership_redeem_ready ||
     !result?.shared_membership_triggers_ready ||
+    !result?.shared_reconciliation_load_guard_ready ||
     !result?.deletion_ready ||
     !result?.deletion_trigger_ready ||
     !result?.profiles_ready ||

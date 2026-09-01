@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   clearStoredPushToken,
+  clearStoredPushData,
   defaultPushPreferences,
   disablePushDevice,
   loadStoredPushPreferences,
@@ -69,6 +70,27 @@ test("push device disable uses the signed-in account token", async () => {
   assert.deepEqual(JSON.parse(request.options.body), {
     p_token: "b".repeat(64)
   });
+});
+
+test("account deletion cleanup removes all user-scoped push data", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key)
+  };
+  storage.setItem("settle-friends-push-token:user-1", "token");
+  storage.setItem("settle-friends-push-enabled:user-1", "1");
+  storage.setItem("settle-friends-push-preferences:user-1", JSON.stringify({
+    eventUpdates: true,
+    paymentReminders: true
+  }));
+
+  clearStoredPushData("user-1", storage);
+
+  assert.equal(storage.getItem("settle-friends-push-token:user-1"), null);
+  assert.equal(storage.getItem("settle-friends-push-enabled:user-1"), null);
+  assert.equal(storage.getItem("settle-friends-push-preferences:user-1"), null);
 });
 
 test("push device registration releases a hanging mobile request", async () => {

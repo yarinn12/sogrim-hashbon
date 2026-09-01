@@ -90,7 +90,7 @@ test("server and native boundaries use the hardened contracts", async () => {
     invites,
     notifications,
     feedback,
-    javaContact,
+    mainActivity,
     nativeBridge
   ] = await Promise.all([
     readFile("vercel.json", "utf8"),
@@ -98,10 +98,7 @@ test("server and native boundaries use the hardened contracts", async () => {
     readFile("src/server/eventInvites.mjs", "utf8"),
     readFile("src/server/eventActivityNotifications.mjs", "utf8"),
     readFile("src/data/appFeedback.mjs", "utf8"),
-    readFile(
-      "android/app/src/main/java/com/sogrimhashbon/app/SogrimContactPickerPlugin.java",
-      "utf8"
-    ),
+    readFile("android/app/src/main/java/com/sogrimhashbon/app/MainActivity.java", "utf8"),
     readFile("src/publicNativeBridgeLayer.mjs", "utf8")
   ]);
 
@@ -116,6 +113,6 @@ test("server and native boundaries use the hardened contracts", async () => {
   assert.match(notifications, /verify_shared_event_invitation_parties/);
   assert.match(feedback, /rpc\/submit_app_feedback/);
   assert.doesNotMatch(feedback, /rest\/v1\/app_feedback/);
-  assert.match(javaContact, /MAX_RAW_DISPLAY_NAME_CHARS = 256/);
-  assert.match(nativeBridge, /\.slice\(0, 256\)/);
+  assert.doesNotMatch(mainActivity, /SogrimContactPickerPlugin/);
+  assert.doesNotMatch(nativeBridge, /SogrimContactPicker|pickContact/);
 });

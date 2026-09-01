@@ -3,7 +3,10 @@ import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
+import { signInWithPassword } from "../src/data/accountAuth.mjs";
 import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mjs";
+import { readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
+import { readStoreReviewCredentials } from "./privateMaterial.mjs";
 
 const root = process.cwd();
 const androidOnly = process.argv.includes("--android");
@@ -20,8 +23,8 @@ const playSigningFingerprint = (
   await readFile(join(root, "docs", "store-submission", "android-play-signing-certificate-sha256.txt"), "utf8")
 ).trim();
 
-await checkFile("Android release signing", "android/keystore.properties");
-await checkFile("Android upload key", "android/app/sogrim-upload-key.jks");
+const androidSigning = readAndroidSigningConfiguration({ workspaceRoot: root });
+localChecks.push({ name: "Android release signing is stored outside the workspace", ok: androidSigning.ready });
 await checkFile("Android App Bundle", "android/app/build/outputs/bundle/release/app-release.aab");
 await checkFile("Android release evidence", "android/app/build/outputs/bundle/release/release-manifest.json");
 await checkFile("Android App Links", ".well-known/assetlinks.json");
@@ -46,7 +49,11 @@ localChecks.push({
 });
 await checkFile("Apple privacy manifest", "ios/App/App/PrivacyInfo.xcprivacy");
 await checkFile("Apple entitlements", "ios/App/App/App.entitlements");
-await checkFile("Private store review account", ".store-review-credentials.json");
+const storeReviewCredentials = readStoreReviewCredentials();
+localChecks.push({
+  name: "Private store review account is supplied outside the workspace",
+  ok: Boolean(storeReviewCredentials.email && String(storeReviewCredentials.password ?? "").length >= 8)
+});
 await checkPng("App Store icon", "docs/store-assets/app-icon-1024.png", 1024, 1024, null, true);
 await checkPng("Google Play icon", "docs/store-assets/google-play-icon-512.png", 512, 512, 1024 * 1024);
 await checkPng("Google Play feature graphic", "docs/store-assets/google-play-feature-graphic-1024x500.png", 1024, 500, null, true);
@@ -211,8 +218,27 @@ try {
     name: "Sign in with Apple enabled",
     ok: configResponse.ok && settingsResponse.ok && Boolean(settings.external?.apple)
   });
+  let reviewAccountAuthenticated = false;
+  try {
+    const session = await signInWithPassword(
+      config.storage,
+      {
+        email: storeReviewCredentials.email,
+        password: storeReviewCredentials.password
+      }
+    );
+    reviewAccountAuthenticated = Boolean(
+      session?.user?.id &&
+      session.user.id === storeReviewCredentials.userId
+    );
+  } catch {}
+  liveChecks.push({
+    name: "Private store review account authenticates successfully",
+    ok: reviewAccountAuthenticated
+  });
 } catch {
   liveChecks.push({ name: "Live authentication configuration", ok: false });
+  liveChecks.push({ name: "Private store review account authenticates successfully", ok: false });
 }
 
 manualChecks.push({

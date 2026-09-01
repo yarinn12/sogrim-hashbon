@@ -149,6 +149,10 @@ export async function sendPaymentReminder({
   }
 
   const message = reminderMessage(senderEvent, senderTransfer);
+  const privatePushNotification = {
+    title: "תזכורת חדשה בסוגרים חשבון",
+    body: "פרטי ההתחשבנות מחכים לך באפליקציה."
+  };
   const storedInInbox = await storeInboxNotification({
     supabaseUrl,
     serviceRoleKey,
@@ -248,8 +252,8 @@ export async function sendPaymentReminder({
           message: {
             token: device.token,
             notification: {
-              title: "תזכורת לסגירת חשבון",
-              body: message
+              title: privatePushNotification.title,
+              body: privatePushNotification.body
             },
             data: {
               eventId: normalizedEventId,

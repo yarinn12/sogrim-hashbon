@@ -25,7 +25,11 @@ const teamIds = [...project.matchAll(/DEVELOPMENT_TEAM = ([A-Z0-9]{10});/g)].map
 check("Apple Team ID is configured in both app build configurations", teamIds.length === 2 && new Set(teamIds).size === 1);
 await checkAppleAssociation(teamIds[0] ?? "");
 check("iPhone release is portrait-only", /UISupportedInterfaceOrientations<\/key>\s*<array>\s*<string>UIInterfaceOrientationPortrait<\/string>\s*<\/array>/.test(info));
-check("Native launch logo keeps its full proportions", /contentMode="scaleAspectFit"/.test(launchScreen) && !/contentMode="scaleAspectFill"/.test(launchScreen));
+check(
+  "Native launch screen hands directly to the web intro without a logo flash",
+  /<view key="view"[\s\S]*?<color key="backgroundColor" white="1"/.test(launchScreen) &&
+    !/image="Splash"|<image name="Splash"/.test(launchScreen)
+);
 check("Export compliance is declared", /ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/.test(info));
 check("Privacy manifest declares no tracking", /NSPrivacyTracking<\/key>\s*<false\/>/.test(privacy));
 check("Privacy manifest covers feedback diagnostics", /NSPrivacyCollectedDataTypeOtherDiagnosticData/.test(privacy));

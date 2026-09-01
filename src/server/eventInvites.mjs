@@ -1,12 +1,14 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 
 const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRIVATE_INVITE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
+export const OPEN_INVITE_REQUEST_TIMEOUT_MS = 8_000;
 
 export async function manageOpenEventInvite({
   runtimeConfig,
@@ -16,7 +18,8 @@ export async function manageOpenEventInvite({
   candidateToken = "",
   operation = "ensure",
   fetchImpl = fetch,
-  tokenFactory = null
+  tokenFactory = null,
+  requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
   const context = serverContext(runtimeConfig, env);
   const normalizedEventId = String(eventId ?? "").trim();
@@ -40,6 +43,11 @@ export async function manageOpenEventInvite({
       code: "EVENT_INVITES_UNAVAILABLE"
     });
   }
+
+  // Creating a link spans several Supabase reads and writes. Give the whole
+  // operation one deadline so a slow upstream cannot outlive the mobile
+  // client's request timeout or leave a serverless function running blindly.
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
 
   const actor = await loadAuthenticatedUser({
     ...context,
@@ -77,6 +85,7 @@ export async function manageOpenEventInvite({
       retryable: true
     });
   }
+
   let sharedEvent = await loadVerifiedSharedEvent({
     ...context,
     eventId: normalizedEventId,
@@ -242,6 +251,20 @@ export async function manageOpenEventInvite({
     createdAt,
     rotated: normalizedOperation === "rotate" || recoveredActiveInvite
   });
+}
+
+function createDeadlineFetch(fetchImpl, timeoutMs) {
+  const duration = Math.max(1, Number(timeoutMs) || OPEN_INVITE_REQUEST_TIMEOUT_MS);
+  const deadline = Date.now() + duration;
+  return (url, options = {}) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      const error = new Error("Event invitation request timed out");
+      error.code = "NETWORK_TIMEOUT";
+      return Promise.reject(error);
+    }
+    return fetchWithTimeout(fetchImpl, url, options, remainingMs);
+  };
 }
 
 function createStableOpenInviteToken({ secret, eventId, spaceId, spaceKey }) {

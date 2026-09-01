@@ -85,7 +85,7 @@ test.beforeEach(async ({ page, request }) => {
 
 test("the empty home hero stays intact on iPhone and iPad", async ({ page }, testInfo) => {
   test.skip(
-    !["iphone-webkit", "ipad-webkit"].includes(testInfo.project.name),
+    !["iphone-webkit", "iphone-large-text", "ipad-webkit"].includes(testInfo.project.name),
     "This regression targets iOS and iPadOS layouts"
   );
 
@@ -94,7 +94,11 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
         { width: 768, height: 1024 },
         { width: 1194, height: 834 }
       ]
-    : [{ width: 390, height: 844 }];
+    : [
+        { width: 390, height: 844 },
+        { width: 375, height: 667 },
+        { width: 320, height: 568 }
+      ];
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
@@ -148,6 +152,14 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     expect(layout.action.bottom).toBeGreaterThan(layout.hero.bottom);
     expect(Math.abs(actionCenter - layout.hero.bottom)).toBeLessThanOrEqual(16);
     expect(layout.action.top - layout.copy.bottom).toBeGreaterThanOrEqual(-2);
+    expect(layout.action.height).toBeGreaterThanOrEqual(44);
+    const screenCenter = (layout.screen.left + layout.screen.right) / 2;
+    const actionHorizontalCenter = (layout.action.left + layout.action.right) / 2;
+    expect(Math.abs(actionHorizontalCenter - screenCenter)).toBeLessThanOrEqual(2);
+    if (viewport.width < 721) {
+      expect(layout.action.width).toBeGreaterThanOrEqual(174);
+      expect(layout.action.width).toBeLessThanOrEqual(190);
+    }
     expect(layout.promo.width / layout.promo.height).toBeCloseTo(1672 / 941, 2);
     expect(layout.promoImageFit).toBe("contain");
     expect(layout.brandImageFit).toBe("contain");
@@ -155,7 +167,6 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
 
     if (viewport.width >= 721) {
       expect(layout.screen.width).toBeLessThanOrEqual(430);
-      const screenCenter = (layout.screen.left + layout.screen.right) / 2;
       expect(Math.abs(screenCenter - viewport.width / 2)).toBeLessThanOrEqual(2);
     }
   }

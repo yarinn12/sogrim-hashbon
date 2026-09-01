@@ -4462,7 +4462,10 @@ const CSS = `
     .screen:is(
       [data-screen-kind="home"],
       [data-screen-kind="notifications"],
-      [data-screen-kind="profile"]
+      [data-screen-kind="profile"],
+      [data-screen-kind="event"],
+      [data-screen-kind="event-notes"],
+      [data-screen-kind="settlement"]
     )
     > .product-app-identity
     .product-brand-mark {
@@ -4483,7 +4486,10 @@ const CSS = `
     .screen:is(
       [data-screen-kind="home"],
       [data-screen-kind="notifications"],
-      [data-screen-kind="profile"]
+      [data-screen-kind="profile"],
+      [data-screen-kind="event"],
+      [data-screen-kind="event-notes"],
+      [data-screen-kind="settlement"]
     )
     > .product-app-identity
     .product-brand-image {
