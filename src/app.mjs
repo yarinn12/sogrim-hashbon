@@ -19214,9 +19214,13 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
-  if (result?.ok === false) {
+  if (!result?.ok && !result?.pending) {
     state = previousState;
     notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
+  } else if (result?.pending) {
+    notice = resetPayments
+      ? "פתיחת האירוע ואיפוס סימוני התשלום נשמרו במכשיר ויסתנכרנו עם שאר המשתתפים אוטומטית."
+      : "פתיחת האירוע נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.";
   } else {
     notice = resetPayments
       ? "האירוע נפתח מחדש וכל סימוני התשלום אופסו."
@@ -19273,6 +19277,10 @@ async function toggleEventLock(eventId) {
       : opening
         ? "לא הצלחנו לפתוח את האירוע. לא בוצע שינוי."
         : "לא הצלחנו לנעול את האירוע. לא בוצע שינוי.";
+  } else if (result?.pending) {
+    notice = opening
+      ? "פתיחת האירוע לעריכה נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית."
+      : "נעילת האירוע לעריכה נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.";
   } else {
     notice = opening
       ? "האירוע נפתח לעריכה ונשמר."
@@ -19352,7 +19360,7 @@ async function deleteCurrentEvent(eventId) {
   expenseDraft = null;
   eventDialog = null;
   screen = { name: "home" };
-  notice = `האירוע "${event.name}" נמחק.`;
+  notice = `מוחק את האירוע "${event.name}"…`;
   render();
 
   const result = await saveSharedState(state, { awaitCloud: true });
@@ -19361,7 +19369,13 @@ async function deleteCurrentEvent(eventId) {
     screen = { name: "event", eventId };
     notice = "לא הצלחנו להשלים את מחיקת האירוע. האירוע נשאר שמור ואפשר לנסות שוב.";
     render();
+    return result;
   }
+
+  notice = result?.pending
+    ? `מחיקת האירוע "${event.name}" נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.`
+    : `האירוע "${event.name}" נמחק.`;
+  render();
 
   return result;
 }

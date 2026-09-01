@@ -190,6 +190,38 @@ test("membership and settlement mutations wait for canonical cloud persistence",
   );
 });
 
+test("queued event lifecycle changes never masquerade as cloud-confirmed", () => {
+  const reopen = sourceBetween(
+    app,
+    "async function reopenCurrentEvent",
+    "function prepareEventTransfers"
+  );
+  const lock = sourceBetween(
+    app,
+    "async function toggleEventLock",
+    "async function toggleAdminEditMode"
+  );
+  const deletion = sourceBetween(
+    app,
+    "async function deleteCurrentEvent",
+    "async function markTransferPaid"
+  );
+
+  assert.match(reopen, /else if \(result\?\.pending\)/);
+  assert.match(reopen, /נשמר(?:ה|ו) במכשיר ו(?:י|ת)סתנכר/);
+  assert.match(lock, /else if \(result\?\.pending\)/);
+  assert.match(lock, /נשמרה במכשיר ותסתנכרן/);
+  assert.ok(
+    deletion.indexOf("מוחק את האירוע") < deletion.indexOf("await saveSharedState"),
+    "deletion shows progress instead of claiming success before persistence"
+  );
+  assert.match(deletion, /result\?\.pending[\s\S]*?נשמרה במכשיר ותסתנכרן/);
+  assert.ok(
+    deletion.lastIndexOf('נמחק.`') > deletion.indexOf("await saveSharedState"),
+    "confirmed deletion is announced only after the cloud result"
+  );
+});
+
 test("inline expense participants cannot silently diverge from the shared event", () => {
   const payerGuest = sourceBetween(
     app,
