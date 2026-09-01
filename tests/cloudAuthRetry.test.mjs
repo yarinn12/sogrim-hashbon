@@ -89,6 +89,76 @@ test("an expired cloud token refreshes once and retries with the same account", 
   }
 });
 
+test("a shared-event membership failure never authorizes an empty startup state", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = new MemoryStorage();
+  const spaceId = "account-space-membership-failure";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyz_membership_failure";
+  const state = {
+    currentParticipantId: "account-user-one",
+    participants: [{ id: "account-user-one", displayName: "User One", kind: "user" }],
+    groups: [],
+    events: []
+  };
+
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(state));
+  saveSession(storage, "membership-token");
+
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  globalThis.window = {
+    localStorage: storage,
+    location,
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url) => {
+    const address = String(url);
+    if (address.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots",
+          spaceId
+        }
+      });
+    }
+    if (address.includes("snapshot_kind=eq.shared_event")) {
+      return { ok: false, status: 503 };
+    }
+    if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
+    return jsonResponse([{ state, updated_at: "2026-09-01T00:00:00.000Z" }]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?membership-failure=${Date.now()}`
+    );
+    const startup = await localStore.loadSharedStateForStartup({ maxWaitMs: 5_000 });
+
+    assert.equal(startup.authoritative, false);
+    assert.equal(startup.source, "fallback");
+    assert.deepEqual(startup.state.events, []);
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("a recovered event stays visible when persisting its personal index is temporarily unavailable", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;

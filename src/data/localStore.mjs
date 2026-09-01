@@ -226,12 +226,18 @@ async function withFreshCloudAccount(config, request) {
 
 async function hydrateAccessibleSharedEventState(config, initialState) {
   try {
-    return await withFreshCloudAccount(config, (freshConfig) =>
-      recoverAccessibleSharedEvents(freshConfig, initialState)
-    );
+    return {
+      state: await withFreshCloudAccount(config, (freshConfig) =>
+        recoverAccessibleSharedEvents(freshConfig, initialState)
+      ),
+      authoritative: true
+    };
   } catch (error) {
     reportPartialStateLoadFailure(error);
-    return initialState;
+    return {
+      state: initialState,
+      authoritative: false
+    };
   }
 }
 
@@ -597,7 +603,7 @@ async function loadSharedStateOnce(requestScope) {
             attachStoredAccountIdentity(runtimeConfig)
           );
           const mergedPendingState = mergeSharedStates(remoteState, pendingState);
-          const refreshedPendingState = await hydrateAccessibleSharedEventState(
+          const recoveredPendingState = await hydrateAccessibleSharedEventState(
             runtimeConfig,
             mergedPendingState
           );
@@ -610,13 +616,16 @@ async function loadSharedStateOnce(requestScope) {
           }
           const visiblePendingState = applyLocalParticipantId(
             cleanLegacyStarterData(
-              refreshedPendingState,
+              recoveredPendingState.state,
               loadProtectedParticipantId()
             ),
             loadLocalParticipantId()
           );
           saveStateForScope(visiblePendingState, requestScope);
-          return sharedStateLoadResult(visiblePendingState, true);
+          return sharedStateLoadResult(
+            visiblePendingState,
+            recoveredPendingState.authoritative
+          );
         } catch (error) {
           reportPartialStateLoadFailure(error);
         }
@@ -660,21 +669,24 @@ async function loadSharedStateOnce(requestScope) {
         clearPendingSharedState(runtimeConfig);
         resetPendingSharedStateRetry();
         publishSyncStatus("saved");
-        const recoveredState = await hydrateAccessibleSharedEventState(
+        const recoveredStateResult = await hydrateAccessibleSharedEventState(
           runtimeConfig,
           syncedState
         );
         const visibleState = await persistRecoveredEventIndex(
           runtimeConfig,
           syncedState,
-          recoveredState
+          recoveredStateResult.state
         );
         const syncedStateWithIdentity = applyLocalParticipantId(
           cleanLegacyStarterData(visibleState, loadProtectedParticipantId()),
           loadLocalParticipantId()
         );
         saveStateForScope(syncedStateWithIdentity, requestScope);
-        return sharedStateLoadResult(syncedStateWithIdentity, true);
+        return sharedStateLoadResult(
+          syncedStateWithIdentity,
+          recoveredStateResult.authoritative
+        );
       } catch (error) {
         // Keep the pending local snapshot available for a later retry.
         if (isRetryablePendingSyncFailure(error)) {
@@ -720,7 +732,11 @@ async function loadSharedStateOnce(requestScope) {
         attachStoredAccountIdentity(runtimeConfig)
       );
       const accountState = state;
-      state = await hydrateAccessibleSharedEventState(runtimeConfig, state);
+      const recoveredStateResult = await hydrateAccessibleSharedEventState(
+        runtimeConfig,
+        state
+      );
+      state = recoveredStateResult.state;
       runtimeConfig = activateClientSpace(
         attachStoredAccountIdentity(runtimeConfig)
       );
@@ -737,7 +753,10 @@ async function loadSharedStateOnce(requestScope) {
         return sharedStateLoadResult(loadState(), false);
       }
       saveStateForScope(localStateWithIdentity, requestScope);
-      return sharedStateLoadResult(localStateWithIdentity, true);
+      return sharedStateLoadResult(
+        localStateWithIdentity,
+        recoveredStateResult.authoritative
+      );
     } catch (error) {
       (isRetryablePendingSyncFailure(error)
         ? emitOperationDeferred
