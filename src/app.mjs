@@ -13301,7 +13301,7 @@ async function handleClick(event) {
         const syncedEvent = getEvent(eventId);
         if (!syncedEvent) return;
         prepareEventTransfers(syncedEvent);
-        persistState();
+        persistState({ suppressRevertNotice: true });
         render();
       }
     );
@@ -18986,7 +18986,7 @@ async function deleteExpense(eventId, expenseId) {
 function prepareSettlement(eventId) {
   const event = getEvent(eventId);
   prepareEventTransfers(event);
-  persistState();
+  persistState({ suppressRevertNotice: true });
   settlementCloseConfirmation = null;
   screen = { name: "settlement", eventId };
   emitProductMetric("settlement_opened", { screen: "settlement" });

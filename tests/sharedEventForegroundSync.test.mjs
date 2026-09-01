@@ -191,6 +191,12 @@ test("opening the settlement screen is never blocked by a shared-state refresh",
   assert.doesNotMatch(handler, /await requestResumeSync/);
   assert.match(handler, /screen\.name !== "settlement" \|\| screen\.eventId !== eventId/);
   assert.match(handler, /prepareEventTransfers\(syncedEvent\)/);
+  assert.match(handler, /persistState\(\{ suppressRevertNotice: true \}\)/);
+
+  const prepareStart = appSource.indexOf("function prepareSettlement(eventId)");
+  const prepareEnd = appSource.indexOf("function requestCloseCurrentEvent", prepareStart);
+  const prepareSource = appSource.slice(prepareStart, prepareEnd);
+  assert.match(prepareSource, /persistState\(\{ suppressRevertNotice: true \}\)/);
 });
 
 test("opening event workspaces renders immediately and then forces a fresh read", () => {
