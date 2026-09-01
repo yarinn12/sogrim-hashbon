@@ -1,3 +1,9 @@
+export function personalMemoryParticipantId(state, localProfile) {
+  const activeParticipantId = String(state?.currentParticipantId ?? "").trim();
+  if (activeParticipantId) return activeParticipantId;
+  return String(localProfile?.participantId ?? "").trim();
+}
+
 export function visibleEventsForParticipant(state, participantId) {
   if (!participantId) return [];
 

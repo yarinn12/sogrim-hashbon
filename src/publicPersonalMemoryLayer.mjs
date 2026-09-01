@@ -1,5 +1,6 @@
 import { peekClientSpaceId } from "./domain/cloudSpace.mjs";
 import { loadLocalProfile } from "./data/localStore.mjs";
+import { personalMemoryParticipantId } from "./domain/personalMemory.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const HOME_EVENT_SEARCH_THRESHOLD = 4;
@@ -21,7 +22,10 @@ function setupPersonalMemoryLayer() {
 function applyPersonalMemoryScope() {
   const profile = loadLocalProfile();
   const state = readSharedState();
-  const participantId = profile?.participantId ?? "";
+  // The account workspace is authoritative. A device can still carry an old
+  // local-profile participant id after login or account linking; using it here
+  // hid valid event rows even though notification deep links could open them.
+  const participantId = personalMemoryParticipantId(state, profile);
   if (!participantId || !state) return;
 
   const visibleEventIds = new Set(

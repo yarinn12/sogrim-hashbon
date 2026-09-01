@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   eventRelevanceTimestamp,
+  personalMemoryParticipantId,
   visibleEventsForParticipant,
   visibleGroupsForParticipant
 } from "../src/domain/personalMemory.mjs";
@@ -67,6 +68,17 @@ const state = {
     }
   ]
 };
+
+test("the active account identity wins over a stale device profile", () => {
+  assert.equal(
+    personalMemoryParticipantId(state, { participantId: "old-device-profile" }),
+    "yarin"
+  );
+  assert.equal(
+    personalMemoryParticipantId({ currentParticipantId: "" }, { participantId: "local-only" }),
+    "local-only"
+  );
+});
 
 test("a newly joined old event is ranked by the participant membership time", () => {
   const oldEvent = {
