@@ -572,7 +572,6 @@ function mergeEventMembership(remoteEvent, localEvent) {
     Object.keys(remoteTimes).length > 0 || Object.keys(localTimes).length > 0;
 
   if (hasParticipantTimestamps) {
-    const legacySource = localTime >= remoteTime ? localEvent : remoteEvent;
     const participantIds = [];
     const adminIds = [];
     const inactiveParticipantIds = [];
@@ -594,13 +593,19 @@ function mergeEventMembership(remoteEvent, localEvent) {
     for (const participantId of allParticipantIds) {
       const remoteParticipantTime = timestamp(remoteTimes[participantId]);
       const localParticipantTime = timestamp(localTimes[participantId]);
-      let source = legacySource;
+      let source = chooseUntimestampedMembershipSource(
+        remoteEvent,
+        localEvent,
+        participantId
+      );
 
       if (
         remoteParticipantTime !== Number.NEGATIVE_INFINITY ||
         localParticipantTime !== Number.NEGATIVE_INFINITY
       ) {
         if (remoteParticipantTime === localParticipantTime) {
+          // Equal explicit evidence is a true conflict. Prefer removal so a
+          // stale device cannot silently reactivate a revoked participant.
           source = chooseMembershipTieSource(
             remoteEvent,
             localEvent,
@@ -646,13 +651,23 @@ function mergeEventMembership(remoteEvent, localEvent) {
     localTime === Number.NEGATIVE_INFINITY
   ) {
     const participantIds = unionIds(localEvent.participantIds, remoteEvent.participantIds);
+    const activeParticipantIds = new Set([
+      ...(remoteEvent.participantIds ?? []).filter(
+        (id) => !(remoteEvent.inactiveParticipantIds ?? []).includes(id)
+      ),
+      ...(localEvent.participantIds ?? []).filter(
+        (id) => !(localEvent.inactiveParticipantIds ?? []).includes(id)
+      )
+    ]);
     return {
       participantIds,
       adminIds: unionIds(localEvent.adminIds, remoteEvent.adminIds),
       inactiveParticipantIds: unionIds(
         localEvent.inactiveParticipantIds,
         remoteEvent.inactiveParticipantIds
-      ).filter((id) => participantIds.includes(id))
+      ).filter((id) =>
+        participantIds.includes(id) && !activeParticipantIds.has(id)
+      )
     };
   }
 
@@ -758,6 +773,25 @@ function mergeTransfer(remoteTransfer, localTransfer) {
   }
 
   return merged;
+}
+
+function chooseUntimestampedMembershipSource(remoteEvent, localEvent, participantId) {
+  const remoteState = eventParticipantMembershipState(remoteEvent, participantId);
+  const localState = eventParticipantMembershipState(localEvent, participantId);
+  const presenceRank = { absent: 0, inactive: 1, active: 2 };
+  if (remoteState !== localState) {
+    // With no timestamp for this participant, absence is not proof of a
+    // removal; it can be an older device that never downloaded the member.
+    // Preserve the most present state until explicit timestamped evidence wins.
+    return presenceRank[remoteState] >= presenceRank[localState]
+      ? remoteEvent
+      : localEvent;
+  }
+
+  const remoteAdmin = (remoteEvent.adminIds ?? []).includes(participantId);
+  const localAdmin = (localEvent.adminIds ?? []).includes(participantId);
+  if (remoteAdmin !== localAdmin) return remoteAdmin ? remoteEvent : localEvent;
+  return remoteEvent;
 }
 
 function mergeTransferStatusUpdate(remoteUpdate, localUpdate) {

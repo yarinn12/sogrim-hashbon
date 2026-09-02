@@ -1444,6 +1444,49 @@ test("an event manager can link an offline name only inside the current event", 
   );
 });
 
+test("closed events reject account links and participant merges before mutation", () => {
+  const state = mergeSettlementState({
+    expense: {
+      total: 6000,
+      payers: [{ participantId: "guest-dani", amount: 6000 }],
+      sharedByParticipantIds: ["owner", "dani", "guest-dani"]
+    },
+    transfers: []
+  });
+  state.participants = state.participants.map((participant) =>
+    participant.id === "dani"
+      ? { ...participant, accountLinked: true }
+      : participant
+  );
+  state.events[0] = {
+    ...state.events[0],
+    locked: true,
+    closedAt: "2026-09-02T12:00:00.000Z"
+  };
+
+  assert.equal(
+    canLinkParticipantAccountInEvent(
+      state,
+      "event-merge-settlement",
+      "guest-dani",
+      "dani"
+    ),
+    false
+  );
+  assert.equal(canLinkParticipantAccount(state, "guest-dani", "dani"), false);
+  assert.equal(canMergeParticipants(state, "guest-dani", "dani"), false);
+  assert.strictEqual(
+    linkParticipantAccountInEvent(
+      state,
+      "event-merge-settlement",
+      "guest-dani",
+      "dani"
+    ),
+    state,
+    "a rejected link must not rewrite the locked ledger"
+  );
+});
+
 test("mergeParticipants requires management permission in every affected event", () => {
   const state = mergeSettlementState({
     expense: {

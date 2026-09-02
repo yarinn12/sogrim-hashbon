@@ -177,6 +177,27 @@ test("client redeems token links and still accepts legacy invite credentials", a
   );
 });
 
+test("invite redemption honors a short startup timeout", async () => {
+  const tokenUrl = buildEventInviteUrl(
+    "https://sogrim.example/",
+    EVENT_ID,
+    null,
+    { inviteToken: TOKEN }
+  );
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    resolveEventInviteCredentials(
+      runtimeConfig({ account: false }),
+      tokenUrl,
+      () => new Promise(() => {}),
+      { timeoutMs: 10 }
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.ok(Date.now() - startedAt < 500, "startup redemption must stay bounded");
+});
+
 test("client explains revoked and account-bound invites in Hebrew", async () => {
   const tokenUrl = buildEventInviteUrl(
     "https://sogrim.example/",

@@ -71,3 +71,32 @@ test("legacy cleanup keeps a real saved local profile", () => {
   ]);
   assert.equal(state.currentParticipantId, "yarin");
 });
+
+test("legacy cleanup restores a standalone event owner without reactivating shared memberships", () => {
+  const baseEvent = {
+    id: "legacy-event",
+    participantIds: ["friend"],
+    adminIds: ["owner"],
+    createdByParticipantId: "owner",
+    expenses: [],
+    transfers: []
+  };
+  const state = {
+    currentParticipantId: "owner",
+    participants: [
+      { id: "owner", displayName: "Owner", kind: "user" },
+      { id: "friend", displayName: "Friend", kind: "user" }
+    ],
+    groups: [],
+    events: [baseEvent, { ...baseEvent, id: "shared-event", sharedSpaceId: "space-event" }]
+  };
+
+  const cleaned = cleanLegacyStarterData(state, "owner");
+  assert.deepEqual(cleaned.events[0].participantIds, ["owner", "friend"]);
+  assert.deepEqual(
+    cleaned.events[1].participantIds,
+    ["friend"],
+    "shared-event membership is controlled by the canonical server record"
+  );
+  assert.deepEqual(state.events[0].participantIds, ["friend"]);
+});

@@ -28,7 +28,14 @@ export function rememberPendingEventJoin(entry, storage = globalThis.localStorag
     (item) => pendingEventJoinKey(item) !== pendingEventJoinKey(normalized)
   );
   entries.push(normalized);
-  return saveEntries(entries.slice(-MAX_PENDING_EVENT_JOINS), storage);
+  return saveEntries(
+    retainNewestEntriesForOwner(
+      entries,
+      normalized.ownerUserId,
+      MAX_PENDING_EVENT_JOINS
+    ),
+    storage
+  );
 }
 
 export function forgetPendingEventJoin(entry, storage = globalThis.localStorage) {
@@ -91,6 +98,19 @@ function normalizeTimestamp(value) {
 
 function pendingEventJoinKey(entry) {
   return `${entry.ownerUserId}\u0000${entry.eventId}`;
+}
+
+function retainNewestEntriesForOwner(entries, ownerUserId, limit) {
+  let retainedForOwner = 0;
+  return entries
+    .slice()
+    .reverse()
+    .filter((entry) => {
+      if (entry.ownerUserId !== ownerUserId) return true;
+      retainedForOwner += 1;
+      return retainedForOwner <= limit;
+    })
+    .reverse();
 }
 
 function saveEntries(entries, storage) {

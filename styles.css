@@ -939,6 +939,54 @@ h3 {
   font-size: 0.82rem;
 }
 
+.event-lifecycle-filter {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 0.64fr 1.5fr 1.22fr 1.14fr;
+  margin: -2px 0 12px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.event-lifecycle-filter button {
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 18px;
+  justify-items: center;
+  row-gap: 2px;
+  white-space: nowrap;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 120ms ease;
+}
+
+.event-lifecycle-filter strong {
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.event-lifecycle-option-content {
+  display: grid;
+  grid-template-rows: auto 18px;
+  justify-items: center;
+  row-gap: 2px;
+}
+
+.event-lifecycle-filter button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.event-lifecycle-filter button:focus-visible {
+  outline: 3px solid rgba(22, 137, 128, 0.22);
+  outline-offset: 2px;
+}
+
 .event-command-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

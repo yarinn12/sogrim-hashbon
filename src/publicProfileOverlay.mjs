@@ -18,10 +18,11 @@ import {
 
 const app = document.querySelector("#app");
 const STYLE_ID = "public-profile-overlay-style";
+let publicProfileSaveBusy = false;
 
 injectStyle();
 document.addEventListener("click", handlePublicClick);
-setupPublicProfile();
+setupPublicProfile().catch(() => cleanPublicUi());
 watchRenderedApp();
 
 async function setupPublicProfile() {
@@ -287,6 +288,7 @@ async function saveProfile(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const error = form.querySelector("[data-public-profile-error]");
+  const submitButton = form.querySelector('button[type="submit"]');
   const displayName = normalizeProfileName(new FormData(form).get("displayName"));
 
   if (!isFullProfileName(displayName)) {
@@ -295,27 +297,49 @@ async function saveProfile(event) {
     return;
   }
 
-  const invitedEventId = parseInviteEventId(window.location.href);
-  const previous = loadLocalProfile();
-  const sharedState = mergeCurrentInviteSnapshot(await loadSharedState());
-  const nextState = ensureNamedParticipant(
-    sharedState,
-    {
-      id: previous?.participantId ?? makeUserId(),
-      displayName
-    },
-    invitedEventId
-  );
-  const participant = nextState.participants.find(
-    (item) => item.id === nextState.currentParticipantId
-  );
+  if (publicProfileSaveBusy) return;
+  publicProfileSaveBusy = true;
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.setAttribute("aria-busy", "true");
+  }
+  error.hidden = true;
 
-  saveLocalProfile({
-    participantId: nextState.currentParticipantId,
-    displayName: participant?.displayName ?? displayName
-  });
-  await saveSharedState(nextState);
-  window.location.reload();
+  try {
+    const invitedEventId = parseInviteEventId(window.location.href);
+    const previous = loadLocalProfile();
+    const sharedState = mergeCurrentInviteSnapshot(await loadSharedState());
+    const nextState = ensureNamedParticipant(
+      sharedState,
+      {
+        id: previous?.participantId ?? makeUserId(),
+        displayName
+      },
+      invitedEventId
+    );
+    const participant = nextState.participants.find(
+      (item) => item.id === nextState.currentParticipantId
+    );
+
+    saveLocalProfile({
+      participantId: nextState.currentParticipantId,
+      displayName: participant?.displayName ?? displayName
+    });
+    const saveResult = await saveSharedState(nextState);
+    if (saveResult?.ok === false && !saveResult?.partial) {
+      throw saveResult.error ?? new Error("Profile save failed");
+    }
+    window.location.reload();
+  } catch {
+    error.hidden = false;
+    error.textContent = "לא הצלחנו לשמור כרגע. בדקו את החיבור ונסו שוב.";
+  } finally {
+    publicProfileSaveBusy = false;
+    if (submitButton?.isConnected) {
+      submitButton.disabled = false;
+      submitButton.removeAttribute("aria-busy");
+    }
+  }
 }
 
 async function syncInvitedEvent(profile) {

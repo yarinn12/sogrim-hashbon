@@ -313,7 +313,8 @@ export async function requestFriendshipFromEvent(
 export async function setFriendUsername(
   config,
   username,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  timeoutMs
 ) {
   const normalizedUsername = String(username ?? "")
     .trim()
@@ -329,7 +330,8 @@ export async function setFriendUsername(
     config,
     "set_friend_username",
     { p_username: normalizedUsername },
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
 }
 
@@ -505,7 +507,7 @@ async function readRows(config, table, query, fetchImpl, timeoutMs) {
   return Array.isArray(rows) ? rows : [];
 }
 
-async function callFriendRpc(config, functionName, body, fetchImpl) {
+async function callFriendRpc(config, functionName, body, fetchImpl, timeoutMs) {
   const response = await fetchWithTimeout(
     fetchImpl,
     `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/${functionName}`,
@@ -513,11 +515,17 @@ async function callFriendRpc(config, functionName, body, fetchImpl) {
       method: "POST",
       headers: friendHeaders(config),
       body: JSON.stringify(body)
-    }
+    },
+    timeoutMs
   );
   const payload = await responseJson(response);
   if (!response.ok) {
     throw friendStoreError(payload, "Friend request failed", response.status);
+  }
+  if (payload?.ok === false) {
+    const error = friendStoreError(payload, "Friend request failed", 404);
+    error.code = String(payload.code ?? "FRIEND_REQUEST_REJECTED");
+    throw error;
   }
   return payload;
 }

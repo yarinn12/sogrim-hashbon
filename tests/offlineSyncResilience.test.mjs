@@ -96,12 +96,21 @@ test("a signed-in mutation reaches the durable outbox before runtime config can 
     localStore.indexOf("export async function flushPendingSharedState")
   );
   const crashSafeWrite = save.indexOf("const crashSafePendingStateSaved = Boolean(");
+  const visibleLocalWrite = save.indexOf("const localSaved = saveState(cleanState)");
   const firstRuntimeAwait = save.indexOf("await loadRuntimeConfig()");
 
   assert.ok(crashSafeWrite >= 0, "the crash-safe outbox write must exist");
   assert.ok(
     crashSafeWrite < firstRuntimeAwait,
     "mobile suspension cannot happen before the mutation reaches the outbox"
+  );
+  assert.ok(
+    crashSafeWrite < visibleLocalWrite,
+    "the durable outbox must be written before the visible local snapshot"
+  );
+  assert.match(
+    save,
+    /if \(crashSafePendingConfig && !crashSafePendingStateSaved\)[\s\S]*?return \{ ok: false, mode: "local", error \}/
   );
   assert.match(
     save,

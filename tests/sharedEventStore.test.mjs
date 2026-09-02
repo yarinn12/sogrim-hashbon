@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   attachSharedEventCredentials,
@@ -8,14 +9,79 @@ import {
   ensureSharedEventMembership,
   ensureEventShareCredentials,
   eventShareCredentials,
+  mergeSharedEventWriteState,
   mergeSharedEventIntoState,
   recoverAccessibleSharedEvents,
   readSharedEventStateIfChanged,
   refreshSharedEvents,
+  revokeSharedEventAccess,
+  SHARED_EVENT_MEMBERSHIP_REVOKED_MESSAGE,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
 import { RECOVERED_MEMBER_SPACE_KEY } from "../src/data/cloudStore.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+
+test("an expired runtime token cannot overwrite the actor's own profile", () => {
+  const previousLocalStorage = globalThis.localStorage;
+  const userId = "00000000-0000-4000-8000-000000000099";
+  const actorId = `account-${userId}`;
+  const ownerId = "account-owner";
+  const items = new Map([[
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "expired-token",
+      refresh_token: "refresh-token",
+      expires_at: Math.floor(Date.now() / 1000) - 10,
+      user: { id: userId }
+    })
+  ]]);
+  globalThis.localStorage = {
+    getItem(key) { return items.get(key) ?? null; },
+    setItem(key, value) { items.set(key, String(value)); },
+    removeItem(key) { items.delete(key); }
+  };
+  const event = {
+    id: "profile-boundary-expired-token",
+    participantIds: [ownerId, actorId],
+    adminIds: [ownerId],
+    createdByParticipantId: ownerId,
+    expenses: [],
+    transfers: []
+  };
+  const remote = {
+    currentParticipantId: actorId,
+    participants: [
+      { id: ownerId, displayName: "Owner", profileUpdatedAt: "2026-09-01T09:00:00.000Z" },
+      { id: actorId, displayName: "Old Actor", profileUpdatedAt: "2026-09-01T09:00:00.000Z" }
+    ],
+    groups: [],
+    events: [event]
+  };
+  const local = {
+    ...remote,
+    participants: [
+      { id: ownerId, displayName: "Forged Owner", profileUpdatedAt: "2026-09-02T10:00:00.000Z" },
+      { id: actorId, displayName: "Updated Actor", profileUpdatedAt: "2026-09-02T10:00:00.000Z" }
+    ]
+  };
+
+  try {
+    const merged = mergeSharedEventWriteState(remote, local, {
+      storage: { mode: "supabase", account: null }
+    });
+    assert.equal(
+      merged.participants.find((participant) => participant.id === actorId).displayName,
+      "Updated Actor"
+    );
+    assert.equal(
+      merged.participants.find((participant) => participant.id === ownerId).displayName,
+      "Owner"
+    );
+  } finally {
+    if (previousLocalStorage === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = previousLocalStorage;
+  }
+});
 
 test("membership recovery rebuilds a missing personal event index", async () => {
   const runtimeConfig = {
@@ -135,12 +201,129 @@ test("membership recovery removes a locally retained event that is no longer acc
       }
     },
     state,
-    async () => jsonResponse([])
+    async (url) => url.includes("/rpc/join_shared_event")
+      ? jsonResponse({ message: "You are no longer a member of this event" }, 403)
+      : jsonResponse([])
   );
 
   assert.deepEqual(recovered.events[0].inactiveParticipantIds, [participantId]);
+  assert.match(
+    recovered.events[0].membershipUpdatedAtByParticipant[participantId],
+    /^\d{4}-\d{2}-\d{2}T/
+  );
   assert.equal(recovered.events[0].sharedSpaceId, undefined);
   assert.equal(recovered.events[0].sharedSpaceKey, undefined);
+});
+
+test("membership recovery keeps a newly created event whose snapshot is not published yet", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000019";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Creator" }],
+    groups: [],
+    events: [{
+      id: "event-awaiting-first-publish",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [{ id: "expense-local", amount: 10 }],
+      transfers: [],
+      sharedSpaceId: "shared-event-awaiting-first-publish",
+      sharedSpaceKey: "shared_event_unpublished_key_123456789012"
+    }]
+  };
+
+  const recovered = await recoverAccessibleSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    async (url) => url.includes("/rpc/join_shared_event")
+      ? jsonResponse({ message: "Shared event membership is invalid" }, 403)
+      : jsonResponse([])
+  );
+
+  assert.deepEqual(recovered, state);
+  assert.equal(recovered.events[0].inactiveParticipantIds.length, 0);
+  assert.equal(recovered.events[0].expenses[0].id, "expense-local");
+});
+
+test("revoking one legacy member does not timestamp the whole event", () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000020";
+  const participantId = `account-${accountUserId}`;
+  const revoked = revokeSharedEventAccess({
+    currentParticipantId: participantId,
+    participants: [],
+    groups: [],
+    events: [{
+      id: "event-legacy-revoke",
+      participantIds: [participantId, "participant-two"],
+      adminIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      transfers: []
+    }]
+  }, "event-legacy-revoke", {
+    storage: { account: { userId: accountUserId } }
+  });
+
+  assert.equal(revoked.events[0].membershipUpdatedAt, undefined);
+  assert.match(
+    revoked.events[0].membershipUpdatedAtByParticipant[participantId],
+    /^\d{4}-\d{2}-\d{2}T/
+  );
+});
+
+test("an incomplete membership recovery page never hides a still-authorized event", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000015";
+  const participantId = `account-${accountUserId}`;
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Current member" }],
+    groups: [],
+    events: [{
+      id: "event-still-accessible",
+      participantIds: [participantId],
+      inactiveParticipantIds: [],
+      expenses: [],
+      sharedSpaceId: "shared-event-still-accessible",
+      sharedSpaceKey: "shared_event_current_key_123456789012345"
+    }]
+  };
+  const requests = [];
+
+  const recovered = await recoverAccessibleSharedEvents(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    async (url) => {
+      requests.push(String(url));
+      return url.includes("/rpc/join_shared_event")
+        ? jsonResponse({ ok: true })
+        : jsonResponse([]);
+    }
+  );
+
+  assert.equal(requests.some((url) => url.includes("/rpc/join_shared_event")), true);
+  assert.deepEqual(recovered.events[0].inactiveParticipantIds, []);
+  assert.equal(recovered.events[0].sharedSpaceId, "shared-event-still-accessible");
+  assert.equal(
+    recovered.events[0].sharedSpaceKey,
+    "shared_event_current_key_123456789012345"
+  );
 });
 
 test("membership recovery restores the signed-in member inside a stale personal event", () => {
@@ -304,7 +487,9 @@ test("a removed shared-event member cannot silently fall back to the old key", a
         id: "event-space-one",
         key: "event_share_key_12345678901234567890"
       },
-      async () => ({ ok: false, status: 403 })
+      async () => jsonResponse({
+        message: "You are no longer a member of this event"
+      }, 403)
     ),
     (error) =>
       error.code === "SHARED_EVENT_MEMBERSHIP_REVOKED" && error.status === 403
@@ -358,7 +543,7 @@ test("shared event payload contains only the selected event and its people", () 
           id: "a",
           displayName: "A",
           avatarPreset: "avatar-2",
-          avatarImage: "https://images.example.com/new-avatar.webp",
+          avatarImage: "https://lh3.googleusercontent.com/new-avatar.webp",
           profileUpdatedAt: "2026-08-25T10:15:00.000Z",
           email: "private@example.com",
           authProvider: "google",
@@ -401,7 +586,7 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.participants[0].avatarPreset, "avatar-2");
   assert.equal(
     payload.participants[0].avatarImage,
-    "https://images.example.com/new-avatar.webp"
+    "https://lh3.googleusercontent.com/new-avatar.webp"
   );
   assert.equal(
     payload.participants[0].profileUpdatedAt,
@@ -410,6 +595,16 @@ test("shared event payload contains only the selected event and its people", () 
   assert.equal(payload.participants[1].accountLinked, false);
   assert.equal(payload.events[0].groupId, undefined);
   assert.equal(payload.events[0].sharedSpaceKey, undefined);
+});
+
+test("the database and client share one explicit membership revocation contract", async () => {
+  const schema = await readFile("supabase/schema.sql", "utf8");
+  assert.match(
+    schema,
+    new RegExp(
+      `raise exception '${SHARED_EVENT_MEMBERSHIP_REVOKED_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}'`
+    )
+  );
 });
 
 test("shared event serialization keeps deleted accounts as strict tombstones", () => {
@@ -457,7 +652,7 @@ test("a newer profile image crosses the shared-event snapshot and wins on anothe
       participants: [{
         id: "account-user-one",
         displayName: "Profile Owner",
-        avatarImage: "https://images.example.com/new-avatar.webp",
+        avatarImage: "https://lh3.googleusercontent.com/new-avatar.webp",
         profileUpdatedAt: "2026-08-25T10:15:00.000Z",
         accountLinked: true
       }],
@@ -470,7 +665,7 @@ test("a newer profile image crosses the shared-event snapshot and wins on anothe
     participants: [{
       id: "account-user-one",
       displayName: "Profile Owner",
-      avatarImage: "https://images.example.com/old-avatar.webp",
+      avatarImage: "https://lh3.googleusercontent.com/old-avatar.webp",
       profileUpdatedAt: "2026-08-24T10:15:00.000Z",
       accountLinked: true
     }],
@@ -482,7 +677,7 @@ test("a newer profile image crosses the shared-event snapshot and wins on anothe
 
   assert.equal(
     merged.participants[0].avatarImage,
-    "https://images.example.com/new-avatar.webp"
+    "https://lh3.googleusercontent.com/new-avatar.webp"
   );
   assert.equal(
     merged.participants[0].profileUpdatedAt,
@@ -1258,7 +1453,7 @@ test("refresh removes retained credentials when server membership was revoked", 
     },
     state,
     async (url) => url.includes("/rpc/join_shared_event")
-      ? { ok: false, status: 403 }
+      ? jsonResponse({ message: "You are no longer a member of this event" }, 403)
       : { ok: true, status: 200, async json() { return []; } }
   );
 

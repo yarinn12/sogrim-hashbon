@@ -7,6 +7,8 @@ import {
   ACCOUNT_RETURN_URL_STORAGE_KEY,
   ACCOUNT_SESSION_STORAGE_KEY,
   ACCOUNT_SESSION_SYNC_STORAGE_KEY,
+  activateAccountWorkspace,
+  accountWorkspaceFromUser,
   accountAuthErrorMessage,
   appleOAuthUrl,
   authCallbackType,
@@ -85,6 +87,7 @@ import {
 } from "./domain/userProfile.mjs";
 import { normalizeAvatarImage } from "./domain/avatarPresets.mjs";
 import { resolveProfileAvatar } from "./domain/profileAvatarSync.mjs";
+import { peekClientSpaceId } from "./domain/cloudSpace.mjs";
 import {
   normalizeUsername,
   usernameValidationMessage
@@ -481,6 +484,10 @@ async function connectAccountToApp(
   session,
   { forceReload = false, ignoreInvite = false } = {}
 ) {
+  const accountWorkspace = accountWorkspaceFromUser(session?.user);
+  if (!accountWorkspace || !activateAccountWorkspace(accountWorkspace)) {
+    throw new Error("Account workspace is unavailable");
+  }
   runtimeConfig = await loadRuntimeConfig();
   const accountProfile = accountProfileFromUser(session.user);
   const previousProfile = loadLocalProfile();
@@ -491,7 +498,15 @@ async function connectAccountToApp(
   if (!normalizeUsername(accountProfile.username)) {
     throw new Error("Account profile needs a username");
   }
-  await setFriendUsername(runtimeConfig, accountProfile.username);
+  // Username repair is useful but must not hold the first authenticated paint
+  // behind a slow RPC. Keep it bounded and let the account/event cache open
+  // immediately; a later login or explicit profile edit safely retries it.
+  setFriendUsername(
+    runtimeConfig,
+    accountProfile.username,
+    globalThis.fetch,
+    STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS
+  ).catch(() => {});
 
   const inviteUrl = ignoreInvite ? "" : pendingInviteUrl(window.location.href);
   const invitedEventId = parseInviteEventId(inviteUrl);
@@ -502,19 +517,29 @@ async function connectAccountToApp(
     localAccountState.friendContacts?.length
   );
   const startupState = await loadSharedStateForStartup({
-    maxWaitMs: localAccountHasHistory ? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS
+    maxWaitMs:
+      localAccountHasHistory || invitedEventId
+        ? 0
+        : EMPTY_ACCOUNT_CLOUD_WAIT_MS
   });
   let sharedState = startupState.state;
   let verifiedInvitedEventId = "";
   const inviteCredentials = invitedEventId
-    ? await resolveEventInviteCredentials(runtimeConfig, inviteUrl)
+    ? await resolveEventInviteCredentials(
+        runtimeConfig,
+        inviteUrl,
+        globalThis.fetch,
+        { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
+      )
     : null;
   if (invitedEventId && inviteCredentials) {
     try {
       const remoteEvent = await readSharedEventState(
         runtimeConfig,
         inviteCredentials,
-        invitedEventId
+        invitedEventId,
+        globalThis.fetch,
+        { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
       );
       if (remoteEvent) {
         sharedState = mergeSharedEventIntoState(
@@ -783,9 +808,24 @@ function resumeAccountLocally(session) {
 
 function canResumeStoredSessionImmediately(session) {
   const accountProfile = accountProfileFromUser(session?.user);
+  const accountWorkspace = accountWorkspaceFromUser(session?.user);
+  // This predicate must be read-only. Resolving an active space can create and
+  // persist a new id, which made a mere resume check mutate account routing.
+  const activeWorkspaceId = String(
+    peekClientSpaceId(window.location.href, window.localStorage) ?? ""
+  ).trim();
+  const refreshToken = String(session?.refresh_token ?? "").trim();
+  // A locally known account must paint its account-scoped cache before any
+  // network reconciliation.  An expiring access token is not a reason to hide
+  // durable local events: reconcileResumedAccountSession refreshes it in the
+  // background and locks the account only if the credentials are genuinely
+  // invalid.  Waiting here made slow iPhone/PWA refreshes look like every event
+  // had disappeared for many seconds.
   return Boolean(
     navigator.onLine !== false &&
-    !isExpiring(session) &&
+    accountWorkspace?.id &&
+    activeWorkspaceId === accountWorkspace.id &&
+    (!isExpiring(session) || refreshToken) &&
     accountProfile?.participantId &&
     isFullProfileName(accountProfile.displayName) &&
     normalizeUsername(accountProfile.username)
@@ -819,6 +859,7 @@ async function reconcileResumedAccountSession(resumedSession) {
       return null;
     }
     accountSession = saveAccountSession(restoredSession);
+    document.dispatchEvent(new Event("account-session-refreshed"));
     scheduleAccountSessionRefresh();
     publishAccountSessionSync(accountSession);
     return accountSession;
@@ -1636,6 +1677,7 @@ async function handleAccountClick(event) {
         4_000
       );
     } catch {}
+    clearAllOpenInviteTokens();
     clearLocalAccountData(accountSpaceId, accountUserId);
     publishAccountSessionSync(null, { reason: "signed-out" });
     removeSessionValue(AUTH_CHANGED_MARKER);
@@ -2899,6 +2941,7 @@ function refreshActiveAccountSession() {
         ...refreshedSession,
         user: refreshedSession.user ?? previousSession.user
       });
+      document.dispatchEvent(new Event("account-session-refreshed"));
       publishAccountSessionSync(accountSession);
       scheduleAccountSessionRefresh();
       return accountSession;

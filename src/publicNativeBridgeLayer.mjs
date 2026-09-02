@@ -125,37 +125,43 @@ function setupNativeBridge() {
     setupPushNotificationListeners(pushPlugin, openNativeUrl);
   }
 
-  appPlugin?.addListener?.("appUrlOpen", ({ url }) => {
-    openNativeUrl(url).catch(() => {});
-  });
+  registerNativeListener(() =>
+    appPlugin?.addListener?.("appUrlOpen", ({ url }) => {
+      openNativeUrl(url).catch(() => {});
+    })
+  );
 
-  appPlugin?.addListener?.("appStateChange", ({ isActive }) => {
-    if (!isActive) return;
-    window.dispatchEvent(new CustomEvent(NATIVE_RESUME_EVENT));
-  });
+  registerNativeListener(() =>
+    appPlugin?.addListener?.("appStateChange", ({ isActive }) => {
+      if (!isActive) return;
+      window.dispatchEvent(new CustomEvent(NATIVE_RESUME_EVENT));
+    })
+  );
 
   appPlugin?.getLaunchUrl?.()
     .then((launch) => openNativeUrl(launch?.url))
     .catch(() => {});
 
-  appPlugin?.addListener?.("backButton", () => {
-    const choicePickerBack = document.querySelector(
-      ".app-choice-picker .app-choice-picker-close"
-    );
-    if (choicePickerBack) {
-      choicePickerBack.click();
-      return;
-    }
+  registerNativeListener(() =>
+    appPlugin?.addListener?.("backButton", () => {
+      const choicePickerBack = document.querySelector(
+        ".app-choice-picker .app-choice-picker-close"
+      );
+      if (choicePickerBack) {
+        choicePickerBack.click();
+        return;
+      }
 
-    const backRequest = new CustomEvent(NATIVE_BACK_EVENT, {
-      cancelable: true
-    });
-    if (!window.dispatchEvent(backRequest)) {
-      return;
-    }
+      const backRequest = new CustomEvent(NATIVE_BACK_EVENT, {
+        cancelable: true
+      });
+      if (!window.dispatchEvent(backRequest)) {
+        return;
+      }
 
-    appPlugin.minimizeApp?.();
-  });
+      appPlugin.minimizeApp?.();
+    })
+  );
 
   document.addEventListener("click", (event) => {
     const primaryAction = event.target.closest(
@@ -301,59 +307,75 @@ function createNativeNotificationApi(pushPlugin) {
 function setupPushNotificationListeners(pushPlugin, openNativeUrl) {
   if (!pushPlugin) return;
 
-  pushPlugin.addListener?.("registration", (token) => {
-    const value = String(token?.value ?? "").trim();
-    if (!value) return;
-    document.dispatchEvent(
-      new CustomEvent(PUSH_TOKEN_EVENT, {
-        detail: {
-          token: value,
-          platform: globalThis.Capacitor?.getPlatform?.() ?? ""
-        }
-      })
-    );
-  });
+  registerNativeListener(() =>
+    pushPlugin.addListener?.("registration", (token) => {
+      const value = String(token?.value ?? "").trim();
+      if (!value) return;
+      document.dispatchEvent(
+        new CustomEvent(PUSH_TOKEN_EVENT, {
+          detail: {
+            token: value,
+            platform: globalThis.Capacitor?.getPlatform?.() ?? ""
+          }
+        })
+      );
+    })
+  );
 
-  pushPlugin.addListener?.("registrationError", (error) => {
-    document.dispatchEvent(
-      new CustomEvent(PUSH_STATUS_EVENT, {
-        detail: {
-          status: "error",
-          message: String(error?.error ?? "")
-        }
-      })
-    );
-  });
+  registerNativeListener(() =>
+    pushPlugin.addListener?.("registrationError", (error) => {
+      document.dispatchEvent(
+        new CustomEvent(PUSH_STATUS_EVENT, {
+          detail: {
+            status: "error",
+            message: String(error?.error ?? "")
+          }
+        })
+      );
+    })
+  );
 
-  pushPlugin.addListener?.("pushNotificationReceived", (notification) => {
-    document.dispatchEvent(
-      new CustomEvent(PUSH_STATUS_EVENT, {
-        detail: {
-          status: "received",
-          notification
-        }
-      })
-    );
-  });
+  registerNativeListener(() =>
+    pushPlugin.addListener?.("pushNotificationReceived", (notification) => {
+      document.dispatchEvent(
+        new CustomEvent(PUSH_STATUS_EVENT, {
+          detail: {
+            status: "received",
+            notification
+          }
+        })
+      );
+    })
+  );
 
-  pushPlugin.addListener?.("pushNotificationActionPerformed", (action) => {
-    const actionUrl = String(
-      action?.notification?.data?.actionUrl ??
-      action?.notification?.data?.action_url ??
-      ""
-    ).trim();
-    if (actionUrl && nativeDestination(actionUrl)) {
-      openNativeUrl(actionUrl).catch(() => {});
-      return;
-    }
-    const target = notificationTargetFromPayload(action?.notification);
-    const url = buildNotificationDestination(
-      `https://${NATIVE_PUBLIC_HOST}/`,
-      target
-    );
-    if (!url) return;
-    openNativeUrl(url).catch(() => {});
-  });
+  registerNativeListener(() =>
+    pushPlugin.addListener?.("pushNotificationActionPerformed", (action) => {
+      const actionUrl = String(
+        action?.notification?.data?.actionUrl ??
+        action?.notification?.data?.action_url ??
+        ""
+      ).trim();
+      if (actionUrl && nativeDestination(actionUrl)) {
+        openNativeUrl(actionUrl).catch(() => {});
+        return;
+      }
+      const target = notificationTargetFromPayload(action?.notification);
+      const url = buildNotificationDestination(
+        `https://${NATIVE_PUBLIC_HOST}/`,
+        target
+      );
+      if (!url) return;
+      openNativeUrl(url).catch(() => {});
+    })
+  );
+}
+
+function registerNativeListener(factory) {
+  try {
+    Promise.resolve(factory?.()).catch(() => {});
+  } catch {
+    // An optional native capability must never block the rest of the app.
+  }
 }
 
 function isNativeRuntime() {

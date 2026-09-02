@@ -29,7 +29,7 @@ const focusedInstaller = fs.readFileSync(
   "utf8",
 );
 
-const expectedGuards = [
+const historicalGuards = [
   /tg_op\s*=\s*'UPDATE'/,
   /old\.state\s*->\s*'participants'\s+is not distinct from\s+new\.state\s*->\s*'participants'/,
   /old\.state\s*#>\s*'\{events,0,participantIds\}'\s+is not distinct from/,
@@ -38,15 +38,25 @@ const expectedGuards = [
 ];
 
 test("shared-event member reconciliation ignores content-only writes", () => {
-  for (const source of [migrationSql, schemaSql]) {
-    for (const guard of expectedGuards) {
-      assert.match(source, guard);
-    }
-    assert.match(
-      source,
-      /revoke all on function private\.reconcile_shared_snapshot_member_workspaces\(\)\s+from public, anon, authenticated/,
-    );
+  for (const guard of historicalGuards) {
+    assert.match(migrationSql, guard);
   }
+
+  const functionStart = schemaSql.lastIndexOf(
+    "create or replace function private.reconcile_shared_snapshot_member_workspaces()"
+  );
+  const functionEnd = schemaSql.indexOf("drop trigger if exists", functionStart);
+  const currentFunction = schemaSql.slice(functionStart, functionEnd);
+
+  assert.match(currentFunction, /tg_op\s*=\s*'UPDATE'/);
+  assert.match(currentFunction, /participantIds/);
+  assert.match(currentFunction, /inactiveParticipantIds/);
+  assert.doesNotMatch(currentFunction, /old\.state\s*->\s*'participants'/);
+  assert.doesNotMatch(currentFunction, /participantAccountLinks/);
+  assert.match(
+    schemaSql,
+    /revoke all on function private\.reconcile_shared_snapshot_member_workspaces\(\)\s+from public, anon, authenticated/,
+  );
 });
 
 test("load guard ships with a database verification probe", () => {

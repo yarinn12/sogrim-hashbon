@@ -466,11 +466,16 @@ function activityBelongsToSender({
     return activityId === senderParticipantId;
   }
   if (kind === "event-closed") {
-    return (event.activityLog ?? []).some(
-      (entry) =>
-        entry?.id === activityId &&
-        entry?.kind === kind &&
-        entry?.actorParticipantId === senderParticipantId
+    const closedAt = String(event?.closedAt ?? "").trim();
+    const closingActivity = (event.activityLog ?? []).find(
+      (entry) => entry?.id === activityId && entry?.kind === kind
+    );
+    return Boolean(
+      event?.locked === true &&
+      closedAt &&
+      event?.adminIds?.includes(senderParticipantId) &&
+      closingActivity?.actorParticipantId === senderParticipantId &&
+      String(closingActivity?.occurredAt ?? "").trim() === closedAt
     );
   }
   const expense = (event.expenses ?? []).find((item) => item?.id === activityId);

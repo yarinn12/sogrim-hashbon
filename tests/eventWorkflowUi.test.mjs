@@ -1588,11 +1588,37 @@ test("home screen separates the personal event list from the personal archive", 
   assert.match(app, /\{ id: "events", label: "אירועים" \}/);
   assert.match(app, /\{ id: "archive", label: "ארכיון" \}/);
   assert.match(app, /data-action="event-status-filter"/);
-  assert.match(app, /class="segmented-control" role="group" aria-label="אירועים וארכיון"/);
+  assert.match(app, /class="segmented-control event-primary-filter" role="group" aria-label="אירועים וארכיון"/);
   assert.match(app, /aria-pressed="\$\{eventStatusFilter === filter\.id\}"/);
   assert.match(app, /PERSONAL_EVENT_ARCHIVE_STORAGE_PREFIX/);
   assert.match(app, /setEventPersonallyArchived/);
   assert.match(styles, /\.segmented-control/);
+});
+
+test("home event list offers a compact lifecycle status filter", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const styles = await readFile("styles.css", "utf8");
+  const home = sourceBetween(app, "function renderHome()", "function renderHomeCreateEventAction");
+
+  assert.match(app, /EVENT_LIFECYCLE_FILTERS/);
+  assert.match(app, /\{ id: "all", label: "הכול" \}/);
+  assert.match(app, /\{ id: "adding", label: "מוסיפים הוצאות" \}/);
+  assert.match(app, /\{ id: "settling", label: "מתחשבנים" \}/);
+  assert.match(app, /\{ id: "paid", label: "הכול שולם" \}/);
+  assert.match(home, /renderEventLifecycleFilter/);
+  assert.match(app, /data-action="event-lifecycle-filter"/);
+  assert.match(app, /aria-label="סינון אירועים לפי סטטוס"/);
+  assert.match(app, /eventHomeStatusId\(event\) === eventLifecycleFilter/);
+  assert.match(app, /renderEventLifecycleFilter\(currentEvents\)/);
+  assert.match(app, /const counts = new Map/);
+  assert.match(app, /class="event-lifecycle-option-content"/);
+  assert.match(app, /<strong><span class="font-num">\$\{counts\.get\(filter\.id\) \?\? 0\}<\/span><\/strong>/);
+  assert.match(app, /class="segmented-control event-lifecycle-filter"/);
+  assert.match(styles, /\.event-lifecycle-filter/);
+  assert.match(
+    styles,
+    /\.event-lifecycle-filter button \{[\s\S]*?min-height: 44px;/
+  );
 });
 
 test("home stays list focused while expense entry prioritizes the amount", async () => {
@@ -1671,7 +1697,7 @@ test("legacy join screen stays isolated while the home screen owns the current j
   assert.doesNotMatch(joinEvent, /data-action="new-event"/);
   assert.doesNotMatch(joinEvent, /create-event-panel/);
   assert.match(app, /joinExistingEventFromDraft/);
-  assert.match(app, /parseInviteEventId\(joinEventDraft\.link/);
+  assert.match(app, /parseInviteEventId\(draft\?\.link/);
   assert.match(
     app,
     /if \(action === "cancel-join-event"\) \{\s*notice = "";\s*screen = \{ name: "home" \};\s*render\(\);\s*return;/

@@ -71,6 +71,12 @@ test("zoom keeps the focal point while reducing the selected source area", () =>
   assert.equal(zoomed.y + zoomed.height / 2, base.y + base.height / 2);
 });
 
+test("crop confirmation rejects and cleans up when the browser canvas is unavailable", async () => {
+  const source = await readFile("src/imageCropper.mjs", "utf8");
+  assert.match(source, /new Promise\(\(resolve, reject\) =>/);
+  assert.match(source, /catch \(error\) \{[\s\S]*?finish\(null\);[\s\S]*?reject\(error\)/);
+});
+
 test("profile and event uploads request crop frames while receipt photos remain uncropped", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const coverStart = app.indexOf("async function saveEventCoverImage");

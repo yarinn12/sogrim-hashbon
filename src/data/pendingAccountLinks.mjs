@@ -59,7 +59,14 @@ export function rememberPendingAccountLink(
     (item) => pendingAccountLinkKey(item) !== pendingAccountLinkKey(normalized)
   );
   entries.push(normalized);
-  return saveEntries(entries.slice(-MAX_PENDING_ACCOUNT_LINKS), storage);
+  return saveEntries(
+    retainNewestEntriesForOwner(
+      entries,
+      normalized.ownerUserId,
+      MAX_PENDING_ACCOUNT_LINKS
+    ),
+    storage
+  );
 }
 
 export function forgetPendingAccountLink(
@@ -178,6 +185,19 @@ function pendingAccountLinkKey(entry) {
     entry.sourceParticipantId,
     entry.targetParticipantId
   ].join("\u0000");
+}
+
+function retainNewestEntriesForOwner(entries, ownerUserId, limit) {
+  let retainedForOwner = 0;
+  return entries
+    .slice()
+    .reverse()
+    .filter((entry) => {
+      if (entry.ownerUserId !== ownerUserId) return true;
+      retainedForOwner += 1;
+      return retainedForOwner <= limit;
+    })
+    .reverse();
 }
 
 function saveEntries(entries, storage) {

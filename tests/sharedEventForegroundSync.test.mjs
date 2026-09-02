@@ -6,6 +6,10 @@ const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8
 
 test("open shared events refresh quietly while the app remains visible", () => {
   assert.match(appSource, /const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;/);
+  assert.match(
+    appSource,
+    /const BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS = 15_000;/
+  );
   assert.match(appSource, /window\.addEventListener\("focus", requestVisibleEventSync\);/);
   assert.match(
     appSource,
@@ -38,6 +42,22 @@ test("open shared events refresh quietly while the app remains visible", () => {
     ),
     /eventDialog \|\|/,
     "read-only dialogs must not freeze cross-device refreshes"
+  );
+});
+
+test("background screens do not run a full membership scan every second", () => {
+  const visibleStart = appSource.indexOf("function requestVisibleEventSync(");
+  const visibleEnd = appSource.indexOf("\n}\n\nbootstrapApp", visibleStart);
+  const visibleSource = appSource.slice(visibleStart, visibleEnd);
+
+  assert.match(
+    visibleSource,
+    /now - lastBackgroundAccountSyncAt <[\s\S]*BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS/
+  );
+  assert.match(visibleSource, /lastBackgroundAccountSyncAt = now;/);
+  assert.match(
+    visibleSource,
+    /return requestResumeSync\(\{ includeSecondary: false \}\);/
   );
 });
 
@@ -175,6 +195,16 @@ test("stale editors cannot overwrite an item deleted on another device", () => {
     /expenseDraft\.id[\s\S]*?!event\.expenses\.some\(\(expense\) => expense\.id === expenseDraft\.id\)/
   );
   assert.match(expenseSave, /לא שמרנו עותק ישן מעל המחיקה/);
+});
+
+test("note save releases its dialog after an unexpected persistence rejection", () => {
+  const noteSaveStart = appSource.indexOf("async function saveEventNoteFromDialog");
+  const noteSaveEnd = appSource.indexOf("function requestEventNoteDeletion", noteSaveStart);
+  const noteSave = appSource.slice(noteSaveStart, noteSaveEnd);
+  assert.match(noteSave, /const activeDialog = eventDialog/);
+  assert.match(noteSave, /try \{[\s\S]*?await completedSaveResult/);
+  assert.match(noteSave, /catch \(error\) \{[\s\S]*?\{ ok: false, error \}/);
+  assert.match(noteSave, /eventDialog === activeDialog[\s\S]*?activeDialog\.saving = false/);
 });
 
 test("opening the settlement screen is never blocked by a shared-state refresh", () => {

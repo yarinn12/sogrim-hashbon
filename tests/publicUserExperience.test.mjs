@@ -135,7 +135,7 @@ test("account login keeps invite context visible but persists only a verified ev
   assert.match(layer, /const inviteUrl = pendingInviteUrl\(window\.location\.href\)/);
   assert.match(
     layer,
-    /const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
+    /const startupState = await loadSharedStateForStartup\(\{[\s\S]*?maxWaitMs:[\s\S]*?localAccountHasHistory \|\| invitedEventId[\s\S]*?\? 0[\s\S]*?: EMPTY_ACCOUNT_CLOUD_WAIT_MS[\s\S]*?\}\)/
   );
   assert.match(layer, /readSharedEventState/);
   assert.match(layer, /mergeSharedEventIntoState/);
@@ -366,6 +366,22 @@ test("public profile summary shows how the visitor is remembered", async () => {
   assert.match(renderProfileSummary, /profile-memory-status/);
   assert.match(renderProfileSummary, /profileMemoryLabel\(\)/);
   assert.match(styles, /\.profile-memory-status/);
+});
+
+test("profile saving is single-flight and a late completion cannot reset newer navigation", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const actionStart = app.indexOf('if (action === "save-profile")');
+  const actionEnd = app.indexOf('\n  if (action ===', actionStart + 1);
+  const action = app.slice(actionStart, actionEnd);
+  const saveStart = app.indexOf("async function saveProfileFromDraft");
+  const saveEnd = app.indexOf("function startExpenseDraft", saveStart);
+  const save = app.slice(saveStart, saveEnd);
+
+  assert.match(action, /if \(!profileSaveRequest\)/);
+  assert.match(action, /profileSaveRequest = trackedRequest/);
+  assert.match(action, /await profileSaveRequest/);
+  assert.match(save, /const profileSaveDestination =/);
+  assert.match(save, /if \(screen === profileSaveDestination\)[\s\S]*?appHistoryDepth = 0/);
 });
 
 test("public first run and expense forms do not invent sample people or amounts", async () => {

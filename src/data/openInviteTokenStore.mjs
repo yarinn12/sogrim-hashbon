@@ -125,15 +125,16 @@ export function reconcileOpenInviteAccountScope(
     const previousAccountScope = String(
       storage.getItem(ACTIVE_ACCOUNT_SCOPE_STORAGE_KEY) ?? ""
     );
+    // A missing account identity can be a short-lived auth-refresh gap. It is
+    // not proof that the user changed accounts, so keep already verified
+    // tokens until either an explicit sign-out clears them or a different
+    // authenticated account scope is observed.
+    if (!nextAccountScope) return false;
     const changed = Boolean(
       previousAccountScope && previousAccountScope !== nextAccountScope
     );
     if (changed) clearAllOpenInviteTokens(storage);
-    if (nextAccountScope) {
-      storage.setItem(ACTIVE_ACCOUNT_SCOPE_STORAGE_KEY, nextAccountScope);
-    } else {
-      storage.removeItem(ACTIVE_ACCOUNT_SCOPE_STORAGE_KEY);
-    }
+    storage.setItem(ACTIVE_ACCOUNT_SCOPE_STORAGE_KEY, nextAccountScope);
     return changed;
   } catch {
     return false;

@@ -112,6 +112,20 @@ test("copy-invite preserves the exact prepared server invite", () => {
   assert.doesNotMatch(layer, /smartInviteUrl/);
 });
 
+test("closing an invite screen cannot turn its late async result into an unhandled rejection", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const join = app.slice(
+    app.indexOf("async function joinExistingEventFromDraft"),
+    app.indexOf("function inviteJoinErrorMessage")
+  );
+
+  assert.match(join, /const activeJoinDraft = joinEventDraft;/);
+  assert.match(join, /const joinRequestIsCurrent = \(\) => joinEventDraft === activeJoinDraft;/);
+  assert.match(join, /if \(!joinRequestIsCurrent\(\)\) return;/);
+  assert.match(join, /if \(joinRequestIsCurrent\(\)\) \{\s*activeJoinDraft\.error = inviteJoinErrorMessage\(error\);/);
+  assert.doesNotMatch(join, /catch \(error\) \{[\s\S]*?joinEventDraft\.error/);
+});
+
 test("a late config never overwrites an already prepared invite input", () => {
   const layer = readFileSync("src/publicInviteSnapshotLayer.mjs", "utf8");
 
@@ -716,10 +730,58 @@ test("late invite recovery cannot cross an account switch", () => {
       accountLinkRecovery.indexOf("readSharedEventState("),
     "account-link confirmation checks the active session again after its cloud wait"
   );
-  assert.match(joinRecovery, /const recoveredState = await recoverAccessibleSharedEvents/);
+  assert.match(joinRecovery, /recoveredState = await recoverAccessibleSharedEvents/);
   assert.ok(
-    joinRecovery.indexOf("if (!pendingMutationOwnerIsActive(ownerUserId)) return;", joinRecovery.indexOf("const recoveredState")) <
+    joinRecovery.indexOf("if (!pendingMutationOwnerIsActive(ownerUserId)) return;", joinRecovery.indexOf("recoveredState = await")) <
       joinRecovery.indexOf("state = syncLocalProfile(recoveredState)"),
     "join recovery discards an old account response before mutating current state"
+  );
+});
+
+test("pending invite queues abandon permanent work and scan membership once per cycle", () => {
+  const app = readFileSync("src/app.mjs", "utf8");
+  const accountLinkRecovery = app.slice(
+    app.indexOf("function retryPendingAccountLinks"),
+    app.indexOf("async function publishEventInvitation")
+  );
+  const joinRecovery = app.slice(
+    app.indexOf("function retryPendingEventJoins"),
+    app.indexOf("function loadPendingEventMembershipInvitations")
+  );
+  const invitationPublish = app.slice(
+    app.indexOf("async function publishEventInvitation"),
+    app.indexOf("async function sendEventActivityNotificationWithAccountRecovery")
+  );
+
+  assert.match(
+    accountLinkRecovery,
+    /result\?\.error && !isRetryablePendingSyncFailure\(result\.error\)[\s\S]*?forgetPendingAccountLink\(entry\)[\s\S]*?emitOperationFailure/
+  );
+  assert.match(
+    accountLinkRecovery,
+    /const retryable = isRetryablePendingSyncFailure\(error\);[\s\S]*?if \(!retryable\) forgetPendingAccountLink\(entry\)/
+  );
+  assert.equal(
+    joinRecovery.match(/recoverAccessibleSharedEvents\(/g)?.length,
+    1,
+    "one retry cycle must issue only one authoritative membership scan"
+  );
+  assert.match(
+    joinRecovery,
+    /if \(!event\) \{\s*forgetPendingEventJoin\(entry, window\.localStorage\)/
+  );
+  assert.match(
+    joinRecovery,
+    /if \(!isActiveEventParticipant\(event, participantId\)\) \{\s*forgetPendingEventJoin\(entry, window\.localStorage\)/
+  );
+  assert.match(
+    invitationPublish,
+    /const retryable = Boolean\([\s\S]*?isRetryablePendingSyncFailure\(error\)[\s\S]*?if \(!retryable\) \{[\s\S]*?forgetPendingEventMembershipInvitation\(eventId, participant\.id\)/,
+    "permanent 4xx invitation failures must not retry forever"
+  );
+  assert.match(
+    invitationPublish,
+    /if \(retryable\) \{[\s\S]*?schedulePendingMutationRecovery/,
+    "only retryable invitation failures should stay in the recovery loop"
   );
 });

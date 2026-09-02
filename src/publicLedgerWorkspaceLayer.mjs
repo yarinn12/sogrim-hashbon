@@ -772,6 +772,62 @@ const CSS = `
     background: var(--ledger-accent-soft) !important;
   }
 
+  html.ledger-workspace-v1 .event-lifecycle-filter {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 0.64fr 1.5fr 1.22fr 1.14fr !important;
+    justify-content: stretch !important;
+    gap: 0 !important;
+    margin: -2px 0 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  html.ledger-workspace-v1 .event-lifecycle-filter button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 54px !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: auto 18px !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    align-content: center !important;
+    row-gap: 2px !important;
+    padding: 4px 1px !important;
+    font-size: 11.5px !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+  }
+
+  html.ledger-workspace-v1 .event-lifecycle-option-content {
+    min-width: 0 !important;
+    display: grid !important;
+    grid-template-rows: auto 18px !important;
+    justify-items: center !important;
+    align-content: center !important;
+    row-gap: 2px !important;
+  }
+
+  html.ledger-workspace-v1 .event-lifecycle-filter button .font-num {
+    min-width: 18px !important;
+    width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    padding: 0 !important;
+    border-radius: 6px !important;
+    color: var(--ledger-faint) !important;
+    background: var(--ledger-canvas-deep) !important;
+    font-size: 10.5px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
+  }
+
+  html.ledger-workspace-v1 .event-lifecycle-filter button.is-active .font-num {
+    color: var(--ledger-brand) !important;
+    background: rgba(255, 255, 255, 0.82) !important;
+  }
+
   html.ledger-workspace-v1 .event-list {
     display: grid !important;
     gap: 0 !important;
@@ -5922,6 +5978,78 @@ const CSS = `
     color: inherit !important;
     background: transparent !important;
     font-size: inherit !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter {
+    min-height: 48px !important;
+    gap: 4px !important;
+    padding: 4px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 12px !important;
+    background: var(--ledger-surface) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter button {
+    min-height: 44px !important;
+    padding-inline: 18px !important;
+    border-radius: 8px !important;
+    font-size: 13.5px !important;
+    font-weight: 800 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter button.is-active {
+    color: var(--ledger-brand) !important;
+    background: var(--ledger-accent-soft) !important;
+    box-shadow: inset 0 0 0 1px rgba(33, 170, 166, 0.08) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-filter {
+    min-height: 44px !important;
+    margin: 2px 0 10px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--ledger-line) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-filter button {
+    min-height: 44px !important;
+    padding: 3px 1px 4px !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--ledger-faint) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-filter button.is-active {
+    color: var(--ledger-brand) !important;
+    background: transparent !important;
+    box-shadow: inset 0 -2px 0 var(--ledger-accent) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-option-content {
+    grid-template-rows: auto 12px !important;
+    row-gap: 0 !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-filter button .font-num {
+    min-width: 0 !important;
+    width: auto !important;
+    height: 12px !important;
+    min-height: 12px !important;
+    display: grid !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    color: inherit !important;
+    background: transparent !important;
+    font-size: 9.5px !important;
+    font-weight: 800 !important;
+    line-height: 1 !important;
   }
 
   html.ledger-workspace-v1 .event-list {

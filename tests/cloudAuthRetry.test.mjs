@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 test("an expired cloud token refreshes once and retries with the same account", async () => {
   const previousWindow = globalThis.window;
@@ -89,19 +90,107 @@ test("an expired cloud token refreshes once and retries with the same account", 
   }
 });
 
+test("a locally expired session refreshes before authoritative membership recovery", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const previousSessionBridge = globalThis.SogrimAccountSession;
+  const storage = new MemoryStorage();
+  const spaceId = "account-space";
+  const state = {
+    currentParticipantId: "account-user-one",
+    participants: [{ id: "account-user-one", displayName: "User One", kind: "user" }],
+    groups: [],
+    events: []
+  };
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, "abcdefghijklmnopqrstuvwxyz_123456");
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(state));
+  saveSession(storage, "locally-expired-token", Math.floor(Date.now() / 1000) - 10);
+
+  globalThis.window = {
+    localStorage: storage,
+    location: { href: "https://sogrim-hesbon-app.vercel.app/" },
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = {
+    protocol: "https:",
+    hostname: "sogrim-hesbon-app.vercel.app"
+  };
+  globalThis.localStorage = storage;
+
+  let refreshCount = 0;
+  const cloudTokens = [];
+  globalThis.SogrimAccountSession = {
+    async refresh() {
+      refreshCount += 1;
+      saveSession(storage, "fresh-local-token");
+      return JSON.parse(storage.getItem("settle-friends-account-session"));
+    }
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots",
+          spaceId
+        }
+      });
+    }
+    cloudTokens.push(options.headers?.authorization ?? "");
+    if (address.includes("snapshot_kind=eq.shared_event")) return jsonResponse([]);
+    return jsonResponse([{ state, updated_at: "2026-09-02T00:00:00.000Z" }]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?locally-expired-auth=${Date.now()}`
+    );
+    const startup = await localStore.loadSharedStateForStartup({ maxWaitMs: 5_000 });
+
+    assert.equal(refreshCount, 1);
+    assert.equal(startup.authoritative, true);
+    assert.ok(cloudTokens.includes("Bearer fresh-local-token"));
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+    restoreGlobal("SogrimAccountSession", previousSessionBridge);
+  }
+});
+
 test("a shared-event membership failure never authorizes an empty startup state", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
   const previousFetch = globalThis.fetch;
   const storage = new MemoryStorage();
-  const spaceId = "account-space-membership-failure";
+  const spaceId = "account-space";
   const spaceKey = "abcdefghijklmnopqrstuvwxyz_membership_failure";
-  const state = {
+  const remoteState = {
     currentParticipantId: "account-user-one",
     participants: [{ id: "account-user-one", displayName: "User One", kind: "user" }],
     groups: [],
     events: []
+  };
+  const state = {
+    ...remoteState,
+    events: [{
+      id: "cached-event",
+      name: "Cached event",
+      participantIds: ["account-user-one"],
+      adminIds: ["account-user-one"],
+      createdByParticipantId: "account-user-one",
+      expenses: [],
+      transfers: []
+    }]
   };
 
   storage.setItem("settle-friends-cloud-space", spaceId);
@@ -139,7 +228,7 @@ test("a shared-event membership failure never authorizes an empty startup state"
       return { ok: false, status: 503 };
     }
     if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
-    return jsonResponse([{ state, updated_at: "2026-09-01T00:00:00.000Z" }]);
+    return jsonResponse([{ state: remoteState, updated_at: "2026-09-01T00:00:00.000Z" }]);
   };
 
   try {
@@ -150,7 +239,7 @@ test("a shared-event membership failure never authorizes an empty startup state"
 
     assert.equal(startup.authoritative, false);
     assert.equal(startup.source, "fallback");
-    assert.deepEqual(startup.state.events, []);
+    assert.deepEqual(startup.state.events.map((event) => event.id), ["cached-event"]);
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);
@@ -411,6 +500,30 @@ test("a hanging personal index write never delays a newly recovered event", asyn
   }
 });
 
+test("recovered membership bookkeeping merges a newer local edit before it writes", async () => {
+  const source = await readFile("src/data/localStore.mjs", "utf8");
+  const scheduler = source.slice(
+    source.indexOf("function scheduleRecoveredEventIndexPersistence"),
+    source.indexOf("export function waitForRecoveredEventIndexPersistence")
+  );
+
+  assert.match(
+    scheduler,
+    /requestScope !== synchronizeAccountStorageScope\(\)[\s\S]*?requestAccountGeneration !== accountStorageGeneration/,
+    "a recovery job from another account generation must be discarded"
+  );
+  assert.match(
+    scheduler,
+    /requestSaveGeneration !== sharedStateSaveGeneration/,
+    "a recovery job captured before a newer local save must be discarded"
+  );
+  assert.match(
+    scheduler,
+    /const latestLocalState = toCloudState\(request\.config, loadState\(\)\);[\s\S]*?mergeSharedStates\(request\.state, latestLocalState\)[\s\S]*?saveCloudStateWithRetry\(request\.config, candidateState\)/,
+    "the best-effort index write must retain actions saved after recovery began"
+  );
+});
+
 test("an account workspace persists the signed-in participant instead of the first event member", async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
@@ -500,13 +613,17 @@ test("an account workspace persists the signed-in participant instead of the fir
   }
 });
 
-function saveSession(storage, accessToken) {
+function saveSession(
+  storage,
+  accessToken,
+  expiresAt = Math.floor(Date.now() / 1000) + 3600
+) {
   storage.setItem(
     "settle-friends-account-session",
     JSON.stringify({
       access_token: accessToken,
       refresh_token: "refresh-token",
-      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      expires_at: expiresAt,
       user: {
         id: "user-one",
         user_metadata: {

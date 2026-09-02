@@ -163,7 +163,7 @@ test("local profile memory preserves the version used to reject stale devices", 
     const savedProfile = saveLocalProfile({
       participantId: "user-versioned",
       displayName: "Versioned User",
-      avatarImage: "https://images.example.com/current.webp",
+      avatarImage: "https://lh3.googleusercontent.com/current.webp",
       profileUpdatedAt: "2026-08-25T10:15:00.000Z"
     });
 

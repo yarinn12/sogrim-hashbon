@@ -6,6 +6,7 @@ import {
   remapParticipantPairKeys
 } from "./participantIdentity.mjs";
 import { canManageEventSettings } from "./permissions.mjs";
+import { isEventClosed } from "./eventFilters.mjs";
 import {
   initializeParticipantMembership,
   markParticipantMembershipChanges
@@ -724,6 +725,7 @@ export function canLinkParticipantAccountInEvent(
   );
   if (
     !event ||
+    isEventClosed(event) ||
     !source ||
     !target ||
     participantHasConnectedAccount(source) ||
@@ -994,6 +996,7 @@ function participantMergePair(state, sourceParticipantId, targetParticipantId) {
 function canManageAffectedParticipantMergeEvents(state, sourceParticipantId) {
   return affectedParticipantMergeEvents(state, sourceParticipantId).every(
     (event) =>
+      !isEventClosed(event) &&
       canManageEventSettings(state, event, state.currentParticipantId)
   );
 }

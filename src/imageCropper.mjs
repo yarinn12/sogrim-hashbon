@@ -295,7 +295,7 @@ async function openCropDialog(image, objectUrl, options) {
     return canvas;
   }
 
-  const result = new Promise((resolve) => {
+  const result = new Promise((resolve, reject) => {
     function resolveAndFinish(value) {
       const resultValue = finish(value);
       if (resultValue !== undefined || value === null) resolve(value);
@@ -318,7 +318,14 @@ async function openCropDialog(image, objectUrl, options) {
         zoomInput.value = "1";
         renderPreview();
       }
-      if (action === "confirm") resolveAndFinish(renderOutput());
+      if (action === "confirm") {
+        try {
+          resolveAndFinish(renderOutput());
+        } catch (error) {
+          finish(null);
+          reject(error);
+        }
+      }
     });
     zoomInput.addEventListener("input", () => {
       state.zoom = clamp(Number(zoomInput.value) || 1, 1, maxZoom);

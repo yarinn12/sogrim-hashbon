@@ -36,9 +36,16 @@ test("public invite snapshot layer upgrades links but imports only verified even
   assert.match(layer, /parseInviteSnapshot/);
   assert.match(layer, /rememberPendingInviteUrl/);
   assert.match(layer, /startInviteImportAfterAccountReady/);
+  assert.ok(
+    layer.indexOf("rememberPendingInviteUrl();") <
+      layer.indexOf("cleanInviteAddress();") &&
+      layer.indexOf("cleanInviteAddress();") <
+        layer.indexOf("startInviteImportAfterAccountReady();"),
+    "the token is stored for recovery and removed from browser history before import starts"
+  );
   assert.match(
     layer,
-    /document\.addEventListener\("account-auth-ready", initializeInviteImport, \{\s*once: true/
+    /"account-auth-ready",[\s\S]*?initializeInviteImport\(\)\.catch\(\(\) => schedulePendingInviteRetry\(\)\)[\s\S]*?\{ once: true \}/
   );
   assert.match(layer, /resolveEventInviteCredentials/);
   assert.match(layer, /settle-friends:entitlements-changed/);

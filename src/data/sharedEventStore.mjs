@@ -19,12 +19,16 @@ import {
   normalizeAvatarPreset
 } from "../domain/avatarPresets.mjs";
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
+import { markParticipantMembershipChanges } from "../domain/eventMembership.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { loadStoredAccountSession } from "./accountAuth.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
 export const EVENT_SPACE_KEY_FIELD = "sharedSpaceKey";
+export const SHARED_EVENT_MEMBERSHIP_REVOKED_MESSAGE =
+  "You are no longer a member of this event";
 const SHARED_EVENT_READ_CONCURRENCY = 6;
 const SHARED_EVENT_WRITE_CONCURRENCY = 3;
 
@@ -149,11 +153,12 @@ export async function readSharedEventState(
   runtimeConfig,
   credentials,
   expectedEventId = "",
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  options = {}
 ) {
   const config = eventCloudConfig(runtimeConfig, credentials);
   if (!config) return null;
-  const sharedState = await readCloudState(config, fetchImpl);
+  const sharedState = await readCloudState(config, fetchImpl, options);
   const expectedEventWasDeleted = Boolean(
     expectedEventId &&
       sharedState?.deletedEvents?.some((item) => item.id === expectedEventId)
@@ -301,11 +306,22 @@ async function findAccessibleSharedEvent(
   return rows.find((row) => row?.state?.events?.[0]?.id === eventId) ?? null;
 }
 
-function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
+export function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
   const merged = mergeSharedStates(remoteState, localState);
-  const actorParticipantId = runtimeConfig?.storage?.account?.userId
-    ? `account-${runtimeConfig.storage.account.userId}`
-    : "";
+  const configuredUserId = String(
+    runtimeConfig?.storage?.account?.userId ?? ""
+  ).trim();
+  const storedUserId = String(
+    loadStoredAccountSession(globalThis.localStorage)?.user?.id ?? ""
+  ).trim();
+  if (configuredUserId && storedUserId && configuredUserId !== storedUserId) {
+    throw new CloudStateAuthError("Cloud account identity changed during save");
+  }
+  const actorUserId = configuredUserId || storedUserId;
+  if (!actorUserId) {
+    throw new CloudStateAuthError("Cloud account identity is unavailable");
+  }
+  const actorParticipantId = `account-${actorUserId}`;
   const remoteEvent = remoteState?.events?.[0];
   const adminIds = remoteEvent?.adminIds?.length
     ? remoteEvent.adminIds
@@ -488,17 +504,33 @@ export async function ensureSharedEventMembership(
   );
 
   if (!response.ok) {
-    if (response.status === 401) throw new CloudStateAuthError();
+    const responseError = response.status === 403 && typeof response.json === "function"
+      ? await response.json().catch(() => null)
+      : null;
+    const responseMessage = String(
+      responseError?.message ?? responseError?.error ?? ""
+    ).trim();
+    if (
+      response.status === 401 ||
+      /authentication is required/i.test(responseMessage)
+    ) {
+      throw new CloudStateAuthError();
+    }
+    const membershipWasExplicitlyRevoked =
+      response.status === 403 &&
+      responseMessage.toLowerCase() ===
+        SHARED_EVENT_MEMBERSHIP_REVOKED_MESSAGE.toLowerCase();
     const error = new Error(
-      response.status === 403
+      membershipWasExplicitlyRevoked
         ? "Shared event membership is no longer active"
         : "Shared event membership could not be verified"
     );
     error.code =
-      response.status === 403
+      membershipWasExplicitlyRevoked
         ? "SHARED_EVENT_MEMBERSHIP_REVOKED"
         : "SHARED_EVENT_MEMBERSHIP_FAILED";
     error.status = Number(response.status ?? 0) || 0;
+    if (responseMessage) error.cause = responseMessage;
     throw error;
   }
 
@@ -642,11 +674,39 @@ export async function recoverAccessibleSharedEvents(
     });
   }
 
-  // The membership-filtered list is authoritative. Reconcile removals in the
-  // same request instead of issuing one extra read plus join RPC per event.
-  for (const event of state.events ?? []) {
-    if (!eventShareCredentials(event) || representedEventIds.has(event.id)) continue;
-    nextState = revokeSharedEventAccess(nextState, event.id, runtimeConfig);
+  // A complete membership page is normally authoritative, but its rows can
+  // still change while a multi-page recovery is in flight. Never hide a local
+  // event from a transiently incomplete page alone: confirm each apparent
+  // removal against the server membership boundary first.
+  const apparentlyMissingEvents = (state.events ?? [])
+    .map((event) => ({ event, credentials: eventShareCredentials(event) }))
+    .filter(({ event, credentials }) =>
+      credentials && !representedEventIds.has(event.id)
+    );
+  const revocationChecks = await mapSettledWithConcurrency(
+    apparentlyMissingEvents,
+    async ({ event, credentials }) => ({
+      eventId: event.id,
+      revoked: await sharedEventMembershipWasRevoked(
+        runtimeConfig,
+        credentials,
+        fetchImpl
+      )
+    }),
+    SHARED_EVENT_READ_CONCURRENCY
+  );
+  const revocationAuthFailure = revocationChecks.find(
+    (result) => result.status === "rejected" &&
+      result.reason?.code === "CLOUD_STATE_AUTH_EXPIRED"
+  );
+  if (revocationAuthFailure) throw revocationAuthFailure.reason;
+  for (const result of revocationChecks) {
+    if (result.status !== "fulfilled" || !result.value.revoked) continue;
+    nextState = revokeSharedEventAccess(
+      nextState,
+      result.value.eventId,
+      runtimeConfig
+    );
   }
   return nextState;
 }
@@ -656,6 +716,7 @@ export function revokeSharedEventAccess(state, eventId, runtimeConfig = null) {
     ? `account-${runtimeConfig.storage.account.userId}`
     : "";
   const currentParticipantId = String(state?.currentParticipantId ?? "");
+  const membershipUpdatedAt = new Date().toISOString();
 
   return {
     ...state,
@@ -668,7 +729,16 @@ export function revokeSharedEventAccess(state, eventId, runtimeConfig = null) {
         ...event,
         inactiveParticipantIds: participantId
           ? [...new Set([...(event.inactiveParticipantIds ?? []), participantId])]
-          : [...(event.inactiveParticipantIds ?? [])]
+          : [...(event.inactiveParticipantIds ?? [])],
+        ...(participantId
+          ? {
+              membershipUpdatedAtByParticipant: markParticipantMembershipChanges(
+                event,
+                [participantId],
+                membershipUpdatedAt
+              )
+            }
+          : {})
       };
       delete nextEvent[EVENT_SPACE_ID_FIELD];
       delete nextEvent[EVENT_SPACE_KEY_FIELD];

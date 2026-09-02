@@ -41,6 +41,11 @@ let pendingInviteRetryTimer = null;
 let pendingInviteRetryDelayMs = PENDING_INVITE_RETRY_BASE_MS;
 
 rememberPendingInviteUrl();
+// Capture the bearer-capability URL first, then immediately remove it from the
+// visible address and current history entry. Import and retries continue from
+// the owner-scoped pending-invite stores instead of leaking the token into
+// screenshots, copied addresses, or later SPA history entries.
+cleanInviteAddress();
 startInviteImportAfterAccountReady();
 window.addEventListener("online", () => {
   recoverPendingInviteAfterReconnect({ resetBackoff: true }).catch(() => {});
@@ -67,13 +72,15 @@ scheduleInviteSnapshotEnhancement();
 
 function startInviteImportAfterAccountReady() {
   if (!document.documentElement.classList.contains("account-auth-pending")) {
-    initializeInviteImport();
+    initializeInviteImport().catch(() => schedulePendingInviteRetry());
     return;
   }
 
-  document.addEventListener("account-auth-ready", initializeInviteImport, {
-    once: true
-  });
+  document.addEventListener(
+    "account-auth-ready",
+    () => initializeInviteImport().catch(() => schedulePendingInviteRetry()),
+    { once: true }
+  );
 }
 
 async function initializeInviteImport() {
@@ -150,10 +157,10 @@ function handleInviteCopyClick(event) {
 }
 
 async function copyResolvedInviteUrl(button, inviteUrl) {
-  copyText(inviteUrl);
-  button.textContent = "הועתק";
+  const copied = await copyText(inviteUrl);
+  button.textContent = copied ? "הועתק" : "לא הועתק";
   window.setTimeout(() => {
-    button.textContent = "העתק";
+    if (button.isConnected) button.textContent = "העתק";
   }, 1400);
 }
 
@@ -237,6 +244,12 @@ async function handleInviteSnapshotJoinClick(event) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId);
     }
     window.location.replace(buildEventInviteUrl(window.location.href, eventId));
+  } catch {
+    document.dispatchEvent(new CustomEvent("settle-friends:notice", {
+      detail: {
+        message: "לא הצלחנו להצטרף לאירוע כרגע. בדקו את החיבור ונסו שוב."
+      }
+    }));
   } finally {
     inviteJoinBusy = false;
     if (button.isConnected) button.disabled = false;
@@ -442,15 +455,20 @@ function findJoinLink() {
 async function copyText(value) {
   try {
     await navigator.clipboard.writeText(value);
-    return;
+    return true;
   } catch {
-    const input = document.createElement("textarea");
-    input.value = value;
-    input.style.position = "fixed";
-    input.style.opacity = "0";
-    document.body.append(input);
-    input.select();
-    document.execCommand("copy");
-    input.remove();
+    try {
+      const input = document.createElement("textarea");
+      input.value = value;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.append(input);
+      input.select();
+      const copied = document.execCommand("copy");
+      input.remove();
+      return copied;
+    } catch {
+      return false;
+    }
   }
 }

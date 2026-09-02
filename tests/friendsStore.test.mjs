@@ -182,7 +182,7 @@ test("profile refresh patches the existing triggered row without inserting a nul
     {
       displayName: "Current User",
       avatarPreset: "avatar-3",
-      avatarImage: "https://images.example.com/avatar.jpg"
+      avatarImage: "https://lh3.googleusercontent.com/avatar.jpg"
     },
     fetchImpl
   );
@@ -195,7 +195,7 @@ test("profile refresh patches the existing triggered row without inserting a nul
   const body = JSON.parse(calls[0].options.body);
   assert.equal(body.display_name, "Current User");
   assert.equal(body.avatar_preset, "avatar-3");
-  assert.equal(body.avatar_image, "https://images.example.com/avatar.jpg");
+  assert.equal(body.avatar_image, "https://lh3.googleusercontent.com/avatar.jpg");
   assert.ok(Number.isFinite(Date.parse(body.avatar_image_updated_at)));
   assert.ok(!("user_id" in body));
   assert.ok(!("username" in body));
@@ -315,6 +315,23 @@ test("username lookup and username changes use exact guarded RPC endpoints", asy
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     p_username: "yarin_12"
   });
+});
+
+test("a committed not-found friendship sentinel is restored to the normal client error", async () => {
+  await assert.rejects(
+    requestFriendshipByUsername(
+      accountConfig(),
+      "@missing_user",
+      async () => jsonResponse({
+        ok: false,
+        code: "USERNAME_NOT_FOUND",
+        message: "Username was not found"
+      })
+    ),
+    (error) =>
+      error?.code === "USERNAME_NOT_FOUND" &&
+      error?.message === "Username was not found"
+  );
 });
 
 test("event participants can request friendship through the guarded shared-event RPC", async () => {

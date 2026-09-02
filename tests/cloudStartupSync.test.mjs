@@ -77,7 +77,7 @@ test("account bootstrap waits once and app hydration does not repeat the cloud w
   );
   assert.match(
     accountAuth,
-    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{\s*maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS\s*\}\)/
+    /const localAccountHasHistory = Boolean\([\s\S]*?const startupState = await loadSharedStateForStartup\(\{[\s\S]*?maxWaitMs:[\s\S]*?localAccountHasHistory \|\| invitedEventId[\s\S]*?\? 0[\s\S]*?: EMPTY_ACCOUNT_CLOUD_WAIT_MS[\s\S]*?\}\)/
   );
   assert.match(
     accountAuth,

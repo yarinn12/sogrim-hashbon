@@ -2,6 +2,7 @@ import { fetchWithTimeout } from "./fetchTimeout.mjs";
 
 const snapshotVersions = new Map();
 const snapshotObserverVersions = new Map();
+const ACCESSIBLE_SHARED_STATE_PAGE_SIZE = 500;
 export const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 
 export class CloudStateConflictError extends Error {
@@ -49,12 +50,19 @@ export async function loadCloudState(config, fallbackState, fetchImpl = fetch) {
   return fallbackState;
 }
 
-export async function readCloudState(config, fetchImpl = fetch) {
+export async function readCloudState(
+  config,
+  fetchImpl = fetch,
+  { timeoutMs } = {}
+) {
   if (config.storage?.mode !== "supabase") return null;
 
-  const response = await fetchWithTimeout(fetchImpl, snapshotReadUrl(config), {
-    headers: cloudHeaders(config)
-  });
+  const response = await fetchWithTimeout(
+    fetchImpl,
+    snapshotReadUrl(config),
+    { headers: cloudHeaders(config) },
+    timeoutMs
+  );
 
   if (!response.ok) throw cloudResponseError(response, "Cloud state unavailable");
 
@@ -183,23 +191,62 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
 }
 
 export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch) {
-  if (
-    config.storage?.mode !== "supabase" ||
-    !config.storage.account?.accessToken
-  ) return [];
-
-  const response = await fetchWithTimeout(
-    fetchImpl,
-    `${config.storage.url}/rest/v1/${encodeURIComponent(config.storage.table)}` +
-      `?snapshot_kind=eq.shared_event&select=id,state,updated_at&order=updated_at.desc`,
-    { headers: cloudHeaders(config) }
-  );
-  if (!response.ok) {
-    throw cloudResponseError(response, "Shared event recovery unavailable");
+  if (config.storage?.mode !== "supabase") return [];
+  // An authenticated recovery read without its bearer token is not an
+  // authoritative empty membership list. Returning [] here used to make the
+  // caller revoke every locally cached shared event while an iPhone session
+  // was still being refreshed.
+  if (!config.storage.account?.accessToken) {
+    throw new CloudStateAuthError();
   }
 
-  const rows = await response.json();
-  return (Array.isArray(rows) ? rows : [])
+  const rowsById = new Map();
+  let lastSeenId = "";
+  let expectedRowCount = null;
+  while (true) {
+    const cursorFilter = lastSeenId
+      ? `&id=gt.${encodeURIComponent(lastSeenId)}`
+      : "";
+    const response = await fetchWithTimeout(
+      fetchImpl,
+      `${config.storage.url}/rest/v1/${encodeURIComponent(config.storage.table)}` +
+        `?snapshot_kind=eq.shared_event&select=id,state,updated_at` +
+        `&order=id.asc&limit=${ACCESSIBLE_SHARED_STATE_PAGE_SIZE}` +
+        cursorFilter,
+      {
+        headers: {
+          ...cloudHeaders(config),
+          Prefer: "count=exact"
+        }
+      }
+    );
+    if (!response.ok) {
+      throw cloudResponseError(response, "Shared event recovery unavailable");
+    }
+
+    const pageRows = await response.json();
+    const normalizedPage = Array.isArray(pageRows) ? pageRows : [];
+    expectedRowCount ??= contentRangeTotal(response.headers?.get?.("content-range"));
+    if (normalizedPage.length === 0) break;
+    for (const row of normalizedPage) {
+      if (!row?.id || rowsById.has(row.id)) continue;
+      rowsById.set(row.id, row);
+    }
+    if (
+      Number.isInteger(expectedRowCount)
+        ? rowsById.size >= expectedRowCount
+        : normalizedPage.length < ACCESSIBLE_SHARED_STATE_PAGE_SIZE
+    ) {
+      break;
+    }
+    const nextLastSeenId = String(normalizedPage.at(-1)?.id ?? "").trim();
+    if (!nextLastSeenId || nextLastSeenId === lastSeenId) {
+      throw new Error("Shared event recovery pagination did not advance");
+    }
+    lastSeenId = nextLastSeenId;
+  }
+
+  return [...rowsById.values()]
     .filter((row) => row?.id && row?.state)
     .map((row) => {
       rememberSnapshotVersion(
@@ -216,6 +263,13 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
       );
       return row;
     });
+}
+
+function contentRangeTotal(value) {
+  const match = String(value ?? "").match(/\/(\d+)$/);
+  if (!match) return null;
+  const total = Number(match[1]);
+  return Number.isSafeInteger(total) && total >= 0 ? total : null;
 }
 
 async function saveSharedEventStateAtomically(

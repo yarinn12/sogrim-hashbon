@@ -841,6 +841,9 @@ test("client exposes an expired notification session for account recovery", asyn
 test("closing an event reaches the in-app inbox and opens its summary", async () => {
   const activityId = "activity-event-closed";
   const senderState = eventState();
+  senderState.events[0].locked = true;
+  senderState.events[0].closedAt = "2026-08-27T10:00:00.000Z";
+  senderState.events[0].adminIds = [SENDER_PARTICIPANT_ID];
   senderState.events[0].activityLog = [{
     id: activityId,
     kind: "event-closed",
@@ -895,6 +898,34 @@ test("closing an event reaches the in-app inbox and opens its summary", async ()
     }
   );
   assert.equal(JSON.parse(clientCalls[0].options.body).kind, "event-closed");
+});
+
+test("event-closed notifications require the canonical closed state and an admin actor", async () => {
+  const activityId = "activity-event-closed-forged";
+  const senderState = eventState();
+  senderState.events[0].activityLog = [{
+    id: activityId,
+    kind: "event-closed",
+    actorParticipantId: SENDER_PARTICIPANT_ID,
+    occurredAt: "2026-08-27T10:00:00.000Z"
+  }];
+  const { fetchImpl } = createActivityFetch({
+    senderState,
+    authoritativeState: senderState
+  });
+
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId,
+    kind: "event-closed",
+    fetchImpl
+  });
+
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.code, "EVENT_ACTIVITY_NOT_ALLOWED");
 });
 
 test("event invitations and saved activities recover one expired account session", async () => {

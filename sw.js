@@ -1,5 +1,5 @@
-const PWA_RELEASE = "438";
-const CACHE_NAME = "settle-friends-live-v438";
+const PWA_RELEASE = "439";
+const CACHE_NAME = "settle-friends-live-v439";
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -36,6 +36,8 @@ const CACHE_FILES = [
   "/accessibility.html",
   "/account-deletion.html",
   "/src/app.mjs",
+  "/src/accountSessionResume.mjs",
+  "/src/interactionBoundary.mjs",
   "/src/imageCropper.mjs",
   "/src/pwaBootstrap.mjs",
   "/src/publicAppSplashLayer.mjs",

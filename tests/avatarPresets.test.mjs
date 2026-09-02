@@ -21,12 +21,14 @@ test("the app exposes six safe branded avatar presets", () => {
   assert.equal(avatarPresetSource("avatar-4"), "./assets/avatars/avatar-4.png");
 });
 
-test("profile images accept only bounded gallery data or secure internet URLs", () => {
-  const secureUrl = "https://images.example.com/profile.jpg";
+test("profile images accept only bounded gallery data or trusted identity URLs", () => {
+  const secureUrl = "https://lh3.googleusercontent.com/profile.jpg";
+  const trackingUrl = "https://images.example.com/profile.jpg";
   const dataUrl = "data:image/jpeg;base64,YWJjZA==";
 
   assert.equal(normalizeAvatarImage(secureUrl), secureUrl);
   assert.equal(normalizeAvatarImage(dataUrl), dataUrl);
+  assert.equal(normalizeAvatarImage(trackingUrl), "");
   assert.equal(normalizeAvatarImage("http://images.example.com/profile.jpg"), "");
   assert.equal(normalizeAvatarImage("data:image/svg+xml;base64,PHN2Zz4="), "");
   assert.equal(

@@ -173,7 +173,7 @@ test("ensureNamedParticipant saves a valid selected avatar preset", () => {
 });
 
 test("ensureNamedParticipant saves and clears a safe custom profile image", () => {
-  const avatarImage = "https://images.example.com/yarin.jpg";
+  const avatarImage = "https://lh3.googleusercontent.com/yarin.jpg";
   const withImage = ensureNamedParticipant(baseState, {
     id: "yarin",
     displayName: "Yarin Cohen",

@@ -13,7 +13,39 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=438"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=439"><\/script>/);
+});
+
+test("username repair never blocks the first authenticated paint", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  assert.match(
+    layer,
+    /setFriendUsername\([\s\S]*?globalThis\.fetch,[\s\S]*?STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS[\s\S]*?\)\.catch\(\(\) => \{\}\);/
+  );
+  assert.doesNotMatch(layer, /await setFriendUsername\(runtimeConfig, accountProfile\.username/);
+});
+
+test("the immediate resume predicate never creates a cloud workspace", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const start = layer.indexOf("function canResumeStoredSessionImmediately");
+  const end = layer.indexOf("\n}\n\nasync function reconcileResumedAccountSession", start);
+  const predicate = layer.slice(start, end);
+
+  assert.match(predicate, /peekClientSpaceId\(window\.location\.href, window\.localStorage\)/);
+  assert.doesNotMatch(predicate, /getActiveCloudSpaceId\(/);
+});
+
+test("the slow account connection activates the signed-in workspace before reading state", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const start = layer.indexOf("async function connectAccountToApp(");
+  const end = layer.indexOf("\n}\n\nfunction discardFailedInviteContext", start);
+  const connection = layer.slice(start, end);
+
+  const activateIndex = connection.indexOf("activateAccountWorkspace(accountWorkspace)");
+  const configIndex = connection.indexOf("runtimeConfig = await loadRuntimeConfig()");
+  const stateIndex = connection.indexOf("const localAccountState = loadState()");
+  assert.ok(activateIndex >= 0 && activateIndex < configIndex);
+  assert.ok(configIndex < stateIndex);
 });
 
 test("a fresh signup never inherits the previous device owner's name", async () => {
@@ -30,7 +62,7 @@ test("a fresh signup never inherits the previous device owner's name", async () 
   assert.doesNotMatch(accountGate, /loadLocalProfile|previousProfile/);
 });
 
-test("a valid returning session paints local state before remote reconciliation", async () => {
+test("a returning session paints local state before remote reconciliation even when its token is expiring", async () => {
   const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
   const setup = layer.slice(
     layer.indexOf("async function setupAccountAuth"),
@@ -50,9 +82,22 @@ test("a valid returning session paints local state before remote reconciliation"
       setup.indexOf("reconcileResumedAccountSession(resumedSession)"),
     "the cached account must become interactive before cloud validation starts"
   );
+  const immediateResume = layer.slice(
+    layer.indexOf("function canResumeStoredSessionImmediately"),
+    layer.indexOf("async function reconcileResumedAccountSession")
+  );
   assert.match(
-    layer,
-    /function canResumeStoredSessionImmediately\(session\)[\s\S]*?!isExpiring\(session\)[\s\S]*?isFullProfileName\(accountProfile\.displayName\)[\s\S]*?normalizeUsername\(accountProfile\.username\)/
+    immediateResume,
+    /isFullProfileName\(accountProfile\.displayName\)[\s\S]*?normalizeUsername\(accountProfile\.username\)/
+  );
+  assert.match(
+    immediateResume,
+    /accountWorkspaceFromUser\(session\?\.user\)[\s\S]*?activeWorkspaceId === accountWorkspace\.id/
+  );
+  assert.match(
+    immediateResume,
+    /!isExpiring\(session\) \|\| refreshToken/,
+    "an expiring cached session may resume immediately only when it can refresh in the background"
   );
   assert.match(
     reconcile,
@@ -147,9 +192,14 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     layer.indexOf("async function connectAccountToApp"),
     layer.indexOf("async function updateSignedInAccountDisplayName")
   );
+  const inviteResolution = accountConnection.indexOf(
+    "resolveEventInviteCredentials("
+  );
   assert.ok(
     accountConnection.indexOf("runtimeConfig = await loadRuntimeConfig()") <
-      accountConnection.indexOf("resolveEventInviteCredentials(runtimeConfig"),
+      inviteResolution &&
+      inviteResolution >= 0 &&
+      accountConnection.indexOf("runtimeConfig", inviteResolution) > inviteResolution,
     "a fresh login session must reach private invite redemption"
   );
   assert.doesNotMatch(accountConnection, /previousProfile\?\.displayName/);
@@ -586,7 +636,15 @@ test("a fresh device waits briefly for account history before showing an empty a
   );
   assert.match(
     connection,
-    /maxWaitMs: localAccountHasHistory \? 0 : EMPTY_ACCOUNT_CLOUD_WAIT_MS/
+    /maxWaitMs:[\s\S]*?localAccountHasHistory \|\| invitedEventId[\s\S]*?\? 0[\s\S]*?: EMPTY_ACCOUNT_CLOUD_WAIT_MS/
+  );
+  assert.match(
+    connection,
+    /resolveEventInviteCredentials\([\s\S]*?timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS/
+  );
+  assert.match(
+    connection,
+    /readSharedEventState\([\s\S]*?timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS/
   );
 });
 

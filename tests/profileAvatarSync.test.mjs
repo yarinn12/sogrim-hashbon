@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveProfileAvatar } from "../src/domain/profileAvatarSync.mjs";
 
-const chosenAvatar = "https://images.example.com/chosen.webp";
+const chosenAvatar = "https://lh3.googleusercontent.com/chosen.webp";
 
 test("an empty installation cannot erase a chosen avatar", () => {
   const result = resolveProfileAvatar(
@@ -60,7 +60,7 @@ test("equal avatar timestamps converge on the remote canonical image", () => {
   const updatedAt = "2026-08-25T10:00:00.000Z";
   const result = resolveProfileAvatar(
     {
-      avatarImage: "https://images.example.com/old.webp",
+      avatarImage: "https://lh3.googleusercontent.com/old.webp",
       avatarImageUpdatedAt: updatedAt
     },
     {

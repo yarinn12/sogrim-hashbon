@@ -119,3 +119,17 @@ test("friend request notifications resolve before event lookup", async () => {
       source.indexOf("const event = getEvent(destination.eventId)")
   );
 });
+
+test("a delayed notification sync cannot pull the user away from a newer screen", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const source = app.slice(
+    app.indexOf("async function openInboxNotification("),
+    app.indexOf("function openInboxNotificationDestination(")
+  );
+
+  assert.match(source, /const notificationScreenAtSync = screen/);
+  assert.match(
+    source,
+    /await requestResumeSync\(\{ force: true \}\);[\s\S]*?if \(screen !== notificationScreenAtSync\) return;/
+  );
+});

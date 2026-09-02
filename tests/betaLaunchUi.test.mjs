@@ -10,7 +10,7 @@ test("public app uses public invite URLs without beta readiness UI", async () =>
   assert.match(app, /runtimePublicOrigin\(runtimeConfig\)/);
   assert.doesNotMatch(app, /runtimeConfig\.publicUrl \|\| window\.location\.href/);
   assert.match(app, /buildEventInviteSnapshot/);
-  assert.match(app, /const inviteLink = joinEventDraft\.link/);
+  assert.match(app, /const inviteLink = activeJoinDraft\.link/);
   assert.match(app, /resolveEventInviteCredentials/);
   assert.match(app, /readSharedEventState/);
   assert.match(app, /mergeSharedEventIntoState/);

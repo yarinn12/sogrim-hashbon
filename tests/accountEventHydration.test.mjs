@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   ACCOUNT_EVENT_HYDRATION_LOADING,
@@ -57,5 +58,22 @@ test("cached events remain usable while a background cloud refresh is pending", 
       refreshPending: true
     }),
     ACCOUNT_EVENT_HYDRATION_READY
+  );
+});
+
+test("startup recognizes the stored account before runtime config finishes hydrating", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const helper = app.slice(
+    app.indexOf("function hasAuthenticatedAccountContext"),
+    app.indexOf("function rememberPendingIncomingEventJoin")
+  );
+  assert.match(
+    helper,
+    /runtimeConfig\.storage\?\.account\?\.userId \|\|[\s\S]*?loadStoredAccountSession\(window\.localStorage\)\?\.user\?\.id/
+  );
+  assert.equal(
+    (app.match(/authenticated: hasAuthenticatedAccountContext\(\)/g) ?? []).length,
+    2,
+    "both normal bootstrap and local fallback must avoid a false empty account"
   );
 });

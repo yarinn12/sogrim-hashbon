@@ -22,6 +22,7 @@ test("a signed-in account can rediscover shared events after its local index is 
   const requests = [];
   const rows = await readAccessibleSharedCloudStates(config, async (url, options) => {
     requests.push({ url, options });
+    if (url.includes("id=gt.")) return jsonResponse([]);
     return jsonResponse([{
       id: "shared-event-korea",
       state: { events: [{ id: "event-korea", name: "קוריאה" }] },
@@ -32,6 +33,89 @@ test("a signed-in account can rediscover shared events after its local index is 
   assert.equal(rows.length, 1);
   assert.match(requests[0].url, /snapshot_kind=eq\.shared_event/);
   assert.equal(requests[0].options.headers.authorization, "Bearer account-access-token");
+});
+
+test("shared event recovery reads every page before treating membership as authoritative", async () => {
+  const config = createConfig("personal-account-space-paged");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "personal-account-space-paged"
+  };
+  const firstPage = Array.from({ length: 500 }, (_, index) => ({
+    id: `shared-event-${index}`,
+    state: { events: [{ id: `event-${index}` }] },
+    updated_at: "2026-09-02T08:00:00.000Z"
+  }));
+  const requests = [];
+
+  const rows = await readAccessibleSharedCloudStates(config, async (url) => {
+    requests.push(url);
+    if (url.includes("id=gt.shared-event-last")) return jsonResponse([]);
+    return jsonResponse(url.includes("id=gt.shared-event-499")
+      ? [{
+          id: "shared-event-last",
+          state: { events: [{ id: "event-last" }] },
+          updated_at: "2026-09-02T07:59:59.000Z"
+        }]
+      : firstPage);
+  });
+
+  assert.equal(rows.length, 501);
+  assert.equal(requests.length, 2);
+  assert.match(requests[0], /order=id\.asc&limit=500/);
+  assert.match(requests[1], /id=gt\.shared-event-499/);
+});
+
+test("a server row cap below the client page size cannot truncate membership recovery", async () => {
+  const config = createConfig("personal-account-space-server-cap");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "account-access-token",
+    spaceId: "personal-account-space-server-cap"
+  };
+  const allRows = ["a", "b", "c"].map((id) => ({
+    id: `shared-event-${id}`,
+    state: { events: [{ id: `event-${id}` }] },
+    updated_at: "2026-09-02T08:00:00.000Z"
+  }));
+  const requests = [];
+
+  const rows = await readAccessibleSharedCloudStates(config, async (url) => {
+    requests.push(url);
+    const match = String(url).match(/id=gt\.([^&]+)/);
+    const cursor = match ? decodeURIComponent(match[1]) : "";
+    const remaining = allRows.filter((row) => row.id > cursor);
+    const page = remaining.slice(0, 2);
+    return jsonResponse(page, {
+      "content-range": page.length
+        ? `0-${page.length - 1}/${allRows.length}`
+        : `*/${allRows.length}`
+    });
+  });
+
+  assert.deepEqual(rows.map((row) => row.id), [
+    "shared-event-a",
+    "shared-event-b",
+    "shared-event-c"
+  ]);
+  assert.equal(requests.length, 2);
+});
+
+test("a missing account token is never treated as an empty shared-event membership list", async () => {
+  const config = createConfig("personal-account-space-no-token");
+  config.storage.account = {
+    userId: "user-one",
+    accessToken: "",
+    spaceId: "personal-account-space-no-token"
+  };
+
+  await assert.rejects(
+    readAccessibleSharedCloudStates(config, async () => {
+      throw new Error("the network must not be called without a token");
+    }),
+    CloudStateAuthError
+  );
 });
 
 function createConfig(spaceId) {
@@ -70,6 +154,17 @@ test("loadCloudState reads the current app snapshot from Supabase REST", async (
   assert.equal(requests[0].options.headers.apikey, "anon-key");
   assert.equal(requests[0].options.headers.authorization, "Bearer anon-key");
   assert.equal(requests[0].options.headers["x-space-key"], config.storage.spaceKey);
+});
+
+test("readCloudState honors the caller startup timeout", async () => {
+  const config = createConfig("friends-timeout");
+  const startedAt = Date.now();
+
+  await assert.rejects(
+    readCloudState(config, () => new Promise(() => {}), { timeoutMs: 10 }),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.ok(Date.now() - startedAt < 500, "cloud startup reads must stay bounded");
 });
 
 test("an unchanged cloud snapshot uses a version-only read", async () => {
@@ -433,9 +528,18 @@ test("saveCloudState rejects a concurrent overwrite", async () => {
   );
 });
 
-function jsonResponse(payload) {
+function jsonResponse(payload, responseHeaders = {}) {
   return {
     ok: true,
+    headers: {
+      get(name) {
+        const target = String(name ?? "").toLowerCase();
+        const entry = Object.entries(responseHeaders).find(
+          ([key]) => key.toLowerCase() === target
+        );
+        return entry?.[1] ?? null;
+      }
+    },
     async json() {
       return payload;
     }

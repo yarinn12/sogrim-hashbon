@@ -13,6 +13,9 @@ const AVATAR_PRESET_IDS = new Set(AVATAR_PRESETS.map((preset) => preset.id));
 const AVATAR_IMAGE_DATA_PATTERN = /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/=]+$/i;
 const MAX_AVATAR_DATA_LENGTH = 180_000;
 const MAX_AVATAR_URL_LENGTH = 2_048;
+const TRUSTED_AVATAR_HOSTS = new Set([
+  "sogrim-hesbon-app.vercel.app"
+]);
 
 export function normalizeAvatarPreset(value) {
   const preset = String(value ?? "").trim();
@@ -31,7 +34,14 @@ export function normalizeAvatarImage(value) {
   if (image.length > MAX_AVATAR_URL_LENGTH) return "";
   try {
     const url = new URL(image);
-    return url.protocol === "https:" ? url.toString() : "";
+    const hostname = url.hostname.toLowerCase();
+    const trustedIdentityHost =
+      hostname === "googleusercontent.com" ||
+      hostname.endsWith(".googleusercontent.com");
+    return url.protocol === "https:" &&
+      (TRUSTED_AVATAR_HOSTS.has(hostname) || trustedIdentityHost)
+      ? url.toString()
+      : "";
   } catch {
     return "";
   }

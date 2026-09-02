@@ -2230,12 +2230,16 @@ alter table public.user_profiles
     avatar_image is null
     or (
       pg_catalog.char_length(avatar_image) <= 180000
+      and avatar_image ~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'
+    )
+    or (
+      pg_catalog.char_length(avatar_image) <= 2048
       and (
-        avatar_image ~ '^https://'
-        or avatar_image ~ '^data:image/(jpeg|png|webp);base64,'
+        avatar_image ~* '^https://([A-Za-z0-9-]+\.)*googleusercontent\.com(/|$)'
+        or avatar_image ~* '^https://sogrim-hesbon-app\.vercel\.app(/|$)'
       )
     )
-  );
+  ) not valid;
 
 create or replace function private.default_friend_username(
   p_user_id uuid,
@@ -8343,7 +8347,11 @@ begin
   from public.friend_invite_codes as invite
   where invite.code = pg_catalog.lower(pg_catalog.btrim(p_friend_code));
   if target_id is null then
-    raise exception 'Friend code was not found' using errcode = 'P0001';
+    return pg_catalog.jsonb_build_object(
+      'ok', false,
+      'code', 'FRIEND_NOT_FOUND',
+      'message', 'Friend code was not found'
+    );
   end if;
   if target_id = actor_id then
     raise exception 'You cannot send a friend request to yourself'
@@ -8450,7 +8458,11 @@ begin
     and profile.username_customized = true;
   if friend_code is null then
     perform private.reserve_friend_request_capacity(actor_id, null);
-    raise exception 'Username was not found' using errcode = 'P0001';
+    return pg_catalog.jsonb_build_object(
+      'ok', false,
+      'code', 'USERNAME_NOT_FOUND',
+      'message', 'Username was not found'
+    );
   end if;
   return public.request_friendship(friend_code);
 end;
@@ -9795,43 +9807,74 @@ set search_path = ''
 as $$
 declare
   original_actor_id uuid := auth.uid();
+  old_active_ids text[] := '{}'::text[];
   active_member record;
+  previous_lock_timeout text := pg_catalog.current_setting('lock_timeout', true);
 begin
   if new.snapshot_kind <> 'shared_event' then
     return new;
   end if;
 
-  -- Expense, note, settlement and presentation edits do not change who can
-  -- discover an event. Avoid scanning every member workspace for those very
-  -- frequent writes; membership changes still reconcile atomically below.
-  if tg_op = 'UPDATE'
-    and old.snapshot_kind is not distinct from new.snapshot_kind
-    and old.state -> 'participants' is not distinct from
-      new.state -> 'participants'
-    and old.state #> '{events,0,participantIds}' is not distinct from
-      new.state #> '{events,0,participantIds}'
-    and old.state #> '{events,0,inactiveParticipantIds}' is not distinct from
-      new.state #> '{events,0,inactiveParticipantIds}'
-    and old.state #> '{events,0,participantAccountLinks}' is not distinct from
-      new.state #> '{events,0,participantAccountLinks}' then
-    return new;
+  if tg_op = 'UPDATE' then
+    old_active_ids := private.active_event_participant_ids(old.state);
+
+    -- Profile, expense, note, settlement, settings and presentation edits do
+    -- not change event discovery. Only a membership-set change needs this
+    -- immediate index path.
+    if old.snapshot_kind is not distinct from new.snapshot_kind
+      and old.state #> '{events,0,participantIds}' is not distinct from
+        new.state #> '{events,0,participantIds}'
+      and old.state #> '{events,0,inactiveParticipantIds}' is not distinct from
+        new.state #> '{events,0,inactiveParticipantIds}' then
+      return new;
+    end if;
   end if;
 
   for active_member in
-    select distinct member.user_id
+    select distinct member.user_id, member.participant_id
     from private.shared_snapshot_members as member
     where member.snapshot_id = new.id
       and member.status = 'active'
       and member.removed_at is null
+      and not (member.participant_id = any(old_active_ids))
       and (
         original_actor_id is null
         or member.user_id <> original_actor_id
       )
-    order by member.user_id
+    order by member.user_id, member.participant_id
   loop
-    perform public.reconcile_shared_event_indexes_for_member(
-      active_member.user_id
-    );
+    begin
+      perform pg_catalog.set_config('lock_timeout', '1s', true);
+      perform public.reconcile_shared_event_indexes_for_member(
+        active_member.user_id
+      );
+      perform pg_catalog.set_config(
+        'request.jwt.claim.sub',
+        coalesce(original_actor_id::text, ''),
+        true
+      );
+      perform pg_catalog.set_config(
+        'lock_timeout',
+        coalesce(previous_lock_timeout, '0'),
+        true
+      );
+    exception when others then
+      perform pg_catalog.set_config(
+        'request.jwt.claim.sub',
+        coalesce(original_actor_id::text, ''),
+        true
+      );
+      perform pg_catalog.set_config(
+        'lock_timeout',
+        coalesce(previous_lock_timeout, '0'),
+        true
+      );
+      raise warning
+        'Shared-event index reconciliation deferred for member % (%: %)',
+        active_member.user_id,
+        sqlstate,
+        sqlerrm;
+    end;
   end loop;
 
   perform pg_catalog.set_config(
@@ -9839,11 +9882,21 @@ begin
     coalesce(original_actor_id::text, ''),
     true
   );
+  perform pg_catalog.set_config(
+    'lock_timeout',
+    coalesce(previous_lock_timeout, '0'),
+    true
+  );
   return new;
 exception when others then
   perform pg_catalog.set_config(
     'request.jwt.claim.sub',
     coalesce(original_actor_id::text, ''),
+    true
+  );
+  perform pg_catalog.set_config(
+    'lock_timeout',
+    coalesce(previous_lock_timeout, '0'),
     true
   );
   raise;
@@ -10227,4 +10280,272 @@ revoke all on function private.has_valid_shared_event_notes(jsonb)
 revoke all on function private.is_safe_shared_event_notes_update(jsonb,jsonb,text)
   from public, anon, authenticated;
 revoke all on function private.guard_shared_event_notes()
+  from public, anon, authenticated;
+
+-- Prevent identity and note mutations after an event is closed, and make
+-- event-closed activity entries append-only and bound to the actual admin close.
+create or replace function private.guard_closed_shared_event_integrity()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  old_event jsonb := coalesce(old.state -> 'events' -> 0, '{}'::jsonb);
+  new_event jsonb := coalesce(new.state -> 'events' -> 0, '{}'::jsonb);
+  old_activity jsonb := case
+    when pg_catalog.jsonb_typeof(old_event -> 'activityLog') = 'array'
+      then old_event -> 'activityLog'
+    else '[]'::jsonb
+  end;
+  new_activity jsonb := case
+    when pg_catalog.jsonb_typeof(new_event -> 'activityLog') = 'array'
+      then new_event -> 'activityLog'
+    else '[]'::jsonb
+  end;
+  actor_participant_id text := private.current_actor_participant_id();
+  added_closed_count integer := 0;
+  added_closed_entry jsonb;
+  old_is_closed boolean := coalesce((old_event ->> 'locked')::boolean, false)
+    or nullif(pg_catalog.btrim(old_event ->> 'closedAt'), '') is not null;
+  new_is_closed boolean := coalesce((new_event ->> 'locked')::boolean, false)
+    and nullif(pg_catalog.btrim(new_event ->> 'closedAt'), '') is not null;
+begin
+  if new.snapshot_kind <> 'shared_event'
+    or old_event ->> 'id' is distinct from new_event ->> 'id' then
+    return new;
+  end if;
+
+  if old_is_closed and (
+    coalesce(old_event -> 'notes', '[]'::jsonb) is distinct from
+      coalesce(new_event -> 'notes', '[]'::jsonb)
+    or coalesce(old_event -> 'deletedNotes', '[]'::jsonb) is distinct from
+      coalesce(new_event -> 'deletedNotes', '[]'::jsonb)
+    or coalesce(old_event -> 'participantAccountLinks', '[]'::jsonb) is distinct from
+      coalesce(new_event -> 'participantAccountLinks', '[]'::jsonb)
+  ) then
+    raise exception 'Closed event notes and account links cannot be changed'
+      using errcode = '42501';
+  end if;
+
+  if exists (
+    select 1
+    from pg_catalog.jsonb_array_elements(old_activity) as previous(value)
+    where previous.value ->> 'kind' = 'event-closed'
+      and not exists (
+        select 1
+        from pg_catalog.jsonb_array_elements(new_activity) as candidate(value)
+        where candidate.value ->> 'id' = previous.value ->> 'id'
+          and candidate.value = previous.value
+      )
+  ) then
+    raise exception 'Event close activity is append-only'
+      using errcode = '42501';
+  end if;
+
+  select count(*), min(candidate.value::text)::jsonb
+  into added_closed_count, added_closed_entry
+  from pg_catalog.jsonb_array_elements(new_activity) as candidate(value)
+  where candidate.value ->> 'kind' = 'event-closed'
+    and not exists (
+      select 1
+      from pg_catalog.jsonb_array_elements(old_activity) as previous(value)
+      where previous.value ->> 'id' = candidate.value ->> 'id'
+    );
+
+  if added_closed_count > 0 and (
+    added_closed_count <> 1
+    or old_is_closed
+    or not new_is_closed
+    or coalesce(actor_participant_id, '') = ''
+    or not (
+      actor_participant_id = any(private.event_admin_ids(old.state))
+    )
+    or added_closed_entry ->> 'actorParticipantId' is distinct from actor_participant_id
+    or added_closed_entry ->> 'occurredAt' is distinct from new_event ->> 'closedAt'
+  ) then
+    raise exception 'Event close activity must match an admin close transition'
+      using errcode = '42501';
+  end if;
+
+  return new;
+exception
+  when invalid_text_representation then
+    raise exception 'Shared event close state is invalid'
+      using errcode = '22023';
+end;
+$$;
+
+drop trigger if exists guard_closed_shared_event_integrity
+  on public.app_snapshots;
+create trigger guard_closed_shared_event_integrity
+  before update of state on public.app_snapshots
+  for each row execute function private.guard_closed_shared_event_integrity();
+
+revoke all on function private.guard_closed_shared_event_integrity()
+  from public, anon, authenticated;
+
+-- Native bundles do not receive the hosted CSP response headers. Enforce the
+-- same avatar-origin boundary on canonical shared snapshots so older clients
+-- cannot publish third-party tracking pixels for newer clients to render.
+create or replace function private.guard_shared_avatar_origins()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  participant jsonb;
+  previous_avatar text;
+  next_avatar text;
+begin
+  if new.snapshot_kind <> 'shared_event'
+    or old.snapshot_kind is distinct from new.snapshot_kind then
+    return new;
+  end if;
+
+  for participant in
+    select item.value
+    from pg_catalog.jsonb_array_elements(
+      coalesce(new.state -> 'participants', '[]'::jsonb)
+    ) as item(value)
+  loop
+    next_avatar := nullif(participant ->> 'avatarImage', '');
+    select nullif(previous.value ->> 'avatarImage', '')
+    into previous_avatar
+    from pg_catalog.jsonb_array_elements(
+      coalesce(old.state -> 'participants', '[]'::jsonb)
+    ) as previous(value)
+    where previous.value ->> 'id' = participant ->> 'id'
+    limit 1;
+
+    if previous_avatar is not distinct from next_avatar or next_avatar is null then
+      continue;
+    end if;
+    if (
+      pg_catalog.char_length(next_avatar) <= 180000
+      and next_avatar ~ '^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'
+    ) or (
+      pg_catalog.char_length(next_avatar) <= 2048
+      and (
+        next_avatar ~* '^https://([A-Za-z0-9-]+\.)*googleusercontent\.com(/|$)'
+        or next_avatar ~* '^https://sogrim-hesbon-app\.vercel\.app(/|$)'
+      )
+    ) then
+      continue;
+    end if;
+
+    raise exception 'Shared profile avatar origin is not trusted'
+      using errcode = '22023';
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_shared_avatar_origins on public.app_snapshots;
+create trigger guard_shared_avatar_origins
+  before update of state on public.app_snapshots
+  for each row execute function private.guard_shared_avatar_origins();
+
+revoke all on function private.guard_shared_avatar_origins()
+  from public, anon, authenticated;
+
+-- Bound newly introduced client-side merge clocks to database time. Existing
+-- legacy values are tolerated when untouched so rollout cannot strand an old
+-- event; a later HLC/server-revision migration can repair them explicitly.
+create or replace function private.guard_shared_event_future_merge_timestamps()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  old_event jsonb := '{}'::jsonb;
+  new_event jsonb;
+  cutoff timestamptz := pg_catalog.statement_timestamp() + interval '5 minutes';
+  field_name text;
+  map_name text;
+  old_value text;
+  new_value text;
+  changed_at timestamptz;
+  map_entry record;
+begin
+  if new.snapshot_kind <> 'shared_event' then
+    return new;
+  end if;
+
+  new_event := new.state -> 'events' -> 0;
+  if new_event is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    old_event := coalesce(old.state -> 'events' -> 0, '{}'::jsonb);
+  end if;
+
+  foreach field_name in array array[
+    'membershipUpdatedAt',
+    'statusUpdatedAt',
+    'adminIdsUpdatedAt',
+    'settingsUpdatedAt'
+  ] loop
+    old_value := old_event ->> field_name;
+    new_value := new_event ->> field_name;
+    if new_value is null or new_value is not distinct from old_value then
+      continue;
+    end if;
+    begin
+      changed_at := new_value::timestamptz;
+    exception
+      when invalid_datetime_format or datetime_field_overflow then
+        raise exception 'Shared merge timestamp is invalid'
+          using errcode = '22023';
+    end;
+    if changed_at > cutoff then
+      raise exception 'Shared merge timestamp is too far in the future'
+        using errcode = '22023';
+    end if;
+  end loop;
+
+  foreach map_name in array array[
+    'membershipUpdatedAtByParticipant',
+    'settingsFieldUpdatedAt'
+  ] loop
+    if pg_catalog.jsonb_typeof(new_event -> map_name) <> 'object' then
+      continue;
+    end if;
+    for map_entry in
+      select entry.key, entry.value
+      from pg_catalog.jsonb_each_text(new_event -> map_name) as entry(key, value)
+    loop
+      old_value := old_event -> map_name ->> map_entry.key;
+      new_value := map_entry.value;
+      if new_value is not distinct from old_value then
+        continue;
+      end if;
+      begin
+        changed_at := new_value::timestamptz;
+      exception
+        when invalid_datetime_format or datetime_field_overflow then
+          raise exception 'Shared merge timestamp is invalid'
+            using errcode = '22023';
+      end;
+      if changed_at > cutoff then
+        raise exception 'Shared merge timestamp is too far in the future'
+          using errcode = '22023';
+      end if;
+    end loop;
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_shared_event_future_merge_timestamps
+  on public.app_snapshots;
+create trigger guard_shared_event_future_merge_timestamps
+  before insert or update of state on public.app_snapshots
+  for each row execute function private.guard_shared_event_future_merge_timestamps();
+
+revoke all on function private.guard_shared_event_future_merge_timestamps()
   from public, anon, authenticated;

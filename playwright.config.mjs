@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 4182;
+const requestedPort = Number(process.env.PW_QA_PORT);
+const port = Number.isInteger(requestedPort) && requestedPort > 0
+  ? requestedPort
+  : 4182;
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({

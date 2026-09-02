@@ -112,7 +112,7 @@ test("a corrupted or merely token-shaped record is never treated as verified", (
   assert.equal(loadVerifiedOpenInviteToken(config(), event(), storage), null);
 });
 
-test("a temporary offline runtime fallback keeps the stored account scope usable", () => {
+test("a temporary account identity gap keeps the stored scope and verified token", () => {
   const storage = memoryStorage([
     [
       "settle-friends-account-session",
@@ -141,6 +141,22 @@ test("a temporary offline runtime fallback keeps the stored account scope usable
   );
 
   storage.removeItem("settle-friends-account-session");
-  assert.equal(reconcileOpenInviteAccountScope(offlineConfig, storage), true);
-  assert.equal(loadVerifiedOpenInviteToken(offlineConfig, event(), storage), null);
+  assert.equal(reconcileOpenInviteAccountScope(offlineConfig, storage), false);
+
+  storage.setItem(
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "account-token",
+      refresh_token: "refresh-token",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: {
+        id: "account-a",
+        user_metadata: {
+          account_space_id: "workspace-a",
+          account_space_key: "workspace-secret-that-is-long-enough-123"
+        }
+      }
+    })
+  );
+  assert.equal(loadVerifiedOpenInviteToken(offlineConfig, event(), storage)?.token, TOKEN);
 });

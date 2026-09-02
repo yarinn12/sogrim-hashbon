@@ -151,7 +151,7 @@ test("an avatar survives a newer unrelated profile update from an empty device",
   const local = baseState();
   local.participants[0] = {
     ...local.participants[0],
-    avatarImage: "https://images.example.com/chosen.webp",
+    avatarImage: "https://lh3.googleusercontent.com/chosen.webp",
     avatarImageUpdatedAt: "2026-08-25T10:00:00.000Z",
     profileUpdatedAt: "2026-08-25T10:00:00.000Z"
   };
@@ -161,7 +161,7 @@ test("an avatar survives a newer unrelated profile update from an empty device",
   assert.equal(merged.participants[0].displayName, "שם מעודכן");
   assert.equal(
     merged.participants[0].avatarImage,
-    "https://images.example.com/chosen.webp"
+    "https://lh3.googleusercontent.com/chosen.webp"
   );
 });
 
@@ -175,7 +175,7 @@ test("a newer explicit avatar removal wins across shared devices", () => {
   const local = baseState();
   local.participants[0] = {
     ...local.participants[0],
-    avatarImage: "https://images.example.com/chosen.webp",
+    avatarImage: "https://lh3.googleusercontent.com/chosen.webp",
     avatarImageUpdatedAt: "2026-08-25T10:00:00.000Z"
   };
 
@@ -549,6 +549,62 @@ test("a newer pending status can undo a stale paid mark after sync", () => {
   const [transfer] = mergeSharedStates(remote, local).events[0].transfers;
   assert.equal(transfer.status, "pending");
   assert.equal(transfer.markedPaidAt, undefined);
+});
+
+test("a per-member revocation cannot remove a different untimestamped participant", () => {
+  const revokedAt = "2026-09-02T11:00:00.000Z";
+  const remote = stateWithEvent({
+    id: "event-legacy-revocation",
+    participantIds: ["account-u1", "p2", "p3"],
+    adminIds: ["account-u1"],
+    inactiveParticipantIds: [],
+    expenses: [{ id: "p3-expense", payerId: "p3", amount: 25 }],
+    transfers: []
+  });
+  const local = stateWithEvent({
+    id: "event-legacy-revocation",
+    participantIds: ["account-u1", "p2"],
+    adminIds: ["account-u1"],
+    inactiveParticipantIds: ["account-u1"],
+    membershipUpdatedAtByParticipant: { "account-u1": revokedAt },
+    expenses: [],
+    transfers: []
+  });
+
+  for (const [first, second] of [[remote, local], [local, remote]]) {
+    const [event] = mergeSharedStates(first, second).events;
+    assert.deepEqual(event.participantIds, ["account-u1", "p2", "p3"]);
+    assert.deepEqual(event.inactiveParticipantIds, ["account-u1"]);
+    assert.equal(event.expenses[0].id, "p3-expense");
+  }
+});
+
+test("an unstamped inactive cache cannot hide a healthy active membership", () => {
+  const active = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "historical-user"],
+    adminIds: ["owner"],
+    inactiveParticipantIds: [],
+    expenses: [],
+    transfers: []
+  });
+  const staleInactive = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "historical-user"],
+    adminIds: ["owner"],
+    inactiveParticipantIds: ["historical-user"],
+    expenses: [],
+    transfers: []
+  });
+
+  for (const [remote, local] of [
+    [active, staleInactive],
+    [staleInactive, active]
+  ]) {
+    const [event] = mergeSharedStates(remote, local).events;
+    assert.deepEqual(event.participantIds, ["owner", "historical-user"]);
+    assert.deepEqual(event.inactiveParticipantIds, []);
+  }
 });
 
 test("a canceled payment cannot return from a stale device after reconciliation", () => {

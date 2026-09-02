@@ -148,3 +148,99 @@ test("an installed iPhone app keeps its session and restores cloud history", asy
   await expect(page.getByText(EVENT_NAME, { exact: true })).toBeVisible();
   expect(refreshRequests).toBe(1);
 });
+
+test("an expiring iPhone session paints cached events before a slow token refresh", async ({ page }) => {
+  const corsHeaders = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+    "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
+  };
+
+  await page.route("**/api/config", (route) => route.fulfill({
+    json: {
+      publicUrl: "http://127.0.0.1:4182",
+      storage: {
+        mode: "supabase",
+        url: AUTH_ORIGIN,
+        anonKey: "anon-key",
+        table: "app_snapshots"
+      }
+    }
+  }));
+  await page.route(`${AUTH_ORIGIN}/**`, async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (request.method() === "OPTIONS") {
+      return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+    }
+    if (url.pathname.endsWith("/auth/v1/token")) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+      return route.fulfill({
+        headers: corsHeaders,
+        json: {
+          access_token: "eventually-fresh-access-token",
+          refresh_token: "eventually-fresh-refresh-token",
+          expires_in: 3600,
+          user: accountUser
+        }
+      });
+    }
+    if (url.pathname.endsWith("/auth/v1/user")) {
+      return route.fulfill({ headers: corsHeaders, json: accountUser });
+    }
+    if (url.pathname.includes("/app_snapshots")) {
+      return route.fulfill({
+        headers: corsHeaders,
+        json: [{ state: cloudState, updated_at: "2026-08-20T08:00:00.000Z" }]
+      });
+    }
+    if (request.method() === "GET") {
+      return route.fulfill({ headers: corsHeaders, json: [] });
+    }
+    return route.fulfill({ status: 204, headers: corsHeaders, body: "" });
+  });
+
+  await page.addInitScript(({ user, state, spaceId, spaceKey }) => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem("settle-friends-account-session", JSON.stringify({
+      access_token: "expiring-access-token",
+      refresh_token: "persisted-refresh-token",
+      expires_at: Math.floor(Date.now() / 1000) + 30,
+      user
+    }));
+    localStorage.setItem("settle-friends-cloud-space", spaceId);
+    localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+    localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(state));
+    localStorage.setItem(
+      `settle-friends-local-profile:account:${encodeURIComponent(user.id)}`,
+      JSON.stringify({
+        participantId: `account-${user.id}`,
+        displayName: user.user_metadata.full_name,
+        avatarPreset: "avatar-1",
+        authProvider: "google",
+        authSubject: user.id,
+        email: user.email
+      })
+    );
+    localStorage.setItem(
+      `settle-friends-current-participant:account:${encodeURIComponent(user.id)}`,
+      `account-${user.id}`
+    );
+    sessionStorage.setItem("settle-friends-skip-next-splash", "1");
+  }, {
+    user: accountUser,
+    state: cloudState,
+    spaceId: SPACE_ID,
+    spaceKey: SPACE_KEY
+  });
+
+  const startedAt = Date.now();
+  await page.goto("/");
+  await expect(page.getByText(EVENT_NAME, { exact: true }))
+    .toBeVisible({ timeout: 3_000 });
+  expect(Date.now() - startedAt).toBeLessThan(3_000);
+  await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);
+  await expect(page.getByText("אין אירועים שלך עדיין", { exact: true }))
+    .not.toBeVisible();
+});

@@ -212,7 +212,15 @@ async function withFreshCloudAccount(config, request) {
   try {
     return await request(config);
   } catch (error) {
-    const expectedUserId = String(config?.storage?.account?.userId ?? "").trim();
+    // Runtime config intentionally omits an account whose access token is
+    // locally expired. The durable session identity is still trustworthy for
+    // checking that a refresh did not switch users, and lets this path repair
+    // the token instead of treating membership recovery as unavailable.
+    const expectedUserId = String(
+      config?.storage?.account?.userId ??
+        loadStoredAccountSession(window.localStorage)?.user?.id ??
+        ""
+    ).trim();
     if (error?.code !== "CLOUD_STATE_AUTH_EXPIRED" || !expectedUserId) throw error;
 
     const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
@@ -225,7 +233,11 @@ async function withFreshCloudAccount(config, request) {
   }
 }
 
-async function hydrateAccessibleSharedEventState(config, initialState) {
+async function hydrateAccessibleSharedEventState(
+  config,
+  initialState,
+  nonAuthoritativeFallbackState = initialState
+) {
   try {
     return {
       state: await withFreshCloudAccount(config, (freshConfig) =>
@@ -236,7 +248,10 @@ async function hydrateAccessibleSharedEventState(config, initialState) {
   } catch (error) {
     reportPartialStateLoadFailure(error);
     return {
-      state: initialState,
+      // A failed membership scan is not evidence that an event was removed.
+      // Preserve the account-scoped local cache until the server has either
+      // returned an authoritative membership index or confirmed revocation.
+      state: mergeSharedStates(initialState, nonAuthoritativeFallbackState),
       authoritative: false
     };
   }
@@ -256,6 +271,17 @@ function persistRecoveredEventIndex(config, previousState, recoveredState) {
 }
 
 function scheduleRecoveredEventIndexPersistence(config, recoveredState) {
+  const requestScope = synchronizeAccountStorageScope();
+  const requestAccountGeneration = accountStorageGeneration;
+  const requestSaveGeneration = sharedStateSaveGeneration;
+  const requestAccountUserId = String(
+    config?.storage?.account?.userId ?? ""
+  ).trim();
+  // Recovery is account-only. Never enqueue a best-effort personal index for
+  // a config that no longer belongs to the session currently owning storage.
+  if (!requestAccountUserId || requestAccountUserId !== activeAccountUserId()) {
+    return;
+  }
   const jobKey = [
     config?.storage?.url,
     config?.storage?.table,
@@ -287,7 +313,10 @@ function scheduleRecoveredEventIndexPersistence(config, recoveredState) {
     config: cloneCloudConfig(config),
     state: cloudState,
     fingerprint,
-    eventCount: stateSnapshot.events?.length ?? 0
+    eventCount: stateSnapshot.events?.length ?? 0,
+    requestScope,
+    requestAccountGeneration,
+    requestSaveGeneration
   };
   if (job.promise) return;
 
@@ -304,7 +333,20 @@ async function drainRecoveredEventIndexPersistence(job) {
     job.pending = null;
     job.activeFingerprint = request.fingerprint;
     try {
-      await saveCloudStateWithRetry(request.config, request.state);
+      if (
+        request.requestScope !== synchronizeAccountStorageScope() ||
+        request.requestAccountGeneration !== accountStorageGeneration ||
+        request.requestSaveGeneration !== sharedStateSaveGeneration
+      ) {
+        continue;
+      }
+      // A user edit may have been saved locally after recovery produced this
+      // snapshot but before the background index write gets its turn. Merge
+      // the freshest account-scoped local state so the bookkeeping write can
+      // add recovered memberships without rolling a newer action backward.
+      const latestLocalState = toCloudState(request.config, loadState());
+      const candidateState = mergeSharedStates(request.state, latestLocalState);
+      await saveCloudStateWithRetry(request.config, candidateState);
     } catch (error) {
       reportPartialStateLoadFailure(error);
       globalThis.console?.warn?.(
@@ -795,7 +837,8 @@ async function loadSharedStateOnce(requestScope) {
       const accountState = state;
       const recoveredStateResult = await hydrateAccessibleSharedEventState(
         runtimeConfig,
-        state
+        state,
+        localState
       );
       state = recoveredStateResult.state;
       runtimeConfig = activateClientSpace(
@@ -872,22 +915,27 @@ export async function saveSharedState(state) {
   const hasSharedEventMutation = Boolean(
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length
   );
-  const localSaved = saveState(cleanState);
   // Persist an account-scoped outbox before the first await. Mobile WebViews
-  // can be suspended immediately after a destructive action; without this
-  // synchronous write, a deletion can look complete locally yet never reach
-  // the canonical event when the app is backgrounded in that small window.
+  // can be suspended immediately after a destructive action. The outbox must
+  // be durable before the visible local snapshot: otherwise a quota failure
+  // between those two writes can make a change look saved and then disappear
+  // when an older cloud snapshot is loaded after restart.
   const crashSafePendingConfig = requestAccountUserId
     ? pendingSyncConfig(LOCAL_RUNTIME_CONFIG)
     : null;
   const crashSafePendingStateSaved = Boolean(
-    localSaved &&
     crashSafePendingConfig &&
     savePendingSharedState(
       crashSafePendingConfig,
       toSharedState(cleanState, { preserveCurrentParticipantId: true })
     )
   );
+  if (crashSafePendingConfig && !crashSafePendingStateSaved) {
+    const error = new Error("The local sync outbox is unavailable");
+    emitOperationFailure("state_save", { screen: "app", error });
+    return { ok: false, mode: "local", error };
+  }
+  const localSaved = saveState(cleanState);
   const requestSaveGeneration = ++sharedStateSaveGeneration;
   const requestAccountGeneration = accountStorageGeneration;
   const stateSnapshot = clone(cleanState);
@@ -1432,14 +1480,42 @@ export function cleanLegacyStarterData(state, protectedParticipantId = "") {
     participants,
     protectedParticipantId
   );
+  const repairedEvents = restoreLegacyStandaloneEventOwnerMembership(
+    events,
+    currentParticipantId
+  );
 
   return {
     ...state,
     currentParticipantId,
     participants,
     groups,
-    events
+    events: repairedEvents
   };
+}
+
+function restoreLegacyStandaloneEventOwnerMembership(events, currentParticipantId) {
+  if (!currentParticipantId) return events;
+  return events.map((event) => {
+    if (
+      !event ||
+      event.sharedSpaceId ||
+      (event.participantIds ?? []).includes(currentParticipantId)
+    ) {
+      return event;
+    }
+    const currentParticipantHasHistory =
+      event.createdByParticipantId === currentParticipantId ||
+      (event.adminIds ?? []).includes(currentParticipantId) ||
+      (event.expenses ?? []).some(
+        (expense) => expense?.createdByParticipantId === currentParticipantId
+      );
+    if (!currentParticipantHasHistory) return event;
+    return {
+      ...event,
+      participantIds: [currentParticipantId, ...(event.participantIds ?? [])]
+    };
+  });
 }
 
 function loadLocalParticipantId() {
@@ -1607,7 +1683,7 @@ export function isTransientSyncFailure(error) {
   });
 }
 
-function isRetryablePendingSyncFailure(error) {
+export function isRetryablePendingSyncFailure(error) {
   return isTransientSyncFailure(error) || flattenSyncErrors(error).some((item) =>
     item?.code === "CLOUD_STATE_AUTH_EXPIRED" || Number(item?.status ?? 0) === 401
   );

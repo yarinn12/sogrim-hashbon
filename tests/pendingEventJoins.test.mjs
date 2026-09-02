@@ -47,6 +47,33 @@ test("malformed pending joins never block account startup", () => {
   assert.deepEqual(loadPendingEventJoins(storage), []);
 });
 
+test("pending joins from another account cannot evict this account's recovery work", () => {
+  const storage = memoryStorage();
+  for (let index = 0; index < 25; index += 1) {
+    rememberPendingEventJoin({
+      ...receipt,
+      eventId: `owner-a-event-${index}`
+    }, storage);
+  }
+  for (let index = 0; index < 24; index += 1) {
+    rememberPendingEventJoin({
+      ...receipt,
+      ownerUserId: "00000000-0000-4000-8000-000000000002",
+      eventId: `owner-b-event-${index}`
+    }, storage);
+  }
+
+  const ownerA = loadPendingEventJoins(storage, receipt.ownerUserId);
+  const ownerB = loadPendingEventJoins(
+    storage,
+    "00000000-0000-4000-8000-000000000002"
+  );
+  assert.equal(ownerA.length, 24);
+  assert.equal(ownerB.length, 24);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
 function memoryStorage() {
   const values = new Map();
   return {

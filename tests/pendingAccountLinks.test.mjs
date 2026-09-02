@@ -59,6 +59,33 @@ test("malformed pending account-link data is ignored instead of blocking startup
   assert.deepEqual(loadPendingAccountLinks(storage), []);
 });
 
+test("pending links from another account cannot evict this account's recovery work", () => {
+  const storage = memoryStorage();
+  for (let index = 0; index < 25; index += 1) {
+    rememberPendingAccountLink({
+      ...receipt,
+      eventId: `owner-a-event-${index}`
+    }, storage);
+  }
+  for (let index = 0; index < 24; index += 1) {
+    rememberPendingAccountLink({
+      ...receipt,
+      ownerUserId: "00000000-0000-4000-8000-000000000002",
+      eventId: `owner-b-event-${index}`
+    }, storage);
+  }
+
+  const ownerA = loadPendingAccountLinks(storage, receipt.ownerUserId);
+  const ownerB = loadPendingAccountLinks(
+    storage,
+    "00000000-0000-4000-8000-000000000002"
+  );
+  assert.equal(ownerA.length, 24);
+  assert.equal(ownerB.length, 24);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
 function confirmedState() {
   return {
     events: [{

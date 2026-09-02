@@ -1,6 +1,8 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { noticePresentation } from "./domain/userNoticePolicy.mjs";
+import { runGuardedInteraction } from "./interactionBoundary.mjs";
+import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
 import {
   formatClockTime,
@@ -121,6 +123,7 @@ import {
   runtimeConfigUsesFallback,
   loadSharedState,
   loadSharedStateForStartup,
+  isRetryablePendingSyncFailure,
   sharedStateSaveRevision,
   loadLocalProfile,
   flushPendingSharedState,
@@ -299,6 +302,10 @@ const RESUME_SYNC_COOLDOWN_MS = 1_000;
 // Keep an event that is open on a second phone perceptibly live. A 2.5s poll
 // could exceed four seconds once a mobile/network round trip was included.
 const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;
+// A full account refresh also scans every accessible event membership. Running
+// that payload every second on the home/profile screens wasted bandwidth and
+// could rate-limit the very sync requests meant to keep devices current.
+const BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS = 15_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
 const PENDING_MUTATION_RETRY_BASE_MS = 5_000;
 const PENDING_MUTATION_RETRY_MAX_MS = 60_000;
@@ -314,7 +321,10 @@ const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
   "friend-profile",
   "admin-overview"
 ]);
-const OWN_PROFILE_STARTUP_WAIT_MS = 3_000;
+// The cached account and event list must paint immediately on mobile. Avatar
+// reconciliation is useful before first paint only when the profile endpoint
+// is already warm; the regular friend refresh retries it after startup.
+const OWN_PROFILE_STARTUP_WAIT_MS = 400;
 const RECENT_EVENT_STORAGE_PREFIX = "settle-friends-recent-event";
 const PERSONAL_EVENT_ARCHIVE_STORAGE_PREFIX = "settle-friends-personal-event-archive-v1";
 const RECENT_EVENT_MAX_AGE_MS = 72 * 60 * 60 * 1000;
@@ -330,6 +340,12 @@ const DIALOG_OPEN_ACTIONS = new Set([
 const EVENT_STATUS_FILTERS = [
   { id: "events", label: "אירועים" },
   { id: "archive", label: "ארכיון" }
+];
+const EVENT_LIFECYCLE_FILTERS = [
+  { id: "all", label: "הכול" },
+  { id: "adding", label: "מוסיפים הוצאות" },
+  { id: "settling", label: "מתחשבנים" },
+  { id: "paid", label: "הכול שולם" }
 ];
 const NEW_EVENT_FLOW_SCREENS = new Set([
   "new-event-type",
@@ -394,6 +410,14 @@ function eventHomeStatusLabel(event) {
   return hasPendingTransfers ? "מתחשבנים" : "הכול שולם";
 }
 
+function eventHomeStatusId(event) {
+  if (!isEventClosed(event)) return "adding";
+  const hasPendingTransfers = (event?.transfers ?? []).some(
+    (transfer) => transfer.status !== "paid"
+  );
+  return hasPendingTransfers ? "settling" : "paid";
+}
+
 function formatEventMoney(event, amount) {
   return formatCurrency(amount, eventCurrency(event));
 }
@@ -427,6 +451,7 @@ let profileUsernameDraft = "";
 let profileUsernameError = "";
 let profileNameEditing = false;
 let profileUsernameEditing = false;
+let profileSaveRequest = null;
 let state = syncLocalProfile(loadState());
 profileAvatarDraft =
   normalizeAvatarPreset(localProfile?.avatarPreset) || profileAvatarDraft;
@@ -529,6 +554,7 @@ let runtimeConfig = {
   }
 };
 let eventStatusFilter = "events";
+let eventLifecycleFilter = "all";
 let appHistoryDepth = 0;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
@@ -557,16 +583,17 @@ let pendingMutationRecoveryTimer = null;
 let pendingMutationRecoveryDelayMs = PENDING_MUTATION_RETRY_BASE_MS;
 let mergeParticipantsRequest = null;
 let lastResumeSyncAt = 0;
+let lastBackgroundAccountSyncAt = 0;
 let appBootHydrationPromise = null;
 let appBootHydrated = false;
 let accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
 let accountEventsHydrationRetryRequest = null;
 
-app.addEventListener("click", handleClick);
-app.addEventListener("submit", handleSubmit);
+app.addEventListener("click", handleClickSafely);
+app.addEventListener("submit", handleSubmitSafely);
 app.addEventListener("keydown", handleParticipantAvatarKeydown);
 app.addEventListener("input", handleInput);
-app.addEventListener("change", handleChange);
+app.addEventListener("change", handleChangeSafely);
 app.addEventListener("selectstart", handleTextSelectionStart);
 app.addEventListener("toggle", handleTransientMenuToggle, true);
 app.addEventListener("pointerdown", handleEventLongPressStart);
@@ -587,6 +614,30 @@ window.addEventListener(NATIVE_RESUME_EVENT, () => {
     retryAccountEventHydration().catch(() => {});
   }
 });
+
+function handleClickSafely(event) {
+  runAppInteraction(handleClick, event);
+}
+
+function handleSubmitSafely(event) {
+  runAppInteraction(handleSubmit, event);
+}
+
+function handleChangeSafely(event) {
+  runAppInteraction(handleChange, event);
+}
+
+function runAppInteraction(handler, event) {
+  runGuardedInteraction(handler, event, (error) => {
+      globalThis.console?.error?.("[interaction] Unhandled app action", error);
+      emitOperationFailure("interaction", {
+        screen: String(screen?.name ?? "unknown"),
+        error
+      });
+      notice = "לא הצלחנו להשלים את הפעולה. אפשר לנסות שוב.";
+      render();
+  });
+}
 window.addEventListener("online", () => {
   recoverPendingMutations({ resetBackoff: true }).catch(() => {});
   if (accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY) {
@@ -613,6 +664,14 @@ document.addEventListener("account-auth-ready", () => {
   hydrateAppAfterAccountReady()
     .then(() => recoverPendingMutations({ resetBackoff: true }))
     .catch(renderScopedLocalFallback);
+});
+document.addEventListener("account-session-refreshed", () => {
+  resumeAfterAccountSessionRefresh({
+    refreshRuntimeConfig: refreshRuntimeConfigNow,
+    requestResumeSync,
+    reportRefreshFailure: (error) => emitOperationDeferred("state_load", { error })
+  })
+    .catch((error) => emitOperationDeferred("state_load", { error }));
 });
 document.addEventListener("settle-friends:push-status", (event) => {
   if (event.detail?.status !== "received") return;
@@ -2139,11 +2198,16 @@ function renderHome() {
   const homeDialogEvent =
     eventDialog?.kind === "share" ? getEvent(eventDialog.eventId) : null;
   const archivedEventIds = personalArchivedEventIds();
-  const events = sortedEvents.filter((event) =>
-    eventStatusFilter === "archive"
-      ? archivedEventIds.has(event.id)
-      : !archivedEventIds.has(event.id)
-  );
+  const currentEvents = sortedEvents.filter((event) => !archivedEventIds.has(event.id));
+  const events = (eventStatusFilter === "archive"
+    ? sortedEvents.filter((event) => archivedEventIds.has(event.id))
+    : currentEvents
+  )
+    .filter((event) =>
+      eventStatusFilter === "archive" ||
+      eventLifecycleFilter === "all" ||
+      eventHomeStatusId(event) === eventLifecycleFilter
+    );
   const homeParticipant = state.participants.find(
     (participant) => participant.id === state.currentParticipantId
   );
@@ -2190,6 +2254,7 @@ function renderHome() {
                 </div>
                 ${renderEventStatusFilter(sortedEvents)}
               </div>
+              ${eventStatusFilter === "events" ? renderEventLifecycleFilter(currentEvents) : ""}
               <div class="event-list">
                 ${
                   events.length
@@ -2516,7 +2581,7 @@ function renderPersonalTransferAction(action) {
 
 function renderEventStatusFilter(events) {
   return `
-    <div class="segmented-control" role="group" aria-label="אירועים וארכיון">
+    <div class="segmented-control event-primary-filter" role="group" aria-label="אירועים וארכיון">
       ${EVENT_STATUS_FILTERS.map(
         (filter) => `
           <button
@@ -2527,6 +2592,38 @@ function renderEventStatusFilter(events) {
             aria-pressed="${eventStatusFilter === filter.id}"
           >
             <span>${filter.label}</span>
+          </button>
+        `
+      ).join("")}
+    </div>
+  `;
+}
+
+function renderEventLifecycleFilter(events) {
+  const counts = new Map(
+    EVENT_LIFECYCLE_FILTERS.map((filter) => [
+      filter.id,
+      filter.id === "all"
+        ? events.length
+        : events.filter((event) => eventHomeStatusId(event) === filter.id).length
+    ])
+  );
+
+  return `
+    <div class="segmented-control event-lifecycle-filter" role="group" aria-label="סינון אירועים לפי סטטוס">
+      ${EVENT_LIFECYCLE_FILTERS.map(
+        (filter) => `
+          <button
+            type="button"
+            class="${eventLifecycleFilter === filter.id ? "is-active" : ""}"
+            data-action="event-lifecycle-filter"
+            data-filter="${filter.id}"
+            aria-pressed="${eventLifecycleFilter === filter.id}"
+          >
+            <span class="event-lifecycle-option-content">
+              <span>${filter.label}</span>
+              <strong><span class="font-num">${counts.get(filter.id) ?? 0}</span></strong>
+            </span>
           </button>
         `
       ).join("")}
@@ -11725,7 +11822,16 @@ async function handleClick(event) {
   }
 
   if (action === "save-profile") {
-    await saveProfileFromDraft();
+    if (!profileSaveRequest) {
+      const request = saveProfileFromDraft();
+      const trackedRequest = request.finally(() => {
+        if (profileSaveRequest === trackedRequest) {
+          profileSaveRequest = null;
+        }
+      });
+      profileSaveRequest = trackedRequest;
+    }
+    await profileSaveRequest;
   }
 
   if (action === "edit-profile-name") {
@@ -12072,6 +12178,16 @@ async function handleClick(event) {
 
   if (action === "event-status-filter") {
     eventStatusFilter = target.dataset.filter === "archive" ? "archive" : "events";
+    render();
+  }
+
+  if (action === "event-lifecycle-filter") {
+    const nextFilter = EVENT_LIFECYCLE_FILTERS.some(
+      (filter) => filter.id === target.dataset.filter
+    )
+      ? target.dataset.filter
+      : "all";
+    eventLifecycleFilter = nextFilter;
     render();
   }
 
@@ -14452,27 +14568,30 @@ function syncNewEventDraftFromRenderedDetails() {
 async function joinExistingEventFromDraft() {
   if (joinEventBusy) return;
   ensureJoinEventDraft();
-  joinEventDraft.link = joinEventDraft.link.trim();
+  const activeJoinDraft = joinEventDraft;
+  const joinRequestIsCurrent = () => joinEventDraft === activeJoinDraft;
+  activeJoinDraft.link = activeJoinDraft.link.trim();
 
-  if (!joinEventDraft.link) {
-    joinEventDraft.error = "צריך להדביק קישור הצטרפות.";
+  if (!activeJoinDraft.link) {
+    activeJoinDraft.error = "צריך להדביק קישור הצטרפות.";
     render();
     return;
   }
 
-  const inviteLink = joinEventDraft.link;
-  const eventId = parseEventIdFromJoinInput();
+  const inviteLink = activeJoinDraft.link;
+  const eventId = parseEventIdFromJoinInput(activeJoinDraft);
   if (!eventId) {
-    joinEventDraft.error = "הקישור לא נראה כמו קישור הצטרפות תקין.";
+    activeJoinDraft.error = "הקישור לא נראה כמו קישור הצטרפות תקין.";
     render();
     return;
   }
 
   joinEventBusy = true;
-  joinEventDraft.error = "";
+  activeJoinDraft.error = "";
   render();
   try {
     const joinRuntimeConfig = await loadRuntimeConfig();
+    if (!joinRequestIsCurrent()) return;
     runtimeConfig = joinRuntimeConfig;
     const inviteCredentials = await resolveEventInviteCredentials(
       joinRuntimeConfig,
@@ -14487,11 +14606,13 @@ async function joinExistingEventFromDraft() {
     // from the canonical membership index instead of making the user open the
     // link again.
     rememberPendingIncomingEventJoin(eventId, joinRuntimeConfig);
+    if (!joinRequestIsCurrent()) return;
     const sharedEventState = await readSharedEventState(
       joinRuntimeConfig,
       inviteCredentials,
       eventId
     );
+    if (!joinRequestIsCurrent()) return;
     if (!sharedEventState) {
       throw new Error("Verified invite event is unavailable");
     }
@@ -14509,7 +14630,7 @@ async function joinExistingEventFromDraft() {
     }
 
     if (!event) {
-      joinEventDraft.error = "לא מצאנו אירוע לפי הקישור הזה. כדאי לוודא שהקישור הועתק במלואו.";
+      activeJoinDraft.error = "לא מצאנו אירוע לפי הקישור הזה. כדאי לוודא שהקישור הועתק במלואו.";
       return;
     }
 
@@ -14535,7 +14656,7 @@ async function joinExistingEventFromDraft() {
       participant &&
       !isActiveEventParticipant(joinedEvent, participant.id)
     ) {
-      joinEventDraft.error =
+      activeJoinDraft.error =
         "הוסרת מהאירוע הזה. כדי להצטרף מחדש, מנהל האירוע צריך להוסיף אותך שוב.";
       return;
     }
@@ -14553,8 +14674,9 @@ async function joinExistingEventFromDraft() {
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     });
+    if (!joinRequestIsCurrent()) return;
     if (!saveResult?.ok && !saveResult?.partial) {
-      joinEventDraft.error =
+      activeJoinDraft.error =
         "החיבור לאירוע הוכן, אבל השמירה עדיין לא הושלמה. בדקו את החיבור ולחצו שוב.";
       return;
     }
@@ -14568,10 +14690,12 @@ async function joinExistingEventFromDraft() {
     emitProductMetric("invite_joined", { screen: "invite" });
   } catch (error) {
     emitOperationFailure("event_invite", { screen: "invite", error });
-    joinEventDraft.error = inviteJoinErrorMessage(error);
+    if (joinRequestIsCurrent()) {
+      activeJoinDraft.error = inviteJoinErrorMessage(error);
+    }
   } finally {
     joinEventBusy = false;
-    render();
+    if (joinRequestIsCurrent()) render();
     schedulePendingMutationRecovery({ resetBackoff: true });
   }
 }
@@ -14598,11 +14722,11 @@ function ensureJoinEventDraft() {
   }
 }
 
-function parseEventIdFromJoinInput() {
+function parseEventIdFromJoinInput(draft = joinEventDraft) {
   try {
-    return parseInviteEventId(joinEventDraft.link) ?? "";
+    return parseInviteEventId(draft?.link) ?? "";
   } catch {
-    return joinEventDraft.link.startsWith("event-") ? joinEventDraft.link : "";
+    return draft?.link?.startsWith("event-") ? draft.link : "";
   }
 }
 
@@ -16023,28 +16147,38 @@ async function saveEventNoteFromDialog(eventId) {
     return;
   }
 
+  const activeDialog = eventDialog;
   state = nextState;
-  eventDialog.saving = true;
+  activeDialog.saving = true;
   render();
   reactivateDialogAfterRender(".event-note-modal");
-  const result = await completedSaveResult(
-    persistState({
-      awaitCloud: true,
-      forceSharedEventIds: [eventId]
-    })
-  );
+  let result;
+  try {
+    result = await completedSaveResult(
+      persistState({
+        awaitCloud: true,
+        forceSharedEventIds: [eventId]
+      })
+    );
+  } catch (error) {
+    result = { ok: false, error };
+  }
 
   if (!result?.ok) {
     state = previousState;
-    eventDialog.saving = false;
-    eventDialog.error = "הפתק לא נשמר כדי למנוע הבדל בין המכשירים. בדקו את החיבור ונסו שוב.";
-    render();
-    reactivateDialogAfterRender(".event-note-modal");
+    if (eventDialog === activeDialog) {
+      activeDialog.saving = false;
+      activeDialog.error = "הפתק לא נשמר כדי למנוע הבדל בין המכשירים. בדקו את החיבור ונסו שוב.";
+      render();
+      reactivateDialogAfterRender(".event-note-modal");
+    }
     return result;
   }
 
-  eventDialog = null;
-  closeDialogWithHistory();
+  if (eventDialog === activeDialog) {
+    eventDialog = null;
+    closeDialogWithHistory();
+  }
   return result;
 }
 
@@ -18299,11 +18433,12 @@ async function saveProfileFromDraft() {
   profileError = "";
   profileNameEditing = false;
   profileUsernameEditing = false;
-  screen = invitedEventId && getEvent(invitedEventId)
+  const profileSaveDestination = invitedEventId && getEvent(invitedEventId)
     ? { name: "event", eventId: invitedEventId }
     : friendCodeDraft
       ? { name: "groups", tab: "people" }
       : { name: "home" };
+  screen = profileSaveDestination;
   notice = `נכנסת בתור ${participantName(state.currentParticipantId)}.`;
 
   const [profileSaveResult] = await Promise.allSettled([
@@ -18324,9 +18459,11 @@ async function saveProfileFromDraft() {
     notice = "הפרופיל נשמר במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
   }
   await refreshFriendNetwork({ preserveNotice: true });
-  appHistoryDepth = 0;
-  lastNavigationViewKey = "";
-  render();
+  if (screen === profileSaveDestination) {
+    appHistoryDepth = 0;
+    lastNavigationViewKey = "";
+    render();
+  }
 }
 
 function startExpenseDraft(eventId, expenseId = null, trigger = document.activeElement) {
@@ -19791,9 +19928,11 @@ async function openInboxNotification({ notificationId, eventId, view }) {
 
   const event = getEvent(destination.eventId);
   if (!event) {
+    const notificationScreenAtSync = screen;
     notice = "האירוע מההתראה עדיין מסתנכרן. נסה שוב בעוד רגע.";
     render();
     await requestResumeSync({ force: true });
+    if (screen !== notificationScreenAtSync) return;
     const syncedEvent = getEvent(destination.eventId);
     if (!syncedEvent) return;
   }
@@ -20576,6 +20715,22 @@ function retryPendingAccountLinks() {
               entry.targetParticipantId
             );
         if (replayedState === state && !accountLinkIsConfirmed(state, entry)) {
+          const event = getEvent(entry.eventId);
+          if (
+            event &&
+            !canLinkParticipantAccountInEvent(
+              state,
+              entry.eventId,
+              entry.sourceParticipantId,
+              entry.targetParticipantId
+            )
+          ) {
+            forgetPendingAccountLink(entry);
+            emitOperationFailure("account_link", {
+              screen: "event",
+              failureClass: "permanent_rejection"
+            });
+          }
           continue;
         }
         state = replayedState;
@@ -20588,12 +20743,22 @@ function retryPendingAccountLinks() {
           forgetPendingAccountLink(entry);
           continue;
         }
+        if (result?.error && !isRetryablePendingSyncFailure(result.error)) {
+          forgetPendingAccountLink(entry);
+          emitOperationFailure("account_link", {
+            screen: "event",
+            error: result.error
+          });
+          continue;
+        }
         emitOperationDeferred("account_link", {
           screen: "event",
           error: result?.error
         });
       } catch (error) {
-        emitOperationDeferred("account_link", {
+        const retryable = isRetryablePendingSyncFailure(error);
+        if (!retryable) forgetPendingAccountLink(entry);
+        (retryable ? emitOperationDeferred : emitOperationFailure)("account_link", {
           screen: "event",
           error
         });
@@ -20640,9 +20805,15 @@ async function publishEventInvitation(
     }
     return { ok: true, result };
   } catch (error) {
-    (error?.retryable || navigator.onLine === false
-      ? emitOperationDeferred
-      : emitOperationFailure)("event_invite", {
+    const retryable = Boolean(
+      error?.retryable === true ||
+      navigator.onLine === false ||
+      isRetryablePendingSyncFailure(error)
+    );
+    if (!retryable) {
+      forgetPendingEventMembershipInvitation(eventId, participant.id);
+    }
+    (retryable ? emitOperationDeferred : emitOperationFailure)("event_invite", {
       screen: "participants",
       error
     });
@@ -20652,9 +20823,11 @@ async function publishEventInvitation(
         `${participant.displayName} נוסף לאירוע. החיבור לחשבון שלו יושלם אוטומטית כשהחיבור יחזור.`
       );
     }
-    schedulePendingMutationRecovery({
-      resetBackoff: !pendingMutationRecoveryRequest
-    });
+    if (retryable) {
+      schedulePendingMutationRecovery({
+        resetBackoff: !pendingMutationRecoveryRequest
+      });
+    }
     return { ok: false, error };
   }
 }
@@ -20711,6 +20884,13 @@ function pendingMutationOwnerIsActive(ownerUserId) {
   return Boolean(ownerUserId && activeUserId === ownerUserId);
 }
 
+function hasAuthenticatedAccountContext() {
+  return Boolean(
+    runtimeConfig.storage?.account?.userId ||
+      loadStoredAccountSession(window.localStorage)?.user?.id
+  );
+}
+
 function rememberPendingIncomingEventJoin(eventId, config = runtimeConfig) {
   const ownerUserId = String(config?.storage?.account?.userId ?? "").trim();
   if (!ownerUserId || !eventId) return false;
@@ -20747,16 +20927,31 @@ function retryPendingEventJoins() {
       runtimeConfig?.storage?.account?.userId !== ownerUserId
     ) return;
 
+    let recoveredState;
+    try {
+      recoveredState = await recoverAccessibleSharedEvents(runtimeConfig, state);
+    } catch (error) {
+      emitOperationDeferred("event_join", { screen: "invite", error });
+      return;
+    }
+    if (!pendingMutationOwnerIsActive(ownerUserId)) return;
+    state = syncLocalProfile(recoveredState);
+
     for (const entry of pendingEntries) {
       if (!pendingMutationOwnerIsActive(ownerUserId)) return;
       markPendingEventJoinAttempt(entry, window.localStorage);
       try {
-        const recoveredState = await recoverAccessibleSharedEvents(runtimeConfig, state);
-        if (!pendingMutationOwnerIsActive(ownerUserId)) return;
-        state = syncLocalProfile(recoveredState);
         const event = getEvent(entry.eventId);
         const participantId = state.currentParticipantId;
-        if (!event || !participantId || !isActiveEventParticipant(event, participantId)) {
+        if (!event) {
+          forgetPendingEventJoin(entry, window.localStorage);
+          continue;
+        }
+        if (!participantId) {
+          continue;
+        }
+        if (!isActiveEventParticipant(event, participantId)) {
+          forgetPendingEventJoin(entry, window.localStorage);
           continue;
         }
         const result = await saveSharedState(state, {
@@ -21952,7 +22147,10 @@ async function hydrateAppForActiveAccount() {
     nextState.currentParticipantId
   ).length;
   accountEventsHydrationStatus = accountEventHydrationStatus({
-    authenticated: Boolean(runtimeConfig.storage?.account?.userId),
+    // The durable session can be available before the runtime config finishes
+    // attaching its account identity. Treating that short bootstrap window as
+    // signed-out rendered a false "no events" state on slower iPhones.
+    authenticated: hasAuthenticatedAccountContext(),
     authoritative: startupState.authoritative,
     cachedEventCount: visibleCachedEventCount,
     refreshPending: Boolean(startupState.refresh)
@@ -22173,7 +22371,7 @@ function renderScopedLocalFallback(error) {
   profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
   state = syncLocalProfile(loadState());
   accountEventsHydrationStatus = accountEventHydrationStatus({
-    authenticated: Boolean(runtimeConfig.storage?.account?.userId),
+    authenticated: hasAuthenticatedAccountContext(),
     authoritative: false,
     cachedEventCount: visibleEventsForParticipant(
       state,
@@ -22300,6 +22498,14 @@ function requestVisibleEventSync() {
   const event = eventId ? getEvent(eventId) : null;
   const credentials = eventShareCredentials(event);
   if (!eventId || !credentials) {
+    const now = Date.now();
+    if (
+      now - lastBackgroundAccountSyncAt <
+      BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS
+    ) {
+      return Promise.resolve();
+    }
+    lastBackgroundAccountSyncAt = now;
     return requestResumeSync({ includeSecondary: false });
   }
   // Do not make the open event wait behind a slower account/profile refresh.

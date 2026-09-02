@@ -71,7 +71,8 @@ export async function rotateOpenEventInvite(
 export async function resolveEventInviteCredentials(
   config,
   urlValue,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  { timeoutMs } = {}
 ) {
   const eventId = parseInviteEventId(urlValue);
   if (!eventId) return null;
@@ -86,7 +87,7 @@ export async function resolveEventInviteCredentials(
     );
   }
   if (token) {
-    return redeemTokenInvite(config, { eventId, token }, fetchImpl);
+    return redeemTokenInvite(config, { eventId, token }, fetchImpl, timeoutMs);
   }
 
   const legacyId = parseInviteSpaceId(urlValue);
@@ -105,7 +106,12 @@ export async function resolveEventInviteCredentials(
   return null;
 }
 
-async function redeemTokenInvite(config, { eventId, token }, fetchImpl) {
+async function redeemTokenInvite(
+  config,
+  { eventId, token },
+  fetchImpl,
+  timeoutMs
+) {
   const account = config?.storage?.account;
   const headers = { "content-type": "application/json" };
   if (account?.accessToken) {
@@ -118,7 +124,8 @@ async function redeemTokenInvite(config, { eventId, token }, fetchImpl) {
       method: "POST",
       headers,
       body: JSON.stringify({ eventId, token })
-    }
+    },
+    timeoutMs
   );
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
