@@ -91,17 +91,20 @@ test.describe("startup splash", () => {
     for (let index = 0; index < 20; index += 1) {
       const splash = page.locator("#app-splash");
       if ((await splash.count()) === 0) break;
-      samples.push(await splash.evaluate((node) => {
+      const sample = await splash.evaluate((node) => {
+        if (!node.isConnected) return null;
         const video = node.querySelector(".app-splash-video");
         const fallback = node.querySelector(".app-splash-hold");
-        return {
+        const result = {
           ready: node.classList.contains("is-video-ready"),
           videoOpacity: video ? getComputedStyle(video).opacity : "missing",
           fallbackOpacity: fallback ? getComputedStyle(fallback).opacity : "missing",
           autoplay: video?.autoplay ?? false,
           poster: video?.getAttribute("poster") ?? ""
         };
-      }));
+        return node.isConnected ? result : null;
+      }).catch(() => null);
+      if (sample) samples.push(sample);
       await page.waitForTimeout(25);
     }
 

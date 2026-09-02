@@ -4,6 +4,7 @@ import { loadAccessibilityPreferences } from "./data/accessibilityPreferences.mj
 const splash = document.querySelector("#app-splash");
 const app = document.querySelector("#app");
 const video = splash?.querySelector(".app-splash-video");
+const hold = splash?.querySelector(".app-splash-hold");
 const SKIP_NEXT_SPLASH_MARKER = "settle-friends-skip-next-splash";
 const VIDEO_LOAD_TIMEOUT_MS = 6000;
 const VIDEO_PROGRESS_TIMEOUT_MS = 4500;
@@ -153,6 +154,8 @@ function installSplash({ showPosterOnly = false } = {}) {
     window.clearTimeout(progressTimeoutId);
     lastProgressAt = Date.now();
     if (!videoPresentedAt) videoPresentedAt = performance.now();
+    video.style.opacity = "1";
+    if (hold) hold.style.opacity = "0";
     splash.classList.add("is-video-ready");
     notifyNativeWebSplashReady();
     startPlaybackWatchdog();
@@ -204,6 +207,8 @@ function installSplash({ showPosterOnly = false } = {}) {
     window.clearTimeout(progressTimeoutId);
     window.clearInterval(watchdogIntervalId);
     watchdogIntervalId = 0;
+    video.style.opacity = "0";
+    if (hold) hold.style.opacity = "1";
     splash.classList.add("is-fallback");
     video?.pause();
     notifyNativeWebSplashReady();
