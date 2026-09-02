@@ -996,7 +996,8 @@ async function joinThroughProductionBrowser({
       const browserFetch = globalThis.fetch.bind(globalThis);
       globalThis.fetch = (input, init) => {
         const requestUrl = input instanceof Request ? input.url : String(input ?? "");
-        if (new URL(requestUrl, globalThis.location.href).pathname === "/api/product-metrics") {
+        const requestPath = new URL(requestUrl, globalThis.location.href).pathname;
+        if (requestPath === "/api/product-metrics") {
           return Promise.resolve(new Response(JSON.stringify({ ok: true, qaSuppressed: true }), {
             status: 202,
             headers: { "content-type": "application/json" }
@@ -1019,11 +1020,23 @@ async function joinThroughProductionBrowser({
         url.pathname.includes("/rest/v1/rpc/set_friend_username") ||
         url.pathname.includes("/rest/v1/app_snapshots");
       if (!isRelevant) return;
+      const rawRequestBody = String(response.request().postData() ?? "");
+      const parsedRequestBody = (() => {
+        try {
+          return JSON.parse(rawRequestBody);
+        } catch {
+          return null;
+        }
+      })();
       const entry = {
         path: url.pathname,
         status: response.status(),
         method: response.request().method(),
-        requestBody: String(response.request().postData() ?? "").slice(0, 1_200),
+        requestBody: rawRequestBody.slice(0, 1_200),
+        requestSnapshotId: String(parsedRequestBody?.id ?? ""),
+        requestCurrentParticipantId: String(
+          parsedRequestBody?.state?.currentParticipantId ?? ""
+        ),
         body: (await response.text().catch(() => "")).slice(0, 400)
       };
       authDiagnostics.push(entry);
@@ -1088,6 +1101,15 @@ async function joinThroughProductionBrowser({
         throw error;
       }
     }
+    const unexpectedSnapshotFailures = failedResponses.filter(
+      ({ path, status }) =>
+        path.includes("/rest/v1/app_snapshots") && status >= 400
+    );
+    assert.deepEqual(
+      unexpectedSnapshotFailures,
+      [],
+      "The joined iPhone must not rely on rejected personal or shared snapshot writes"
+    );
     await context.close();
   } finally {
     await browser.close();

@@ -20,7 +20,8 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(index, /id="app-splash"/);
   assert.match(index, /assets\/sogrim-heshbon-loading-loop-v2\.mp4/);
   assert.match(index, /assets\/sogrim-logo-intro-hold\.jpg/);
-  assert.doesNotMatch(index, /class="app-splash-poster"|poster=/);
+  assert.doesNotMatch(index, /class="app-splash-poster"/);
+  assert.match(index, /poster="\.\/assets\/sogrim-logo-intro-hold\.jpg"/);
   assert.match(index, /autoplay[\s\S]*?loop[\s\S]*?muted[\s\S]*?playsinline/);
   assert.match(index, /publicAppSplashLayer\.mjs[\s\S]*?src\/app\.mjs/);
   assert.match(app, /app\.classList\.remove\("app-boot"\)/);
@@ -150,9 +151,12 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(styles, /\.app-splash-frame \{[\s\S]*?background: #fff/);
   assert.doesNotMatch(styles, /\.app-splash-frame::after/);
   assert.match(styles, /\.app-splash-video,[\s\S]*?\.app-splash-hold[\s\S]*?background: #fff/);
-  assert.match(styles, /\.app-splash-video \{\s*opacity: 1;/);
+  assert.match(index, /poster="\.\/assets\/sogrim-logo-intro-hold\.jpg"/);
+  assert.match(styles, /\.app-splash-video \{\s*opacity: 0;/);
+  assert.match(styles, /\.app-splash-hold \{\s*opacity: 1;/);
   assert.doesNotMatch(styles, /\.app-splash-video \{[\s\S]*?transition: opacity 80ms linear/);
-  assert.doesNotMatch(styles, /\.app-splash\.is-video-ready \.app-splash-video/);
+  assert.match(styles, /\.app-splash\.is-video-ready \.app-splash-video \{[\s\S]*?opacity: 1/);
+  assert.match(styles, /\.app-splash\.is-video-ready \.app-splash-hold \{[\s\S]*?opacity: 0/);
   assert.match(styles, /\.app-splash\.is-fallback \.app-splash-video \{[\s\S]*?display: none/);
   assert.match(styles, /\.app-splash\.is-fallback \.app-splash-hold \{[\s\S]*?opacity: 1/);
   assert.doesNotMatch(styles, /\.app-splash\.is-video-complete/);

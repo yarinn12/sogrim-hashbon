@@ -759,11 +759,11 @@ test("participant manager separates the current roster from saved names", async 
   );
   assert.match(
     app,
-    /async function removeEventParticipant\([\s\S]*?const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;[\s\S]*?לא בוצע שינוי/
+    /async function removeEventParticipant\([\s\S]*?const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveCheckpoint\.request;[\s\S]*?rejectedStateSaveIsCurrent\(result, saveCheckpoint\)[\s\S]*?לא בוצע שינוי/
   );
   assert.match(
     app,
-    /const removalMessage =[\s\S]*?message: ""[\s\S]*?notice = removalMessage;[\s\S]*?const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true/
+    /const removalMessage =[\s\S]*?message: ""[\s\S]*?notice = removalMessage;[\s\S]*?const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true/
   );
   assert.match(design, /\.event-participant-roster-row/);
   assert.match(design, /\.event-participant-roster-search/);
@@ -1029,8 +1029,9 @@ test("participant membership changes protect creators and admins while preservin
   assert.match(remove, /\{ preserveOffline \}/);
   assert.match(
     remove,
-    /const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveRequest;/
+    /const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveCheckpoint\.request;/
   );
+  assert.match(remove, /rejectedStateSaveIsCurrent\(result, saveCheckpoint\)/);
   assert.match(remove, /state = previousState/);
   assert.match(remove, /ההיסטוריה הכספית נשמרה/);
   assert.match(remove, /notice = ""/);
@@ -1396,10 +1397,13 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /<details class="event-setting-more">/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
   assert.match(roundingHandler, /const previousState = state/);
-  assert.match(roundingHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(
     roundingHandler,
-    /if \(!result\?\.ok && !result\?\.pending\) \{\s*state = previousState/
+    /const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true[\s\S]*?const result = await saveCheckpoint\.request/
+  );
+  assert.match(
+    roundingHandler,
+    /if \(!result\?\.ok && !result\?\.pending\) \{\s*if \(!rejectedStateSaveIsCurrent\(result, saveCheckpoint\)\) return result;\s*state = previousState/
   );
 });
 

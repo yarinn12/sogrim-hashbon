@@ -157,6 +157,10 @@ test("every signed-in screen carries the selected profile picture and greeting i
   assert.match(brandLayer, /import \{ loadLocalProfile \}/);
   assert.match(brandLayer, /function syncHeaderIdentity\(/);
   assert.match(brandLayer, /function resolveHeaderProfileIdentity\(/);
+  assert.match(brandLayer, /let lastResolvedHeaderProfileIdentity/);
+  assert.match(brandLayer, /return lastResolvedHeaderProfileIdentity/);
+  assert.match(app, /function persistLocalProfile\(nextProfile\)/);
+  assert.match(app, /if \(savedProfile\) localProfile = savedProfile/);
   assert.match(
     brandLayer,
     /const participantId = String\(profile\?\.participantId \?\? ""\)\.trim\(\)/

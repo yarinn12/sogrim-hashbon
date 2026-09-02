@@ -2,10 +2,12 @@ import {
   createProductMetricId,
   normalizeProductMetricBatch
 } from "../domain/productMetrics.mjs";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 
 const RETENTION_DAYS = 90;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_EVENTS = 120;
+export const PRODUCT_METRICS_REQUEST_TIMEOUT_MS = 8_000;
 
 export async function storeProductMetrics({
   runtimeConfig,
@@ -13,7 +15,8 @@ export async function storeProductMetrics({
   authorization = "",
   payload,
   fetchImpl = fetch,
-  now = Date.now
+  now = Date.now,
+  requestTimeoutMs = PRODUCT_METRICS_REQUEST_TIMEOUT_MS
 }) {
   const supabaseUrl = runtimeConfig?.storage?.url;
   const anonKey = runtimeConfig?.storage?.anonKey;
@@ -31,29 +34,40 @@ export async function storeProductMetrics({
     return failure(400, "Invalid metrics payload");
   }
 
-  const userResponse = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`
-    }
-  });
+  const deadlineFetch = createDeadlineFetch(fetchImpl, requestTimeoutMs);
+  let userResponse;
+  try {
+    userResponse = await deadlineFetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${accessToken}`
+      }
+    });
+  } catch {
+    return failure(502, "Metrics authentication could not be verified");
+  }
   if (!userResponse.ok) return failure(401, "Account session is invalid");
   const user = await userResponse.json().catch(() => null);
   if (!user?.id) return failure(401, "Account session is invalid");
 
-  const capacityResponse = await fetchImpl(
-    `${supabaseUrl}/rest/v1/rpc/reserve_product_metric_batch`,
-    {
-      method: "POST",
-      headers: serviceHeaders(serviceRoleKey, "return=representation"),
-      body: JSON.stringify({
-        p_user_id: user.id,
-        p_event_count: metrics.length,
-        p_window_seconds: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
-        p_event_limit: RATE_LIMIT_EVENTS
-      })
-    }
-  );
+  let capacityResponse;
+  try {
+    capacityResponse = await deadlineFetch(
+      `${supabaseUrl}/rest/v1/rpc/reserve_product_metric_batch`,
+      {
+        method: "POST",
+        headers: serviceHeaders(serviceRoleKey, "return=representation"),
+        body: JSON.stringify({
+          p_user_id: user.id,
+          p_event_count: metrics.length,
+          p_window_seconds: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
+          p_event_limit: RATE_LIMIT_EVENTS
+        })
+      }
+    );
+  } catch {
+    return failure(502, "Metrics capacity could not be reserved");
+  }
   if (!capacityResponse.ok) {
     await logUpstreamFailure("capacity", capacityResponse);
     return failure(502, "Metrics capacity could not be reserved");
@@ -61,14 +75,19 @@ export async function storeProductMetrics({
   const capacityReserved = await capacityResponse.json().catch(() => false);
   if (capacityReserved !== true) return failure(429, "Metrics rate limit exceeded");
 
-  const insertResponse = await fetchImpl(
-    `${supabaseUrl}/rest/v1/product_metrics?on_conflict=id`,
-    {
-      method: "POST",
-      headers: serviceHeaders(serviceRoleKey, "resolution=ignore-duplicates,return=minimal"),
-      body: JSON.stringify(metrics.map((metric) => toDatabaseRow(metric, createProductMetricId)))
-    }
-  );
+  let insertResponse;
+  try {
+    insertResponse = await deadlineFetch(
+      `${supabaseUrl}/rest/v1/product_metrics?on_conflict=id`,
+      {
+        method: "POST",
+        headers: serviceHeaders(serviceRoleKey, "resolution=ignore-duplicates,return=minimal"),
+        body: JSON.stringify(metrics.map((metric) => toDatabaseRow(metric, createProductMetricId)))
+      }
+    );
+  } catch {
+    return failure(502, "Metrics could not be stored");
+  }
   if (!insertResponse.ok) {
     await logUpstreamFailure("insert", insertResponse);
     return failure(502, "Metrics could not be stored");
@@ -87,7 +106,8 @@ export async function purgeExpiredProductMetrics({
   runtimeConfig,
   env = process.env,
   fetchImpl = fetch,
-  now = Date.now
+  now = Date.now,
+  requestTimeoutMs = PRODUCT_METRICS_REQUEST_TIMEOUT_MS
 }) {
   const supabaseUrl = runtimeConfig?.storage?.url;
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY;
@@ -99,8 +119,9 @@ export async function purgeExpiredProductMetrics({
     supabaseUrl,
     serviceRoleKey,
     fetchImpl,
-    now
-  });
+    now,
+    requestTimeoutMs
+  }).catch(() => null);
   if (!response?.ok) return failure(502, "Expired product metrics could not be deleted");
 
   return { ok: true, status: 200, payload: { ok: true, retentionDays: RETENTION_DAYS } };
@@ -120,15 +141,40 @@ function toDatabaseRow(metric, createId) {
   };
 }
 
-async function cleanupExpiredMetrics({ supabaseUrl, serviceRoleKey, fetchImpl, now }) {
+async function cleanupExpiredMetrics({
+  supabaseUrl,
+  serviceRoleKey,
+  fetchImpl,
+  now,
+  requestTimeoutMs = PRODUCT_METRICS_REQUEST_TIMEOUT_MS
+}) {
   const cutoff = new Date((Number(now()) || Date.now()) - RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  return fetchImpl(
+  return fetchWithTimeout(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/product_metrics?received_at=lt.${encodeURIComponent(cutoff.toISOString())}`,
     {
       method: "DELETE",
       headers: serviceHeaders(serviceRoleKey, "return=minimal")
-    }
+    },
+    requestTimeoutMs
   );
+}
+
+function createDeadlineFetch(fetchImpl, timeoutMs) {
+  const duration = Math.max(
+    1,
+    Number(timeoutMs) || PRODUCT_METRICS_REQUEST_TIMEOUT_MS
+  );
+  const deadline = Date.now() + duration;
+  return (url, options = {}) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      const error = new Error("Product metrics request timed out");
+      error.code = "NETWORK_TIMEOUT";
+      return Promise.reject(error);
+    }
+    return fetchWithTimeout(fetchImpl, url, options, remainingMs);
+  };
 }
 
 function serviceHeaders(serviceRoleKey, prefer) {

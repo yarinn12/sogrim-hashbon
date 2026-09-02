@@ -21,6 +21,7 @@ import {
   reopenEvent,
   removeParticipant,
   removeExpense,
+  rollbackTransferStatusChanges,
   setEventDirectSettlementTransfers,
   setEventRoundSettlementTransfers,
   updateTransferStatus,
@@ -805,6 +806,90 @@ test("repeating the same transfer status is idempotent", () => {
   assert.strictEqual(repeated, original);
 });
 
+test("a failed payment rollback preserves a concurrent payment on another transfer", () => {
+  const original = baseState();
+  original.events[0].transfers.push({
+    id: "transfer-avi-owner-3000",
+    fromParticipantId: "avi",
+    toParticipantId: "owner",
+    amount: 3000,
+    status: "pending"
+  });
+  let optimistic = updateTransferStatus(
+    original,
+    "event-1",
+    "transfer-dani-owner-3000",
+    {
+      status: "paid",
+      participantId: "owner",
+      markedAt: "2026-05-23T05:00:00.000Z"
+    }
+  );
+  optimistic = updateTransferStatus(
+    optimistic,
+    "event-1",
+    "transfer-avi-owner-3000",
+    {
+      status: "paid",
+      participantId: "owner",
+      markedAt: "2026-05-23T05:00:01.000Z"
+    }
+  );
+  optimistic.events[0].activityLog = [
+    { id: "activity-failed", kind: "transfer-paid" },
+    { id: "activity-succeeded", kind: "transfer-paid" }
+  ];
+
+  const rolledBack = rollbackTransferStatusChanges(
+    optimistic,
+    "event-1",
+    [original.events[0].transfers[0]],
+    "paid",
+    ["activity-failed"],
+    "2026-05-23T05:00:02.000Z"
+  );
+
+  assert.equal(rolledBack.events[0].transfers[0].status, "pending");
+  assert.equal(rolledBack.events[0].transfers[1].status, "paid");
+  assert.deepEqual(rolledBack.events[0].activityLog, [
+    { id: "activity-succeeded", kind: "transfer-paid" }
+  ]);
+});
+
+test("a failed payment cancellation restores only the affected paid transfer", () => {
+  const original = baseState();
+  original.events[0].transfers[0] = {
+    ...original.events[0].transfers[0],
+    status: "paid",
+    markedPaidByParticipantId: "owner",
+    markedPaidAt: "2026-05-23T06:00:00.000Z"
+  };
+  const optimistic = updateTransferStatus(
+    original,
+    "event-1",
+    "transfer-dani-owner-3000",
+    {
+      status: "pending",
+      markedAt: "2026-05-23T06:00:01.000Z"
+    }
+  );
+
+  const rolledBack = rollbackTransferStatusChanges(
+    optimistic,
+    "event-1",
+    [original.events[0].transfers[0]],
+    "pending",
+    [],
+    "2026-05-23T06:00:02.000Z"
+  );
+
+  assert.equal(rolledBack.events[0].transfers[0].status, "paid");
+  assert.equal(
+    rolledBack.events[0].transfers[0].markedPaidByParticipantId,
+    "owner"
+  );
+});
+
 test("removeExpense records a tombstone so stale devices cannot restore it", () => {
   const state = removeExpense(
     baseState(),
@@ -1018,6 +1103,11 @@ test("deactivateEventParticipant keeps creator history but removes the creator f
   assert.deepEqual(nextState.events[0].inactiveParticipantIds, ["owner"]);
   assert.equal(nextState.events[0].createdByParticipantId, "owner");
   assert.deepEqual(nextState.events[0].adminIds, ["dani"]);
+  assert.equal(nextState.events[0].adminIdsScopedToEvent, true);
+  assert.equal(
+    nextState.events[0].adminIdsUpdatedAt,
+    "2026-07-26T09:10:00.000Z"
+  );
 });
 
 test("deleteEvent removes only the selected event", () => {

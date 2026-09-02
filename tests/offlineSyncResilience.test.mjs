@@ -83,7 +83,7 @@ test("an unsent change is queued locally before the cloud write is attempted", (
 
   assert.ok(
     save.indexOf("savePendingSharedState(runtimeConfig, sharedState)") <
-      save.indexOf("const saved = await syncAndPersistCloudState("),
+      save.indexOf("const saved = await withFreshCloudAccount("),
     "the pending snapshot is stored before the network call"
   );
   assert.match(save, /publishSyncStatus\("saving"\)/);
@@ -95,8 +95,8 @@ test("a signed-in mutation reaches the durable outbox before runtime config can 
     localStore.indexOf("export async function saveSharedState(state)"),
     localStore.indexOf("export async function flushPendingSharedState")
   );
-  const crashSafeWrite = save.indexOf("const crashSafePendingStateSaved = Boolean(");
-  const visibleLocalWrite = save.indexOf("const localSaved = saveState(cleanState)");
+  const crashSafeWrite = save.indexOf("let crashSafePendingStateSaved = Boolean(");
+  const visibleLocalWrite = save.indexOf("let localSaved = saveState(cleanState)");
   const firstRuntimeAwait = save.indexOf("await loadRuntimeConfig()");
 
   assert.ok(crashSafeWrite >= 0, "the crash-safe outbox write must exist");
@@ -148,7 +148,7 @@ test("queued cloud writes use immutable snapshots and stale completions cannot r
     "a newer local mutation invalidates older cloud completions"
   );
   assert.ok(
-    save.indexOf("const requestAccountGeneration = accountStorageGeneration") <
+    save.indexOf("let requestAccountGeneration = accountStorageGeneration") <
       save.indexOf("await loadRuntimeConfig()"),
     "signing out while runtime config loads invalidates the pending save"
   );
@@ -174,7 +174,7 @@ test("queued cloud writes use immutable snapshots and stale completions cannot r
   );
   assert.match(
     save,
-    /syncAndPersistCloudState\(\s*runtimeConfig,\s*sharedState,\s*syncSelection/,
+    /syncAndPersistCloudState\(\s*freshRuntimeConfig,\s*sharedState,\s*syncSelection/,
     "the queued write persists the captured snapshot"
   );
 });
@@ -351,8 +351,11 @@ test("returning online flushes whatever was queued", () => {
 test("an expired cloud token refreshes once without crossing account boundaries", () => {
   assert.match(
     localStore,
-    /error\?\.code !== "CLOUD_STATE_AUTH_EXPIRED" \|\| !expectedUserId/
+    /const authenticationExpired = flattenSyncErrors\(error\)\.some\(/
   );
+  assert.match(localStore, /item\?\.code === "CLOUD_STATE_AUTH_EXPIRED"/);
+  assert.match(localStore, /Number\(item\?\.status \?\? 0\) === 401/);
+  assert.match(localStore, /if \(!authenticationExpired \|\| !expectedUserId\) throw error/);
   assert.match(
     localStore,
     /globalThis\.SogrimAccountSession\?\.refresh\?\.\(\)/
@@ -404,7 +407,7 @@ test("a write conflict is resolved by merging rather than overwriting", () => {
     localStore.indexOf("export async function flushPendingSharedState")
   );
 
-  assert.match(save, /syncAndPersistCloudState\([\s\S]*?runtimeConfig,[\s\S]*?sharedState,[\s\S]*?syncSelection/);
+  assert.match(save, /withFreshCloudAccount\([\s\S]*?runtimeConfig,[\s\S]*?syncAndPersistCloudState\([\s\S]*?freshRuntimeConfig,[\s\S]*?sharedState,[\s\S]*?syncSelection/);
   assert.match(conflictRetry, /error\?\.code !== "CLOUD_STATE_CONFLICT"/);
   assert.match(conflictRetry, /mergeStates = mergeSharedStates/);
   assert.match(conflictRetry, /candidate = latest \? mergeStates\(latest, candidate\) : candidate/);
@@ -458,7 +461,11 @@ test("shared event writes also retry through a merge on conflict", () => {
   assert.match(save, /loadLatest: \(\) => readCloudState\(config, fetchImpl\)/);
   assert.match(
     save,
-    /save: \(candidate\) => saveCloudState\([\s\S]*buildSharedEventState\(candidate, eventId\)/
+    /save: \(candidate\) =>[\s\S]*?saveCloudState\([\s\S]*?requireSharedEventPayload\(candidate, eventId\)/
+  );
+  assert.match(
+    save,
+    /function requireSharedEventPayload\(state, eventId\) \{[\s\S]*?buildSharedEventState\(state, eventId\)[\s\S]*?SHARED_EVENT_PAYLOAD_MISSING/
   );
   assert.match(save, /saved\.state/);
 });
@@ -531,7 +538,10 @@ test("a failed shared-event write restores the last durable state instead of div
   assert.match(save, /const hasSharedEventMutation = Boolean\(/);
   assert.match(save, /requestSaveGeneration === sharedStateSaveGeneration/);
   assert.match(save, /saveState\(previousState\);/);
-  assert.match(save, /publishSharedSaveReverted\(syncSelection, error\);/);
+  assert.match(
+    save,
+    /publishSharedSaveReverted\(syncSelection, error, \{[\s\S]*?foregroundMutation,[\s\S]*?requestedAt: requestStartedAt/
+  );
   assert.match(localStore, /failureKind: sharedSaveFailureKind\(error\)/);
   assert.match(localStore, /SHARED_SAVE_REVERTED_EVENT/);
 });
@@ -1277,9 +1287,9 @@ test("a local storage failure does not prevent the cloud write path", () => {
     localStore.indexOf("export async function flushPendingSharedState")
   );
 
-  assert.match(save, /const localSaved = saveState\(cleanState\);/);
+  assert.match(save, /let localSaved = saveState\(cleanState\);/);
   assert.ok(
-    save.indexOf("const localSaved = saveState(cleanState)") <
+    save.indexOf("let localSaved = saveState(cleanState)") <
       save.indexOf('if (runtimeConfig.storage?.mode === "supabase")')
   );
   assert.match(localStore, /export function saveState\(state\) \{[\s\S]*?try \{/);
@@ -1288,7 +1298,7 @@ test("a local storage failure does not prevent the cloud write path", () => {
 
 test("a late cloud save cannot repopulate local data after sign out", () => {
   assert.match(localStore, /let accountStorageGeneration = 0/);
-  assert.match(localStore, /const requestAccountGeneration = accountStorageGeneration/);
+  assert.match(localStore, /let requestAccountGeneration = accountStorageGeneration/);
   assert.match(
     localStore,
     /requestAccountGeneration === accountStorageGeneration &&\s*requestSaveGeneration === sharedStateSaveGeneration\s*\) \{\s*Object\.assign\(state, syncedState\);\s*saveState\(syncedState\);/
@@ -1317,13 +1327,13 @@ test("a save that began under another account is stopped before cloud persistenc
     localStore.indexOf("export async function flushPendingSharedState")
   );
 
-  assert.match(save, /const requestScope = synchronizeAccountStorageScope\(\)/);
+  assert.match(save, /let requestScope = synchronizeAccountStorageScope\(\)/);
   assert.match(
     save,
-    /if \([\s\S]*?requestScope !== synchronizeAccountStorageScope\(\)[\s\S]*?requestAccountGeneration !== accountStorageGeneration[\s\S]*?mode: "stale-account"/
+    /const currentScope = synchronizeAccountStorageScope\(\)[\s\S]*?requestScope !== currentScope[\s\S]*?requestAccountGeneration !== accountStorageGeneration[\s\S]*?if \(!sameAuthenticatedAccount\)[\s\S]*?mode: "stale-account"/
   );
   assert.ok(
-    save.indexOf("requestScope !== synchronizeAccountStorageScope()") <
+    save.indexOf("requestScope !== currentScope") <
       save.indexOf('if (runtimeConfig.storage?.mode === "supabase")')
   );
 });
@@ -1504,6 +1514,67 @@ test("a valid signed-in account can still save while runtime config is offline",
       "account-user-a"
     );
     assert.ok(storage.getItem("settle-friends-pending-sync:space-account-a"));
+  } finally {
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("a same-account workspace refresh during save rebases instead of rejecting the mutation", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = memoryStorage();
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  saveTestAccount(storage, {
+    userId: "user-a",
+    accessToken: "token-a",
+    spaceId: "space-account-before-refresh",
+    spaceKey: "before-refresh-secret-that-is-long-enough"
+  });
+  globalThis.window = {
+    addEventListener() {},
+    dispatchEvent() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async () => {
+    saveTestAccount(storage, {
+      userId: "user-a",
+      accessToken: "token-a-refreshed",
+      spaceId: "space-account-after-refresh",
+      spaceKey: "after-refresh-secret-that-is-long-enough-1"
+    });
+    throw new Error("runtime config temporarily unavailable");
+  };
+
+  try {
+    const store = await import(
+      `../src/data/localStore.mjs?same-account-scope-refresh=${Date.now()}`
+    );
+    const state = queueTestState("Same Account Refresh");
+    const result = await store.saveSharedState(state);
+
+    assert.deepEqual(result, { ok: true, mode: "local", pending: true });
+    assert.equal(
+      JSON.parse(
+        storage.getItem("settle-friends-state:space-account-after-refresh")
+      ).participants[0].displayName,
+      "Same Account Refresh"
+    );
+    assert.ok(
+      storage.getItem("settle-friends-pending-sync:space-account-after-refresh"),
+      "the mutation remains durably queued in the refreshed workspace"
+    );
   } finally {
     restoreGlobal("window", previousWindow);
     restoreGlobal("location", previousLocation);

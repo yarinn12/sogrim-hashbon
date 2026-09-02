@@ -6,7 +6,9 @@ import vm from "node:vm";
 async function createWorker({
   fetchImpl,
   cachePut = async () => {},
-  shell = new Response("offline shell", { status: 200 })
+  shell = new Response("offline shell", { status: 200 }),
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout
 } = {}) {
   const source = await readFile("sw.js", "utf8");
   const listeners = new Map();
@@ -55,7 +57,10 @@ async function createWorker({
     fetch,
     URL,
     Response,
-    Promise
+    Promise,
+    AbortController,
+    setTimeout: setTimeoutImpl,
+    clearTimeout: clearTimeoutImpl
   });
 
   return {
@@ -112,7 +117,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length > 20);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "439" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "440" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -121,7 +126,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=439",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=440",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -142,6 +147,48 @@ test("installed-app modules also bypass Safari's stale HTTP cache", async () => 
 
   assert.equal(await response.text(), "fresh");
   assert.equal(worker.fetchCalls[0][1]?.cache, "no-store");
+});
+
+test("a failing origin serves the cached shell to an installed app", async () => {
+  const worker = await createWorker({
+    fetchImpl: async () => new Response("Service Unavailable", {
+      status: 503,
+      headers: { "content-type": "text/html" }
+    })
+  });
+  const request = {
+    url: "https://sogrim-hesbon-app.vercel.app/",
+    method: "GET",
+    mode: "navigate",
+    headers: new Headers()
+  };
+
+  const response = await worker.dispatchFetch(request);
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "offline shell");
+});
+
+test("a stalled network cannot leave an installed-app navigation pending", async () => {
+  const worker = await createWorker({
+    fetchImpl: () => new Promise(() => {}),
+    setTimeoutImpl(callback) {
+      queueMicrotask(callback);
+      return 1;
+    },
+    clearTimeoutImpl() {}
+  });
+  const request = {
+    url: "https://sogrim-hesbon-app.vercel.app/",
+    method: "GET",
+    mode: "navigate",
+    headers: new Headers()
+  };
+
+  const response = await worker.dispatchFetch(request);
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "offline shell");
 });
 
 test("a waiting worker can be activated explicitly on iPhone", async () => {
@@ -258,4 +305,40 @@ test("private query and compact invites use no-store and fall back to the shell 
   assert.equal(worker.cacheWrites.length, 0);
   assert.equal(worker.fetchCalls.length, 4);
   assert.ok(worker.fetchCalls.every(([, init]) => init?.cache === "no-store"));
+});
+
+test("a stalled private invite opens the cached shell without caching credentials", async () => {
+  const worker = await createWorker({
+    fetchImpl: () => new Promise(() => {}),
+    setTimeoutImpl(callback) {
+      queueMicrotask(callback);
+      return 1;
+    },
+    clearTimeoutImpl() {}
+  });
+  const response = await worker.dispatchFetch(
+    new Request(
+      "https://sogrim-hesbon-app.vercel.app/i/event-safe/t/" + "a".repeat(48)
+    )
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "offline shell");
+  assert.equal(worker.cacheWrites.length, 0);
+  assert.equal(worker.fetchCalls[0][1]?.cache, "no-store");
+});
+
+test("a temporary origin error cannot replace a private invite with an error page", async () => {
+  const worker = await createWorker({
+    fetchImpl: async () => new Response("Service Unavailable", { status: 503 })
+  });
+  const response = await worker.dispatchFetch(
+    new Request(
+      "https://sogrim-hesbon-app.vercel.app/i/event-safe/t/" + "b".repeat(48)
+    )
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "offline shell");
+  assert.equal(worker.cacheWrites.length, 0);
 });

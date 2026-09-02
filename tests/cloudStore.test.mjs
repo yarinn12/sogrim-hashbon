@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   CloudStateAuthError,
   CloudStateConflictError,
+  CloudStateIdentityError,
   loadCloudState,
   readAccessibleSharedCloudStates,
   readCloudState,
@@ -392,8 +393,13 @@ test("an account snapshot create conflict reloads, merges, and retries as an upd
     accessToken: "account-access-token",
     spaceId: "account-create-conflict-retry"
   };
-  const remoteState = {
+  const accountState = {
     ...state,
+    currentParticipantId: "account-user-conflict",
+    participants: [{ id: "account-user-conflict", displayName: "Owner", kind: "user" }]
+  };
+  const remoteState = {
+    ...accountState,
     groups: [{ id: "remote-group", name: "Remote group", memberIds: ["owner"] }]
   };
   const requests = [];
@@ -410,7 +416,7 @@ test("an account snapshot create conflict reloads, merges, and retries as an upd
   };
 
   const result = await saveCloudStateWithConflictRetry({
-    state,
+    state: accountState,
     loadLatest: () => readCloudState(accountConfig, fetchImpl),
     save: (candidate) => saveCloudState(accountConfig, candidate, fetchImpl),
     retryDelay: () => 0
@@ -491,13 +497,18 @@ test("account ownership is only assigned when a snapshot is first inserted", asy
     accessToken: "account-access-token",
     spaceId: "account-owned"
   };
+  const accountState = {
+    ...state,
+    currentParticipantId: "account-user-one",
+    participants: [{ id: "account-user-one", displayName: "Owner", kind: "user" }]
+  };
   const requests = [];
 
-  await saveCloudState(accountConfig, state, async (_url, options) => {
+  await saveCloudState(accountConfig, accountState, async (_url, options) => {
     requests.push(options);
     return jsonResponse([{ updated_at: "2026-07-17T10:00:00.000Z" }]);
   });
-  await saveCloudState(accountConfig, state, async (_url, options) => {
+  await saveCloudState(accountConfig, accountState, async (_url, options) => {
     requests.push(options);
     return jsonResponse([{ updated_at: "2026-07-17T10:00:01.000Z" }]);
   });
@@ -507,6 +518,32 @@ test("account ownership is only assigned when a snapshot is first inserted", asy
     Object.hasOwn(JSON.parse(requests[1].body), "owner_user_id"),
     false
   );
+});
+
+test("an invalid personal workspace identity is rejected before a network write", async () => {
+  const accountConfig = createConfig("account-identity-pending");
+  accountConfig.storage.account = {
+    userId: "user-two",
+    accessToken: "account-access-token",
+    spaceId: "account-identity-pending"
+  };
+  let contacted = false;
+
+  await assert.rejects(
+    saveCloudState(
+      accountConfig,
+      {
+        ...state,
+        currentParticipantId: ""
+      },
+      async () => {
+        contacted = true;
+        return jsonResponse([]);
+      }
+    ),
+    CloudStateIdentityError
+  );
+  assert.equal(contacted, false);
 });
 
 test("saveCloudState rejects a concurrent overwrite", async () => {

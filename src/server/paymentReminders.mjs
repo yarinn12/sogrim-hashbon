@@ -6,6 +6,7 @@ import {
   settlementOptionsForEvent
 } from "../domain/settlement.mjs";
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 import { storeInboxNotification } from "./notificationInbox.mjs";
 
 const FIREBASE_MESSAGING_SCOPE =
@@ -13,6 +14,7 @@ const FIREBASE_MESSAGING_SCOPE =
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REMINDER_COOLDOWN_MINUTES = 12 * 60;
+const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
 
 export async function sendPaymentReminder({
   runtimeConfig,
@@ -21,7 +23,9 @@ export async function sendPaymentReminder({
   eventId = "",
   transferId = "",
   fetchImpl = fetch,
-  accessTokenProvider = defaultFirebaseAccessTokenProvider
+  accessTokenProvider = defaultFirebaseAccessTokenProvider,
+  deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
 }) {
   const normalizedEventId = String(eventId ?? "").trim();
   const normalizedTransferId = String(transferId ?? "").trim();
@@ -196,7 +200,10 @@ export async function sendPaymentReminder({
 
   let firebase;
   try {
-    firebase = await accessTokenProvider(env);
+    firebase = await promiseWithTimeout(
+      () => accessTokenProvider(env),
+      accessTokenTimeoutMs
+    );
   } catch {
     if (storedInInbox) {
       return finishInAppOnlyReminder({
@@ -239,38 +246,47 @@ export async function sendPaymentReminder({
   }
 
   let delivered = 0;
+  let deliveryUnconfirmed = false;
   for (const device of devices) {
-    const response = await fetchImpl(
-      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${firebase.accessToken}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          message: {
-            token: device.token,
-            notification: {
-              title: privatePushNotification.title,
-              body: privatePushNotification.body
-            },
-            data: {
-              eventId: normalizedEventId,
-              transferId: normalizedTransferId,
-              view: "summary"
-            },
-            android: {
-              priority: "high",
+    let response = null;
+    try {
+      response = await fetchWithTimeout(
+        fetchImpl,
+        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${firebase.accessToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            message: {
+              token: device.token,
               notification: {
-                channel_id: "event-updates",
-                sound: "default"
+                title: privatePushNotification.title,
+                body: privatePushNotification.body
+              },
+              data: {
+                eventId: normalizedEventId,
+                transferId: normalizedTransferId,
+                view: "summary"
+              },
+              android: {
+                priority: "high",
+                notification: {
+                  channel_id: "event-updates",
+                  sound: "default"
+                }
               }
             }
-          }
-        })
-      }
-    );
+          })
+        },
+        deliveryTimeoutMs
+      );
+    } catch {
+      deliveryUnconfirmed = true;
+      continue;
+    }
     if (response.ok) {
       delivered += 1;
       continue;
@@ -294,6 +310,22 @@ export async function sendPaymentReminder({
         serviceRoleKey,
         reminderId: reservation.reminder_id,
         fetchImpl
+      });
+    }
+    if (deliveryUnconfirmed) {
+      // A lost FCM response may still represent an accepted notification.
+      // Close the reservation rather than automatically retrying and risking
+      // a duplicate reminder when the inbox write was also unavailable.
+      await completeReminderReservation({
+        supabaseUrl,
+        serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        delivered: 0,
+        fetchImpl
+      });
+      return failure(502, "Reminder delivery could not be confirmed", {
+        code: "DELIVERY_UNCONFIRMED",
+        retryable: false
       });
     }
     await deleteReminderReservation({
@@ -325,6 +357,22 @@ export async function sendPaymentReminder({
       recipientParticipantId: senderTransfer.fromParticipantId
     }
   };
+}
+
+async function promiseWithTimeout(factory, timeoutMs) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("Push authorization timed out");
+      error.code = "NETWORK_TIMEOUT";
+      reject(error);
+    }, Math.max(1, Number(timeoutMs) || PUSH_DELIVERY_REQUEST_TIMEOUT_MS));
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(factory), timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function finishInAppOnlyReminder({

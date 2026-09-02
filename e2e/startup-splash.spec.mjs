@@ -84,28 +84,39 @@ test.describe("startup splash", () => {
     expect(runtimeIssues).toEqual([]);
   });
 
-  test("uses the video as the first web splash layer without a static logo swap", async ({ page }) => {
+  test("keeps a branded frame over the video until its first playable frame", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
 
-    const splashState = await page.locator("#app-splash").evaluate((splash) => {
-      const video = splash.querySelector(".app-splash-video");
-      const fallback = splash.querySelector(".app-splash-hold");
-      return {
-        posterCount: splash.querySelectorAll(".app-splash-poster").length,
-        videoOpacity: video ? getComputedStyle(video).opacity : "missing",
-        fallbackOpacity: fallback ? getComputedStyle(fallback).opacity : "missing",
-        autoplay: video?.autoplay ?? false,
-        poster: video?.getAttribute("poster") ?? ""
-      };
-    });
+    const samples = [];
+    for (let index = 0; index < 20; index += 1) {
+      const splash = page.locator("#app-splash");
+      if ((await splash.count()) === 0) break;
+      samples.push(await splash.evaluate((node) => {
+        const video = node.querySelector(".app-splash-video");
+        const fallback = node.querySelector(".app-splash-hold");
+        return {
+          ready: node.classList.contains("is-video-ready"),
+          videoOpacity: video ? getComputedStyle(video).opacity : "missing",
+          fallbackOpacity: fallback ? getComputedStyle(fallback).opacity : "missing",
+          autoplay: video?.autoplay ?? false,
+          poster: video?.getAttribute("poster") ?? ""
+        };
+      }));
+      await page.waitForTimeout(25);
+    }
 
-    expect(splashState).toEqual({
-      posterCount: 0,
-      videoOpacity: "1",
-      fallbackOpacity: "0",
-      autoplay: true,
-      poster: ""
-    });
+    expect(samples.length).toBeGreaterThan(0);
+    for (const sample of samples) {
+      expect(sample.autoplay).toBe(true);
+      expect(sample.poster).toBe("./assets/sogrim-logo-intro-hold.jpg");
+      if (sample.ready) {
+        expect(sample.videoOpacity).toBe("1");
+        expect(sample.fallbackOpacity).toBe("0");
+      } else {
+        expect(sample.videoOpacity).toBe("0");
+        expect(sample.fallbackOpacity).toBe("1");
+      }
+    }
   });
 
   test("falls back cleanly when the intro video cannot load", async ({ page }) => {

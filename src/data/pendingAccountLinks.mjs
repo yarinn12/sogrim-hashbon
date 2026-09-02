@@ -2,7 +2,15 @@ export const PENDING_ACCOUNT_LINKS_STORAGE_KEY =
   "settle-friends-pending-account-links";
 
 const MAX_PENDING_ACCOUNT_LINKS = 24;
+export const MAX_PENDING_ACCOUNT_LINK_ATTEMPTS = 20;
 const MAX_IDENTIFIER_LENGTH = 200;
+
+export function pendingAccountLinkMissingEventShouldExpire(event, attempts = 0) {
+  return (
+    !event &&
+    Number(attempts) >= MAX_PENDING_ACCOUNT_LINK_ATTEMPTS
+  );
+}
 
 export function accountLinkIsConfirmed(
   sharedState,

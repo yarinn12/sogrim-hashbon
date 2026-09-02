@@ -118,7 +118,8 @@ try {
   await saveSharedEventState(
     accountCloudConfig(sender),
     senderInviteState,
-    eventId
+    eventId,
+    qaCloudFetch
   );
   sharedSnapshotCreated = true;
 
@@ -258,17 +259,19 @@ try {
   assert.ok(fullyReadInbox.items.every((item) => item.readAt));
 
   const closeActivityId = `activity-event-closed-${suffix}`;
+  const closedAt = new Date().toISOString();
   const closeActivity = {
     id: closeActivityId,
     kind: "event-closed",
     actorParticipantId: senderParticipantId,
-    occurredAt: new Date().toISOString()
+    occurredAt: closedAt
   };
   await saveBothAccountStates({
     participants,
     expenses,
     activityLog: [closeActivity],
-    locked: true
+    locked: true,
+    closedAt
   });
   const closeDelivery = await sendEventActivityNotification(
     notificationConfig(sender),
@@ -371,9 +374,10 @@ async function saveBothAccountStates({
   participants,
   expenses,
   activityLog = [],
-  locked = false
+  locked = false,
+  closedAt = null
 }) {
-  const eventOptions = { activityLog, locked };
+  const eventOptions = { activityLog, locked, closedAt };
   const authoritativeState = accountState(
     accounts[0],
     participants,
@@ -384,7 +388,8 @@ async function saveBothAccountStates({
   await saveSharedEventState(
     accountCloudConfig(accounts[0]),
     authoritativeState,
-    eventId
+    eventId,
+    qaCloudFetch
   );
   for (const account of accounts) {
     await saveAccountState(
@@ -408,7 +413,7 @@ function accountState(
   participants,
   expenses,
   includeEvent = true,
-  { activityLog = [], locked = false } = {}
+  { activityLog = [], locked = false, closedAt = null } = {}
 ) {
   const transfers = calculateSettlement(participants, expenses).transfers;
   const event = {
@@ -422,7 +427,7 @@ function accountState(
     currency: "ILS",
     roundSettlementTransfers: false,
     locked,
-    closedAt: locked ? new Date().toISOString() : null,
+    closedAt: locked ? closedAt : null,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     sharedSpaceId: sharedSpace.id,
@@ -505,6 +510,21 @@ async function adminRequest(path, { method = "GET", body } = {}) {
     );
   }
   return payload;
+}
+
+async function qaCloudFetch(url, options = {}) {
+  const response = await fetch(url, options);
+  if (
+    !response.ok &&
+    String(url).includes("/rest/v1/rpc/update_shared_event_snapshot")
+  ) {
+    console.error(JSON.stringify({
+      stage: "shared-event-write",
+      status: response.status,
+      response: (await response.clone().text().catch(() => "")).slice(0, 1_000)
+    }));
+  }
+  return response;
 }
 
 function requiredEnv(name) {

@@ -53,6 +53,10 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /assets\/sogrim-logo-intro-poster\.jpg/);
   assert.match(buildScript, /assets\/sogrim-logo-intro-hold\.jpg/);
   assert.match(buildScript, /await cp\(join\(root, "src"\)/);
+  assert.match(
+    await readFile("src/pwaBootstrap.mjs", "utf8"),
+    /^import "\.\/platformCompatibility\.mjs";/
+  );
   assert.match(buildScript, /from "esbuild"/);
   assert.match(buildScript, /from "lightningcss"/);
   assert.match(buildScript, /extractNativeStaticCss/);

@@ -221,7 +221,12 @@ async function withFreshCloudAccount(config, request) {
         loadStoredAccountSession(window.localStorage)?.user?.id ??
         ""
     ).trim();
-    if (error?.code !== "CLOUD_STATE_AUTH_EXPIRED" || !expectedUserId) throw error;
+    const authenticationExpired = flattenSyncErrors(error).some(
+      (item) =>
+        item?.code === "CLOUD_STATE_AUTH_EXPIRED" ||
+        Number(item?.status ?? 0) === 401
+    );
+    if (!authenticationExpired || !expectedUserId) throw error;
 
     const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
     if (!refreshedSession) throw error;
@@ -260,7 +265,7 @@ async function hydrateAccessibleSharedEventState(
 function persistRecoveredEventIndex(config, previousState, recoveredState) {
   const recoveredStateWithIdentity = applyLocalParticipantId(
     recoveredState,
-    loadLocalParticipantId()
+    accountParticipantIdForConfig(config) || loadLocalParticipantId()
   );
   if (!hasCloudStateChanged(recoveredStateWithIdentity, previousState)) {
     return recoveredStateWithIdentity;
@@ -268,6 +273,11 @@ function persistRecoveredEventIndex(config, previousState, recoveredState) {
 
   scheduleRecoveredEventIndexPersistence(config, recoveredStateWithIdentity);
   return recoveredStateWithIdentity;
+}
+
+function accountParticipantIdForConfig(config) {
+  const accountUserId = String(config?.storage?.account?.userId ?? "").trim();
+  return accountUserId ? `account-${accountUserId}` : "";
 }
 
 function scheduleRecoveredEventIndexPersistence(config, recoveredState) {
@@ -710,10 +720,9 @@ async function loadSharedStateOnce(requestScope) {
             runtimeConfig,
             mergedPendingState
           );
-          if (!loadRequestIsCurrent(
+          if (!loadAccountRequestIsCurrent(
             requestScope,
-            requestAccountGeneration,
-            requestSaveGeneration
+            requestAccountGeneration
           )) {
             return sharedStateLoadResult(loadState(), false);
           }
@@ -724,6 +733,16 @@ async function loadSharedStateOnce(requestScope) {
             ),
             loadLocalParticipantId()
           );
+          if (requestSaveGeneration !== sharedStateSaveGeneration) {
+            const mergedVisibleState = mergeLoadedStateWithCurrentLocal(
+              visiblePendingState,
+              requestScope
+            );
+            return sharedStateLoadResult(
+              mergedVisibleState,
+              recoveredPendingState.authoritative
+            );
+          }
           saveStateForScope(visiblePendingState, requestScope);
           return sharedStateLoadResult(
             visiblePendingState,
@@ -757,17 +776,43 @@ async function loadSharedStateOnce(requestScope) {
           runtimeConfig,
           mergedState
         )).state;
-        if (!loadRequestIsCurrent(
+        if (!loadAccountRequestIsCurrent(
           requestScope,
-          requestAccountGeneration,
-          requestSaveGeneration
+          requestAccountGeneration
         )) {
           return sharedStateLoadResult(loadState(), false);
         }
-        if (pendingPayload !== pendingSharedStateRaw(runtimeConfig)) {
+        if (
+          requestSaveGeneration !== sharedStateSaveGeneration ||
+          pendingPayload !== pendingSharedStateRaw(runtimeConfig)
+        ) {
           publishSyncStatus("reconnecting");
           schedulePendingSharedStateRetry();
-          return sharedStateLoadResult(loadState(), false);
+          const latestLocalState = loadState();
+          const recoveredStateResult = await hydrateAccessibleSharedEventState(
+            runtimeConfig,
+            mergeSharedStates(syncedState, latestLocalState),
+            latestLocalState
+          );
+          if (!loadAccountRequestIsCurrent(
+            requestScope,
+            requestAccountGeneration
+          )) {
+            return sharedStateLoadResult(loadState(), false);
+          }
+          const recoveredState = await persistRecoveredEventIndex(
+            runtimeConfig,
+            latestLocalState,
+            recoveredStateResult.state
+          );
+          const mergedVisibleState = mergeLoadedStateWithCurrentLocal(
+            recoveredState,
+            requestScope
+          );
+          return sharedStateLoadResult(
+            mergedVisibleState,
+            recoveredStateResult.authoritative
+          );
         }
         clearPendingSharedState(runtimeConfig);
         resetPendingSharedStateRetry();
@@ -849,12 +894,21 @@ async function loadSharedStateOnce(requestScope) {
         state,
         loadLocalParticipantId()
       );
-      if (!loadRequestIsCurrent(
+      if (!loadAccountRequestIsCurrent(
         requestScope,
-        requestAccountGeneration,
-        requestSaveGeneration
+        requestAccountGeneration
       )) {
         return sharedStateLoadResult(loadState(), false);
+      }
+      if (requestSaveGeneration !== sharedStateSaveGeneration) {
+        const mergedVisibleState = mergeLoadedStateWithCurrentLocal(
+          localStateWithIdentity,
+          requestScope
+        );
+        return sharedStateLoadResult(
+          mergedVisibleState,
+          recoveredStateResult.authoritative
+        );
       }
       saveStateForScope(localStateWithIdentity, requestScope);
       return sharedStateLoadResult(
@@ -877,10 +931,12 @@ export async function saveSharedState(state) {
     forceSharedParticipantIds = [],
     forceSharedEventIds = [],
     suppressRevertNotice = false,
+    foregroundMutation = false,
     awaitCloud = false,
     foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS
   } = arguments[1] ?? {};
-  const requestScope = synchronizeAccountStorageScope();
+  const requestStartedAt = Date.now();
+  let requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
   const requestAccountParticipantId = requestAccountUserId
     ? `account-${requestAccountUserId}`
@@ -923,7 +979,7 @@ export async function saveSharedState(state) {
   const crashSafePendingConfig = requestAccountUserId
     ? pendingSyncConfig(LOCAL_RUNTIME_CONFIG)
     : null;
-  const crashSafePendingStateSaved = Boolean(
+  let crashSafePendingStateSaved = Boolean(
     crashSafePendingConfig &&
     savePendingSharedState(
       crashSafePendingConfig,
@@ -935,21 +991,48 @@ export async function saveSharedState(state) {
     emitOperationFailure("state_save", { screen: "app", error });
     return { ok: false, mode: "local", error };
   }
-  const localSaved = saveState(cleanState);
+  let localSaved = saveState(cleanState);
   const requestSaveGeneration = ++sharedStateSaveGeneration;
-  const requestAccountGeneration = accountStorageGeneration;
+  let requestAccountGeneration = accountStorageGeneration;
   const stateSnapshot = clone(cleanState);
   const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   const sharedState = toCloudState(runtimeConfig, stateSnapshot);
+  const currentScope = synchronizeAccountStorageScope();
   if (
-    requestScope !== synchronizeAccountStorageScope() ||
+    requestScope !== currentScope ||
     requestAccountGeneration !== accountStorageGeneration
   ) {
-    return {
-      ok: false,
-      mode: "stale-account",
-      error: new Error("Account changed before state save")
-    };
+    const currentAccountUserId = activeAccountUserId();
+    const runtimeAccountUserId = String(
+      runtimeConfig?.storage?.account?.userId ?? ""
+    ).trim();
+    const sameAuthenticatedAccount = Boolean(
+      requestAccountUserId &&
+        currentAccountUserId === requestAccountUserId &&
+        (!runtimeAccountUserId || runtimeAccountUserId === requestAccountUserId) &&
+        stateSnapshot.currentParticipantId === requestAccountParticipantId
+    );
+    if (!sameAuthenticatedAccount) {
+      return {
+        ok: false,
+        mode: "stale-account",
+        error: new Error("Account changed before state save")
+      };
+    }
+
+    // Account bootstrap/session refresh may activate the already-authenticated
+    // user's durable workspace while this save is awaiting runtime config. That
+    // is a routing refresh, not an account switch. Rebase the durable local copy
+    // and outbox onto the now-active scope, while preserving the original diff
+    // selection so deletions and membership changes still reach shared storage.
+    requestScope = currentScope;
+    requestAccountGeneration = accountStorageGeneration;
+    localSaved = saveState(stateSnapshot);
+    const rebasedPendingConfig = pendingSyncConfig(runtimeConfig);
+    crashSafePendingStateSaved = Boolean(
+      rebasedPendingConfig &&
+        savePendingSharedState(rebasedPendingConfig, sharedState)
+    );
   }
 
   if (runtimeConfig.storage?.mode === "supabase") {
@@ -974,10 +1057,13 @@ export async function saveSharedState(state) {
         }
 
         try {
-          const saved = await syncAndPersistCloudState(
+          const saved = await withFreshCloudAccount(
             runtimeConfig,
-            sharedState,
-            syncSelection
+            (freshRuntimeConfig) => syncAndPersistCloudState(
+              freshRuntimeConfig,
+              sharedState,
+              syncSelection
+            )
           );
           const syncedState = saved.state;
           if (
@@ -1022,7 +1108,10 @@ export async function saveSharedState(state) {
             } else {
               saveState(previousState);
               if (!suppressRevertNotice) {
-                publishSharedSaveReverted(syncSelection, error);
+                publishSharedSaveReverted(syncSelection, error, {
+                  foregroundMutation,
+                  requestedAt: requestStartedAt
+                });
               }
               reverted = true;
             }
@@ -1581,7 +1670,17 @@ function toCloudState(config, state) {
       account?.spaceId &&
       account.spaceId === config?.storage?.spaceId
   );
-  return toSharedState(state, { preserveCurrentParticipantId });
+  const accountParticipantId = preserveCurrentParticipantId
+    ? accountParticipantIdForConfig(config)
+    : "";
+  const accountParticipantExists = Boolean(
+    accountParticipantId &&
+      state?.participants?.some(({ id }) => id === accountParticipantId)
+  );
+  const stateWithAccountIdentity = accountParticipantExists
+    ? { ...state, currentParticipantId: accountParticipantId }
+    : state;
+  return toSharedState(stateWithAccountIdentity, { preserveCurrentParticipantId });
 }
 
 function pendingSyncStorageKey(config) {
@@ -1793,7 +1892,11 @@ function publishSyncStatus(status) {
   window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail: { status } }));
 }
 
-function publishSharedSaveReverted(syncSelection, error) {
+function publishSharedSaveReverted(
+  syncSelection,
+  error,
+  { foregroundMutation = false, requestedAt = 0 } = {}
+) {
   if (typeof window === "undefined" || !window.dispatchEvent) return;
 
   const EventConstructor = globalThis.CustomEvent;
@@ -1802,7 +1905,9 @@ function publishSharedSaveReverted(syncSelection, error) {
     detail: {
       eventIds: [...(syncSelection?.eventIds ?? [])],
       deletedEventIds: [...(syncSelection?.deletedEventIds ?? [])],
-      failureKind: sharedSaveFailureKind(error)
+      failureKind: sharedSaveFailureKind(error),
+      foregroundMutation: foregroundMutation === true,
+      requestedAt: Number(requestedAt) || 0
     }
   }));
 }
@@ -1929,6 +2034,25 @@ function loadRequestIsCurrent(
       requestAccountGeneration === accountStorageGeneration &&
       requestSaveGeneration === sharedStateSaveGeneration
   );
+}
+
+function loadAccountRequestIsCurrent(requestScope, requestAccountGeneration) {
+  return Boolean(
+    requestScope === synchronizeAccountStorageScope() &&
+      requestAccountGeneration === accountStorageGeneration
+  );
+}
+
+function mergeLoadedStateWithCurrentLocal(loadedState, requestScope) {
+  const mergedState = applyLocalParticipantId(
+    cleanLegacyStarterData(
+      mergeSharedStates(loadedState, loadState()),
+      loadProtectedParticipantId()
+    ),
+    loadLocalParticipantId()
+  );
+  saveStateForScope(mergedState, requestScope);
+  return mergedState;
 }
 
 function profileAuthFields(profile) {

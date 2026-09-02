@@ -136,7 +136,10 @@ test("membership recovery restores the account identity before persisting its in
   const end = localStore.indexOf("function reportPartialStateLoadFailure", start);
   const helper = localStore.slice(start, end);
 
-  assert.match(helper, /applyLocalParticipantId\([\s\S]*?loadLocalParticipantId\(\)/);
+  assert.match(
+    helper,
+    /applyLocalParticipantId\([\s\S]*?accountParticipantIdForConfig\(config\) \|\| loadLocalParticipantId\(\)/
+  );
   assert.match(
     helper,
     /scheduleRecoveredEventIndexPersistence\(config, recoveredStateWithIdentity\)/

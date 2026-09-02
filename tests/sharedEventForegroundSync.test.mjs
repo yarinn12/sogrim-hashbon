@@ -259,6 +259,55 @@ test("foreground event refresh yields a browser paint before local or cloud sync
   );
 });
 
+test("a failed older save cannot roll back a newer local action", () => {
+  assert.match(
+    appSource,
+    /function rejectedStateSaveIsCurrent\(result, checkpoint\) \{[\s\S]*?!result\?\.pending[\s\S]*?checkpoint\?\.revision === sharedStateSaveRevision\(\)/
+  );
+
+  const guardedActions = [
+    "updateEventCoverImage",
+    "applyEventCurrencyChange",
+    "saveOfflineParticipantName",
+    "saveEventNoteFromDialog",
+    "deleteEventNote",
+    "mergeParticipantsInStateNow",
+    "addGuestToEvent",
+    "addFriendParticipantToExpense",
+    "addInlinePayerGuest",
+    "addInlineQuickItemGuest",
+    "saveQuickExpenses",
+    "restoreStateBackup",
+    "closeCurrentEventNow",
+    "reopenCurrentEvent",
+    "toggleEventLock",
+    "leaveCurrentEvent",
+    "deleteCurrentEvent",
+    "setEventManagementMode",
+    "toggleEventParticipantAdmin",
+    "setEventRoundingMode",
+    "removeEventParticipant",
+    "restoreEventParticipant",
+    "toggleEventParticipant"
+  ];
+
+  for (const functionName of guardedActions) {
+    const start = appSource.indexOf(`function ${functionName}(`);
+    assert.ok(start >= 0, `${functionName} exists`);
+    const nextAsync = appSource.indexOf("\nasync function ", start + 1);
+    const nextSync = appSource.indexOf("\nfunction ", start + 1);
+    const candidates = [nextAsync, nextSync].filter((index) => index >= 0);
+    const end = candidates.length ? Math.min(...candidates) : appSource.length;
+    const source = appSource.slice(start, end);
+    assert.match(source, /stateSaveCheckpoint\(/, `${functionName} records its save revision`);
+    assert.match(
+      source,
+      /rejectedStateSaveIsCurrent\(/,
+      `${functionName} rejects stale rollback attempts`
+    );
+  }
+});
+
 test("participant and share controls open immediately while refresh continues behind them", () => {
   const participantsStart = appSource.indexOf(
     'if (action === "open-event-participants")'

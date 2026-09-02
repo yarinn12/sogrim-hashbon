@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { GoogleAuth } from "google-auth-library";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 
 const FIREBASE_MESSAGING_SCOPE =
   "https://www.googleapis.com/auth/firebase.messaging";
@@ -7,6 +8,7 @@ const AUTH_CONTEXT = "sogrim-broadcast-admin-v1";
 const MAX_TITLE_LENGTH = 80;
 const MAX_BODY_LENGTH = 240;
 const MAX_CAMPAIGN_LENGTH = 80;
+export const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
 
 export async function sendBroadcastNotification({
   env = process.env,
@@ -15,7 +17,9 @@ export async function sendBroadcastNotification({
   body = "",
   campaignId = "",
   fetchImpl = fetch,
-  accessTokenProvider = defaultFirebaseAccessTokenProvider
+  accessTokenProvider = defaultFirebaseAccessTokenProvider,
+  deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
 } = {}) {
   const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
   const serviceRoleKey = String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
@@ -72,7 +76,10 @@ export async function sendBroadcastNotification({
 
   let firebase;
   try {
-    firebase = await accessTokenProvider(env);
+    firebase = await promiseWithTimeout(
+      () => accessTokenProvider(env),
+      accessTokenTimeoutMs
+    );
   } catch {
     return failure(503, "Push delivery is unavailable", "PUSH_UNAVAILABLE");
   }
@@ -98,48 +105,60 @@ export async function sendBroadcastNotification({
       continue;
     }
     if (!reservation.reserved) {
-      suppressedDuplicates += 1;
+      if (reservation.completed) suppressedDuplicates += 1;
+      else failed += 1;
       continue;
     }
 
-    const response = await fetchImpl(
-      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${firebase.accessToken}`,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          message: {
-            token: device.token,
-            notification: {
-              title: notification.title,
-              body: notification.body
-            },
-            data: {
-              kind: "broadcast",
-              campaign: notification.campaignId
-            },
-            android: {
-              collapse_key: notification.campaignId,
-              priority: "high",
+    let response = null;
+    let deliveryUnconfirmed = false;
+    try {
+      response = await fetchWithTimeout(
+        fetchImpl,
+        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${firebase.accessToken}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            message: {
+              token: device.token,
               notification: {
-                channel_id: "event-updates",
-                sound: "default"
-              }
-            },
-            apns: {
-              headers: {
-                "apns-collapse-id": notification.campaignId
+                title: notification.title,
+                body: notification.body
+              },
+              data: {
+                kind: "broadcast",
+                campaign: notification.campaignId
+              },
+              android: {
+                collapse_key: notification.campaignId,
+                priority: "high",
+                notification: {
+                  channel_id: "event-updates",
+                  sound: "default"
+                }
+              },
+              apns: {
+                headers: {
+                  "apns-collapse-id": notification.campaignId
+                }
               }
             }
-          }
-        })
-      }
-    );
+          })
+        },
+        deliveryTimeoutMs
+      );
+    } catch {
+      // A timeout or transport failure has an unknown outcome: FCM may have
+      // accepted the message before the response was lost. Keep the
+      // reservation so a retry cannot double-send it.
+      deliveryUnconfirmed = true;
+    }
 
-    if (response.ok) {
+    if (response?.ok) {
       delivered += 1;
       await markBroadcastDeliveryCompleted({
         supabaseUrl,
@@ -152,7 +171,7 @@ export async function sendBroadcastNotification({
     }
 
     failed += 1;
-    const payload = await response.json().catch(() => ({}));
+    const payload = await response?.json().catch(() => ({})) ?? {};
     if (invalidFirebaseToken(payload)) {
       await disableInvalidPushToken({
         supabaseUrl,
@@ -161,6 +180,15 @@ export async function sendBroadcastNotification({
         fetchImpl
       });
       disabledInvalid += 1;
+    }
+    if (!deliveryUnconfirmed) {
+      await releaseBroadcastDelivery({
+        supabaseUrl,
+        serviceRoleKey,
+        campaignId: notification.campaignId,
+        deviceId: device.id,
+        fetchImpl
+      });
     }
   }
 
@@ -209,9 +237,53 @@ async function reserveBroadcastDelivery({
   );
   if (!response.ok) return { ok: false, reserved: false };
   const payload = await response.json().catch(() => []);
+  const reserved = Array.isArray(payload) && payload.length > 0;
+  if (!reserved) {
+    const existing = await loadBroadcastDelivery({
+      supabaseUrl,
+      serviceRoleKey,
+      campaignId,
+      deviceId: device.id,
+      fetchImpl
+    });
+    if (!existing.ok) return { ok: false, reserved: false };
+    return {
+      ok: true,
+      reserved: false,
+      completed: Boolean(existing.deliveredAt)
+    };
+  }
   return {
     ok: true,
-    reserved: Array.isArray(payload) && payload.length > 0
+    reserved: true,
+    completed: false
+  };
+}
+
+async function loadBroadcastDelivery({
+  supabaseUrl,
+  serviceRoleKey,
+  campaignId,
+  deviceId,
+  fetchImpl
+}) {
+  const params = new URLSearchParams({
+    campaign_id: `eq.${campaignId}`,
+    device_id: `eq.${deviceId}`,
+    select: "delivered_at",
+    limit: "1"
+  });
+  const response = await fetchImpl(
+    `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?${params}`,
+    { headers: serviceHeaders(serviceRoleKey) }
+  ).catch(() => null);
+  if (!response?.ok) return { ok: false, deliveredAt: "" };
+  const payload = await response.json().catch(() => []);
+  const row = Array.isArray(payload) ? payload[0] : null;
+  if (!row) return { ok: false, deliveredAt: "" };
+  return {
+    ok: true,
+    deliveredAt: String(row.delivered_at ?? "")
   };
 }
 
@@ -235,6 +307,30 @@ async function markBroadcastDeliveryCompleted({
         prefer: "return=minimal"
       },
       body: JSON.stringify({ delivered_at: new Date().toISOString() })
+    }
+  ).catch(() => {});
+}
+
+async function releaseBroadcastDelivery({
+  supabaseUrl,
+  serviceRoleKey,
+  campaignId,
+  deviceId,
+  fetchImpl
+}) {
+  const params = new URLSearchParams({
+    campaign_id: `eq.${campaignId}`,
+    device_id: `eq.${deviceId}`,
+    delivered_at: "is.null"
+  });
+  await fetchImpl(
+    `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?${params}`,
+    {
+      method: "DELETE",
+      headers: {
+        ...serviceHeaders(serviceRoleKey),
+        prefer: "return=minimal"
+      }
     }
   ).catch(() => {});
 }
@@ -275,6 +371,22 @@ function normalizeNotification(value) {
 
 function pushDeliveryEnabled(value) {
   return /^(1|true|yes)$/i.test(String(value || "").trim());
+}
+
+async function promiseWithTimeout(factory, timeoutMs) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("Push authorization timed out");
+      error.code = "NETWORK_TIMEOUT";
+      reject(error);
+    }, Math.max(1, Number(timeoutMs) || PUSH_DELIVERY_REQUEST_TIMEOUT_MS));
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(factory), timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function defaultFirebaseAccessTokenProvider(env) {

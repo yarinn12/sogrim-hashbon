@@ -738,7 +738,7 @@ test("late invite recovery cannot cross an account switch", () => {
   );
 });
 
-test("pending invite queues abandon permanent work and scan membership once per cycle", () => {
+test("pending invite queues repair interrupted joins without resurrecting removed members", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const accountLinkRecovery = app.slice(
     app.indexOf("function retryPendingAccountLinks"),
@@ -766,13 +766,14 @@ test("pending invite queues abandon permanent work and scan membership once per 
     1,
     "one retry cycle must issue only one authoritative membership scan"
   );
+  assert.match(joinRecovery, /pendingEventJoinRecoveryAction\(/);
+  assert.match(joinRecovery, /recoveryAction === "complete"/);
+  assert.match(joinRecovery, /ensureNamedParticipant\([\s\S]*?reactivateInactive: false/);
+  assert.match(joinRecovery, /if \(recoveryAction === "forget"\) \{[\s\S]*?forgetPendingEventJoin/);
+  assert.match(accountLinkRecovery, /pendingAccountLinkMissingEventShouldExpire\(/);
   assert.match(
-    joinRecovery,
-    /if \(!event\) \{\s*forgetPendingEventJoin\(entry, window\.localStorage\)/
-  );
-  assert.match(
-    joinRecovery,
-    /if \(!isActiveEventParticipant\(event, participantId\)\) \{\s*forgetPendingEventJoin\(entry, window\.localStorage\)/
+    accountLinkRecovery,
+    /pendingAccountLinkMissingEventShouldExpire\([\s\S]*?forgetPendingAccountLink\(entry\)/
   );
   assert.match(
     invitationPublish,

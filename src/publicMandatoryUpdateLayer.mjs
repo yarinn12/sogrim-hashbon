@@ -182,6 +182,9 @@ if (isNativeAndroidRuntime()) {
     (event) => {
       if (!updateRequired) return;
       event.preventDefault();
+      // The gate blocks the entire app. Do not let app.mjs navigate the hidden
+      // screen underneath it while the user is required to update.
+      event.stopImmediatePropagation();
       document.querySelector(`#${GATE_ID}`)?.focus({
         preventScroll: true
       });

@@ -1,5 +1,6 @@
-const PWA_RELEASE = "439";
-const CACHE_NAME = "settle-friends-live-v439";
+const PWA_RELEASE = "440";
+const CACHE_NAME = "settle-friends-live-v440";
+const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
   "/",
   "/index.html",
@@ -40,6 +41,7 @@ const CACHE_FILES = [
   "/src/interactionBoundary.mjs",
   "/src/imageCropper.mjs",
   "/src/pwaBootstrap.mjs",
+  "/src/platformCompatibility.mjs",
   "/src/publicAppSplashLayer.mjs",
   "/src/primaryNavigation.mjs",
   "/src/publicAccessibilityLayer.mjs",
@@ -78,6 +80,7 @@ const CACHE_FILES = [
   "/src/domain/currencies.mjs",
   "/src/domain/dateLabels.mjs",
   "/src/domain/accountEventHydration.mjs",
+  "/src/domain/accountErrors.mjs",
   "/src/domain/eventFilters.mjs",
   "/src/domain/eventInsights.mjs",
   "/src/domain/eventActivityLog.mjs",
@@ -181,6 +184,7 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/styles.css",
   "/src/app.mjs",
   "/src/pwaBootstrap.mjs",
+  "/src/platformCompatibility.mjs",
   "/src/publicAccountAuthLayer.mjs"
 ]);
 
@@ -233,33 +237,56 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    (async () => {
-      try {
-        const response = await fetch(event.request, { cache: "no-store" });
-        if (
-          response.status === 200 &&
-          !event.request.headers.has("range") &&
-          isExpectedAssetResponse(url.pathname, response)
-        ) {
-          try {
-            const cache = await caches.open(CACHE_NAME);
-            await cache.put(event.request, response.clone());
-          } catch {
-            // A full cache or a transient write failure must not hide a valid response.
-          }
-        }
-        return response;
-      } catch {
-        return (
-          (await caches.match(event.request)) ??
-          (event.request.mode === "navigate" ? await caches.match("/index.html") : null) ??
-          (await caches.match(url.pathname)) ??
-          Response.error()
-        );
-      }
-    })()
+    networkFirstWithShellFallback(event.request, url)
   );
 });
+
+async function networkFirstWithShellFallback(request, url) {
+  const response = await fetchWithNetworkTimeout(request);
+  if (!response?.ok) {
+    return (
+      (await caches.match(request)) ??
+      (request.mode === "navigate" ? await caches.match("/index.html") : null) ??
+      (await caches.match(url.pathname)) ??
+      response ??
+      Response.error()
+    );
+  }
+
+  if (
+    response.status === 200 &&
+    !request.headers.has("range") &&
+    isExpectedAssetResponse(url.pathname, response)
+  ) {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, response.clone());
+    } catch {
+      // A full cache or a transient write failure must not hide a valid response.
+    }
+  }
+  return response;
+}
+
+async function fetchWithNetworkTimeout(request) {
+  const controller = new AbortController();
+  let timeoutId;
+  try {
+    return await Promise.race([
+      fetch(request, { cache: "no-store", signal: controller.signal }),
+      new Promise((resolve) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          resolve(null);
+        }, NETWORK_FIRST_TIMEOUT_MS);
+      })
+    ]);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 async function precacheFreshFiles(cache) {
   const criticalFiles = PRECACHE_FILES.filter((path) =>
@@ -341,9 +368,8 @@ function isPrivateInviteUrl(url) {
 }
 
 async function fetchPrivateInvite(request) {
-  try {
-    return await fetch(request, { cache: "no-store" });
-  } catch {
-    return (await caches.match("/index.html")) ?? Response.error();
-  }
+  const response = await fetchWithNetworkTimeout(request);
+  return response?.ok
+    ? response
+    : (await caches.match("/index.html")) ?? response ?? Response.error();
 }

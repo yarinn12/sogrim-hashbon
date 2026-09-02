@@ -175,3 +175,44 @@ test("deployed sensitive routes fail closed when durable protection is unavailab
     );
   }
 });
+
+test("deployed sensitive routes fail closed promptly when durable protection stalls", async () => {
+  let serviceCalls = 0;
+  const server = createServer(createAppHandler({
+    root: process.cwd(),
+    port: 0,
+    durableRateLimitRequired: true,
+    durableRateLimitTimeoutMs: 20,
+    durableApiRateLimitService: async () => new Promise(() => {}),
+    paymentReminderService: async () => {
+      serviceCalls += 1;
+      return { status: 200, payload: { ok: true } };
+    }
+  }));
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+
+  try {
+    const { port } = server.address();
+    const startedAt = Date.now();
+    const response = await fetch(
+      `http://127.0.0.1:${port}/api/notifications/payment-reminder`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ eventId: "event-one", transferId: "transfer" })
+      }
+    );
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).code, "RATE_LIMIT_UNAVAILABLE");
+    assert.equal(serviceCalls, 0);
+    assert.ok(Date.now() - startedAt < 1_000);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve()))
+    );
+  }
+});

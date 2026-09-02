@@ -13,6 +13,8 @@ export function eventAdminIds(state, event) {
 
 export function canManageEventSettings(state, event, participantId) {
   return (
+    Boolean(participantId) &&
+    (event.participantIds ?? []).includes(participantId) &&
     !event.inactiveParticipantIds?.includes(participantId) &&
     eventAdminIds(state, event).includes(participantId)
   );

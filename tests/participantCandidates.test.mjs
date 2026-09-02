@@ -175,9 +175,10 @@ test("participant toggling still re-renders outside the participant dialog", () 
 
   assert.match(
     toggle,
-    /await persistState\(\{\s*awaitCloud: true,\s*forceSharedEventIds: \[eventId\]\s*\}\);/,
+    /stateSaveCheckpoint\(\s*persistState\(\{\s*awaitCloud: true,\s*forceSharedEventIds: \[eventId\]\s*\}\)\s*\)[\s\S]*?await saveCheckpoint\.request;/,
     "participant membership waits for canonical cloud persistence"
   );
+  assert.match(toggle, /rejectedStateSaveIsCurrent\(result, saveCheckpoint\)/);
   assert.match(
     toggle,
     /render\(\);\s*\n\s*if \(\s*eventDialog\?\.kind === "participants-add" \|\|\s*\(eventDialog\?\.kind === "share" && eventDialog\.shareView === "friends"\)/,

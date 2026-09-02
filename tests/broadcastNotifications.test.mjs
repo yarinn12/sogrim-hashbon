@@ -32,6 +32,37 @@ test("broadcast notifications reject unauthenticated requests", async () => {
   assert.equal(fetchCalls, 0);
 });
 
+test("broadcast notifications stop waiting when Firebase authorization stalls", async () => {
+  let firebaseCalls = 0;
+  const startedAt = Date.now();
+  const result = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "stalled-authorization",
+    fetchImpl: async (url) => {
+      const target = String(url);
+      if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
+        return Response.json([
+          { id: "device-1", user_id: "user-1", token: "token-1", platform: "ios" }
+        ]);
+      }
+      throw new Error(`Unexpected request: ${target}`);
+    },
+    accessTokenProvider: async () => {
+      firebaseCalls += 1;
+      return new Promise(() => {});
+    },
+    accessTokenTimeoutMs: 15
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(firebaseCalls, 1);
+  assert.ok(Date.now() - startedAt < 500, "Firebase authorization must stay bounded");
+});
+
 test("broadcast notifications deliver once per enabled device token", async () => {
   const firebaseMessages = [];
   const fetchImpl = async (url, options = {}) => {
@@ -106,7 +137,8 @@ test("broadcast notifications suppress a campaign already reserved for the devic
       ]);
     }
     if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
-      return Response.json([]);
+      if (options.method === "POST") return Response.json([]);
+      return Response.json([{ delivered_at: "2026-09-02T12:00:00.000Z" }]);
     }
     if (target.includes("fcm.googleapis.com")) {
       firebaseCalls += 1;
@@ -171,6 +203,152 @@ test("broadcast notifications fail closed when durable anti-spam storage is unav
   assert.equal(result.payload.ok, false);
   assert.equal(result.payload.failed, 1);
   assert.equal(firebaseCalls, 0);
+});
+
+test("a transient FCM failure releases its reservation and a retry delivers once", async () => {
+  const reservations = new Map();
+  let fcmAvailable = false;
+  let firebaseCalls = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url);
+    if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
+      return Response.json([
+        { id: "device-1", user_id: "user-1", token: "token-1", platform: "ios" },
+        { id: "device-2", user_id: "user-2", token: "token-2", platform: "android" }
+      ]);
+    }
+    if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
+      const params = new URL(target).searchParams;
+      const key = `${params.get("campaign_id")?.replace(/^eq\./, "") ?? ""}:` +
+        `${params.get("device_id")?.replace(/^eq\./, "") ?? ""}`;
+      if (options.method === "POST") {
+        const [row] = JSON.parse(options.body);
+        const rowKey = `${row.campaign_id}:${row.device_id}`;
+        if (reservations.has(rowKey)) return Response.json([]);
+        reservations.set(rowKey, { delivered: false });
+        return Response.json([row]);
+      }
+      if (options.method === "PATCH") {
+        reservations.set(key, { delivered: true });
+        return new Response(null, { status: 204 });
+      }
+      if (options.method === "DELETE") {
+        if (reservations.get(key)?.delivered === false) reservations.delete(key);
+        return new Response(null, { status: 204 });
+      }
+      const reservation = reservations.get(key);
+      return Response.json(reservation
+        ? [{ delivered_at: reservation.delivered ? "2026-09-02T12:00:00.000Z" : null }]
+        : []);
+    }
+    if (target.includes("fcm.googleapis.com")) {
+      firebaseCalls += 1;
+      return fcmAvailable
+        ? Response.json({ name: `message-${firebaseCalls}` })
+        : Response.json({ error: { status: "UNAVAILABLE" } }, { status: 503 });
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${target}`);
+  };
+  const args = {
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "retryable-campaign",
+    fetchImpl,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "firebase-project"
+    })
+  };
+
+  const first = await sendBroadcastNotification(args);
+  assert.equal(first.status, 502);
+  assert.equal(first.payload.failed, 2);
+  assert.equal(reservations.size, 0, "failed sends must not poison a retry");
+
+  fcmAvailable = true;
+  const retry = await sendBroadcastNotification(args);
+  assert.equal(retry.status, 200);
+  assert.equal(retry.payload.delivered, 2);
+  assert.equal(retry.payload.suppressedDuplicates, 0);
+
+  const deliveredCalls = firebaseCalls;
+  const duplicate = await sendBroadcastNotification(args);
+  assert.equal(duplicate.payload.delivered, 0);
+  assert.equal(duplicate.payload.suppressedDuplicates, 2);
+  assert.equal(firebaseCalls, deliveredCalls, "completed rows must still prevent spam");
+});
+
+test("a stalled FCM request stays bounded without reopening a possible delivery", async () => {
+  let reservationPresent = false;
+  let stallFcm = true;
+  let firebaseCalls = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const target = String(url);
+    if (target.startsWith("https://supabase.example/rest/v1/push_devices?")) {
+      return Response.json([
+        { id: "device-1", user_id: "user-1", token: "token-1", platform: "ios" }
+      ]);
+    }
+    if (target.includes("/rest/v1/broadcast_notification_deliveries")) {
+      if (options.method === "POST") {
+        if (reservationPresent) return Response.json([]);
+        reservationPresent = true;
+        return Response.json(JSON.parse(options.body));
+      }
+      if (options.method === "DELETE") {
+        reservationPresent = false;
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(reservationPresent ? [{ delivered_at: null }] : []);
+    }
+    if (target.includes("fcm.googleapis.com")) {
+      firebaseCalls += 1;
+      return stallFcm
+        ? new Promise(() => {})
+        : Response.json({ name: "must-not-be-sent-twice" });
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${target}`);
+  };
+  const startedAt = Date.now();
+  const result = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "stalled-campaign",
+    fetchImpl,
+    deliveryTimeoutMs: 15,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "firebase-project"
+    })
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(reservationPresent, true);
+  assert.equal(firebaseCalls, 1);
+  assert.ok(Date.now() - startedAt < 500, "a stalled provider must stay bounded");
+
+  stallFcm = false;
+  const retry = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "stalled-campaign",
+    fetchImpl,
+    deliveryTimeoutMs: 15,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "firebase-project"
+    })
+  });
+  assert.equal(retry.status, 502, "an unknown delivery must not become false success");
+  assert.equal(retry.payload.delivered, 0);
+  assert.equal(retry.payload.suppressedDuplicates, 0);
+  assert.equal(firebaseCalls, 1, "an ambiguous send must never be repeated automatically");
 });
 
 test("broadcast notification route passes the protected request to the service", async () => {

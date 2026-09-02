@@ -10,6 +10,7 @@ const APP_NAME = "סוגרים חשבון";
 const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
 let scheduledBranding = false;
 let preferredHomeDestination = "home";
+let lastResolvedHeaderProfileIdentity = { displayName: "", avatarSource: "" };
 
 injectBrandStyle();
 enhanceBranding();
@@ -112,7 +113,7 @@ function resolveHeaderProfileIdentity(screen) {
   const participantId = String(profile?.participantId ?? "").trim();
   const displayName = String(profile?.displayName ?? "").trim();
   if (!participantId || !displayName) {
-    return { displayName: "", avatarSource: "" };
+    return lastResolvedHeaderProfileIdentity;
   }
 
   const avatarParticipant = {
@@ -121,12 +122,13 @@ function resolveHeaderProfileIdentity(screen) {
     avatarPreset: profile?.avatarPreset,
     avatarImage: profile?.avatarImage
   };
-  return {
+  lastResolvedHeaderProfileIdentity = {
     displayName,
     avatarSource:
       screen.dataset.profileAvatarSrc?.trim() ||
       avatarSourceForParticipant(avatarParticipant, participantId || displayName)
   };
+  return lastResolvedHeaderProfileIdentity;
 }
 
 function syncHeaderProfileAvatar(identity, avatarSource) {

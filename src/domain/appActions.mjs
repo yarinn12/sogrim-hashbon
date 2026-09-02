@@ -317,6 +317,10 @@ export function deactivateEventParticipant(
         : activeParticipantIds[0]
     ];
   }
+  const adminIdsChanged = !arraysEqual(
+    adminIds,
+    uniqueIds(event.adminIds ?? [])
+  );
 
   return {
     ...state,
@@ -327,6 +331,12 @@ export function deactivateEventParticipant(
             participantIds,
             inactiveParticipantIds,
             adminIds,
+            ...(adminIdsChanged
+              ? {
+                  adminIdsScopedToEvent: true,
+                  adminIdsUpdatedAt: updatedAt
+                }
+              : {}),
             participantAliases: keepsHistoricalReference
               ? item.participantAliases
               : Object.fromEntries(
@@ -421,6 +431,55 @@ export function updateTransferStatus(state, eventId, transferId, update) {
             transferStatusUpdates: upsertTransferStatusUpdate(
               event.transferStatusUpdates,
               statusUpdate
+            )
+          }
+        : event
+    )
+  };
+}
+
+export function rollbackTransferStatusChanges(
+  state,
+  eventId,
+  previousTransfers,
+  failedStatus,
+  activityIds = [],
+  markedAt = new Date().toISOString()
+) {
+  const expectedFailedStatus = failedStatus === "paid" ? "paid" : "pending";
+  const previousById = new Map(
+    (previousTransfers ?? [])
+      .filter((transfer) => transfer?.id)
+      .map((transfer) => [transfer.id, transfer])
+  );
+  let nextState = state;
+
+  for (const [transferId, previousTransfer] of previousById) {
+    const currentTransfer = nextState.events
+      .find((event) => event.id === eventId)
+      ?.transfers?.find((transfer) => transfer.id === transferId);
+    const currentStatus = currentTransfer?.status === "paid" ? "paid" : "pending";
+    const previousStatus = previousTransfer.status === "paid" ? "paid" : "pending";
+    if (!currentTransfer || currentStatus !== expectedFailedStatus) continue;
+
+    nextState = updateTransferStatus(nextState, eventId, transferId, {
+      status: previousStatus,
+      participantId: previousTransfer.markedPaidByParticipantId,
+      markedAt
+    });
+  }
+
+  const failedActivityIds = new Set(activityIds.filter(Boolean));
+  if (!failedActivityIds.size) return nextState;
+
+  return {
+    ...nextState,
+    events: nextState.events.map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            activityLog: (event.activityLog ?? []).filter(
+              (activity) => !failedActivityIds.has(activity.id)
             )
           }
         : event

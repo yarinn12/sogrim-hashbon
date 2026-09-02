@@ -109,8 +109,12 @@ test("event deletion is optimistic, cloud-confirmed and recoverable on a hard fa
 
   assert.ok(start >= 0 && end > start);
   assert.match(deletion, /const previousState = state/);
-  assert.match(deletion, /render\(\);[\s\S]*?await saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(
+    deletion,
+    /render\(\);[\s\S]*?stateSaveCheckpoint\([\s\S]*?saveSharedState\(state, \{ awaitCloud: true \}\)[\s\S]*?await saveCheckpoint\.request/
+  );
   assert.match(deletion, /if \(!result\?\.ok && !result\?\.pending\)/);
+  assert.match(deletion, /rejectedStateSaveIsCurrent\(result, saveCheckpoint\)/);
   assert.match(deletion, /state = previousState/);
   assert.match(app, /await deleteCurrentEvent\(action\.payload\.eventId\)/);
   assert.match(app, /label: "מחיקת אירוע"[\s\S]*?metrics:/);

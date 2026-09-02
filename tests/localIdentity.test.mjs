@@ -106,7 +106,7 @@ test("localStore keeps device identity local and account identity in its own clo
 test("localStore keeps local-mode saves on the current device", async () => {
   const localStore = await readFile("src/data/localStore.mjs", "utf8");
 
-  assert.match(localStore, /const localSaved = saveState\(cleanState\)/);
+  assert.match(localStore, /let localSaved = saveState\(cleanState\)/);
   assert.match(
     localStore,
     /return localSaved\s*\?\s*\{ ok: true, mode: "local" \}/

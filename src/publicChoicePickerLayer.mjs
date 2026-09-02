@@ -16,6 +16,7 @@ let activePicker = null;
 let choiceHistoryActive = false;
 let pendingHistoryClose = null;
 let pickerClosing = false;
+let choiceSelectionPending = false;
 let refreshScheduled = false;
 let pickerSequence = 0;
 let pickerBackgroundState = null;
@@ -122,6 +123,7 @@ function handleNativeChoiceChange(event) {
 function openChoicePicker(select, trigger) {
   if (activePicker) finishChoicePickerClose({ restoreFocus: false });
   pickerClosing = false;
+  choiceSelectionPending = false;
 
   activeSelect = select;
   activeTrigger = trigger;
@@ -322,32 +324,43 @@ function isSearchableChoiceSelect(select) {
 }
 
 async function chooseOption(optionButton) {
+  // history.back() resolves asynchronously. Without a single-flight guard,
+  // two quick taps both resume after the same popstate and dispatch duplicate
+  // change events to financial and participant controls.
+  if (choiceSelectionPending) return;
+  choiceSelectionPending = true;
+  optionButton.setAttribute("aria-busy", "true");
+
   const originalSelect = activeSelect;
   const nextValue = optionButton.dataset.choiceValue ?? "";
   const closingPickerSequence = pickerSequence;
-  if (!originalSelect) {
+  try {
+    if (!originalSelect) {
+      await closeChoicePicker({ restoreFocus: false });
+      return;
+    }
+
+    const shouldRestoreTrigger = !nextValue.startsWith("__add");
+    const focusDescriptor = choiceSelectDescriptor(originalSelect);
+
     await closeChoicePicker({ restoreFocus: false });
-    return;
+    const currentSelect = findChoiceSelect(focusDescriptor) ??
+      (originalSelect.isConnected ? originalSelect : null);
+    if (!currentSelect) return;
+
+    currentSelect.value = nextValue;
+    currentSelect.dispatchEvent(new Event("change", { bubbles: true }));
+
+    if (!shouldRestoreTrigger) return;
+    requestAnimationFrame(() => {
+      if (activePicker || pickerSequence !== closingPickerSequence) return;
+      enhanceChoiceSelects();
+      findChoiceSelect(focusDescriptor)
+        ?.nextElementSibling?.focus({ preventScroll: true });
+    });
+  } finally {
+    choiceSelectionPending = false;
   }
-
-  const shouldRestoreTrigger = !nextValue.startsWith("__add");
-  const focusDescriptor = choiceSelectDescriptor(originalSelect);
-
-  await closeChoicePicker({ restoreFocus: false });
-  const currentSelect = findChoiceSelect(focusDescriptor) ??
-    (originalSelect.isConnected ? originalSelect : null);
-  if (!currentSelect) return;
-
-  currentSelect.value = nextValue;
-  currentSelect.dispatchEvent(new Event("change", { bubbles: true }));
-
-  if (!shouldRestoreTrigger) return;
-  requestAnimationFrame(() => {
-    if (activePicker || pickerSequence !== closingPickerSequence) return;
-    enhanceChoiceSelects();
-    findChoiceSelect(focusDescriptor)
-      ?.nextElementSibling?.focus({ preventScroll: true });
-  });
 }
 
 function choiceSelectDescriptor(select) {

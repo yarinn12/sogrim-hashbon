@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MAX_PENDING_ACCOUNT_LINK_ATTEMPTS,
   PENDING_ACCOUNT_LINKS_STORAGE_KEY,
   accountLinkIsConfirmed,
   forgetPendingAccountLink,
   loadPendingAccountLinks,
   markPendingAccountLinkAttempt,
+  pendingAccountLinkMissingEventShouldExpire,
   rememberPendingAccountLink
 } from "../src/data/pendingAccountLinks.mjs";
 
@@ -84,6 +86,31 @@ test("pending links from another account cannot evict this account's recovery wo
   assert.equal(ownerB.length, 24);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
+test("a temporarily missing event keeps its account-link receipt until a bounded ceiling", () => {
+  assert.equal(pendingAccountLinkMissingEventShouldExpire(null, 1), false);
+  assert.equal(
+    pendingAccountLinkMissingEventShouldExpire(
+      null,
+      MAX_PENDING_ACCOUNT_LINK_ATTEMPTS - 1
+    ),
+    false
+  );
+  assert.equal(
+    pendingAccountLinkMissingEventShouldExpire(
+      null,
+      MAX_PENDING_ACCOUNT_LINK_ATTEMPTS
+    ),
+    true
+  );
+  assert.equal(
+    pendingAccountLinkMissingEventShouldExpire(
+      { id: receipt.eventId },
+      MAX_PENDING_ACCOUNT_LINK_ATTEMPTS
+    ),
+    false
+  );
 });
 
 function confirmedState() {

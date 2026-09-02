@@ -108,11 +108,50 @@ try {
     order by profile.username, missing_event_name
   `;
 
+  const groupGovernanceMismatches = await sql`
+    select
+      personal.id as workspace_id,
+      profile.username,
+      personal_event.value ->> 'id' as event_id,
+      personal_event.value ->> 'name' as event_name,
+      personal_event.value ->> 'groupId' as group_id,
+      private.event_text_ids(group_record.value, 'adminIds') as group_admin_ids,
+      private.event_admin_ids(shared.state) as canonical_admin_ids,
+      shared.id as snapshot_id
+    from public.app_snapshots as personal
+    left join public.user_profiles as profile
+      on profile.user_id = personal.owner_user_id
+    cross join lateral jsonb_array_elements(
+      coalesce(personal.state -> 'events', '[]'::jsonb)
+    ) as personal_event(value)
+    join public.app_snapshots as shared
+      on shared.id = personal_event.value ->> 'sharedSpaceId'
+     and shared.snapshot_kind = 'shared_event'
+    join lateral (
+      select group_value.value
+      from jsonb_array_elements(
+        coalesce(personal.state -> 'groups', '[]'::jsonb)
+      ) as group_value(value)
+      where group_value.value ->> 'id' = personal_event.value ->> 'groupId'
+      limit 1
+    ) as group_record on true
+    where personal.snapshot_kind = 'workspace'
+      and nullif(personal_event.value ->> 'groupId', '') is not null
+      and coalesce(
+        (personal_event.value ->> 'adminIdsScopedToEvent')::boolean,
+        false
+      ) = false
+      and private.event_text_ids(group_record.value, 'adminIds') is distinct from
+        private.event_admin_ids(shared.state)
+    order by profile.username, event_name
+  `;
+
   console.log(JSON.stringify({
     checkedAt: new Date().toISOString(),
     readOnly: true,
     mismatches,
-    invalidPersonalIndexes
+    invalidPersonalIndexes,
+    groupGovernanceMismatches
   }, null, 2));
 } finally {
   await sql.end({ timeout: 5 });

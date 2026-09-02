@@ -500,6 +500,197 @@ test("a hanging personal index write never delays a newly recovered event", asyn
   }
 });
 
+test("a local save during membership recovery cannot discard a newly visible event", async () => {
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  const storage = new MemoryStorage();
+  const userId = "user-membership-race";
+  const participantId = `account-${userId}`;
+  const spaceId = "account-space-membership-race";
+  const spaceKey = "abcdefghijklmnopqrstuvwxyz_membership_race_123456";
+  const personalState = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Race User", kind: "user" }],
+    groups: [],
+    events: []
+  };
+  const sharedState = {
+    currentParticipantId: "",
+    participants: [{ id: participantId, displayName: "Race User", kind: "user" }],
+    groups: [],
+    events: [{
+      id: "event-membership-race",
+      name: "Recovered During Save",
+      participantIds: [participantId],
+      adminIds: [participantId],
+      createdByParticipantId: participantId,
+      expenses: [],
+      transfers: []
+    }]
+  };
+
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(personalState));
+  storage.setItem(
+    "settle-friends-account-session",
+    JSON.stringify({
+      access_token: "membership-race-token",
+      refresh_token: "membership-race-refresh",
+      expires_at: Math.floor(Date.now() / 1000) + 3600,
+      user: {
+        id: userId,
+        user_metadata: {
+          account_space_id: spaceId,
+          account_space_key: spaceKey
+        }
+      }
+    })
+  );
+
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+  globalThis.window = {
+    localStorage: storage,
+    location,
+    addEventListener() {},
+    dispatchEvent() {}
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+
+  let releaseMembershipScan;
+  let markMembershipScanStarted;
+  let membershipScanStarted;
+  let membershipScanGate;
+  const resetMembershipScanGate = () => {
+    membershipScanStarted = new Promise((resolve) => {
+      markMembershipScanStarted = resolve;
+    });
+    membershipScanGate = new Promise((resolve) => {
+      releaseMembershipScan = resolve;
+    });
+  };
+  resetMembershipScanGate();
+  globalThis.fetch = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/api/config")) {
+      return jsonResponse({
+        storage: {
+          mode: "supabase",
+          url: "https://demo.supabase.co",
+          anonKey: "anon-key",
+          table: "app_snapshots"
+        }
+      });
+    }
+    if (address.endsWith("/api/product-metrics")) return jsonResponse({ ok: true });
+    if (address.includes("snapshot_kind=eq.shared_event")) {
+      markMembershipScanStarted();
+      await membershipScanGate;
+      return jsonResponse([{
+        id: "shared-space-membership-race",
+        state: sharedState,
+        updated_at: "2026-09-02T08:00:00.000Z"
+      }]);
+    }
+    if (address.includes("id=eq.shared-space-membership-race")) {
+      return jsonResponse([{
+        state: sharedState,
+        updated_at: "2026-09-02T08:00:00.000Z"
+      }]);
+    }
+    if (options.method === "PATCH" || options.method === "POST") {
+      return jsonResponse([{ updated_at: "2026-09-02T08:00:01.000Z" }]);
+    }
+    return jsonResponse([{
+      state: personalState,
+      updated_at: "2026-09-02T07:59:00.000Z"
+    }]);
+  };
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?membership-save-race=${Date.now()}`
+    );
+    const loading = localStore.loadSharedState();
+    await membershipScanStarted;
+    const concurrentSave = await localStore.saveSharedState(
+      localStore.loadState(),
+      { awaitCloud: true }
+    );
+    assert.equal(concurrentSave.ok, true, concurrentSave.error?.stack);
+    releaseMembershipScan();
+
+    const loaded = await loading;
+
+    assert.deepEqual(
+      loaded.events.map((event) => event.id),
+      ["event-membership-race"]
+    );
+    assert.deepEqual(
+      localStore.loadState().events.map((event) => event.id),
+      ["event-membership-race"]
+    );
+    await localStore.waitForRecoveredEventIndexPersistence();
+
+    resetMembershipScanGate();
+    const staleAccountLoad = localStore.loadSharedState();
+    await membershipScanStarted;
+    const otherUserId = "other-membership-user";
+    const otherSpaceId = "other-membership-space";
+    storage.setItem("settle-friends-cloud-space", otherSpaceId);
+    storage.setItem(
+      `settle-friends-state:${otherSpaceId}`,
+      JSON.stringify({
+        currentParticipantId: `account-${otherUserId}`,
+        participants: [{
+          id: `account-${otherUserId}`,
+          displayName: "Other User",
+          kind: "user"
+        }],
+        groups: [],
+        events: []
+      })
+    );
+    storage.setItem(
+      "settle-friends-account-session",
+      JSON.stringify({
+        access_token: "other-membership-token",
+        refresh_token: "other-membership-refresh",
+        expires_at: Math.floor(Date.now() / 1000) + 3600,
+        user: {
+          id: otherUserId,
+          user_metadata: {
+            account_space_id: otherSpaceId,
+            account_space_key: "abcdefghijklmnopqrstuvwxyz_other_membership_123"
+          }
+        }
+      })
+    );
+    localStore.loadState();
+    releaseMembershipScan();
+
+    const staleAccountResult = await staleAccountLoad;
+    assert.deepEqual(
+      staleAccountResult.events,
+      [],
+      "a membership scan started by another account must still be discarded"
+    );
+  } finally {
+    releaseMembershipScan?.();
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("recovered membership bookkeeping merges a newer local edit before it writes", async () => {
   const source = await readFile("src/data/localStore.mjs", "utf8");
   const scheduler = source.slice(

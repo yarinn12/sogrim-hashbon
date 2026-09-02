@@ -23,6 +23,11 @@ test("mandatory update gate blocks only native Android and has no dismiss action
   assert.match(layer, /app\?\.openStore/);
   assert.match(layer, /market:\/\/details\?id=\$\{ANDROID_PACKAGE_ID\}/);
   assert.match(layer, /event\.preventDefault\(\)/);
+  assert.match(
+    layer,
+    /event\.preventDefault\(\);[\s\S]*?event\.stopImmediatePropagation\(\);[\s\S]*?querySelector\(`#\$\{GATE_ID\}`\)/,
+    "native back must not navigate the blocked app behind the update gate"
+  );
   assert.doesNotMatch(layer, /data-action=["'](?:close|dismiss)/);
   assert.doesNotMatch(layer, /mandatory-update-(?:close|dismiss|skip)/);
   assert.match(localStore, /export async function refreshRuntimeConfigNow/);

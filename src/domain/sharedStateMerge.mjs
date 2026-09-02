@@ -413,7 +413,7 @@ export function assertSafeSharedStateIdentifiers(state, label = "state") {
 function mergeEvent(remoteEvent, localEvent) {
   const membership = mergeEventMembership(remoteEvent, localEvent);
   const lifecycle = mergeEventLifecycle(remoteEvent, localEvent);
-  const settings = mergeEventSettings(remoteEvent, localEvent);
+  const settings = mergeEventSettings(remoteEvent, localEvent, membership);
   const deletedExpenses = mergeEntities(
     remoteEvent.deletedExpenses,
     localEvent.deletedExpenses,
@@ -468,7 +468,7 @@ function mergeEvent(remoteEvent, localEvent) {
   return mergedEvent;
 }
 
-function mergeEventSettings(remoteEvent, localEvent) {
+function mergeEventSettings(remoteEvent, localEvent, membership) {
   const fields = [
     "name",
     "eventType",
@@ -521,7 +521,33 @@ function mergeEventSettings(remoteEvent, localEvent) {
     const adminSource = remoteAdminTime > localAdminTime
       ? remoteEvent
       : localEvent;
-    settings.adminIds = cloneValue(adminSource.adminIds ?? []);
+    const activeParticipantIds = new Set(
+      (membership.participantIds ?? []).filter(
+        (participantId) =>
+          !(membership.inactiveParticipantIds ?? []).includes(participantId)
+      )
+    );
+    const rawSelectedAdminIds = unionIds(adminSource.adminIds, []);
+    const selectedAdminIds = rawSelectedAdminIds.filter(
+      (participantId) => activeParticipantIds.has(participantId)
+    );
+    const membershipAdminIds = unionIds(membership.adminIds, []).filter(
+      (participantId) => activeParticipantIds.has(participantId)
+    );
+    const validSnapshotAdminIds = unionIds(
+      remoteEvent.adminIds,
+      localEvent.adminIds
+    ).filter((participantId) => activeParticipantIds.has(participantId));
+    const fallbackAdminIds = membershipAdminIds.length
+      ? membershipAdminIds
+      : validSnapshotAdminIds.length
+        ? validSnapshotAdminIds
+        : [...activeParticipantIds].slice(0, 1);
+    settings.adminIds =
+      selectedAdminIds.length === rawSelectedAdminIds.length &&
+      selectedAdminIds.length
+        ? selectedAdminIds
+        : fallbackAdminIds;
     settings.adminIdsScopedToEvent =
       adminSource.adminIdsScopedToEvent === true;
     settings.adminIdsUpdatedAt = adminSource.adminIdsUpdatedAt;
@@ -1305,8 +1331,14 @@ function mergeParticipant(remoteParticipant, localParticipant) {
   const merged = mergeObjects(remoteParticipant, localParticipant);
   const remoteProfileTime = timestamp(remoteParticipant.profileUpdatedAt);
   const localProfileTime = timestamp(localParticipant.profileUpdatedAt);
+  const remoteDisplayName = String(remoteParticipant?.displayName ?? "").trim();
+  const localDisplayName = String(localParticipant?.displayName ?? "").trim();
   const profileSource =
-    remoteProfileTime > localProfileTime ? remoteParticipant : localParticipant;
+    remoteProfileTime > localProfileTime && remoteDisplayName
+      ? remoteParticipant
+      : localDisplayName
+        ? localParticipant
+        : remoteParticipant;
 
   for (const field of [
     "displayName",

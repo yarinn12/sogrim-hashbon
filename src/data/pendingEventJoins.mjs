@@ -2,7 +2,31 @@ export const PENDING_EVENT_JOINS_STORAGE_KEY =
   "settle-friends-pending-event-joins";
 
 const MAX_PENDING_EVENT_JOINS = 24;
+export const MAX_PENDING_EVENT_JOIN_ATTEMPTS = 20;
 const MAX_IDENTIFIER_LENGTH = 200;
+
+export function pendingEventJoinRecoveryAction(event, participantId, attempts = 0) {
+  if (!event) {
+    return Number(attempts) >= MAX_PENDING_EVENT_JOIN_ATTEMPTS
+      ? "forget"
+      : "retry";
+  }
+  if (!participantId) return "retry";
+  if (
+    (event.participantIds ?? []).includes(participantId) &&
+    !(event.inactiveParticipantIds ?? []).includes(participantId)
+  ) {
+    return "persist";
+  }
+
+  const wasExplicitlyRemoved =
+    (event.inactiveParticipantIds ?? []).includes(participantId) ||
+    Object.hasOwn(
+      event.membershipUpdatedAtByParticipant ?? {},
+      participantId
+    );
+  return wasExplicitlyRemoved ? "forget" : "complete";
+}
 
 export function loadPendingEventJoins(
   storage = globalThis.localStorage,

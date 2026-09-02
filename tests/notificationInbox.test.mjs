@@ -6,6 +6,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead
 } from "../src/data/notificationInbox.mjs";
+import { storeInboxNotification } from "../src/server/notificationInbox.mjs";
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "../src/data/fetchTimeout.mjs";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -203,4 +204,29 @@ test("notification inbox stays unavailable without a current account session", a
   assert.equal(result.available, false);
   assert.deepEqual(result.items, []);
   assert.equal(contacted, false);
+});
+
+test("server inbox storage releases a stalled idempotent upsert", async () => {
+  let requestSignal = null;
+  const startedAt = Date.now();
+  const stored = await storeInboxNotification({
+    supabaseUrl: "https://demo.supabase.co",
+    serviceRoleKey: "service-role",
+    recipientUserId: USER_ID,
+    senderUserId: "22222222-2222-4222-8222-222222222222",
+    eventId: "event-trip",
+    activityId: "expense-taxi",
+    kind: "expense-created",
+    title: "הוצאה חדשה",
+    body: "נוספה הוצאה חדשה באירוע.",
+    requestTimeoutMs: 20,
+    fetchImpl: async (_url, options) => {
+      requestSignal = options.signal;
+      return new Promise(() => {});
+    }
+  });
+
+  assert.equal(stored, false);
+  assert.equal(requestSignal?.aborted, true);
+  assert.ok(Date.now() - startedAt < 1_000);
 });

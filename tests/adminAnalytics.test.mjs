@@ -89,6 +89,41 @@ test("admin analytics return aggregate data without exposing the service key", a
   assert.doesNotMatch(JSON.stringify(result.payload), /service-key|owner@example\.com/i);
 });
 
+test("admin analytics stop waiting when account verification never responds", async () => {
+  const startedAt = Date.now();
+  const result = await getAdminAnalyticsOverview({
+    runtimeConfig,
+    env,
+    authorization: "Bearer account-token",
+    requestTimeoutMs: 20,
+    fetchImpl: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.payload.ok, false);
+  assert.ok(Date.now() - startedAt < 1_000);
+});
+
+test("admin analytics apply one deadline across both aggregate requests", async () => {
+  const requests = [];
+  const result = await getAdminAnalyticsOverview({
+    runtimeConfig,
+    env,
+    authorization: "Bearer account-token",
+    requestTimeoutMs: 20,
+    fetchImpl: async (url) => {
+      requests.push(String(url));
+      if (String(url).endsWith("/auth/v1/user")) {
+        return jsonResponse({ id: "owner", email: "owner@example.com" });
+      }
+      return new Promise(() => {});
+    }
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(requests.length, 3);
+});
+
 test("admin email parsing is normalized and rejects malformed entries", () => {
   assert.deepEqual(
     [...parseAdminEmails(" OWNER@example.com; second@example.com invalid ")],

@@ -567,10 +567,18 @@ html.app-splash-active body {
 }
 
 .app-splash-video {
-  opacity: 1;
+  opacity: 0;
 }
 
 .app-splash-hold {
+  opacity: 1;
+}
+
+.app-splash.is-video-ready .app-splash-video {
+  opacity: 1;
+}
+
+.app-splash.is-video-ready .app-splash-hold {
   opacity: 0;
 }
 

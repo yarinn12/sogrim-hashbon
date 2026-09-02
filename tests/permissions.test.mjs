@@ -108,6 +108,18 @@ test("a participant removed from active membership cannot edit or manage the eve
   assert.equal(canEditEvent(state, event, "yarin"), false);
 });
 
+test("an absent participant cannot manage an event through a stale admin id", () => {
+  const state = baseState();
+  const event = {
+    ...state.events[0],
+    participantIds: ["dani", "avi"],
+    adminIds: ["yarin"],
+    adminIdsScopedToEvent: true
+  };
+
+  assert.equal(canManageEventSettings(state, event, "yarin"), false);
+});
+
 test("standalone events use their own admin ids", () => {
   const state = baseState();
   const event = {

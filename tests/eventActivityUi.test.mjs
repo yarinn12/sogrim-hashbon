@@ -54,3 +54,14 @@ test("important event mutations write activity before persistence", () => {
     assert.match(app, new RegExp(`recordEventActivity\\([^)]*"${kind}"`, "s"));
   }
 });
+
+test("event closure persists one timestamp for state and its audit entry", () => {
+  assert.match(
+    app,
+    /const closedAt = new Date\(\)\.toISOString\(\);[\s\S]*?closeEvent\(state, eventId, closedAt\);[\s\S]*?recordEventActivity\(eventId, "event-closed", \{\}, closedAt\)/
+  );
+  assert.match(
+    app,
+    /const statusUpdatedAt = new Date\(\)\.toISOString\(\);[\s\S]*?closeEvent\(state, eventId, statusUpdatedAt\);[\s\S]*?recordEventActivity\(eventId, "event-closed", \{\}, statusUpdatedAt\)/
+  );
+});

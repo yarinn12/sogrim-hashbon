@@ -22,12 +22,23 @@ test("the static server exposes only client assets and never repository secrets"
       "/src/server/runtimeConfig.mjs",
       "/src/Server/runtimeConfig.mjs",
       "/SRC/SERVER/runtimeConfig.mjs",
+      "/src//server/runtimeConfig.mjs",
+      "/src///server/runtimeConfig.mjs",
+      "/src//server//runtimeConfig.mjs",
+      "/src/./server/runtimeConfig.mjs",
       "/src",
       "/data/app-state.json"
     ]) {
       const response = await fetch(`${baseUrl}${path}`);
       assert.equal(response.status, 404, `${path} must stay private`);
+      assert.equal(
+        response.headers.get("x-content-type-options"),
+        "nosniff",
+        `${path} must retain security headers`
+      );
     }
+
+    assert.equal((await fetch(`${baseUrl}/src/app.mjs`)).status, 200);
 
     const mutation = await fetch(`${baseUrl}/styles.css`, { method: "POST" });
     assert.equal(mutation.status, 405);

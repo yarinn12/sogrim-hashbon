@@ -1,4 +1,7 @@
 import { isAllowedPublicUrl } from "../domain/publicOrigin.mjs";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
+
+const INBOX_WRITE_TIMEOUT_MS = 8_000;
 
 const INBOX_KINDS = new Set([
   "expense-created",
@@ -22,7 +25,8 @@ export async function storeInboxNotification({
   view = "event",
   actionUrl = "",
   publicUrl = "",
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  requestTimeoutMs = INBOX_WRITE_TIMEOUT_MS
 }) {
   const normalized = normalizeInboxNotification({
     recipientUserId,
@@ -38,7 +42,8 @@ export async function storeInboxNotification({
   });
   if (!normalized || !supabaseUrl || !serviceRoleKey) return false;
 
-  const response = await fetchImpl(
+  const response = await fetchWithTimeout(
+    fetchImpl,
     `${String(supabaseUrl).replace(/\/+$/, "")}/rest/v1/notification_inbox?on_conflict=recipient_user_id,event_id,activity_id,kind`,
     {
       method: "POST",
@@ -49,7 +54,8 @@ export async function storeInboxNotification({
         prefer: "resolution=merge-duplicates,return=minimal"
       },
       body: JSON.stringify(normalized)
-    }
+    },
+    requestTimeoutMs
   ).catch(() => null);
 
   return Boolean(response?.ok);

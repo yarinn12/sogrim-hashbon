@@ -131,6 +131,31 @@ test("notification preferences are explicit, account scoped, and sign-out safe",
   assert.match(serviceWorker, /notificationTargets\.mjs/);
 });
 
+test("payment reminder cooldown reservation is atomic under concurrent sends", async () => {
+  const schema = await readFile("supabase/schema.sql", "utf8");
+  const start = schema.indexOf(
+    "create or replace function public.reserve_payment_reminder"
+  );
+  const end = schema.indexOf("$$;", start);
+  const reservationFunction = schema.slice(start, end);
+  const lockIndex = reservationFunction.indexOf("pg_advisory_xact_lock");
+  const readIndex = reservationFunction.indexOf("select reminder.sent_at");
+  const insertIndex = reservationFunction.indexOf(
+    "insert into public.payment_reminders"
+  );
+
+  assert.ok(start >= 0, "the reminder reservation function must exist");
+  assert.ok(lockIndex >= 0, "the reminder tuple must be transaction-locked");
+  assert.ok(
+    lockIndex < readIndex && readIndex < insertIndex,
+    "the lock must cover the cooldown read and reservation insert"
+  );
+  assert.match(
+    reservationFunction,
+    /normalized_event_id \|\| ':' \|\|[\s\S]*?normalized_transfer_id \|\| ':' \|\|[\s\S]*?p_recipient_user_id::text/
+  );
+});
+
 test("payment reminders are visible only for a real online payer who owes the account", async () => {
   const [app, server, route, ledger, icons] = await Promise.all([
     readFile("src/app.mjs", "utf8"),

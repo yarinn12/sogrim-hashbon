@@ -95,6 +95,7 @@ import {
   reopenEvent,
   removeParticipant,
   removeExpense,
+  rollbackTransferStatusChanges,
   setEventCurrency,
   setEventAdminsCanEditOnly,
   setEventDirectSettlementTransfers,
@@ -160,12 +161,14 @@ import {
   forgetPendingAccountLink,
   loadPendingAccountLinks,
   markPendingAccountLinkAttempt,
+  pendingAccountLinkMissingEventShouldExpire,
   rememberPendingAccountLink
 } from "./data/pendingAccountLinks.mjs";
 import {
   forgetPendingEventJoin,
   loadPendingEventJoins,
   markPendingEventJoinAttempt,
+  pendingEventJoinRecoveryAction,
   rememberPendingEventJoin
 } from "./data/pendingEventJoins.mjs";
 import { loadStoredAccountSession } from "./data/accountAuth.mjs";
@@ -464,6 +467,7 @@ let joinEventBusy = false;
 let expenseDraft = null;
 let expenseSaveInProgress = false;
 const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;
+const SHARED_REVERT_NOTICE_MAX_AGE_MS = 8_000;
 const expenseDeleteRequests = new Set();
 let paymentReminderBusyId = "";
 const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
@@ -680,6 +684,19 @@ document.addEventListener("settle-friends:push-status", (event) => {
 
 function handleSharedSaveReverted(event) {
   state = loadState();
+  const requestedAt = Number(event?.detail?.requestedAt ?? 0);
+  const noticeAgeMs = Date.now() - requestedAt;
+  const recentForegroundMutation = Boolean(
+    event?.detail?.foregroundMutation === true &&
+      requestedAt > 0 &&
+      noticeAgeMs >= 0 &&
+      noticeAgeMs <= SHARED_REVERT_NOTICE_MAX_AGE_MS &&
+      document.visibilityState === "visible"
+  );
+  if (!recentForegroundMutation) {
+    render();
+    return;
+  }
   const failureKind = event?.detail?.failureKind ?? "unavailable";
   notice = failureKind === "auth"
     ? "השינוי לא נשמר כי החיבור לחשבון פג. התחברו מחדש ונסו שוב."
@@ -1358,14 +1375,14 @@ function captureRenderInteractionState() {
     dialogSelector: dialog ? dialogRenderSelector(dialog) : "",
     dialogScrollTop: dialog?.scrollTop ?? 0,
     openExpenseParticipantIds: [
-      ...app.querySelectorAll(".expense-row:has(.expense-participants-details[open])")
+      ...app.querySelectorAll(".expense-participants-details[open]")
     ]
-      .map((row) => row.dataset.expenseId)
+      .map((details) => details.closest(".expense-row")?.dataset.expenseId)
       .filter(Boolean),
     openExpenseMenuIds: [
-      ...app.querySelectorAll(".expense-row:has(.expense-row-actions-menu[open])")
+      ...app.querySelectorAll(".expense-row-actions-menu[open]")
     ]
-      .map((row) => row.dataset.expenseId)
+      .map((menu) => menu.closest(".expense-row")?.dataset.expenseId)
       .filter(Boolean),
     openEventCoverMenuIds: [
       ...app.querySelectorAll(".event-cover-actions-menu[open][data-event-id]")
@@ -1376,9 +1393,9 @@ function captureRenderInteractionState() {
       app.querySelector(".settlement-more-actions[open]")
     ),
     openTransferIds: [
-      ...app.querySelectorAll(".transfer-row:has(.transfer-explanation[open])")
+      ...app.querySelectorAll(".transfer-explanation[open]")
     ]
-      .map((row) => row.dataset.transferId)
+      .map((details) => details.closest(".transfer-row")?.dataset.transferId)
       .filter(Boolean),
     focus: activeElement ? focusIdentity(activeElement) : null
   };
@@ -9659,7 +9676,7 @@ async function persistProfileAvatarDraft() {
         : participant
     )
   };
-  localProfile = saveLocalProfile({
+  persistLocalProfile({
     ...localProfile,
     participantId,
     displayName,
@@ -9908,11 +9925,15 @@ async function updateEventCoverImage(eventId, coverImage) {
   };
   notice = coverImage ? "שומר את תמונת האירוע…" : "מסיר את תמונת האירוע…";
   render();
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (result?.ok === false && result?.pending !== true) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return false;
     console.warn("[images] Event cover persistence failed", {
       eventId,
       mode: String(result?.mode ?? "unknown"),
@@ -14662,7 +14683,7 @@ async function joinExistingEventFromDraft() {
     }
 
     if (participant) {
-      localProfile = saveLocalProfile({
+      persistLocalProfile({
         ...profile,
         participantId: participant.id,
         displayName: participant.displayName
@@ -15208,15 +15229,21 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
         avatarImageUpdatedAt: ownNetworkProfile?.avatar_image_updated_at
       }
     );
+    const networkDisplayName = normalizeProfileName(
+      ownNetworkProfile?.display_name
+    );
+    const networkHasValidDisplayName = isFullProfileName(networkDisplayName);
     const publicIdentityDiffers = Boolean(
       ownNetworkProfile &&
       (
-        ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
+        networkHasValidDisplayName &&
+          networkDisplayName !== localProfile?.displayName?.trim() ||
         networkAvatarPreset !== localAvatarPreset
       )
     );
     const publicIdentityIsNewer = Boolean(
       ownNetworkProfile &&
+      networkHasValidDisplayName &&
       networkProfileUpdatedAt &&
       publicIdentityDiffers &&
       (
@@ -15225,11 +15252,11 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       )
     );
     if (publicIdentityIsNewer || avatarResolution.source === "remote") {
-      localProfile = saveLocalProfile({
+      persistLocalProfile({
         ...localProfile,
         participantId: state.currentParticipantId,
         displayName: publicIdentityIsNewer
-          ? ownNetworkProfile.display_name
+          ? networkDisplayName
           : localProfile?.displayName,
         avatarPreset: publicIdentityIsNewer && Object.hasOwn(ownNetworkProfile, "avatar_preset")
           ? normalizeAvatarPreset(ownNetworkProfile.avatar_preset)
@@ -15247,7 +15274,8 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     const identityStillDiffers = Boolean(
       ownNetworkProfile &&
       (
-        ownNetworkProfile.display_name !== localProfile?.displayName?.trim() ||
+        networkHasValidDisplayName &&
+          networkDisplayName !== localProfile?.displayName?.trim() ||
         networkAvatarPreset !== localAvatarPreset
       )
     );
@@ -15386,7 +15414,7 @@ async function hydrateOwnPublicAvatarBeforeFirstRender() {
     );
     if (avatarResolution.source !== "remote") return;
 
-    localProfile = saveLocalProfile({
+    persistLocalProfile({
       ...localProfile,
       participantId: state.currentParticipantId,
       avatarImage: avatarResolution.avatarImage,
@@ -16011,11 +16039,15 @@ async function saveOfflineParticipantName(eventId, participantId) {
       return;
     }
     state = nextState;
-    const result = await persistState({
-      awaitCloud: true,
-      forceSharedEventIds: [eventId]
-    });
-    if (!result?.ok) {
+    const saveCheckpoint = stateSaveCheckpoint(
+      persistState({
+        awaitCloud: true,
+        forceSharedEventIds: [eventId]
+      })
+    );
+    const result = await saveCheckpoint.request;
+    if (!result?.ok && !result?.pending) {
+      if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
       state = previousState;
       showError("לא הצלחנו לשמור את השם. לא בוצע שינוי ואפשר לנסות שוב.");
       return result;
@@ -16152,19 +16184,21 @@ async function saveEventNoteFromDialog(eventId) {
   activeDialog.saving = true;
   render();
   reactivateDialogAfterRender(".event-note-modal");
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
   let result;
   try {
-    result = await completedSaveResult(
-      persistState({
-        awaitCloud: true,
-        forceSharedEventIds: [eventId]
-      })
-    );
+    result = await completedSaveResult(saveCheckpoint.request);
   } catch (error) {
     result = { ok: false, error };
   }
 
-  if (!result?.ok) {
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     if (eventDialog === activeDialog) {
       activeDialog.saving = false;
@@ -16211,13 +16245,15 @@ async function deleteEventNote(eventId, noteId) {
   if (nextState === state) return;
 
   state = nextState;
-  const result = await completedSaveResult(
+  const saveCheckpoint = stateSaveCheckpoint(
     persistState({
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
   );
-  if (!result?.ok) {
+  const result = await completedSaveResult(saveCheckpoint.request);
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     eventDialog = {
       ...editorSnapshot,
@@ -16577,8 +16613,10 @@ async function executeImportantAction(action) {
   if (action.kind === "remove-offline-friend") {
     const previousState = state;
     state = removeFriendContact(state, action.payload.participantId);
-    const result = await persistState();
-    if (!result?.ok) {
+    const saveCheckpoint = stateSaveCheckpoint(persistState());
+    const result = await saveCheckpoint.request;
+    if (!result?.ok && !result?.pending) {
+      if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return;
       state = previousState;
       notice = "לא הצלחנו להסיר את השם. לא בוצע שינוי ואפשר לנסות שוב.";
     } else {
@@ -16639,11 +16677,15 @@ async function applyEventCurrencyChange(
   });
   notice = "שומרים את מטבע האירוע...";
   render();
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
@@ -17006,13 +17048,17 @@ async function mergeParticipantsInStateNow(pendingMerge) {
   render();
   reactivateDialogAfterRender(".event-modal");
 
-  const result = pendingMerge.mergeKind === "account-link"
-    ? await saveSharedState(state, {
+  const saveCheckpoint = stateSaveCheckpoint(
+    pendingMerge.mergeKind === "account-link"
+      ? saveSharedState(state, {
         awaitCloud: true,
         forceSharedEventIds: [pendingMerge.eventId]
       })
-    : await persistState();
+      : persistState()
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     clearMergeParticipantsDraftFor(pendingMerge);
     if (accountLinkReceipt) forgetPendingAccountLink(accountLinkReceipt);
@@ -17074,7 +17120,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
   }
 
   if (localProfile?.participantId === source.id) {
-    localProfile = saveLocalProfile({
+    persistLocalProfile({
       ...localProfile,
       participantId: target.id,
       displayName: target.displayName
@@ -17218,10 +17264,12 @@ async function addGuestToEvent(eventId) {
   } else {
     notice = participantMessage;
   }
-  const saveRequest = persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
   if (returnsToParticipantRoster) {
     renderHistoryFallback();
     reactivateDialogAfterRender(
@@ -17239,8 +17287,9 @@ async function addGuestToEvent(eventId) {
     );
   }
 
-  const result = await completedSaveResult(saveRequest);
-  if (!result?.ok) {
+  const result = await completedSaveResult(saveCheckpoint.request);
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     expenseDraft = previousExpenseDraft;
     eventDialog = previousEventDialog;
@@ -17308,11 +17357,15 @@ async function addFriendParticipantToExpense(eventId, participantId) {
   expenseDraft.error = "";
   expenseDraft.participantInviteMessage = `${participant.displayName} נוסף לאירוע ולהוצאה.`;
 
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
-  if (!result?.ok) {
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     expenseDraft.sharedByParticipantIds = previousSharedParticipantIds;
     expenseDraft.participantInviteMessage = "";
@@ -17377,8 +17430,10 @@ async function addInlinePayerGuest(eventId, payerIndex) {
     expenseDraft.error = `${guest.displayName} כבר נמצא ברשימת המשלמים.`;
     expenseDraft.inlinePayerGuestIndex = null;
     expenseDraft.inlinePayerGuestName = "";
-    const result = await completedSaveResult(persistState());
-    if (!result?.ok) {
+    const saveCheckpoint = stateSaveCheckpoint(persistState());
+    const result = await completedSaveResult(saveCheckpoint.request);
+    if (!result?.ok && !result?.pending) {
+      if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
       state = previousState;
       expenseDraft = previousExpenseDraft;
       expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
@@ -17392,18 +17447,21 @@ async function addInlinePayerGuest(eventId, payerIndex) {
   expenseDraft.inlinePayerGuestName = "";
   expenseDraft.error = "";
   rebalanceExpenseDraftPayers(payerIndex);
-  const saveRequest = persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
   render();
   reactivateDialogAfterRender(
     ".expense-modal",
     `[data-action="expense-payer-amount"][data-index="${payerIndex}"]`,
     dialogScrollTop
   );
-  const result = await completedSaveResult(saveRequest);
-  if (!result?.ok) {
+  const result = await completedSaveResult(saveCheckpoint.request);
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     expenseDraft = previousExpenseDraft;
     expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
@@ -17457,11 +17515,12 @@ async function addInlineQuickItemGuest(eventId, itemIndex) {
   expenseDraft.quickInlineGuestIndex = null;
   expenseDraft.quickInlineGuestName = "";
   expenseDraft.error = "";
-  const saveRequest = persistState();
+  const saveCheckpoint = stateSaveCheckpoint(persistState());
   render();
   activateDialog(".expense-modal");
-  const result = await completedSaveResult(saveRequest);
-  if (!result?.ok) {
+  const result = await completedSaveResult(saveCheckpoint.request);
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     expenseDraft = previousExpenseDraft;
     expenseDraft.error = "לא הצלחנו להוסיף את המשתתף. לא בוצע שינוי.";
@@ -18328,8 +18387,10 @@ async function restoreStateBackup(restoredState) {
   mergeParticipantsDraft = null;
   notice = "משחזרים את הגיבוי…";
   render();
-  const result = await persistState({ awaitCloud: true });
-  if (!result?.ok) {
+  const saveCheckpoint = stateSaveCheckpoint(persistState({ awaitCloud: true }));
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     screen = previousScreen;
     notice = "לא הצלחנו לשחזר את הגיבוי. הנתונים הקיימים נשארו ללא שינוי.";
@@ -18413,7 +18474,7 @@ async function saveProfileFromDraft() {
   );
 
   state = nextState;
-  localProfile = saveLocalProfile({
+  persistLocalProfile({
     participantId: state.currentParticipantId,
     displayName: participant?.displayName ?? displayName,
     avatarImage:
@@ -19002,6 +19063,8 @@ async function saveQuickExpenses(eventId) {
   expenseSaveInProgress = true;
   syncExpenseSaveState();
   const previousState = cloneNavigationValue(state);
+  let saveCheckpoint = null;
+  let saveAccepted = false;
   try {
     const result = buildQuickItemExpenses({
       items: expenseDraft.quickItems,
@@ -19040,11 +19103,15 @@ async function saveQuickExpenses(eventId) {
       );
     }
     reconcileEventTransfers(event, previousTransfers);
-    const saveResult = await persistState({
-      foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
-      forceSharedEventIds: [eventId]
-    });
-    if (!saveResult?.ok) {
+    saveCheckpoint = stateSaveCheckpoint(
+      persistState({
+        foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
+        forceSharedEventIds: [eventId]
+      })
+    );
+    const saveResult = await saveCheckpoint.request;
+    if (!saveResult?.ok && !saveResult?.pending) {
+      if (!rejectedStateSaveIsCurrent(saveResult, saveCheckpoint)) return saveResult;
       state = previousState;
       expenseDraft.error =
         "הפריטים לא נשמרו כדי למנוע הבדל בין חברי האירוע. בדקו את החיבור ונסו שוב.";
@@ -19052,6 +19119,7 @@ async function saveQuickExpenses(eventId) {
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
       return saveResult;
     }
+    saveAccepted = true;
 
     publishReferralActivityAfterSave(saveResult, eventId, "expense-created");
     const firstExpense = result.expenses[0];
@@ -19071,9 +19139,14 @@ async function saveQuickExpenses(eventId) {
     closeDialogWithHistory(rewindSteps);
     return saveResult;
   } catch (error) {
-    state = previousState;
+    const canRollback =
+      !saveAccepted &&
+      (!saveCheckpoint || rejectedStateSaveIsCurrent({ ok: false }, saveCheckpoint));
+    if (canRollback) state = previousState;
     if (expenseDraft) {
-      expenseDraft.error = "לא הצלחנו לשמור את הפריטים. אפשר לנסות שוב.";
+      expenseDraft.error = saveAccepted
+        ? "הפריטים נשמרו, אבל המסך לא הושלם כרגיל. אפשר לצאת ולחזור לאירוע."
+        : "לא הצלחנו לשמור את הפריטים. אפשר לנסות שוב.";
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
     }
@@ -19276,10 +19349,12 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
   expenseDraft = null;
   eventDialog = null;
   notice = "האירוע נסגר וננעל לעריכה.";
-  const saveRequest = persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
   screen = destination === "home"
     ? { name: "home" }
     : { name: "settlement", eventId };
@@ -19287,11 +19362,12 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
 
   let result;
   try {
-    result = await saveRequest;
+    result = await saveCheckpoint.request;
   } catch (error) {
     result = { ok: false, error };
   }
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "אין לחשבון הרשאה לסגור את האירוע. רעננו את המסך."
@@ -19351,11 +19427,15 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
   settlementCloseConfirmation = null;
   notice = "פותח את האירוע ושומר…";
   render();
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
   } else if (result?.pending) {
@@ -19407,11 +19487,15 @@ async function toggleEventLock(eventId) {
     recordEventActivity(eventId, "event-closed", {}, statusUpdatedAt);
     expenseDraft = null;
   }
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
-  if (!result?.ok) {
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
@@ -19470,11 +19554,15 @@ async function leaveCurrentEvent(eventId) {
   screen = { name: "home" };
   notice = `מסיים את העזיבה מ־"${event.name}"…`;
   render();
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     screen = previousScreen;
     notice = "לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.";
@@ -19504,8 +19592,12 @@ async function deleteCurrentEvent(eventId) {
   notice = `מוחק את האירוע "${event.name}"…`;
   render();
 
-  const result = await saveSharedState(state, { awaitCloud: true });
+  const saveCheckpoint = stateSaveCheckpoint(
+    saveSharedState(state, { awaitCloud: true })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     screen = { name: "event", eventId };
     notice = "לא הצלחנו להשלים את מחיקת האירוע. האירוע נשאר שמור ואפשר לנסות שוב.";
@@ -19544,7 +19636,7 @@ async function markTransferPaid(transferId, trigger) {
     participantId: state.currentParticipantId,
     markedAt
   });
-  recordEventActivity(event.id, "transfer-paid", {
+  const activityId = recordEventActivity(event.id, "transfer-paid", {
     entityId: transfer.id,
     fromParticipantId: transfer.fromParticipantId,
     toParticipantId: transfer.toParticipantId
@@ -19561,7 +19653,18 @@ async function markTransferPaid(transferId, trigger) {
   if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return result;
   transferStatusRequestVersions.delete(requestKey);
   if (!result?.ok && !result?.pending) {
-    state = previousState;
+    state = rollbackTransferStatusChanges(
+      state,
+      event.id,
+      [previousState.events.find((item) => item.id === event.id)
+        ?.transfers?.find((item) => item.id === transferId)],
+      "paid",
+      [activityId]
+    );
+    persistState({
+      forceSharedEventIds: [event.id],
+      suppressRevertNotice: true
+    }).catch(() => {});
     settlementCelebration = null;
     notice = "לא הצלחנו לשמור את סימון התשלום. המצב הקודם נשמר.";
     render();
@@ -19624,13 +19727,13 @@ async function markTransfersPending(transferIds) {
   }
   const updatedEvent = getEvent(event.id);
   reconcileEventTransfers(updatedEvent, updatedEvent?.transfers ?? []);
-  for (const transfer of transfers) {
+  const activityIds = transfers.map((transfer) =>
     recordEventActivity(event.id, "transfer-pending", {
       entityId: transfer.id,
       fromParticipantId: transfer.fromParticipantId,
       toParticipantId: transfer.toParticipantId
-    }, markedAt);
-  }
+    }, markedAt)
+  );
   syncSettlementCloseConfirmation(event.id);
   notice = transfers.length === 1
     ? "מבטלים את סימון התשלום…"
@@ -19643,7 +19746,20 @@ async function markTransfersPending(transferIds) {
   if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return;
   transferStatusRequestVersions.delete(requestKey);
   if (!result?.ok && !result?.pending) {
-    state = previousState;
+    const previousEvent = previousState.events.find((item) => item.id === event.id);
+    state = rollbackTransferStatusChanges(
+      state,
+      event.id,
+      transfers.map((transfer) =>
+        previousEvent?.transfers?.find((item) => item.id === transfer.id)
+      ),
+      "pending",
+      activityIds
+    );
+    persistState({
+      forceSharedEventIds: [event.id],
+      suppressRevertNotice: true
+    }).catch(() => {});
     notice = "לא הצלחנו לבטל את סימון התשלום. המצב הקודם נשמר.";
     render();
     return result;
@@ -20067,11 +20183,15 @@ async function setEventManagementMode(eventId, mode) {
   const previousState = state;
   state = setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly);
   expenseDraft = null;
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
@@ -20161,11 +20281,15 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
   notice = "";
   render();
   reactivateDialogAfterRender(".event-modal", focusSelector);
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     const failureMessage = "לא הצלחנו לשנות את הרשאת הניהול. לא בוצע שינוי.";
     eventDialog = eventDialog?.eventId === eventId
@@ -20205,11 +20329,15 @@ async function setEventRoundingMode(eventId, mode) {
     : "עיגול הסכומים בוטל. ההעברות יוצגו בדיוק מלא.";
   notice = "שומרים את הגדרת עיגול הסכומים...";
   render();
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
   if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
@@ -20408,14 +20536,17 @@ async function removeEventParticipant(eventId, participantId) {
       }
     : eventDialog;
   notice = removalMessage;
-  const saveRequest = persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
   render();
   reactivateDialogAfterRender(".event-modal");
-  const result = await saveRequest;
-  if (!result?.ok) {
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     eventDialog = eventDialog && eventDialog.eventId === eventId
       ? {
@@ -20494,11 +20625,15 @@ async function restoreEventParticipant(eventId, participantId) {
       }
     : eventDialog;
   notice = "";
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
-  if (!result?.ok) {
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
@@ -20577,11 +20712,15 @@ async function toggleEventParticipant(eventId, participantId, checked) {
       ? `[data-action="open-event-participant-profile"][data-participant-id="${participantId}"]`
       : `[data-action="remove-event-participant"][data-participant-id="${participantId}"]`
   );
-  const result = await persistState({
-    awaitCloud: true,
-    forceSharedEventIds: [eventId]
-  });
-  if (!result?.ok) {
+  const saveCheckpoint = stateSaveCheckpoint(
+    persistState({
+      awaitCloud: true,
+      forceSharedEventIds: [eventId]
+    })
+  );
+  const result = await saveCheckpoint.request;
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
@@ -20716,6 +20855,15 @@ function retryPendingAccountLinks() {
             );
         if (replayedState === state && !accountLinkIsConfirmed(state, entry)) {
           const event = getEvent(entry.eventId);
+          if (
+            pendingAccountLinkMissingEventShouldExpire(
+              event,
+              (Number(entry.attempts) || 0) + 1
+            )
+          ) {
+            forgetPendingAccountLink(entry);
+            continue;
+          }
           if (
             event &&
             !canLinkParticipantAccountInEvent(
@@ -20941,18 +21089,33 @@ function retryPendingEventJoins() {
       if (!pendingMutationOwnerIsActive(ownerUserId)) return;
       markPendingEventJoinAttempt(entry, window.localStorage);
       try {
-        const event = getEvent(entry.eventId);
+        let event = getEvent(entry.eventId);
         const participantId = state.currentParticipantId;
-        if (!event) {
+        const recoveryAction = pendingEventJoinRecoveryAction(
+          event,
+          participantId,
+          (Number(entry.attempts) || 0) + 1
+        );
+        if (recoveryAction === "forget") {
           forgetPendingEventJoin(entry, window.localStorage);
           continue;
         }
-        if (!participantId) {
+        if (recoveryAction === "retry") {
           continue;
         }
-        if (!isActiveEventParticipant(event, participantId)) {
-          forgetPendingEventJoin(entry, window.localStorage);
-          continue;
+        if (recoveryAction === "complete") {
+          const participant = state.participants.find(
+            (item) => item.id === participantId
+          );
+          if (!participant) continue;
+          state = ensureNamedParticipant(
+            state,
+            { ...participant, id: participantId },
+            entry.eventId,
+            { reactivateInactive: false }
+          );
+          event = getEvent(entry.eventId);
+          if (!isActiveEventParticipant(event, participantId)) continue;
         }
         const result = await saveSharedState(state, {
           awaitCloud: true,
@@ -21270,6 +21433,7 @@ function syncLocalProfile(nextState) {
   );
   const cloudProfileIsNewer = Boolean(
     cloudParticipant &&
+      isFullProfileName(cloudParticipant.displayName) &&
       cloudProfileUpdatedAt &&
       (
         !localProfileUpdatedAt ||
@@ -21311,7 +21475,7 @@ function syncLocalProfile(nextState) {
     (item) => item.id === stateWithProfile.currentParticipantId
   );
 
-  localProfile = saveLocalProfile({
+  persistLocalProfile({
     participantId: stateWithProfile.currentParticipantId,
     displayName: participant?.displayName ?? localProfile.displayName,
     avatarImage:
@@ -21329,7 +21493,7 @@ function syncLocalProfile(nextState) {
     authSubject: participant?.authSubject ?? localProfile.authSubject,
     email: participant?.email ?? localProfile.email
   });
-  profileNameDraft = localProfile.displayName;
+  profileNameDraft = localProfile?.displayName ?? profileNameDraft;
   profileAvatarDraft =
     normalizeAvatarPreset(localProfile.avatarPreset) || AVATAR_PRESETS[0].id;
   profileAvatarImageDraft = normalizeAvatarImage(localProfile.avatarImage);
@@ -21436,7 +21600,31 @@ function handleNativeDestinationRequest(event) {
 }
 
 function persistState(options = {}) {
-  return saveSharedState(state, options);
+  return saveSharedState(state, {
+    foregroundMutation: options.suppressRevertNotice !== true,
+    ...options
+  });
+}
+
+function persistLocalProfile(nextProfile) {
+  const savedProfile = saveLocalProfile(nextProfile);
+  if (savedProfile) localProfile = savedProfile;
+  return savedProfile;
+}
+
+function stateSaveCheckpoint(saveRequest) {
+  return {
+    request: saveRequest,
+    revision: sharedStateSaveRevision()
+  };
+}
+
+function rejectedStateSaveIsCurrent(result, checkpoint) {
+  return (
+    !result?.ok &&
+    !result?.pending &&
+    checkpoint?.revision === sharedStateSaveRevision()
+  );
 }
 
 function recordEventActivity(
@@ -22074,7 +22262,15 @@ function participantName(participantId, event = null) {
       participantId
     );
   }
-  return state.participants.find((participant) => participant.id === participantId)?.displayName ?? "משתתף";
+  const participantDisplayName = normalizeProfileName(
+    state.participants.find((participant) => participant.id === participantId)?.displayName
+  );
+  if (participantDisplayName) return participantDisplayName;
+  if (participantId === localProfile?.participantId) {
+    const localDisplayName = normalizeProfileName(localProfile.displayName);
+    if (localDisplayName) return localDisplayName;
+  }
+  return "משתתף";
 }
 
 function makeId(prefix) {

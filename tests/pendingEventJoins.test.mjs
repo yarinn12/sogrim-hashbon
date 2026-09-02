@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MAX_PENDING_EVENT_JOIN_ATTEMPTS,
   PENDING_EVENT_JOINS_STORAGE_KEY,
   forgetPendingEventJoin,
   loadPendingEventJoins,
   markPendingEventJoinAttempt,
+  pendingEventJoinRecoveryAction,
   rememberPendingEventJoin
 } from "../src/data/pendingEventJoins.mjs";
 
@@ -72,6 +74,48 @@ test("pending joins from another account cannot evict this account's recovery wo
   assert.equal(ownerB.length, 24);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
+test("an interrupted redeemed invite is completed but a removed member is never resurrected", () => {
+  const event = {
+    participantIds: ["account-admin"],
+    inactiveParticipantIds: [],
+    membershipUpdatedAtByParticipant: {
+      "account-admin": "2026-08-30T07:00:00.000Z"
+    }
+  };
+
+  assert.equal(
+    pendingEventJoinRecoveryAction(event, "account-joiner", 1),
+    "complete"
+  );
+  assert.equal(
+    pendingEventJoinRecoveryAction(
+      {
+        ...event,
+        inactiveParticipantIds: ["account-joiner"],
+        membershipUpdatedAtByParticipant: {
+          ...event.membershipUpdatedAtByParticipant,
+          "account-joiner": "2026-08-30T07:05:00.000Z"
+        }
+      },
+      "account-joiner",
+      1
+    ),
+    "forget"
+  );
+});
+
+test("a missing redeemed event retries for a bounded number of recoveries", () => {
+  assert.equal(pendingEventJoinRecoveryAction(null, "account-joiner", 1), "retry");
+  assert.equal(
+    pendingEventJoinRecoveryAction(
+      null,
+      "account-joiner",
+      MAX_PENDING_EVENT_JOIN_ATTEMPTS
+    ),
+    "forget"
+  );
 });
 
 function memoryStorage() {

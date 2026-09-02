@@ -94,6 +94,30 @@ test("ledger workspace is the final public design layer", async () => {
   );
 });
 
+test("the circle layer does not reactivate roots retired by the ledger workspace", async () => {
+  const [circle, ledger] = await Promise.all([
+    readFile("src/publicCircleDesignLayer.mjs", "utf8"),
+    readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8")
+  ]);
+  const setupStart = circle.indexOf("function setupCircleDesignLayer()");
+  const setupEnd = circle.indexOf("\n}\n", setupStart);
+  const setup = circle.slice(setupStart, setupEnd);
+  const retiredStart = ledger.indexOf("const RETIRED_ROOT_CLASSES = [");
+  const retiredEnd = ledger.indexOf("\n];", retiredStart);
+  const retired = [
+    ...ledger.slice(retiredStart, retiredEnd).matchAll(/"([a-z0-9-]+)"/g)
+  ].map((match) => match[1]);
+
+  assert.match(setup, /classList\.add\("circle-design-v1"\)/);
+  for (const className of retired) {
+    assert.doesNotMatch(
+      setup,
+      new RegExp(`classList\\.add\\([^)]*"${className}"`),
+      `${className} must stay retired`
+    );
+  }
+});
+
 test("ledger workspace uses a distinctive editorial financial product system", async () => {
   const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
 

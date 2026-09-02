@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=439"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=440"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -106,6 +106,30 @@ test("a returning session paints local state before remote reconciliation even w
   assert.match(
     reconcile,
     /isTransientAccountError\(error\)[\s\S]*?scheduleAccountSessionRefresh\(ACCOUNT_REFRESH_RETRY_MS\)/
+  );
+});
+
+test("an OAuth callback always clears a spent code when no session is produced", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+  const callbackStart = layer.indexOf("if (!callbackSession && callbackCode) {");
+  const callbackEnd = layer.indexOf("\n  if (callbackSession) {", callbackStart);
+  const callbackBranch = layer.slice(callbackStart, callbackEnd);
+
+  assert.ok(callbackStart >= 0, "OAuth callback branch should exist");
+  assert.match(callbackBranch, /try\s*\{/);
+  assert.match(callbackBranch, /finally\s*\{/);
+  assert.match(
+    callbackBranch,
+    /if \(!callbackSession\) \{[\s\S]*?cleanAuthHash\(callbackFlow\);[\s\S]*?rememberAccountNotice\(/
+  );
+});
+
+test("a successful OAuth callback still cleans the callback URL after session capture", async () => {
+  const layer = await readFile("src/publicAccountAuthLayer.mjs", "utf8");
+
+  assert.match(
+    layer,
+    /if \(callbackSession\) \{[\s\S]*?accountSession = callbackSession;[\s\S]*?cleanAuthHash\(callbackFlow\);/
   );
 });
 
@@ -358,7 +382,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
     layer,
     /requestGeneration !== accountRefreshGeneration \|\|\s*accountSession !== previousSession/
   );
-  assert.match(layer, /!status \|\| status >= 500/);
+  assert.match(layer, /isTransientAccountError/);
   assert.match(layer, /const pkce = await createOAuthPkce\(\);/);
   assert.match(layer, /const flowId = createAccountOAuthFlowId\(\);/);
   assert.match(layer, /saveAccountOAuthFlow\(\{/);
@@ -419,11 +443,12 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
 });
 
 test("Apple authentication uses Apple's approved localized button artwork", async () => {
-  const [artwork, ledger, serviceWorker, nativeBuilder] = await Promise.all([
+  const [artwork, ledger, serviceWorker, nativeBuilder, accountLayer] = await Promise.all([
     readFile("assets/sign-in-with-apple-iw.png"),
     readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8"),
     readFile("sw.js", "utf8"),
-    readFile("scripts/build-native-web.mjs", "utf8")
+    readFile("scripts/build-native-web.mjs", "utf8"),
+    readFile("src/publicAccountAuthLayer.mjs", "utf8")
   ]);
 
   assert.deepEqual([...artwork.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
@@ -431,6 +456,10 @@ test("Apple authentication uses Apple's approved localized button artwork", asyn
   assert.match(ledger, /\.account-apple-button-art \{[\s\S]*?max-width: 375px !important/);
   assert.match(serviceWorker, /assets\/sign-in-with-apple-iw\.png/);
   assert.match(nativeBuilder, /assets\/sign-in-with-apple-iw\.png/);
+  assert.match(
+    accountLayer,
+    /if \(action === "apple"\) \{[\s\S]*?\} catch \(error\) \{[\s\S]*?emitOperationFailure\("auth", \{ screen: "auth", error \}\);[\s\S]*?renderAccountGate\(\{[\s\S]*?error: accountAuthErrorMessage\(error, "apple"\)[\s\S]*?\} finally/
+  );
 });
 
 test("profile name edits update the authenticated cloud account", async () => {
@@ -470,7 +499,10 @@ test("account gate protects private content and preserves interrupted form work"
     layer,
     /accountSession\?\.refresh_token &&[\s\S]*?isUnauthorizedAccountError\(error\)[\s\S]*?refreshAccountSession\([\s\S]*?runtimeConfig,[\s\S]*?accountSession,[\s\S]*?STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS[\s\S]*?saveAccountSession\(accountSession\)[\s\S]*?connectAccountToApp\(accountSession/
   );
-  assert.match(layer, /function isTransientAccountError\(error\)/);
+  assert.match(
+    layer,
+    /import \{ isTransientAccountError \} from "\.\/domain\/accountErrors\.mjs";/
+  );
   assert.match(
     layer,
     /callbackSession &&[\s\S]*?!accountSession\?\.user &&[\s\S]*?isTransientAccountError\(error\)[\s\S]*?saveAccountSession\(accountSession\);[\s\S]*?renderAccountRecoveryGate\(\);[\s\S]*?return;/

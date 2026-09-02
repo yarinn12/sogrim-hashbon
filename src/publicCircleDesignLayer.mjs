@@ -8097,14 +8097,10 @@ let knownExpenseIds = new Set();
 setupCircleDesignLayer();
 
 function setupCircleDesignLayer() {
-  document.documentElement.classList.add(
-    "circle-design-v1",
-    "social-ledger-v2",
-    "social-ledger-v4",
-    "deep-ledger-v5",
-    "deep-ledger-v6",
-    "deep-ledger-v7"
-  );
+  // The ledger workspace deliberately retires the older ledger roots on every
+  // app render. Adding them here made hundreds of selectors look live even
+  // though they were removed before paint.
+  document.documentElement.classList.add("circle-design-v1");
   injectStyles();
   keepBrandAssetsCurrent();
   keepHomePriorityCurrent();

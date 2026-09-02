@@ -1334,6 +1334,70 @@ test("a shared event deletion removes a stale local copy and keeps retry credent
   ]);
 });
 
+test("saving a stale local event adopts a remote deletion without writing null", async () => {
+  const accountUserId = "00000000-0000-4000-8000-000000000021";
+  const participantId = `account-${accountUserId}`;
+  const eventId = "event-deleted-remotely";
+  const state = {
+    currentParticipantId: participantId,
+    participants: [{ id: participantId, displayName: "Stale member" }],
+    groups: [],
+    events: [{
+      id: eventId,
+      participantIds: [participantId],
+      adminIds: [participantId],
+      expenses: [{
+        id: "queued-expense",
+        total: 1000,
+        payers: [{ participantId, amount: 1000 }],
+        sharedByParticipantIds: [participantId]
+      }],
+      transfers: [],
+      sharedSpaceId: "space-deleted-remotely",
+      sharedSpaceKey: "event-share-key-deleted-remotely-1234567890"
+    }]
+  };
+  const remoteDeletion = {
+    currentParticipantId: "",
+    participants: [],
+    groups: [],
+    events: [],
+    deletedEvents: [{
+      id: eventId,
+      deletedAt: "2026-09-02T10:00:00.000Z"
+    }]
+  };
+  const writes = [];
+
+  const saved = await saveSharedEventState(
+    {
+      storage: {
+        mode: "supabase",
+        url: "https://project.supabase.co",
+        table: "app_snapshots",
+        anonKey: "anon",
+        account: { userId: accountUserId, accessToken: "account-token" }
+      }
+    },
+    state,
+    eventId,
+    async (_url, options = {}) => {
+      if (options.method && options.method !== "GET") writes.push(options.body);
+      return jsonResponse([{
+        state: remoteDeletion,
+        updated_at: "2026-09-02T10:00:00.000Z"
+      }]);
+    }
+  );
+
+  assert.deepEqual(writes, []);
+  assert.deepEqual(saved.events, []);
+  assert.equal(
+    saved.deletedEvents.some((deletion) => deletion.id === eventId),
+    true
+  );
+});
+
 test("shared events refresh concurrently without losing remote updates", async () => {
   const keys = {
     "event-share-key-11111111111111111111": {

@@ -92,6 +92,7 @@ import {
   normalizeUsername,
   usernameValidationMessage
 } from "./domain/usernames.mjs";
+import { isTransientAccountError } from "./domain/accountErrors.mjs";
 
 const GATE_ID = "public-account-auth-gate";
 const STYLE_ID = "public-account-auth-style";
@@ -231,14 +232,23 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
     const verifier = callbackFlow?.purpose === "oauth"
       ? callbackFlow.verifier
       : (callbackFlowId ? "" : oauthPkceVerifier());
-    if (verifier) {
-      callbackSession = await exchangeOAuthCode(
-        runtimeConfig,
-        callbackCode,
-        verifier
-      );
+    try {
+      if (verifier) {
+        callbackSession = await exchangeOAuthCode(
+          runtimeConfig,
+          callbackCode,
+          verifier
+        );
+      }
+    } finally {
       if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
       clearOAuthPkceVerifier();
+      if (!callbackSession) {
+        // Authorization codes are single-use. Leaving a failed or stale code in
+        // the URL disables the immediate local resume on every later launch.
+        cleanAuthHash(callbackFlow);
+        rememberAccountNotice("ההתחברות לא הושלמה. כדאי לנסות שוב.");
+      }
     }
   }
   if (callbackSession) {
@@ -1535,6 +1545,12 @@ async function handleAccountClick(event) {
       await openOAuthUrl(
         await secureOAuthUrl(appleOAuthUrl)
       );
+    } catch (error) {
+      emitOperationFailure("auth", { screen: "auth", error });
+      renderAccountGate({
+        mode: "login",
+        error: accountAuthErrorMessage(error, "apple")
+      });
     } finally {
       setAuthBusy(false);
     }
@@ -2708,11 +2724,6 @@ function providerOptionsMarkup() {
 
 function canResumeOffline(session, error) {
   return Boolean(session?.user && isTransientAccountError(error));
-}
-
-function isTransientAccountError(error) {
-  const status = Number(error?.status);
-  return !status || status >= 500;
 }
 
 function isUnauthorizedAccountError(error) {

@@ -145,6 +145,12 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.doesNotMatch(app, /השינוי לא נשמר כי הסנכרון לא זמין/);
   assert.match(app, /אין לחשבון הרשאה לבצע את השינוי הזה/);
   assert.match(app, /השינוי לא התקבל בשרת/);
+  assert.match(app, /foregroundMutation: options\.suppressRevertNotice !== true/);
+  assert.match(app, /SHARED_REVERT_NOTICE_MAX_AGE_MS/);
+  assert.match(app, /event\?\.detail\?\.foregroundMutation === true/);
+  assert.match(app, /document\.visibilityState === "visible"/);
+  assert.match(localStore, /foregroundMutation: foregroundMutation === true/);
+  assert.match(localStore, /requestedAt: Number\(requestedAt\) \|\| 0/);
   assert.match(localStore, /window\.addEventListener\("online"/);
   assert.match(
     localStore,

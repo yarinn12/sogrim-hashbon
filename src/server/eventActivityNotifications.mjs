@@ -4,6 +4,7 @@ import { GoogleAuth } from "google-auth-library";
 
 import { buildEventInviteUrl } from "../domain/inviteLinks.mjs";
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 import {
   activateEventInviteMembership,
   createPrivateEventInvite
@@ -21,6 +22,7 @@ const ACTIVITY_KINDS = new Set([
   "event-closed"
 ]);
 const EXPENSE_COOLDOWN_SECONDS = 45;
+const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
 
 export async function sendEventActivityNotification({
   runtimeConfig,
@@ -30,7 +32,9 @@ export async function sendEventActivityNotification({
   activityId = "",
   kind = "",
   fetchImpl = fetch,
-  accessTokenProvider = defaultFirebaseAccessTokenProvider
+  accessTokenProvider = defaultFirebaseAccessTokenProvider,
+  deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
 }) {
   const normalizedEventId = String(eventId ?? "").trim();
   const normalizedActivityId = String(activityId ?? "").trim();
@@ -297,7 +301,10 @@ export async function sendEventActivityNotification({
 
   let firebase;
   try {
-    firebase = await accessTokenProvider(env);
+    firebase = await promiseWithTimeout(
+      () => accessTokenProvider(env),
+      accessTokenTimeoutMs
+    );
   } catch {
     await releaseReservations({
       supabaseUrl,
@@ -337,39 +344,49 @@ export async function sendEventActivityNotification({
 
   let delivered = 0;
   let deliveredRecipients = 0;
+  let unconfirmedRecipients = 0;
   for (const recipient of eligibleRecipients) {
     let recipientDeliveries = 0;
+    let recipientDeliveryUnconfirmed = false;
     for (const device of recipient.devices) {
-      const response = await fetchImpl(
-        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
-        {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${firebase.accessToken}`,
-            "content-type": "application/json"
-          },
-          body: JSON.stringify({
-            message: {
-              token: device.token,
-              notification: privatePushNotification,
-              data: {
-                eventId: normalizedEventId,
-                activityId: normalizedActivityId,
-                kind: normalizedKind,
-                view: normalizedKind === "event-closed" ? "summary" : "event",
-                actionUrl: recipient.actionUrl
-              },
-              android: {
-                priority: "high",
-                notification: {
-                  channel_id: "event-updates",
-                  sound: "default"
+      let response = null;
+      try {
+        response = await fetchWithTimeout(
+          fetchImpl,
+          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${firebase.accessToken}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              message: {
+                token: device.token,
+                notification: privatePushNotification,
+                data: {
+                  eventId: normalizedEventId,
+                  activityId: normalizedActivityId,
+                  kind: normalizedKind,
+                  view: normalizedKind === "event-closed" ? "summary" : "event",
+                  actionUrl: recipient.actionUrl
+                },
+                android: {
+                  priority: "high",
+                  notification: {
+                    channel_id: "event-updates",
+                    sound: "default"
+                  }
                 }
               }
-            }
-          })
-        }
-      );
+            })
+          },
+          deliveryTimeoutMs
+        );
+      } catch {
+        recipientDeliveryUnconfirmed = true;
+        continue;
+      }
       if (response.ok) {
         delivered += 1;
         recipientDeliveries += 1;
@@ -396,6 +413,17 @@ export async function sendEventActivityNotification({
         delivered: recipientDeliveries,
         fetchImpl
       });
+    } else if (recipientDeliveryUnconfirmed) {
+      // The in-app notification is already durable. Treat a lost FCM response
+      // as an in-app-only completion so an automatic retry cannot double-send.
+      unconfirmedRecipients += 1;
+      await completeActivityNotification({
+        supabaseUrl,
+        serviceRoleKey,
+        notificationId: recipient.notificationId,
+        delivered: 0,
+        fetchImpl
+      });
     } else {
       await deleteActivityReservation({
         supabaseUrl,
@@ -412,6 +440,19 @@ export async function sendEventActivityNotification({
         membershipRecipients,
         inboxRecipients
       });
+    }
+    if (unconfirmedRecipients > 0 && inboxRecipients > 0) {
+      return {
+        ok: true,
+        status: 200,
+        payload: {
+          ok: true,
+          delivered: 0,
+          recipients: 0,
+          inboxRecipients,
+          reason: "in-app-only"
+        }
+      };
     }
     return failure(502, "No device accepted the event notification", {
       code: "DELIVERY_FAILED",
@@ -430,6 +471,22 @@ export async function sendEventActivityNotification({
       ...(membershipRecipients > 0 ? { membershipRecipients } : {})
     }
   };
+}
+
+async function promiseWithTimeout(factory, timeoutMs) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("Push authorization timed out");
+      error.code = "NETWORK_TIMEOUT";
+      reject(error);
+    }, Math.max(1, Number(timeoutMs) || PUSH_DELIVERY_REQUEST_TIMEOUT_MS));
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(factory), timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function membershipAccessGrantedResponse({

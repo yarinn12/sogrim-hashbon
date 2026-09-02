@@ -89,6 +89,22 @@ test("a stale close cannot steal focus from a newly opened picker", () => {
   );
 });
 
+test("rapid option taps cannot dispatch the same choice more than once", () => {
+  const chooseOption = layer.slice(
+    layer.indexOf("async function chooseOption"),
+    layer.indexOf("function choiceSelectDescriptor")
+  );
+  assert.match(layer, /let choiceSelectionPending = false/);
+  assert.match(chooseOption, /if \(choiceSelectionPending\) return/);
+  assert.match(chooseOption, /choiceSelectionPending = true/);
+  assert.match(chooseOption, /finally \{\s*choiceSelectionPending = false/);
+  assert.ok(
+    chooseOption.indexOf("if (choiceSelectionPending) return") <
+      chooseOption.indexOf('dispatchEvent(new Event("change"'),
+    "the single-flight guard must run before the change event is dispatched"
+  );
+});
+
 test("opening a searchable picker leaves no delayed focus task behind", () => {
   const openPicker = layer.slice(
     layer.indexOf("function openChoicePicker"),

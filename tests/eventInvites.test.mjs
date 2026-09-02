@@ -308,6 +308,26 @@ test("server bounds the entire open-link operation when Supabase stops respondin
   );
 });
 
+test("server bounds the entire invite redemption when Supabase stops responding", async () => {
+  const startedAt = Date.now();
+  await assert.rejects(
+    redeemEventInvite({
+      runtimeConfig: runtimeConfig(),
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+      authorization: "Bearer account-token",
+      eventId: EVENT_ID,
+      token: TOKEN,
+      fetchImpl: async () => new Promise(() => {}),
+      requestTimeoutMs: 20
+    }),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.ok(
+    Date.now() - startedAt < 500,
+    "a hanging invite redemption must release the server promptly"
+  );
+});
+
 test("server batches independent open-invite verification reads", async () => {
   let activeVerificationReads = 0;
   let maxConcurrentVerificationReads = 0;
@@ -463,6 +483,78 @@ test("server recreates the same open link on another device without rotating it"
   assert.equal(second.payload.token, first.payload.token);
   assert.equal(rotations, 1);
   assert.ok(tokenHashes.includes(activeHash));
+});
+
+test("rotating the Supabase service role preserves links signed by the dedicated invite key", async () => {
+  let activeHash = "";
+  let rotations = 0;
+  const fetchImpl = async (url, options = {}) => {
+    const address = String(url);
+    if (address.endsWith("/auth/v1/user")) return jsonResponse({ id: USER_ID });
+    if (address.includes("/rest/v1/app_snapshots?")) {
+      return jsonResponse(
+        address.includes("owner_user_id")
+          ? [{ state: serverState() }]
+          : [sharedSnapshot()]
+      );
+    }
+    if (address.includes("/rest/v1/event_invite_tokens?")) {
+      const params = new URL(address).searchParams;
+      const requestedHash = params.get("token_hash")?.replace(/^eq\./, "");
+      if (params.get("select") === "space_id,space_key") {
+        return jsonResponse(activeHash
+          ? [{ space_id: SPACE_ID, space_key: SPACE_KEY }]
+          : []);
+      }
+      if (!activeHash || (requestedHash && requestedHash !== activeHash)) {
+        return jsonResponse([]);
+      }
+      return jsonResponse([{
+        id: "33333333-3333-4333-8333-333333333333",
+        event_id: EVENT_ID,
+        kind: "open",
+        created_by: USER_ID,
+        space_id: SPACE_ID,
+        space_key: SPACE_KEY,
+        token_hash: activeHash,
+        created_at: "2026-08-24T10:00:00.000Z"
+      }]);
+    }
+    if (address.endsWith("/rest/v1/rpc/rotate_open_event_invite")) {
+      rotations += 1;
+      activeHash = JSON.parse(options.body).p_token_hash;
+      return jsonResponse("44444444-4444-4444-8444-444444444444");
+    }
+    throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+  };
+  const common = {
+    runtimeConfig: runtimeConfig(),
+    authorization: "Bearer account-token",
+    eventId: EVENT_ID,
+    operation: "ensure",
+    fetchImpl
+  };
+
+  const beforeRotation = await manageOpenEventInvite({
+    ...common,
+    env: {
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-before",
+      INVITE_TOKEN_SIGNING_KEY: "stable-invite-signing-key"
+    }
+  });
+  const afterRotation = await manageOpenEventInvite({
+    ...common,
+    env: {
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-after",
+      INVITE_TOKEN_SIGNING_KEY: "stable-invite-signing-key"
+    }
+  });
+
+  assert.equal(beforeRotation.status, 200);
+  assert.equal(afterRotation.status, 200);
+  assert.equal(afterRotation.payload.token, beforeRotation.payload.token);
+  assert.equal(afterRotation.payload.rotated, false);
+  assert.equal(rotations, 1);
 });
 
 test("a deliberately rotated link survives Postgres timestamp reserialization on another device", async () => {

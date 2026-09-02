@@ -115,6 +115,64 @@ test("account deletion never exposes the service role key to the caller", async 
   assert.doesNotMatch(JSON.stringify(result.payload), /service/i);
 });
 
+test("account deletion stops waiting when identity verification stalls", async () => {
+  const startedAt = Date.now();
+  const result = await deleteSupabaseAccount({
+    runtimeConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    authorization: "Bearer token",
+    confirmation: "delete-my-account",
+    requestTimeoutMs: 10,
+    fetchImpl: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 502);
+  assert.ok(Date.now() - startedAt < 500);
+});
+
+test("account deletion recovers when an ambiguous timed-out delete already completed", async () => {
+  let deleteAttempts = 0;
+  const result = await deleteSupabaseAccount({
+    runtimeConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    authorization: "Bearer token",
+    confirmation: "delete-my-account",
+    requestTimeoutMs: 60,
+    fetchImpl: async (url) => {
+      if (url.endsWith("/auth/v1/user")) {
+        return jsonResponse(200, { id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2" });
+      }
+      deleteAttempts += 1;
+      if (deleteAttempts === 1) return new Promise(() => {});
+      return jsonResponse(404, {});
+    }
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.accountDeleted, true);
+  assert.equal(deleteAttempts, 2);
+});
+
+test("account deletion does not retry a permanent upstream rejection", async () => {
+  let deleteAttempts = 0;
+  const result = await deleteSupabaseAccount({
+    runtimeConfig,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+    authorization: "Bearer token",
+    confirmation: "delete-my-account",
+    fetchImpl: async (url) => {
+      if (url.endsWith("/auth/v1/user")) {
+        return jsonResponse(200, { id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2" });
+      }
+      deleteAttempts += 1;
+      return jsonResponse(403, {});
+    }
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(deleteAttempts, 1);
+});
+
 function jsonResponse(status, payload) {
   return {
     ok: status >= 200 && status < 300,

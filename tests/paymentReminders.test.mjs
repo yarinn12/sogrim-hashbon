@@ -103,7 +103,9 @@ function createReminderFetch({
   canonicalMembership = true,
   reservation = { allowed: true, reminder_id: REMINDER_ID },
   reservationStatus = 200,
-  pushResponseStatus = 200
+  pushResponseStatus = 200,
+  pushHandler = null,
+  inboxStatus = 201
 } = {}) {
   const requests = [];
   const fetchImpl = async (url, options = {}) => {
@@ -144,9 +146,10 @@ function createReminderFetch({
       address.includes("/rest/v1/notification_inbox?") &&
       options.method === "POST"
     ) {
-      return new Response(null, { status: 201 });
+      return new Response(null, { status: inboxStatus });
     }
     if (address.includes("fcm.googleapis.com/")) {
+      if (pushHandler) return pushHandler({ url: address, options });
       return pushResponseStatus >= 200 && pushResponseStatus < 300
         ? jsonResponse({ name: "projects/demo/messages/1" }, pushResponseStatus)
         : jsonResponse({ error: { status: "UNAVAILABLE" } }, pushResponseStatus);
@@ -262,6 +265,66 @@ test("server fails closed when the authoritative shared transfer is already paid
 
   assert.equal(result.status, 403);
   assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
+});
+
+test("a stalled reminder push falls back to the inbox within its deadline", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    pushHandler: () => new Promise(() => {})
+  });
+  const startedAt = Date.now();
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    deliveryTimeoutMs: 15,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.reason, "in-app-only");
+  assert.ok(Date.now() - startedAt < 500, "a stalled provider must stay bounded");
+  assert.ok(requests.some((request) =>
+    request.url.includes("/rest/v1/payment_reminders?") &&
+    request.options.method === "PATCH"
+  ));
+});
+
+test("an unconfirmed reminder is not retried when its inbox write also failed", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    pushHandler: () => new Promise(() => {}),
+    inboxStatus: 503
+  });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    deliveryTimeoutMs: 15,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 502);
+  assert.equal(result.payload.code, "DELIVERY_UNCONFIRMED");
+  assert.equal(result.payload.retryable, false);
+  assert.ok(requests.some((request) =>
+    request.url.includes("/rest/v1/payment_reminders?") &&
+    request.options.method === "PATCH"
+  ));
+  assert.equal(requests.some((request) =>
+    request.url.includes("/rest/v1/payment_reminders?") &&
+    request.options.method === "DELETE"
+  ), false);
 });
 
 test("server authorizes a canonical member when a rotated link left a stale workspace key", async () => {
@@ -456,6 +519,26 @@ test("server falls back to the inbox when Firebase credentials are temporarily u
   assert.equal(result.status, 200);
   assert.equal(result.payload.ok, true);
   assert.equal(result.payload.reason, "in-app-only");
+});
+
+test("server falls back to the inbox when Firebase authorization stalls", async () => {
+  const { fetchImpl } = createReminderFetch();
+  const startedAt = Date.now();
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    accessTokenTimeoutMs: 20,
+    accessTokenProvider: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.reason, "in-app-only");
+  assert.ok(Date.now() - startedAt < 1_000);
 });
 
 test("client reminder store requests in-app delivery without a device push capability", async () => {

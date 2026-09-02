@@ -50,6 +50,14 @@ export async function loadCloudState(config, fallbackState, fetchImpl = fetch) {
   return fallbackState;
 }
 
+export class CloudStateIdentityError extends Error {
+  constructor() {
+    super("Personal workspace identity is not ready");
+    this.name = "CloudStateIdentityError";
+    this.code = "CLOUD_ACCOUNT_IDENTITY_PENDING";
+  }
+}
+
 export async function readCloudState(
   config,
   fetchImpl = fetch,
@@ -136,6 +144,17 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
 
   if (!config.storage.spaceKey) {
     throw new Error("Cloud space key is missing");
+  }
+  // Never send a personal workspace with a blank or foreign identity. During
+  // first-login/profile completion the shared-event recovery can finish a few
+  // milliseconds before the account participant is attached. Supabase must
+  // not receive that transient payload: it creates a rejected write, a false
+  // sync warning and an avoidable retry on slower iPhones.
+  if (
+    isAccountOwnedSpace(config) &&
+    !isValidPersonalWorkspaceState(config, state)
+  ) {
+    throw new CloudStateIdentityError();
   }
 
   const currentVersion = snapshotVersions.get(snapshotVersionKey(config));

@@ -41,6 +41,25 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /לא הצלחנו לשמור את סימון התשלום\. המצב הקודם נשמר/);
 });
 
+test("failed payment actions roll back only their own transfer changes", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const paidAction = app.slice(
+    app.indexOf("async function markTransferPaid"),
+    app.indexOf("async function markTransferPending")
+  );
+  const pendingAction = app.slice(
+    app.indexOf("async function markTransfersPending"),
+    app.indexOf("async function sendTransferReminder")
+  );
+
+  assert.match(paidAction, /rollbackTransferStatusChanges\(/);
+  assert.match(pendingAction, /rollbackTransferStatusChanges\(/);
+  assert.doesNotMatch(paidAction, /state = previousState/);
+  assert.doesNotMatch(pendingAction, /state = previousState/);
+  assert.match(paidAction, /suppressRevertNotice: true/);
+  assert.match(pendingAction, /suppressRevertNotice: true/);
+});
+
 test("reopening asks whether to keep or reset recorded payments", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

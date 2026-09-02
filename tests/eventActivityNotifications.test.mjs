@@ -103,6 +103,7 @@ function createActivityFetch({
   acceptedFriend = true,
   canonicalMembership = true,
   canonicalInvitation = true,
+  pushHandler = null,
   reservation = {
     allowed: true,
     notification_id: NOTIFICATION_ID
@@ -205,6 +206,7 @@ function createActivityFetch({
       return new Response(null, { status: 201 });
     }
     if (address.includes("fcm.googleapis.com/")) {
+      if (pushHandler) return pushHandler({ url: address, options });
       return jsonResponse({ name: "projects/demo/messages/1" });
     }
     if (
@@ -395,6 +397,39 @@ test("server rejects an expense forged in the caller's editable workspace", asyn
     ),
     false
   );
+});
+
+test("a stalled event push falls back to the inbox without reopening its reservation", async () => {
+  const { fetchImpl, requests } = createActivityFetch({
+    pushHandler: () => new Promise(() => {})
+  });
+  const startedAt = Date.now();
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    deliveryTimeoutMs: 15,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.reason, "in-app-only");
+  assert.ok(Date.now() - startedAt < 500, "a stalled provider must stay bounded");
+  assert.ok(requests.some((request) =>
+    request.url.includes("/rest/v1/event_activity_notifications?") &&
+    request.options.method === "PATCH"
+  ));
+  assert.equal(requests.some((request) =>
+    request.url.includes("/rest/v1/event_activity_notifications?") &&
+    request.options.method === "DELETE"
+  ), false);
 });
 
 test("server suppresses delivery when canonical membership was removed", async () => {
@@ -599,6 +634,27 @@ test("an event invite keeps access successful when push delivery is unavailable"
   assert.equal(result.payload.membershipRecipients, 1);
   assert.equal(result.payload.reason, "access-granted");
   assert.equal(result.payload.delivered, 0);
+});
+
+test("event notifications stop waiting when Firebase authorization stalls", async () => {
+  const { fetchImpl } = createActivityFetch();
+  const startedAt = Date.now();
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    accessTokenTimeoutMs: 20,
+    accessTokenProvider: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(result.payload.retryable, true);
+  assert.ok(Date.now() - startedAt < 1_000);
 });
 
 test("an expense notification repairs access when the recipient workspace lost the event", async () => {

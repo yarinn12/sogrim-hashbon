@@ -276,9 +276,13 @@ export async function saveSharedEventState(
     }
   }
 
+  if (remote?.deletedEvents?.some((item) => item?.id === eventId)) {
+    return mergeSharedEventIntoState(workingState, remote, credentials);
+  }
+
   const mergeForWrite = (latest, candidate) =>
     mergeSharedEventWriteState(latest, candidate, runtimeConfig);
-  const mergedPayload = buildSharedEventState(
+  const mergedPayload = requireSharedEventPayload(
     mergeForWrite(remote, payload),
     eventId
   );
@@ -286,14 +290,24 @@ export async function saveSharedEventState(
     state: mergedPayload,
     loadLatest: () => readCloudState(config, fetchImpl),
     mergeStates: mergeForWrite,
-    save: (candidate) => saveCloudState(
-      config,
-      buildSharedEventState(candidate, eventId),
-      fetchImpl
-    )
+    save: (candidate) =>
+      saveCloudState(
+        config,
+        requireSharedEventPayload(candidate, eventId),
+        fetchImpl
+      )
   });
 
   return mergeSharedEventIntoState(workingState, saved.state, credentials);
+}
+
+function requireSharedEventPayload(state, eventId) {
+  const payload = buildSharedEventState(state, eventId);
+  if (payload) return payload;
+
+  const error = new Error("Shared event payload is unavailable after merge");
+  error.code = "SHARED_EVENT_PAYLOAD_MISSING";
+  throw error;
 }
 
 async function findAccessibleSharedEvent(

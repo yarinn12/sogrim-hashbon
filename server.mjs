@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { isIP } from "node:net";
-import { extname, join, normalize, resolve } from "node:path";
+import { extname, join, posix, resolve } from "node:path";
 import { sep } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
@@ -109,6 +109,7 @@ const SENSITIVE_API_RATE_LIMIT = {
   globalLimit: 2_000,
   windowMs: 60_000
 };
+const DURABLE_RATE_LIMIT_TIMEOUT_MS = 5_000;
 
 export function createAppHandler({
   root = defaultRoot,
@@ -130,6 +131,7 @@ export function createAppHandler({
   serverRequestLogger = isDeployedRuntime(env) ? console.info : null,
   requestRateLimiter = createRequestRateLimiter(),
   durableApiRateLimitService = reserveDurableApiRateLimit,
+  durableRateLimitTimeoutMs = DURABLE_RATE_LIMIT_TIMEOUT_MS,
   durableRateLimitRequired = isDeployedRuntime(env),
   cdnCacheAppShell = isDeployedRuntime(env)
 } = {}) {
@@ -172,12 +174,19 @@ export function createAppHandler({
     })) return;
 
     if (sensitiveNamespace && durableRateLimitRequired) {
-      const durableResult = await durableApiRateLimitService({
-        env,
-        namespace: sensitiveNamespace,
-        subjectHashes: durableRateLimitSubjectHashes(request, env),
-        policy: SENSITIVE_API_RATE_LIMIT
-      });
+      const durableResult = await promiseWithTimeout(
+        () => durableApiRateLimitService({
+          env,
+          namespace: sensitiveNamespace,
+          subjectHashes: durableRateLimitSubjectHashes(request, env),
+          policy: SENSITIVE_API_RATE_LIMIT
+        }),
+        durableRateLimitTimeoutMs
+      ).catch(() => ({
+        available: false,
+        allowed: false,
+        retryAfterSeconds: 1
+      }));
       if (!durableResult?.available) {
         sendJson(response, 503, {
           ok: false,
@@ -610,7 +619,16 @@ export function createAppHandler({
       return;
     }
 
-    if (!isAllowedStaticPath(requestedPath)) {
+    // Validate the same canonical URL path that will reach the filesystem.
+    // Without this second check, repeated separators such as /src//server/
+    // bypassed the raw /src/server/ deny-list and exposed server-only modules.
+    const safePath = posix
+      .normalize(requestedPath.replaceAll("\\", "/"))
+      .replace(/^(\.\.\/)+/, "");
+    if (
+      !isAllowedStaticPath(requestedPath) ||
+      !isAllowedStaticPath(safePath)
+    ) {
       response.writeHead(404, {
         "content-type": "text/plain; charset=utf-8",
         ...securityHeaders()
@@ -618,14 +636,16 @@ export function createAppHandler({
       response.end("Not found");
       return;
     }
-    const safePath = normalize(requestedPath).replace(/^(\.\.[/\\])+/, "");
     const filePath = join(resolvedRoot, safePath);
 
     if (
       !filePath.startsWith(`${resolvedRoot}${sep}`) ||
       !existsSync(filePath)
     ) {
-      response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      response.writeHead(404, {
+        "content-type": "text/plain; charset=utf-8",
+        ...securityHeaders()
+      });
       response.end("Not found");
       return;
     }
@@ -694,6 +714,22 @@ export function createAppHandler({
       }
     });
   };
+}
+
+async function promiseWithTimeout(factory, timeoutMs) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error("Server dependency timed out");
+      error.code = "NETWORK_TIMEOUT";
+      reject(error);
+    }, Math.max(1, Number(timeoutMs) || DURABLE_RATE_LIMIT_TIMEOUT_MS));
+  });
+  try {
+    return await Promise.race([Promise.resolve().then(factory), timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export default createAppHandler();

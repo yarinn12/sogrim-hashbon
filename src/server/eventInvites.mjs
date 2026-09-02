@@ -114,7 +114,7 @@ export async function manageOpenEventInvite({
   }
 
   const stableToken = createStableOpenInviteToken({
-    secret: context.serviceRoleKey,
+    secret: context.inviteTokenSigningKey,
     eventId: normalizedEventId,
     spaceId,
     spaceKey
@@ -186,7 +186,7 @@ export async function manageOpenEventInvite({
     const active = activeOpenInvite;
     if (active) {
       const recoverableToken = createRotatedOpenInviteToken({
-        secret: context.serviceRoleKey,
+        secret: context.inviteTokenSigningKey,
         eventId: normalizedEventId,
         spaceId,
         spaceKey,
@@ -217,7 +217,7 @@ export async function manageOpenEventInvite({
     : typeof tokenFactory === "function"
       ? tokenFactory()
       : createRotatedOpenInviteToken({
-          secret: context.serviceRoleKey,
+          secret: context.inviteTokenSigningKey,
           eventId: normalizedEventId,
           spaceId,
           spaceKey,
@@ -298,7 +298,8 @@ export async function redeemEventInvite({
   authorization = "",
   eventId = "",
   token = "",
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
   const context = serverContext(runtimeConfig, env);
   const normalizedEventId = String(eventId ?? "").trim();
@@ -320,6 +321,10 @@ export async function redeemEventInvite({
       code: "EVENT_INVITE_AUTH_REQUIRED"
     });
   }
+  // Redemption spans identity, invite, snapshot and membership requests.
+  // Keep them under the same deadline as invite creation so a slow upstream
+  // cannot leave the mobile join flow appearing frozen indefinitely.
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
   const recipient = await loadAuthenticatedUser({
     ...context,
     accessToken: accountToken,
@@ -611,8 +616,15 @@ function serverContext(runtimeConfig, env) {
   const serviceRoleKey = String(
     env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SECRET_KEY || ""
   ).trim();
+  // Invite links outlive infrastructure credentials. Keep their signatures on
+  // a dedicated key so routine Supabase service-role rotation cannot revoke
+  // links that users have already shared. The fallback preserves every
+  // existing deployment until INVITE_TOKEN_SIGNING_KEY is configured.
+  const inviteTokenSigningKey = String(
+    env.INVITE_TOKEN_SIGNING_KEY || serviceRoleKey
+  ).trim();
   return supabaseUrl && anonKey && serviceRoleKey
-    ? { supabaseUrl, anonKey, serviceRoleKey }
+    ? { supabaseUrl, anonKey, serviceRoleKey, inviteTokenSigningKey }
     : null;
 }
 

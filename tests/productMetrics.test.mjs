@@ -247,6 +247,36 @@ test("metrics server rejects invalid fields before contacting Supabase", async (
   assert.equal(called, false);
 });
 
+test("metrics server never hangs when an upstream stage stops responding", async () => {
+  const stages = ["auth", "capacity", "insert"];
+  for (const stalledStage of stages) {
+    const startedAt = Date.now();
+    const result = await storeProductMetrics({
+      runtimeConfig,
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+      authorization: "Bearer token",
+      payload: metricPayload(),
+      requestTimeoutMs: 10,
+      fetchImpl: async (url) => {
+        const stage = url.endsWith("/auth/v1/user")
+          ? "auth"
+          : url.endsWith("/rpc/reserve_product_metric_batch")
+            ? "capacity"
+            : "insert";
+        if (stage === stalledStage) return new Promise(() => {});
+        if (stage === "auth") {
+          return jsonResponse(200, { id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2" });
+        }
+        if (stage === "capacity") return jsonResponse(200, true);
+        return jsonResponse(204, null);
+      }
+    });
+
+    assert.equal(result.status, 502, `${stalledStage} should fail closed`);
+    assert.ok(Date.now() - startedAt < 500, `${stalledStage} should be bounded`);
+  }
+});
+
 test("product metrics HTTP route keeps the service boundary injectable", async () => {
   let received = null;
   const server = createServer(createAppHandler({

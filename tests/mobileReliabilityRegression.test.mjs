@@ -70,16 +70,17 @@ test("quick expense batches wait for a durable result and emit one bounded activ
   assert.match(quickSave, /if \(!expenseDraft \|\| expenseSaveInProgress\) return/);
   assert.match(
     quickSave,
-    /const saveResult = await persistState\(\{[\s\S]*?forceSharedEventIds: \[eventId\]/
+    /saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?const saveResult = await saveCheckpoint\.request/
   );
   assert.doesNotMatch(quickSave, /awaitCloud:\s*true/);
-  assert.match(quickSave, /if \(!saveResult\?\.ok\)/);
+  assert.match(quickSave, /if \(!saveResult\?\.ok && !saveResult\?\.pending\)/);
+  assert.match(quickSave, /rejectedStateSaveIsCurrent\(saveResult, saveCheckpoint\)/);
   assert.match(quickSave, /state = previousState/);
   assert.match(quickSave, /publishReferralActivityAfterSave\(/);
   assert.match(quickSave, /const firstExpense = result\.expenses\[0\]/);
   assert.match(quickSave, /publishEventActivityAfterSave\(/);
   assert.ok(
-    quickSave.indexOf("const saveResult = await persistState(") <
+    quickSave.indexOf("const saveResult = await saveCheckpoint.request") <
       quickSave.indexOf("expenseDraft = null"),
     "the modal closes only after the save result"
   );
@@ -148,15 +149,16 @@ test("event participant mutations await persistence and recover after failure", 
 
   assert.match(
     addGuest,
-    /const saveRequest = persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\]/
+    /const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\]/
   );
   assert.match(addGuest, /const previousState = cloneNavigationValue\(state\)/);
-  assert.match(addGuest, /const result = await completedSaveResult\(saveRequest\)/);
+  assert.match(addGuest, /const result = await completedSaveResult\(saveCheckpoint\.request\)/);
+  assert.match(addGuest, /rejectedStateSaveIsCurrent\(result, saveCheckpoint\)/);
   assert.match(addGuest, /state = previousState/);
   assert.match(addGuest, /return result/);
   assert.match(app, /await addGuestToEvent\(target\.dataset\.eventId\)/);
   assert.match(separateDuplicates, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
-  assert.match(renameOffline, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
+  assert.match(renameOffline, /stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(app, /await keepDuplicateParticipantsSeparate\(/);
   assert.match(app, /await saveOfflineParticipantName\(/);
 });
@@ -181,11 +183,11 @@ test("membership and settlement mutations wait for canonical cloud persistence",
     "async function deleteCurrentEvent"
   );
   assert.ok(
-    leave.indexOf("מסיים את העזיבה") < leave.indexOf("await persistState"),
+    leave.indexOf("מסיים את העזיבה") < leave.indexOf("await saveCheckpoint.request"),
     "leaving shows progress before waiting for the canonical save"
   );
   assert.ok(
-    leave.lastIndexOf('עזבת את') > leave.indexOf("await persistState"),
+    leave.lastIndexOf('עזבת את') > leave.indexOf("await saveCheckpoint.request"),
     "success is announced only after the canonical save result"
   );
 });
@@ -212,12 +214,12 @@ test("queued event lifecycle changes never masquerade as cloud-confirmed", () =>
   assert.match(lock, /else if \(result\?\.pending\)/);
   assert.match(lock, /נשמרה במכשיר ותסתנכרן/);
   assert.ok(
-    deletion.indexOf("מוחק את האירוע") < deletion.indexOf("await saveSharedState"),
+    deletion.indexOf("מוחק את האירוע") < deletion.indexOf("await saveCheckpoint.request"),
     "deletion shows progress instead of claiming success before persistence"
   );
   assert.match(deletion, /result\?\.pending[\s\S]*?נשמרה במכשיר ותסתנכרן/);
   assert.ok(
-    deletion.lastIndexOf('נמחק.`') > deletion.indexOf("await saveSharedState"),
+    deletion.lastIndexOf('נמחק.`') > deletion.indexOf("await saveCheckpoint.request"),
     "confirmed deletion is announced only after the cloud result"
   );
 });

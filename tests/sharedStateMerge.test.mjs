@@ -140,6 +140,29 @@ test("an unrelated stale save cannot restore an older profile name or avatar", (
   assert.equal(merged.participants[0].avatarPreset, "avatar-4");
 });
 
+test("a newer incomplete cloud profile cannot blank a locally known participant name", () => {
+  const remote = baseState();
+  remote.participants[0] = {
+    ...remote.participants[0],
+    displayName: "   ",
+    profileUpdatedAt: "2026-09-02T12:00:00.000Z"
+  };
+  const local = baseState();
+  local.participants[0] = {
+    ...local.participants[0],
+    displayName: "ירין יצחק",
+    profileUpdatedAt: "2026-09-02T11:00:00.000Z"
+  };
+
+  const merged = mergeSharedStates(remote, local);
+
+  assert.equal(merged.participants[0].displayName, "ירין יצחק");
+  assert.equal(
+    merged.participants[0].profileUpdatedAt,
+    "2026-09-02T11:00:00.000Z"
+  );
+});
+
 test("an avatar survives a newer unrelated profile update from an empty device", () => {
   const remote = baseState();
   remote.participants[0] = {
@@ -950,6 +973,88 @@ test("newer event manager changes win without reviving a removed manager", () =>
   assert.deepEqual(event.adminIds, ["friend"]);
   assert.equal(event.adminIdsScopedToEvent, true);
   assert.equal(event.adminIdsUpdatedAt, "2026-08-11T11:00:00.000Z");
+});
+
+test("a removed manager cannot return from an equal-timestamp stale device", () => {
+  const remote = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    inactiveParticipantIds: ["friend"],
+    membershipUpdatedAt: "2026-08-11T12:00:00.000Z",
+    membershipUpdatedAtByParticipant: {
+      owner: "2026-08-11T10:00:00.000Z",
+      friend: "2026-08-11T12:00:00.000Z"
+    },
+    adminIds: ["owner"],
+    adminIdsScopedToEvent: true,
+    adminIdsUpdatedAt: "2026-08-11T11:00:00.000Z",
+    expenses: [],
+    transfers: []
+  });
+  const local = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    inactiveParticipantIds: [],
+    membershipUpdatedAt: "2026-08-11T10:00:00.000Z",
+    membershipUpdatedAtByParticipant: {
+      owner: "2026-08-11T10:00:00.000Z",
+      friend: "2026-08-11T12:00:00.000Z"
+    },
+    adminIds: ["owner", "friend"],
+    adminIdsScopedToEvent: true,
+    adminIdsUpdatedAt: "2026-08-11T11:00:00.000Z",
+    expenses: [],
+    transfers: []
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+  const activeParticipantIds = event.participantIds.filter(
+    (participantId) => !(event.inactiveParticipantIds ?? []).includes(participantId)
+  );
+
+  assert.deepEqual(event.adminIds, ["owner"]);
+  assert.deepEqual(
+    event.adminIds.filter(
+      (participantId) => !activeParticipantIds.includes(participantId)
+    ),
+    []
+  );
+});
+
+test("membership fallback manager survives sanitizing a stale removed manager", () => {
+  const remote = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    inactiveParticipantIds: ["owner"],
+    membershipUpdatedAtByParticipant: {
+      owner: "2026-08-11T12:00:00.000Z",
+      friend: "2026-08-11T10:00:00.000Z"
+    },
+    adminIds: ["friend"],
+    adminIdsScopedToEvent: true,
+    adminIdsUpdatedAt: "2026-08-11T11:00:00.000Z",
+    expenses: [],
+    transfers: []
+  });
+  const local = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    inactiveParticipantIds: [],
+    membershipUpdatedAtByParticipant: {
+      owner: "2026-08-11T12:00:00.000Z",
+      friend: "2026-08-11T10:00:00.000Z"
+    },
+    adminIds: ["owner"],
+    adminIdsScopedToEvent: true,
+    adminIdsUpdatedAt: "2026-08-11T11:00:00.000Z",
+    expenses: [],
+    transfers: []
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+
+  assert.deepEqual(event.inactiveParticipantIds, ["owner"]);
+  assert.deepEqual(event.adminIds, ["friend"]);
 });
 
 test("a merged offline participant cannot return from a stale device", () => {

@@ -474,6 +474,42 @@ test("unchanged background sync stays visually and interactively silent", async 
   expectStrictSmoothness(await finishStrictSmoothnessProbe(page));
 });
 
+test("account identity stays painted and delayed permission failures stay silent", async ({ page }) => {
+  const headerGreeting = page.locator(
+    ".product-app-identity .product-brand-copy small"
+  );
+  await expect(headerGreeting).toHaveText("היי, ירין");
+
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("settle-friends-local-profile")) {
+        localStorage.removeItem(key);
+      }
+    }
+    const mutation = document.createElement("span");
+    mutation.hidden = true;
+    document.body.append(mutation);
+    mutation.remove();
+  });
+  await page.waitForTimeout(100);
+  await expect(headerGreeting).toHaveText("היי, ירין");
+  await expect(page.locator(".product-header-profile-avatar img")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("sogrim:shared-save-reverted", {
+      detail: {
+        failureKind: "permission",
+        foregroundMutation: true,
+        requestedAt: Date.now() - 9_000
+      }
+    }));
+  });
+  await page.waitForTimeout(100);
+  const noticeText = (await page.locator(".notice").allTextContents()).join(" ");
+  expect(noticeText).not.toContain("אין לחשבון הרשאה");
+  await expect(headerGreeting).toHaveText("היי, ירין");
+});
+
 test("long home event names wrap to two lines without colliding with status", async ({ page }) => {
   const title = page.locator(".event-row-title strong:visible").first();
   const status = page.locator(".event-status-toggle:visible").first();
