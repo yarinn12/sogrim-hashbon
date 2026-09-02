@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=440"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=441"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
