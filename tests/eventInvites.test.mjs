@@ -823,7 +823,12 @@ test("a recovered member can create and redeem the first stable invite without p
     }
     if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
       membershipActivated = true;
-      return jsonResponse(true);
+      return jsonResponse({
+        status: "joined",
+        canonicalParticipantReady: true,
+        workspaceIndexed: true,
+        indexStatus: "indexed"
+      });
     }
     if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
       indexRequests += 1;
@@ -861,7 +866,8 @@ test("a recovered member can create and redeem the first stable invite without p
   assert.equal(redeemed.status, 200);
   assert.equal(redeemed.payload.spaceId, SPACE_ID);
   assert.equal(redeemed.payload.spaceKey, recoveryKey);
-  assert.equal(redeemed.payload.indexPending, true);
+  assert.equal(redeemed.payload.indexPending, false);
+  assert.equal(redeemed.payload.atomic, true);
   assert.equal(membershipActivated, true);
   assert.equal(indexRequests, 0);
 });

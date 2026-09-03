@@ -1378,6 +1378,10 @@ async function joinThroughProductionBrowser({
       } catch (error) {
         console.log(JSON.stringify({
           diagnostic: "post-join-live-sync-failed",
+          error: {
+            name: String(error?.name ?? "Error"),
+            message: String(error?.message ?? error).slice(0, 1_000)
+          },
           currentUrl: page.url(),
           pageText: (await page.locator("body").innerText().catch(() => "")).slice(0, 1_500),
           failedResponses,

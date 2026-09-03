@@ -87,6 +87,7 @@ try {
             where member.snapshot_id = ${row.space_id}
               and member.user_id = ${candidate.id}::uuid
               and member.status = 'active'
+              and member.pending_join_until is null
           ) as membership_active,
           exists (
             select 1
@@ -94,15 +95,35 @@ try {
             where snapshot.id = ${row.space_id}
               and snapshot.state -> 'events' -> 0 -> 'participantIds'
                 ? ('account-' || ${candidate.id}::text)
-          ) as participant_active
+          ) as participant_active,
+          exists (
+            select 1
+            from public.app_snapshots as workspace
+            cross join lateral pg_catalog.jsonb_array_elements(
+              coalesce(workspace.state -> 'events', '[]'::jsonb)
+            ) as personal_event(value)
+            where workspace.owner_user_id = ${candidate.id}::uuid
+              and workspace.snapshot_kind = 'workspace'
+              and personal_event.value ->> 'id' = ${row.event_id}
+              and personal_event.value ->> 'sharedSpaceId' = ${row.space_id}
+              and personal_event.value -> 'participantIds'
+                ? ('account-' || ${candidate.id}::text)
+          ) as workspace_has_event
       `;
-      if (!verification?.membership_active) {
+      const atomicResult = redemption?.[0]?.redeem_event_invite_membership;
+      if (
+        atomicResult?.canonicalParticipantReady !== true ||
+        atomicResult?.workspaceIndexed !== true ||
+        !verification?.membership_active ||
+        !verification?.participant_active ||
+        !verification?.workspace_has_event
+      ) {
         console.log(JSON.stringify({
           diagnostic: "invite-redemption-incomplete",
           redemption,
           verification
         }));
-        throw new Error("Invite redemption did not activate membership");
+        throw new Error("Invite redemption did not commit every join surface");
       }
       backendRedeemVerified = true;
       throw rollbackMarker;

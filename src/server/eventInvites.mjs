@@ -460,27 +460,32 @@ export async function redeemEventInvite({
     }
   }
 
-  const membershipActivated = await activateInviteMembership({
+  const membershipActivation = await activateInviteMembership({
     ...context,
     inviteId: invite.id,
     token: normalizedToken,
     userId: recipient.id,
     fetchImpl
   });
-  if (!membershipActivated) {
+  if (!membershipActivation) {
     return failure(410, "This invitation can no longer open the event", {
       code: "EVENT_INVITE_INVALIDATED"
     });
   }
   const recipientParticipantId = `account-${recipient.id}`;
-  const canonicalParticipantReady = isActiveEventParticipant(
-    sharedEvent,
-    recipientParticipantId
+  const atomicRedemptionCommitted = Boolean(
+    membershipActivation.canonicalParticipantReady === true &&
+      membershipActivation.workspaceIndexed === true
   );
-  // A new open-link recipient is intentionally only a pending member here.
-  // Returning credentials lets the client add that participant to canonical
-  // event state first; the following personal-workspace save then indexes it.
-  if (canonicalParticipantReady) {
+  const canonicalParticipantReady = Boolean(
+    atomicRedemptionCommitted ||
+      isActiveEventParticipant(sharedEvent, recipientParticipantId)
+  );
+  // Current databases redeem, publish canonical membership and index the
+  // personal workspace in one transaction. Keep the legacy branch during
+  // rolling deploys so a server connected to the previous RPC can still
+  // finish an already-canonical private invitation safely.
+  if (canonicalParticipantReady && !atomicRedemptionCommitted) {
     const indexed = await indexSharedEventForMember({
       ...context,
       snapshotId: spaceId,
@@ -500,7 +505,8 @@ export async function redeemEventInvite({
     kind: invite.kind,
     spaceId,
     spaceKey,
-    indexPending: !canonicalParticipantReady
+    indexPending: !canonicalParticipantReady,
+    atomic: atomicRedemptionCommitted
   });
 }
 
@@ -598,7 +604,7 @@ export async function activateEventInviteMembership({
   requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
   fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
-  const activated = await activateInviteMembership({
+  const activation = await activateInviteMembership({
     supabaseUrl,
     serviceRoleKey,
     inviteId: invite?.id,
@@ -606,7 +612,11 @@ export async function activateEventInviteMembership({
     userId,
     fetchImpl
   });
-  if (!activated) return false;
+  if (!activation) return false;
+  if (
+    activation.canonicalParticipantReady === true &&
+    activation.workspaceIndexed === true
+  ) return true;
   return indexSharedEventForMember({
     supabaseUrl,
     serviceRoleKey,
@@ -976,7 +986,7 @@ async function activateInviteMembership({
   ) {
     return false;
   }
-  const { response, detail } = await fetchImpl(
+  const { response, payload, detail } = await fetchImpl(
     `${supabaseUrl}/rest/v1/rpc/redeem_event_invite_membership`,
     {
       method: "POST",
@@ -989,6 +999,9 @@ async function activateInviteMembership({
     },
     async (membershipResponse) => ({
       response: membershipResponse,
+      payload: membershipResponse.ok
+        ? await membershipResponse.json().catch(() => null)
+        : null,
       detail: membershipResponse.ok
         ? ""
         : await membershipResponse.text().catch(() => "")
@@ -1002,7 +1015,10 @@ async function activateInviteMembership({
       detail: detail.slice(0, 500)
     });
   }
-  return response.ok;
+  if (!response.ok) return null;
+  return payload && typeof payload === "object"
+    ? payload
+    : { status: "active" };
 }
 
 async function revokeInviteRow({
