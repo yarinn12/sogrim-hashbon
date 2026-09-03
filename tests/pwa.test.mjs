@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=442");
+  assert.equal(manifest.start_url, "./?pwa_release=443");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=442&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=443&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./app-icon-exterior-maskable-512.png" && icon.purpose.includes("maskable")
@@ -63,9 +63,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.deepEqual([...new Set(referencedReleases)], [currentRelease]);
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=442"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=443"/
   );
-  assert.match(html, /data-pwa-release="442"/);
+  assert.match(html, /data-pwa-release="443"/);
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
@@ -75,9 +75,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.doesNotMatch(html, /interactive-widget/);
   assert.match(html, /rel="icon" href="\.\/app-icon-exterior-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=442"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=442"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=442/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=443"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=443"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=443/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -240,7 +240,11 @@ test("an installed app reloads once when a new service worker takes control", as
   assert.match(registration, /const hadActiveController = Boolean\(navigator\.serviceWorker\.controller\)/);
   assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
   assert.match(registration, /if \(reloadingForUpdate\) return/);
-  assert.match(registration, /sessionStorage\.setItem\(UPDATE_RELOAD_STORAGE_KEY, PWA_RELEASE\)/);
+  assert.doesNotMatch(
+    registration,
+    /sessionStorage[\s\S]*?PWA_RELEASE/,
+    "an old page release must not suppress reload when a newer worker takes control"
+  );
 });
 
 test("deployment never serves an install shell or PWA bootstrap from stale CDN cache", async () => {
@@ -261,8 +265,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=442"/);
-  assert.match(recovery, /const PWA_RELEASE = "442"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=443"/);
+  assert.match(recovery, /const PWA_RELEASE = "443"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);

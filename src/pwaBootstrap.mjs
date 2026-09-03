@@ -1,8 +1,7 @@
 import "./platformCompatibility.mjs";
 
-const PWA_RELEASE = "442";
+const PWA_RELEASE = "443";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
-const UPDATE_RELOAD_STORAGE_KEY = "settle-friends-pwa-update-reload";
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 
 markStandaloneAppMode();
@@ -37,11 +36,7 @@ async function startPwaLifecycle() {
     if (hadActiveController) {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         if (reloadingForUpdate) return;
-        if (window.sessionStorage.getItem(UPDATE_RELOAD_STORAGE_KEY) === PWA_RELEASE) {
-          return;
-        }
         reloadingForUpdate = true;
-        window.sessionStorage.setItem(UPDATE_RELOAD_STORAGE_KEY, PWA_RELEASE);
         window.location.reload();
       });
     }
