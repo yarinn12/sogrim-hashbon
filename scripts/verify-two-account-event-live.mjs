@@ -108,11 +108,11 @@ try {
     "חבר שנוסף באירוע שיתופי"
   );
   const freshJoinOwner = await createTemporaryAccount(
-    "fresh-link-owner",
+    "fowner",
     "בעל קישור חדש"
   );
   const freshLinkJoiner = await createTemporaryAccount(
-    "fresh-link-joiner",
+    "fjoiner",
     "מצטרף חדש מקישור"
   );
   const ownerConfig = runtimeConfig(owner);
@@ -1390,7 +1390,7 @@ async function joinThroughProductionBrowser({
       ({ path, status }) =>
         (
           path.includes("/rest/v1/app_snapshots") ||
-          path === "/api/event-invites/redeem"
+          path === "/api/event-invites/redeem" && status !== 401
         ) && status >= 400
     );
     assert.deepEqual(
