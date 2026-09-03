@@ -592,7 +592,7 @@ try {
         participantId: ownerProfile.participantId
       });
       ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
-      await page.locator(`[data-action="open-event-note"][data-note-id="${racedNoteId}"]`).click({ timeout: 10_000 });
+      await page.locator(`.event-note-open[data-note-id="${racedNoteId}"]`).click({ timeout: 10_000 });
       const preservedDraft = "הטיוטה חייבת להישאר אחרי מחיקה במכשיר אחר";
       await page.locator('[data-action="event-note-body"]').fill(preservedDraft);
       ownerState = removeEventNote(ownerState, eventId, racedNoteId, {

@@ -5,6 +5,7 @@ import vm from "node:vm";
 import * as eventNotes from "../src/domain/eventNotes.mjs";
 const { addEventNote, updateEventNote, removeEventNote } = eventNotes;
 import { mergeSharedEventWriteState } from "../src/data/sharedEventStore.mjs";
+import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const start = source.indexOf("async function saveEventNoteFromDialog(");
@@ -26,7 +27,7 @@ function initialState() {
   }, "event-editor", { id: "note-editor", title: "Original", body: "Original body", createdAt: "2026-09-01T00:00:00.000Z" });
 }
 
-function harness({ remote = null, current = null, unchanged = false, replaceStateDuringSave = false, result = null, fail = false } = {}) {
+function harness({ remote = null, current = null, unchanged = false, replaceStateDuringSave = false, duringSave = null, result = null, fail = false } = {}) {
   const initial = initialState();
   const baseNote = structuredClone(initial.events[0].notes[0]);
   const dialog = {
@@ -39,6 +40,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   const context = vm.createContext({
     state: current ?? initial, eventDialog: dialog, structuredClone,
     ...eventNotes,
+    mergeSharedStates, saveState: () => {},
     getEvent: (id) => context.state.events.find((event) => event.id === id),
     canCurrentParticipantEdit: () => true,
     cloneNavigationValue: structuredClone,
@@ -56,7 +58,9 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
         : structuredClone(context.state);
       // A foreground read can replace the app's object while persistence still
       // owns the previous one. A save receipt must not depend on object identity.
-      if (!replaceStateDuringSave) Object.assign(context.state, saved);
+      if (replaceStateDuringSave) context.state = structuredClone(context.state);
+      else Object.assign(context.state, saved);
+      duringSave?.(context);
       return result ?? { ok: true, mode: "cloud", persistedState: saved };
     }
   });
@@ -89,6 +93,8 @@ test("note outcome uses the save receipt even if a foreground read replaced in-m
   assert.equal(result.conflict, true);
   assert.equal(h.closed(), 0);
   assert.equal(h.dialog.bodyDraft, "Local draft");
+  assert.equal(h.context.state.events[0].notes.length, 0, "the discarded optimistic note must also leave the active app state");
+  assert.equal(h.context.state.events[0].deletedNotes[0].id, "note-editor");
 });
 
 test("a different revision winning reconciliation leaves the unsaved draft available", async () => {
@@ -202,4 +208,28 @@ test("a partial canonical save also reports a dropped edit instead of treating p
 test("the UI captures the opening note as an immutable baseline", () => {
   const open = source.slice(source.indexOf('if (action === "open-event-note")'), source.indexOf('if (action === "toggle-event-note-pin")'));
   assert.match(open, /baseNote: cloneNavigationValue\(note\)/);
+});
+
+test("receipt reconciliation preserves newer unrelated local work", async () => {
+  const remote = removeEventNote(initialState(), "event-editor", "note-editor", {
+    participantId: "account-owner", deletedAt: "2026-09-02T00:00:00.000Z"
+  });
+  const h = harness({ remote, replaceStateDuringSave: true, duringSave(context) {
+    context.state = addEventNote(context.state, "event-editor", { id: "newer-local-note", body: "Must remain" });
+  } });
+  assert.equal((await h.save()).conflict, true);
+  assert.deepEqual(h.context.state.events[0].notes.map((note) => note.id), ["newer-local-note"]);
+  const subsequent = mergeSharedEventWriteState(remote, h.context.state, { storage: { account: { userId: "member" } } });
+  assert.equal(subsequent.events[0].notes.some((note) => note.id === "note-editor"), false);
+  assert.equal(subsequent.events[0].notes[0].body, "Must remain");
+});
+
+test("a late receipt never imports the previous account into the active account", async () => {
+  const remote = removeEventNote(initialState(), "event-editor", "note-editor", {
+    participantId: "account-owner", deletedAt: "2026-09-02T00:00:00.000Z"
+  });
+  const switched = { currentParticipantId: "account-other", participants: [{ id: "account-other", displayName: "Other" }], groups: [], events: [] };
+  const h = harness({ remote, duringSave(context) { context.state = structuredClone(switched); context.eventDialog = null; } });
+  assert.equal((await h.save()).conflict, true);
+  assert.deepEqual(h.context.state, switched);
 });

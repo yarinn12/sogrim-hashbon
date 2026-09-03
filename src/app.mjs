@@ -16325,6 +16325,13 @@ async function saveEventNoteFromDialog(eventId) {
       persistedNote.body !== requestedNote.body ||
       (persistedNote.pinned === true) !== (requestedNote.pinned === true)
     ) {
+      // Persistence may have updated an object that a foreground read already
+      // replaced. Merge its receipt into the active same-account state too;
+      // never roll back to previousState or discard newer local mutations.
+      if (state.currentParticipantId === previousState.currentParticipantId) {
+        state = mergeSharedStates(result.persistedState, state);
+        saveState(state);
+      }
       if (eventDialog === activeDialog) {
         activeDialog.saving = false;
         activeDialog.error = persistedNote
