@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=443");
+  assert.equal(manifest.start_url, "./?pwa_release=444");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=443&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=444&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./app-icon-exterior-maskable-512.png" && icon.purpose.includes("maskable")
@@ -63,9 +63,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.deepEqual([...new Set(referencedReleases)], [currentRelease]);
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=443"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=444"/
   );
-  assert.match(html, /data-pwa-release="443"/);
+  assert.match(html, /data-pwa-release="444"/);
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
@@ -75,9 +75,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.doesNotMatch(html, /interactive-widget/);
   assert.match(html, /rel="icon" href="\.\/app-icon-exterior-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=443"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=443"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=443/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=444"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=444"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=444/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -265,8 +265,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=443"/);
-  assert.match(recovery, /const PWA_RELEASE = "443"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=444"/);
+  assert.match(recovery, /const PWA_RELEASE = "444"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);
@@ -278,8 +278,10 @@ test("service worker activates complete updates and claims installed apps", asyn
 
   assert.match(sw, /\.then\(\(\) => self\.skipWaiting\(\)\)/);
   assert.match(sw, /Promise\.all\(\[/);
-  assert.match(sw, /names\.filter\(\(name\) => name !== CACHE_NAME\)/);
+  assert.match(sw, /cacheNames[\s\S]*?\.filter\(\(name\) => name !== CACHE_NAME\)/);
   assert.match(sw, /self\.clients\.claim\(\)/);
+  assert.match(sw, /self\.clients\.matchAll\([\s\S]*?includeUncontrolled: true/);
+  assert.match(sw, /client\.navigate\?\.\(clientUrl\.href\)/);
   assert.match(sw, /addEventListener\("message"[\s\S]*?SKIP_WAITING[\s\S]*?self\.skipWaiting\(\)/);
 });
 

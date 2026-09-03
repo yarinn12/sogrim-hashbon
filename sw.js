@@ -1,5 +1,6 @@
-const PWA_RELEASE = "443";
-const CACHE_NAME = "settle-friends-live-v443";
+const PWA_RELEASE = "444";
+const CACHE_NAME = "settle-friends-live-v444";
+const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
   "/",
@@ -198,17 +199,37 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    Promise.all([
-      caches
-        .keys()
-        .then((names) =>
-          Promise.all(names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name)))
-        ),
-      self.clients.claim()
-    ])
-  );
+  event.waitUntil(activateCurrentRelease());
 });
+
+async function activateCurrentRelease() {
+  const cacheNames = await caches.keys();
+  const replacesPreviousRelease = cacheNames.some(
+    (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME
+  );
+
+  await Promise.all([
+    Promise.all(
+      cacheNames
+        .filter((name) => name !== CACHE_NAME)
+        .map((name) => caches.delete(name))
+    ),
+    self.clients.claim()
+  ]);
+
+  if (!replacesPreviousRelease) return;
+  const windowClients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true
+  });
+  await Promise.allSettled(
+    windowClients.map((client) => {
+      const clientUrl = new URL(client.url);
+      if (clientUrl.origin !== self.location.origin) return undefined;
+      return client.navigate?.(clientUrl.href);
+    })
+  );
+}
 
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
