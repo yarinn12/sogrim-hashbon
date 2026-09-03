@@ -682,12 +682,28 @@ document.addEventListener("account-session-refreshed", () => {
     .catch((error) => emitOperationDeferred("state_load", { error }));
 });
 document.addEventListener(PUSH_STATUS_EVENT, handleIncomingPushStatus);
+for (const notification of
+  globalThis.SogrimNative?.takePendingPushNotifications?.() ?? []) {
+  handleIncomingPushStatus({
+    detail: { status: "received", notification }
+  });
+}
 
 function handleIncomingPushStatus(event) {
   if (event.detail?.status !== "received") return;
-  synchronizeIncomingPush(event.detail?.notification).catch((error) => {
+  synchronizeIncomingPushWhenReady(event.detail?.notification).catch((error) => {
     emitOperationDeferred("state_load", { error });
   });
+}
+
+async function synchronizeIncomingPushWhenReady(notification) {
+  if (document.documentElement.classList.contains("account-auth-pending")) {
+    await new Promise((resolve) => {
+      document.addEventListener("account-auth-ready", resolve, { once: true });
+    });
+  }
+  await hydrateAppAfterAccountReady();
+  return synchronizeIncomingPush(notification);
 }
 
 async function synchronizeIncomingPush(notification) {

@@ -2,6 +2,95 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+test("native push received before app startup stays queued until the consumer is ready", async () => {
+  const previousGlobals = {
+    Capacitor: globalThis.Capacitor,
+    CustomEvent: globalThis.CustomEvent,
+    SogrimNative: globalThis.SogrimNative,
+    document: globalThis.document,
+    history: globalThis.history,
+    window: globalThis.window
+  };
+  const nativeListeners = new Map();
+  const dispatchedEvents = [];
+
+  globalThis.CustomEvent = class {
+    constructor(type, init = {}) {
+      this.type = type;
+      Object.assign(this, init);
+    }
+  };
+  globalThis.document = {
+    documentElement: { classList: { add() {} } },
+    addEventListener() {},
+    dispatchEvent(event) {
+      dispatchedEvents.push(event);
+      return true;
+    }
+  };
+  globalThis.history = { state: null, replaceState() {} };
+  globalThis.window = {
+    dispatchEvent() { return true; },
+    location: {
+      hostname: "localhost",
+      protocol: "https:",
+      reload() {},
+      replace() {}
+    }
+  };
+  globalThis.Capacitor = {
+    getPlatform: () => "ios",
+    isNativePlatform: () => true,
+    Plugins: {
+      App: {
+        addListener() { return Promise.resolve(); },
+        getLaunchUrl: async () => null
+      },
+      PushNotifications: {
+        addListener(name, listener) {
+          nativeListeners.set(name, listener);
+          return Promise.resolve();
+        }
+      }
+    }
+  };
+
+  try {
+    const bridgeUrl = new URL(
+      "../src/publicNativeBridgeLayer.mjs",
+      import.meta.url
+    );
+    bridgeUrl.searchParams.set("startup-queue-test", String(Date.now()));
+    await import(bridgeUrl.href);
+
+    const received = nativeListeners.get("pushNotificationReceived");
+    assert.equal(typeof received, "function");
+    const earlyNotification = {
+      data: { eventId: "event-early", activityId: "expense-early" }
+    };
+    received(earlyNotification);
+
+    assert.equal(dispatchedEvents.at(-1)?.type, "settle-friends:push-status");
+    assert.deepEqual(
+      globalThis.SogrimNative.takePendingPushNotifications(),
+      [earlyNotification]
+    );
+    assert.deepEqual(globalThis.SogrimNative.takePendingPushNotifications(), []);
+
+    received({ data: { eventId: "event-live", activityId: "expense-live" } });
+    assert.deepEqual(
+      globalThis.SogrimNative.takePendingPushNotifications(),
+      [],
+      "once the consumer is ready, live events must not be duplicated in the startup queue"
+    );
+  } finally {
+    for (const [key, value] of Object.entries(previousGlobals)) {
+      if (value === undefined) delete globalThis[key];
+      else globalThis[key] = value;
+    }
+  }
+});
+
 test("native apps register push permissions without prompting on startup", async () => {
   const [
     packageJson,
@@ -58,9 +147,18 @@ test("native apps register push permissions without prompting on startup", async
     bridge,
     /requestKey === lastOpenedRequestKey && now - lastOpenedAt < 1500/
   );
+  assert.match(bridge, /const pendingPushNotifications = \[\]/);
+  assert.match(bridge, /takePendingPushNotifications\(\)/);
+  assert.match(bridge, /pushConsumerReady = true/);
+  assert.match(bridge, /return pendingPushNotifications\.splice\(0\)/);
+  assert.match(bridge, /rememberPendingPush\?\.\(notification\)/);
+  assert.match(bridge, /pendingPushNotifications\.length > 8/);
   assert.match(bridge, /resolveAndroidPushAvailability/);
   assert.match(bridge, /available \? pushPlugin : null/);
-  assert.match(bridge, /if \(available\) setupPushNotificationListeners/);
+  assert.match(
+    bridge,
+    /if \(available\)[\s\S]*?setupPushNotificationListeners\([\s\S]*?pushPlugin,[\s\S]*?openNativeUrl,[\s\S]*?rememberPendingPush[\s\S]*?\)/
+  );
   assert.match(mainActivity, /registerPlugin\(SogrimCapabilitiesPlugin\.class\)/);
   assert.match(capabilitiesPlugin, /BuildConfig\.FIREBASE_PUSH_CONFIGURED/);
   assert.match(capabilitiesPlugin, /result\.put\("pushNotifications"/);

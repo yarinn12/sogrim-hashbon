@@ -72,6 +72,26 @@ test("a received push forces the shared event to refresh before the inbox opens"
     appSource,
     /document\.addEventListener\(PUSH_STATUS_EVENT, handleIncomingPushStatus\)/
   );
+  assert.match(
+    appSource,
+    /takePendingPushNotifications\?\.\(\) \?\? \[\][\s\S]*handleIncomingPushStatus/
+  );
+  const readySyncStart = appSource.indexOf(
+    "async function synchronizeIncomingPushWhenReady"
+  );
+  const readySyncEnd = appSource.indexOf(
+    "async function synchronizeIncomingPush",
+    readySyncStart + 1
+  );
+  const readySync = appSource.slice(readySyncStart, readySyncEnd);
+  assert.ok(readySyncStart >= 0, "startup-safe push synchronization exists");
+  assert.match(readySync, /account-auth-pending/);
+  assert.match(readySync, /account-auth-ready/);
+  assert.ok(
+    readySync.indexOf("hydrateAppAfterAccountReady()") <
+      readySync.indexOf("synchronizeIncomingPush(notification)"),
+    "a startup push must wait for account hydration before reading shared state"
+  );
   const pushSyncStart = appSource.indexOf("async function synchronizeIncomingPush");
   const pushSyncEnd = appSource.indexOf("async function refreshIncomingPushState", pushSyncStart);
   const pushSync = appSource.slice(pushSyncStart, pushSyncEnd);

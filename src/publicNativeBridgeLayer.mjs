@@ -37,6 +37,8 @@ function setupNativeBridge() {
   const cameraPlugin = plugins.Camera;
   const capabilitiesPlugin = plugins.SogrimCapabilities;
   const nativePlatform = globalThis.Capacitor?.getPlatform?.() ?? "";
+  const pendingPushNotifications = [];
+  let pushConsumerReady = false;
   let lastOpenedRequestKey = "";
   let lastOpenedAt = 0;
 
@@ -75,6 +77,10 @@ function setupNativeBridge() {
       return true;
     },
     camera: createNativeCameraApi(cameraPlugin),
+    takePendingPushNotifications() {
+      pushConsumerReady = true;
+      return pendingPushNotifications.splice(0);
+    },
     notifications:
       nativePlatform === "android"
         ? createNativeNotificationApi(null)
@@ -120,12 +126,24 @@ function setupNativeBridge() {
     return true;
   };
 
+  const rememberPendingPush = (notification) => {
+    if (pushConsumerReady) return;
+    pendingPushNotifications.push(notification);
+    if (pendingPushNotifications.length > 8) pendingPushNotifications.shift();
+  };
+
   if (nativePlatform === "android") {
     resolveAndroidPushAvailability(capabilitiesPlugin).then((available) => {
       globalThis.SogrimNative.notifications = createNativeNotificationApi(
         available ? pushPlugin : null
       );
-      if (available) setupPushNotificationListeners(pushPlugin, openNativeUrl);
+      if (available) {
+        setupPushNotificationListeners(
+          pushPlugin,
+          openNativeUrl,
+          rememberPendingPush
+        );
+      }
       document.dispatchEvent(
         new CustomEvent(NATIVE_CAPABILITIES_EVENT, {
           detail: { pushNotifications: available }
@@ -133,7 +151,7 @@ function setupNativeBridge() {
       );
     });
   } else {
-    setupPushNotificationListeners(pushPlugin, openNativeUrl);
+    setupPushNotificationListeners(pushPlugin, openNativeUrl, rememberPendingPush);
   }
 
   registerNativeListener(() =>
@@ -320,7 +338,11 @@ function createNativeNotificationApi(pushPlugin) {
   };
 }
 
-function setupPushNotificationListeners(pushPlugin, openNativeUrl) {
+function setupPushNotificationListeners(
+  pushPlugin,
+  openNativeUrl,
+  rememberPendingPush
+) {
   if (!pushPlugin) return;
 
   registerNativeListener(() =>
@@ -353,6 +375,7 @@ function setupPushNotificationListeners(pushPlugin, openNativeUrl) {
 
   registerNativeListener(() =>
     pushPlugin.addListener?.("pushNotificationReceived", (notification) => {
+      rememberPendingPush?.(notification);
       document.dispatchEvent(
         new CustomEvent(PUSH_STATUS_EVENT, {
           detail: {
