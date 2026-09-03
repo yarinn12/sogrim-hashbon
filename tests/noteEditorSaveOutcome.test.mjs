@@ -40,7 +40,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   const context = vm.createContext({
     state: current ?? initial, eventDialog: dialog, structuredClone,
     ...eventNotes,
-    mergeSharedStates, saveState: () => {},
+    mergeSharedStates, saveState: () => {}, emitOperationDeferred: () => {},
     getEvent: (id) => context.state.events.find((event) => event.id === id),
     canCurrentParticipantEdit: () => true,
     cloneNavigationValue: structuredClone,
@@ -232,4 +232,17 @@ test("a late receipt never imports the previous account into the active account"
   const h = harness({ remote, duringSave(context) { context.state = structuredClone(switched); context.eventDialog = null; } });
   assert.equal((await h.save()).conflict, true);
   assert.deepEqual(h.context.state, switched);
+});
+
+test("an unexpected receipt reconciliation failure cannot strand the editor in saving", async () => {
+  const remote = removeEventNote(initialState(), "event-editor", "note-editor", {
+    participantId: "account-owner", deletedAt: "2026-09-02T00:00:00.000Z"
+  });
+  const h = harness({ remote, replaceStateDuringSave: true });
+  h.context.mergeSharedStates = () => { throw new Error("Unexpected reconciliation failure"); };
+  assert.equal((await h.save()).conflict, true);
+  assert.equal(h.dialog.saving, false);
+  assert.match(h.dialog.error, /נמחק/);
+  assert.equal(h.dialog.bodyDraft, "Local draft");
+  assert.equal(h.closed(), 0);
 });

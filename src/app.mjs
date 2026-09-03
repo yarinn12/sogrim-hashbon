@@ -16329,8 +16329,13 @@ async function saveEventNoteFromDialog(eventId) {
       // replaced. Merge its receipt into the active same-account state too;
       // never roll back to previousState or discard newer local mutations.
       if (state.currentParticipantId === previousState.currentParticipantId) {
-        state = mergeSharedStates(result.persistedState, state);
-        saveState(state);
+        try {
+          state = mergeSharedStates(result.persistedState, state);
+          saveState(state);
+        } catch (error) {
+          // A reconciliation exception must not strand the editor in "saving".
+          emitOperationDeferred("state_load", { error });
+        }
       }
       if (eventDialog === activeDialog) {
         activeDialog.saving = false;
