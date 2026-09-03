@@ -9,7 +9,9 @@ const source = readFileSync(
 
 test("two-account live QA observes automatic foreground updates on iPhone", () => {
   assert.match(source, /TWO_ACCOUNT_QA_ORIGIN/);
-  assert.match(source, /afterJoin: async \(page\) =>/);
+  assert.match(source, /afterJoin: async \(page, recentRequests\) =>/);
+  assert.match(source, /diagnostic: "note-create-latency"/);
+  assert.match(source, /requests: recentRequests\(foregroundNoteCreateStartedAt\)/);
   assert.match(source, /foreground-expense-create-to-open-iphone/);
   assert.match(source, /settle-friends:push-synchronized/);
   assert.match(source, /kind: "expense-created"/);

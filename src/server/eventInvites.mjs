@@ -10,8 +10,52 @@ const PRIVATE_INVITE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 export const OPEN_INVITE_REQUEST_TIMEOUT_MS = 8_000;
 const DEADLINE_FETCH = Symbol("event-invite-deadline-fetch");
+const RETRYABLE_SQL_CODES = new Set(["40001", "40P01", "55P03", "57014"]);
+const MEMBERSHIP_DENIAL_MESSAGES = new Set([
+  "Event invitation is invalid",
+  "Event invitation is no longer active",
+  "You are no longer a member of this event",
+  "Shared event is no longer available",
+  "Invited account is unavailable"
+]);
 
-export async function manageOpenEventInvite({
+class InviteUpstreamError extends Error {
+  constructor(stage, upstreamStatus, upstreamCode = "", malformed = false) {
+    super("Event invitations are temporarily unavailable");
+    this.status = malformed ? 502 : 503;
+    this.retryable = malformed || upstreamStatus >= 500 ||
+      [408, 425, 429].includes(upstreamStatus) || RETRYABLE_SQL_CODES.has(upstreamCode);
+    if (!this.retryable) this.status = 502;
+    this.stage = stage;
+    this.upstreamStatus = upstreamStatus;
+    this.upstreamCode = upstreamCode;
+  }
+}
+
+async function withInviteUpstreamResult(request) {
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof InviteUpstreamError)) throw error;
+    // Never expose upstream bodies, credentials or account identifiers. These
+    // bounded fields also let live QA identify a failing stage without logs.
+    const details = {
+      code: "EVENT_INVITES_UNAVAILABLE",
+      retryable: error.retryable,
+      stage: error.stage,
+      upstreamStatus: error.upstreamStatus,
+      ...(error.upstreamCode ? { upstreamCode: error.upstreamCode } : {})
+    };
+    console.error("Event invite upstream failure", details);
+    return failure(error.status, error.message, details);
+  }
+}
+
+export async function manageOpenEventInvite(options) {
+  return withInviteUpstreamResult(() => manageOpenEventInviteRequest(options));
+}
+
+async function manageOpenEventInviteRequest({
   runtimeConfig,
   env = process.env,
   authorization = "",
@@ -277,11 +321,20 @@ function createDeadlineFetch(fetchImpl, timeoutMs) {
   return deadlineFetch;
 }
 
-async function fetchJsonResponse(fetchImpl, url, options, fallback) {
-  const consumeResponse = async (response) => ({
-    response,
-    payload: await response.json().catch(() => fallback)
-  });
+async function fetchJsonResponse(fetchImpl, url, options, fallback, stage = "") {
+  const consumeResponse = async (response) => {
+    if (stage && !response.ok &&
+      !(stage === "auth" && [401, 403].includes(response.status))) {
+      throw new InviteUpstreamError(stage, response.status);
+    }
+    const payload = await response.json().catch(() => {
+      if (stage && response.ok) {
+        throw new InviteUpstreamError(stage, response.status, "", true);
+      }
+      return fallback;
+    });
+    return { response, payload };
+  };
   const result = await fetchImpl(url, options, consumeResponse);
   if (
     result?.response &&
@@ -317,7 +370,11 @@ function normalizeInviteCreatedAt(value) {
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
 }
 
-export async function redeemEventInvite({
+export async function redeemEventInvite(options) {
+  return withInviteUpstreamResult(() => redeemEventInviteRequest(options));
+}
+
+async function redeemEventInviteRequest({
   runtimeConfig,
   env = process.env,
   authorization = "",
@@ -594,7 +651,16 @@ export async function createPrivateEventInvite({
     : null;
 }
 
-export async function activateEventInviteMembership({
+export async function activateEventInviteMembership(options) {
+  // Notification delivery consumes a boolean, unlike the public invite API.
+  // Preserve that contract for typed upstream failures; timeouts still throw
+  // so the caller can release its notification reservations as before.
+  const activation = await withInviteUpstreamResult(() =>
+    activateEventInviteMembershipRequest(options));
+  return activation === true;
+}
+
+async function activateEventInviteMembershipRequest({
   supabaseUrl,
   serviceRoleKey,
   invite,
@@ -700,9 +766,13 @@ async function loadAuthenticatedUser({
         authorization: `Bearer ${accessToken}`
       }
     },
-    null
+    null,
+    "auth"
   );
   if (!response.ok) return null;
+  if (!UUID_PATTERN.test(String(payload?.id ?? ""))) {
+    throw new InviteUpstreamError("auth", response.status, "", true);
+  }
   return payload;
 }
 
@@ -723,10 +793,11 @@ async function loadAccountState({
     fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
     { headers: serviceHeaders(serviceRoleKey) },
-    []
+    [],
+    "account"
   );
-  if (!response.ok) return null;
-  return (Array.isArray(rows) ? rows : [])
+  assertInviteRows(response, rows, "account");
+  return rows
     .map((row) => row?.state)
     .find((state) => eventFromState(state, eventId)) ?? null;
 }
@@ -754,10 +825,11 @@ async function loadActiveInviteByToken({
     fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
     { headers: serviceHeaders(serviceRoleKey) },
-    []
+    [],
+    "invite"
   );
-  if (!response.ok) return null;
-  return Array.isArray(rows) ? rows[0] ?? null : null;
+  assertInviteRows(response, rows, "invite");
+  return rows[0] ?? null;
 }
 
 async function loadActiveOpenInvite({
@@ -779,10 +851,11 @@ async function loadActiveOpenInvite({
     fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
     { headers: serviceHeaders(serviceRoleKey) },
-    []
+    [],
+    "invite"
   );
-  if (!response.ok) return null;
-  return Array.isArray(rows) ? rows[0] ?? null : null;
+  assertInviteRows(response, rows, "invite");
+  return rows[0] ?? null;
 }
 
 async function loadInviteEventAnchor({
@@ -803,10 +876,18 @@ async function loadInviteEventAnchor({
     fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
     { headers: serviceHeaders(serviceRoleKey) },
-    []
+    [],
+    "invite"
   );
-  if (!response.ok) return null;
-  return Array.isArray(rows) ? rows[0] ?? null : null;
+  assertInviteRows(response, rows, "invite");
+  return rows[0] ?? null;
+}
+
+function assertInviteRows(response, rows, stage) {
+  if (!Array.isArray(rows) || rows.some((row) =>
+    !row || typeof row !== "object" || Array.isArray(row))) {
+    throw new InviteUpstreamError(stage, response.status, "", true);
+  }
 }
 
 async function loadVerifiedSharedEvent({
@@ -863,10 +944,15 @@ async function loadSharedEventSnapshot({
     fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
     { headers: serviceHeaders(serviceRoleKey) },
-    []
+    [],
+    "snapshot"
   );
-  if (!response.ok) return null;
-  return Array.isArray(rows) ? rows[0] ?? null : null;
+  assertInviteRows(response, rows, "snapshot");
+  const snapshot = rows[0] ?? null;
+  if (snapshot && !Array.isArray(snapshot.state?.events)) {
+    throw new InviteUpstreamError("snapshot", response.status, "", true);
+  }
+  return snapshot;
 }
 
 async function loadMemberAccessibleSharedEvent({
@@ -1008,17 +1094,27 @@ async function activateInviteMembership({
     })
   );
   if (!response.ok) {
-    console.error("Open event invite membership activation failed", {
-      status: response.status,
-      inviteId,
-      userId,
-      detail: detail.slice(0, 500)
-    });
+    let upstream = null;
+    try { upstream = JSON.parse(detail); } catch {}
+    // Only the RPC's explicit invitation denials prove this link unusable.
+    // A service-role permission error, lock timeout or failed transaction is
+    // not evidence of revocation. Do not auto-retry arbitrary 4xx failures.
+    if (response.status === 403 && upstream?.code === "42501" &&
+      MEMBERSHIP_DENIAL_MESSAGES.has(upstream.message)) return null;
+    const upstreamCode = /^(?:[A-Z0-9]{5}|PGRST\d{3})$/.test(upstream?.code ?? "")
+      ? upstream.code : "";
+    throw new InviteUpstreamError("membership", response.status, upstreamCode);
   }
-  if (!response.ok) return null;
-  return payload && typeof payload === "object"
-    ? payload
-    : { status: "active" };
+  // The previous RPC returned true or an active receipt. Keep only those
+  // documented legacy shapes; null/false/garbled JSON is not a commit receipt.
+  if (payload === true) return { status: "active" };
+  const legacy = payload?.status === "active" &&
+    !Object.hasOwn(payload, "canonicalParticipantReady") &&
+    !Object.hasOwn(payload, "workspaceIndexed");
+  const atomic = ["joined", "existing"].includes(payload?.status) &&
+    payload.canonicalParticipantReady === true && payload.workspaceIndexed === true;
+  if (payload && !Array.isArray(payload) && (legacy || atomic)) return payload;
+  throw new InviteUpstreamError("membership", response.status, "", true);
 }
 
 async function revokeInviteRow({

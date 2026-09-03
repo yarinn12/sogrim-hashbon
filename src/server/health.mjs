@@ -1,4 +1,7 @@
-export function getHealthPayload(config, { requireProductionReadiness = false } = {}) {
+export function getHealthPayload(config, {
+  requireProductionReadiness = false,
+  deploymentRevision = ""
+} = {}) {
   const storageMode = config.storage?.mode ?? "local";
   const publicUrlReady = Boolean(config.launch?.publicUrlReady);
   const cloudStorageReady = Boolean(config.launch?.cloudStorageReady);
@@ -18,6 +21,7 @@ export function getHealthPayload(config, { requireProductionReadiness = false } 
 
   return {
     ok: requireProductionReadiness ? productionReady : true,
+    ...(/^[a-f0-9]{40}$/i.test(deploymentRevision) ? { deploymentRevision } : {}),
     storageMode,
     publicUrlReady,
     cloudStorageReady,

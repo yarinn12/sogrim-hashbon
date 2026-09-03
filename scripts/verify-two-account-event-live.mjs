@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { devices, webkit } from "@playwright/test";
+import { summarizeLiveFailure, summarizeLiveRequest } from "./liveQaDiagnostics.mjs";
 
 import {
   accountProfileFromUser,
@@ -396,7 +397,7 @@ try {
     eventId,
     eventName: "בדיקת שני חשבונות",
     token: openInvite.payload.token,
-    afterJoin: async (page) => {
+    afterJoin: async (page, recentRequests) => {
       await page
         .locator(`[data-action="open-event"][data-event-id="${eventId}"]`)
         .first()
@@ -522,9 +523,11 @@ try {
         state: "detached",
         timeout: 10_000
       });
+      const noteEditorClosedAt = performance.now();
       await page.getByText(foregroundNoteTitle, { exact: true }).waitFor({
         timeout: 10_000
       });
+      const noteVisibleAt = performance.now();
       ownerState = await refreshSharedEvents(ownerConfig, ownerState);
       const foregroundNote = ownerState.events[0].notes?.find(
         (note) => note.title === foregroundNoteTitle
@@ -536,6 +539,14 @@ try {
         "foreground-note-ui-create-to-owner-read",
         foregroundNoteCreateStartedAt
       );
+      console.log(JSON.stringify({
+        diagnostic: "note-create-latency",
+        editorClosedMs: Math.round(noteEditorClosedAt - foregroundNoteCreateStartedAt),
+        localVisibleMs: Math.round(noteVisibleAt - foregroundNoteCreateStartedAt),
+        ownerReadMs: Math.round(performance.now() - noteVisibleAt),
+        totalMs: Math.round(foregroundNoteCreateElapsed),
+        requests: recentRequests(foregroundNoteCreateStartedAt)
+      }));
       assert.ok(
         foregroundNoteCreateElapsed <= 5_000,
         `Production iPhone note did not reach the owner within 5 seconds (${foregroundNoteCreateElapsed.toFixed(1)}ms)`
@@ -1324,6 +1335,12 @@ async function joinThroughProductionBrowser({
     let page = invitePage;
     const failedResponses = [];
     const authDiagnostics = [];
+    const requestStartTimes = new WeakMap();
+    context.on("request", (request) => requestStartTimes.set(request, performance.now()));
+    const recentRequests = (startedAt = 0) => authDiagnostics
+      .filter((entry) => entry.startedAt >= startedAt)
+      .slice(-30)
+      .map((entry) => summarizeLiveRequest(entry, startedAt));
     context.on("response", async (response) => {
       const url = new URL(response.url());
       const isRelevant =
@@ -1332,27 +1349,20 @@ async function joinThroughProductionBrowser({
         url.pathname.includes("/rest/v1/rpc/set_friend_username") ||
         url.pathname.includes("/rest/v1/app_snapshots");
       if (!isRelevant) return;
-      const rawRequestBody = String(response.request().postData() ?? "");
-      const parsedRequestBody = (() => {
-        try {
-          return JSON.parse(rawRequestBody);
-        } catch {
-          return null;
-        }
-      })();
       const entry = {
         path: url.pathname,
         status: response.status(),
         method: response.request().method(),
-        requestBody: rawRequestBody.slice(0, 1_200),
-        requestSnapshotId: String(parsedRequestBody?.id ?? ""),
-        requestCurrentParticipantId: String(
-          parsedRequestBody?.state?.currentParticipantId ?? ""
-        ),
-        body: (await response.text().catch(() => "")).slice(0, 400)
+        startedAt: requestStartTimes.get(response.request()) ?? performance.now(),
+        headersAt: performance.now()
       };
       authDiagnostics.push(entry);
       if (response.status() >= 400) failedResponses.push(entry);
+      await response.finished().catch(() => {});
+      entry.finishedAt = performance.now();
+      if (response.status() >= 400) {
+        entry.failure = summarizeLiveFailure(await response.json().catch(() => null));
+      }
     });
     const inviteUrl = `${browserOrigin}/i/${encodeURIComponent(eventId)}/t/${encodeURIComponent(token)}`;
     await invitePage.goto(inviteUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -1391,9 +1401,9 @@ async function joinThroughProductionBrowser({
         diagnostic: "legacy-profile-completion-stuck",
         gateText: (await gate.innerText().catch(() => "")).slice(0, 800),
         formMode: await gate.locator("[data-account-form]").getAttribute("data-mode").catch(() => ""),
-        currentUrl: page.url(),
-        failedResponses,
-        authDiagnostics
+        currentPath: new URL(page.url()).pathname.replace(/^\/i\/.*$/, "/i/[invite]"),
+        failedResponses: failedResponses.map((entry) => summarizeLiveRequest(entry)),
+        authDiagnostics: recentRequests()
       }));
       throw error;
     }
@@ -1401,7 +1411,7 @@ async function joinThroughProductionBrowser({
     assert.equal(await page.locator("#app").getAttribute("inert"), null);
     if (typeof afterJoin === "function") {
       try {
-        await afterJoin(page);
+        await afterJoin(page, recentRequests);
       } catch (error) {
         console.log(JSON.stringify({
           diagnostic: "post-join-live-sync-failed",
@@ -1409,10 +1419,10 @@ async function joinThroughProductionBrowser({
             name: String(error?.name ?? "Error"),
             message: String(error?.message ?? error).slice(0, 1_000)
           },
-          currentUrl: page.url(),
+          currentPath: new URL(page.url()).pathname.replace(/^\/i\/.*$/, "/i/[invite]"),
           pageText: (await page.locator("body").innerText().catch(() => "")).slice(0, 1_500),
-          failedResponses,
-          recentSnapshotResponses: authDiagnostics.slice(-20)
+          failedResponses: failedResponses.map((entry) => summarizeLiveRequest(entry)),
+          recentSnapshotResponses: recentRequests()
         }));
         throw error;
       }
@@ -1546,7 +1556,7 @@ async function qaFetch(input, init) {
       path: new URL(String(input)).pathname,
       method: init?.method ?? "GET",
       status: response.status,
-      body: (await response.clone().text().catch(() => "")).slice(0, 800)
+      ...summarizeLiveFailure(await response.clone().json().catch(() => null))
     }));
   }
   return response;
