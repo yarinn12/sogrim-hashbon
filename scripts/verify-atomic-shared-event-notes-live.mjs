@@ -6,9 +6,10 @@ import {
   accountProfileFromUser,
   signInWithPassword
 } from "../src/data/accountAuth.mjs";
-import { loadCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
+import { loadCloudState, readCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
 import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 import {
+  buildSharedEventState,
   refreshSharedEvents,
   saveSharedEventState
 } from "../src/data/sharedEventStore.mjs";
@@ -171,6 +172,83 @@ try {
   await saveCloudState(memberConfig, memberState);
   await assertNoteEverywhere("", true, owner, member);
 
+  // Both devices removed the same note before receiving each other's update.
+  // The member also has a new note queued: a redundant deletion must not block
+  // that unrelated write, and the returned state must retain the committed
+  // tombstone so the next save cannot reintroduce the same conflict.
+  const committedDeletion = ownerState.events.find((event) => event.id === eventId)
+    .deletedNotes.find((item) => item.id === noteId);
+  memberState = removeEventNote(memberState, eventId, noteId, {
+    participantId: memberProfile.participantId,
+    deletedAt: new Date(Date.parse(committedDeletion.deletedAt) + 1).toISOString()
+  });
+  const companionNoteId = `note-companion-${suffix}`;
+  memberState = addEventNote(memberState, eventId, {
+    id: companionNoteId,
+    body: "מחיקה מקבילה לא חוסמת פתק חדש",
+    participantId: memberProfile.participantId
+  });
+  memberState = await saveSharedEventState(memberConfig, memberState, eventId);
+  assert.deepEqual(
+    memberState.events.find((event) => event.id === eventId)
+      .deletedNotes.find((item) => item.id === noteId),
+    committedDeletion
+  );
+  await assertNoteEverywhere("", true, owner, member);
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), memberState);
+    const event = loaded.events.find((item) => item.id === eventId);
+    assert.equal(event.notes.some((item) => item.id === companionNoteId), true);
+    assert.deepEqual(event.deletedNotes.find((item) => item.id === noteId), committedDeletion);
+  }
+
+  // Emulate an old app that sends its newer duplicate deletion directly to
+  // the write RPC, without the new client's canonical merge protection.
+  const legacyNoteId = `note-legacy-${suffix}`;
+  const legacyCandidate = addEventNote(memberState, eventId, {
+    id: legacyNoteId,
+    body: "גם לקוח ישן ממשיך לשמור",
+    participantId: memberProfile.participantId
+  });
+  const legacyPayload = buildSharedEventState(legacyCandidate, eventId);
+  legacyPayload.events[0].deletedNotes = legacyPayload.events[0].deletedNotes.map((item) =>
+    item.id === noteId ? {
+      ...item,
+      deletedAt: new Date(Date.parse(committedDeletion.deletedAt) + 2).toISOString(),
+      deletedByParticipantId: memberProfile.participantId
+    } : item
+  );
+  const sharedConfig = {
+    ...memberConfig,
+    storage: {
+      ...memberConfig.storage,
+      spaceId: eventSpace.id,
+      spaceKey: eventSpace.key,
+      snapshotKind: "shared_event"
+    }
+  };
+  await readCloudState(sharedConfig);
+  await saveCloudState(sharedConfig, legacyPayload);
+  const legacySaved = await readCloudState(sharedConfig);
+  assert.deepEqual(legacySaved.events[0].deletedNotes.find((item) => item.id === noteId), committedDeletion);
+  assert.equal(legacySaved.events[0].notes.some((item) => item.id === legacyNoteId), true);
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), memberState);
+    const event = loaded.events.find((item) => item.id === eventId);
+    assert.equal(event.notes.some((item) => item.id === legacyNoteId), true);
+    assert.deepEqual(event.deletedNotes.find((item) => item.id === noteId), committedDeletion);
+  }
+
+  // A genuinely unauthorized edit must still be rejected after normalization.
+  const forbiddenPayload = structuredClone(legacyPayload);
+  const forbiddenNote = forbiddenPayload.events[0].notes.find((item) => item.id === companionNoteId);
+  forbiddenNote.body = "forged editor";
+  forbiddenNote.updatedAt = new Date(Math.max(Date.now(), Date.parse(forbiddenNote.updatedAt) + 1)).toISOString();
+  forbiddenNote.updatedByParticipantId = ownerProfile.participantId;
+  await assert.rejects(saveCloudState(sharedConfig, forbiddenPayload), (error) => error.status === 403);
+  const afterRejectedWrite = await readCloudState(sharedConfig);
+  assert.deepEqual(afterRejectedWrite, legacySaved);
+
   // Offline retry saves a personal candidate before publishing to the shared
   // event. Projection must not mutate that candidate or discard its pending
   // note when the canonical write subsequently runs.
@@ -207,6 +285,9 @@ try {
     staleWorkspaceCannotResurrectNotes: true,
     unrelatedPersonalDataPreserved: true,
     concurrentWorkspaceWritesVerified: 3,
+    concurrentDeletionWithCompanionNoteSynced: true,
+    legacyDuplicateDeletionAccepted: true,
+    unauthorizedNoteEditStillBlocked: true,
     offlineCandidatePublished: true,
     temporaryDataCleanup: true
   }));

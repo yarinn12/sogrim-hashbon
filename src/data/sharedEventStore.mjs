@@ -23,6 +23,7 @@ import {
 } from "../domain/avatarPresets.mjs";
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 import { markParticipantMembershipChanges } from "../domain/eventMembership.mjs";
+import { mergeCanonicalEventNotes } from "../domain/eventNotes.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
@@ -328,6 +329,13 @@ async function findAccessibleSharedEvent(
 
 export function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
   const merged = mergeSharedStates(remoteState, localState);
+  const remoteEvent = remoteState?.events?.[0];
+  // This runs before every write, including each optimistic-conflict retry.
+  merged.events = (merged.events ?? []).map((event) =>
+    remoteEvent?.id === event.id
+      ? { ...event, ...mergeCanonicalEventNotes(remoteEvent, event) }
+      : event
+  );
   const configuredUserId = String(
     runtimeConfig?.storage?.account?.userId ?? ""
   ).trim();
@@ -342,7 +350,6 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     throw new CloudStateAuthError("Cloud account identity is unavailable");
   }
   const actorParticipantId = `account-${actorUserId}`;
-  const remoteEvent = remoteState?.events?.[0];
   const adminIds = remoteEvent?.adminIds?.length
     ? remoteEvent.adminIds
     : remoteEvent?.createdByParticipantId
@@ -882,6 +889,7 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
       event.id === eventId
         ? restoreAuthenticatedEventMembership({
             ...event,
+            ...mergeCanonicalEventNotes(sharedEvent, event),
             [EVENT_SPACE_ID_FIELD]: credentials.id,
             [EVENT_SPACE_KEY_FIELD]: credentials.key
           }, sharedEvent, currentParticipantId, sharedCurrentParticipantIsActive)

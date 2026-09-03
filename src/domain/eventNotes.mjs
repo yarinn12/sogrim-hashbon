@@ -159,6 +159,23 @@ export function mergeEventNotes(remoteEvent, localEvent) {
   return { notes, deletedNotes };
 }
 
+// A committed deletion is an immutable fact, not another competing edit.
+// Only use this at a canonical server boundary; peer/offline merges must stay
+// deterministic without assuming that either peer has committed its changes.
+export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
+  const merged = mergeEventNotes(canonicalEvent, localEvent);
+  if (!canonicalEvent?.deletedNotes?.length) return merged;
+  const committed = new Map(
+    canonicalEvent.deletedNotes.map((deletion) => [deletion.id, deletion])
+  );
+  return {
+    ...merged,
+    deletedNotes: merged.deletedNotes
+      .map((deletion) => clone(committed.get(deletion.id) ?? deletion))
+      .sort((first, second) => compareNewestFirst(first, second, "deletedAt"))
+  };
+}
+
 export function validateSharedStateNotes(state, label = "state") {
   if (!state || typeof state !== "object" || Array.isArray(state)) return [];
   const knownParticipantIds = new Set(
