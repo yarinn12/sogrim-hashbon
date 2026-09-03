@@ -22,6 +22,7 @@
     "qa:snapshots-live": "node scripts/audit-snapshot-validation-live.mjs",
     "qa:future-timestamps-live": "node scripts/audit-shared-event-future-timestamps-live.mjs",
     "repair:current-membership-live": "node scripts/repair-current-participant-event-membership-live.mjs",
+    "repair:stranded-invites-live": "node scripts/repair-stranded-invite-joins.mjs",
     "qa:release:core": "npm run qa:coverage && npm run qa:mobile && npm run qa:memory && npm run qa:accounts-live && npm run qa:two-account-live && npm run qa:operations -- --strict && npm run qa:production:strict && npm run qa:public-origin && npm run qa:store -- --android",
     "db:apply": "node scripts/apply-supabase-schema.mjs",
     "db:apply:security-sync-hardening": "node scripts/apply-20260902-security-sync-hardening.mjs --apply",
