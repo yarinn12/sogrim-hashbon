@@ -10523,6 +10523,14 @@ begin
       if new_value is not distinct from old_value then
         continue;
       end if;
+      if map_entry.key !~ '^[A-Za-z0-9_-]{1,128}$' then
+        raise exception 'Shared merge timestamp key is invalid'
+          using errcode = '22023';
+      end if;
+      if new_value !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$' then
+        raise exception 'Shared merge timestamp must use ISO 8601 format'
+          using errcode = '22023';
+      end if;
       begin
         changed_at := new_value::timestamptz;
       exception

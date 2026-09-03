@@ -18,6 +18,7 @@ import {
   usesRoundedSettlementTransfers
 } from "./settlement.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { EVENT_SETTING_FIELDS } from "./sharedStateMerge.mjs";
 
 export function createGroup(
   state,
@@ -731,22 +732,12 @@ export function canLinkParticipantAccount(
 }
 
 function eventSettingTimestampUpdate(event, field, updatedAt) {
-  const settingFields = [
-    "name",
-    "eventType",
-    "currency",
-    "groupId",
-    "coverImage",
-    "adminsCanEditOnly",
-    "roundSettlementTransfers",
-    "directSettlementTransfers"
-  ];
   const previousTimestamp = event.settingsUpdatedAt ?? event.createdAt ?? updatedAt;
   const settingsFieldUpdatedAt = {
     ...(event.settingsFieldUpdatedAt ?? {})
   };
 
-  for (const settingField of settingFields) {
+  for (const settingField of EVENT_SETTING_FIELDS) {
     if (
       Object.hasOwn(event, settingField) &&
       !settingsFieldUpdatedAt[settingField]

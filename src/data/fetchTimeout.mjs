@@ -4,7 +4,8 @@ export async function fetchWithTimeout(
   fetchImpl,
   url,
   options = {},
-  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  consumeResponse = null
 ) {
   const controller = new AbortController();
   const upstreamSignal = options.signal;
@@ -39,7 +40,11 @@ export async function fetchWithTimeout(
       return fetchImpl(url, {
         ...options,
         signal: controller.signal
-      });
+      }).then((response) =>
+        typeof consumeResponse === "function"
+          ? consumeResponse(response)
+          : response
+      );
     });
     return await Promise.race([request, timeout]);
   } finally {

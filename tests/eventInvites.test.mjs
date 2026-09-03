@@ -130,6 +130,34 @@ test("client creates an authenticated open invite without sending event credenti
   assert.equal("spaceKey" in body, false);
 });
 
+test("open invite creation keeps response JSON inside its request timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      ensureOpenEventInvite(
+        runtimeConfig(),
+        EVENT_ID,
+        "",
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        { timeoutMs: 10 }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("open invite response body stayed unbounded")), 250)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("client redeems token links and still accepts legacy invite credentials", async () => {
   const tokenUrl = buildEventInviteUrl(
     "https://sogrim.example/",
@@ -196,6 +224,39 @@ test("invite redemption honors a short startup timeout", async () => {
     (error) => error?.code === "NETWORK_TIMEOUT"
   );
   assert.ok(Date.now() - startedAt < 500, "startup redemption must stay bounded");
+});
+
+test("invite redemption keeps response JSON inside the startup timeout", async () => {
+  const tokenUrl = buildEventInviteUrl(
+    "https://sogrim.example/",
+    EVENT_ID,
+    null,
+    { inviteToken: TOKEN }
+  );
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      resolveEventInviteCredentials(
+        runtimeConfig({ account: false }),
+        tokenUrl,
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        { timeoutMs: 10 }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("invite response body stayed unbounded")), 250)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
 });
 
 test("client explains revoked and account-bound invites in Hebrew", async () => {
@@ -306,6 +367,35 @@ test("server bounds the entire open-link operation when Supabase stops respondin
     Date.now() - startedAt < 500,
     "a hanging invite upstream must release the server promptly"
   );
+});
+
+test("server open-link deadline includes the authenticated-user response body", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      manageOpenEventInvite({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-token",
+        eventId: EVENT_ID,
+        fetchImpl: async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        requestTimeoutMs: 20
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("server invite response body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
 });
 
 test("server bounds the entire invite redemption when Supabase stops responding", async () => {
@@ -1170,6 +1260,65 @@ test("an invalid account session is rejected before invite lookup", async () => 
   assert.equal(redemption.status, 401);
   assert.equal(redemption.payload.code, "EVENT_INVITE_AUTH_REQUIRED");
   assert.equal(inviteLookup, false);
+});
+
+test("invite redemption keeps a membership error body inside its deadline", async () => {
+  const recipientParticipantId = `account-${OTHER_USER_ID}`;
+  const sharedState = serverState();
+  sharedState.participants.push({
+    id: recipientParticipantId,
+    displayName: "Invited participant"
+  });
+  sharedState.events[0].participantIds.push(recipientParticipantId);
+  let activationSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      redeemEventInvite({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer recipient-token",
+        eventId: EVENT_ID,
+        token: TOKEN,
+        requestTimeoutMs: 20,
+        fetchImpl: async (url, options = {}) => {
+          const address = String(url);
+          if (address.endsWith("/auth/v1/user")) {
+            return jsonResponse({ id: OTHER_USER_ID });
+          }
+          if (address.includes("/rest/v1/event_invite_tokens?")) {
+            return jsonResponse([{
+              id: "44444444-4444-4444-8444-444444444444",
+              event_id: EVENT_ID,
+              kind: "private",
+              created_by: USER_ID,
+              recipient_user_id: OTHER_USER_ID,
+              space_id: SPACE_ID,
+              space_key: SPACE_KEY,
+              expires_at: "2099-01-01T00:00:00.000Z"
+            }]);
+          }
+          if (address.includes("/rest/v1/app_snapshots?")) {
+            return jsonResponse([sharedSnapshot(sharedState)]);
+          }
+          if (address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")) {
+            activationSignal = options.signal;
+            return {
+              ok: false,
+              status: 503,
+              text: () => new Promise(() => {})
+            };
+          }
+          throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("invite membership error body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(activationSignal?.aborted, true);
 });
 
 test("an active participant can redeem a private event invite while friendship is pending", async () => {

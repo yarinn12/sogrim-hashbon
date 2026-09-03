@@ -45,6 +45,10 @@ test("public Google sign-in is single-flight and bounded", () => {
   assert.match(credentialHandler, /if \(googleCredentialRequest\) return googleCredentialRequest/);
   assert.match(verification, /fetchWithTimeout\(/);
   assert.match(verification, /GOOGLE_AUTH_TIMEOUT_MS/);
+  assert.match(
+    verification,
+    /GOOGLE_AUTH_TIMEOUT_MS,[\s\S]*?authResponse\.json\(\)/
+  );
   assert.match(scriptLoader, /GOOGLE_SCRIPT_TIMEOUT_MS/);
   assert.match(scriptLoader, /googleScriptPromise = null/);
 });
@@ -52,11 +56,12 @@ test("public Google sign-in is single-flight and bounded", () => {
 test("native image reads and fallback reset requests cannot hang indefinitely", () => {
   assert.match(
     nativeBridge,
-    /fetchWithTimeout\(\s*globalThis\.fetch,\s*webPath,\s*\{\},\s*10_000\s*\)/
+    /fetchWithTimeout\(\s*globalThis\.fetch,\s*webPath,\s*\{\},\s*10_000,/
   );
+  assert.match(nativeBridge, /10_000,[\s\S]*?imageResponse\.blob\(\)/);
   assert.match(
     localStore,
-    /fetchWithTimeout\(\s*globalThis\.fetch,\s*"\/api\/reset",\s*\{ method: "POST" \},\s*RUNTIME_CONFIG_TIMEOUT_MS\s*\)/
+    /fetchWithTimeout\(\s*globalThis\.fetch,\s*"\/api\/reset",\s*\{ method: "POST" \},\s*RUNTIME_CONFIG_TIMEOUT_MS,[\s\S]*?resetResponse\.json\(\)/
   );
 });
 

@@ -65,7 +65,7 @@ export async function readCloudState(
 ) {
   if (config.storage?.mode !== "supabase") return null;
 
-  const response = await fetchWithTimeout(
+  const { response, payload: rows } = await fetchCloudJsonWithTimeout(
     fetchImpl,
     snapshotReadUrl(config),
     { headers: cloudHeaders(config) },
@@ -74,7 +74,6 @@ export async function readCloudState(
 
   if (!response.ok) throw cloudResponseError(response, "Cloud state unavailable");
 
-  const rows = await response.json();
   const state = rows[0]?.state;
   if (state) {
     rememberSnapshotVersion(config, rows[0]?.updated_at);
@@ -110,7 +109,7 @@ export async function readCloudStateIfChanged(
     };
   }
 
-  const response = await fetchWithTimeout(
+  const { response, payload: rows } = await fetchCloudJsonWithTimeout(
     fetchImpl,
     snapshotVersionReadUrl(config),
     { headers: cloudHeaders(config) }
@@ -119,7 +118,6 @@ export async function readCloudStateIfChanged(
     throw cloudResponseError(response, "Cloud state version unavailable");
   }
 
-  const rows = await response.json();
   const updatedAt = String(rows[0]?.updated_at ?? "").trim();
   if (!updatedAt) {
     forgetSnapshotVersion(config);
@@ -171,7 +169,7 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
   }
 
   const nextVersion = new Date().toISOString();
-  const response = await fetchWithTimeout(
+  const { response, payload: rows } = await fetchCloudJsonWithTimeout(
     fetchImpl,
     isUpdate ? snapshotUpdateUrl(config, currentVersion) : snapshotWriteUrl(config),
     {
@@ -201,7 +199,6 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
 
   if (!response.ok) throw cloudResponseError(response, "Cloud state save failed");
 
-  const rows = await response.json();
   if (isUpdate && (!Array.isArray(rows) || rows.length === 0)) {
     throw new CloudStateConflictError();
   }
@@ -226,7 +223,7 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
     const cursorFilter = lastSeenId
       ? `&id=gt.${encodeURIComponent(lastSeenId)}`
       : "";
-    const response = await fetchWithTimeout(
+    const { response, payload: pageRows } = await fetchCloudJsonWithTimeout(
       fetchImpl,
       `${config.storage.url}/rest/v1/${encodeURIComponent(config.storage.table)}` +
         `?snapshot_kind=eq.shared_event&select=id,state,updated_at` +
@@ -243,7 +240,6 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
       throw cloudResponseError(response, "Shared event recovery unavailable");
     }
 
-    const pageRows = await response.json();
     const normalizedPage = Array.isArray(pageRows) ? pageRows : [];
     expectedRowCount ??= contentRangeTotal(response.headers?.get?.("content-range"));
     if (normalizedPage.length === 0) break;
@@ -297,7 +293,7 @@ async function saveSharedEventStateAtomically(
   currentVersion,
   fetchImpl
 ) {
-  const response = await fetchWithTimeout(
+  const { response, payload: result } = await fetchCloudJsonWithTimeout(
     fetchImpl,
     `${config.storage.url}/rest/v1/rpc/update_shared_event_snapshot`,
     {
@@ -309,16 +305,40 @@ async function saveSharedEventStateAtomically(
         p_expected_updated_at: currentVersion,
         p_state: state
       })
-    }
+    },
+    undefined,
+    true
   );
   if (!response.ok) throw cloudResponseError(response, "Shared event save failed");
 
-  const result = await response.json().catch(() => null);
   if (result?.status === "conflict") throw new CloudStateConflictError();
   if (result?.status !== "updated" || !result?.updatedAt) {
     throw new Error("Shared event save returned an invalid response");
   }
   rememberSnapshotVersion(config, result.updatedAt);
+}
+
+function fetchCloudJsonWithTimeout(
+  fetchImpl,
+  url,
+  options,
+  timeoutMs,
+  tolerateInvalidJson = false
+) {
+  return fetchWithTimeout(
+    fetchImpl,
+    url,
+    options,
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: response.ok
+        ? tolerateInvalidJson
+          ? await response.json().catch(() => null)
+          : await response.json()
+        : null
+    })
+  );
 }
 
 function snapshotReadUrl(config) {

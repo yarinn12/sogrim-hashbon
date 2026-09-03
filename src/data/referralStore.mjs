@@ -134,7 +134,7 @@ async function callReferralRpc(
   fetchImpl,
   timeoutMs
 ) {
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchWithTimeout(
     fetchImpl,
     `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/${functionName}`,
     {
@@ -146,9 +146,12 @@ async function callReferralRpc(
       },
       body: JSON.stringify(body)
     },
-    timeoutMs
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
   );
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw referralStoreError(payload, response.status);
   return payload;
 }

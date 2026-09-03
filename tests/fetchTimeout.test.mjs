@@ -56,3 +56,25 @@ test("an upstream abort is forwarded to the request", async () => {
   await assert.rejects(request, /cancelled/);
   assert.equal(requestSignal.aborted, true);
 });
+
+test("response body consumption stays inside the same request deadline", async () => {
+  let requestSignal = null;
+  await assert.rejects(
+    fetchWithTimeout(
+      async (_url, options) => {
+        requestSignal = options.signal;
+        return {
+          async json() {
+            return new Promise(() => {});
+          }
+        };
+      },
+      "https://example.com/stalled-body",
+      {},
+      5,
+      (response) => response.json()
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal.aborted, true);
+});

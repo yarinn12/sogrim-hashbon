@@ -114,6 +114,69 @@ test("validateSharedStatePayload rejects unsafe identifiers at every state level
   );
 });
 
+test("validateSharedStatePayload accepts merge clocks for identifier-named settings", () => {
+  const validation = validateSharedStatePayload({
+    currentParticipantId: "owner",
+    participants: [{ id: "owner", displayName: "Owner" }],
+    groups: [
+      {
+        id: "group-1",
+        memberIds: ["owner"],
+        adminIds: ["owner"]
+      }
+    ],
+    events: [
+      {
+        id: "event-1",
+        participantIds: ["owner"],
+        adminIds: ["owner"],
+        groupId: "group-1",
+        settingsFieldUpdatedAt: {
+          groupId: "2026-09-03T05:22:33.000Z"
+        },
+        membershipUpdatedAtByParticipant: {
+          owner: "2026-09-03T05:22:33.000Z"
+        },
+        expenses: [],
+        transfers: []
+      }
+    ]
+  });
+
+  assert.equal(validation.ok, true, validation.errors.join(" "));
+});
+
+test("validateSharedStatePayload rejects malformed merge clock maps", () => {
+  const validation = validateSharedStatePayload({
+    currentParticipantId: "owner",
+    participants: [{ id: "owner", displayName: "Owner" }],
+    groups: [],
+    events: [
+      {
+        id: "event-1",
+        participantIds: ["owner"],
+        adminIds: ["owner"],
+        settingsFieldUpdatedAt: {
+          groupId: "not-a-timestamp"
+        },
+        membershipUpdatedAtByParticipant: {
+          "unsafe participant": "2026-09-03T05:22:33.000Z"
+        },
+        expenses: [],
+        transfers: []
+      }
+    ]
+  });
+
+  assert.equal(validation.ok, false);
+  assert.ok(
+    validation.errors.some((error) => error.includes("must be a valid timestamp"))
+  );
+  assert.ok(
+    validation.errors.some((error) => error.includes("safe identifier keys"))
+  );
+});
+
 test("validateSharedStatePayload rejects malformed financial records", () => {
   const validation = validateSharedStatePayload({
     currentParticipantId: "owner",

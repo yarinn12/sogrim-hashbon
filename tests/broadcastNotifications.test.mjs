@@ -32,6 +32,60 @@ test("broadcast notifications reject unauthenticated requests", async () => {
   assert.equal(fetchCalls, 0);
 });
 
+test("an unreadable push-device list is not reported as a zero-recipient success", async () => {
+  const result = await sendBroadcastNotification({
+    env,
+    authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+    title: "Test",
+    body: "Test body",
+    campaignId: "unreadable-recipients",
+    fetchImpl: async (url) => {
+      assert.match(String(url), /\/rest\/v1\/push_devices\?/);
+      return new Response("{truncated", {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    },
+    accessTokenProvider: async () => {
+      throw new Error("recipient failure must stop before Firebase authorization");
+    }
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.ok, false);
+  assert.equal(result.payload.code, "RECIPIENTS_UNAVAILABLE");
+});
+
+test("broadcast deadline includes the push-recipient response body", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      sendBroadcastNotification({
+        env,
+        authorization: `Bearer ${broadcastAuthorizationToken(env.SUPABASE_SERVICE_ROLE_KEY)}`,
+        title: "Test",
+        body: "Test body",
+        campaignId: "stalled-recipient-body",
+        requestTimeoutMs: 20,
+        fetchImpl: async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("broadcast recipient body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("broadcast notifications stop waiting when Firebase authorization stalls", async () => {
   let firebaseCalls = 0;
   const startedAt = Date.now();

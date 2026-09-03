@@ -21,6 +21,59 @@ import {
 import { RECOVERED_MEMBER_SPACE_KEY } from "../src/data/cloudStore.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
 
+test("malformed canonical merge clocks cannot block shared-event reads or writes", () => {
+  const userId = "00000000-0000-4000-8000-000000000101";
+  const participantId = `account-${userId}`;
+  const timestamp = "2026-09-03T05:20:33.129Z";
+  const baseEvent = {
+    id: "event-clock-quarantine",
+    name: "Clock quarantine",
+    participantIds: [participantId],
+    adminIds: [participantId],
+    settingsUpdatedAt: timestamp,
+    settingsFieldUpdatedAt: { groupId: "epoch" },
+    expenses: [],
+    transfers: []
+  };
+  const canonical = {
+    currentParticipantId: "",
+    participants: [{ id: participantId, displayName: "Owner" }],
+    groups: [],
+    events: [baseEvent]
+  };
+  const local = {
+    currentParticipantId: participantId,
+    participants: canonical.participants,
+    groups: [],
+    events: [{
+      ...baseEvent,
+      settingsFieldUpdatedAt: {},
+      expenses: [{
+        id: "expense-after-clock-quarantine",
+        total: 1200,
+        payers: [{ participantId, amount: 1200 }],
+        sharedByParticipantIds: [participantId],
+        updatedAt: "2026-09-03T05:21:00.000Z"
+      }]
+    }]
+  };
+
+  const readMerged = mergeSharedEventIntoState(local, canonical, {
+    id: "space-clock-quarantine",
+    key: "event_share_key_clock_quarantine_1234567890"
+  });
+  const writeMerged = mergeSharedEventWriteState(canonical, local, {
+    storage: { account: { userId } }
+  });
+
+  assert.equal(readMerged.events[0].expenses.length, 1);
+  assert.equal(writeMerged.events[0].expenses.length, 1);
+  assert.equal(
+    writeMerged.events[0].expenses[0].id,
+    "expense-after-clock-quarantine"
+  );
+});
+
 test("an expired runtime token cannot overwrite the actor's own profile", () => {
   const previousLocalStorage = globalThis.localStorage;
   const userId = "00000000-0000-4000-8000-000000000099";
@@ -494,6 +547,46 @@ test("a removed shared-event member cannot silently fall back to the old key", a
     (error) =>
       error.code === "SHARED_EVENT_MEMBERSHIP_REVOKED" && error.status === 403
   );
+});
+
+test("membership verification keeps a forbidden response body inside its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      ensureSharedEventMembership(
+        {
+          storage: {
+            mode: "supabase",
+            url: "https://project.supabase.co",
+            anonKey: "anon",
+            account: {
+              userId: "00000000-0000-4000-8000-000000000001",
+              accessToken: "account-token"
+            }
+          }
+        },
+        {
+          id: "event-space-one",
+          key: "event_share_key_12345678901234567890"
+        },
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: false,
+            status: 403,
+            json: () => new Promise(() => {})
+          };
+        },
+        { timeoutMs: 20 }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("membership error body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
 });
 
 test("invite credentials stay attached when the first cloud read is unavailable", () => {

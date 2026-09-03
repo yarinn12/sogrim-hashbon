@@ -175,11 +175,12 @@ export function createAppHandler({
 
     if (sensitiveNamespace && durableRateLimitRequired) {
       const durableResult = await promiseWithTimeout(
-        () => durableApiRateLimitService({
+        (signal) => durableApiRateLimitService({
           env,
           namespace: sensitiveNamespace,
           subjectHashes: durableRateLimitSubjectHashes(request, env),
-          policy: SENSITIVE_API_RATE_LIMIT
+          policy: SENSITIVE_API_RATE_LIMIT,
+          signal
         }),
         durableRateLimitTimeoutMs
       ).catch(() => ({
@@ -717,16 +718,21 @@ export function createAppHandler({
 }
 
 async function promiseWithTimeout(factory, timeoutMs) {
+  const controller = new AbortController();
   let timeoutId;
   const timeout = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
       const error = new Error("Server dependency timed out");
       error.code = "NETWORK_TIMEOUT";
+      controller.abort(error);
       reject(error);
     }, Math.max(1, Number(timeoutMs) || DURABLE_RATE_LIMIT_TIMEOUT_MS));
   });
   try {
-    return await Promise.race([Promise.resolve().then(factory), timeout]);
+    return await Promise.race([
+      Promise.resolve().then(() => factory(controller.signal)),
+      timeout
+    ]);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -1074,6 +1080,7 @@ async function reserveDurableApiRateLimit({
   namespace,
   subjectHashes,
   policy,
+  signal,
   fetchImpl = fetch
 }) {
   const supabaseUrl = String(env.SUPABASE_URL ?? "").replace(/\/+$/, "");
@@ -1100,7 +1107,8 @@ async function reserveDurableApiRateLimit({
           p_client_limit: policy.limit,
           p_global_limit: policy.globalLimit,
           p_window_seconds: Math.ceil(policy.windowMs / 1000)
-        })
+        }),
+        signal
       }
     );
     if (!response.ok) {

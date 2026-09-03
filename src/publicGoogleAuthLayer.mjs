@@ -153,7 +153,7 @@ async function handleGoogleCredentialOnce(response) {
 }
 
 async function verifyGoogleCredential(credential) {
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchWithTimeout(
     globalThis.fetch,
     "/api/auth/google",
     {
@@ -161,10 +161,15 @@ async function verifyGoogleCredential(credential) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ credential })
     },
-    GOOGLE_AUTH_TIMEOUT_MS
+    GOOGLE_AUTH_TIMEOUT_MS,
+    async (authResponse) => ({
+      response: authResponse,
+      payload: authResponse.ok
+        ? await authResponse.json()
+        : null
+    })
   );
   if (!response.ok) return null;
-  const payload = await response.json();
   return payload?.profile ?? null;
 }
 

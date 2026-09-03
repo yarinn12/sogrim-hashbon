@@ -204,14 +204,19 @@ function createNativeCameraApi(cameraPlugin) {
 
       const webPath = String(media?.webPath ?? "").trim();
       if (!webPath) throw new Error("Native camera returned no image path");
-      const response = await fetchWithTimeout(
+      const { response, blob } = await fetchWithTimeout(
         globalThis.fetch,
         webPath,
         {},
-        10_000
+        10_000,
+        async (imageResponse) => ({
+          response: imageResponse,
+          blob: imageResponse.ok
+            ? await imageResponse.blob()
+            : null
+        })
       );
       if (!response.ok) throw new Error("Native camera image could not be read");
-      const blob = await response.blob();
       const format = String(media?.metadata?.format ?? "jpeg")
         .toLowerCase()
         .replace("jpg", "jpeg");

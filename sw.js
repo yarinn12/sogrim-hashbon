@@ -1,5 +1,5 @@
-const PWA_RELEASE = "441";
-const CACHE_NAME = "settle-friends-live-v441";
+const PWA_RELEASE = "442";
+const CACHE_NAME = "settle-friends-live-v442";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
   "/",

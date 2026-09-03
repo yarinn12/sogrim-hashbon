@@ -150,6 +150,40 @@ test("concurrent note additions from two devices are both preserved", () => {
   );
 });
 
+test("a shared note reaches a device whose local event keeps a group merge clock", () => {
+  const remote = withNote(
+    baseState(),
+    note("note-from-other-device", "2026-09-03T05:21:27.774Z")
+  );
+  const localBase = baseState();
+  const local = {
+    ...localBase,
+    groups: [
+      {
+        id: "group-1",
+        name: "Trip group",
+        memberIds: ["owner", "friend"],
+        adminIds: ["owner"]
+      }
+    ],
+    events: [
+      {
+        ...localBase.events[0],
+        groupId: "group-1",
+        settingsUpdatedAt: "2026-09-03T05:20:33.129Z",
+        settingsFieldUpdatedAt: {
+          groupId: "2026-09-03T05:20:33.129Z"
+        }
+      }
+    ]
+  };
+
+  const merged = mergeSharedStates(remote, local);
+
+  assert.equal(merged.events[0].groupId, "group-1");
+  assert.equal(merged.events[0].notes[0].id, "note-from-other-device");
+});
+
 test("the newest concurrent note edit wins deterministically", () => {
   const remote = withNote(
     baseState(),

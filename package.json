@@ -25,6 +25,7 @@
     "qa:release:core": "npm run qa:coverage && npm run qa:mobile && npm run qa:memory && npm run qa:accounts-live && npm run qa:two-account-live && npm run qa:operations -- --strict && npm run qa:production:strict && npm run qa:public-origin && npm run qa:store -- --android",
     "db:apply": "node scripts/apply-supabase-schema.mjs",
     "db:apply:security-sync-hardening": "node scripts/apply-20260902-security-sync-hardening.mjs --apply",
+    "db:apply:strict-shared-merge-clocks": "node scripts/apply-strict-shared-merge-timestamps.mjs --apply",
     "db:apply:metrics-clock": "node scripts/apply-product-metric-clock-fix.mjs",
     "native:prepare": "node scripts/build-native-web.mjs && cap sync && node scripts/finalize-native-projects.mjs",
     "native:android": "npm run native:prepare && cap open android",

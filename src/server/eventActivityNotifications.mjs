@@ -23,6 +23,10 @@ const ACTIVITY_KINDS = new Set([
 ]);
 const EXPENSE_COOLDOWN_SECONDS = 45;
 const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
+const RESERVATION_CLEANUP_TIMEOUT_MS = 2_000;
+export const EVENT_ACTIVITY_REQUEST_TIMEOUT_MS = 10_000;
+const DEADLINE_FETCH = Symbol("event-activity-deadline-fetch");
+const DEADLINE_REMAINING_MS = Symbol("event-activity-deadline-remaining-ms");
 
 export async function sendEventActivityNotification({
   runtimeConfig,
@@ -34,7 +38,8 @@ export async function sendEventActivityNotification({
   fetchImpl = fetch,
   accessTokenProvider = defaultFirebaseAccessTokenProvider,
   deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
-  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  requestTimeoutMs = EVENT_ACTIVITY_REQUEST_TIMEOUT_MS
 }) {
   const normalizedEventId = String(eventId ?? "").trim();
   const normalizedActivityId = String(activityId ?? "").trim();
@@ -65,6 +70,9 @@ export async function sendEventActivityNotification({
       code: "PUSH_UNAVAILABLE"
     });
   }
+
+  const cleanupFetchImpl = createCleanupFetch(fetchImpl);
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
 
   const sender = await loadAuthenticatedUser({
     supabaseUrl,
@@ -130,154 +138,172 @@ export async function sendEventActivityNotification({
   const notification = activityMessage(senderEvent, normalizedKind);
   const privatePushNotification = privateActivityNotification(normalizedKind);
   const eligibleRecipients = [];
+  const reservedRecipients = [];
   let inboxRecipients = 0;
   let membershipRecipients = 0;
-  for (const recipientUserId of recipientUserIds) {
-    const canonicallyActive = await (
-      normalizedKind === "event-invite"
-        ? verifyCanonicalInvitationTarget
-        : verifyCanonicalNotificationMembership
-    )({
-      supabaseUrl,
-      serviceRoleKey,
-      snapshotId: senderEvent.sharedSpaceId,
-      senderUserId: sender.id,
-      recipientUserId,
-      fetchImpl
-    });
-    if (!canonicallyActive) continue;
-
-    let privateInvite = null;
-    if (normalizedKind === "event-invite") {
-      privateInvite = await createPrivateEventInvite({
+  try {
+    for (const recipientUserId of recipientUserIds) {
+      const canonicallyActive = await (
+        normalizedKind === "event-invite"
+          ? verifyCanonicalInvitationTarget
+          : verifyCanonicalNotificationMembership
+      )({
         supabaseUrl,
         serviceRoleKey,
-        event: senderEvent,
+        snapshotId: senderEvent.sharedSpaceId,
         senderUserId: sender.id,
         recipientUserId,
         fetchImpl
       });
-      const membershipActivated = privateInvite &&
-        await activateEventInviteMembership({
+      if (!canonicallyActive) continue;
+
+      let privateInvite = null;
+      if (normalizedKind === "event-invite") {
+        privateInvite = await createPrivateEventInvite({
           supabaseUrl,
           serviceRoleKey,
-          invite: privateInvite,
-          snapshotId: senderEvent.sharedSpaceId,
-          userId: recipientUserId,
+          event: senderEvent,
+          senderUserId: sender.id,
+          recipientUserId,
           fetchImpl
         });
-      if (!membershipActivated) continue;
-      membershipRecipients += 1;
-    }
+        const membershipActivated = privateInvite &&
+          await activateEventInviteMembership({
+            supabaseUrl,
+            serviceRoleKey,
+            invite: privateInvite,
+            snapshotId: senderEvent.sharedSpaceId,
+            userId: recipientUserId,
+            fetchImpl
+          });
+        if (!membershipActivated) continue;
+        membershipRecipients += 1;
+      }
 
-    let needsRecoveryInvite = false;
-    if (normalizedKind !== "event-invite") {
-      const recipientState = await loadAccountState({
+      let needsRecoveryInvite = false;
+      if (normalizedKind !== "event-invite") {
+        const recipientState = await loadAccountState({
+          supabaseUrl,
+          serviceRoleKey,
+          userId: recipientUserId,
+          eventId: normalizedEventId,
+          fetchImpl
+        });
+        const recipientEvent = eventFromState(recipientState, normalizedEventId);
+        needsRecoveryInvite = !sameSharedEvent(senderEvent, recipientEvent);
+      }
+
+      const reservation = await reserveActivityNotification({
         supabaseUrl,
         serviceRoleKey,
-        userId: recipientUserId,
         eventId: normalizedEventId,
-        fetchImpl
-      });
-      const recipientEvent = eventFromState(recipientState, normalizedEventId);
-      needsRecoveryInvite = !sameSharedEvent(senderEvent, recipientEvent);
-    }
-
-    const reservation = await reserveActivityNotification({
-      supabaseUrl,
-      serviceRoleKey,
-      eventId: normalizedEventId,
-      activityId: normalizedActivityId,
-      kind: normalizedKind,
-      senderUserId: sender.id,
-      recipientUserId,
-      minimumIntervalSeconds:
-        normalizedKind === "expense-created" ? EXPENSE_COOLDOWN_SECONDS : 0,
-      fetchImpl
-    });
-    const shouldStoreInInbox = Boolean(
-      reservation?.allowed || reservation?.reason === "rate-limited"
-    );
-    if (!shouldStoreInInbox) continue;
-
-    let actionUrl = "";
-    if (normalizedKind === "event-invite" || needsRecoveryInvite) {
-      privateInvite ??= await createPrivateEventInvite({
-        supabaseUrl,
-        serviceRoleKey,
-        event: senderEvent,
+        activityId: normalizedActivityId,
+        kind: normalizedKind,
         senderUserId: sender.id,
         recipientUserId,
+        minimumIntervalSeconds:
+          normalizedKind === "expense-created" ? EXPENSE_COOLDOWN_SECONDS : 0,
         fetchImpl
       });
-      actionUrl = eventInvitationUrl(
-        runtimeConfig?.publicUrl,
-        senderEvent,
-        privateInvite?.token
+      if (reservation?.allowed) {
+        reservedRecipients.push({
+          notificationId: reservation.notification_id
+        });
+      }
+      const shouldStoreInInbox = Boolean(
+        reservation?.allowed || reservation?.reason === "rate-limited"
       );
-      if (!actionUrl) {
-        await deleteActivityReservation({
+      if (!shouldStoreInInbox) continue;
+
+      let actionUrl = "";
+      if (normalizedKind === "event-invite" || needsRecoveryInvite) {
+        privateInvite ??= await createPrivateEventInvite({
+          supabaseUrl,
+          serviceRoleKey,
+          event: senderEvent,
+          senderUserId: sender.id,
+          recipientUserId,
+          fetchImpl
+        });
+        actionUrl = eventInvitationUrl(
+          runtimeConfig?.publicUrl,
+          senderEvent,
+          privateInvite?.token
+        );
+        if (!actionUrl) {
+          await deleteActivityReservation({
+            supabaseUrl,
+            serviceRoleKey,
+            notificationId: reservation.notification_id,
+            fetchImpl: cleanupFetchImpl
+          });
+          continue;
+        }
+      }
+
+      const storedInInbox = await storeInboxNotification({
+        supabaseUrl,
+        serviceRoleKey,
+        recipientUserId,
+        senderUserId: sender.id,
+        eventId: normalizedEventId,
+        activityId: normalizedActivityId,
+        kind: normalizedKind,
+        title: notification.title,
+        body: notification.body,
+        view: normalizedKind === "event-closed" ? "summary" : "event",
+        actionUrl,
+        publicUrl: runtimeConfig?.publicUrl,
+        fetchImpl
+      });
+      if (storedInInbox) inboxRecipients += 1;
+      if (!reservation?.allowed) continue;
+
+      if (!pushDeliveryReady) {
+        await completeActivityNotification({
           supabaseUrl,
           serviceRoleKey,
           notificationId: reservation.notification_id,
-          fetchImpl
+          delivered: 0,
+          fetchImpl: cleanupFetchImpl
         });
         continue;
       }
-    }
 
-    const storedInInbox = await storeInboxNotification({
-      supabaseUrl,
-      serviceRoleKey,
-      recipientUserId,
-      senderUserId: sender.id,
-      eventId: normalizedEventId,
-      activityId: normalizedActivityId,
-      kind: normalizedKind,
-      title: notification.title,
-      body: notification.body,
-      view: normalizedKind === "event-closed" ? "summary" : "event",
-      actionUrl,
-      publicUrl: runtimeConfig?.publicUrl,
-      fetchImpl
-    });
-    if (storedInInbox) inboxRecipients += 1;
-    if (!reservation?.allowed) continue;
-
-    if (!pushDeliveryReady) {
-      await completeActivityNotification({
+      const devices = await loadEventUpdateDevices({
         supabaseUrl,
         serviceRoleKey,
-        notificationId: reservation.notification_id,
-        delivered: 0,
+        userId: recipientUserId,
         fetchImpl
       });
-      continue;
-    }
+      if (!devices.length) {
+        await completeActivityNotification({
+          supabaseUrl,
+          serviceRoleKey,
+          notificationId: reservation.notification_id,
+          delivered: 0,
+          fetchImpl: cleanupFetchImpl
+        });
+        continue;
+      }
 
-    const devices = await loadEventUpdateDevices({
+      eligibleRecipients.push({
+        recipientUserId,
+        devices,
+        notificationId: reservation.notification_id,
+        actionUrl
+      });
+    }
+  } catch (error) {
+    // No FCM request has started yet, so releasing these reservations is safe.
+    // Without cleanup, a retry treats them as duplicates and silently loses push.
+    await releaseReservations({
       supabaseUrl,
       serviceRoleKey,
-      userId: recipientUserId,
-      fetchImpl
+      recipients: reservedRecipients,
+      fetchImpl: cleanupFetchImpl
     });
-    if (!devices.length) {
-      await completeActivityNotification({
-        supabaseUrl,
-        serviceRoleKey,
-        notificationId: reservation.notification_id,
-        delivered: 0,
-        fetchImpl
-      });
-      continue;
-    }
-
-    eligibleRecipients.push({
-      recipientUserId,
-      devices,
-      notificationId: reservation.notification_id,
-      actionUrl
-    });
+    throw error;
   }
 
   if (!eligibleRecipients.length) {
@@ -309,8 +335,8 @@ export async function sendEventActivityNotification({
     await releaseReservations({
       supabaseUrl,
       serviceRoleKey,
-      recipients: eligibleRecipients,
-      fetchImpl
+      recipients: reservedRecipients,
+      fetchImpl: cleanupFetchImpl
     });
     if (membershipRecipients > 0) {
       return membershipAccessGrantedResponse({
@@ -327,8 +353,26 @@ export async function sendEventActivityNotification({
     await releaseReservations({
       supabaseUrl,
       serviceRoleKey,
-      recipients: eligibleRecipients,
-      fetchImpl
+      recipients: reservedRecipients,
+      fetchImpl: cleanupFetchImpl
+    });
+    if (membershipRecipients > 0) {
+      return membershipAccessGrantedResponse({
+        membershipRecipients,
+        inboxRecipients
+      });
+    }
+    return failure(503, "Push delivery is temporarily unavailable", {
+      code: "PUSH_UNAVAILABLE",
+      retryable: true
+    });
+  }
+  if (fetchImpl[DEADLINE_REMAINING_MS]() <= 0) {
+    await releaseReservations({
+      supabaseUrl,
+      serviceRoleKey,
+      recipients: reservedRecipients,
+      fetchImpl: cleanupFetchImpl
     });
     if (membershipRecipients > 0) {
       return membershipAccessGrantedResponse({
@@ -350,9 +394,9 @@ export async function sendEventActivityNotification({
     let recipientDeliveryUnconfirmed = false;
     for (const device of recipient.devices) {
       let response = null;
+      let responsePayload = {};
       try {
-        response = await fetchWithTimeout(
-          fetchImpl,
+        const deliveryResult = await fetchImpl(
           `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
           {
             method: "POST",
@@ -381,10 +425,20 @@ export async function sendEventActivityNotification({
               }
             })
           },
+          async (deliveryResponse) => ({
+            response: deliveryResponse,
+            payload: deliveryResponse.ok
+              ? {}
+              : await deliveryResponse.json().catch(() => ({}))
+          }),
           deliveryTimeoutMs
         );
-      } catch {
-        recipientDeliveryUnconfirmed = true;
+        response = deliveryResult.response;
+        responsePayload = deliveryResult.payload;
+      } catch (error) {
+        if (error?.requestStarted !== false) {
+          recipientDeliveryUnconfirmed = true;
+        }
         continue;
       }
       if (response.ok) {
@@ -393,13 +447,12 @@ export async function sendEventActivityNotification({
         continue;
       }
 
-      const payload = await response.json().catch(() => ({}));
-      if (invalidFirebaseToken(payload)) {
+      if (invalidFirebaseToken(responsePayload)) {
         await disableInvalidPushToken({
           supabaseUrl,
           serviceRoleKey,
           token: device.token,
-          fetchImpl
+          fetchImpl: cleanupFetchImpl
         });
       }
     }
@@ -411,7 +464,7 @@ export async function sendEventActivityNotification({
         serviceRoleKey,
         notificationId: recipient.notificationId,
         delivered: recipientDeliveries,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     } else if (recipientDeliveryUnconfirmed) {
       // The in-app notification is already durable. Treat a lost FCM response
@@ -422,14 +475,14 @@ export async function sendEventActivityNotification({
         serviceRoleKey,
         notificationId: recipient.notificationId,
         delivered: 0,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     } else {
       await deleteActivityReservation({
         supabaseUrl,
         serviceRoleKey,
         notificationId: recipient.notificationId,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     }
   }
@@ -487,6 +540,64 @@ async function promiseWithTimeout(factory, timeoutMs) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function createDeadlineFetch(fetchImpl, timeoutMs) {
+  if (fetchImpl?.[DEADLINE_FETCH]) return fetchImpl;
+
+  const duration = Math.max(
+    1,
+    Number(timeoutMs) || EVENT_ACTIVITY_REQUEST_TIMEOUT_MS
+  );
+  const deadline = Date.now() + duration;
+  const deadlineFetch = (
+    url,
+    options = {},
+    consumeResponse = null,
+    timeoutOverrideMs = null
+  ) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      const error = new Error("Event activity request timed out");
+      error.code = "NETWORK_TIMEOUT";
+      error.requestStarted = false;
+      return Promise.reject(error);
+    }
+    const overrideMs = Number(timeoutOverrideMs);
+    const effectiveTimeoutMs = Number.isFinite(overrideMs) && overrideMs > 0
+      ? Math.min(remainingMs, overrideMs)
+      : remainingMs;
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      effectiveTimeoutMs,
+      consumeResponse
+    );
+  };
+  Object.defineProperty(deadlineFetch, DEADLINE_FETCH, { value: true });
+  Object.defineProperty(deadlineFetch, DEADLINE_REMAINING_MS, {
+    value: () => deadline - Date.now()
+  });
+  return deadlineFetch;
+}
+
+function createCleanupFetch(fetchImpl) {
+  return (url, options = {}, consumeResponse = null) =>
+    fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      RESERVATION_CLEANUP_TIMEOUT_MS,
+      consumeResponse
+    );
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  return fetchImpl(url, options, async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  }));
 }
 
 function membershipAccessGrantedResponse({
@@ -645,14 +756,19 @@ async function loadAuthenticatedUser({
   accessToken,
   fetchImpl
 }) {
-  const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`
-    }
-  });
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
+    `${supabaseUrl}/auth/v1/user`,
+    {
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${accessToken}`
+      }
+    },
+    null
+  );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function loadAccountState({
@@ -668,12 +784,14 @@ async function loadAccountState({
     order: "updated_at.desc",
     limit: "5"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
     .find((state) => eventFromState(state, eventId)) ?? null;
@@ -720,13 +838,15 @@ async function loadAuthoritativeSharedEvent({
     select: "state,access_key_hash",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
 
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
   const expectedHash = createHash("sha256").update(spaceKey).digest("hex");
   if (!secureHashEquals(snapshot?.access_key_hash, expectedHash)) return null;
@@ -750,12 +870,14 @@ async function loadEventUpdateDevices({
     order: "last_seen_at.desc",
     limit: "8"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/push_devices?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return [];
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   return (Array.isArray(rows) ? rows : []).filter(
     (row) =>
       String(row?.token ?? "").length >= 20 &&
@@ -774,7 +896,8 @@ async function reserveActivityNotification({
   minimumIntervalSeconds,
   fetchImpl
 }) {
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/reserve_event_activity_notification`,
     {
       method: "POST",
@@ -787,10 +910,11 @@ async function reserveActivityNotification({
         p_recipient_user_id: recipientUserId,
         p_min_interval_seconds: minimumIntervalSeconds
       })
-    }
+    },
+    null
   );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function completeActivityNotification({
@@ -918,7 +1042,8 @@ async function verifyCanonicalNotificationMembership({
     !UUID_PATTERN.test(String(recipientUserId ?? ""))
   ) return false;
 
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/verify_shared_event_notification_parties`,
     {
       method: "POST",
@@ -928,10 +1053,11 @@ async function verifyCanonicalNotificationMembership({
         p_sender_user_id: senderUserId,
         p_recipient_user_id: recipientUserId
       })
-    }
+    },
+    false
   );
   if (!response.ok) return false;
-  return (await response.json().catch(() => false)) === true;
+  return payload === true;
 }
 
 async function verifyCanonicalInvitationTarget({
@@ -948,7 +1074,8 @@ async function verifyCanonicalInvitationTarget({
     !UUID_PATTERN.test(String(recipientUserId ?? ""))
   ) return false;
 
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/verify_shared_event_invitation_parties`,
     {
       method: "POST",
@@ -958,10 +1085,11 @@ async function verifyCanonicalInvitationTarget({
         p_sender_user_id: senderUserId,
         p_recipient_user_id: recipientUserId
       })
-    }
+    },
+    false
   );
   if (!response.ok) return false;
-  return (await response.json().catch(() => false)) === true;
+  return payload === true;
 }
 
 function serviceHeaders(serviceRoleKey) {

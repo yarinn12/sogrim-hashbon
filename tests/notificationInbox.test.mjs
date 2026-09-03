@@ -146,6 +146,32 @@ test("a stalled notification inbox load times out and allows a retry", async (t)
   assert.equal(retryCalls, 1);
 });
 
+test("notification inbox keeps its response body inside the load timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      loadNotificationInbox(
+        runtimeConfig(),
+        { timeoutMs: 20 },
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("notification inbox body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("notification inbox rejects an external action url", async () => {
   const result = await loadNotificationInbox(
     runtimeConfig(),

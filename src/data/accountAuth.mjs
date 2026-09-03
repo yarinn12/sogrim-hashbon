@@ -506,7 +506,7 @@ async function ensureAccountWorkspaceRecord(
     throw new Error("Account workspace service is unavailable");
   }
 
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchJsonResponseWithTimeout(
     fetchImpl,
     `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/ensure_account_workspace`,
     {
@@ -520,7 +520,6 @@ async function ensureAccountWorkspaceRecord(
     },
     requestTimeoutMs
   );
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok || !["created", "existing"].includes(payload?.status)) {
     const error = new Error(
       payload?.message ?? payload?.error ?? "Account workspace initialization failed"
@@ -796,15 +795,18 @@ export async function exchangeOAuthCode(
 
 export async function deleteAccount(config, session, fetchImpl = fetch) {
   if (!session?.access_token) throw new Error("Account session is unavailable");
-  const response = await fetchWithTimeout(fetchImpl, `${config?.apiBaseUrl ?? ""}/api/account`, {
-    method: "DELETE",
-    headers: {
-      authorization: `Bearer ${session.access_token}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ confirmation: "delete-my-account" })
-  });
-  const payload = await response.json().catch(() => ({}));
+  const { response, payload } = await fetchJsonResponseWithTimeout(
+    fetchImpl,
+    `${config?.apiBaseUrl ?? ""}/api/account`,
+    {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${session.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({ confirmation: "delete-my-account" })
+    }
+  );
   if (!response.ok) {
     const error = new Error(payload.error ?? "Account deletion failed");
     error.status = response.status;
@@ -952,18 +954,22 @@ function base64Url(bytes) {
 }
 
 async function authRequest(config, path, options, fetchImpl) {
-  const response = await fetchWithTimeout(fetchImpl, `${authBaseUrl(config)}${path}`, {
-    method: options.method,
-    headers: {
-      apikey: config.storage.anonKey,
-      "content-type": "application/json",
-      ...(options.accessToken
-        ? { authorization: `Bearer ${options.accessToken}` }
-        : {})
+  const { response, payload } = await fetchJsonResponseWithTimeout(
+    fetchImpl,
+    `${authBaseUrl(config)}${path}`,
+    {
+      method: options.method,
+      headers: {
+        apikey: config.storage.anonKey,
+        "content-type": "application/json",
+        ...(options.accessToken
+          ? { authorization: `Bearer ${options.accessToken}` }
+          : {})
+      },
+      ...(options.body ? { body: JSON.stringify(options.body) } : {})
     },
-    ...(options.body ? { body: JSON.stringify(options.body) } : {})
-  }, options.timeoutMs);
-  const payload = await response.json().catch(() => ({}));
+    options.timeoutMs
+  );
   if (!response.ok) {
     const error = new Error(
       payload.msg ?? payload.message ?? payload.error_description ?? payload.error ?? "Auth request failed"
@@ -972,6 +978,19 @@ async function authRequest(config, path, options, fetchImpl) {
     throw error;
   }
   return payload;
+}
+
+function fetchJsonResponseWithTimeout(fetchImpl, url, options, timeoutMs) {
+  return fetchWithTimeout(
+    fetchImpl,
+    url,
+    options,
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
+  );
 }
 
 function authBaseUrl(config) {

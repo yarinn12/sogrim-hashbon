@@ -32,8 +32,9 @@ export async function sendEventActivityNotification(
   }
 
   let response;
+  let payload;
   try {
-    response = await fetchWithTimeout(
+    ({ response, payload } = await fetchWithTimeout(
       fetchImpl,
       `${config?.apiBaseUrl ?? ""}/api/notifications/event-activity`,
       {
@@ -49,8 +50,12 @@ export async function sendEventActivityNotification(
         }),
         keepalive: true
       },
-      timeoutMs
-    );
+      timeoutMs,
+      async (response) => ({
+        response,
+        payload: await response.json().catch(() => ({}))
+      })
+    ));
   } catch (error) {
     if (
       String(error?.code ?? "") === "NETWORK_TIMEOUT" ||
@@ -60,7 +65,6 @@ export async function sendEventActivityNotification(
     }
     throw error;
   }
-  const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;
 
   const error = new Error(

@@ -13,7 +13,10 @@ import {
   normalizeSpaceId,
   normalizeSpaceKey
 } from "../domain/cloudSpace.mjs";
-import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
+import {
+  mergeSharedStates,
+  quarantineRemoteMergeTimestampMaps
+} from "../domain/sharedStateMerge.mjs";
 import {
   normalizeAvatarImage,
   normalizeAvatarPreset
@@ -22,7 +25,10 @@ import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 import { markParticipantMembershipChanges } from "../domain/eventMembership.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
-import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
@@ -489,7 +495,8 @@ export async function saveSharedEventDeletion(
 export async function ensureSharedEventMembership(
   runtimeConfig,
   credentials,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {}
 ) {
   const storage = runtimeConfig?.storage;
   const id = normalizeSpaceId(credentials?.id);
@@ -503,7 +510,7 @@ export async function ensureSharedEventMembership(
     throw error;
   }
 
-  const response = await fetchWithTimeout(
+  const { response, responseError } = await fetchWithTimeout(
     fetchImpl,
     `${storage.url}/rest/v1/rpc/join_shared_event`,
     {
@@ -514,13 +521,19 @@ export async function ensureSharedEventMembership(
         "content-type": "application/json"
       },
       body: JSON.stringify({ p_snapshot_id: id })
-    }
+    },
+    timeoutMs,
+    async (membershipResponse) => ({
+      response: membershipResponse,
+      responseError:
+        membershipResponse.status === 403 &&
+        typeof membershipResponse.json === "function"
+          ? await membershipResponse.json().catch(() => null)
+          : null
+    })
   );
 
   if (!response.ok) {
-    const responseError = response.status === 403 && typeof response.json === "function"
-      ? await response.json().catch(() => null)
-      : null;
     const responseMessage = String(
       responseError?.message ?? responseError?.error ?? ""
     ).trim();
@@ -851,7 +864,10 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
     events: [sharedEvent],
     deletedParticipants
   };
-  const merged = mergeSharedStates(state, eventOnlyState);
+  const merged = mergeSharedStates(
+    state,
+    quarantineRemoteMergeTimestampMaps(eventOnlyState)
+  );
   const currentParticipantId = String(state.currentParticipantId ?? "").trim();
   const sharedCurrentParticipantIsActive = Boolean(
     currentParticipantId &&

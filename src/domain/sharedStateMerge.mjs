@@ -18,12 +18,28 @@ const ENTITY_COLLECTION_KEYS = [
   "deletedParticipants"
 ];
 const SENSITIVE_KEY_FIELDS = new Set(["spaceKey", "sharedSpaceKey"]);
+const MERGE_TIMESTAMP_MAP_KEYS = new Set([
+  "membershipUpdatedAtByParticipant",
+  "settingsFieldUpdatedAt"
+]);
+
+export const EVENT_SETTING_FIELDS = Object.freeze([
+  "name",
+  "eventType",
+  "currency",
+  "groupId",
+  "coverImage",
+  "adminsCanEditOnly",
+  "roundSettlementTransfers",
+  "directSettlementTransfers"
+]);
 
 export function mergeSharedStates(remoteState, localState) {
-  assertSafeSharedStateIdentifiers(remoteState, "remoteState");
+  const quarantinedRemoteState = quarantineRemoteMergeTimestampMaps(remoteState);
+  assertSafeSharedStateIdentifiers(quarantinedRemoteState, "remoteState");
   assertSafeSharedStateIdentifiers(localState, "localState");
 
-  const remote = objectOrEmpty(remoteState);
+  const remote = objectOrEmpty(quarantinedRemoteState);
   const local = objectOrEmpty(localState);
   const deletedEvents = mergeEntities(
     remote.deletedEvents,
@@ -469,20 +485,10 @@ function mergeEvent(remoteEvent, localEvent) {
 }
 
 function mergeEventSettings(remoteEvent, localEvent, membership) {
-  const fields = [
-    "name",
-    "eventType",
-    "currency",
-    "groupId",
-    "coverImage",
-    "adminsCanEditOnly",
-    "roundSettlementTransfers",
-    "directSettlementTransfers"
-  ];
   const settings = {};
   const fieldTimestamps = {};
 
-  for (const field of fields) {
+  for (const field of EVENT_SETTING_FIELDS) {
     const remoteHasField = Object.hasOwn(remoteEvent, field);
     const localHasField = Object.hasOwn(localEvent, field);
     if (!remoteHasField && !localHasField) continue;
@@ -1489,6 +1495,11 @@ function collectIdentifierErrors(value, path, errors, seen) {
   for (const [key, nestedValue] of Object.entries(value)) {
     const nestedPath = `${path}.${key}`;
 
+    if (MERGE_TIMESTAMP_MAP_KEYS.has(key)) {
+      collectMergeTimestampMapErrors(nestedValue, nestedPath, errors);
+      continue;
+    }
+
     if (key === "id") {
       if (!isSafeSharedIdentifier(nestedValue)) {
         errors.push(`${nestedPath} must be a safe identifier.`);
@@ -1536,4 +1547,70 @@ function collectIdentifierErrors(value, path, errors, seen) {
     collectIdentifierErrors(nestedValue, nestedPath, errors, seen);
   }
   seen.delete(value);
+}
+
+function collectMergeTimestampMapErrors(value, path, errors) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push(`${path} must be an object of timestamps.`);
+    return;
+  }
+
+  for (const [clockKey, clockValue] of Object.entries(value)) {
+    if (!isSafeSharedIdentifier(clockKey)) {
+      errors.push(`${path} must use safe identifier keys.`);
+    }
+    if (
+      typeof clockValue !== "string" ||
+      !Number.isFinite(Date.parse(clockValue))
+    ) {
+      errors.push(`${path}.${clockKey} must be a valid timestamp.`);
+    }
+  }
+}
+
+export function quarantineRemoteMergeTimestampMaps(value) {
+  return quarantineRemoteMergeTimestampValue(value, new WeakSet());
+}
+
+function quarantineRemoteMergeTimestampValue(value, seen) {
+  if (!value || typeof value !== "object") return value;
+  if (seen.has(value)) return value;
+
+  seen.add(value);
+  let result = value;
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (MERGE_TIMESTAMP_MAP_KEYS.has(key)) {
+      const sanitized = sanitizeRemoteMergeTimestampMap(nestedValue);
+      if (sanitized === nestedValue) continue;
+      if (result === value) result = Array.isArray(value) ? [...value] : { ...value };
+      if (sanitized === undefined) delete result[key];
+      else result[key] = sanitized;
+      continue;
+    }
+
+    const sanitized = quarantineRemoteMergeTimestampValue(nestedValue, seen);
+    if (sanitized === nestedValue) continue;
+    if (result === value) result = Array.isArray(value) ? [...value] : { ...value };
+    result[key] = sanitized;
+  }
+
+  seen.delete(value);
+  return result;
+}
+
+function sanitizeRemoteMergeTimestampMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value);
+  const validEntries = entries.filter(
+    ([clockKey, clockValue]) =>
+      isSafeSharedIdentifier(clockKey) &&
+      typeof clockValue === "string" &&
+      Number.isFinite(Date.parse(clockValue))
+  );
+  if (validEntries.length === entries.length) return value;
+  return validEntries.length ? Object.fromEntries(validEntries) : undefined;
 }

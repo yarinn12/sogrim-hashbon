@@ -502,10 +502,6 @@ function refreshRuntimeConfig(nativeRuntime) {
 function requestRuntimeConfig(nativeRuntime) {
   return nativeRuntimeConfigRequestOptions(nativeRuntime)
     .then((requestOptions) => fetchRuntimeConfig(nativeRuntime, requestOptions))
-    .then(({ response, apiBaseUrl }) => {
-      if (!response.ok) throw new Error("Runtime config unavailable");
-      return response.json().then((config) => ({ config, apiBaseUrl }));
-    })
     .then(({ config, apiBaseUrl }) =>
       normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl)
     );
@@ -546,22 +542,23 @@ async function fetchRuntimeConfig(nativeRuntime, requestOptions) {
   let lastError = null;
 
   for (const apiBaseUrl of origins) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      RUNTIME_CONFIG_TIMEOUT_MS
-    );
     try {
-      const response = await fetch(`${apiBaseUrl}/api/config`, {
-        ...requestOptions,
-        signal: controller.signal
-      });
-      if (response.ok) return { response, apiBaseUrl };
+      const { response, config } = await fetchWithTimeout(
+        globalThis.fetch,
+        `${apiBaseUrl}/api/config`,
+        requestOptions,
+        RUNTIME_CONFIG_TIMEOUT_MS,
+        async (configResponse) => ({
+          response: configResponse,
+          config: configResponse.ok
+            ? await configResponse.json()
+            : null
+        })
+      );
+      if (response.ok) return { config, apiBaseUrl };
       lastError = new Error(`Runtime config HTTP ${response.status}`);
     } catch (error) {
       lastError = error;
-    } finally {
-      clearTimeout(timeoutId);
     }
   }
 
@@ -1324,15 +1321,21 @@ export async function resetSharedState() {
   }
 
   try {
-    const response = await fetchWithTimeout(
+    const { response, payload } = await fetchWithTimeout(
       globalThis.fetch,
       "/api/reset",
       { method: "POST" },
-      RUNTIME_CONFIG_TIMEOUT_MS
+      RUNTIME_CONFIG_TIMEOUT_MS,
+      async (resetResponse) => ({
+        response: resetResponse,
+        payload: resetResponse.ok
+          ? await resetResponse.json()
+          : null
+      })
     );
     if (!response.ok) throw new Error("Reset failed");
     const state = cleanLegacyStarterData(
-      await response.json(),
+      payload,
       loadProtectedParticipantId()
     );
     const localStateWithIdentity = applyLocalParticipantId(

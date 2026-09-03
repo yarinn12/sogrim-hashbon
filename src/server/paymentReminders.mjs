@@ -15,6 +15,10 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const REMINDER_COOLDOWN_MINUTES = 12 * 60;
 const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
+const RESERVATION_CLEANUP_TIMEOUT_MS = 2_000;
+export const PAYMENT_REMINDER_REQUEST_TIMEOUT_MS = 10_000;
+const DEADLINE_FETCH = Symbol("payment-reminder-deadline-fetch");
+const DEADLINE_REMAINING_MS = Symbol("payment-reminder-deadline-remaining-ms");
 
 export async function sendPaymentReminder({
   runtimeConfig,
@@ -25,7 +29,8 @@ export async function sendPaymentReminder({
   fetchImpl = fetch,
   accessTokenProvider = defaultFirebaseAccessTokenProvider,
   deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
-  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  requestTimeoutMs = PAYMENT_REMINDER_REQUEST_TIMEOUT_MS
 }) {
   const normalizedEventId = String(eventId ?? "").trim();
   const normalizedTransferId = String(transferId ?? "").trim();
@@ -55,6 +60,9 @@ export async function sendPaymentReminder({
       code: "PUSH_UNAVAILABLE"
     });
   }
+
+  const cleanupFetchImpl = createCleanupFetch(fetchImpl);
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
 
   const sender = await loadAuthenticatedUser({
     supabaseUrl,
@@ -110,6 +118,7 @@ export async function sendPaymentReminder({
       code: "RECIPIENT_OFFLINE"
     });
   }
+
   if (!isActiveEventParticipant(senderEvent, `account-${recipientUserId}`)) {
     return failure(403, "The payer is no longer in this event", {
       code: "REMINDER_NOT_ALLOWED"
@@ -157,34 +166,47 @@ export async function sendPaymentReminder({
     title: "תזכורת חדשה בסוגרים חשבון",
     body: "פרטי ההתחשבנות מחכים לך באפליקציה."
   };
-  const storedInInbox = await storeInboxNotification({
-    supabaseUrl,
-    serviceRoleKey,
-    recipientUserId,
-    senderUserId: sender.id,
-    eventId: normalizedEventId,
-    activityId: normalizedTransferId,
-    kind: "payment-reminder",
-    title: "תזכורת לסגירת חשבון",
-    body: message,
-    view: "summary",
-    fetchImpl
-  });
-  const devices = pushDeliveryReady
-    ? await loadPaymentReminderDevices({
-        supabaseUrl,
-        serviceRoleKey,
-        userId: recipientUserId,
-        fetchImpl
-      })
-    : [];
+  let storedInInbox = false;
+  let devices = [];
+  try {
+    storedInInbox = await storeInboxNotification({
+      supabaseUrl,
+      serviceRoleKey,
+      recipientUserId,
+      senderUserId: sender.id,
+      eventId: normalizedEventId,
+      activityId: normalizedTransferId,
+      kind: "payment-reminder",
+      title: "תזכורת לסגירת חשבון",
+      body: message,
+      view: "summary",
+      fetchImpl
+    });
+    devices = pushDeliveryReady
+      ? await loadPaymentReminderDevices({
+          supabaseUrl,
+          serviceRoleKey,
+          userId: recipientUserId,
+          fetchImpl
+        })
+      : [];
+  } catch (error) {
+    // No FCM request has started, so this reservation is safe to release.
+    await deleteReminderReservation({
+      supabaseUrl,
+      serviceRoleKey,
+      reminderId: reservation.reminder_id,
+      fetchImpl: cleanupFetchImpl
+    });
+    throw error;
+  }
   if (!devices.length) {
     await completeReminderReservation({
       supabaseUrl,
       serviceRoleKey,
       reminderId: reservation.reminder_id,
       delivered: 0,
-      fetchImpl
+      fetchImpl: cleanupFetchImpl
     });
     return {
       ok: true,
@@ -210,14 +232,14 @@ export async function sendPaymentReminder({
         supabaseUrl,
         serviceRoleKey,
         reminderId: reservation.reminder_id,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     }
     await deleteReminderReservation({
       supabaseUrl,
       serviceRoleKey,
       reminderId: reservation.reminder_id,
-      fetchImpl
+      fetchImpl: cleanupFetchImpl
     });
     return failure(503, "Push delivery is temporarily unavailable", {
       code: "PUSH_UNAVAILABLE",
@@ -230,14 +252,34 @@ export async function sendPaymentReminder({
         supabaseUrl,
         serviceRoleKey,
         reminderId: reservation.reminder_id,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     }
     await deleteReminderReservation({
       supabaseUrl,
       serviceRoleKey,
       reminderId: reservation.reminder_id,
-      fetchImpl
+      fetchImpl: cleanupFetchImpl
+    });
+    return failure(503, "Push delivery is temporarily unavailable", {
+      code: "PUSH_UNAVAILABLE",
+      retryable: true
+    });
+  }
+  if (fetchImpl[DEADLINE_REMAINING_MS]() <= 0) {
+    if (storedInInbox) {
+      return finishInAppOnlyReminder({
+        supabaseUrl,
+        serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl: cleanupFetchImpl
+      });
+    }
+    await deleteReminderReservation({
+      supabaseUrl,
+      serviceRoleKey,
+      reminderId: reservation.reminder_id,
+      fetchImpl: cleanupFetchImpl
     });
     return failure(503, "Push delivery is temporarily unavailable", {
       code: "PUSH_UNAVAILABLE",
@@ -249,9 +291,9 @@ export async function sendPaymentReminder({
   let deliveryUnconfirmed = false;
   for (const device of devices) {
     let response = null;
+    let responsePayload = {};
     try {
-      response = await fetchWithTimeout(
-        fetchImpl,
+      const deliveryResult = await fetchImpl(
         `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
         {
           method: "POST",
@@ -281,10 +323,20 @@ export async function sendPaymentReminder({
             }
           })
         },
+        async (deliveryResponse) => ({
+          response: deliveryResponse,
+          payload: deliveryResponse.ok
+            ? {}
+            : await deliveryResponse.json().catch(() => ({}))
+        }),
         deliveryTimeoutMs
       );
-    } catch {
-      deliveryUnconfirmed = true;
+      response = deliveryResult.response;
+      responsePayload = deliveryResult.payload;
+    } catch (error) {
+      if (error?.requestStarted !== false) {
+        deliveryUnconfirmed = true;
+      }
       continue;
     }
     if (response.ok) {
@@ -292,13 +344,12 @@ export async function sendPaymentReminder({
       continue;
     }
 
-    const payload = await response.json().catch(() => ({}));
-    if (invalidFirebaseToken(payload)) {
+    if (invalidFirebaseToken(responsePayload)) {
       await disableInvalidPushToken({
         supabaseUrl,
         serviceRoleKey,
         token: device.token,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     }
   }
@@ -309,7 +360,7 @@ export async function sendPaymentReminder({
         supabaseUrl,
         serviceRoleKey,
         reminderId: reservation.reminder_id,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
     }
     if (deliveryUnconfirmed) {
@@ -321,7 +372,7 @@ export async function sendPaymentReminder({
         serviceRoleKey,
         reminderId: reservation.reminder_id,
         delivered: 0,
-        fetchImpl
+        fetchImpl: cleanupFetchImpl
       });
       return failure(502, "Reminder delivery could not be confirmed", {
         code: "DELIVERY_UNCONFIRMED",
@@ -332,7 +383,7 @@ export async function sendPaymentReminder({
       supabaseUrl,
       serviceRoleKey,
       reminderId: reservation.reminder_id,
-      fetchImpl
+      fetchImpl: cleanupFetchImpl
     });
     return failure(502, "No device accepted the reminder", {
       code: "DELIVERY_FAILED",
@@ -345,7 +396,7 @@ export async function sendPaymentReminder({
     serviceRoleKey,
     reminderId: reservation.reminder_id,
     delivered,
-    fetchImpl
+    fetchImpl: cleanupFetchImpl
   });
   return {
     ok: true,
@@ -373,6 +424,65 @@ async function promiseWithTimeout(factory, timeoutMs) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function createDeadlineFetch(fetchImpl, timeoutMs) {
+  if (fetchImpl?.[DEADLINE_FETCH]) return fetchImpl;
+
+  const duration = Math.max(
+    1,
+    Number(timeoutMs) || PAYMENT_REMINDER_REQUEST_TIMEOUT_MS
+  );
+  const deadline = Date.now() + duration;
+  const deadlineFetch = (
+    url,
+    options = {},
+    consumeResponse = null,
+    timeoutOverrideMs = null
+  ) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      const error = new Error("Payment reminder request timed out");
+      error.code = "NETWORK_TIMEOUT";
+      error.requestStarted = false;
+      return Promise.reject(error);
+    }
+    const overrideMs = Number(timeoutOverrideMs);
+    const effectiveTimeoutMs = Number.isFinite(overrideMs) && overrideMs > 0
+      ? Math.min(remainingMs, overrideMs)
+      : remainingMs;
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      effectiveTimeoutMs,
+      consumeResponse
+    );
+  };
+  Object.defineProperty(deadlineFetch, DEADLINE_FETCH, { value: true });
+  Object.defineProperty(deadlineFetch, DEADLINE_REMAINING_MS, {
+    value: () => deadline - Date.now()
+  });
+  return deadlineFetch;
+}
+
+function createCleanupFetch(fetchImpl) {
+  return (url, options = {}, consumeResponse = null) =>
+    fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      RESERVATION_CLEANUP_TIMEOUT_MS,
+      consumeResponse
+    );
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  const result = await fetchImpl(url, options, async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  }));
+  return result;
 }
 
 async function finishInAppOnlyReminder({
@@ -441,14 +551,19 @@ async function loadAuthenticatedUser({
   accessToken,
   fetchImpl
 }) {
-  const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`
-    }
-  });
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
+    `${supabaseUrl}/auth/v1/user`,
+    {
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${accessToken}`
+      }
+    },
+    null
+  );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function loadAccountState({
@@ -464,12 +579,14 @@ async function loadAccountState({
     order: "updated_at.desc",
     limit: "5"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
     .find((state) => eventFromState(state, eventId)) ?? null;
@@ -510,13 +627,15 @@ async function loadAuthoritativeSharedEvent({
     select: "state",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
 
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
   return eventFromState(snapshot?.state, eventId);
 }
@@ -542,12 +661,14 @@ async function loadPaymentReminderDevices({
     order: "last_seen_at.desc",
     limit: "8"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/push_devices?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return [];
-  const rows = await response.json().catch(() => []);
+  const rows = payload;
   return (Array.isArray(rows) ? rows : []).filter(
     (row) =>
       String(row?.token ?? "").length >= 20 &&
@@ -564,7 +685,8 @@ async function reserveReminder({
   recipientUserId,
   fetchImpl
 }) {
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/reserve_payment_reminder`,
     {
       method: "POST",
@@ -576,10 +698,11 @@ async function reserveReminder({
         p_recipient_user_id: recipientUserId,
         p_cooldown_minutes: REMINDER_COOLDOWN_MINUTES
       })
-    }
+    },
+    null
   );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function verifyCanonicalNotificationMembership({
@@ -596,7 +719,8 @@ async function verifyCanonicalNotificationMembership({
     !UUID_PATTERN.test(String(recipientUserId ?? ""))
   ) return false;
 
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/verify_shared_event_notification_parties`,
     {
       method: "POST",
@@ -606,10 +730,11 @@ async function verifyCanonicalNotificationMembership({
         p_sender_user_id: senderUserId,
         p_recipient_user_id: recipientUserId
       })
-    }
+    },
+    false
   );
   if (!response.ok) return false;
-  return (await response.json().catch(() => false)) === true;
+  return payload === true;
 }
 
 async function completeReminderReservation({

@@ -705,6 +705,32 @@ try {
   });
   const noteCreateStartedAt = performance.now();
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  const groupedDeviceClock = "2026-08-03T12:11:00.000Z";
+  joinerState = {
+    ...joinerState,
+    groups: [
+      ...(joinerState.groups ?? []),
+      {
+        id: `group-two-account-${suffix}`,
+        name: "קבוצת בדיקת סנכרון",
+        memberIds: [ownerProfile.participantId, joinerProfile.participantId],
+        adminIds: [ownerProfile.participantId]
+      }
+    ],
+    events: joinerState.events.map((event) =>
+      event.id === eventId
+        ? {
+            ...event,
+            groupId: `group-two-account-${suffix}`,
+            settingsUpdatedAt: groupedDeviceClock,
+            settingsFieldUpdatedAt: {
+              ...(event.settingsFieldUpdatedAt ?? {}),
+              groupId: groupedDeviceClock
+            }
+          }
+        : event
+    )
+  };
   joinerState = await refreshSharedEvents(joinerConfig, joinerState);
   assert.equal(
     joinerState.events[0].notes?.find((note) => note.id === sharedNoteId)?.body,
@@ -902,7 +928,7 @@ try {
       expenseDeletionSurvivesStaleDeviceWrite: true,
       settlementMatchedBothAccounts: true,
       transferStatusSynced: true,
-      sharedNotesCreateEditAndPinSynced: true,
+      sharedNotesReachGroupedDeviceAndSyncEdits: true,
       eventClosureSynced: true,
       bothAccountWorkspacesReloaded: true,
       nonAdminLeftWithMoneyHistoryPreservedOffline: true,

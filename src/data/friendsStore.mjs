@@ -166,7 +166,7 @@ export async function loadOwnFriendProfile(
 }
 
 async function patchFriendProfile(config, body, select, fetchImpl) {
-  const response = await fetchWithTimeout(
+  const { response, payload: rows } = await fetchFriendJsonWithTimeout(
     fetchImpl,
     restUrl(config, "user_profiles", {
       user_id: `eq.${config.storage.account.userId}`,
@@ -181,7 +181,6 @@ async function patchFriendProfile(config, body, select, fetchImpl) {
       body: JSON.stringify(body)
     }
   );
-  const rows = await responseJson(response);
   if (!response.ok) {
     throw friendStoreError(rows, "Profile sync failed", response.status);
   }
@@ -492,7 +491,7 @@ function normalizeAccountUserId(value) {
 }
 
 async function readRows(config, table, query, fetchImpl, timeoutMs) {
-  const response = await fetchWithTimeout(
+  const { response, payload: rows } = await fetchFriendJsonWithTimeout(
     fetchImpl,
     restUrl(config, table, query),
     {
@@ -500,7 +499,6 @@ async function readRows(config, table, query, fetchImpl, timeoutMs) {
     },
     timeoutMs
   );
-  const rows = await responseJson(response);
   if (!response.ok) {
     throw friendStoreError(rows, "Friend data unavailable", response.status);
   }
@@ -508,7 +506,7 @@ async function readRows(config, table, query, fetchImpl, timeoutMs) {
 }
 
 async function callFriendRpc(config, functionName, body, fetchImpl, timeoutMs) {
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchFriendJsonWithTimeout(
     fetchImpl,
     `${String(config.storage.url).replace(/\/+$/, "")}/rest/v1/rpc/${functionName}`,
     {
@@ -518,7 +516,6 @@ async function callFriendRpc(config, functionName, body, fetchImpl, timeoutMs) {
     },
     timeoutMs
   );
-  const payload = await responseJson(response);
   if (!response.ok) {
     throw friendStoreError(payload, "Friend request failed", response.status);
   }
@@ -550,8 +547,17 @@ function friendHeaders(config) {
   };
 }
 
-async function responseJson(response) {
-  return response.json().catch(() => ({}));
+function fetchFriendJsonWithTimeout(fetchImpl, url, options, timeoutMs) {
+  return fetchWithTimeout(
+    fetchImpl,
+    url,
+    options,
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
+  );
 }
 
 function friendStoreError(payload, fallback, status = 0) {

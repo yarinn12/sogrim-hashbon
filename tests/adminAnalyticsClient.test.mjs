@@ -60,6 +60,36 @@ test("admin analytics releases a dashboard request that never responds", async (
   );
 });
 
+test("admin analytics releases a dashboard response whose body never completes", async () => {
+  const hung = new Promise((_, reject) => setTimeout(() => {
+    const error = new Error("dashboard response body stayed pending");
+    error.code = "TEST_HUNG";
+    reject(error);
+  }, 250));
+  await assert.rejects(
+    Promise.race([
+      loadAdminAnalyticsOverview(
+        {
+          apiBaseUrl: "https://app.example.com",
+          storage: { account: { accessToken: "admin-token" } }
+        },
+        {
+          fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            async json() {
+              return new Promise(() => {});
+            }
+          }),
+          timeoutMs: 5
+        }
+      ),
+      hung
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+});
+
 test("admin analytics response is normalized before rendering", async () => {
   const result = await loadAdminAnalyticsOverview(
     {

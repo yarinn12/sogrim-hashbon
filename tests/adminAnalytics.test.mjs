@@ -124,6 +124,51 @@ test("admin analytics apply one deadline across both aggregate requests", async 
   assert.equal(requests.length, 3);
 });
 
+test("admin analytics stop waiting when the account response body stalls", async () => {
+  const result = await Promise.race([
+    getAdminAnalyticsOverview({
+      runtimeConfig,
+      env,
+      authorization: "Bearer account-token",
+      requestTimeoutMs: 20,
+      fetchImpl: async () => ({
+        ok: true,
+        async json() {
+          return new Promise(() => {});
+        }
+      })
+    }),
+    new Promise((resolve) => setTimeout(() => resolve({ status: "hung" }), 250))
+  ]);
+
+  assert.equal(result.status, 502);
+});
+
+test("admin analytics stop waiting when an aggregate response body stalls", async () => {
+  const result = await Promise.race([
+    getAdminAnalyticsOverview({
+      runtimeConfig,
+      env,
+      authorization: "Bearer account-token",
+      requestTimeoutMs: 20,
+      fetchImpl: async (url) => {
+        if (String(url).endsWith("/auth/v1/user")) {
+          return jsonResponse({ id: "owner", email: "owner@example.com" });
+        }
+        return {
+          ok: true,
+          async json() {
+            return new Promise(() => {});
+          }
+        };
+      }
+    }),
+    new Promise((resolve) => setTimeout(() => resolve({ status: "hung" }), 250))
+  ]);
+
+  assert.equal(result.status, 502);
+});
+
 test("admin email parsing is normalized and rejects malformed entries", () => {
   assert.deepEqual(
     [...parseAdminEmails(" OWNER@example.com; second@example.com invalid ")],

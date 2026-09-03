@@ -21,7 +21,7 @@ export async function sendPaymentReminder(
     return { ok: false, reason: "unavailable" };
   }
 
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchWithTimeout(
     fetchImpl,
     `${config?.apiBaseUrl ?? ""}/api/notifications/payment-reminder`,
     {
@@ -35,9 +35,12 @@ export async function sendPaymentReminder(
         transferId: normalizedTransferId
       })
     },
-    timeoutMs
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
   );
-  const payload = await response.json().catch(() => ({}));
   if (response.ok) return payload;
 
   const error = new Error(

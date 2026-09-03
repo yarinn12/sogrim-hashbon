@@ -263,3 +263,20 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   await expect(page.locator('[data-settings-section="rounding"]')).toContainText("דיוק מלא באגורות");
   await expect(page.locator('[data-settings-section="lock"]')).toContainText("האירוע נעול");
 });
+
+test("closing the choice picker preserves an account lock acquired while it was open", async ({ page }) => {
+  const currencyCard = page.locator('[data-settings-section="currency"]');
+  await currencyCard.click();
+
+  await page.locator('[data-choice-select-action="event-currency"]').click();
+  await expect(page.locator(".app-choice-picker-backdrop")).toBeVisible();
+
+  await page.evaluate(() => {
+    document.documentElement.classList.add("account-auth-locked");
+    document.getElementById("app")?.setAttribute("inert", "");
+  });
+  await page.keyboard.press("Escape");
+
+  await expect(page.locator(".app-choice-picker-backdrop")).toHaveCount(0);
+  await expect(page.locator("#app")).toHaveAttribute("inert", "");
+});

@@ -137,6 +137,32 @@ test("referral status releases a hanging entitlement request", async () => {
   );
 });
 
+test("referral status keeps the entitlement response body inside its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      loadReferralProgramStatus(
+        accountConfig(),
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        5
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("referral response body stayed unbounded")), 250)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 function jsonResponse(payload, ok = true, status = ok ? 200 : 500) {
   return {
     ok,

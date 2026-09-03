@@ -1,4 +1,7 @@
-import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout
+} from "./fetchTimeout.mjs";
 import { isAllowedPublicUrl } from "../domain/publicOrigin.mjs";
 
 const INBOX_SELECT = [
@@ -16,7 +19,10 @@ const INBOX_SELECT = [
 
 export async function loadNotificationInbox(
   config,
-  { limit = 40 } = {},
+  {
+    limit = 40,
+    timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+  } = {},
   fetchImpl = fetch
 ) {
   const identity = inboxIdentity(config);
@@ -28,17 +34,23 @@ export async function loadNotificationInbox(
     order: "created_at.desc",
     limit: String(Math.min(50, Math.max(1, Number(limit) || 40)))
   });
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchWithTimeout(
     fetchImpl,
     `${identity.url}/rest/v1/notification_inbox?${params}`,
     {
       headers: accountHeaders(identity),
       cache: "no-store"
-    }
+    },
+    timeoutMs,
+    async (inboxResponse) => ({
+      response: inboxResponse,
+      payload: inboxResponse.ok
+        ? await inboxResponse.json().catch(() => [])
+        : []
+    })
   );
   if (!response.ok) throw new Error("Notification inbox could not be loaded");
 
-  const payload = await response.json().catch(() => []);
   return {
     available: true,
     items: Array.isArray(payload)

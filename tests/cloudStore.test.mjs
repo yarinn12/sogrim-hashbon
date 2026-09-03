@@ -168,6 +168,33 @@ test("readCloudState honors the caller startup timeout", async () => {
   assert.ok(Date.now() - startedAt < 500, "cloud startup reads must stay bounded");
 });
 
+test("readCloudState keeps a successful response body inside the startup timeout", async () => {
+  const config = createConfig("friends-body-timeout");
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      readCloudState(
+        config,
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        { timeoutMs: 10 }
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("cloud response body stayed unbounded")), 250)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("an unchanged cloud snapshot uses a version-only read", async () => {
   const config = createConfig("friends-version-only");
   await readCloudState(config, async () =>

@@ -40,7 +40,8 @@ export async function ensureOpenEventInvite(
   config,
   eventId,
   candidateToken = "",
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  { timeoutMs } = {}
 ) {
   return manageOpenEventInvite(
     config,
@@ -49,14 +50,16 @@ export async function ensureOpenEventInvite(
       candidateToken,
       operation: "ensure"
     },
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
 }
 
 export async function rotateOpenEventInvite(
   config,
   eventId,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  { timeoutMs } = {}
 ) {
   return manageOpenEventInvite(
     config,
@@ -64,7 +67,8 @@ export async function rotateOpenEventInvite(
       eventId,
       operation: "rotate"
     },
-    fetchImpl
+    fetchImpl,
+    timeoutMs
   );
 }
 
@@ -117,7 +121,7 @@ async function redeemTokenInvite(
   if (account?.accessToken) {
     headers.authorization = `Bearer ${account.accessToken}`;
   }
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchJsonResponseWithTimeout(
     fetchImpl,
     `${config?.apiBaseUrl ?? ""}/api/event-invites/redeem`,
     {
@@ -127,7 +131,6 @@ async function redeemTokenInvite(
     },
     timeoutMs
   );
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw inviteError(
       payload,
@@ -159,7 +162,8 @@ function inviteTokenParameterPresent(urlValue) {
 async function manageOpenEventInvite(
   config,
   { eventId, candidateToken = "", operation },
-  fetchImpl
+  fetchImpl,
+  timeoutMs
 ) {
   const account = config?.storage?.account;
   if (!account?.userId || !account?.accessToken) {
@@ -170,7 +174,7 @@ async function manageOpenEventInvite(
     );
   }
 
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchJsonResponseWithTimeout(
     fetchImpl,
     `${config?.apiBaseUrl ?? ""}/api/event-invites/open-link`,
     {
@@ -184,9 +188,9 @@ async function manageOpenEventInvite(
         candidateToken: normalizeInviteToken(candidateToken) ?? "",
         operation
       })
-    }
+    },
+    timeoutMs
   );
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw inviteError(
       payload,
@@ -209,6 +213,19 @@ async function manageOpenEventInvite(
     createdAt: String(payload?.createdAt ?? ""),
     rotated: Boolean(payload?.rotated)
   };
+}
+
+function fetchJsonResponseWithTimeout(fetchImpl, url, options, timeoutMs) {
+  return fetchWithTimeout(
+    fetchImpl,
+    url,
+    options,
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
+  );
 }
 
 function normalizeInviteToken(value) {

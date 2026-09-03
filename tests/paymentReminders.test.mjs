@@ -105,6 +105,7 @@ function createReminderFetch({
   reservationStatus = 200,
   pushResponseStatus = 200,
   pushHandler = null,
+  inboxHandler = null,
   inboxStatus = 201
 } = {}) {
   const requests = [];
@@ -146,6 +147,7 @@ function createReminderFetch({
       address.includes("/rest/v1/notification_inbox?") &&
       options.method === "POST"
     ) {
+      if (inboxHandler) return inboxHandler({ url: address, options });
       return new Response(null, { status: inboxStatus });
     }
     if (address.includes("fcm.googleapis.com/")) {
@@ -265,6 +267,72 @@ test("server fails closed when the authoritative shared transfer is already paid
 
   assert.equal(result.status, 403);
   assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
+});
+
+test("server reminder deadline includes the authenticated-user response body", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      sendPaymentReminder({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-access-token",
+        eventId: EVENT_ID,
+        transferId: TRANSFER_ID,
+        requestTimeoutMs: 20,
+        fetchImpl: async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("server reminder body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("a pre-FCM reminder deadline releases its reservation after a stalled inbox write", async () => {
+  const { fetchImpl, requests } = createReminderFetch({
+    inboxHandler: () => new Promise(() => {})
+  });
+
+  await assert.rejects(
+    Promise.race([
+      sendPaymentReminder({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-access-token",
+        eventId: EVENT_ID,
+        transferId: TRANSFER_ID,
+        fetchImpl,
+        requestTimeoutMs: 25
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("reminder cleanup stayed unbounded")), 500)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/payment_reminders?") &&
+      request.options.method === "DELETE"
+    ),
+    true,
+    "an unattempted reminder must remain retryable"
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false
+  );
 });
 
 test("a stalled reminder push falls back to the inbox within its deadline", async () => {
@@ -541,6 +609,67 @@ test("server falls back to the inbox when Firebase authorization stalls", async 
   assert.ok(Date.now() - startedAt < 1_000);
 });
 
+test("an expired Firebase authorization releases a reminder when inbox delivery failed", async () => {
+  const { fetchImpl, requests } = createReminderFetch({ inboxStatus: 503 });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    requestTimeoutMs: 200,
+    accessTokenTimeoutMs: 250,
+    accessTokenProvider: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/payment_reminders?") &&
+      request.options.method === "DELETE"
+    ),
+    true,
+    "a failed inbox plus unattempted push must not poison the reminder cooldown"
+  );
+});
+
+test("a late Firebase authorization result does not masquerade as an attempted reminder", async () => {
+  const { fetchImpl, requests } = createReminderFetch({ inboxStatus: 503 });
+  const result = await sendPaymentReminder({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    transferId: TRANSFER_ID,
+    fetchImpl,
+    requestTimeoutMs: 200,
+    accessTokenTimeoutMs: 500,
+    accessTokenProvider: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return {
+        accessToken: "firebase-access-token",
+        projectId: "sogrim-demo"
+      };
+    }
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/payment_reminders?") &&
+      request.options.method === "DELETE"
+    ),
+    true
+  );
+});
+
 test("client reminder store requests in-app delivery without a device push capability", async () => {
   const calls = [];
   const result = await sendClientPaymentReminder(
@@ -593,6 +722,42 @@ test("client reminder store releases a hanging mobile request after its timeout"
       },
       5
     ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("client reminder store keeps response JSON inside its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      sendClientPaymentReminder(
+        {
+          apiBaseUrl: "https://sogrim.example",
+          storage: {
+            account: {
+              userId: CREDITOR_USER_ID,
+              accessToken: "account-access-token"
+            }
+          }
+        },
+        { eventId: EVENT_ID, transferId: TRANSFER_ID },
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        5
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("reminder response body stayed unbounded")), 250)
+      )
+    ]),
     (error) => error?.code === "NETWORK_TIMEOUT"
   );
 

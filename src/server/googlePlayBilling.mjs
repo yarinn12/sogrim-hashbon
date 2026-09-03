@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { GoogleAuth } from "google-auth-library";
+import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 
 const PACKAGE_NAME = "com.sogrimhashbon.app";
 const ANDROID_PUBLISHER_SCOPE =
   "https://www.googleapis.com/auth/androidpublisher";
+export const GOOGLE_PLAY_VERIFICATION_TIMEOUT_MS = 10_000;
 
 export async function verifyGooglePlaySubscription({
   runtimeConfig,
@@ -12,7 +14,8 @@ export async function verifyGooglePlaySubscription({
   productId = "",
   purchaseToken = "",
   fetchImpl = fetch,
-  accessTokenProvider = defaultAccessTokenProvider
+  accessTokenProvider = defaultAccessTokenProvider,
+  requestTimeoutMs = GOOGLE_PLAY_VERIFICATION_TIMEOUT_MS
 }) {
   const configuredProductId = String(
     runtimeConfig?.monetization?.premiumProductId ?? ""
@@ -46,17 +49,27 @@ export async function verifyGooglePlaySubscription({
     return failure(503, "Subscription storage is unavailable");
   }
 
-  const user = await loadAuthenticatedUser({
-    supabaseUrl,
-    anonKey,
-    accessToken,
-    fetchImpl
-  });
+  const requestDeadline = createRequestDeadline(fetchImpl, requestTimeoutMs);
+  fetchImpl = requestDeadline.fetch;
+
+  let user;
+  try {
+    user = await loadAuthenticatedUser({
+      supabaseUrl,
+      anonKey,
+      accessToken,
+      fetchImpl
+    });
+  } catch {
+    return failure(502, "Google Play verification is unavailable");
+  }
   if (!user?.id) return failure(401, "Account session is invalid");
 
   let publisherAccessToken;
   try {
-    publisherAccessToken = await accessTokenProvider(env);
+    publisherAccessToken = await requestDeadline.run(
+      () => accessTokenProvider(env)
+    );
   } catch {
     return failure(503, "Google Play verification is unavailable");
   }
@@ -64,16 +77,24 @@ export async function verifyGooglePlaySubscription({
     return failure(503, "Google Play verification is unavailable");
   }
 
-  const subscriptionResponse = await fetchImpl(
-    subscriptionLookupUrl(normalizedPurchaseToken),
-    {
-      headers: {
-        authorization: `Bearer ${publisherAccessToken}`,
-        accept: "application/json"
-      }
-    }
-  );
-  const subscription = await subscriptionResponse.json().catch(() => null);
+  let subscriptionResponse;
+  let subscription;
+  try {
+    ({ response: subscriptionResponse, payload: subscription } =
+      await fetchJsonResponse(
+        fetchImpl,
+        subscriptionLookupUrl(normalizedPurchaseToken),
+        {
+          headers: {
+            authorization: `Bearer ${publisherAccessToken}`,
+            accept: "application/json"
+          }
+        },
+        null
+      ));
+  } catch {
+    return failure(502, "Google Play could not verify the subscription");
+  }
   if (!subscriptionResponse.ok || !subscription) {
     return failure(
       subscriptionResponse.status === 404 ? 400 : 502,
@@ -166,18 +187,23 @@ export async function verifyGooglePlaySubscription({
     purchased &&
     subscription.acknowledgementState === "ACKNOWLEDGEMENT_STATE_PENDING";
   if (acknowledgementPending) {
-    const acknowledgementResponse = await fetchImpl(
-      subscriptionAcknowledgeUrl(configuredProductId, normalizedPurchaseToken),
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${publisherAccessToken}`,
-          "content-type": "application/json"
-        },
-        body: "{}"
-      }
-    );
-    if (!acknowledgementResponse.ok) {
+    let acknowledgementResponse;
+    try {
+      acknowledgementResponse = await fetchImpl(
+        subscriptionAcknowledgeUrl(configuredProductId, normalizedPurchaseToken),
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${publisherAccessToken}`,
+            "content-type": "application/json"
+          },
+          body: "{}"
+        }
+      );
+    } catch {
+      acknowledgementResponse = null;
+    }
+    if (!acknowledgementResponse?.ok) {
       return {
         ok: false,
         status: 502,
@@ -205,6 +231,54 @@ export async function verifyGooglePlaySubscription({
       testPurchase: Boolean(subscription.testPurchase)
     }
   };
+}
+
+function createRequestDeadline(fetchImpl, timeoutMs) {
+  const duration = Math.max(
+    1,
+    Number(timeoutMs) || GOOGLE_PLAY_VERIFICATION_TIMEOUT_MS
+  );
+  const deadline = Date.now() + duration;
+  const remainingMs = () => deadline - Date.now();
+  const timeoutError = () => {
+    const error = new Error("Google Play verification timed out");
+    error.code = "NETWORK_TIMEOUT";
+    return error;
+  };
+
+  return {
+    fetch(url, options = {}, consumeResponse = null) {
+      const remaining = remainingMs();
+      if (remaining <= 0) return Promise.reject(timeoutError());
+      return fetchWithTimeout(
+        fetchImpl,
+        url,
+        options,
+        remaining,
+        consumeResponse
+      );
+    },
+    async run(factory) {
+      const remaining = remainingMs();
+      if (remaining <= 0) throw timeoutError();
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(timeoutError()), remaining);
+      });
+      try {
+        return await Promise.race([Promise.resolve().then(factory), timeout]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+  };
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  return fetchImpl(url, options, async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  }));
 }
 
 async function defaultAccessTokenProvider(env) {
@@ -238,14 +312,19 @@ async function loadAuthenticatedUser({
   accessToken,
   fetchImpl
 }) {
-  const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`
-    }
-  });
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
+    `${supabaseUrl}/auth/v1/user`,
+    {
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${accessToken}`
+      }
+    },
+    null
+  );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function recordSubscription({
@@ -254,19 +333,26 @@ async function recordSubscription({
   fetchImpl,
   body
 }) {
-  const response = await fetchImpl(
-    `${supabaseUrl}/rest/v1/rpc/record_verified_subscription`,
-    {
-      method: "POST",
-      headers: {
-        apikey: serviceRoleKey,
-        authorization: `Bearer ${serviceRoleKey}`,
-        "content-type": "application/json"
+  let response;
+  let payload;
+  try {
+    ({ response, payload } = await fetchJsonResponse(
+      fetchImpl,
+      `${supabaseUrl}/rest/v1/rpc/record_verified_subscription`,
+      {
+        method: "POST",
+        headers: {
+          apikey: serviceRoleKey,
+          authorization: `Bearer ${serviceRoleKey}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(body)
       },
-      body: JSON.stringify(body)
-    }
-  );
-  const payload = await response.json().catch(() => ({}));
+      {}
+    ));
+  } catch {
+    return failure(502, "Subscription entitlement could not be saved");
+  }
   if (response.ok) return { ok: true, payload };
 
   const ownershipConflict =

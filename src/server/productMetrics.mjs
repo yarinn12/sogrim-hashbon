@@ -36,23 +36,30 @@ export async function storeProductMetrics({
 
   const deadlineFetch = createDeadlineFetch(fetchImpl, requestTimeoutMs);
   let userResponse;
+  let user;
   try {
-    userResponse = await deadlineFetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        apikey: anonKey,
-        authorization: `Bearer ${accessToken}`
-      }
-    });
+    ({ response: userResponse, payload: user } = await fetchJsonResponse(
+      deadlineFetch,
+      `${supabaseUrl}/auth/v1/user`,
+      {
+        headers: {
+          apikey: anonKey,
+          authorization: `Bearer ${accessToken}`
+        }
+      },
+      null
+    ));
   } catch {
     return failure(502, "Metrics authentication could not be verified");
   }
   if (!userResponse.ok) return failure(401, "Account session is invalid");
-  const user = await userResponse.json().catch(() => null);
   if (!user?.id) return failure(401, "Account session is invalid");
 
   let capacityResponse;
+  let capacityReserved;
   try {
-    capacityResponse = await deadlineFetch(
+    ({ response: capacityResponse, payload: capacityReserved } = await fetchJsonResponse(
+      deadlineFetch,
       `${supabaseUrl}/rest/v1/rpc/reserve_product_metric_batch`,
       {
         method: "POST",
@@ -63,33 +70,36 @@ export async function storeProductMetrics({
           p_window_seconds: Math.ceil(RATE_LIMIT_WINDOW_MS / 1000),
           p_event_limit: RATE_LIMIT_EVENTS
         })
-      }
-    );
+      },
+      false
+    ));
   } catch {
     return failure(502, "Metrics capacity could not be reserved");
   }
   if (!capacityResponse.ok) {
-    await logUpstreamFailure("capacity", capacityResponse);
+    logUpstreamFailure("capacity", capacityResponse, capacityReserved);
     return failure(502, "Metrics capacity could not be reserved");
   }
-  const capacityReserved = await capacityResponse.json().catch(() => false);
   if (capacityReserved !== true) return failure(429, "Metrics rate limit exceeded");
 
   let insertResponse;
+  let insertPayload;
   try {
-    insertResponse = await deadlineFetch(
+    ({ response: insertResponse, payload: insertPayload } = await fetchJsonResponse(
+      deadlineFetch,
       `${supabaseUrl}/rest/v1/product_metrics?on_conflict=id`,
       {
         method: "POST",
         headers: serviceHeaders(serviceRoleKey, "resolution=ignore-duplicates,return=minimal"),
         body: JSON.stringify(metrics.map((metric) => toDatabaseRow(metric, createProductMetricId)))
-      }
-    );
+      },
+      null
+    ));
   } catch {
     return failure(502, "Metrics could not be stored");
   }
   if (!insertResponse.ok) {
-    await logUpstreamFailure("insert", insertResponse);
+    logUpstreamFailure("insert", insertResponse, insertPayload);
     return failure(502, "Metrics could not be stored");
   }
 
@@ -166,15 +176,28 @@ function createDeadlineFetch(fetchImpl, timeoutMs) {
     Number(timeoutMs) || PRODUCT_METRICS_REQUEST_TIMEOUT_MS
   );
   const deadline = Date.now() + duration;
-  return (url, options = {}) => {
+  return (url, options = {}, consumeResponse = null) => {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       const error = new Error("Product metrics request timed out");
       error.code = "NETWORK_TIMEOUT";
       return Promise.reject(error);
     }
-    return fetchWithTimeout(fetchImpl, url, options, remainingMs);
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      remainingMs,
+      consumeResponse
+    );
   };
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  return fetchImpl(url, options, async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  }));
 }
 
 function serviceHeaders(serviceRoleKey, prefer) {
@@ -191,8 +214,7 @@ function bearerToken(value) {
   return match?.[1] ?? "";
 }
 
-async function logUpstreamFailure(stage, response) {
-  const payload = await response.json().catch(() => null);
+function logUpstreamFailure(stage, response, payload) {
   console.error("[product-metrics] Supabase request failed", {
     stage,
     status: Number(response?.status) || 0,

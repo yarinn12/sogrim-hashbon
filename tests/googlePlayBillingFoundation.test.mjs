@@ -77,6 +77,34 @@ test("verified active purchases are hashed, stored and acknowledged server-side"
   assert.equal(calls.some((call) => call.url.endsWith(":acknowledge")), true);
 });
 
+test("server billing keeps the authenticated-user body inside its deadline", async () => {
+  let requestSignal = null;
+  const result = await Promise.race([
+    verifyGooglePlaySubscription({
+      runtimeConfig: billingRuntimeConfig(),
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+      authorization: "Bearer user-access-token",
+      productId: PRODUCT_ID,
+      purchaseToken: PURCHASE_TOKEN,
+      requestTimeoutMs: 20,
+      fetchImpl: async (_url, options) => {
+        requestSignal = options.signal;
+        return {
+          ok: true,
+          status: 200,
+          json: () => new Promise(() => {})
+        };
+      }
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("server billing auth body stayed unbounded")), 300)
+    )
+  ]);
+
+  assert.equal(result.status, 502);
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("pending purchases never grant or acknowledge Premium", async () => {
   const calls = [];
   const response = await verifyGooglePlaySubscription({
@@ -260,6 +288,52 @@ test("purchase verification releases a hanging billing request", async () => {
       ),
       (error) => error?.code === "NETWORK_TIMEOUT"
     );
+  } finally {
+    globalThis.Capacitor = previousCapacitor;
+  }
+});
+
+test("purchase verification keeps the billing response body inside its timeout", async () => {
+  const previousCapacitor = globalThis.Capacitor;
+  globalThis.Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "android",
+    Plugins: {
+      PremiumBilling: {
+        restoreSubscriptions: async () => ({
+          purchases: [{
+            productId: PRODUCT_ID,
+            purchaseToken: "active-purchase-token-with-enough-entropy",
+            purchaseState: "purchased"
+          }]
+        })
+      }
+    }
+  };
+  let requestSignal = null;
+
+  try {
+    await assert.rejects(
+      Promise.race([
+        restorePremium(
+          clientBillingRuntimeConfig(),
+          async (_url, options) => {
+            requestSignal = options.signal;
+            return {
+              ok: true,
+              status: 200,
+              json: () => new Promise(() => {})
+            };
+          },
+          5
+        ),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("billing response body stayed unbounded")), 250)
+        )
+      ]),
+      (error) => error?.code === "NETWORK_TIMEOUT"
+    );
+    assert.equal(requestSignal?.aborted, true);
   } finally {
     globalThis.Capacitor = previousCapacitor;
   }

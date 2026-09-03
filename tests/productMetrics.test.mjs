@@ -277,6 +277,33 @@ test("metrics server never hangs when an upstream stage stops responding", async
   }
 });
 
+test("metrics server keeps the authenticated-user body inside its deadline", async () => {
+  let requestSignal = null;
+  const result = await Promise.race([
+    storeProductMetrics({
+      runtimeConfig,
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+      authorization: "Bearer token",
+      payload: metricPayload(),
+      requestTimeoutMs: 20,
+      fetchImpl: async (_url, options) => {
+        requestSignal = options.signal;
+        return {
+          ok: true,
+          status: 200,
+          json: () => new Promise(() => {})
+        };
+      }
+    }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("metrics auth body stayed unbounded")), 300)
+    )
+  ]);
+
+  assert.equal(result.status, 502);
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("product metrics HTTP route keeps the service boundary injectable", async () => {
   let received = null;
   const server = createServer(createAppHandler({

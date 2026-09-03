@@ -130,6 +130,28 @@ test("account deletion stops waiting when identity verification stalls", async (
   assert.ok(Date.now() - startedAt < 500);
 });
 
+test("account deletion stops waiting when the identity response body stalls", async () => {
+  const result = await Promise.race([
+    deleteSupabaseAccount({
+      runtimeConfig,
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
+      authorization: "Bearer token",
+      confirmation: "delete-my-account",
+      requestTimeoutMs: 10,
+      fetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+          return new Promise(() => {});
+        }
+      })
+    }),
+    new Promise((resolve) => setTimeout(() => resolve({ status: "hung" }), 250))
+  ]);
+
+  assert.equal(result.status, 502);
+});
+
 test("account deletion recovers when an ambiguous timed-out delete already completed", async () => {
   let deleteAttempts = 0;
   const result = await deleteSupabaseAccount({

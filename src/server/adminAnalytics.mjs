@@ -24,20 +24,25 @@ export async function getAdminAnalyticsOverview({
   if (!accessToken) return failure(401, "Authentication is required");
 
   const deadlineFetch = createDeadlineFetch(fetchImpl, requestTimeoutMs);
-  let userResponse;
+  let userResult;
   try {
-    userResponse = await deadlineFetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        apikey: anonKey,
-        authorization: `Bearer ${accessToken}`
-      }
-    });
+    userResult = await deadlineFetch(
+      `${supabaseUrl}/auth/v1/user`,
+      {
+        headers: {
+          apikey: anonKey,
+          authorization: `Bearer ${accessToken}`
+        }
+      },
+      consumeJsonResponse
+    );
   } catch {
     return failure(502, "Admin analytics could not be loaded");
   }
+  const userResponse = userResult.response;
   if (!userResponse.ok) return failure(401, "Account session is invalid");
 
-  const user = await userResponse.json().catch(() => null);
+  const user = userResult.payload;
   const email = normalizeEmail(user?.email);
   if (!user?.id || !email) return failure(401, "Account identity is unavailable");
   if (!adminEmails.has(email)) return failure(403, "Admin access is required");
@@ -46,32 +51,32 @@ export async function getAdminAnalyticsOverview({
   const rpcBody = JSON.stringify({
     p_window_days: normalizeWindowDays(windowDays)
   });
-  let overviewResponse;
-  let operationalResponse;
+  let overviewResult;
+  let operationalResult;
   try {
-    [overviewResponse, operationalResponse] = await Promise.all([
+    [overviewResult, operationalResult] = await Promise.all([
       deadlineFetch(`${rpcBaseUrl}/admin_analytics_overview`, {
         method: "POST",
         headers: serviceHeaders(serviceRoleKey),
         body: rpcBody
-      }),
+      }, consumeJsonResponse),
       deadlineFetch(`${rpcBaseUrl}/admin_operational_health`, {
         method: "POST",
         headers: serviceHeaders(serviceRoleKey),
         body: rpcBody
-      })
+      }, consumeJsonResponse)
     ]);
   } catch {
     return failure(502, "Admin analytics could not be loaded");
   }
+  const overviewResponse = overviewResult.response;
+  const operationalResponse = operationalResult.response;
   if (!overviewResponse.ok || !operationalResponse.ok) {
     return failure(502, "Admin analytics could not be loaded");
   }
 
-  const [overview, operational] = await Promise.all([
-    overviewResponse.json().catch(() => null),
-    operationalResponse.json().catch(() => null)
-  ]);
+  const overview = overviewResult.payload;
+  const operational = operationalResult.payload;
   if (
     !isRecord(overview) ||
     !isRecord(operational)
@@ -98,14 +103,29 @@ function createDeadlineFetch(fetchImpl, timeoutMs) {
     Number(timeoutMs) || ADMIN_ANALYTICS_REQUEST_TIMEOUT_MS
   );
   const deadline = Date.now() + duration;
-  return (url, options = {}) => {
+  return (url, options = {}, consumeResponse = null) => {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       const error = new Error("Admin analytics request timed out");
       error.code = "NETWORK_TIMEOUT";
       return Promise.reject(error);
     }
-    return fetchWithTimeout(fetchImpl, url, options, remainingMs);
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      remainingMs,
+      consumeResponse
+    );
+  };
+}
+
+async function consumeJsonResponse(response) {
+  return {
+    response,
+    payload: response.ok
+      ? await response.json().catch(() => null)
+      : null
   };
 }
 

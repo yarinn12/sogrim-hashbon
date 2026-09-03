@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  EVENT_SETTING_FIELDS,
   mergeSharedStates,
   validateSharedStateIdentifiers
 } from "../src/domain/sharedStateMerge.mjs";
@@ -48,6 +49,89 @@ test("mergeSharedStates unions top-level entities and keeps the local identity",
     "local-event",
     "remote-event"
   ]);
+});
+
+test("a grouped device can merge and upload a newly added shared expense", () => {
+  const remote = stateWithEvent({
+    id: "event-1",
+    participantIds: ["owner", "friend"],
+    adminIds: ["owner"],
+    expenses: [],
+    transfers: []
+  });
+  const local = stateWithEvent({
+    id: "event-1",
+    groupId: "group-1",
+    settingsFieldUpdatedAt: {
+      groupId: "2026-09-03T05:20:33.129Z"
+    },
+    participantIds: ["owner", "friend"],
+    adminIds: ["owner"],
+    expenses: [
+      {
+        ...expense("expense-new", "2026-09-03T06:00:00.000Z", 4200),
+        payers: [{ participantId: "owner", amount: 4200 }],
+        sharedByParticipantIds: ["owner", "friend"]
+      }
+    ],
+    transfers: []
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+
+  assert.equal(event.groupId, "group-1");
+  assert.equal(event.expenses.length, 1);
+  assert.equal(event.expenses[0].id, "expense-new");
+  assert.equal(event.settingsFieldUpdatedAt.groupId, "2026-09-03T05:20:33.129Z");
+});
+
+test("malformed remote merge clocks are quarantined without weakening local validation", () => {
+  const fallbackTimestamp = "2026-09-03T05:20:33.129Z";
+  const remote = stateWithEvent({
+    id: "event-1",
+    groupId: "group-1",
+    settingsUpdatedAt: fallbackTimestamp,
+    settingsFieldUpdatedAt: {
+      groupId: "epoch",
+      "unsafe clock key": fallbackTimestamp
+    },
+    participantIds: [],
+    adminIds: [],
+    expenses: [],
+    transfers: []
+  });
+  const remoteBefore = structuredClone(remote);
+  const local = stateWithEvent({
+    id: "event-1",
+    participantIds: [],
+    adminIds: [],
+    expenses: [],
+    transfers: []
+  });
+
+  const [event] = mergeSharedStates(remote, local).events;
+
+  assert.equal(event.groupId, "group-1");
+  assert.equal(event.settingsFieldUpdatedAt.groupId, fallbackTimestamp);
+  assert.deepEqual(remote, remoteBefore, "quarantine must not mutate remote data");
+  assert.throws(
+    () => mergeSharedStates(local, remote),
+    /localState\.events\[0\]\.settingsFieldUpdatedAt/
+  );
+});
+
+test("every identifier-named event setting is accepted in its timestamp map", () => {
+  const timestamp = "2026-09-03T05:20:33.129Z";
+
+  for (const field of EVENT_SETTING_FIELDS.filter((name) => /Ids?$/.test(name))) {
+    const errors = validateSharedStateIdentifiers(
+      stateWithEvent({
+        id: "event-1",
+        settingsFieldUpdatedAt: { [field]: timestamp }
+      })
+    );
+    assert.deepEqual(errors, [], `${field}: ${errors.join(" ")}`);
+  }
 });
 
 test("a stale device cannot hide that a participant linked an account", () => {

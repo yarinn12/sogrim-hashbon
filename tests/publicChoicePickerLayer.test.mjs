@@ -89,6 +89,15 @@ test("a stale close cannot steal focus from a newly opened picker", () => {
   );
 });
 
+test("closing the picker preserves an account gate lock acquired while it was open", () => {
+  const restoreBackground = layer.slice(
+    layer.indexOf("function restoreChoicePickerBackground"),
+    layer.indexOf("function pushChoiceHistoryState")
+  );
+  assert.match(restoreBackground, /account-auth-locked/);
+  assert.match(restoreBackground, /previous\.inert \|\| accountAuthLocked/);
+});
+
 test("rapid option taps cannot dispatch the same choice more than once", () => {
   const chooseOption = layer.slice(
     layer.indexOf("async function chooseOption"),

@@ -20,7 +20,7 @@ export async function loadAdminAnalyticsOverview(
   }
 
   const apiBaseUrl = String(config?.apiBaseUrl ?? "").replace(/\/+$/, "");
-  const response = await fetchWithTimeout(
+  const result = await fetchWithTimeout(
     fetchImpl,
     `${apiBaseUrl}/api/admin/overview?days=${normalizeWindowDays(windowDays)}`,
     {
@@ -29,9 +29,13 @@ export async function loadAdminAnalyticsOverview(
       },
       cache: "no-store"
     },
-    timeoutMs
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
   );
-  const payload = await response.json().catch(() => ({}));
+  const { response, payload } = result;
 
   if ([401, 403, 503].includes(response.status)) {
     return {

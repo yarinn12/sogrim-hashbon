@@ -178,12 +178,16 @@ test("deployed sensitive routes fail closed when durable protection is unavailab
 
 test("deployed sensitive routes fail closed promptly when durable protection stalls", async () => {
   let serviceCalls = 0;
+  let durableSignal;
   const server = createServer(createAppHandler({
     root: process.cwd(),
     port: 0,
     durableRateLimitRequired: true,
     durableRateLimitTimeoutMs: 20,
-    durableApiRateLimitService: async () => new Promise(() => {}),
+    durableApiRateLimitService: async ({ signal }) => {
+      durableSignal = signal;
+      return new Promise(() => {});
+    },
     paymentReminderService: async () => {
       serviceCalls += 1;
       return { status: 200, payload: { ok: true } };
@@ -209,6 +213,7 @@ test("deployed sensitive routes fail closed promptly when durable protection sta
     assert.equal((await response.json()).code, "RATE_LIMIT_UNAVAILABLE");
     assert.equal(serviceCalls, 0);
     assert.ok(Date.now() - startedAt < 1_000);
+    assert.equal(durableSignal?.aborted, true);
   } finally {
     server.closeAllConnections?.();
     await new Promise((resolve, reject) =>

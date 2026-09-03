@@ -9,6 +9,8 @@ const MAX_TITLE_LENGTH = 80;
 const MAX_BODY_LENGTH = 240;
 const MAX_CAMPAIGN_LENGTH = 80;
 export const PUSH_DELIVERY_REQUEST_TIMEOUT_MS = 10_000;
+export const BROADCAST_DEPENDENCY_TIMEOUT_MS = 10_000;
+const BOUNDED_FETCH = Symbol("broadcast-bounded-fetch");
 
 export async function sendBroadcastNotification({
   env = process.env,
@@ -19,7 +21,8 @@ export async function sendBroadcastNotification({
   fetchImpl = fetch,
   accessTokenProvider = defaultFirebaseAccessTokenProvider,
   deliveryTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
-  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS
+  accessTokenTimeoutMs = PUSH_DELIVERY_REQUEST_TIMEOUT_MS,
+  requestTimeoutMs = BROADCAST_DEPENDENCY_TIMEOUT_MS
 } = {}) {
   const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
   const serviceRoleKey = String(env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
@@ -38,6 +41,8 @@ export async function sendBroadcastNotification({
   if (!notification) {
     return failure(400, "Invalid notification payload", "INVALID_PAYLOAD");
   }
+
+  fetchImpl = createBoundedFetch(fetchImpl, requestTimeoutMs);
 
   const devicesResult = await loadEnabledPushDevices({
     supabaseUrl,
@@ -111,10 +116,10 @@ export async function sendBroadcastNotification({
     }
 
     let response = null;
+    let responsePayload = {};
     let deliveryUnconfirmed = false;
     try {
-      response = await fetchWithTimeout(
-        fetchImpl,
+      const deliveryResult = await fetchImpl(
         `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(firebase.projectId)}/messages:send`,
         {
           method: "POST",
@@ -149,8 +154,16 @@ export async function sendBroadcastNotification({
             }
           })
         },
+        async (deliveryResponse) => ({
+          response: deliveryResponse,
+          payload: deliveryResponse.ok
+            ? {}
+            : await deliveryResponse.json().catch(() => ({}))
+        }),
         deliveryTimeoutMs
       );
+      response = deliveryResult.response;
+      responsePayload = deliveryResult.payload;
     } catch {
       // A timeout or transport failure has an unknown outcome: FCM may have
       // accepted the message before the response was lost. Keep the
@@ -171,8 +184,7 @@ export async function sendBroadcastNotification({
     }
 
     failed += 1;
-    const payload = await response?.json().catch(() => ({})) ?? {};
-    if (invalidFirebaseToken(payload)) {
+    if (invalidFirebaseToken(responsePayload)) {
       await disableInvalidPushToken({
         supabaseUrl,
         serviceRoleKey,
@@ -220,7 +232,8 @@ async function reserveBroadcastDelivery({
   device,
   fetchImpl
 }) {
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?on_conflict=campaign_id,device_id`,
     {
       method: "POST",
@@ -233,10 +246,10 @@ async function reserveBroadcastDelivery({
         device_id: device.id,
         user_id: device.user_id
       }])
-    }
+    },
+    []
   );
   if (!response.ok) return { ok: false, reserved: false };
-  const payload = await response.json().catch(() => []);
   const reserved = Array.isArray(payload) && payload.length > 0;
   if (!reserved) {
     const existing = await loadBroadcastDelivery({
@@ -273,12 +286,15 @@ async function loadBroadcastDelivery({
     select: "delivered_at",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const result = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/broadcast_notification_deliveries?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   ).catch(() => null);
+  const response = result?.response;
   if (!response?.ok) return { ok: false, deliveredAt: "" };
-  const payload = await response.json().catch(() => []);
+  const payload = result.payload;
   const row = Array.isArray(payload) ? payload[0] : null;
   if (!row) return { ok: false, deliveredAt: "" };
   return {
@@ -389,6 +405,42 @@ async function promiseWithTimeout(factory, timeoutMs) {
   }
 }
 
+function createBoundedFetch(fetchImpl, timeoutMs) {
+  if (fetchImpl?.[BOUNDED_FETCH]) return fetchImpl;
+
+  const defaultTimeoutMs = Math.max(
+    1,
+    Number(timeoutMs) || BROADCAST_DEPENDENCY_TIMEOUT_MS
+  );
+  const boundedFetch = (
+    url,
+    options = {},
+    consumeResponse = null,
+    timeoutOverrideMs = null
+  ) => {
+    const overrideMs = Number(timeoutOverrideMs);
+    const effectiveTimeoutMs = Number.isFinite(overrideMs) && overrideMs > 0
+      ? overrideMs
+      : defaultTimeoutMs;
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      effectiveTimeoutMs,
+      consumeResponse
+    );
+  };
+  Object.defineProperty(boundedFetch, BOUNDED_FETCH, { value: true });
+  return boundedFetch;
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  return fetchImpl(url, options, async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  }));
+}
+
 async function defaultFirebaseAccessTokenProvider(env) {
   const credentials = firebaseServiceAccountCredentials(env);
   const projectId = String(
@@ -435,15 +487,17 @@ async function loadEnabledPushDevices({
     select: "id,user_id,token,platform",
     order: "updated_at.desc"
   });
-  const response = await fetchImpl(
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/push_devices?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    null
   );
   if (!response.ok) return { ok: false, devices: [] };
-  const payload = await response.json().catch(() => []);
+  if (!Array.isArray(payload)) return { ok: false, devices: [] };
   return {
     ok: true,
-    devices: Array.isArray(payload) ? payload : []
+    devices: payload
   };
 }
 

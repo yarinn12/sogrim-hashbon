@@ -9,6 +9,7 @@ const UUID_PATTERN =
 const PRIVATE_INVITE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 export const OPEN_INVITE_REQUEST_TIMEOUT_MS = 8_000;
+const DEADLINE_FETCH = Symbol("event-invite-deadline-fetch");
 
 export async function manageOpenEventInvite({
   runtimeConfig,
@@ -254,17 +255,41 @@ export async function manageOpenEventInvite({
 }
 
 function createDeadlineFetch(fetchImpl, timeoutMs) {
+  if (fetchImpl?.[DEADLINE_FETCH]) return fetchImpl;
   const duration = Math.max(1, Number(timeoutMs) || OPEN_INVITE_REQUEST_TIMEOUT_MS);
   const deadline = Date.now() + duration;
-  return (url, options = {}) => {
+  const deadlineFetch = (url, options = {}, consumeResponse = null) => {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) {
       const error = new Error("Event invitation request timed out");
       error.code = "NETWORK_TIMEOUT";
       return Promise.reject(error);
     }
-    return fetchWithTimeout(fetchImpl, url, options, remainingMs);
+    return fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      remainingMs,
+      consumeResponse
+    );
   };
+  Object.defineProperty(deadlineFetch, DEADLINE_FETCH, { value: true });
+  return deadlineFetch;
+}
+
+async function fetchJsonResponse(fetchImpl, url, options, fallback) {
+  const consumeResponse = async (response) => ({
+    response,
+    payload: await response.json().catch(() => fallback)
+  });
+  const result = await fetchImpl(url, options, consumeResponse);
+  if (
+    result?.response &&
+    Object.prototype.hasOwnProperty.call(result, "payload")
+  ) {
+    return result;
+  }
+  return consumeResponse(result);
 }
 
 function createStableOpenInviteToken({ secret, eventId, spaceId, spaceKey }) {
@@ -475,7 +500,8 @@ export async function createPrivateEventInvite({
   senderUserId,
   recipientUserId,
   fetchImpl = fetch,
-  tokenFactory = createInviteToken
+  tokenFactory = createInviteToken,
+  requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
   const eventId = String(event?.id ?? "").trim();
   const spaceId = String(event?.sharedSpaceId ?? "").trim();
@@ -490,6 +516,7 @@ export async function createPrivateEventInvite({
   ) {
     return null;
   }
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
   const sharedEvent = await loadVerifiedSharedEvent({
     supabaseUrl,
     serviceRoleKey,
@@ -523,7 +550,8 @@ export async function createPrivateEventInvite({
   const expiresAt = new Date(
     Date.parse(createdAt) + PRIVATE_INVITE_LIFETIME_MS
   ).toISOString();
-  const response = await fetchImpl(
+  const { response, payload: invitePayload } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/rpc/rotate_private_event_invite`,
     {
       method: "POST",
@@ -538,10 +566,11 @@ export async function createPrivateEventInvite({
         p_created_at: createdAt,
         p_expires_at: expiresAt
       })
-    }
+    },
+    ""
   );
   const inviteId = response.ok
-    ? String(await response.json().catch(() => "")).trim()
+    ? String(invitePayload).trim()
     : "";
   return UUID_PATTERN.test(inviteId)
     ? { id: inviteId, token, createdAt, expiresAt }
@@ -554,8 +583,10 @@ export async function activateEventInviteMembership({
   invite,
   snapshotId,
   userId,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
   const activated = await activateInviteMembership({
     supabaseUrl,
     serviceRoleKey,
@@ -579,7 +610,8 @@ export async function indexSharedEventForMember({
   serviceRoleKey,
   snapshotId,
   userId,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  requestTimeoutMs = OPEN_INVITE_REQUEST_TIMEOUT_MS
 }) {
   if (
     !isSafeSharedIdentifier(String(snapshotId ?? "")) ||
@@ -587,7 +619,8 @@ export async function indexSharedEventForMember({
   ) {
     return false;
   }
-  const response = await fetchImpl(
+  fetchImpl = createDeadlineFetch(fetchImpl, requestTimeoutMs);
+  const { response, detail } = await fetchImpl(
     `${supabaseUrl}/rest/v1/rpc/index_shared_event_for_member`,
     {
       method: "POST",
@@ -596,10 +629,13 @@ export async function indexSharedEventForMember({
         p_snapshot_id: snapshotId,
         p_user_id: userId
       })
-    }
+    },
+    async (response) => ({
+      response,
+      detail: response.ok ? "" : await response.text().catch(() => "")
+    })
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
     console.error("Shared event member index update failed", {
       status: response.status,
       snapshotId,
@@ -634,14 +670,19 @@ async function loadAuthenticatedUser({
   accessToken,
   fetchImpl
 }) {
-  const response = await fetchImpl(`${supabaseUrl}/auth/v1/user`, {
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${accessToken}`
-    }
-  });
+  const { response, payload } = await fetchJsonResponse(
+    fetchImpl,
+    `${supabaseUrl}/auth/v1/user`,
+    {
+      headers: {
+        apikey: anonKey,
+        authorization: `Bearer ${accessToken}`
+      }
+    },
+    null
+  );
   if (!response.ok) return null;
-  return response.json().catch(() => null);
+  return payload;
 }
 
 async function loadAccountState({
@@ -657,12 +698,13 @@ async function loadAccountState({
     order: "updated_at.desc",
     limit: "5"
   });
-  const response = await fetchImpl(
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
     .find((state) => eventFromState(state, eventId)) ?? null;
@@ -687,12 +729,13 @@ async function loadActiveInviteByToken({
   });
   if (kind) params.set("kind", `eq.${kind}`);
   if (spaceId) params.set("space_id", `eq.${spaceId}`);
-  const response = await fetchImpl(
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows[0] ?? null : null;
 }
 
@@ -711,12 +754,13 @@ async function loadActiveOpenInvite({
     select: "id,event_id,space_id,space_key,created_by,created_at,token_hash",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows[0] ?? null : null;
 }
 
@@ -734,12 +778,13 @@ async function loadInviteEventAnchor({
     order: "created_at.asc",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/event_invite_tokens?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows[0] ?? null : null;
 }
 
@@ -793,12 +838,13 @@ async function loadSharedEventSnapshot({
     select: "state,access_key_hash",
     limit: "1"
   });
-  const response = await fetchImpl(
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
     `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
+    { headers: serviceHeaders(serviceRoleKey) },
+    []
   );
   if (!response.ok) return null;
-  const rows = await response.json().catch(() => []);
   return Array.isArray(rows) ? rows[0] ?? null : null;
 }
 
@@ -811,20 +857,22 @@ async function loadMemberAccessibleSharedEvent({
   inviteAnchor: providedInviteAnchor,
   fetchImpl
 }) {
-  const permissionResponse = await fetchImpl(
-    `${supabaseUrl}/rest/v1/rpc/can_write_shared_snapshot`,
-    {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${accessToken}`,
-        apikey: serviceRoleKey,
-        "content-type": "application/json"
+  const { response: permissionResponse, payload: allowed } =
+    await fetchJsonResponse(
+      fetchImpl,
+      `${supabaseUrl}/rest/v1/rpc/can_write_shared_snapshot`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          apikey: serviceRoleKey,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({ p_snapshot_id: spaceId })
       },
-      body: JSON.stringify({ p_snapshot_id: spaceId })
-    }
-  );
+      false
+    );
   if (!permissionResponse.ok) return null;
-  const allowed = await permissionResponse.json().catch(() => false);
   if (allowed !== true) return null;
 
   const params = new URLSearchParams({
@@ -832,12 +880,14 @@ async function loadMemberAccessibleSharedEvent({
     select: "state,access_key_hash",
     limit: "1"
   });
-  const snapshotResponse = await fetchImpl(
-    `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
-    { headers: serviceHeaders(serviceRoleKey) }
-  );
+  const { response: snapshotResponse, payload: rows } =
+    await fetchJsonResponse(
+      fetchImpl,
+      `${supabaseUrl}/rest/v1/app_snapshots?${params}`,
+      { headers: serviceHeaders(serviceRoleKey) },
+      []
+    );
   if (!snapshotResponse.ok) return null;
-  const rows = await snapshotResponse.json().catch(() => []);
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
   const event = eventFromState(snapshot?.state, eventId);
   // Shared snapshots intentionally omit the raw space key. A recovered device
@@ -915,7 +965,7 @@ async function activateInviteMembership({
   ) {
     return false;
   }
-  const response = await fetchImpl(
+  const { response, detail } = await fetchImpl(
     `${supabaseUrl}/rest/v1/rpc/redeem_event_invite_membership`,
     {
       method: "POST",
@@ -925,10 +975,15 @@ async function activateInviteMembership({
         p_token_hash: hashInviteToken(token),
         p_user_id: userId
       })
-    }
+    },
+    async (membershipResponse) => ({
+      response: membershipResponse,
+      detail: membershipResponse.ok
+        ? ""
+        : await membershipResponse.text().catch(() => "")
+    })
   );
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
     console.error("Open event invite membership activation failed", {
       status: response.status,
       inviteId,

@@ -118,7 +118,7 @@ async function verifyNativePurchase(config, purchase, fetchImpl, timeoutMs) {
     throw billingError("PURCHASE_INCOMPLETE");
   }
 
-  const response = await fetchWithTimeout(
+  const { response, payload } = await fetchWithTimeout(
     fetchImpl,
     `${config?.apiBaseUrl ?? ""}/api/billing/google/verify`,
     {
@@ -132,9 +132,12 @@ async function verifyNativePurchase(config, purchase, fetchImpl, timeoutMs) {
         purchaseToken
       })
     },
-    timeoutMs
+    timeoutMs,
+    async (response) => ({
+      response,
+      payload: await response.json().catch(() => ({}))
+    })
   );
-  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const error = billingError(payload?.error || "VERIFICATION_FAILED");
     error.retryable = Boolean(payload?.retryable);

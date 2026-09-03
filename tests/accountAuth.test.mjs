@@ -23,6 +23,7 @@ import {
   createOAuthPkce,
   createOAuthPkceChallenge,
   loadStoredAccountSession,
+  loadAccountUser,
   parseAccountSessionSync,
   publishAccountSessionSync,
   resendSignupConfirmation,
@@ -376,6 +377,24 @@ test("startup workspace verification honors its short request budget", async () 
         })
     }),
     /timed out/i
+  );
+});
+
+test("account identity refresh bounds a stalled response body", async () => {
+  await assert.rejects(
+    loadAccountUser(
+      config,
+      { access_token: "access-token" },
+      async () => ({
+        ok: true,
+        status: 200,
+        async json() {
+          return new Promise(() => {});
+        }
+      }),
+      { timeoutMs: 5 }
+    ),
+    (error) => error?.code === "NETWORK_TIMEOUT"
   );
 });
 

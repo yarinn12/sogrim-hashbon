@@ -228,6 +228,31 @@ test("startup can load only the signed-in user's public profile", async () => {
   assert.equal(requests[0].options.headers.authorization, "Bearer private-user-token");
 });
 
+test("startup keeps the friend profile response body inside its timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      loadOwnFriendProfile(accountConfig(), {
+        fetchImpl: async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        timeoutMs: 10
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("friend response body stayed unbounded")), 250)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
 test("a fresh installation without avatar knowledge cannot clear the cloud avatar", async () => {
   const calls = [];
   await syncFriendProfile(

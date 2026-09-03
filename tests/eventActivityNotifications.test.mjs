@@ -103,6 +103,7 @@ function createActivityFetch({
   acceptedFriend = true,
   canonicalMembership = true,
   canonicalInvitation = true,
+  inboxHandler = null,
   pushHandler = null,
   reservation = {
     allowed: true,
@@ -203,6 +204,7 @@ function createActivityFetch({
       address.includes("/rest/v1/notification_inbox?") &&
       options.method === "POST"
     ) {
+      if (inboxHandler) return inboxHandler({ url: address, options });
       return new Response(null, { status: 201 });
     }
     if (address.includes("fcm.googleapis.com/")) {
@@ -280,6 +282,75 @@ test("server sends a private event update only to a verified connected participa
   assert.equal(inboxItem.view, "event");
   assert.doesNotMatch(inboxItem.body, /250|ארוחת ערב/);
   assert.match(inboxItem.body, /סוף שבוע בצפון/);
+});
+
+test("server activity deadline includes the authenticated-user response body", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      sendEventActivityNotification({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-access-token",
+        eventId: EVENT_ID,
+        activityId: EXPENSE_ID,
+        kind: "expense-created",
+        requestTimeoutMs: 20,
+        fetchImpl: async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        }
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("server activity body stayed unbounded")), 300)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("a pre-FCM deadline releases a reservation created before a stalled inbox write", async () => {
+  const { fetchImpl, requests } = createActivityFetch({
+    inboxHandler: () => new Promise(() => {})
+  });
+
+  await assert.rejects(
+    Promise.race([
+      sendEventActivityNotification({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-access-token",
+        eventId: EVENT_ID,
+        activityId: EXPENSE_ID,
+        kind: "expense-created",
+        fetchImpl,
+        requestTimeoutMs: 25
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("pre-FCM cleanup stayed unbounded")), 500)
+      )
+    ]),
+    (error) => error?.code === "NETWORK_TIMEOUT"
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/event_activity_notifications?") &&
+      request.options.method === "DELETE"
+    ),
+    true,
+    "a pre-FCM timeout must release every reservation that was already created"
+  );
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false,
+    "cleanup must stay on the unambiguous pre-FCM side of delivery"
+  );
 });
 
 test("server keeps the in-app inbox working when system push is not configured", async () => {
@@ -430,6 +501,46 @@ test("a stalled event push falls back to the inbox without reopening its reserva
     request.url.includes("/rest/v1/event_activity_notifications?") &&
     request.options.method === "DELETE"
   ), false);
+});
+
+test("an event push that consumes the request deadline still closes its reservation", async () => {
+  const { fetchImpl, requests } = createActivityFetch({
+    pushHandler: () => new Promise(() => {})
+  });
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    requestTimeoutMs: 150,
+    deliveryTimeoutMs: 500,
+    accessTokenProvider: async () => ({
+      accessToken: "firebase-access-token",
+      projectId: "sogrim-demo"
+    })
+  });
+
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.reason, "in-app-only");
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/event_activity_notifications?") &&
+      request.options.method === "PATCH"
+    ),
+    true,
+    "an unknown FCM result must be completed outside the expired request budget"
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/event_activity_notifications?") &&
+      request.options.method === "DELETE"
+    ),
+    false,
+    "an attempted FCM delivery must not be reopened for a duplicate retry"
+  );
 });
 
 test("server suppresses delivery when canonical membership was removed", async () => {
@@ -657,6 +768,71 @@ test("event notifications stop waiting when Firebase authorization stalls", asyn
   assert.ok(Date.now() - startedAt < 1_000);
 });
 
+test("a Firebase authorization timeout releases reservations after the request deadline", async () => {
+  const { fetchImpl, requests } = createActivityFetch();
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    requestTimeoutMs: 200,
+    accessTokenTimeoutMs: 250,
+    accessTokenProvider: async () => new Promise(() => {})
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/event_activity_notifications?") &&
+      request.options.method === "DELETE"
+    ),
+    true,
+    "a timed-out authorization must not leave an unsent reservation behind"
+  );
+});
+
+test("a late Firebase authorization result releases reservations before any FCM attempt", async () => {
+  const { fetchImpl, requests } = createActivityFetch();
+  const result = await sendEventActivityNotification({
+    runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+    authorization: "Bearer account-access-token",
+    eventId: EVENT_ID,
+    activityId: EXPENSE_ID,
+    kind: "expense-created",
+    fetchImpl,
+    requestTimeoutMs: 200,
+    accessTokenTimeoutMs: 500,
+    accessTokenProvider: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      return {
+        accessToken: "firebase-access-token",
+        projectId: "sogrim-demo"
+      };
+    }
+  });
+
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.code, "PUSH_UNAVAILABLE");
+  assert.equal(
+    requests.some((request) => request.url.includes("fcm.googleapis.com/")),
+    false,
+    "an expired request budget must not be treated as an attempted FCM send"
+  );
+  assert.equal(
+    requests.some((request) =>
+      request.url.includes("/rest/v1/event_activity_notifications?") &&
+      request.options.method === "DELETE"
+    ),
+    true,
+    "an unattempted delivery must remain retryable"
+  );
+});
+
 test("an expense notification repairs access when the recipient workspace lost the event", async () => {
   const { fetchImpl, requests } = createActivityFetch({
     recipientState: {
@@ -869,6 +1045,39 @@ test("client keeps a hanging event invitation retryable after its timeout", asyn
       },
       5
     ),
+    (error) =>
+      error?.code === "NETWORK_TIMEOUT" && error?.retryable === true
+  );
+
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("client keeps a stalled event response body inside its retryable timeout", async () => {
+  let requestSignal = null;
+
+  await assert.rejects(
+    Promise.race([
+      sendClientEventActivityNotification(
+        runtimeConfig(),
+        {
+          eventId: EVENT_ID,
+          activityId: RECIPIENT_PARTICIPANT_ID,
+          kind: "event-invite"
+        },
+        async (_url, options) => {
+          requestSignal = options.signal;
+          return {
+            ok: true,
+            status: 200,
+            json: () => new Promise(() => {})
+          };
+        },
+        5
+      ),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("event response body stayed unbounded")), 250)
+      )
+    ]),
     (error) =>
       error?.code === "NETWORK_TIMEOUT" && error?.retryable === true
   );

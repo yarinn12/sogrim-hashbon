@@ -460,7 +460,10 @@ function restoreChoicePickerBackground() {
   const previous = pickerBackgroundState;
   pickerBackgroundState = null;
   if (!appRoot || !previous) return;
-  appRoot.inert = previous.inert;
+  const accountAuthLocked = document.documentElement.classList.contains(
+    "account-auth-locked"
+  );
+  appRoot.inert = previous.inert || accountAuthLocked;
   if (previous.ariaHidden === null) {
     appRoot.removeAttribute("aria-hidden");
   } else {

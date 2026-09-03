@@ -389,6 +389,127 @@ test("runtime config exposes when it had to use the local fallback", async () =>
   }
 });
 
+test("runtime config falls back when the response body stalls", async (t) => {
+  const storage = memoryStorage();
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  let requestSignal = null;
+  const location = {
+    href: "https://sogrim-hesbon-app.vercel.app/",
+    hostname: "sogrim-hesbon-app.vercel.app",
+    protocol: "https:"
+  };
+
+  globalThis.window = {
+    addEventListener() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (_url, options) => {
+    requestSignal = options.signal;
+    return {
+      ok: true,
+      status: 200,
+      json: () => new Promise(() => {})
+    };
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?runtime-config-body-timeout=${Date.now()}`
+    );
+    const configPromise = localStore.loadRuntimeConfig();
+    await Promise.resolve();
+    await Promise.resolve();
+    t.mock.timers.tick(4_000);
+    const config = await Promise.race([
+      configPromise,
+      new Promise((resolve) => setImmediate(() => resolve(null)))
+    ]);
+
+    assert.equal(config?.storage?.mode, "local");
+    assert.equal(localStore.runtimeConfigUsesFallback(), true);
+    assert.equal(requestSignal?.aborted, true);
+  } finally {
+    t.mock.timers.reset();
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
+test("local reset falls back when its response body stalls", async (t) => {
+  const storage = memoryStorage();
+  const previousWindow = globalThis.window;
+  const previousLocation = globalThis.location;
+  const previousLocalStorage = globalThis.localStorage;
+  const previousFetch = globalThis.fetch;
+  let resetSignal = null;
+  const location = {
+    href: "http://localhost/",
+    hostname: "localhost",
+    protocol: "http:"
+  };
+
+  globalThis.window = {
+    addEventListener() {},
+    localStorage: storage,
+    location
+  };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/api/config")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ storage: { mode: "local" } })
+      };
+    }
+    if (String(url).endsWith("/api/reset")) {
+      resetSignal = options.signal;
+      return {
+        ok: true,
+        status: 200,
+        json: () => new Promise(() => {})
+      };
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+
+  try {
+    const localStore = await import(
+      `../src/data/localStore.mjs?local-reset-body-timeout=${Date.now()}`
+    );
+    const resetPromise = localStore.resetSharedState();
+    for (let attempt = 0; attempt < 20 && !resetSignal; attempt += 1) {
+      await Promise.resolve();
+    }
+    assert.ok(resetSignal, "reset request should start before advancing its timeout");
+    t.mock.timers.tick(4_000);
+    const state = await Promise.race([
+      resetPromise,
+      new Promise((resolve) => setImmediate(() => resolve(null)))
+    ]);
+
+    assert.ok(Array.isArray(state?.events));
+    assert.equal(resetSignal?.aborted, true);
+  } finally {
+    t.mock.timers.reset();
+    restoreGlobal("window", previousWindow);
+    restoreGlobal("location", previousLocation);
+    restoreGlobal("localStorage", previousLocalStorage);
+    restoreGlobal("fetch", previousFetch);
+  }
+});
+
 test("runtime config retry replaces a temporary fallback without reloading the app", async () => {
   const storage = memoryStorage();
   const previousWindow = globalThis.window;

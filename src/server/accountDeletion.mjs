@@ -25,9 +25,9 @@ export async function deleteSupabaseAccount({
   }
   if (!accessToken) return failure(401, "Authentication is required");
 
-  let userResponse;
+  let userResult;
   try {
-    userResponse = await fetchWithTimeout(
+    userResult = await fetchWithTimeout(
       fetchImpl,
       `${supabaseUrl}/auth/v1/user`,
       {
@@ -36,14 +36,21 @@ export async function deleteSupabaseAccount({
           authorization: `Bearer ${accessToken}`
         }
       },
-      requestTimeoutMs
+      requestTimeoutMs,
+      async (response) => ({
+        response,
+        payload: response.ok
+          ? await response.json().catch(() => null)
+          : null
+      })
     );
   } catch {
     return failure(502, "Account identity could not be verified");
   }
+  const userResponse = userResult.response;
   if (!userResponse.ok) return failure(401, "Account session is invalid");
 
-  const user = await userResponse.json().catch(() => null);
+  const user = userResult.payload;
   if (!user?.id) return failure(409, "Account identity is unavailable");
 
   const deleteUserResponse = await deleteAuthUserWithRetry({
