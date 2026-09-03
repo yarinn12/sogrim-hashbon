@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=445"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=446"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -593,7 +593,7 @@ test("account gate prioritizes provider login and progressively reveals email", 
   );
   assert.match(
     layer,
-    /iPad home-screen apps[\s\S]*?\.account-auth-shell \{[\s\S]*?width: min\(100%, 430px\);/
+    /iPad home-screen apps[\s\S]*?\.account-auth-shell \{[\s\S]*?width: min\(calc\(100% - 32px\), 760px\);/
   );
   assert.match(layer, /scroll-padding-block-end: calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(layer, /new AbortController\(\)/);

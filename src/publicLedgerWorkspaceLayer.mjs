@@ -17419,7 +17419,7 @@ const CSS = `
     grid-template-columns: minmax(0, 1fr) !important;
     justify-items: center !important;
     gap: 0 !important;
-    margin: -74px 0 16px !important;
+    margin: 14px 0 16px !important;
   }
 
   html.ledger-workspace-v1 body #app
@@ -17621,6 +17621,13 @@ const CSS = `
       grid-template-columns: 34px minmax(0, 1fr) !important;
     }
 
+  }
+
+  @media (min-width: 721px) and (max-width: 1366px) {
+    html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary {
+      width: min(100%, 240px) !important;
+      max-width: 240px !important;
+    }
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-workspace-nav {
@@ -20122,26 +20129,28 @@ const CSS = `
   @media (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
     html.ledger-workspace-v1 body #app .screen,
     html.ledger-workspace-v1 body #app .friends-hub-screen {
-      width: min(calc(100% - 32px), 430px) !important;
-      max-width: 430px !important;
+      box-sizing: border-box !important;
+      width: min(calc(100% - 32px), 960px) !important;
+      max-width: 960px !important;
       margin-inline: auto !important;
-      padding-inline: 16px !important;
+      padding-left: max(24px, env(safe-area-inset-left)) !important;
+      padding-right: max(24px, env(safe-area-inset-right)) !important;
     }
 
     html.ledger-workspace-v1 body #app
       .screen:is([data-screen-kind="home"], [data-product-screen="home"], .product-home-screen) {
-      width: min(calc(100% - 32px), 430px) !important;
-      max-width: 430px !important;
+      width: min(calc(100% - 32px), 960px) !important;
+      max-width: 960px !important;
     }
 
     html.ledger-workspace-v1 .product-route-controls,
     html.ledger-workspace-v1 .product-route-controls[hidden] {
-      left: max(20px, calc((100vw - 430px) / 2 + 16px)) !important;
+      left: max(24px, calc((100vw - 960px) / 2 + 24px)) !important;
     }
 
     html.ledger-workspace-v1 .product-app-nav,
     html.ledger-workspace-v1 .event-route-primary-nav {
-      width: min(390px, calc(100% - 40px)) !important;
+      width: min(520px, calc(100% - 48px)) !important;
       left: 50% !important;
       right: auto !important;
       transform: translateX(-50%) !important;
@@ -20150,8 +20159,8 @@ const CSS = `
     html.circle-design-v1.ledger-workspace-v1
       .expense-modal-backdrop
       .restaurant-quick-modal {
-      width: min(100%, 430px) !important;
-      max-width: 430px !important;
+      width: min(100%, 760px) !important;
+      max-width: 760px !important;
       margin-inline: auto !important;
     }
   }

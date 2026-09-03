@@ -466,7 +466,7 @@ test("another person's picture alone opens shared statistics while editable text
   expect(editableSelection).toEqual({ canceled: false, css: "text" });
 });
 
-test("iPad event screens use the same compact canvas as iPhone", async ({ page }, testInfo) => {
+test("iPad event screens use a responsive tablet canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit");
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
@@ -478,11 +478,10 @@ test("iPad event screens use the same compact canvas as iPhone", async ({ page }
     const rect = element.getBoundingClientRect();
     return { width: rect.width, viewportWidth: window.innerWidth };
   });
-  expect(layout.width).toBeGreaterThanOrEqual(390);
-  expect(layout.width).toBeLessThanOrEqual(432);
+  expect(layout.width).toBeCloseTo(Math.min(layout.viewportWidth - 32, 960), 0);
 });
 
-test("iPad home, notifications and profile share a stable phone canvas", async ({ page }, testInfo) => {
+test("iPad home, notifications and profile share a stable tablet canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit");
 
   for (const viewport of [
@@ -498,8 +497,7 @@ test("iPad home, notifications and profile share a stable phone canvas", async (
     const homeWidth = await page.locator('#app .screen[data-screen-kind="home"]').evaluate(
       (element) => element.getBoundingClientRect().width
     );
-    expect(homeWidth).toBeGreaterThanOrEqual(390);
-    expect(homeWidth).toBeLessThanOrEqual(432);
+    expect(homeWidth).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
     await assertLayoutHealth(page, `iPad home ${viewport.width}x${viewport.height}`);
 
     await page.locator('[data-nav-destination="notifications"]').click();
@@ -523,8 +521,7 @@ test("iPad home, notifications and profile share a stable phone canvas", async (
     const notificationsWidth = await notifications.evaluate(
       (element) => element.getBoundingClientRect().width
     );
-    expect(notificationsWidth).toBeGreaterThanOrEqual(390);
-    expect(notificationsWidth).toBeLessThanOrEqual(432);
+    expect(notificationsWidth).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
     await assertLayoutHealth(page, `iPad notifications ${viewport.width}x${viewport.height}`);
 
     await page.locator('[data-nav-destination="profile"]').click();
@@ -533,8 +530,7 @@ test("iPad home, notifications and profile share a stable phone canvas", async (
     const profileWidth = await profile.evaluate(
       (element) => element.getBoundingClientRect().width
     );
-    expect(profileWidth).toBeGreaterThanOrEqual(390);
-    expect(profileWidth).toBeLessThanOrEqual(432);
+    expect(profileWidth).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
     await assertLayoutHealth(page, `iPad profile ${viewport.width}x${viewport.height}`);
   }
 });
@@ -793,7 +789,7 @@ test("expense overflow visually matches the event image menu", async ({ page }) 
   });
 });
 
-test("iPad landscape keeps expense entry inside the centered phone canvas", async ({ page }, testInfo) => {
+test("iPad landscape keeps expense entry inside the responsive tablet canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "ipad-webkit", "iPad-specific landscape guard");
   await page.setViewportSize({ width: 1194, height: 834 });
   await page
@@ -817,14 +813,18 @@ test("iPad landscape keeps expense entry inside the centered phone canvas", asyn
       left: Math.round(bounds.left),
       right: Math.round(bounds.right),
       bottom: Math.round(bounds.bottom),
+      width: Math.round(bounds.width),
+      viewportWidth: window.innerWidth,
       radius: getComputedStyle(element).borderRadius
     };
   });
-  expect(rect.top).toBeLessThanOrEqual(4);
-  expect(rect.left).toBeGreaterThanOrEqual(380);
-  expect(rect.left).toBeLessThanOrEqual(384);
-  expect(rect.right).toBeGreaterThanOrEqual(810);
-  expect(rect.right).toBeLessThanOrEqual(814);
+  expect(rect.top).toBeGreaterThanOrEqual(0);
+  expect(rect.top).toBeLessThanOrEqual(24);
+  expect(rect.width).toBeGreaterThanOrEqual(920);
+  expect(rect.width).toBeLessThanOrEqual(960);
+  expect(rect.left).toBeGreaterThanOrEqual(16);
+  expect(rect.right).toBeLessThanOrEqual(rect.viewportWidth - 16);
+  expect(Math.abs((rect.left + rect.right) / 2 - rect.viewportWidth / 2)).toBeLessThanOrEqual(2);
   const navTop = await nav.evaluate((element) =>
     Math.round(element.getBoundingClientRect().top)
   );

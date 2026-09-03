@@ -147,11 +147,8 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     expect(layout.screen.right).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.hero.left).toBeGreaterThanOrEqual(0);
     expect(layout.hero.right).toBeLessThanOrEqual(layout.viewportWidth);
-    const actionCenter = (layout.action.top + layout.action.bottom) / 2;
-    expect(layout.action.top).toBeLessThan(layout.hero.bottom);
-    expect(layout.action.bottom).toBeGreaterThan(layout.hero.bottom);
-    expect(Math.abs(actionCenter - layout.hero.bottom)).toBeLessThanOrEqual(16);
-    expect(layout.action.top - layout.copy.bottom).toBeGreaterThanOrEqual(-2);
+    expect(layout.action.top).toBeGreaterThanOrEqual(layout.hero.bottom + 12);
+    expect(layout.action.top).toBeLessThanOrEqual(layout.hero.bottom + 28);
     expect(layout.action.height).toBeGreaterThanOrEqual(44);
     const screenCenter = (layout.screen.left + layout.screen.right) / 2;
     const actionHorizontalCenter = (layout.action.left + layout.action.right) / 2;
@@ -166,7 +163,8 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     expect(layout.brandImageTransform).toBe("none");
 
     if (viewport.width >= 721) {
-      expect(layout.screen.width).toBeLessThanOrEqual(430);
+      expect(layout.screen.width).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
+      expect(layout.action.width).toBe(240);
       expect(Math.abs(screenCenter - viewport.width / 2)).toBeLessThanOrEqual(2);
     }
   }

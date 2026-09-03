@@ -2414,6 +2414,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .product-home-screen
     > .top {
+    margin-block-end: 0 !important;
     overflow: visible !important;
   }
 

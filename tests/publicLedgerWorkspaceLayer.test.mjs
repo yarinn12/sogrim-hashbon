@@ -22,12 +22,13 @@ test("mobile headers, tablet workspaces and compact actions keep safe geometry",
   );
   assert.match(
     ledger,
-    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?body #app \.screen,[\s\S]*?max-width: 430px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 430px !important;/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?body #app \.screen,[\s\S]*?max-width: 960px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 960px !important;/
   );
   assert.match(
     ledger,
-    /\.product-route-controls\[hidden\] \{[\s\S]*?calc\(\(100vw - 430px\) \/ 2 \+ 16px\)/
+    /\.product-route-controls\[hidden\] \{[\s\S]*?calc\(\(100vw - 960px\) \/ 2 \+ 24px\)/
   );
+  assert.match(ledger, /\.home-quick-actions \{[\s\S]*?margin: 14px 0 16px !important;/);
   assert.match(ledger, /\.expense-row-actions-menu button \{[\s\S]*?min-height: 44px !important;/);
   assert.match(coherence, /--app-danger: #b94739/);
   assert.match(
@@ -905,7 +906,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   );
   assert.match(
     layer,
-    /\.product-home-screen \.home-quick-actions \{[\s\S]*?width: 100% !important;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?margin: -74px 0 16px !important/
+    /\.product-home-screen \.home-quick-actions \{[\s\S]*?width: 100% !important;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?margin: 14px 0 16px !important/
   );
   assert.match(
     layer,

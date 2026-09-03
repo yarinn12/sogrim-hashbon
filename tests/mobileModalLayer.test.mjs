@@ -50,6 +50,16 @@ test("dialogs reset scroll, trap focus, and restore focus when they close", asyn
   assert.match(layer, /body\.app-dialog-open/);
 });
 
+test("touch tablets use a responsive canvas instead of a phone-width shell", async () => {
+  const layer = await readFile("src/publicMobileModalLayer.mjs", "utf8");
+
+  assert.match(layer, /responsive-tablet-shell/);
+  assert.match(layer, /width: min\(calc\(100% - 32px\), 960px\) !important/);
+  assert.match(layer, /width: min\(520px, calc\(100vw - 48px\)\) !important/);
+  assert.match(layer, /width: min\(calc\(100vw - 32px\), 960px\) !important/);
+  assert.match(layer, /classList\.remove\("compact-tablet-phone-shell"\)/);
+});
+
 test("expense entry focuses the first useful money control", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

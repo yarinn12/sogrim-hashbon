@@ -4187,7 +4187,8 @@ function injectStyle() {
       }
     }
 
-    /* iPad home-screen apps use tablet CSS widths even when the intended UI is phone-like. */
+    /* iPad home-screen apps keep a readable form measure without collapsing
+       the entire authentication experience into a phone-width strip. */
     @media (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
       .account-auth-gate {
         justify-items: center;
@@ -4198,7 +4199,7 @@ function injectStyle() {
       }
 
       .account-auth-shell {
-        width: min(100%, 430px);
+        width: min(calc(100% - 32px), 760px);
       }
     }
   `;

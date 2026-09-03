@@ -274,65 +274,69 @@ const CSS = `
 
   }
 
-  /* iPad deliberately uses the proven phone canvas. This keeps every route,
-     safe area and action in the same geometry users already see on iPhone. */
+  /* Tablets use their available canvas instead of inheriting a narrow phone
+     column. Keep a readable maximum width while respecting both landscape
+     safe areas and the persistent navigation. */
   @media (min-width: 721px) and (max-width: 1366px) {
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .screen.screen,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .friends-hub-screen,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app#app .product-home-screen.product-home-screen {
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app#app .screen.screen,
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app#app .friends-hub-screen,
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app#app .product-home-screen.product-home-screen {
       box-sizing: border-box !important;
-      width: min(calc(100% - 32px), 430px) !important;
-      max-width: 430px !important;
+      width: min(calc(100% - 32px), 960px) !important;
+      max-width: 960px !important;
       margin-inline: auto !important;
-      padding-inline: 16px !important;
+      padding-left: max(24px, env(safe-area-inset-left)) !important;
+      padding-right: max(24px, env(safe-area-inset-right)) !important;
     }
 
-    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-route-controls,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-route-controls[hidden] {
+    html.responsive-tablet-shell.ledger-workspace-v1 .product-route-controls,
+    html.responsive-tablet-shell.ledger-workspace-v1 .product-route-controls[hidden] {
       right: auto !important;
-      left: max(20px, calc((100vw - 430px) / 2 + 16px)) !important;
+      left: max(24px, calc((100vw - 960px) / 2 + 24px)) !important;
     }
 
-    html.compact-tablet-phone-shell.ledger-workspace-v1 .product-app-nav,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 .event-route-primary-nav {
-      width: min(390px, calc(100vw - 40px)) !important;
-      max-width: 390px !important;
+    html.responsive-tablet-shell.ledger-workspace-v1 .product-app-nav,
+    html.responsive-tablet-shell.ledger-workspace-v1 .event-route-primary-nav {
+      width: min(520px, calc(100vw - 48px)) !important;
+      max-width: 520px !important;
       right: auto !important;
       left: 50% !important;
       transform: translateX(-50%) !important;
       pointer-events: auto !important;
     }
 
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .expense-modal-backdrop,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .event-modal-backdrop {
-      width: min(100vw, 430px) !important;
-      max-width: 430px !important;
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app .expense-modal-backdrop,
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app .event-modal-backdrop {
+      width: 100vw !important;
+      max-width: none !important;
       top: 0 !important;
-      right: auto !important;
+      right: 0 !important;
       bottom: 0 !important;
-      left: max(0px, calc((100vw - 430px) / 2)) !important;
+      left: 0 !important;
       transform: none !important;
     }
 
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .expense-modal,
-    html.compact-tablet-phone-shell.ledger-workspace-v1 body #app .event-modal {
-      width: 100% !important;
-      max-width: 430px !important;
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app .expense-modal,
+    html.responsive-tablet-shell.ledger-workspace-v1 body #app .event-modal {
+      width: min(calc(100vw - 32px), 960px) !important;
+      max-width: 960px !important;
+      justify-self: center !important;
     }
   }
 `;
 
-syncCompactTabletPhoneShell();
+syncResponsiveTabletShell();
 injectMobileModalStyles();
-window.addEventListener("resize", syncCompactTabletPhoneShell, { passive: true });
+window.addEventListener("resize", syncResponsiveTabletShell, { passive: true });
 
-function syncCompactTabletPhoneShell() {
+function syncResponsiveTabletShell() {
   const isTabletViewport = window.innerWidth >= 721 && window.innerWidth <= 1366;
   const userAgent = String(globalThis.navigator?.userAgent ?? "");
   const hasTouch =
     Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0 || /iPad|Mobile\//i.test(userAgent);
+  document.documentElement.classList.remove("compact-tablet-phone-shell");
   document.documentElement.classList.toggle(
-    "compact-tablet-phone-shell",
+    "responsive-tablet-shell",
     isTabletViewport && hasTouch
   );
 }
