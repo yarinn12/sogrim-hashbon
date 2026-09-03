@@ -65,6 +65,14 @@ try {
     const personalParticipantIds = Array.isArray(personalEvent?.participantIds)
       ? personalEvent.participantIds.map(String)
       : [];
+    const sharedNotes = Array.isArray(sharedEvent?.notes) ? sharedEvent.notes : [];
+    const personalNotes = Array.isArray(personalEvent?.notes) ? personalEvent.notes : [];
+    const sharedDeletedNotes = Array.isArray(sharedEvent?.deletedNotes)
+      ? sharedEvent.deletedNotes
+      : [];
+    const personalDeletedNotes = Array.isArray(personalEvent?.deletedNotes)
+      ? personalEvent.deletedNotes
+      : [];
     return {
       userId: row.user_id,
       displayName: row.display_name ?? "",
@@ -86,7 +94,11 @@ try {
       workspaceHasEvent: Boolean(personalEvent),
       workspaceEventHasCanonicalParticipant: personalParticipantIds.includes(
         String(row.participant_id)
-      )
+      ),
+      workspaceNotesMatchCanonical:
+        JSON.stringify(personalNotes) === JSON.stringify(sharedNotes),
+      workspaceDeletedNotesMatchCanonical:
+        JSON.stringify(personalDeletedNotes) === JSON.stringify(sharedDeletedNotes)
     };
   });
 
@@ -95,7 +107,9 @@ try {
       !item.eventId ||
       !item.workspaceId ||
       !item.sharedHasCanonicalParticipant ||
-      (item.workspaceHasEvent && !item.workspaceEventHasCanonicalParticipant)
+      (item.workspaceHasEvent && !item.workspaceEventHasCanonicalParticipant) ||
+      (item.workspaceHasEvent && !item.workspaceNotesMatchCanonical) ||
+      (item.workspaceHasEvent && !item.workspaceDeletedNotesMatchCanonical)
   );
   const recoverableIndexes = memberships.filter(
     (item) => item.eventId && item.sharedHasCanonicalParticipant && !item.workspaceHasEvent
