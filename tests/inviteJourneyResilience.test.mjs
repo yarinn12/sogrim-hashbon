@@ -686,7 +686,7 @@ test("foreground and connectivity signals share the same pending mutation recove
   const app = readFileSync("src/app.mjs", "utf8");
   const listeners = app.slice(
     app.indexOf('window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync)'),
-    app.indexOf('document.addEventListener("settle-friends:push-status"')
+    app.indexOf("document.addEventListener(PUSH_STATUS_EVENT")
   );
 
   assert.match(

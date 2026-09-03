@@ -1,5 +1,5 @@
-const PWA_RELEASE = "447";
-const CACHE_NAME = "settle-friends-live-v447";
+const PWA_RELEASE = "448";
+const CACHE_NAME = "settle-friends-live-v448";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -183,6 +183,7 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/",
   "/index.html",
   "/styles.css",
+  "/manifest.webmanifest",
   "/src/app.mjs",
   "/src/pwaBootstrap.mjs",
   "/src/platformCompatibility.mjs",
@@ -316,12 +317,12 @@ async function precacheFreshFiles(cache) {
   const criticalFiles = PRECACHE_FILES.filter((path) =>
     CRITICAL_PRECACHE_FILES.has(path)
   );
-  const optionalFiles = PRECACHE_FILES.filter((path) =>
-    !CRITICAL_PRECACHE_FILES.has(path)
-  );
 
+  // Installing must stay short: Chromium can leave a replacement worker in
+  // `installing` while a large optional cache warm-up is still running. Cache
+  // the complete runnable shell here; all other same-origin assets are filled
+  // by the normal fetch handler as the current app loads them.
   await Promise.all(criticalFiles.map((path) => precacheFreshFile(cache, path)));
-  await Promise.allSettled(optionalFiles.map((path) => precacheFreshFile(cache, path)));
 }
 
 async function precacheFreshFile(cache, path) {

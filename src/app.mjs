@@ -284,6 +284,7 @@ import {
 } from "./domain/avatarPresets.mjs";
 import {
   clearNotificationTargetFromUrl,
+  notificationTargetFromPayload,
   notificationTargetFromUrl
 } from "./domain/notificationTargets.mjs";
 import { notificationInboxDestination } from "./domain/notificationInboxDestination.mjs";
@@ -294,6 +295,9 @@ const APP_HISTORY_STATE_KEY = "settleFriendsAppHistory";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_DESTINATION_EVENT = "settle-friends:native-destination";
 const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
+const PUSH_STATUS_EVENT = "settle-friends:push-status";
+const PUSH_SYNCHRONIZED_EVENT = "settle-friends:push-synchronized";
+const PUSH_SYNC_RETRY_DELAYS_MS = [0, 150, 400];
 // iOS may suspend a PWA while it is still visually in the foreground. Keep the
 // cooldown deliberately short, and force a read when Safari reports that the
 // document became visible again, so a second device never has to wait for the
@@ -677,10 +681,77 @@ document.addEventListener("account-session-refreshed", () => {
   })
     .catch((error) => emitOperationDeferred("state_load", { error }));
 });
-document.addEventListener("settle-friends:push-status", (event) => {
+document.addEventListener(PUSH_STATUS_EVENT, handleIncomingPushStatus);
+
+function handleIncomingPushStatus(event) {
   if (event.detail?.status !== "received") return;
-  requestResumeSync({ force: true }).catch(() => {});
-});
+  synchronizeIncomingPush(event.detail?.notification).catch((error) => {
+    emitOperationDeferred("state_load", { error });
+  });
+}
+
+async function synchronizeIncomingPush(notification) {
+  const target = notificationTargetFromPayload(notification);
+  const ready = await refreshIncomingPushState(notification);
+
+  // Refresh the inbox only after the canonical event has been requested. This
+  // prevents a badge/banner from being the first visible sign of a change
+  // while the participant list or expense list is still showing its old copy.
+  await refreshNotificationInbox({ force: true });
+  document.dispatchEvent(
+    new CustomEvent(PUSH_SYNCHRONIZED_EVENT, {
+      detail: {
+        eventId: target?.eventId ?? "",
+        ready
+      }
+    })
+  );
+  return ready;
+}
+
+async function refreshIncomingPushState(notification) {
+  for (const retryDelayMs of PUSH_SYNC_RETRY_DELAYS_MS) {
+    if (retryDelayMs > 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs));
+    }
+    await requestResumeSync({ force: true, includeSecondary: false });
+    if (incomingPushStateIsVisible(notification)) return true;
+  }
+  return incomingPushStateIsVisible(notification);
+}
+
+function incomingPushStateIsVisible(notification) {
+  const target = notificationTargetFromPayload(notification);
+  if (!target) return true;
+
+  const event = getEvent(target.eventId);
+  if (!event) return false;
+  const data = notification?.data && typeof notification.data === "object"
+    ? notification.data
+    : notification;
+  const kind = String(data?.kind ?? "").trim();
+  const activityId = String(
+    data?.activityId ?? data?.activity_id ?? ""
+  ).trim();
+  if (!activityId) return true;
+
+  if (["participant-joined", "event-invite"].includes(kind)) {
+    return Boolean(
+      event.participantIds?.includes(activityId) &&
+        !(event.inactiveParticipantIds ?? []).includes(activityId)
+    );
+  }
+  if (kind === "expense-created") {
+    return Boolean(event.expenses?.some((expense) => expense?.id === activityId));
+  }
+  if (kind === "event-closed") {
+    return Boolean(
+      isEventClosed(event) &&
+        event.activityLog?.some((entry) => entry?.id === activityId)
+    );
+  }
+  return true;
+}
 
 function handleSharedSaveReverted(event) {
   state = loadState();
@@ -21592,11 +21663,30 @@ function cleanNotificationTargetUrl(value) {
 function handleNativeDestinationRequest(event) {
   const destination = event.detail?.destination;
   const target = notificationTargetFromUrl(destination);
-  if (!target || !getEvent(target.eventId)) return;
+  if (!target) return;
 
+  // Capacitor falls back to location.replace unless this event is cancelled
+  // synchronously. Claim the notification tap first, then hydrate the event,
+  // so iPhone never opens the destination against a stale participant list.
   event.preventDefault();
-  openNotificationTargetFromUrl(destination);
-  render();
+  openNativeNotificationDestinationAfterSync(destination, target).catch(
+    (error) => {
+      emitOperationDeferred("state_load", { error });
+      window.location.replace(destination);
+    }
+  );
+}
+
+async function openNativeNotificationDestinationAfterSync(destination, target) {
+  const ready = await refreshIncomingPushState({ data: target });
+  if (ready && openNotificationTargetFromUrl(destination)) {
+    render();
+    return;
+  }
+
+  // A clean reload is the final recovery path: bootstrap hydrates account and
+  // event state before consuming openEvent from the URL.
+  window.location.replace(destination);
 }
 
 function persistState(options = {}) {

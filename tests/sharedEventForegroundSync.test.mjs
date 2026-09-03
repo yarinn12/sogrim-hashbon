@@ -70,7 +70,24 @@ test("opening home forces an immediate shared state refresh", () => {
 test("a received push forces the shared event to refresh before the inbox opens", () => {
   assert.match(
     appSource,
-    /settle-friends:push-status[\s\S]*?requestResumeSync\(\{ force: true \}\)/
+    /document\.addEventListener\(PUSH_STATUS_EVENT, handleIncomingPushStatus\)/
+  );
+  const pushSyncStart = appSource.indexOf("async function synchronizeIncomingPush");
+  const pushSyncEnd = appSource.indexOf("async function refreshIncomingPushState", pushSyncStart);
+  const pushSync = appSource.slice(pushSyncStart, pushSyncEnd);
+  assert.ok(
+    pushSync.indexOf("refreshIncomingPushState(notification)") <
+      pushSync.indexOf("refreshNotificationInbox({ force: true })"),
+    "canonical event state must be requested before the notification inbox is shown"
+  );
+  assert.match(pushSync, /new CustomEvent\(PUSH_SYNCHRONIZED_EVENT/);
+  assert.match(
+    appSource,
+    /requestResumeSync\(\{ force: true, includeSecondary: false \}\)/
+  );
+  assert.match(
+    appSource,
+    /\["participant-joined", "event-invite"\][\s\S]*?event\.participantIds\?\.includes\(activityId\)/
   );
   assert.match(
     appSource,

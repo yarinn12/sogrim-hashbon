@@ -199,6 +199,27 @@ test("app consumes a notification destination only after account state hydration
   );
 });
 
+test("native notification taps wait for authoritative event state before navigation", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const handler = app.slice(
+    app.indexOf("function handleNativeDestinationRequest"),
+    app.indexOf("function persistState", app.indexOf("function handleNativeDestinationRequest"))
+  );
+
+  assert.match(handler, /if \(!target\) return;[\s\S]*?event\.preventDefault\(\)/);
+  assert.match(handler, /openNativeNotificationDestinationAfterSync\(destination, target\)/);
+  assert.match(
+    handler,
+    /await refreshIncomingPushState\(\{ data: target \}\)[\s\S]*?openNotificationTargetFromUrl\(destination\)/
+  );
+  assert.ok(
+    handler.indexOf("await refreshIncomingPushState") <
+      handler.indexOf("openNotificationTargetFromUrl(destination)"),
+    "a native push tap must hydrate before opening its event"
+  );
+  assert.match(handler, /window\.location\.replace\(destination\)/);
+});
+
 test("native resume refreshes shared state without duplicate concurrent syncs", async () => {
   const [app, bridge] = await Promise.all([
     readFile("src/app.mjs", "utf8"),

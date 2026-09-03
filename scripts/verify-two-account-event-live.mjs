@@ -297,9 +297,54 @@ try {
       });
       const foregroundCreateStartedAt = performance.now();
       ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
-      await page
-        .getByText(foregroundExpenseName, { exact: true })
-        .waitFor({ timeout: 10_000 });
+      const pushSynchronization = page.evaluate(
+        ({ eventId: pushedEventId, activityId }) =>
+          new Promise((resolve, reject) => {
+            const timeoutId = window.setTimeout(() => {
+              document.removeEventListener(
+                "settle-friends:push-synchronized",
+                handleSynchronized
+              );
+              reject(new Error("push synchronization barrier timed out"));
+            }, 10_000);
+            function handleSynchronized(event) {
+              if (event.detail?.eventId !== pushedEventId) return;
+              window.clearTimeout(timeoutId);
+              document.removeEventListener(
+                "settle-friends:push-synchronized",
+                handleSynchronized
+              );
+              resolve(event.detail);
+            }
+            document.addEventListener(
+              "settle-friends:push-synchronized",
+              handleSynchronized
+            );
+            document.dispatchEvent(
+              new CustomEvent("settle-friends:push-status", {
+                detail: {
+                  status: "received",
+                  notification: {
+                    data: {
+                      eventId: pushedEventId,
+                      activityId,
+                      kind: "expense-created",
+                      view: "event"
+                    }
+                  }
+                }
+              })
+            );
+          }),
+        { eventId, activityId: foregroundExpenseId }
+      );
+      const [pushSyncResult] = await Promise.all([
+        pushSynchronization,
+        page
+          .getByText(foregroundExpenseName, { exact: true })
+          .waitFor({ timeout: 10_000 })
+      ]);
+      assert.equal(pushSyncResult.ready, true);
       const foregroundCreateElapsed = performance.now() - foregroundCreateStartedAt;
       recordSyncTiming(
         "foreground-expense-create-to-open-iphone",
@@ -991,6 +1036,7 @@ try {
       replacementInviteRevokesPreviousLink: true,
       newlyGeneratedInviteRedeemed: true,
       productionIphoneLoginJoinedFromNewLink: true,
+      foregroundPushWaitedForCanonicalState: true,
       openIphoneForegroundCreateAutoSynced: true,
       openIphoneForegroundDeleteAutoSynced: true,
       productionIphoneNoteUiWriteSyncedToOwner: true,
