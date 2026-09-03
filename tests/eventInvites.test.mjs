@@ -32,6 +32,7 @@ test("invite failures are distinguishable from account session failures", () => 
     "EVENT_INVITE_REVOKED",
     "EVENT_INVITE_EXPIRED",
     "EVENT_INVITE_AUTH_REQUIRED",
+    "EVENT_MEMBERSHIP_INDEX_PENDING",
     "PRIVATE_INVITE_RECIPIENT_MISMATCH"
   ]) {
     assert.equal(isEventInviteError({ code }), true, code);
@@ -770,6 +771,7 @@ test("a recovered member can create and redeem the first stable invite without p
   let activeInvite = null;
   let rotations = 0;
   let membershipActivated = false;
+  let indexRequests = 0;
 
   const fetchImpl = async (url, options = {}) => {
     const address = String(url);
@@ -824,7 +826,8 @@ test("a recovered member can create and redeem the first stable invite without p
       return jsonResponse(true);
     }
     if (address.endsWith("/rest/v1/rpc/index_shared_event_for_member")) {
-      return jsonResponse({ status: "indexed", snapshotId: SPACE_ID });
+      indexRequests += 1;
+      throw new Error("A fresh participant must join canonical state before indexing");
     }
     throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
   };
@@ -858,7 +861,9 @@ test("a recovered member can create and redeem the first stable invite without p
   assert.equal(redeemed.status, 200);
   assert.equal(redeemed.payload.spaceId, SPACE_ID);
   assert.equal(redeemed.payload.spaceKey, recoveryKey);
+  assert.equal(redeemed.payload.indexPending, true);
   assert.equal(membershipActivated, true);
+  assert.equal(indexRequests, 0);
 });
 
 test("a recovered member replaces an existing invite with canonical credentials and the new link redeems", async () => {
@@ -1382,6 +1387,7 @@ test("an active participant can redeem a private event invite while friendship i
   assert.equal(redemption.status, 200);
   assert.equal(redemption.payload.kind, "private");
   assert.equal(redemption.payload.spaceId, SPACE_ID);
+  assert.equal(redemption.payload.indexPending, false);
   const activation = requests.find((request) =>
     request.address.endsWith("/rest/v1/rpc/redeem_event_invite_membership")
   );

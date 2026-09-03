@@ -472,24 +472,35 @@ export async function redeemEventInvite({
       code: "EVENT_INVITE_INVALIDATED"
     });
   }
-  const indexed = await indexSharedEventForMember({
-    ...context,
-    snapshotId: spaceId,
-    userId: recipient.id,
-    fetchImpl
-  });
-  if (!indexed) {
-    return failure(503, "The event is still being added to this account", {
-      code: "EVENT_MEMBERSHIP_INDEX_PENDING",
-      retryable: true
+  const recipientParticipantId = `account-${recipient.id}`;
+  const canonicalParticipantReady = isActiveEventParticipant(
+    sharedEvent,
+    recipientParticipantId
+  );
+  // A new open-link recipient is intentionally only a pending member here.
+  // Returning credentials lets the client add that participant to canonical
+  // event state first; the following personal-workspace save then indexes it.
+  if (canonicalParticipantReady) {
+    const indexed = await indexSharedEventForMember({
+      ...context,
+      snapshotId: spaceId,
+      userId: recipient.id,
+      fetchImpl
     });
+    if (!indexed) {
+      return failure(503, "The event is still being added to this account", {
+        code: "EVENT_MEMBERSHIP_INDEX_PENDING",
+        retryable: true
+      });
+    }
   }
 
   return success({
     eventId: normalizedEventId,
     kind: invite.kind,
     spaceId,
-    spaceKey
+    spaceKey,
+    indexPending: !canonicalParticipantReady
   });
 }
 

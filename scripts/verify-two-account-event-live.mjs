@@ -61,8 +61,16 @@ const eventCredentials = {
   id: `space-two-account-event-${suffix}`,
   key: randomBytes(32).toString("base64url")
 };
+const freshJoinEventId = `event-fresh-link-join-${suffix}`;
+const freshJoinEventCredentials = {
+  id: `space-fresh-link-join-${suffix}`,
+  key: randomBytes(32).toString("base64url")
+};
 const createdUserIds = [];
-const createdSpaceIds = new Set([eventCredentials.id]);
+const createdSpaceIds = new Set([
+  eventCredentials.id,
+  freshJoinEventCredentials.id
+]);
 const syncTimings = [];
 
 function recordSyncTiming(name, startedAt) {
@@ -99,11 +107,27 @@ try {
     "added-friend",
     "חבר שנוסף באירוע שיתופי"
   );
+  const freshJoinOwner = await createTemporaryAccount(
+    "fresh-link-owner",
+    "בעל קישור חדש"
+  );
+  const freshLinkJoiner = await createTemporaryAccount(
+    "fresh-link-joiner",
+    "מצטרף חדש מקישור"
+  );
   const ownerConfig = runtimeConfig(owner);
   const joinerConfig = runtimeConfig(joiner);
+  const freshJoinOwnerConfig = runtimeConfig(freshJoinOwner);
+  const freshLinkJoinerConfig = runtimeConfig(freshLinkJoiner);
   const ownerProfile = accountProfileFromUser(owner.session.user);
   const joinerProfile = accountProfileFromUser(joiner.session.user);
   const addedFriendProfile = accountProfileFromUser(addedFriend.session.user);
+  const freshJoinOwnerProfile = accountProfileFromUser(
+    freshJoinOwner.session.user
+  );
+  const freshLinkJoinerProfile = accountProfileFromUser(
+    freshLinkJoiner.session.user
+  );
   const createdAt = "2026-08-03T12:00:00.000Z";
 
   let ownerState = baseAccountState(ownerProfile);
@@ -113,6 +137,108 @@ try {
     runtimeConfig(addedFriend),
     baseAccountState(addedFriendProfile),
     qaFetch
+  );
+
+  let freshJoinOwnerState = baseAccountState(freshJoinOwnerProfile);
+  freshJoinOwnerState.events = [{
+    id: freshJoinEventId,
+    name: "בדיקת הצטרפות חדשה",
+    eventType: "standard",
+    currency: "ILS",
+    participantIds: [freshJoinOwnerProfile.participantId],
+    adminIds: [freshJoinOwnerProfile.participantId],
+    createdByParticipantId: freshJoinOwnerProfile.participantId,
+    adminsCanEditOnly: false,
+    roundSettlementTransfers: false,
+    locked: false,
+    closedAt: null,
+    createdAt,
+    updatedAt: createdAt,
+    sharedSpaceId: freshJoinEventCredentials.id,
+    sharedSpaceKey: freshJoinEventCredentials.key,
+    inactiveParticipantIds: [],
+    participantAliases: {},
+    distinctParticipantPairs: [],
+    expenses: [],
+    deletedExpenses: [],
+    activityLog: [],
+    transfers: []
+  }];
+  await saveCloudState(freshJoinOwnerConfig, freshJoinOwnerState, qaFetch);
+  await saveCloudState(
+    freshLinkJoinerConfig,
+    baseAccountState(freshLinkJoinerProfile),
+    qaFetch
+  );
+  freshJoinOwnerState = await saveSharedEventState(
+    freshJoinOwnerConfig,
+    freshJoinOwnerState,
+    freshJoinEventId
+  );
+
+  const freshJoinInviteResponse = await qaFetch(
+    `${browserOrigin}/api/event-invites/open-link`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${freshJoinOwner.session.access_token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        eventId: freshJoinEventId,
+        candidateToken: "",
+        operation: "ensure"
+      })
+    }
+  );
+  const freshJoinInvitePayload = await freshJoinInviteResponse.json()
+    .catch(() => ({}));
+  assert.equal(
+    freshJoinInviteResponse.ok,
+    true,
+    JSON.stringify(freshJoinInvitePayload)
+  );
+  assert.match(
+    String(freshJoinInvitePayload?.token ?? ""),
+    /^[A-Za-z0-9_-]{32,128}$/
+  );
+
+  await joinThroughProductionBrowser({
+    email: freshLinkJoiner.email,
+    password: freshLinkJoiner.password,
+    username: freshLinkJoiner.username,
+    eventId: freshJoinEventId,
+    eventName: "בדיקת הצטרפות חדשה",
+    token: freshJoinInvitePayload.token
+  });
+  const freshLinkJoinerState = await loadCloudState(
+    freshLinkJoinerConfig,
+    baseAccountState(freshLinkJoinerProfile),
+    qaFetch
+  );
+  assert.equal(
+    freshLinkJoinerState.events?.some(
+      (event) =>
+        event.id === freshJoinEventId &&
+        event.participantIds?.includes(freshLinkJoinerProfile.participantId)
+    ),
+    true,
+    "A fresh link joiner was not persisted into its personal workspace"
+  );
+  const freshJoinAccessibleEvents = await readAccessibleSharedCloudStates(
+    freshLinkJoinerConfig,
+    qaFetch
+  );
+  assert.equal(
+    freshJoinAccessibleEvents.some(
+      (row) =>
+        row.state?.events?.[0]?.id === freshJoinEventId &&
+        row.state.events[0].participantIds?.includes(
+          freshLinkJoinerProfile.participantId
+        )
+    ),
+    true,
+    "A fresh link joiner was not persisted into canonical event membership"
   );
 
   const joinerParticipant = baseAccountState(joinerProfile).participants[0];
@@ -1032,6 +1158,7 @@ try {
       canonicalPublicationGrantedMembershipAtomically: true,
       directFriendInviteGrantedMembershipWithoutOpeningLink: true,
       productionInviteEndpointFast: true,
+      freshAccountLinkJoinIndexedAfterCanonicalMembership: true,
       authenticatedInviteRedeemed: true,
       replacementInviteRevokesPreviousLink: true,
       newlyGeneratedInviteRedeemed: true,
@@ -1173,6 +1300,7 @@ async function joinThroughProductionBrowser({
     context.on("response", async (response) => {
       const url = new URL(response.url());
       const isRelevant =
+        url.pathname.startsWith("/api/event-invites/") ||
         url.pathname.startsWith("/auth/v1/") ||
         url.pathname.includes("/rest/v1/rpc/set_friend_username") ||
         url.pathname.includes("/rest/v1/app_snapshots");
@@ -1260,7 +1388,10 @@ async function joinThroughProductionBrowser({
     }
     const unexpectedSnapshotFailures = failedResponses.filter(
       ({ path, status }) =>
-        path.includes("/rest/v1/app_snapshots") && status >= 400
+        (
+          path.includes("/rest/v1/app_snapshots") ||
+          path === "/api/event-invites/redeem"
+        ) && status >= 400
     );
     assert.deepEqual(
       unexpectedSnapshotFailures,

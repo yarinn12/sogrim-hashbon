@@ -46,6 +46,11 @@ test("active event membership is indexed into the recipient workspace immediatel
   );
   assert.match(
     server,
+    /canonicalParticipantReady[\s\S]*?if \(canonicalParticipantReady\) \{[\s\S]*?indexSharedEventForMember\(/
+  );
+  assert.match(server, /indexPending: !canonicalParticipantReady/);
+  assert.match(
+    server,
     /\/rest\/v1\/rpc\/index_shared_event_for_member/
   );
   assert.match(

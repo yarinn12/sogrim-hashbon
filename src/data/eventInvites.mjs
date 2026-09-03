@@ -20,6 +20,7 @@ export function isEventInviteError(error) {
     code === "INVALID_EVENT_INVITE" ||
     code === "INVALID_INVITE_RESPONSE" ||
     code === "LEGACY_INVITE_REPLACED" ||
+    code === "EVENT_MEMBERSHIP_INDEX_PENDING" ||
     code.startsWith("EVENT_INVITE_") ||
     code.startsWith("PRIVATE_INVITE_")
   );
