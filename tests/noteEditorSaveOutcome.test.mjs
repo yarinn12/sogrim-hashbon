@@ -127,6 +127,17 @@ test("an unseen remote title merges with the local body and is acknowledged as s
   assert.equal(h.context.state.events[0].notes[0].body, "Local draft");
 });
 
+test("a successful merged receipt immediately reaches an app state replaced during saving", async () => {
+  const remote = updateEventNote(initialState(), "event-editor", "note-editor", {
+    title: "Title from the server", participantId: "account-owner", updatedAt: "2026-09-02T00:00:00.000Z"
+  });
+  const h = harness({ remote, replaceStateDuringSave: true });
+  assert.equal((await h.save()).ok, true);
+  assert.equal(h.closed(), 1);
+  assert.equal(h.context.state.events[0].notes[0].title, "Title from the server");
+  assert.equal(h.context.state.events[0].notes[0].body, "Local draft");
+});
+
 test("durably queued offline notes do not pretend to have a cloud acknowledgement", async () => {
   const h = harness({ result: { ok: true, mode: "queued", pending: true } });
   const result = await h.save();

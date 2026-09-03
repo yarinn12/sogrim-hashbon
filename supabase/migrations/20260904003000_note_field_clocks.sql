@@ -282,4 +282,3 @@ revoke all on function private.normalize_note_field_clocks(jsonb,jsonb) from pub
 revoke all on function private.normalize_shared_note_field_clocks() from public, anon, authenticated;
 revoke all on function private.has_valid_shared_event_notes(jsonb) from public, anon, authenticated;
 commit;
-

@@ -16320,24 +16320,24 @@ async function saveEventNoteFromDialog(eventId) {
   if (result?.persistedState) {
     const persistedNote = result.persistedState.events
       ?.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId);
+    // A foreground read may have replaced the object owned by persistence.
+    // Apply successful merges too, so remote fields appear before closing the
+    // editor instead of waiting for another poll. Preserve newer local work
+    // and never import a receipt from a different signed-in account.
+    if (state.currentParticipantId === previousState.currentParticipantId) {
+      try {
+        state = mergeSharedStates(result.persistedState, state);
+        saveState(state);
+      } catch (error) {
+        emitOperationDeferred("state_load", { error });
+      }
+    }
     if (
       !persistedNote ||
       requestedFields.some((field) => field === "pinned"
         ? (persistedNote.pinned === true) !== (requestedNote.pinned === true)
         : persistedNote[field] !== requestedNote[field])
     ) {
-      // Persistence may have updated an object that a foreground read already
-      // replaced. Merge its receipt into the active same-account state too;
-      // never roll back to previousState or discard newer local mutations.
-      if (state.currentParticipantId === previousState.currentParticipantId) {
-        try {
-          state = mergeSharedStates(result.persistedState, state);
-          saveState(state);
-        } catch (error) {
-          // A reconciliation exception must not strand the editor in "saving".
-          emitOperationDeferred("state_load", { error });
-        }
-      }
       if (eventDialog === activeDialog) {
         activeDialog.saving = false;
         activeDialog.error = persistedNote
