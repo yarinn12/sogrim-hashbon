@@ -329,6 +329,48 @@ try {
   memberState = await saveSharedEventState(memberConfig, pendingDeletion, eventId);
   assert.equal(memberState.events.find((event) => event.id === eventId).deletedNotes.length, previousHistoryCount + 1);
 
+  // Two devices can assign the same millisecond to different revisions. The
+  // existing deterministic winner must publish a strict successor revision.
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  memberState = await refreshSharedEvents(memberConfig, memberState);
+  const tieNote = memberState.events.find((event) => event.id === eventId)
+    .notes.find((item) => item.id === companionAfterHistoryId);
+  const tieTime = new Date(Math.max(Date.now(), Date.parse(tieNote.updatedAt) + 1)).toISOString();
+  let tiedCandidate = updateEventNote(memberState, eventId, companionAfterHistoryId, {
+    body: "Z member equal-clock edit", participantId: memberProfile.participantId, updatedAt: tieTime
+  });
+  const tieCompanionId = `note-tie-companion-${suffix}`;
+  tiedCandidate = addEventNote(tiedCandidate, eventId, {
+    id: tieCompanionId, body: "An equal-clock edit must not block this note",
+    participantId: memberProfile.participantId
+  });
+  ownerState = updateEventNote(ownerState, eventId, companionAfterHistoryId, {
+    body: "A owner equal-clock edit", participantId: ownerProfile.participantId, updatedAt: tieTime
+  });
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  const beforeClockTie = await readCloudState(sharedConfig);
+  // Reproduce the old client's rejection against the unchanged server guard.
+  await assert.rejects(
+    saveCloudState(sharedConfig, buildSharedEventState(tiedCandidate, eventId)),
+    (error) => error.status === 403
+  );
+  assert.deepEqual(await readCloudState(sharedConfig), beforeClockTie);
+  memberState = await saveSharedEventState(memberConfig, tiedCandidate, eventId);
+  const clockTieSaved = await readCloudState(sharedConfig);
+  const savedTieEvent = clockTieSaved.events[0];
+  const savedTieNote = savedTieEvent.notes.find((item) => item.id === companionAfterHistoryId);
+  assert.equal(savedTieNote.body, "Z member equal-clock edit");
+  assert.equal(savedTieNote.updatedAt, new Date(Date.parse(tieTime) + 1).toISOString());
+  assert.equal(savedTieNote.updatedByParticipantId, memberProfile.participantId);
+  assert.equal(savedTieNote.createdByParticipantId, tieNote.createdByParticipantId);
+  assert.ok(savedTieEvent.notes.some((item) => item.id === tieCompanionId));
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), memberState);
+    assert.deepEqual(loaded.events.find((event) => event.id === eventId).notes, savedTieEvent.notes);
+  }
+  memberState = await saveSharedEventState(memberConfig, memberState, eventId);
+  assert.deepEqual((await readCloudState(sharedConfig)).events[0].notes, savedTieEvent.notes);
+
   console.log(JSON.stringify({
     ok: true,
     recipientClientReadsBeforeCreateAssertion: 0,
@@ -350,6 +392,8 @@ try {
     longNoteHistoryRetained: true,
     legacyTruncatedHistoryRecovered: true,
     deletionAfterInterveningEditSynced: true,
+    equalClockNoteEditAndCompanionSynced: true,
+    equalClockEditGuardStillEnforced: true,
     temporaryDataCleanup: true
   }));
 } finally {

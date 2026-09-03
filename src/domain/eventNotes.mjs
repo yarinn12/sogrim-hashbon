@@ -158,12 +158,12 @@ export function mergeEventNotes(remoteEvent, localEvent) {
   return { notes, deletedNotes };
 }
 
-// A committed deletion is an immutable fact, not another competing edit.
-// Only use this at a canonical server boundary; peer/offline merges must stay
-// deterministic without assuming that either peer has committed its changes.
+// Canonical boundaries preserve committed deletions and advance a winning edit
+// beyond an equal committed clock. Peer/offline merges must stay deterministic
+// without assuming that either peer has committed its changes.
 export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
   const merged = mergeEventNotes(canonicalEvent, localEvent);
-  if (!merged.deletedNotes?.length) return merged;
+  if (!merged.notes) return merged;
   const committed = new Map(
     (canonicalEvent?.deletedNotes ?? []).map((deletion) => [deletion.id, deletion])
   );
@@ -172,6 +172,22 @@ export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
   );
   return {
     ...merged,
+    notes: merged.notes.map((note) => {
+      const currentNote = currentNotes.get(note.id);
+      const committedTime = parsedTimestamp(currentNote?.updatedAt);
+      if (!Number.isFinite(committedTime) || parsedTimestamp(note.updatedAt) !== committedTime) {
+        return note;
+      }
+      // An omitted false pin and equivalent timestamp spellings are not edits.
+      const revisionKey = (value) => stableItemKey({
+        ...value, pinned: value.pinned === true, updatedAt: currentNote.updatedAt
+      });
+      if (revisionKey(note) === revisionKey(currentNote)) return clone(currentNote);
+      // The deterministic merge already selected this different revision.
+      // Publishing it requires a strict successor clock, not the equal clock
+      // that the authorization guard correctly rejects as a stale rewrite.
+      return { ...note, updatedAt: monotonicTimestamp(note.updatedAt, currentNote.updatedAt) };
+    }).sort((first, second) => compareNewestFirst(first, second, "updatedAt")),
     deletedNotes: merged.deletedNotes
       .map((deletion) => {
         if (committed.has(deletion.id)) return clone(committed.get(deletion.id));
