@@ -12,9 +12,18 @@ test("two-account live QA observes automatic foreground updates on iPhone", () =
   assert.match(source, /afterJoin: async \(page\) =>/);
   assert.match(source, /foreground-expense-create-to-open-iphone/);
   assert.match(source, /foreground-expense-delete-from-open-iphone/);
+  assert.match(source, /foreground-note-ui-create-to-owner-read/);
+  assert.match(source, /foreground-note-edit-to-open-iphone/);
+  assert.match(source, /foreground-note-delete-from-open-iphone/);
   assert.match(source, /foregroundCreateElapsed <= 3_500/);
   assert.match(source, /foregroundDeleteElapsed <= 3_500/);
+  assert.match(source, /foregroundNoteCreateElapsed <= 5_000/);
+  assert.match(source, /foregroundNoteEditElapsed <= 3_500/);
+  assert.match(source, /foregroundNoteDeleteElapsed <= 3_500/);
   assert.match(source, /waitFor\(\{ state: "detached", timeout: 10_000 \}\)/);
   assert.match(source, /openIphoneForegroundCreateAutoSynced: true/);
   assert.match(source, /openIphoneForegroundDeleteAutoSynced: true/);
+  assert.match(source, /productionIphoneNoteUiWriteSyncedToOwner: true/);
+  assert.match(source, /openIphoneForegroundNoteEditAutoSynced: true/);
+  assert.match(source, /openIphoneForegroundNoteDeleteAutoSynced: true/);
 });

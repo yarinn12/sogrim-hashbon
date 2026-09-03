@@ -37,6 +37,7 @@ import {
 import { calculateSettlement } from "../src/domain/settlement.mjs";
 import {
   addEventNote,
+  removeEventNote,
   updateEventNote
 } from "../src/domain/eventNotes.mjs";
 import { loadEnvFile } from "../src/server/envFile.mjs";
@@ -328,6 +329,87 @@ try {
       assert.ok(
         foregroundDeleteElapsed <= 3_500,
         `Open iPhone did not remove the deleted expense within 3.5 seconds (${foregroundDeleteElapsed.toFixed(1)}ms)`
+      );
+
+      // Reproduce the reported shared-note journey through the production UI:
+      // a regular member creates a note on one iPhone, the owner reads the
+      // canonical value, then an owner edit and deletion appear automatically
+      // while the second iPhone keeps the notes screen open.
+      await page.locator('[data-action="open-event-notes"]').click();
+      await page
+        .locator(`[data-screen-kind="event-notes"][data-event-id="${eventId}"]`)
+        .waitFor({ timeout: 10_000 });
+      await page.locator('[data-action="new-event-note"]').click();
+      const foregroundNoteTitle = `פתק חי ${suffix}`;
+      const foregroundNoteBody = "נוצר מהמכשיר השני";
+      const foregroundNoteUpdatedBody = "עודכן מהמכשיר הראשון";
+      await page.locator('[data-action="event-note-title"]').fill(foregroundNoteTitle);
+      await page.locator('[data-action="event-note-body"]').fill(foregroundNoteBody);
+      const foregroundNoteCreateStartedAt = performance.now();
+      await page.locator('[data-action="save-event-note"]').click();
+      await page.locator(".event-note-modal").waitFor({
+        state: "detached",
+        timeout: 10_000
+      });
+      await page.getByText(foregroundNoteTitle, { exact: true }).waitFor({
+        timeout: 10_000
+      });
+      ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+      const foregroundNote = ownerState.events[0].notes?.find(
+        (note) => note.title === foregroundNoteTitle
+      );
+      assert.equal(foregroundNote?.body, foregroundNoteBody);
+      const foregroundNoteCreateElapsed =
+        performance.now() - foregroundNoteCreateStartedAt;
+      recordSyncTiming(
+        "foreground-note-ui-create-to-owner-read",
+        foregroundNoteCreateStartedAt
+      );
+      assert.ok(
+        foregroundNoteCreateElapsed <= 5_000,
+        `Production iPhone note did not reach the owner within 5 seconds (${foregroundNoteCreateElapsed.toFixed(1)}ms)`
+      );
+
+      ownerState = updateEventNote(ownerState, eventId, foregroundNote.id, {
+        body: foregroundNoteUpdatedBody,
+        participantId: ownerProfile.participantId,
+        updatedAt: new Date().toISOString()
+      });
+      const foregroundNoteEditStartedAt = performance.now();
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page.getByText(foregroundNoteUpdatedBody, { exact: true }).waitFor({
+        timeout: 10_000
+      });
+      const foregroundNoteEditElapsed =
+        performance.now() - foregroundNoteEditStartedAt;
+      recordSyncTiming(
+        "foreground-note-edit-to-open-iphone",
+        foregroundNoteEditStartedAt
+      );
+      assert.ok(
+        foregroundNoteEditElapsed <= 3_500,
+        `Open iPhone did not show the edited note within 3.5 seconds (${foregroundNoteEditElapsed.toFixed(1)}ms)`
+      );
+
+      ownerState = removeEventNote(ownerState, eventId, foregroundNote.id, {
+        participantId: ownerProfile.participantId,
+        deletedAt: new Date().toISOString()
+      });
+      const foregroundNoteDeleteStartedAt = performance.now();
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page.getByText(foregroundNoteTitle, { exact: true }).waitFor({
+        state: "detached",
+        timeout: 10_000
+      });
+      const foregroundNoteDeleteElapsed =
+        performance.now() - foregroundNoteDeleteStartedAt;
+      recordSyncTiming(
+        "foreground-note-delete-from-open-iphone",
+        foregroundNoteDeleteStartedAt
+      );
+      assert.ok(
+        foregroundNoteDeleteElapsed <= 3_500,
+        `Open iPhone did not remove the deleted note within 3.5 seconds (${foregroundNoteDeleteElapsed.toFixed(1)}ms)`
       );
     }
   });
@@ -911,6 +993,9 @@ try {
       productionIphoneLoginJoinedFromNewLink: true,
       openIphoneForegroundCreateAutoSynced: true,
       openIphoneForegroundDeleteAutoSynced: true,
+      productionIphoneNoteUiWriteSyncedToOwner: true,
+      openIphoneForegroundNoteEditAutoSynced: true,
+      openIphoneForegroundNoteDeleteAutoSynced: true,
       connectedParticipantJoined: true,
       collaborativeMemberAddedAcceptedFriend: true,
       collaborativeMemberRemovalBlocked: true,
