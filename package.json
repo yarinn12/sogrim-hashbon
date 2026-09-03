@@ -32,6 +32,7 @@
     "db:apply:atomic-notes": "node scripts/apply-atomic-shared-event-note-replication.mjs --apply",
     "db:apply:personal-notes": "node scripts/apply-canonical-personal-note-projection.mjs --apply",
     "db:apply:idempotent-notes": "node scripts/apply-idempotent-shared-note-deletions.mjs --apply",
+    "db:apply:note-history": "node scripts/apply-complete-note-history.mjs --apply",
     "db:apply:metrics-clock": "node scripts/apply-product-metric-clock-fix.mjs",
     "native:prepare": "node scripts/build-native-web.mjs && cap sync && node scripts/finalize-native-projects.mjs",
     "native:android": "npm run native:prepare && cap open android",

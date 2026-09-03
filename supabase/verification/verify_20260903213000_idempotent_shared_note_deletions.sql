@@ -61,8 +61,8 @@ begin
   end if;
 
   tampered := pg_catalog.jsonb_set(normalized, '{events,0,deletedNotes}', '[]'::jsonb);
-  if private.is_safe_shared_event_notes_update(old_state,
-    private.preserve_committed_note_deletions(old_state, tampered), 'member') then
+  if private.preserve_committed_note_deletions(old_state, tampered)
+    #> '{events,0,deletedNotes}' is distinct from old_state #> '{events,0,deletedNotes}' then
     raise exception 'Normalization allowed committed deletion history to disappear';
   end if;
 

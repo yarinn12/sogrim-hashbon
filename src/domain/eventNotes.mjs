@@ -1,7 +1,6 @@
 import { canEditEvent } from "./permissions.mjs";
 
 export const MAX_EVENT_NOTES = 100;
-export const MAX_DELETED_EVENT_NOTES = 500;
 export const MAX_EVENT_NOTE_TITLE_LENGTH = 120;
 export const MAX_EVENT_NOTE_BODY_LENGTH = 5_000;
 
@@ -130,7 +129,7 @@ export function removeEventNote(
     deletedNotes: [
       tombstone,
       ...(event.deletedNotes ?? []).filter((item) => item?.id !== noteId)
-    ].slice(0, MAX_DELETED_EVENT_NOTES)
+    ]
   });
 }
 
@@ -164,14 +163,27 @@ export function mergeEventNotes(remoteEvent, localEvent) {
 // deterministic without assuming that either peer has committed its changes.
 export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
   const merged = mergeEventNotes(canonicalEvent, localEvent);
-  if (!canonicalEvent?.deletedNotes?.length) return merged;
+  if (!merged.deletedNotes?.length) return merged;
   const committed = new Map(
-    canonicalEvent.deletedNotes.map((deletion) => [deletion.id, deletion])
+    (canonicalEvent?.deletedNotes ?? []).map((deletion) => [deletion.id, deletion])
+  );
+  const currentNotes = new Map(
+    (canonicalEvent?.notes ?? []).map((note) => [note.id, note])
   );
   return {
     ...merged,
     deletedNotes: merged.deletedNotes
-      .map((deletion) => clone(committed.get(deletion.id) ?? deletion))
+      .map((deletion) => {
+        if (committed.has(deletion.id)) return clone(committed.get(deletion.id));
+        const currentNote = currentNotes.get(deletion.id);
+        // Delete-wins is the existing merge policy. Rebase a pending deletion
+        // after an intervening edit so its clock also satisfies server guards.
+        if (Number.isFinite(Date.parse(deletion.deletedAt)) &&
+          parsedTimestamp(currentNote?.updatedAt) > parsedTimestamp(deletion.deletedAt)) {
+          return { ...clone(deletion), deletedAt: currentNote.updatedAt };
+        }
+        return clone(deletion);
+      })
       .sort((first, second) => compareNewestFirst(first, second, "deletedAt"))
   };
 }
@@ -261,11 +273,9 @@ function validateDeletionCollection(deletions, path, { knownParticipantIds, erro
     errors.push(`${path} must be an array.`);
     return;
   }
-  if (deletions.length > MAX_DELETED_EVENT_NOTES) {
-    errors.push(
-      `${path} must contain at most ${MAX_DELETED_EVENT_NOTES} deletions.`
-    );
-  }
+  // Never truncate tombstones: without a server compaction watermark, doing
+  // so can resurrect old notes. The database's snapshot byte limit still
+  // bounds storage; a history count is not a safe garbage-collection rule.
   const ids = new Set();
   deletions.forEach((deletion, index) => {
     const deletionPath = `${path}[${index}]`;

@@ -134,10 +134,12 @@ test("saving and saving again return the canonical deletion instead of reviving 
 test("legacy deletion normalization ships identically in the migration and fresh schema", async () => {
   const migration = await readFile("supabase/migrations/20260903213000_idempotent_shared_note_deletions.sql", "utf8");
   const schema = await readFile("supabase/schema.sql", "utf8");
+  const historyMigration = await readFile("supabase/migrations/20260903223000_preserve_complete_note_history.sql", "utf8");
   for (const name of ["preserve_committed_note_deletions", "normalize_repeated_shared_note_deletions"]) {
     const pattern = new RegExp(`create or replace function private\\.${name}\\([^]*?\\n\\$\\$;`);
-    assert.ok(migration.match(pattern));
-    assert.equal(migration.match(pattern)[0], schema.match(pattern)?.[0]);
+    const source = name === "preserve_committed_note_deletions" ? historyMigration : migration;
+    assert.ok(source.match(pattern));
+    assert.equal(source.match(pattern)[0], schema.match(pattern)?.[0]);
   }
   assert.match(migration, /before update of state on public\.app_snapshots/);
   assert.match(migration, /create trigger ab_normalize_repeated_shared_note_deletions/);

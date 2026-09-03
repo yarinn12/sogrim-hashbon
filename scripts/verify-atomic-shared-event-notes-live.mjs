@@ -271,6 +271,64 @@ try {
     assert.equal(note?.body, "פתק שנשמר אחרי חזרה לחיבור");
   }
 
+  // A long-lived event must not hit a hidden lifetime limit on deletions.
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  const historicalAt = new Date().toISOString();
+  ownerState = {
+    ...ownerState,
+    events: ownerState.events.map((event) => event.id === eventId ? {
+      ...event,
+      deletedNotes: [...(event.deletedNotes ?? []), ...Array.from({ length: 500 }, (_, index) => ({
+        id: `note-history-${index}-${suffix}`,
+        deletedAt: historicalAt,
+        deletedByParticipantId: ownerProfile.participantId
+      }))]
+    } : event)
+  };
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  const previousHistoryCount = ownerState.events.find((event) => event.id === eventId).deletedNotes.length;
+  assert.ok(previousHistoryCount > 500);
+
+  memberState = await refreshSharedEvents(memberConfig, memberState);
+  const pendingDeleteAt = new Date().toISOString();
+  let pendingDeletion = removeEventNote(memberState, eventId, offlineNoteId, {
+    participantId: memberProfile.participantId, deletedAt: pendingDeleteAt
+  });
+  const companionAfterHistoryId = `note-history-companion-${suffix}`;
+  pendingDeletion = addEventNote(pendingDeletion, eventId, {
+    id: companionAfterHistoryId, body: "שמירה אחרי היסטוריה ארוכה",
+    participantId: memberProfile.participantId
+  });
+
+  ownerState = updateEventNote(ownerState, eventId, offlineNoteId, {
+    body: "עריכה שמגיעה אחרי בקשת המחיקה",
+    participantId: ownerProfile.participantId,
+    updatedAt: new Date(Date.parse(pendingDeleteAt) + 1).toISOString()
+  });
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  const interveningEditAt = ownerState.events.find((event) => event.id === eventId)
+    .notes.find((item) => item.id === offlineNoteId).updatedAt;
+
+  const truncatedLegacyPayload = buildSharedEventState(pendingDeletion, eventId);
+  truncatedLegacyPayload.events[0].deletedNotes = truncatedLegacyPayload.events[0].deletedNotes.slice(0, 500);
+  await readCloudState(sharedConfig);
+  await saveCloudState(sharedConfig, truncatedLegacyPayload);
+  const historySaved = await readCloudState(sharedConfig);
+  const historyEvent = historySaved.events[0];
+  assert.equal(historyEvent.deletedNotes.length, previousHistoryCount + 1);
+  assert.equal(historyEvent.deletedNotes.find((item) => item.id === offlineNoteId).deletedAt, interveningEditAt);
+  assert.equal(historyEvent.notes.some((item) => item.id === offlineNoteId), false);
+  assert.equal(historyEvent.notes.some((item) => item.id === companionAfterHistoryId), true);
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), pendingDeletion);
+    const event = loaded.events.find((item) => item.id === eventId);
+    assert.deepEqual(event.notes, historyEvent.notes);
+    assert.deepEqual(event.deletedNotes, historyEvent.deletedNotes);
+  }
+  // The current client must also converge its pending state and save again.
+  memberState = await saveSharedEventState(memberConfig, pendingDeletion, eventId);
+  assert.equal(memberState.events.find((event) => event.id === eventId).deletedNotes.length, previousHistoryCount + 1);
+
   console.log(JSON.stringify({
     ok: true,
     recipientClientReadsBeforeCreateAssertion: 0,
@@ -289,6 +347,9 @@ try {
     legacyDuplicateDeletionAccepted: true,
     unauthorizedNoteEditStillBlocked: true,
     offlineCandidatePublished: true,
+    longNoteHistoryRetained: true,
+    legacyTruncatedHistoryRecovered: true,
+    deletionAfterInterveningEditSynced: true,
     temporaryDataCleanup: true
   }));
 } finally {
