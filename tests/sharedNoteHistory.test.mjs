@@ -95,7 +95,9 @@ test("complete-history server functions ship identically in migration and fresh 
   const migration = await readFile("supabase/migrations/20260903223000_preserve_complete_note_history.sql", "utf8");
   const schema = await readFile("supabase/schema.sql", "utf8");
   for (const name of [
-    "has_valid_shared_event_notes", "is_safe_shared_event_notes_update",
+    // The later field-clock migration extends the note validator; its exact
+    // fresh-schema parity is checked in noteFieldClockSchema.test.mjs.
+    "is_safe_shared_event_notes_update",
     "rebase_note_deletion_timestamp", "preserve_committed_note_deletions"
   ]) {
     const pattern = new RegExp(`create or replace function private\\.${name}\\([^]*?\\n\\$\\$;`);
@@ -104,5 +106,6 @@ test("complete-history server functions ship identically in migration and fresh 
   }
   assert.match(migration, /jsonb_array_length\(notes_value\) > 100/);
   assert.doesNotMatch(migration, /jsonb_array_length\(deleted_notes_value\) > 500/);
+  assert.doesNotMatch(schema, /jsonb_array_length\(deleted_notes_value\) > 500/);
   assert.match(schema, /pg_column_size\(state\) <= 8388608/);
 });

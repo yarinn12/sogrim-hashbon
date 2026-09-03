@@ -5,6 +5,8 @@ export const MAX_EVENT_NOTE_TITLE_LENGTH = 120;
 export const MAX_EVENT_NOTE_BODY_LENGTH = 5_000;
 
 const SAFE_NOTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+const NOTE_FIELDS = ["title", "body", "pinned"];
+const FIELD_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 // Compare intent with the editor's opening snapshot, not the latest state.
 // Whole-note drafts are not whole-note replacements: untouched fields belong
@@ -59,9 +61,10 @@ export function addEventNote(
   const note = {
     id,
     ...content,
-    ...(pinned === true ? { pinned: true } : {}),
+    pinned: pinned === true,
     createdAt: savedAt,
     updatedAt: savedAt,
+    fieldUpdatedAt: Object.fromEntries(NOTE_FIELDS.map((field) => [field, savedAt])),
     createdByParticipantId: participantId,
     updatedByParticipantId: participantId
   };
@@ -117,6 +120,11 @@ export function updateEventNote(
             ...content,
             ...(nextPinned ? { pinned: true } : { pinned: false }),
             updatedAt: savedAt,
+            fieldUpdatedAt: Object.fromEntries(NOTE_FIELDS.map((field) => [
+              field,
+              noteFieldValue({ ...content, pinned: nextPinned }, field) !== noteFieldValue(note, field)
+                ? savedAt : noteFieldTimestamp(note, field)
+            ])),
             updatedByParticipantId: participantId
           }
         : note
@@ -155,7 +163,7 @@ export function removeEventNote(
   });
 }
 
-export function mergeEventNotes(remoteEvent, localEvent) {
+export function mergeEventNotes(remoteEvent, localEvent, { rejectInvalidContent = false } = {}) {
   const hasNotes =
     Object.hasOwn(remoteEvent ?? {}, "notes") ||
     Object.hasOwn(localEvent ?? {}, "notes") ||
@@ -172,7 +180,7 @@ export function mergeEventNotes(remoteEvent, localEvent) {
   const notes = mergeById(
     remoteEvent?.notes,
     localEvent?.notes,
-    chooseNewerNote
+    (remote, local) => chooseNewerNote(remote, local, rejectInvalidContent)
   )
     .filter((note) => !deletedNoteIds.has(note.id))
     .sort((first, second) => compareNewestFirst(first, second, "updatedAt"));
@@ -183,8 +191,8 @@ export function mergeEventNotes(remoteEvent, localEvent) {
 // Canonical boundaries preserve committed deletions and advance a winning edit
 // beyond an equal committed clock. Peer/offline merges must stay deterministic
 // without assuming that either peer has committed its changes.
-export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
-  const merged = mergeEventNotes(canonicalEvent, localEvent);
+export function mergeCanonicalEventNotes(canonicalEvent, localEvent, { actorParticipantId } = {}) {
+  const merged = mergeEventNotes(canonicalEvent, localEvent, { rejectInvalidContent: Boolean(actorParticipantId) });
   if (!merged.notes) return merged;
   const committed = new Map(
     (canonicalEvent?.deletedNotes ?? []).map((deletion) => [deletion.id, deletion])
@@ -196,6 +204,33 @@ export function mergeCanonicalEventNotes(canonicalEvent, localEvent) {
     ...merged,
     notes: merged.notes.map((note) => {
       const currentNote = currentNotes.get(note.id);
+      if (currentNote && note.fieldUpdatedAt) {
+        // Only write boundaries may attribute a combined revision to the actor.
+        // A newer envelope can contain an older independent field edit; its
+        // author is not necessarily the participant publishing this merge.
+        if (NOTE_FIELDS.every((field) =>
+          noteFieldValue(note, field) === noteFieldValue(currentNote, field) &&
+          parsedTimestamp(noteFieldTimestamp(note, field)) <= parsedTimestamp(noteFieldTimestamp(currentNote, field))
+        )) return clone(currentNote);
+        // Reads can combine pending values, but cannot claim to have committed
+        // a new envelope or identify the future writer. Rebase only on save.
+        if (!actorParticipantId) return note;
+        const fieldUpdatedAt = Object.fromEntries(NOTE_FIELDS.map((field) => {
+          const candidateTime = noteFieldTimestamp(note, field);
+          const currentTime = noteFieldTimestamp(currentNote, field);
+          return [field, noteFieldValue(note, field) !== noteFieldValue(currentNote, field) &&
+            parsedTimestamp(candidateTime) <= parsedTimestamp(currentTime)
+              ? monotonicTimestamp(candidateTime, currentTime) : candidateTime];
+        }));
+        const latestFieldTime = Math.max(...Object.values(fieldUpdatedAt).map(parsedTimestamp));
+        return {
+          ...note, fieldUpdatedAt,
+          createdAt: currentNote.createdAt,
+          createdByParticipantId: currentNote.createdByParticipantId,
+          updatedAt: monotonicTimestamp(new Date(Math.max(parsedTimestamp(note.updatedAt), latestFieldTime)).toISOString(), currentNote.updatedAt),
+          updatedByParticipantId: actorParticipantId
+        };
+      }
       const committedTime = parsedTimestamp(currentNote?.updatedAt);
       if (!Number.isFinite(committedTime) || parsedTimestamp(note.updatedAt) !== committedTime) {
         return note;
@@ -290,6 +325,25 @@ function validateNoteCollection(notes, path, { maxItems, knownParticipantIds, er
     }
     validateTimestamp(note.createdAt, `${notePath}.createdAt`, errors);
     validateTimestamp(note.updatedAt, `${notePath}.updatedAt`, errors);
+    if (note.fieldUpdatedAt !== undefined) {
+      const clocks = note.fieldUpdatedAt;
+      if (!clocks || typeof clocks !== "object" || Array.isArray(clocks) ||
+        Object.keys(clocks).length !== NOTE_FIELDS.length ||
+        NOTE_FIELDS.some((field) => !Object.hasOwn(clocks, field))) {
+        errors.push(`${notePath}.fieldUpdatedAt must contain exactly title, body and pinned timestamps.`);
+      } else {
+        for (const field of NOTE_FIELDS) {
+          validateTimestamp(clocks[field], `${notePath}.fieldUpdatedAt.${field}`, errors);
+          if (!FIELD_TIMESTAMP_PATTERN.test(clocks[field])) {
+            errors.push(`${notePath}.fieldUpdatedAt.${field} must use ISO 8601 format.`);
+          }
+          if (parsedTimestamp(clocks[field]) > parsedTimestamp(note.updatedAt) ||
+            parsedTimestamp(clocks[field]) < parsedTimestamp(note.createdAt)) {
+            errors.push(`${notePath}.fieldUpdatedAt.${field} must be within the note lifetime.`);
+          }
+        }
+      }
+    }
     validateKnownParticipant(
       note.createdByParticipantId,
       `${notePath}.createdByParticipantId`,
@@ -360,8 +414,48 @@ function mergeById(remoteItems, localItems, mergeItem) {
   return [...merged.values()];
 }
 
-function chooseNewerNote(remoteNote, localNote) {
-  return chooseByTimestampAndContent(remoteNote, localNote, "updatedAt");
+function chooseNewerNote(remoteNote, localNote, rejectInvalidContent) {
+  if (!remoteNote.fieldUpdatedAt && !localNote.fieldUpdatedAt) {
+    return chooseByTimestampAndContent(remoteNote, localNote, "updatedAt");
+  }
+  // Envelope selection must not depend on the content being merged, or equal
+  // clock three-way merges can acquire order-dependent authorship.
+  const headerKey = (note) => [note.createdAt, note.createdByParticipantId, note.updatedByParticipantId].join("\u0000");
+  const remoteTime = parsedTimestamp(remoteNote.updatedAt);
+  const localTime = parsedTimestamp(localNote.updatedAt);
+  const winner = clone(remoteTime !== localTime
+    ? (remoteTime > localTime ? remoteNote : localNote)
+    : (headerKey(remoteNote) > headerKey(localNote) ? remoteNote : localNote));
+  // Per-field clocks survive JSON persistence and retries. Legacy revisions
+  // have only a whole-note clock and retain their whole-note replacement
+  // semantics; they cannot retrospectively describe which fields were edited.
+  const result = { ...winner, fieldUpdatedAt: {} };
+  for (const field of NOTE_FIELDS) {
+    const remoteTime = parsedTimestamp(noteFieldTimestamp(remoteNote, field));
+    const localTime = parsedTimestamp(noteFieldTimestamp(localNote, field));
+    const source = remoteTime !== localTime
+      ? (remoteTime > localTime ? remoteNote : localNote)
+      : (String(noteFieldValue(remoteNote, field)) > String(noteFieldValue(localNote, field)) ? remoteNote : localNote);
+    result[field] = noteFieldValue(source, field);
+    result.fieldUpdatedAt[field] = new Date(Math.max(remoteTime, localTime)).toISOString();
+  }
+  // Independent clears cannot form a valid note. Reads retain a valid draft;
+  // writes must not restore a committed field just to make the payload valid.
+  if (!result.title.trim() && !result.body.trim()) {
+    if (rejectInvalidContent) {
+      throw Object.assign(new Error("Concurrent note edits would leave an empty note"), { code: "EVENT_NOTE_CONTENT_CONFLICT" });
+    }
+    return winner;
+  }
+  return result;
+}
+
+function noteFieldValue(note, field) {
+  return field === "pinned" ? note?.pinned === true : String(note?.[field] ?? "");
+}
+
+function noteFieldTimestamp(note, field) {
+  return note?.fieldUpdatedAt?.[field] ?? note?.updatedAt;
 }
 
 function chooseNewerDeletion(remoteDeletion, localDeletion) {

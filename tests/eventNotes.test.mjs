@@ -27,8 +27,14 @@ test("event members can create a bounded shared note", () => {
       id: "note-trip-plan",
       title: "הטיסה לפיליפינים",
       body: "לבדוק דרכונים וכרטיסים",
+      pinned: false,
       createdAt: "2026-08-29T10:00:00.000Z",
       updatedAt: "2026-08-29T10:00:00.000Z",
+      fieldUpdatedAt: {
+        title: "2026-08-29T10:00:00.000Z",
+        body: "2026-08-29T10:00:00.000Z",
+        pinned: "2026-08-29T10:00:00.000Z"
+      },
       createdByParticipantId: "owner",
       updatedByParticipantId: "owner"
     }

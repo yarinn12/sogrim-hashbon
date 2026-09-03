@@ -371,6 +371,54 @@ try {
   memberState = await saveSharedEventState(memberConfig, memberState, eventId);
   assert.deepEqual((await readCloudState(sharedConfig)).events[0].notes, savedTieEvent.notes);
 
+  // Independent edits made from the same revision, before either device has
+  // seen the other's change. The older local body must survive a newer remote
+  // title/pin, including JSON persistence of the offline candidate.
+  ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+  memberState = await refreshSharedEvents(memberConfig, memberState);
+  const concurrentBase = memberState.events.find((event) => event.id === eventId)
+    .notes.find((note) => note.id === companionAfterHistoryId);
+  const concurrentTime = Math.max(Date.now(), Date.parse(concurrentBase.updatedAt) + 1);
+  const offlineFields = JSON.parse(JSON.stringify(updateEventNote(memberState, eventId, companionAfterHistoryId, {
+    body: "Offline independent body", participantId: memberProfile.participantId,
+    updatedAt: new Date(concurrentTime).toISOString()
+  })));
+  ownerState = updateEventNote(ownerState, eventId, companionAfterHistoryId, {
+    title: "Concurrent owner title", pinned: true, participantId: ownerProfile.participantId,
+    updatedAt: new Date(concurrentTime + 1).toISOString()
+  });
+  ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+  const concurrentStartedAt = performance.now();
+  memberState = await saveSharedEventState(memberConfig, offlineFields, eventId);
+  const concurrentFieldsElapsedMs = elapsed(concurrentStartedAt);
+  const concurrentSaved = await readCloudState(sharedConfig);
+  const concurrentNote = concurrentSaved.events[0].notes.find((note) => note.id === companionAfterHistoryId);
+  assert.equal(concurrentNote.title, "Concurrent owner title");
+  assert.equal(concurrentNote.body, "Offline independent body");
+  assert.equal(concurrentNote.pinned, true);
+  assert.equal(concurrentNote.updatedByParticipantId, memberProfile.participantId);
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), memberState);
+    assert.deepEqual(loaded.events.find((event) => event.id === eventId).notes, concurrentSaved.events[0].notes);
+  }
+  // Exercise both old-client encodings against the real guarded write RPC.
+  for (const omitClocks of [true, false]) {
+    const legacyFields = await readCloudState(sharedConfig);
+    const legacyFieldNote = legacyFields.events[0].notes.find((note) => note.id === companionAfterHistoryId);
+    const previousClocks = structuredClone(legacyFieldNote.fieldUpdatedAt);
+    legacyFieldNote.body = `Legacy body, omitted clocks: ${omitClocks}`;
+    legacyFieldNote.updatedAt = new Date(Math.max(Date.now(), Date.parse(legacyFieldNote.updatedAt) + 1)).toISOString();
+    legacyFieldNote.updatedByParticipantId = memberProfile.participantId;
+    if (omitClocks) delete legacyFieldNote.fieldUpdatedAt;
+    await saveCloudState(sharedConfig, legacyFields);
+    const legacyFieldSaved = (await readCloudState(sharedConfig)).events[0].notes.find((note) => note.id === companionAfterHistoryId);
+    assert.equal(legacyFieldSaved.body, legacyFieldNote.body);
+    assert.equal(legacyFieldSaved.title, concurrentNote.title);
+    assert.equal(legacyFieldSaved.fieldUpdatedAt.title, previousClocks.title);
+    assert.equal(legacyFieldSaved.fieldUpdatedAt.pinned, previousClocks.pinned);
+    assert.equal(legacyFieldSaved.fieldUpdatedAt.body, legacyFieldNote.updatedAt);
+  }
+
   console.log(JSON.stringify({
     ok: true,
     recipientClientReadsBeforeCreateAssertion: 0,
@@ -394,6 +442,9 @@ try {
     deletionAfterInterveningEditSynced: true,
     equalClockNoteEditAndCompanionSynced: true,
     equalClockEditGuardStillEnforced: true,
+    concurrentIndependentFieldsReplicated: true,
+    concurrentFieldsElapsedMs,
+    legacyFieldClockWritesVerified: 2,
     temporaryDataCleanup: true
   }));
 } finally {

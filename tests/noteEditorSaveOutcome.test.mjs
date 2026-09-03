@@ -116,6 +116,17 @@ test("successful note edits close normally", async () => {
   assert.equal(h.context.eventDialog, null);
 });
 
+test("an unseen remote title merges with the local body and is acknowledged as success", async () => {
+  const remote = updateEventNote(initialState(), "event-editor", "note-editor", {
+    title: "Remote title", participantId: "account-owner", updatedAt: "2026-09-02T00:00:00.000Z"
+  });
+  const h = harness({ remote });
+  assert.equal((await h.save()).ok, true);
+  assert.equal(h.closed(), 1);
+  assert.equal(h.context.state.events[0].notes[0].title, "Remote title");
+  assert.equal(h.context.state.events[0].notes[0].body, "Local draft");
+});
+
 test("durably queued offline notes do not pretend to have a cloud acknowledgement", async () => {
   const h = harness({ result: { ok: true, mode: "queued", pending: true } });
   const result = await h.save();

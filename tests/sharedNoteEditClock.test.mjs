@@ -19,6 +19,9 @@ function scenario() {
   }, "event-clock", { id: "note-clock", body: "Initial", participantId: "account-owner", createdAt: "2026-09-03T08:00:00.000Z" });
   const remote = updateEventNote(initial, "event-clock", "note-clock", { body: "A remote edit", participantId: "account-owner", updatedAt: time });
   const local = updateEventNote(initial, "event-clock", "note-clock", { body: "Z local edit", updatedAt: time });
+  // Keep exercising the original whole-note protocol explicitly. Field-clock
+  // protocol ordering and write attribution are covered in noteFieldMerge.
+  for (const state of [initial, remote, local]) delete state.events[0].notes[0].fieldUpdatedAt;
   return { initial, remote, local };
 }
 function assertWinningEdit(event, remote) {

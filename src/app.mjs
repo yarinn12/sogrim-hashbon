@@ -16284,6 +16284,7 @@ async function saveEventNoteFromDialog(eventId) {
   const requestedNote = cloneNavigationValue(
     nextState.events.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId)
   );
+  const requestedFields = edit ? Object.keys(edit.patch) : ["title", "body", "pinned"];
   state = nextState;
   activeDialog.saving = true;
   render();
@@ -16321,9 +16322,9 @@ async function saveEventNoteFromDialog(eventId) {
       ?.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId);
     if (
       !persistedNote ||
-      persistedNote.title !== requestedNote.title ||
-      persistedNote.body !== requestedNote.body ||
-      (persistedNote.pinned === true) !== (requestedNote.pinned === true)
+      requestedFields.some((field) => field === "pinned"
+        ? (persistedNote.pinned === true) !== (requestedNote.pinned === true)
+        : persistedNote[field] !== requestedNote[field])
     ) {
       // Persistence may have updated an object that a foreground read already
       // replaced. Merge its receipt into the active same-account state too;

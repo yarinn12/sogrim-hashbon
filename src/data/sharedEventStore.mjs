@@ -330,12 +330,6 @@ async function findAccessibleSharedEvent(
 export function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
   const merged = mergeSharedStates(remoteState, localState);
   const remoteEvent = remoteState?.events?.[0];
-  // This runs before every write, including each optimistic-conflict retry.
-  merged.events = (merged.events ?? []).map((event) =>
-    remoteEvent?.id === event.id
-      ? { ...event, ...mergeCanonicalEventNotes(remoteEvent, event) }
-      : event
-  );
   const configuredUserId = String(
     runtimeConfig?.storage?.account?.userId ?? ""
   ).trim();
@@ -350,6 +344,12 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     throw new CloudStateAuthError("Cloud account identity is unavailable");
   }
   const actorParticipantId = `account-${actorUserId}`;
+  // This runs before every write, including each optimistic-conflict retry.
+  merged.events = (merged.events ?? []).map((event) =>
+    remoteEvent?.id === event.id
+      ? { ...event, ...mergeCanonicalEventNotes(remoteEvent, event, { actorParticipantId }) }
+      : event
+  );
   const adminIds = remoteEvent?.adminIds?.length
     ? remoteEvent.adminIds
     : remoteEvent?.createdByParticipantId
