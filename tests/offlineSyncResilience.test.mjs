@@ -272,6 +272,8 @@ test("queued writes keep their snapshot and stop at an account boundary", async 
 
     assert.equal(firstResult.ok, true, firstResult.error?.stack);
     assert.equal(snapshotResult.ok, true, snapshotResult.error?.stack);
+    assert.equal(firstResult.persistedState.participants[0].displayName, "First Writer");
+    assert.equal(snapshotResult.persistedState.participants[0].displayName, "Captured Snapshot");
     assert.equal(staleResult.mode, "stale-account");
     assert.equal(writes.length, 2, "stale queued work never reaches the network");
     assert.deepEqual(
@@ -1260,6 +1262,7 @@ test("a workspace failure after canonical persistence keeps the same expense que
     assert.equal(result.mode, "queued");
     assert.equal(result.partial, true);
     assert.equal(result.pending, true);
+    assert.equal(result.persistedState.events[0].expenses.at(-1).id, "stable-expense-id");
     assert.equal(result.reverted, undefined);
     assert.equal(localState.events[0].expenses.at(-1).id, "stable-expense-id");
     assert.equal(pendingState.events[0].expenses.at(-1).id, "stable-expense-id");

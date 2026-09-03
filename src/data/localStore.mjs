@@ -1078,6 +1078,10 @@ export async function saveSharedState(state) {
           return {
             ok: true,
             mode: "cloud",
+            // The caller may no longer hold the object we updated above (a
+            // foreground read can replace it). Report this request's resolved
+            // state so item editors can verify what actually survived merging.
+            persistedState: syncedState,
             ...(saved.conflictCount ? { merged: true } : {})
           };
         } catch (error) {
@@ -1148,7 +1152,9 @@ export async function saveSharedState(state) {
             ok: acceptedPending,
             mode: acceptedPending ? "queued" : "cloud",
             error,
-            ...(partiallyPersistedState ? { partial: true, pending: true } : {}),
+            ...(partiallyPersistedState
+              ? { partial: true, pending: true, persistedState: partiallyPersistedState }
+              : {}),
             ...(retryablePendingFailure && !partiallyPersistedState && pendingStateSaved
               ? { pending: true }
               : {}),

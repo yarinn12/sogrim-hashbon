@@ -6,6 +6,28 @@ export const MAX_EVENT_NOTE_BODY_LENGTH = 5_000;
 
 const SAFE_NOTE_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
+// Compare intent with the editor's opening snapshot, not the latest state.
+// Whole-note drafts are not whole-note replacements: untouched fields belong
+// to the current revision, and competing edits of one field need user review.
+export function prepareEventNoteEdit(baseNote, currentNote, draft) {
+  if (!baseNote || !currentNote || baseNote.id !== currentNote.id) {
+    return { conflict: true, patch: {} };
+  }
+  const patch = {};
+  const normalize = (note, field) => field === "pinned"
+    ? note?.pinned === true
+    : String(note?.[field] ?? "").trim();
+  for (const field of ["title", "body", "pinned"]) {
+    const base = normalize(baseNote, field);
+    const current = normalize(currentNote, field);
+    const desired = normalize(draft, field);
+    if (desired === base || desired === current) continue;
+    if (current !== base) return { conflict: true, patch: {} };
+    patch[field] = desired;
+  }
+  return { conflict: false, patch, unchanged: Object.keys(patch).length === 0 };
+}
+
 export function addEventNote(
   state,
   eventId,

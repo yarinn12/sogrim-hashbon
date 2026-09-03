@@ -582,6 +582,32 @@ try {
         foregroundNoteDeleteElapsed <= 3_500,
         `Open iPhone did not remove the deleted note within 3.5 seconds (${foregroundNoteDeleteElapsed.toFixed(1)}ms)`
       );
+
+      // A snapshot write can succeed after reconciliation discarded the edited
+      // note. The editor must retain the text and show a conflict, not close.
+      const racedNoteId = `note-editor-race-${suffix}`;
+      const racedNoteTitle = `פתק להתנגשות ${suffix}`;
+      ownerState = addEventNote(ownerState, eventId, {
+        id: racedNoteId, title: racedNoteTitle, body: "גרסה מקורית",
+        participantId: ownerProfile.participantId
+      });
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page.locator(`[data-action="open-event-note"][data-note-id="${racedNoteId}"]`).click({ timeout: 10_000 });
+      const preservedDraft = "הטיוטה חייבת להישאר אחרי מחיקה במכשיר אחר";
+      await page.locator('[data-action="event-note-body"]').fill(preservedDraft);
+      ownerState = removeEventNote(ownerState, eventId, racedNoteId, {
+        participantId: ownerProfile.participantId
+      });
+      ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
+      await page.locator('[data-action="save-event-note"]').click();
+      await page.locator("#event-note-error").waitFor({ timeout: 10_000 });
+      assert.match(await page.locator("#event-note-error").textContent(), /נמחק/);
+      assert.equal(await page.locator('[data-action="event-note-body"]').inputValue(), preservedDraft);
+      assert.equal(await page.locator('[data-action="save-event-note"]').isEnabled(), true);
+      ownerState = await refreshSharedEvents(ownerConfig, ownerState);
+      assert.equal(ownerState.events[0].notes.some((note) => note.id === racedNoteId), false);
+      assert.ok(ownerState.events[0].deletedNotes.some((note) => note.id === racedNoteId));
+      await page.locator('.event-note-modal [data-action="close-event-dialog"]').click();
     }
   });
   let joinerState = await loadCloudState(
@@ -1169,6 +1195,7 @@ try {
       productionIphoneNoteUiWriteSyncedToOwner: true,
       openIphoneForegroundNoteEditAutoSynced: true,
       openIphoneForegroundNoteDeleteAutoSynced: true,
+      deletedNoteEditPreservesDraftAndReportsConflict: true,
       connectedParticipantJoined: true,
       collaborativeMemberAddedAcceptedFriend: true,
       collaborativeMemberRemovalBlocked: true,

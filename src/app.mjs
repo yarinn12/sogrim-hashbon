@@ -108,6 +108,7 @@ import {
 import {
   MAX_EVENT_NOTE_BODY_LENGTH,
   MAX_EVENT_NOTE_TITLE_LENGTH,
+  prepareEventNoteEdit,
   addEventNote,
   removeEventNote,
   updateEventNote
@@ -12518,6 +12519,7 @@ async function handleClick(event) {
     if (!selectedEvent || !note) return;
     openEventDialogWithDetails(eventId, "note-editor", target, {
       noteId,
+      baseNote: cloneNavigationValue(note),
       titleDraft: note.title ?? "",
       bodyDraft: note.body ?? "",
       pinned: note.pinned === true,
@@ -16240,11 +16242,22 @@ async function saveEventNoteFromDialog(eventId) {
 
   const previousState = cloneNavigationValue(state);
   const noteId = eventDialog.noteId || makeId("note");
+  const edit = eventDialog.noteId
+    ? prepareEventNoteEdit(
+        eventDialog.baseNote,
+        event.notes?.find((note) => note.id === noteId),
+        { title, body, pinned: eventDialog.pinned === true }
+      )
+    : null;
+  if (edit?.conflict) {
+    eventDialog.error = "אותו שדה בפתק השתנה במכשיר אחר. הטיוטה נשארה כאן ולא דרסנו את הגרסה המעודכנת. אפשר להעתיק את הטיוטה ולפתוח שוב את הפתק.";
+    render();
+    reactivateDialogAfterRender(".event-note-modal");
+    return { ok: false, conflict: true };
+  }
   const nextState = eventDialog.noteId
     ? updateEventNote(state, eventId, noteId, {
-        title,
-        body,
-        pinned: eventDialog.pinned === true,
+        ...edit.patch,
         participantId: state.currentParticipantId
       })
     : addEventNote(state, eventId, {
@@ -16268,6 +16281,9 @@ async function saveEventNoteFromDialog(eventId) {
   }
 
   const activeDialog = eventDialog;
+  const requestedNote = cloneNavigationValue(
+    nextState.events.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId)
+  );
   state = nextState;
   activeDialog.saving = true;
   render();
@@ -16295,6 +16311,30 @@ async function saveEventNoteFromDialog(eventId) {
       reactivateDialogAfterRender(".event-note-modal");
     }
     return result;
+  }
+
+  // A successful snapshot write is not necessarily a successful note edit:
+  // reconciliation can retain a remote deletion or a different revision. Use
+  // the per-request receipt, not the optimistic (possibly replaced) app state.
+  if (result?.persistedState) {
+    const persistedNote = result.persistedState.events
+      ?.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId);
+    if (
+      !persistedNote ||
+      persistedNote.title !== requestedNote.title ||
+      persistedNote.body !== requestedNote.body ||
+      (persistedNote.pinned === true) !== (requestedNote.pinned === true)
+    ) {
+      if (eventDialog === activeDialog) {
+        activeDialog.saving = false;
+        activeDialog.error = persistedNote
+          ? "הפתק השתנה במכשיר אחר והשינוי שלך לא נשמר. הטיוטה נשארה כאן כדי שלא תאבד."
+          : "הפתק נמחק במכשיר אחר והשינוי שלך לא נשמר. הטיוטה נשארה כאן כדי שלא תאבד.";
+        render();
+        reactivateDialogAfterRender(".event-note-modal");
+      }
+      return { ...result, ok: false, conflict: true };
+    }
   }
 
   if (eventDialog === activeDialog) {
