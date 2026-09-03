@@ -1,5 +1,5 @@
-const PWA_RELEASE = "444";
-const CACHE_NAME = "settle-friends-live-v444";
+const PWA_RELEASE = "445";
+const CACHE_NAME = "settle-friends-live-v445";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -222,13 +222,16 @@ async function activateCurrentRelease() {
     type: "window",
     includeUncontrolled: true
   });
-  await Promise.allSettled(
-    windowClients.map((client) => {
-      const clientUrl = new URL(client.url);
-      if (clientUrl.origin !== self.location.origin) return undefined;
-      return client.navigate?.(clientUrl.href);
-    })
-  );
+  for (const client of windowClients) {
+    const clientUrl = new URL(client.url);
+    if (clientUrl.origin !== self.location.origin) continue;
+    try {
+      const navigation = client.navigate?.(clientUrl.href);
+      navigation?.catch?.(() => {});
+    } catch {
+      // Activation must finish even if one stale window cannot be navigated.
+    }
+  }
 }
 
 self.addEventListener("message", (event) => {
