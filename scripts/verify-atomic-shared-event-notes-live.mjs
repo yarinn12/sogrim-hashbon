@@ -7,6 +7,7 @@ import {
   signInWithPassword
 } from "../src/data/accountAuth.mjs";
 import { loadCloudState, saveCloudState } from "../src/data/cloudStore.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 import {
   refreshSharedEvents,
   saveSharedEventState
@@ -113,6 +114,48 @@ try {
   const editElapsedMs = elapsed(editStartedAt);
   await assertNoteEverywhere("נערך אצל החבר", false, owner, member);
 
+  // A background read can advance the account version while an older local
+  // save is queued. Even with a current version token, that stale workspace
+  // must not overwrite notes already committed to the canonical event.
+  ownerState.groups = [{
+    id: `group-personal-${suffix}`,
+    name: "שינוי אישי שנשמר במקביל",
+    participantIds: [ownerProfile.participantId]
+  }];
+  const localOnlyEvent = structuredClone(ownerState.events[0]);
+  localOnlyEvent.id = `event-local-only-${suffix}`;
+  delete localOnlyEvent.sharedSpaceId;
+  delete localOnlyEvent.sharedSpaceKey;
+  ownerState.events.push(localOnlyEvent);
+  await loadCloudState(ownerConfig, ownerState);
+  await saveCloudState(ownerConfig, ownerState);
+  await assertNoteEverywhere("נערך אצל החבר", false, owner, member);
+  const projectedOwnerState = await loadCloudState(ownerConfig, ownerState);
+  assert.deepEqual(projectedOwnerState.groups, ownerState.groups);
+  assert.deepEqual(
+    projectedOwnerState.events.find((event) => event.id === localOnlyEvent.id),
+    localOnlyEvent
+  );
+
+  // Exercise overlapping personal/canonical writes, including conflict retry.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const body = `עריכה במקביל ${attempt}`;
+    memberState = updateEventNote(memberState, eventId, noteId, {
+      body,
+      participantId: memberProfile.participantId
+    });
+    const [, savedMemberState] = await Promise.all([
+      saveCloudStateWithConflictRetry({
+        state: ownerState,
+        loadLatest: () => loadCloudState(ownerConfig, ownerState),
+        save: (candidate) => saveCloudState(ownerConfig, candidate)
+      }),
+      saveSharedEventState(memberConfig, memberState, eventId)
+    ]);
+    memberState = savedMemberState;
+    await assertNoteEverywhere(body, false, owner, member);
+  }
+
   ownerState = await refreshSharedEvents(ownerConfig, ownerState);
   ownerState = removeEventNote(ownerState, eventId, noteId, {
     participantId: ownerProfile.participantId
@@ -121,6 +164,34 @@ try {
   ownerState = await saveSharedEventState(ownerConfig, ownerState, eventId);
   const deleteElapsedMs = elapsed(deleteStartedAt);
   await assertNoteEverywhere("", true, owner, member);
+
+  // The member still holds the pre-deletion note. Replaying that personal
+  // snapshot must retain the canonical tombstone, not resurrect the note.
+  await loadCloudState(memberConfig, memberState);
+  await saveCloudState(memberConfig, memberState);
+  await assertNoteEverywhere("", true, owner, member);
+
+  // Offline retry saves a personal candidate before publishing to the shared
+  // event. Projection must not mutate that candidate or discard its pending
+  // note when the canonical write subsequently runs.
+  memberState = await refreshSharedEvents(memberConfig, memberState);
+  const offlineNoteId = `note-offline-${suffix}`;
+  memberState = addEventNote(memberState, eventId, {
+    id: offlineNoteId,
+    body: "פתק שנשמר אחרי חזרה לחיבור",
+    participantId: memberProfile.participantId
+  });
+  const pendingCandidate = structuredClone(memberState);
+  await loadCloudState(memberConfig, memberState);
+  await saveCloudState(memberConfig, memberState);
+  assert.deepEqual(memberState, pendingCandidate);
+  memberState = await saveSharedEventState(memberConfig, memberState, eventId);
+  for (const account of [owner, member]) {
+    const loaded = await loadCloudState(runtimeConfig(account), memberState);
+    const note = loaded.events.find((event) => event.id === eventId)
+      ?.notes?.find((item) => item.id === offlineNoteId);
+    assert.equal(note?.body, "פתק שנשמר אחרי חזרה לחיבור");
+  }
 
   console.log(JSON.stringify({
     ok: true,
@@ -132,6 +203,11 @@ try {
     createReplicated: true,
     editReplicated: true,
     deleteReplicated: true,
+    staleWorkspaceCannotOverwriteNotes: true,
+    staleWorkspaceCannotResurrectNotes: true,
+    unrelatedPersonalDataPreserved: true,
+    concurrentWorkspaceWritesVerified: 3,
+    offlineCandidatePublished: true,
     temporaryDataCleanup: true
   }));
 } finally {
