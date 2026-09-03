@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { devices, webkit } from "@playwright/test";
-import { summarizeLiveFailure, summarizeLiveRequest } from "./liveQaDiagnostics.mjs";
+import { liveRequestTiming, summarizeLiveFailure, summarizeLiveRequest } from "./liveQaDiagnostics.mjs";
 
 import {
   accountProfileFromUser,
@@ -1335,8 +1335,6 @@ async function joinThroughProductionBrowser({
     let page = invitePage;
     const failedResponses = [];
     const authDiagnostics = [];
-    const requestStartTimes = new WeakMap();
-    context.on("request", (request) => requestStartTimes.set(request, performance.now()));
     const recentRequests = (startedAt = 0) => authDiagnostics
       .filter((entry) => entry.startedAt >= startedAt)
       .slice(-30)
@@ -1346,20 +1344,23 @@ async function joinThroughProductionBrowser({
       const isRelevant =
         url.pathname.startsWith("/api/event-invites/") ||
         url.pathname.startsWith("/auth/v1/") ||
-        url.pathname.includes("/rest/v1/rpc/set_friend_username") ||
+        url.pathname.startsWith("/rest/v1/rpc/") ||
         url.pathname.includes("/rest/v1/app_snapshots");
       if (!isRelevant) return;
       const entry = {
         path: url.pathname,
         status: response.status(),
         method: response.request().method(),
-        startedAt: requestStartTimes.get(response.request()) ?? performance.now(),
-        headersAt: performance.now()
+        // WebKit may report request/response observer events together. Their
+        // delivery gap is not network latency; use native resource timings.
+        ...liveRequestTiming(response.request().timing(), performance.now(), performance.timeOrigin)
       };
       authDiagnostics.push(entry);
       if (response.status() >= 400) failedResponses.push(entry);
       await response.finished().catch(() => {});
-      entry.finishedAt = performance.now();
+      Object.assign(entry, liveRequestTiming(
+        response.request().timing(), entry.startedAt, performance.timeOrigin
+      ));
       if (response.status() >= 400) {
         entry.failure = summarizeLiveFailure(await response.json().catch(() => null));
       }
