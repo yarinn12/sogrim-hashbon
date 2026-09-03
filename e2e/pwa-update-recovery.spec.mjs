@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const OLD_RELEASE = "443";
-const CURRENT_RELEASE = "448";
+const CURRENT_RELEASE = "449";
 
 test("a new worker reloads an installed app even when the old page suppresses controllerchange", async ({
   page

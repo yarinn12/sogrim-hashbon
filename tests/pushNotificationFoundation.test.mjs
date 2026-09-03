@@ -46,6 +46,18 @@ test("native apps register push permissions without prompting on startup", async
   assert.match(bridge, /notificationTargetFromPayload/);
   assert.match(bridge, /notification\?\.data\?\.actionUrl/);
   assert.match(bridge, /actionUrl && nativeDestination\(actionUrl\)/);
+  assert.match(
+    bridge,
+    /openNativeUrl\(url, \{[\s\S]*?notification: action\?\.notification \?\? null/
+  );
+  assert.match(
+    bridge,
+    /const requestKey = activityId \? `\$\{url\}#\$\{activityId\}` : url/
+  );
+  assert.match(
+    bridge,
+    /requestKey === lastOpenedRequestKey && now - lastOpenedAt < 1500/
+  );
   assert.match(bridge, /resolveAndroidPushAvailability/);
   assert.match(bridge, /available \? pushPlugin : null/);
   assert.match(bridge, /if \(available\) setupPushNotificationListeners/);
@@ -207,13 +219,16 @@ test("native notification taps wait for authoritative event state before navigat
   );
 
   assert.match(handler, /if \(!target\) return;[\s\S]*?event\.preventDefault\(\)/);
-  assert.match(handler, /openNativeNotificationDestinationAfterSync\(destination, target\)/);
   assert.match(
     handler,
-    /await refreshIncomingPushState\(\{ data: target \}\)[\s\S]*?openNotificationTargetFromUrl\(destination\)/
+    /openNativeNotificationDestinationAfterSync\([\s\S]*?event\.detail\?\.notification/
+  );
+  assert.match(
+    handler,
+    /notification \?\? \{ data: target \}[\s\S]*?openNotificationTargetFromUrl\(destination\)/
   );
   assert.ok(
-    handler.indexOf("await refreshIncomingPushState") <
+    handler.indexOf("const ready = await refreshIncomingPushState") <
       handler.indexOf("openNotificationTargetFromUrl(destination)"),
     "a native push tap must hydrate before opening its event"
   );

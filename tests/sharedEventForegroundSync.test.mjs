@@ -87,7 +87,7 @@ test("a received push forces the shared event to refresh before the inbox opens"
   );
   assert.match(
     appSource,
-    /\["participant-joined", "event-invite"\][\s\S]*?event\.participantIds\?\.includes\(activityId\)/
+    /\["participant-joined", "event-invite"\][\s\S]*?event\.participantIds\?\.includes\(activityId\)[\s\S]*?state\.participants\.some\(\(participant\) => participant\?\.id === activityId\)/
   );
   assert.match(
     appSource,

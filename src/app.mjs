@@ -738,7 +738,8 @@ function incomingPushStateIsVisible(notification) {
   if (["participant-joined", "event-invite"].includes(kind)) {
     return Boolean(
       event.participantIds?.includes(activityId) &&
-        !(event.inactiveParticipantIds ?? []).includes(activityId)
+        !(event.inactiveParticipantIds ?? []).includes(activityId) &&
+        state.participants.some((participant) => participant?.id === activityId)
     );
   }
   if (kind === "expense-created") {
@@ -21669,16 +21670,24 @@ function handleNativeDestinationRequest(event) {
   // synchronously. Claim the notification tap first, then hydrate the event,
   // so iPhone never opens the destination against a stale participant list.
   event.preventDefault();
-  openNativeNotificationDestinationAfterSync(destination, target).catch(
-    (error) => {
-      emitOperationDeferred("state_load", { error });
-      window.location.replace(destination);
-    }
-  );
+  openNativeNotificationDestinationAfterSync(
+    destination,
+    target,
+    event.detail?.notification
+  ).catch((error) => {
+    emitOperationDeferred("state_load", { error });
+    window.location.replace(destination);
+  });
 }
 
-async function openNativeNotificationDestinationAfterSync(destination, target) {
-  const ready = await refreshIncomingPushState({ data: target });
+async function openNativeNotificationDestinationAfterSync(
+  destination,
+  target,
+  notification = null
+) {
+  const ready = await refreshIncomingPushState(
+    notification ?? { data: target }
+  );
   if (ready && openNotificationTargetFromUrl(destination)) {
     render();
     return;

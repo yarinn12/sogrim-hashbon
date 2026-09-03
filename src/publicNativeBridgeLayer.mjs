@@ -37,7 +37,7 @@ function setupNativeBridge() {
   const cameraPlugin = plugins.Camera;
   const capabilitiesPlugin = plugins.SogrimCapabilities;
   const nativePlatform = globalThis.Capacitor?.getPlatform?.() ?? "";
-  let lastOpenedUrl = "";
+  let lastOpenedRequestKey = "";
   let lastOpenedAt = 0;
 
   globalThis.SogrimNative = {
@@ -81,16 +81,24 @@ function setupNativeBridge() {
         : createNativeNotificationApi(pushPlugin)
   };
 
-  const openNativeUrl = async (url) => {
+  const openNativeUrl = async (url, { notification = null } = {}) => {
     const destination = nativeDestination(url);
+    const notificationData = notification?.data &&
+      typeof notification.data === "object"
+      ? notification.data
+      : notification;
+    const activityId = String(
+      notificationData?.activityId ?? notificationData?.activity_id ?? ""
+    ).trim();
+    const requestKey = activityId ? `${url}#${activityId}` : url;
     const now = Date.now();
     if (
       !destination ||
-      (url === lastOpenedUrl && now - lastOpenedAt < 1500)
+      (requestKey === lastOpenedRequestKey && now - lastOpenedAt < 1500)
     ) {
       return false;
     }
-    lastOpenedUrl = url;
+    lastOpenedRequestKey = requestKey;
     lastOpenedAt = now;
     try {
       await browserPlugin?.close?.();
@@ -102,7 +110,10 @@ function setupNativeBridge() {
     }
     const navigationRequest = new CustomEvent(NATIVE_DESTINATION_EVENT, {
       cancelable: true,
-      detail: { destination }
+      detail: {
+        destination,
+        ...(notification ? { notification } : {})
+      }
     });
     if (!window.dispatchEvent(navigationRequest)) return true;
     window.location.replace(destination);
@@ -361,7 +372,9 @@ function setupPushNotificationListeners(pushPlugin, openNativeUrl) {
         ""
       ).trim();
       if (actionUrl && nativeDestination(actionUrl)) {
-        openNativeUrl(actionUrl).catch(() => {});
+        openNativeUrl(actionUrl, {
+          notification: action?.notification ?? null
+        }).catch(() => {});
         return;
       }
       const target = notificationTargetFromPayload(action?.notification);
@@ -370,7 +383,9 @@ function setupPushNotificationListeners(pushPlugin, openNativeUrl) {
         target
       );
       if (!url) return;
-      openNativeUrl(url).catch(() => {});
+      openNativeUrl(url, {
+        notification: action?.notification ?? null
+      }).catch(() => {});
     })
   );
 }
