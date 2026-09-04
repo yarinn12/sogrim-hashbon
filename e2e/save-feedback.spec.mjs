@@ -1,10 +1,13 @@
 import { expect, test } from "@playwright/test";
 test.use({ serviceWorkers: "block" });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const status of [403, 503, "partial-create", "partial-edit", "partial-delete"]) {
+for (const { status, restart = false } of [
+  ...[403, 503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
+  ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true }))
+]) {
 const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
-test(partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
+test(restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   const origin = "https://egress-cache-test.supabase.co";
   const userId = "egress-cache-user";
@@ -109,6 +112,9 @@ test(partialRetry ? `note ${status} retry confirms one note without duplication`
     return route.fulfill({ headers, status: 204 });
   });
   await page.addInitScript(({ user, state, spaceId, spaceKey }) => {
+    // Seed this isolated browser once; restarting must exercise the app's own
+    // durable snapshot/outbox, not silently reset it to the fixture.
+    if (localStorage.getItem("qa-note-save-seeded")) return;
     localStorage.clear();
     sessionStorage.clear();
     localStorage.setItem("settle-friends-account-session", JSON.stringify({
@@ -124,6 +130,7 @@ test(partialRetry ? `note ${status} retry confirms one note without duplication`
     localStorage.setItem(`settle-friends-current-participant:account:${encodeURIComponent(user.id)}`,
       `account-${user.id}`);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
+    localStorage.setItem("qa-note-save-seeded", "1");
   }, { user, state: initialState, spaceId, spaceKey });
 
 
@@ -140,7 +147,67 @@ test(partialRetry ? `note ${status} retry confirms one note without duplication`
     await page.locator('[data-action="request-delete-event-note"]').click();
     await page.locator('[data-action="confirm-important-action"]').click();
   } else await page.locator('[data-action="save-event-note"]').click();
-  if (deleteRetry) {
+  if (restart) {
+    if (partialRetry) await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
+    else await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    const pendingBefore = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+    const pendingEvent = pendingBefore.events.find(event => event.id === eventId);
+    const intent = structuredClone(deleteRetry
+      ? pendingEvent.deletedNotes.find(note => note.id === "cache-sync-note")
+      : pendingEvent.notes.find(note => note.body === "טיוטה שלא תאבד"));
+    expect(intent?.id).toBeTruthy();
+    const assertLocalIntent = async () => {
+      const pending = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+      const event = pending?.events.find(event => event.id === eventId);
+      if (deleteRetry) {
+        expect(event.deletedNotes.filter(note => note.id === intent.id)).toEqual([intent]);
+        expect(event.notes.some(note => note.id === intent.id)).toBe(false);
+      } else {
+        expect(event.notes.filter(note => note.id === intent.id)).toEqual([intent]);
+      }
+    };
+    // Reload while writes still fail: neither a new JS runtime nor a stale
+    // personal snapshot may discard the accepted local intent.
+    await page.reload();
+    await expect(eventButton).toBeVisible();
+    await eventButton.click();
+    await page.locator('[data-action="open-event-notes"]').click();
+    await assertLocalIntent();
+    if (deleteRetry) await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toHaveCount(0);
+    else await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toContainText("טיוטה שלא תאבד");
+    // Partial fixtures now reject shared writes with HTTP 403; distinguish
+    // that actionable permission failure from the transient HTTP 503 case.
+    await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText(
+      partialRetry ? "השינויים ממתינים במכשיר. אין הרשאה לסנכרן אותם" : "ממתין לסנכרון"
+    );
+    await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("save-feedback-pending-restart.png"), fullPage: true, animations: "disabled" });
+    writeStatus = 200;
+    // A fresh boot after recovery must deliver without an imported store call
+    // or a second Save/Delete click.
+    const recoveryStartedAt = Date.now();
+    await page.reload();
+    await expect(eventButton).toBeVisible();
+    await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
+    await testInfo.attach("restart-recovery", { contentType: "application/json", body: JSON.stringify({
+      status, project: testInfo.project.name, noteId: intent.id,
+      recoveredBootMs: Date.now() - recoveryStartedAt,
+      backend: "synthetic HTTP responses; not a live-network latency benchmark"
+    }) });
+    for (const snapshot of [shared, personal]) {
+      const event = snapshot.state.events.find(event => event.id === eventId);
+      if (deleteRetry) {
+        expect(event.notes.some(note => note.id === intent.id)).toBe(false);
+        expect(event.deletedNotes.filter(note => note.id === intent.id)).toEqual([intent]);
+      } else {
+        expect(event.notes.filter(note => note.body === "טיוטה שלא תאבד")).toHaveLength(1);
+        expect(event.notes.find(note => note.id === intent.id)?.body).toBe("טיוטה שלא תאבד");
+      }
+    }
+    await eventButton.click();
+    await page.locator('[data-action="open-event-notes"]').click();
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+  } else if (deleteRetry) {
     await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור למחיקת");
     await expect(page.locator('[data-action="save-event-note"]')).toBeDisabled();
     await expect(page.locator('[data-action="event-note-body"]')).toHaveAttribute("readonly", "");
