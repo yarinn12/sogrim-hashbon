@@ -384,12 +384,12 @@ test("concurrent online and resume recovery share one ordered flush", () => {
   );
   assert.match(
     flush,
-    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(flushPendingSharedStateOnce\)/,
+    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => loadAccountRequestIsCurrent\(requestScope, requestAccountGeneration\)\s*\? flushPendingSharedStateOnce\(\)/,
     "recovery waits for any active save instead of writing concurrently"
   );
   assert.match(
     flush,
-    /pendingSyncFlushPromise = cloudWriteQueue\.finally\(\(\) => \{\s*pendingSyncFlushPromise = null/,
+    /const request = cloudWriteQueue\.finally\(\(\) => \{[\s\S]*?if \(pendingSyncFlushPromise === request\) pendingSyncFlushPromise = null;[\s\S]*?pendingSyncFlushPromise = request;/,
     "every caller shares the same in-flight recovery promise"
   );
 });

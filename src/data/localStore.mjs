@@ -1389,13 +1389,20 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
 }
 
 export async function flushPendingSharedState() {
+  const requestScope = synchronizeAccountStorageScope();
+  const requestAccountGeneration = accountStorageGeneration;
   if (!pendingSyncFlushPromise) {
     cloudWriteQueue = cloudWriteQueue
       .catch(() => {})
-      .then(flushPendingSharedStateOnce);
-    pendingSyncFlushPromise = cloudWriteQueue.finally(() => {
-      pendingSyncFlushPromise = null;
+      .then(() => loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)
+        ? flushPendingSharedStateOnce()
+        : staleAccountSaveResult());
+    const request = cloudWriteQueue.finally(() => {
+      // An obsolete flush may finish while another account already owns the
+      // single-flight slot. Its finally must not erase the replacement job.
+      if (pendingSyncFlushPromise === request) pendingSyncFlushPromise = null;
     });
+    pendingSyncFlushPromise = request;
   }
 
   return pendingSyncFlushPromise;
@@ -1718,6 +1725,7 @@ export function clearLocalProfile(accountUserId = "") {
 export function clearLocalAccountData(accountSpaceId = "", accountUserId = "") {
   accountStorageGeneration += 1;
   accountIdentityGeneration += 1;
+  resetAccountSyncWork();
   sharedStateLoadPromise = null;
   sharedStateLoadScope = "";
   try {
@@ -2015,6 +2023,8 @@ export function isRetryablePendingSyncFailure(error) {
 }
 
 function schedulePendingSharedStateRetry() {
+  const requestScope = synchronizeAccountStorageScope();
+  const requestAccountGeneration = accountStorageGeneration;
   if (
     pendingSyncRetryTimer ||
     globalThis.navigator?.onLine === false ||
@@ -2028,8 +2038,10 @@ function schedulePendingSharedStateRetry() {
   pendingSyncRetryAttempt += 1;
   pendingSyncRetryNotBefore = Date.now() + delay;
   pendingSyncRetryTimer = globalThis.window.setTimeout(async () => {
+    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) return;
     pendingSyncRetryTimer = 0;
     const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
+    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) return;
     if (result?.ok && !result?.pending) {
       resetPendingSharedStateRetry();
     } else if (result?.pending || isRetryablePendingSyncFailure(result?.error)) {
@@ -2237,12 +2249,21 @@ function synchronizeAccountStorageScope() {
     // A same-account workspace bootstrap may be rebased; leaving an account
     // (even A -> B -> A) must permanently invalidate its in-flight requests.
     if (activeStorageAccountUserId !== nextAccountUserId) accountIdentityGeneration += 1;
+    resetAccountSyncWork();
     sharedStateLoadPromise = null;
     sharedStateLoadScope = "";
   }
   activeAccountStorageScope = nextScope;
   activeStorageAccountUserId = nextAccountUserId;
   return nextScope;
+}
+
+function resetAccountSyncWork() {
+  // Only new work is detached. Already-sent requests settle under their
+  // captured scope guards and cannot delay or acknowledge the new account.
+  cloudWriteQueue = Promise.resolve();
+  pendingSyncFlushPromise = null;
+  resetPendingSharedStateRetry();
 }
 
 function saveStateForScope(state, requestScope) {
