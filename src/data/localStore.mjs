@@ -1306,7 +1306,11 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
           const acceptedPending = Boolean(
             pendingStateSaved && (retryablePendingFailure || partiallyPersistedState)
           );
-          if (retryablePendingFailure && pendingStateSaved) {
+          // A partial commit cannot be rolled back as a rejected save. Give
+          // all accepted durable work a recovery attempt, even if the failed
+          // sibling/receipt is permanent. The retry worker still stops on a
+          // repeated permanent rejection instead of spinning indefinitely.
+          if (acceptedPending) {
             schedulePendingSharedStateRetry();
           }
           const syncOutcome = {

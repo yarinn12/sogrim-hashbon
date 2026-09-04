@@ -11,6 +11,23 @@ function note(id) {
 }
 const response = (payload) => ({ ok: true, status: 200, async json() { return structuredClone(payload); } });
 
+function capturePendingRetryTimers() {
+  let nextId = 0;
+  const timers = new Map();
+  window.setTimeout = (callback, delay) => { const id = ++nextId; timers.set(id, { callback, delay }); return id; };
+  window.clearTimeout = id => timers.delete(id);
+  return {
+    timers,
+    async runNext() {
+      assert.equal(timers.size, 1, "exactly one background retry must drive retained work");
+      const [id, { callback, delay }] = timers.entries().next().value;
+      assert.equal(delay, 1_200, "use the existing bounded retry schedule");
+      timers.delete(id);
+      await callback();
+    }
+  };
+}
+
 async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, beforeCanonicalResponse = null, canonicalStatus = null } = {}) {
   const globals = Object.fromEntries(["window", "location", "localStorage", "fetch"].map((key) => [key, globalThis[key]]));
   const entries = new Map();
@@ -145,6 +162,47 @@ test("no successful event never claims partial publication or accepts a forbidde
   assert.equal(result.reverted, true);
   assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
 }, { allFail: true }));
+
+for (const failure of ["shared sibling", "personal receipt"]) {
+  for (const recovers of [true, false]) {
+    test(`accepted partial ${failure} schedules a bounded retry when the failure ${recovers ? "recovers" : "persists"}`, async () => {
+      let personalStatus = failure === "personal receipt" ? 403 : 200;
+      await fixture(async ({ pending, storage, workspaceId, canonical, workspaceWrites, recover }) => {
+        const clock = capturePendingRetryTimers();
+        const store = await import(`../src/data/localStore.mjs?partial-scheduled=${crypto.randomUUID()}`);
+        const result = await store.saveSharedState(pending, { awaitCloud: true });
+        assert.equal(result.ok, true);
+        assert.equal(result.partial, true);
+        assert.equal(result.pending, true);
+        assert.ok(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+        assert.equal(clock.timers.size, 1, "accepted pending work must not be left without a recovery attempt");
+        if (recovers) { recover(); personalStatus = 200; }
+        await clock.runNext();
+        if (recovers) {
+          assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+          assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "local-failing-note"));
+          assert.ok(workspaceWrites.at(-1).events.find(event => event.id === "failing").notes.some(note => note.id === "local-failing-note"));
+        } else {
+          assert.ok(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), "still-forbidden work stays durable");
+        }
+        assert.equal(clock.timers.size, 0, "a persistent permanent rejection must not start a retry storm");
+      }, {
+        status: 403,
+        ...(failure === "personal receipt" ? { canonicalStatus: () => 200 } : {}),
+        workspaceStatus: () => personalStatus
+      });
+    });
+  }
+}
+
+test("a wholly rejected permanent save does not schedule background retries", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  const clock = capturePendingRetryTimers();
+  const store = await import(`../src/data/localStore.mjs?rejected-unscheduled=${crypto.randomUUID()}`);
+  const result = await store.saveSharedState(pending, { awaitCloud: true });
+  assert.equal(result.ok, false);
+  assert.equal(clock.timers.size, 0);
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+}, { allFail: true, status: 403 }));
 
 for (const mutation of ["create", "edit", "delete"]) {
   test(`permanent note ${mutation} rejection preserves a concurrent durable refresh and clears rejected intent`, async () => {

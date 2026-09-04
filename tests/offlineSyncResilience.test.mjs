@@ -507,10 +507,8 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
     localStore,
     /if \(item\?\.code === "CLOUD_STATE_CONFLICT"\) return true;/
   );
-  assert.match(
-    localStore,
-    /if \(retryablePendingFailure && pendingStateSaved\) \{\s*schedulePendingSharedStateRetry\(\);/
-  );
+  // Scheduling accepted partial work is verified behaviorally in
+  // sharedSyncPartialFailure.test.mjs, including stopping permanent failures.
   assert.match(localStore, /const acceptedPending = Boolean\(/);
   assert.match(localStore, /ok: acceptedPending/);
   assert.match(localStore, /mode: acceptedPending \? "queued" : "cloud"/);
