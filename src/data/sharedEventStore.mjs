@@ -349,7 +349,10 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
   // This runs before every write, including each optimistic-conflict retry.
   merged.events = (merged.events ?? []).map((event) =>
     remoteEvent?.id === event.id
-      ? { ...event, ...mergeCanonicalEventNotes(remoteEvent, event, { actorParticipantId }) }
+      ? preserveSparseEventDefaults(remoteEvent, {
+          ...event,
+          ...mergeCanonicalEventNotes(remoteEvent, event, { actorParticipantId })
+        })
       : event
   );
   const adminIds = remoteEvent?.adminIds?.length
@@ -377,6 +380,28 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
       return remoteParticipant ? clone(remoteParticipant) : participant;
     })
   };
+}
+
+function preserveSparseEventDefaults(canonical, candidate) {
+  // Read-side merging supplies optional defaults for the UI. Publishing those
+  // defaults into an older sparse snapshot is not a user edit, but the server's
+  // exact settings guard correctly rejects it for ordinary members. Preserve
+  // absence at the write boundary (also on CAS retries), without dropping any
+  // real membership/settings edit or changing server authorization.
+  const defaults = {
+    adminIds: [],
+    inactiveParticipantIds: [],
+    participantAliases: {},
+    distinctParticipantPairs: [],
+    locked: false,
+    closedAt: null
+  };
+  for (const [field, emptyValue] of Object.entries(defaults)) {
+    if (!Object.hasOwn(canonical, field) && jsonValuesEqual(candidate[field], emptyValue)) {
+      delete candidate[field];
+    }
+  }
+  return candidate;
 }
 
 export async function syncSharedEvents(
