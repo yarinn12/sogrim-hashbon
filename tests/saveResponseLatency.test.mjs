@@ -16,14 +16,16 @@ async function within(request, milliseconds = 500) {
   } finally { clearTimeout(timeout); }
 }
 
-async function fixture(run, { pauseConfig = false, pausePersonal = false, pauseCanonical = false, canonicalStatus = 200, personalStatus = 200, unavailableStorage = false } = {}) {
+async function fixture(run, { pauseConfig = false, pausePersonal = false, pauseCanonical = false, pauseMembership = false, canonicalStatus = 200, personalStatus = 200, unavailableStorage = false } = {}) {
   const keys = ["window", "location", "localStorage", "fetch", "SogrimAccountSession"];
   const globals = Object.fromEntries(keys.map(key => [key, globalThis[key]]));
   const entries = new Map();
+  const storageWrites = [];
   const storage = { getItem: key => entries.get(key) ?? null,
     setItem: (key, val) => {
       if (unavailableStorage && key.includes("pending-sync")) throw new Error("Quota exceeded");
       entries.set(key, String(val));
+      storageWrites.push({ key, value: String(val) });
     }, removeItem: key => entries.delete(key) };
   const location = { href: "https://sogrim-hesbon-app.vercel.app/", hostname: "sogrim-hesbon-app.vercel.app", protocol: "https:" };
   const config = { storage: { mode: "supabase", url: "https://latency-fixture.supabase.co", anonKey: "fixture-anon", table: "app_snapshots",
@@ -38,6 +40,7 @@ async function fixture(run, { pauseConfig = false, pausePersonal = false, pauseC
   const configGate = deferred(), configStarted = deferred();
   const personalGate = deferred(), personalStarted = deferred();
   const canonicalGate = deferred(), canonicalStarted = deferred();
+  const membershipGate = deferred(), membershipStarted = deferred();
   const events = [];
   let canonicalWrites = 0, personalWrites = 0;
   storage.setItem("settle-friends-account-session", JSON.stringify({ access_token: "fixture-token", refresh_token: "fixture-refresh",
@@ -74,16 +77,21 @@ async function fixture(run, { pauseConfig = false, pausePersonal = false, pauseC
       personalWrites++;
       return response([{ updated_at: "2026-09-04T12:01:00.000Z" }]);
     }
+    if (address.searchParams.has("snapshot_kind")) {
+      membershipStarted.resolve();
+      if (pauseMembership) await membershipGate.promise;
+      return response([{ id: "latency-shared", state: canonical, updated_at: "2026-09-01T00:00:00.000Z" }]);
+    }
     const id = address.searchParams.get("id")?.replace(/^eq\./, "");
     assert.ok(id === "latency-shared" || id === "latency-workspace", "only synthetic data is accessible");
     return response([{ state: id === "latency-shared" ? canonical : personal, updated_at: "2026-09-01T00:00:00.000Z" }]);
   };
   try {
     const store = await import(`../src/data/localStore.mjs?save-latency=${crypto.randomUUID()}`);
-    await run({ store, state, changed, storage, events, configStarted, configGate, personalStarted, personalGate, canonicalStarted, canonicalGate,
+    await run({ store, state, changed, storage, storageWrites, events, configStarted, configGate, personalStarted, personalGate, canonicalStarted, canonicalGate, membershipStarted, membershipGate,
       canonical: () => canonical, personal: () => personal, writes: () => ({ canonical: canonicalWrites, personal: personalWrites }) });
   } finally {
-    configGate.resolve(); personalGate.resolve(); canonicalGate.resolve();
+    configGate.resolve(); personalGate.resolve(); canonicalGate.resolve(); membershipGate.resolve();
     for (const key of keys) { if (globals[key] === undefined) delete globalThis[key]; else globalThis[key] = globals[key]; }
   }
 }
@@ -132,6 +140,131 @@ test("the UI save budget includes a stalled runtime-config request after durable
     assert.equal(completed.mode, "cloud");
     assert.equal(completed.completion, undefined, "completion must be final, not another timed UI response");
   }
+}, { pauseConfig: true }));
+
+test("a membership scan that finishes after an account switch cannot schedule an index write for the new account", async () => fixture(async h => {
+  const request = h.store.loadSharedState();
+  await h.membershipStarted.promise;
+  const other = switchToOtherAccount(h);
+  h.membershipGate.resolve();
+  const result = await request;
+  // Index persistence is background work: allow its continuation to run too.
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(result.currentParticipantId, "account-latency-b");
+  assert.deepEqual(result.events, []);
+  assert.equal(h.storage.getItem(other.key), other.raw);
+  assert.deepEqual(h.writes(), { canonical: 0, personal: 0 }, "a stale membership fallback must not become B's cloud snapshot");
+}, { pauseMembership: true }));
+
+test("an older save never replaces a newer durable outbox while config resumes", async () => fixture(async h => {
+  const first = h.store.saveSharedState(h.changed, { awaitCloud: true });
+  await h.configStarted.promise;
+  const next = addEventNote(h.store.loadState(), "latency-event", { id: "latency-second-note", body: "Second save" });
+  const second = h.store.saveSharedState(next, { awaitCloud: true });
+  const writesBeforeConfig = h.storageWrites.length;
+  h.configGate.resolve();
+  await Promise.all([first, second]);
+  const outboxWrites = h.storageWrites.slice(writesBeforeConfig)
+    .filter(write => write.key === "settle-friends-pending-sync:latency-workspace");
+  for (const write of outboxWrites) {
+    assert.ok(JSON.parse(write.value).events[0].notes.some(note => note.id === "latency-second-note"),
+      "every durable write must retain the accepted newer edit, even if the process stops between writes");
+  }
+}, { pauseConfig: true }));
+
+function switchToOtherAccount(h) {
+  const session = JSON.parse(h.storage.getItem("settle-friends-account-session"));
+  session.user.id = "latency-b";
+  session.user.user_metadata.account_space_id = "latency-workspace-b";
+  session.user.user_metadata.account_space_key = "fixture-other-workspace-key-long-enough";
+  h.storage.setItem("settle-friends-account-session", JSON.stringify(session));
+  h.storage.setItem("settle-friends-cloud-space", "latency-workspace-b");
+  const otherState = { currentParticipantId: "account-latency-b", participants: [
+    { id: "account-latency-b", displayName: "Latency B", kind: "user" }
+  ], events: [], groups: [] };
+  const key = "settle-friends-state:latency-workspace-b";
+  h.storage.setItem(key, JSON.stringify(otherState));
+  return { key, raw: h.storage.getItem(key) };
+}
+
+for (const personalStatus of [200, 403, 503]) {
+  test(`late personal ${personalStatus} from another account cannot write its local state or sync indicator`, async () => fixture(async h => {
+    const request = h.store.saveSharedState(h.changed, { awaitCloud: true });
+    await h.personalStarted.promise;
+    const other = switchToOtherAccount(h);
+    const before = h.events.length;
+    h.personalGate.resolve();
+    const result = await request;
+    assert.equal(h.storage.getItem(other.key), other.raw, "the second account's workspace must be untouched");
+    assert.equal(result.mode, "stale-account");
+    assert.equal(result.ok, false);
+    assert.equal(h.events.slice(before).filter(event => event.type === "sogrim:sync-status" ||
+      event.type === "sogrim:shared-save-reverted").length, 0,
+      "the old request cannot change the new account's pending status or show a rollback notice");
+  }, { pausePersonal: true, personalStatus }));
+}
+
+for (const operation of ["flush", "load"]) {
+  for (const personalStatus of [200, 403]) {
+    test(`a late ${operation} ${personalStatus} stays isolated from the newly active account`, async () => fixture(async h => {
+      const pendingKey = "settle-friends-pending-sync:latency-workspace";
+      h.storage.setItem(pendingKey, JSON.stringify(h.changed));
+      h.store.saveState(h.changed);
+      const pendingBefore = h.storage.getItem(pendingKey);
+      const request = operation === "flush" ? h.store.flushPendingSharedState() : h.store.loadSharedState();
+      await h.personalStarted.promise;
+      const other = switchToOtherAccount(h);
+      const before = h.events.length;
+      h.personalGate.resolve();
+      const result = await request;
+      assert.equal(h.storage.getItem(other.key), other.raw);
+      assert.equal(h.storage.getItem(pendingKey), pendingBefore, "stale work leaves its original durable outbox for safe replay");
+      assert.equal(h.events.slice(before).filter(event => event.type === "sogrim:sync-status").length, 0,
+        "background recovery must not publish status into another account");
+      if (operation === "flush") assert.equal(result.mode, "stale-account");
+      else {
+        assert.equal(result.currentParticipantId, "account-latency-b");
+        assert.deepEqual(result.events, [], "a stale fallback must not relabel the old account's events with the new identity");
+      }
+    }, { pausePersonal: true, personalStatus }));
+  }
+}
+
+test("an expired old request never refreshes the newly active account's session", async () => fixture(async h => {
+  let refreshes = 0;
+  globalThis.SogrimAccountSession.refresh = async () => {
+    refreshes++;
+    return JSON.parse(h.storage.getItem("settle-friends-account-session"));
+  };
+  const request = h.store.saveSharedState(h.changed, { awaitCloud: true });
+  await h.personalStarted.promise;
+  switchToOtherAccount(h);
+  h.personalGate.resolve();
+  const result = await request;
+  assert.equal(result.mode, "stale-account");
+  assert.equal(refreshes, 0, "refresh belongs to the captured request account, not whoever signed in during I/O");
+}, { pausePersonal: true, personalStatus: 401 }));
+
+test("leaving and returning to the same account cannot revive a save stalled in config", async () => fixture(async h => {
+  const originalSession = h.storage.getItem("settle-friends-account-session");
+  const request = h.store.saveSharedState(h.changed, { foregroundSaveBudgetMs: 10 });
+  await h.configStarted.promise;
+  switchToOtherAccount(h);
+  h.store.loadState();
+  h.storage.setItem("settle-friends-account-session", originalSession);
+  h.storage.setItem("settle-friends-cloud-space", "latency-workspace");
+  h.store.loadState();
+  const before = h.events.length;
+  let early;
+  try {
+    early = await within(request, 30);
+  } finally { h.configGate.resolve(); }
+  const result = await request;
+  const final = await (result.completion ?? result);
+  assert.equal(early, null, "an abandoned request must not issue a queued receipt into the new account lifetime");
+  assert.equal(final.mode, "stale-account");
+  assert.deepEqual(h.writes(), { canonical: 0, personal: 0 });
+  assert.equal(h.events.slice(before).filter(event => event.type === "sogrim:sync-status").length, 0);
 }, { pauseConfig: true }));
 
 test("a full cloud-confirmed caller still waits through config and canonical persistence", async () => fixture(async h => {

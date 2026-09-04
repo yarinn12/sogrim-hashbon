@@ -876,7 +876,9 @@ test(switchAfterRead
     const store = await import(`../src/data/localStore.mjs?outbox-fresh-token=${Date.now()}`);
     const result = await store.flushPendingSharedState();
     if (switchAfterRead) {
-      assert.deepEqual(result, { ok: false, mode: "stale-account" });
+      assert.equal(result.ok, false);
+      assert.equal(result.mode, "stale-account");
+      assert.equal(result.error.code, "STALE_ACCOUNT");
       assert.deepEqual(canonicalTokens, [], "neither account may publish the stale request");
       assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`), "original account keeps its outbox");
       assert.equal(storage.getItem("settle-friends-state:account-space-two"), null);

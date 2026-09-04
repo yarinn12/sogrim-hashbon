@@ -272,9 +272,10 @@ test("queued writes keep their snapshot and stop at an account boundary", async 
     ]);
 
     assert.equal(firstResult.ok, true, firstResult.error?.stack);
-    assert.equal(snapshotResult.ok, true, snapshotResult.error?.stack);
+    assert.equal(snapshotResult.ok, false);
+    assert.equal(snapshotResult.mode, "stale-account", "a late receipt cannot acknowledge the active account's save");
     assert.equal(firstResult.persistedState.participants[0].displayName, "First Writer");
-    assert.equal(snapshotResult.persistedState.participants[0].displayName, "Captured Snapshot");
+    assert.equal(snapshotResult.persistedState, undefined);
     assert.equal(staleResult.mode, "stale-account");
     assert.equal(writes.length, 2, "stale queued work never reaches the network");
     assert.deepEqual(
@@ -365,7 +366,7 @@ test("an expired cloud token refreshes once without crossing account boundaries"
   );
   assert.match(
     localStore,
-    /const freshConfig = activateClientSpace\(await loadRuntimeConfig\(\)\)/
+    /const loadedConfig = await loadRuntimeConfig\(\);\s*assertCurrentAccount\(\);\s*const freshConfig = activateClientSpace\(loadedConfig\)/
   );
   assert.match(localStore, /if \(freshUserId !== expectedUserId\) throw error/);
 });
