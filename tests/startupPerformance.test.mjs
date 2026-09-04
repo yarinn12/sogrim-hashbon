@@ -76,8 +76,12 @@ test("noncritical native services initialize only after the first interactive sc
 
   for (const layer of [referrals, premium, ads, notifications]) {
     assert.match(layer, /runAfterFirstInteractiveScreen/);
+  }
+  for (const layer of [referrals, premium, ads]) {
     assert.doesNotMatch(layer, /addEventListener\("account-auth-ready"/);
   }
+  assert.match(notifications, /runAfterFirstInteractiveScreen\(\(\) => \{\s*startupReady = true;\s*document\.addEventListener\("account-auth-ready", requestNotificationInitialization\)/);
+  assert.doesNotMatch(notifications.slice(0, notifications.indexOf("runAfterFirstInteractiveScreen(() =>")), /addEventListener\("account-auth-ready"/);
   assert.doesNotMatch(referrals, /queueMicrotask/);
   assert.doesNotMatch(premium, /queueMicrotask/);
   assert.doesNotMatch(ads, /queueMicrotask\(scheduleAdSync\)/);

@@ -32,6 +32,14 @@ test("money views format amounts with the currency of their event", async () => 
   assert.doesNotMatch(source, /₪\$\{formatMoney/);
 });
 
+test("rounding explanations do not imply shekels after switching to another event currency", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  assert.match(app, /העברות ביחידות מטבע שלמות/);
+  assert.match(app, /מעגלים ליחידות שלמות במטבע האירוע/);
+  assert.match(app, /דיוק מלא ללא עיגול/);
+  assert.doesNotMatch(app, /שקלים שלמים|לשקל שלם|עד האגורה|כולל אגורות|דיוק מלא באגורות/);
+});
+
 test("the personal dashboard keeps balances separate by currency", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+import { buildSharedEventState } from "../src/data/sharedEventStore.mjs";
 
 const localStore = readFileSync("src/data/localStore.mjs", "utf8");
 const sharedEventStore = readFileSync("src/data/sharedEventStore.mjs", "utf8");
@@ -915,6 +916,105 @@ test("a successful outbox flush projects the merged cloud state locally", async 
     restoreGlobal("fetch", previousFetch);
   }
 });
+
+for (const retryPath of ["flush", "load"]) {
+  for (const mutation of ["note", "expense"]) {
+    test(`pending ${mutation} reaches canonical storage before a failing workspace write during ${retryPath}`, async () => {
+      const previousGlobals = Object.fromEntries(
+        ["window", "location", "localStorage", "fetch"].map((key) => [key, globalThis[key]])
+      );
+      const storage = memoryStorage();
+      const spaceId = `space-retry-order-${retryPath}-${mutation}`;
+      const sharedId = `shared-retry-order-${retryPath}-${mutation}`;
+      const location = {
+        href: "https://sogrim-hesbon-app.vercel.app/",
+        hostname: "sogrim-hesbon-app.vercel.app", protocol: "https:"
+      };
+      const remoteState = queueTestState("Pending Retry");
+      remoteState.events = [{
+        id: "retry-event", name: "Retry Event", eventType: "standard", currency: "ILS",
+        participantIds: ["account-user-a"], adminIds: ["account-user-a"],
+        createdByParticipantId: "account-user-a", createdAt: "2026-08-24T09:00:00.000Z",
+        notes: [], expenses: [], transfers: [],
+        sharedSpaceId: sharedId, sharedSpaceKey: "retry-order-shared-secret-that-is-long-enough"
+      }];
+      const pendingState = structuredClone(remoteState);
+      if (mutation === "note") {
+        pendingState.events[0].notes.push({
+          id: "pending-note", title: "Offline note", body: "Must reach the other device", pinned: false,
+          createdAt: "2026-08-24T09:01:00.000Z", updatedAt: "2026-08-24T09:01:00.000Z",
+          createdByParticipantId: "account-user-a", updatedByParticipantId: "account-user-a"
+        });
+      } else {
+        pendingState.events[0].expenses.push({
+          id: "pending-expense", name: "Offline expense", total: 100,
+          payers: [{ participantId: "account-user-a", amount: 100 }],
+          sharedByParticipantIds: ["account-user-a"], createdByParticipantId: "account-user-a",
+          updatedAt: "2026-08-24T09:01:00.000Z"
+        });
+      }
+      let canonical = buildSharedEventState(remoteState, "retry-event");
+      let workspace = structuredClone(remoteState);
+      let failWorkspace = true;
+      const writes = [];
+      saveTestAccount(storage, {
+        userId: "user-a", accessToken: "token-a", spaceId,
+        spaceKey: "retry-order-personal-secret-that-is-long-enough"
+      });
+      storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(pendingState));
+      storage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(pendingState));
+      globalThis.window = { addEventListener() {}, dispatchEvent() {}, localStorage: storage, location };
+      globalThis.location = location;
+      globalThis.localStorage = storage;
+      globalThis.fetch = async (url, options = {}) => {
+        const requestUrl = new URL(String(url), location.href);
+        if (requestUrl.pathname === "/api/config") {
+          return jsonResponse({ storage: {
+            mode: "supabase", url: "https://project.supabase.co", anonKey: "anon-key", table: "shared_state"
+          } });
+        }
+        if (requestUrl.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
+          writes.push("canonical");
+          canonical = structuredClone(JSON.parse(options.body).p_state);
+          return jsonResponse({ status: "updated", updatedAt: "2026-08-24T09:02:00.000Z" });
+        }
+        if (requestUrl.searchParams.has("snapshot_kind")) {
+          return jsonResponse([{ id: sharedId, state: structuredClone(canonical), updated_at: "2026-08-24T09:02:00.000Z" }]);
+        }
+        const requestedId = requestUrl.searchParams.get("id");
+        assert.ok([`eq.${spaceId}`, `eq.${sharedId}`].includes(requestedId), "only fixture snapshots may be requested");
+        if (options.method === "PATCH") {
+          assert.equal(requestedId, `eq.${spaceId}`);
+          writes.push("workspace");
+          if (failWorkspace) return { ok: false, status: 503 };
+          workspace = structuredClone(JSON.parse(options.body).state);
+          return jsonResponse([{ updated_at: "2026-08-24T09:03:00.000Z" }]);
+        }
+        assert.ok(!options.method || options.method === "GET");
+        return jsonResponse([{
+          state: structuredClone(requestedId === `eq.${sharedId}` ? canonical : workspace),
+          updated_at: "2026-08-24T09:00:00.000Z"
+        }]);
+      };
+      try {
+        const store = await import(`../src/data/localStore.mjs?retry-order-${retryPath}-${mutation}=${Date.now()}`);
+        if (retryPath === "flush") await store.flushPendingSharedState();
+        else await store.loadSharedState();
+        assert.equal(writes[0], "canonical", "a private workspace failure must not prevent shared delivery");
+        const collection = mutation === "note" ? "notes" : "expenses";
+        assert.equal(canonical.events[0][collection].length, 1);
+        assert.equal(canonical.events[0][collection][0].id, `pending-${mutation}`);
+        assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`), "unfinished workspace persistence stays queued");
+        failWorkspace = false;
+        assert.deepEqual(await store.flushPendingSharedState(), { ok: true });
+        assert.equal(workspace.events[0][collection].length, 1, "retry does not duplicate the mutation");
+        assert.equal(storage.getItem(`settle-friends-pending-sync:${spaceId}`), null);
+      } finally {
+        for (const [key, value] of Object.entries(previousGlobals)) restoreGlobal(key, value);
+      }
+    });
+  }
+}
 
 test("a temporary workspace-only failure is accepted and schedules an automatic retry", async () => {
   const previousWindow = globalThis.window;

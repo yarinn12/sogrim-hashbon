@@ -96,6 +96,8 @@ import {
   removeParticipant,
   removeExpense,
   rollbackTransferStatusChanges,
+  rollbackEventSettingChange,
+  setEventCoverImage,
   setEventCurrency,
   setEventAdminsCanEditOnly,
   setEventDirectSettlementTransfers,
@@ -1184,6 +1186,22 @@ function createBrowserHistoryState() {
   };
 }
 
+function rememberConfirmedEventDialog(dialog, previousDialog = dialog) {
+  // null is a confirmed closed editor, not the absence of a pending result.
+  pendingConfirmedEventDialog = {
+    participantId: state.currentParticipantId,
+    eventId: previousDialog?.eventId ?? dialog?.eventId,
+    previousDialogIdentity: eventDialogHistoryIdentity(previousDialog),
+    dialog: cloneNavigationValue(dialog)
+  };
+}
+
+function eventDialogHistoryIdentity(dialog) {
+  return dialog ? JSON.stringify([
+    dialog.kind, dialog.eventId, dialog.noteId, dialog.participantId
+  ]) : null;
+}
+
 function handleBrowserHistoryBack(event) {
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
@@ -1236,11 +1254,12 @@ function handleBrowserHistoryBack(event) {
   if (pendingConfirmedEventDialog) {
     const confirmedDialog = pendingConfirmedEventDialog;
     pendingConfirmedEventDialog = null;
-    if (eventDialog?.eventId === confirmedDialog.eventId) {
-      eventDialog = {
-        ...eventDialog,
-        ...confirmedDialog
-      };
+    if (
+      confirmedDialog.participantId === state.currentParticipantId &&
+      eventDialog?.eventId === confirmedDialog.eventId &&
+      eventDialogHistoryIdentity(eventDialog) === confirmedDialog.previousDialogIdentity
+    ) {
+      eventDialog = cloneNavigationValue(confirmedDialog.dialog);
       shouldReplaceConfirmedDialogHistory = true;
     }
   }
@@ -5241,7 +5260,7 @@ function renderNewEventSettlement() {
       <header class="top">${renderAppBackButton()}<div class="brand"><p class="eyebrow">אירוע חדש</p><h1>איך סוגרים את החשבון?</h1></div></header>
       ${renderEventCreationProgress("settlement")}
       <section class="panel create-event-panel new-event-settlement-panel">
-        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא עד האגורה", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא עד האגורה" }], hint: "משפיע רק על ההעברות הסופיות, לא על ההוצאות." })}
+        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "משפיע רק על ההעברות הסופיות, לא על ההוצאות." })}
         ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "אפשר לשנות גם אחר כך בהגדרות האירוע." })}
         <div class="actions section"><button class="primary-button" data-action="open-new-event-participants">המשך למשתתפים</button></div>
       </section>
@@ -7163,8 +7182,8 @@ function renderEventSettingsDialog(event) {
     ? "לפי מי ששילם"
     : "קיזוז חכם";
   const roundingStatus = usesRoundedSettlementTransfers(event)
-    ? "פעיל · העברות בשקלים שלמים"
-    : "כבוי · דיוק מלא באגורות";
+    ? "פעיל · העברות ביחידות מטבע שלמות"
+    : "כבוי · דיוק מלא ללא עיגול";
   const lockStatus = event.locked ? "האירוע נעול" : "האירוע פתוח לעריכה";
   const dangerStatus = canManage ? "עזיבה או מחיקת האירוע" : canLeave ? "עזיבת האירוע" : "אין פעולות זמינות";
 
@@ -7580,7 +7599,7 @@ function renderEventSettingsRoundingDialog(event) {
   return renderEventDialogShell({
     eyebrow: "הגדרות",
     title: "עיגול סכומים",
-    description: "בוחרים אם ההעברות הסופיות יהיו נוחות או מדויקות עד האגורה.",
+    description: "בוחרים אם לעגל את ההעברות הסופיות או להשאיר אותן מדויקות.",
     backAction: "event-settings-back",
     backdropClass: "event-settings-route-backdrop",
     routeMode: true,
@@ -7595,13 +7614,13 @@ function renderEventSettingsRoundingDialog(event) {
               id: "rounded",
               enabled: true,
               title: "סכומים נוחים (מומלץ)",
-              description: "מעגלים את ההעברות לשקל שלם ומאזנים את ההפרש."
+              description: "מעגלים ליחידות שלמות במטבע האירוע ומאזנים את ההפרש."
             },
             {
               id: "exact",
               enabled: false,
               title: "דיוק מלא",
-              description: "משאירים כל העברה מדויקת עד האגורה."
+              description: "משאירים כל העברה מדויקת, ללא עיגול."
             }
           ]
             .map((option, index) => {
@@ -7632,7 +7651,7 @@ function renderEventSettingsRoundingDialog(event) {
       <p class="event-setting-note">
         ${rounded
           ? "ההעברות יוצגו בסכומים שלמים ונוחים לתשלום."
-          : "ההעברות יוצגו בדיוק מלא, כולל אגורות."}
+          : "ההעברות יוצגו בדיוק מלא, ללא עיגול."}
       </p>
       <details class="event-setting-more">
         <summary>מידע נוסף</summary>
@@ -10002,16 +10021,7 @@ async function updateEventCoverImage(eventId, coverImage) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return false;
   const previousState = state;
-  const updatedAt = new Date().toISOString();
-  state = {
-    ...state,
-    events: state.events.map((event) => event.id === eventId ? {
-      ...event,
-      coverImage,
-      settingsUpdatedAt: updatedAt,
-      settingsFieldUpdatedAt: { ...(event.settingsFieldUpdatedAt ?? {}), coverImage: updatedAt }
-    } : event)
-  };
+  state = setEventCoverImage(state, eventId, coverImage);
   notice = coverImage ? "שומר את תמונת האירוע…" : "מסיר את תמונת האירוע…";
   render();
   const saveCheckpoint = stateSaveCheckpoint(
@@ -10021,6 +10031,7 @@ async function updateEventCoverImage(eventId, coverImage) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return false;
   if (result?.ok === false && result?.pending !== true) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return false;
     console.warn("[images] Event cover persistence failed", {
@@ -10535,7 +10546,7 @@ function renderFeaturedSettlementBreakdown(event, transfer) {
         </div>
         ${
           usesRoundedSettlementTransfers(event)
-            ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; פירוט ההוצאות נשאר מדויק עד האגורה.</p>'
+            ? '<p class="settlement-featured-rounding">ההעברה עוגלה ליחידה שלמה במטבע האירוע; פירוט ההוצאות נשאר מדויק.</p>'
             : ""
         }
         <a class="settlement-featured-full" href="#settlement-transfers-title">לכל ההעברות</a>
@@ -10766,7 +10777,7 @@ function renderDirectFeaturedSettlementBreakdown(event, transfer) {
         </div>
         ${
           usesRoundedSettlementTransfers(event)
-            ? '<p class="settlement-featured-rounding">ההעברה עוגלה לשקל שלם; ההוצאות עצמן נשארו מדויקות.</p>'
+            ? '<p class="settlement-featured-rounding">ההעברה עוגלה ליחידה שלמה במטבע האירוע; ההוצאות עצמן נשארו מדויקות.</p>'
             : ""
         }
         <a class="settlement-featured-full" href="#settlement-transfers-title">לכל ההעברות</a>
@@ -10912,7 +10923,7 @@ function renderTransferExplanation(event, transfer, { open = false, id = "" } = 
           </p>
           ${
             usesRoundedSettlementTransfers(event)
-              ? '<p class="transfer-rounding-note">סכומי ההעברה עוגלו לשקלים שלמים. ההוצאות נשארו מדויקות עד האגורה.</p>'
+              ? '<p class="transfer-rounding-note">סכומי ההעברה עוגלו ליחידות מטבע שלמות. ההוצאות נשארו מדויקות.</p>'
               : ""
           }
         </div>
@@ -10955,7 +10966,7 @@ function renderTransferExplanation(event, transfer, { open = false, id = "" } = 
         </div>
         ${
           usesRoundedSettlementTransfers(event)
-            ? '<p class="transfer-rounding-note">סכומי ההעברה עוגלו לשקלים שלמים. הפירוט נשאר מדויק עד האגורה.</p>'
+            ? '<p class="transfer-rounding-note">סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.</p>'
             : ""
         }
         <p class="transfer-route-note">
@@ -15099,7 +15110,7 @@ async function sendParticipantReport() {
     friendNetworkBusyAction = "";
     eventDialog = nextDialog;
     if (appHistoryDepth > 0 && window.history?.back) {
-      pendingConfirmedEventDialog = cloneNavigationValue(nextDialog);
+      rememberConfirmedEventDialog(nextDialog);
       appHistoryDepth = Math.max(0, appHistoryDepth - 1);
       lastNavigationViewKey = navigationViewKey();
       window.history.back();
@@ -16316,6 +16327,18 @@ async function saveEventNoteFromDialog(eventId) {
     return result;
   }
 
+  if (result?.partial && result.failedEventIds?.includes(eventId)) {
+    // A healthy sibling is not a receipt for this note. Preserve the draft
+    // without rolling back successfully committed work in other events.
+    if (eventDialog === activeDialog) {
+      activeDialog.saving = false;
+      activeDialog.error = "עדיין לא התקבל אישור לשמירת הפתק המשותף. הטיוטה נשארה כאן ואפשר לנסות שוב.";
+      render();
+      reactivateDialogAfterRender(".event-note-modal");
+    }
+    return { ...result, ok: false };
+  }
+
   // A successful snapshot write is not necessarily a successful note edit:
   // reconciliation can retain a remote deletion or a different revision. Use
   // the per-request receipt, not the optimistic (possibly replaced) app state.
@@ -16381,6 +16404,7 @@ async function deleteEventNote(eventId, noteId) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantEdit(event)) return;
   const previousState = cloneNavigationValue(state);
+  const activeDialog = eventDialog;
   const editorSnapshot = cloneNavigationValue(eventDialog);
   const nextState = removeEventNote(state, eventId, noteId, {
     participantId: state.currentParticipantId
@@ -16394,16 +16418,34 @@ async function deleteEventNote(eventId, noteId) {
       forceSharedEventIds: [eventId]
     })
   );
-  const result = await completedSaveResult(saveCheckpoint.request);
-  if (!result?.ok && !result?.pending) {
-    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+  let result;
+  try {
+    result = await completedSaveResult(saveCheckpoint.request);
+  } catch (error) {
+    result = { ok: false, error };
+  }
+  if (state.currentParticipantId !== previousState.currentParticipantId) return result;
+  if (result?.partial && result.failedEventIds?.includes(eventId)) {
+    if (!stateSaveIsCurrent(saveCheckpoint) || eventDialog !== activeDialog) return result;
     eventDialog = {
       ...editorSnapshot,
       saving: false,
-      error: "לא הצלחנו למחוק את הפתק. לא בוצע שינוי ואפשר לנסות שוב."
+      error: "עדיין לא התקבל אישור למחיקת הפתק המשותף. המחיקה ממתינה לסנכרון."
     };
-  } else {
+    render();
+    return { ...result, ok: false };
+  }
+  if (!result?.ok && !result?.pending) {
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
+    state = previousState;
+    if (eventDialog === activeDialog) {
+      eventDialog = {
+        ...editorSnapshot,
+        saving: false,
+        error: "לא הצלחנו למחוק את הפתק. לא בוצע שינוי ואפשר לנסות שוב."
+      };
+    }
+  } else if (eventDialog === activeDialog) {
     eventDialog = null;
   }
   render();
@@ -16570,6 +16612,11 @@ async function confirmImportantAction() {
   const variant = arguments[0] === "alternate" ? "alternate" : "primary";
   let pendingAction = importantActionDialog;
   if (!pendingAction) return;
+  const actionParticipantId = state.currentParticipantId;
+  const actionScreen = screen;
+  const actionHistoryDepth = appHistoryDepth;
+  const previousEventDialog = cloneNavigationValue(eventDialog);
+  const previousExpenseDraft = expenseDraft;
   if (variant === "alternate" && pendingAction.alternatePayload) {
     pendingAction = {
       ...pendingAction,
@@ -16607,9 +16654,11 @@ async function confirmImportantAction() {
       screen: screen?.name ?? "unknown",
       error
     });
-    notice =
-      "הפעולה לא הושלמה בגלל תקלה זמנית. המסך שוחרר ואפשר לנסות שוב.";
-    schedulePendingMutationRecovery({ resetBackoff: true });
+    if (state.currentParticipantId === actionParticipantId) {
+      notice =
+        "הפעולה לא הושלמה בגלל תקלה זמנית. המסך שוחרר ואפשר לנסות שוב.";
+      schedulePendingMutationRecovery({ resetBackoff: true });
+    }
   } finally {
     restoringBrowserHistory = false;
     // The confirmation state is cleared before the async action to make a
@@ -16619,6 +16668,19 @@ async function confirmImportantAction() {
     render();
   }
 
+  // A completion belongs to the screen/account that requested it. Never
+  // rewind a new account, a later screen, or a newer confirmation dialog.
+  if (
+    state.currentParticipantId !== actionParticipantId ||
+    screen !== actionScreen ||
+    appHistoryDepth !== actionHistoryDepth ||
+    importantActionDialog ||
+    (["delete-event-note", "delete-expense"].includes(pendingAction.kind) && (
+      expenseDraft !== previousExpenseDraft ||
+      (eventDialog && eventDialogHistoryIdentity(eventDialog) !== eventDialogHistoryIdentity(previousEventDialog))
+    ))
+  ) return;
+
   if (underlyingDialogSelector && app.querySelector(underlyingDialogSelector)) {
     activateDialog(underlyingDialogSelector);
   } else {
@@ -16626,7 +16688,7 @@ async function confirmImportantAction() {
   }
 
   if (shouldRewindBrowserHistory) {
-    pendingConfirmedEventDialog = cloneNavigationValue(eventDialog);
+    rememberConfirmedEventDialog(eventDialog, previousEventDialog);
     pendingImportantActionReturnFocus = returnFocus;
     appHistoryDepth = Math.max(0, appHistoryDepth - 1);
     lastNavigationViewKey = navigationViewKey();
@@ -16827,6 +16889,7 @@ async function applyEventCurrencyChange(
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
@@ -19324,8 +19387,10 @@ async function deleteExpense(eventId, expenseId) {
   reconcileEventTransfers(getEvent(eventId), previousTransfers);
   render();
   try {
-    const saveResult = await persistState({ awaitCloud: true });
-    if (!saveResult?.ok) {
+    const saveCheckpoint = stateSaveCheckpoint(persistState({ awaitCloud: true }));
+    const saveResult = await saveCheckpoint.request;
+    if (!saveResult?.ok && !saveResult?.pending) {
+      if (!rejectedStateSaveIsCurrent(saveResult, saveCheckpoint)) return;
       state = loadState();
       notice =
         "המחיקה לא נשמרה כדי למנוע הבדל בין חברי האירוע. בדקו את החיבור ונסו שוב.";
@@ -19630,6 +19695,9 @@ async function toggleEventLock(eventId) {
     recordEventActivity(eventId, "event-closed", {}, statusUpdatedAt);
     expenseDraft = null;
   }
+  notice = opening ? "שומרים את פתיחת האירוע..." : "שומרים את נעילת האירוע...";
+  render();
+  reactivateDialogAfterRender(".event-modal", '[data-action="toggle-lock"]');
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
       awaitCloud: true,
@@ -19637,6 +19705,7 @@ async function toggleEventLock(eventId) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
@@ -20326,6 +20395,12 @@ async function setEventManagementMode(eventId, mode) {
   const previousState = state;
   state = setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly);
   expenseDraft = null;
+  notice = "שומרים את אופן ניהול האירוע...";
+  render();
+  reactivateDialogAfterRender(
+    ".event-modal",
+    `[data-action="set-event-management-mode"][data-management-mode="${mode}"]`
+  );
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
       awaitCloud: true,
@@ -20333,6 +20408,7 @@ async function setEventManagementMode(eventId, mode) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
@@ -20479,6 +20555,7 @@ async function setEventRoundingMode(eventId, mode) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
@@ -21785,15 +21862,22 @@ function persistLocalProfile(nextProfile) {
 function stateSaveCheckpoint(saveRequest) {
   return {
     request: saveRequest,
-    revision: sharedStateSaveRevision()
+    revision: sharedStateSaveRevision(),
+    participantId: state.currentParticipantId
   };
+}
+
+function stateSaveIsCurrent(checkpoint) {
+  return checkpoint?.revision === sharedStateSaveRevision() &&
+    checkpoint.participantId === state.currentParticipantId;
 }
 
 function rejectedStateSaveIsCurrent(result, checkpoint) {
   return (
     !result?.ok &&
     !result?.pending &&
-    checkpoint?.revision === sharedStateSaveRevision()
+    checkpoint?.revision === sharedStateSaveRevision() &&
+    checkpoint.participantId === state.currentParticipantId
   );
 }
 
@@ -22582,11 +22666,10 @@ async function setEventRepaymentMode(eventId, mode) {
   }
 
   const direct = mode === "direct";
-  const requestVersion =
-    (eventRepaymentModeRequestVersions.get(eventId) ?? 0) + 1;
+  const requestVersion = Symbol("repayment-save");
   eventRepaymentModeRequestVersions.set(eventId, requestVersion);
 
-  const previousDirect = usesDirectSettlementTransfers(event);
+  const previousEvent = cloneNavigationValue(event);
   const previousTransfers = eventSettlementTransfers(event);
   state = setEventDirectSettlementTransfers(state, eventId, direct);
   const nextEvent = getEvent(eventId);
@@ -22606,17 +22689,18 @@ async function setEventRepaymentMode(eventId, mode) {
     ".event-modal",
     `[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`
   );
-  const result = await persistState({
+  const saveCheckpoint = stateSaveCheckpoint(persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
-  });
-  if (eventRepaymentModeRequestVersions.get(eventId) !== requestVersion) return;
+  }));
+  const result = await saveCheckpoint.request;
+  if (eventRepaymentModeRequestVersions.get(eventId) !== requestVersion) return result;
   eventRepaymentModeRequestVersions.delete(eventId);
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
-    state = setEventDirectSettlementTransfers(
-      state,
-      eventId,
-      previousDirect
+    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
+    state = rollbackEventSettingChange(
+      state, eventId, previousEvent, nextEvent, "directSettlementTransfers"
     );
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."

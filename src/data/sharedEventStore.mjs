@@ -463,6 +463,20 @@ export async function syncSharedEvents(
     error.code = "SHARED_EVENT_SYNC_FAILED";
     error.cause = failures[0];
     error.failures = failures;
+    // This is reconciliation progress, not an authoritative save receipt:
+    // nextState still contains the optimistic changes of failed siblings.
+    error.partialSharedState = {
+      state: nextState,
+      succeededEventIds: [
+        ...deletionResults.filter((result) => result.status === "fulfilled" && result.value === true)
+          .map((result) => result.item.id),
+        ...eventResults.filter((result) => result.status === "fulfilled").map((result) => result.item)
+      ],
+      failedEventIds: [
+        ...deletionResults.filter((result) => result.status === "rejected").map((result) => result.item.id),
+        ...eventResults.filter((result) => result.status === "rejected").map((result) => result.item)
+      ]
+    };
     throw error;
   }
 

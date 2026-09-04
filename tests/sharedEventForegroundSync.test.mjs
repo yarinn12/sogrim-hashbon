@@ -321,6 +321,7 @@ test("a failed older save cannot roll back a newer local action", () => {
     "leaveCurrentEvent",
     "deleteCurrentEvent",
     "setEventManagementMode",
+    "setEventRepaymentMode",
     "toggleEventParticipantAdmin",
     "setEventRoundingMode",
     "removeEventParticipant",

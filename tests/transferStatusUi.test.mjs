@@ -258,7 +258,7 @@ test("settlement explains friendly rounding and points to the exact invalid expe
 
   assert.match(app, /calculateSettlement\(eventParticipants\(event\), \[expense\]\)\.issues\.length/);
   assert.match(app, /צריך תיקון · לא נכנסה לחישוב/);
-  assert.match(app, /סכומי ההעברה עוגלו לשקלים שלמים/);
+  assert.match(app, /סכומי ההעברה עוגלו ליחידות מטבע שלמות/);
   assert.match(ledger, /\.expense-row\.is-review/);
   assert.match(ledger, /\.transfer-rounding-note/);
 });

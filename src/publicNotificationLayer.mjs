@@ -25,6 +25,10 @@ let notificationError = "";
 let registeredForCurrentAccount = false;
 let startupReady = false;
 let notificationInitializationRequest = null;
+let notificationInitializationPending = false;
+let pushDeviceMutationTail = Promise.resolve();
+let notificationUiAccountId = "";
+let notificationAction = null;
 
 setupNotificationLayer();
 
@@ -45,6 +49,7 @@ function setupNotificationLayer() {
 
   runAfterFirstInteractiveScreen(() => {
     startupReady = true;
+    document.addEventListener("account-auth-ready", requestNotificationInitialization);
     requestNotificationInitialization();
     renderNotificationSettings();
   });
@@ -59,25 +64,78 @@ function handleNativeCapabilities() {
 function requestNotificationInitialization() {
   if (!startupReady) return Promise.resolve(false);
   if (notificationInitializationRequest) {
+    notificationInitializationPending = true;
     return notificationInitializationRequest;
   }
 
-  notificationInitializationRequest = initializeNotifications()
-    .then(() => true)
-    .catch(() => false)
+  notificationInitializationRequest = (async () => {
+    let completed = false;
+    do {
+      notificationInitializationPending = false;
+      completed = await initializeNotifications().then(() => true).catch(() => false);
+      // Later resume/account signals request one fresh pass. Failures alone
+      // never schedule a loop or prompt for notification permission.
+    } while (notificationInitializationPending);
+    return completed;
+  })()
     .finally(() => {
       notificationInitializationRequest = null;
     });
   return notificationInitializationRequest;
 }
 
+function notificationAccountIsCurrent(userId) {
+  return Boolean(userId && String(loadStoredAccountSession()?.user?.id ?? "").trim() === String(userId).trim());
+}
+
+function synchronizeNotificationUiAccount() {
+  const userId = String(loadStoredAccountSession()?.user?.id ?? "").trim();
+  if (notificationUiAccountId !== userId) {
+    notificationUiAccountId = userId;
+    notificationAction = null;
+    notificationBusy = false;
+    notificationError = "";
+    registeredForCurrentAccount = false;
+  }
+  return userId;
+}
+
+function beginNotificationAction(userId, { silent = false } = {}) {
+  synchronizeNotificationUiAccount();
+  notificationAction = { userId };
+  notificationBusy = !silent;
+  notificationError = "";
+  return notificationAction;
+}
+
+function notificationActionIsCurrent(action) {
+  return notificationAction === action && notificationAccountIsCurrent(action.userId);
+}
+
+function finishNotificationAction(action) {
+  if (notificationAction !== action) return;
+  notificationAction = null;
+  notificationBusy = false;
+  renderNotificationSettings();
+}
+
+function queuePushDeviceMutation(mutation) {
+  // Register, preference updates and disable share one order. An earlier
+  // in-flight registration must settle before the newer disable/update.
+  const request = pushDeviceMutationTail.then(mutation);
+  pushDeviceMutationTail = request.catch(() => {});
+  return request;
+}
+
 async function initializeNotifications() {
+  synchronizeNotificationUiAccount();
   const api = nativeNotificationApi();
   const session = loadStoredAccountSession();
   if (!api || !session?.user?.id) return;
 
   try {
     const permission = await api.checkPermission();
+    if (!notificationAccountIsCurrent(session.user.id)) return;
     permissionState = permission.receive;
     notificationError = "";
     renderNotificationSettings();
@@ -91,24 +149,29 @@ async function initializeNotifications() {
       permissionState === "granted"
     ) {
       await api.registerIfGranted();
+      if (!notificationAccountIsCurrent(session.user.id) || !notificationPreferenceEnabled(session.user.id)) return;
       try {
         await syncNotificationPreferences(
           session.user.id,
           loadStoredPushPreferences(session.user.id)
         );
       } catch {
+        if (!notificationAccountIsCurrent(session.user.id) || !notificationPreferenceEnabled(session.user.id)) return;
         registeredForCurrentAccount = false;
         notificationError =
           "ההתראות פעילות במכשיר. החיבור לחשבון יושלם אוטומטית.";
       }
+      if (notificationAccountIsCurrent(session.user.id)) renderNotificationSettings();
     }
   } catch {
+    if (!notificationAccountIsCurrent(session.user.id)) return;
     notificationError = "לא הצלחנו לבדוק את מצב ההתראות.";
     renderNotificationSettings();
   }
 }
 
 async function retryDisabledNotificationCleanup(userId) {
+  if (!notificationAccountIsCurrent(userId)) return false;
   const token = storedPushToken(userId);
   if (!token) return true;
 
@@ -120,8 +183,8 @@ async function retryDisabledNotificationCleanup(userId) {
   }
 
   try {
-    const config = await loadRuntimeConfig();
-    const result = await disablePushDevice(config, token);
+    const result = await disablePushDeviceWithAccountRecovery(userId, token);
+    if (!notificationAccountIsCurrent(userId) || notificationPreferenceEnabled(userId)) return false;
     if (!result.ok) return false;
     clearStoredPushToken(userId);
     registeredForCurrentAccount = false;
@@ -129,12 +192,13 @@ async function retryDisabledNotificationCleanup(userId) {
   } catch {
     // Keep the token locally. Online/resume initialization will retry the
     // remote cleanup without re-enabling notifications on the device.
-    registeredForCurrentAccount = false;
+    if (notificationAccountIsCurrent(userId)) registeredForCurrentAccount = false;
     return false;
   }
 }
 
 async function handleNotificationAction(event) {
+  synchronizeNotificationUiAccount();
   const button =
     event.target instanceof Element
       ? event.target.closest("[data-notification-action]")
@@ -152,6 +216,7 @@ async function handleNotificationAction(event) {
 }
 
 async function handleNotificationPreferenceChange(event) {
+  synchronizeNotificationUiAccount();
   const input =
     event.target instanceof Element
       ? event.target.closest("[data-notification-preference]")
@@ -178,22 +243,22 @@ async function handleNotificationPreferenceChange(event) {
   preferences[preference] = Boolean(input.checked);
   saveStoredPushPreferences(userId, preferences);
 
-  notificationBusy = true;
-  notificationError = "";
+  const action = beginNotificationAction(userId);
   renderNotificationSettings();
   try {
     const synced = await syncNotificationPreferences(userId, preferences);
-    if (!synced) {
+    if (!notificationActionIsCurrent(action)) return;
+    if (synced === false) {
       notificationError =
         "הבחירה נשמרה במכשיר ותסתנכרן אוטומטית בחיבור הבא.";
     }
   } catch {
+    if (!notificationActionIsCurrent(action)) return;
     registeredForCurrentAccount = false;
     notificationError =
       "הבחירה נשמרה במכשיר ותסתנכרן אוטומטית בחיבור הבא.";
   } finally {
-    notificationBusy = false;
-    renderNotificationSettings();
+    finishNotificationAction(action);
   }
 }
 
@@ -202,22 +267,28 @@ async function enableNotifications() {
   const session = loadStoredAccountSession();
   if (!api || !session?.user?.id) return;
 
-  notificationBusy = true;
-  notificationError = "";
+  const action = beginNotificationAction(session.user.id);
+  // Native registration can emit its token before enable() resolves.
+  // Record the user's intent first so that token is not discarded.
+  setNotificationPreference(session.user.id, true);
+  registeredForCurrentAccount = false;
   renderNotificationSettings();
   try {
     const permission = await api.enable();
+    if (!notificationActionIsCurrent(action)) return;
     permissionState = permission.receive;
     const enabled = permissionState === "granted";
     setNotificationPreference(session.user.id, enabled);
     if (!enabled) {
       notificationError = "ההרשאה לא אושרה. אפשר לשנות זאת בהגדרות המכשיר.";
+    } else if (!registeredForCurrentAccount) {
+      await syncNotificationPreferences(session.user.id, loadStoredPushPreferences(session.user.id));
     }
   } catch {
+    if (!notificationActionIsCurrent(action)) return;
     notificationError = "לא הצלחנו להפעיל התראות כרגע.";
   } finally {
-    notificationBusy = false;
-    renderNotificationSettings();
+    finishNotificationAction(action);
   }
 }
 
@@ -227,39 +298,38 @@ async function disableNotifications({ silent = false } = {}) {
   const userId = String(session?.user?.id ?? "").trim();
   if (!api || !userId) return false;
 
-  notificationBusy = !silent;
-  notificationError = "";
+  const action = beginNotificationAction(userId, { silent });
+  setNotificationPreference(userId, false);
+  registeredForCurrentAccount = false;
   renderNotificationSettings();
   const token = storedPushToken(userId);
   let remoteDisabled = !token;
 
   try {
     await api.disable();
-    permissionState = "granted";
-    setNotificationPreference(userId, false);
-    registeredForCurrentAccount = false;
+    if (!notificationActionIsCurrent(action)) return false;
 
     if (token) {
       try {
-        const config = await loadRuntimeConfig();
-        const result = await disablePushDevice(config, token);
+        const result = await disablePushDeviceWithAccountRecovery(userId, token);
         remoteDisabled = result.ok;
       } catch {
         remoteDisabled = false;
       }
     }
 
-    if (remoteDisabled) clearStoredPushToken(userId);
+    if (!notificationActionIsCurrent(action)) return false;
+    if (remoteDisabled && storedPushToken(userId) === token) clearStoredPushToken(userId);
     if (!remoteDisabled && !silent) {
       notificationError = "ההתראות כובו במכשיר. ניקוי החיבור לשרת יושלם בחיבור הבא.";
     }
     return true;
   } catch {
+    if (!notificationActionIsCurrent(action)) return false;
     if (!silent) notificationError = "לא הצלחנו לכבות התראות כרגע.";
     return false;
   } finally {
-    notificationBusy = false;
-    renderNotificationSettings();
+    finishNotificationAction(action);
   }
 }
 
@@ -277,11 +347,15 @@ async function handlePushToken(event) {
       platform,
       preferences: loadStoredPushPreferences(userId)
     });
+    if (!notificationAccountIsCurrent(userId) || !notificationPreferenceEnabled(userId)) return;
+    if (storedPushToken(userId) !== token || result.reason === "superseded") return;
     registeredForCurrentAccount = result.ok;
     notificationError = result.ok
       ? ""
       : "ההתראות פעילות במכשיר, אך החשבון עדיין לא מחובר אליהן.";
   } catch {
+    if (!notificationAccountIsCurrent(userId) || !notificationPreferenceEnabled(userId)) return;
+    if (storedPushToken(userId) !== token) return;
     registeredForCurrentAccount = false;
     notificationError = "ההתראות פעילות במכשיר. החיבור לחשבון יושלם אוטומטית.";
   }
@@ -289,27 +363,64 @@ async function handlePushToken(event) {
 }
 
 async function syncNotificationPreferences(userId, preferences) {
+  if (!notificationAccountIsCurrent(userId) || !notificationPreferenceEnabled(userId)) return false;
   const token = storedPushToken(userId);
   const platform = String(
     globalThis.Capacitor?.getPlatform?.() ?? ""
   ).trim().toLowerCase();
   if (!token || !["android", "ios"].includes(platform)) return false;
 
-  const result = await registerPushDeviceWithAccountRecovery(userId, {
-    token,
-    platform,
-    preferences
-  });
+  let result;
+  try {
+    result = await registerPushDeviceWithAccountRecovery(userId, { token, platform, preferences });
+  } catch (error) {
+    if (notificationAccountIsCurrent(userId) && storedPushToken(userId) !== token) return null;
+    throw error;
+  }
+  if (!notificationAccountIsCurrent(userId) || !notificationPreferenceEnabled(userId)) return false;
+  // A replaced token/request is not a failed save or a delivery receipt.
+  if (storedPushToken(userId) !== token || result.reason === "superseded") return null;
   registeredForCurrentAccount = result.ok;
   return result.ok;
 }
 
-async function registerPushDeviceWithAccountRecovery(userId, registration) {
+function registerPushDeviceWithAccountRecovery(userId, registration) {
+  return queuePushDeviceMutation(() => pushDeviceMutationWithAccountRecovery(userId, (config) => {
+    if (!notificationPreferenceEnabled(userId) || storedPushToken(userId) !== registration.token) {
+      return { ok: false, reason: "superseded" };
+    }
+    return registerPushDevice(config, { ...registration, preferences: loadStoredPushPreferences(userId) });
+  }));
+}
+
+function disablePushDeviceWithAccountRecovery(userId, token) {
+  return queuePushDeviceMutation(() => pushDeviceMutationWithAccountRecovery(userId, (config) => {
+    if (notificationPreferenceEnabled(userId) || storedPushToken(userId) !== token) {
+      return { ok: false, reason: "superseded" };
+    }
+    return disablePushDevice(config, token);
+  }));
+}
+
+async function pushDeviceMutationWithAccountRecovery(userId, mutation) {
   const expectedUserId = String(userId ?? "").trim();
   let config = await loadRuntimeConfig();
-  const request = () => registerPushDevice(config, registration);
+  const request = () => {
+    if (!notificationAccountIsCurrent(expectedUserId) ||
+        String(config?.storage?.account?.userId ?? "").trim() !== expectedUserId) {
+      const error = new Error("Account changed before push registration");
+      error.code = "AUTH_REQUIRED";
+      throw error;
+    }
+    return mutation(config);
+  };
 
   try {
+    if (notificationAccountIsCurrent(expectedUserId) && config?.storage?.mode === "supabase" && !config.storage.account) {
+      // Expired local identity is omitted from config, so no HTTP request
+      // exists to produce a 401. Use the same bounded refresh path.
+      throw Object.assign(new Error("Push session needs refresh"), { status: 401 });
+    }
     return await request();
   } catch (error) {
     if (
@@ -349,6 +460,7 @@ function handlePushStatus(event) {
 }
 
 function renderNotificationSettings() {
+  synchronizeNotificationUiAccount();
   document.querySelector("[data-notification-settings]")?.remove();
   const host = document.querySelector(
     ".profile-edit-screen .profile-setup-panel"

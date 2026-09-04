@@ -260,7 +260,7 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   await expect(page.locator('[data-settings-section="management"]')).toContainText("ניהול מרוכז");
   await expect(page.locator('[data-settings-section="currency"]')).toContainText("דולר אמריקאי");
   await expect(page.locator('[data-settings-section="repayment"]')).toContainText("לפי מי ששילם");
-  await expect(page.locator('[data-settings-section="rounding"]')).toContainText("דיוק מלא באגורות");
+  await expect(page.locator('[data-settings-section="rounding"]')).toContainText("דיוק מלא ללא עיגול");
   await expect(page.locator('[data-settings-section="lock"]')).toContainText("האירוע נעול");
 });
 

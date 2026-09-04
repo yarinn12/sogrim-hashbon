@@ -59,8 +59,10 @@ test("expense deletion waits for the durable cloud outcome", () => {
   assert.notEqual(end, -1);
 
   const source = appSource.slice(start, end);
-  assert.match(source, /await persistState\(\{ awaitCloud: true \}\)/);
-  assert.match(source, /if \(!saveResult\?\.ok\)/);
+  assert.match(source, /stateSaveCheckpoint\(persistState\(\{ awaitCloud: true \}\)\)/);
+  assert.match(source, /await saveCheckpoint\.request/);
+  assert.match(source, /if \(!saveResult\?\.ok && !saveResult\?\.pending\)/);
+  assert.match(source, /rejectedStateSaveIsCurrent\(saveResult, saveCheckpoint\)/);
   assert.match(source, /state = loadState\(\)/);
   assert.match(source, /expenseDeleteRequests\.delete\(requestId\)/);
 });

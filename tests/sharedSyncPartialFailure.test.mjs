@@ -1,0 +1,231 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildSharedEventState, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
+
+const stamp = "2026-08-24T09:00:00.000Z";
+function note(id) {
+  return { id, title: id, body: id, pinned: false, createdAt: stamp, updatedAt: stamp,
+    createdByParticipantId: "account-partial-a", updatedByParticipantId: "account-partial-a" };
+}
+const response = (payload) => ({ ok: true, status: 200, async json() { return structuredClone(payload); } });
+
+async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, canonicalStatus = null } = {}) {
+  const globals = Object.fromEntries(["window", "location", "localStorage", "fetch"].map((key) => [key, globalThis[key]]));
+  const entries = new Map();
+  const storage = {
+    getItem: (key) => entries.get(key) ?? null,
+    setItem: (key, value) => entries.set(key, String(value)),
+    removeItem: (key) => entries.delete(key)
+  };
+  const location = { href: "https://sogrim-hesbon-app.vercel.app/", hostname: "sogrim-hesbon-app.vercel.app", protocol: "https:" };
+  const workspaceId = "space-partial-a";
+  const state = {
+    currentParticipantId: "account-partial-a",
+    participants: [{ id: "account-partial-a", displayName: "Partial A", kind: "user", accountLinked: true }],
+    groups: [], events: ["healthy", "failing"].map((id) => ({
+      id, name: id, eventType: "standard", currency: "ILS", createdAt: stamp,
+      participantIds: ["account-partial-a"], adminIds: ["account-partial-a"],
+      createdByParticipantId: "account-partial-a", notes: [], expenses: [], transfers: [],
+      sharedSpaceId: `space-partial-${id}`, sharedSpaceKey: `partial-${id}-secret-long-enough-123456`
+    }))
+  };
+  const pending = structuredClone(state);
+  pending.events[0].notes.push(note("local-healthy-note"));
+  pending.events[1].notes.push(note("local-failing-note"));
+  const canonical = new Map(state.events.map((event) => [event.sharedSpaceId, buildSharedEventState(state, event.id)]));
+  canonical.get("space-partial-healthy").events[0].notes.push(note("remote-healthy-note"));
+  const workspaceWrites = [];
+  const canonicalWrites = [];
+  const canonicalAttempts = new Map();
+  let failureEnabled = true;
+  const config = { storage: {
+    mode: "supabase", url: "https://partial-fixture.supabase.co", anonKey: "fixture-anon", table: "app_snapshots",
+    spaceId: workspaceId, spaceKey: "partial-workspace-secret-long-enough-123456",
+    account: { userId: "partial-a", accessToken: "fixture-token" }
+  } };
+  storage.setItem("settle-friends-account-session", JSON.stringify({
+    access_token: "fixture-token", refresh_token: "fixture-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600,
+    user: { id: "partial-a", user_metadata: { account_space_id: workspaceId, account_space_key: config.storage.spaceKey } }
+  }));
+  storage.setItem("settle-friends-cloud-space", workspaceId);
+  storage.setItem(`settle-friends-cloud-key:${workspaceId}`, config.storage.spaceKey);
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(state));
+  globalThis.window = { localStorage: storage, location, addEventListener() {}, dispatchEvent() {} };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  globalThis.fetch = async (url, options = {}) => {
+    const address = new URL(String(url), location.href);
+    if (address.pathname === "/api/config") return response(config);
+    if (address.pathname.endsWith("/rpc/join_shared_event")) return response({ ok: true });
+    if (address.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
+      const body = JSON.parse(options.body);
+      const attempt = (canonicalAttempts.get(body.p_snapshot_id) ?? 0) + 1;
+      canonicalAttempts.set(body.p_snapshot_id, attempt);
+      const writeStatus = canonicalStatus
+        ? canonicalStatus(body.p_snapshot_id, attempt)
+        : failureEnabled && (allFail || body.p_snapshot_id === "space-partial-failing") ? status : 200;
+      if (writeStatus !== 200) return { ok: false, status: writeStatus };
+      canonicalWrites.push(body.p_snapshot_id);
+      canonical.set(body.p_snapshot_id, structuredClone(body.p_state));
+      return response({ status: "updated", updatedAt: "2026-08-24T09:01:00.000Z" });
+    }
+    if (options.method === "PATCH" || options.method === "POST") {
+      const body = JSON.parse(options.body);
+      assert.equal(body.id, workspaceId);
+      workspaceWrites.push(body.state);
+      beforeWorkspaceResponse?.({ storage, pending, workspaceId });
+      const personalStatus = typeof workspaceStatus === "function" ? workspaceStatus(workspaceWrites.length) : workspaceStatus;
+      if (personalStatus !== 200) return { ok: false, status: personalStatus };
+      return response([{ updated_at: "2026-08-24T09:02:00.000Z" }]);
+    }
+    const id = address.searchParams.get("id")?.replace(/^eq\./, "");
+    assert.ok(id === workspaceId || canonical.has(id), "only fixture resources are accessible");
+    return response([{ state: id === workspaceId ? state : canonical.get(id), updated_at: stamp }]);
+  };
+  try {
+    await run({ state, pending, canonical, storage, config, workspaceWrites, canonicalWrites, workspaceId,
+      recover: () => { failureEnabled = false; } });
+  } finally {
+    for (const [key, value] of Object.entries(globals)) {
+      if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
+    }
+  }
+}
+
+test("mixed shared sync carries successful merges separately from an authoritative receipt", async () => fixture(async ({ config, pending }) => {
+  await assert.rejects(syncSharedEvents(config, pending), (error) => {
+    assert.equal(error.code, "SHARED_EVENT_SYNC_FAILED");
+    assert.deepEqual(error.partialSharedState.succeededEventIds, ["healthy"]);
+    assert.deepEqual(error.partialSharedState.failedEventIds, ["failing"]);
+    assert.ok(error.partialSharedState.state.events[0].notes.some(({ id }) => id === "remote-healthy-note"));
+    assert.equal(error.persistedState, undefined, "optimistic failed items are not a cloud receipt");
+    assert.equal(error.sharedEventPersisted, undefined);
+    return true;
+  });
+}));
+
+for (const path of ["save", "flush", "load"]) {
+  test(`a mixed permanent failure preserves healthy work and advances the workspace during ${path}`, async () => fixture(async ({ pending, storage, workspaceWrites, workspaceId }) => {
+    const store = await import(`../src/data/localStore.mjs?partial-${path}=${Date.now()}`);
+    let result;
+    if (path === "save") result = await store.saveSharedState(pending, { awaitCloud: true });
+    else {
+      storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+      storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+      result = path === "flush" ? await store.flushPendingSharedState() : await store.loadSharedState();
+    }
+    assert.ok(workspaceWrites.length > 0, "one failing event must not block personal persistence");
+    const local = store.loadState();
+    assert.ok(local.events.find(({ id }) => id === "healthy").notes.some(({ id }) => id === "local-healthy-note"));
+    assert.ok(local.events.find(({ id }) => id === "healthy").notes.some(({ id }) => id === "remote-healthy-note"));
+    const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+    assert.ok(queued.events.find(({ id }) => id === "failing").notes.some(({ id }) => id === "local-failing-note"));
+    if (path === "save") {
+      assert.equal(result.pending, true);
+      assert.equal(result.reverted, undefined);
+      assert.equal(result.persistedState, undefined);
+      assert.deepEqual(result.failedEventIds, ["failing"]);
+    }
+  }));
+}
+
+test("no successful event never claims partial publication or accepts a forbidden foreground save", async () => fixture(async ({ config, pending, storage, workspaceId }) => {
+  await assert.rejects(syncSharedEvents(config, pending), (error) => {
+    assert.deepEqual(error.partialSharedState.succeededEventIds, []);
+    assert.equal(error.persistedState, undefined);
+    assert.equal(error.sharedEventPersisted, undefined);
+    return true;
+  });
+  const store = await import(`../src/data/localStore.mjs?partial-none=${Date.now()}`);
+  const result = await store.saveSharedState(pending, { awaitCloud: true });
+  assert.equal(result.ok, false);
+  assert.equal(result.reverted, true);
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+}, { allFail: true }));
+
+test("the outbox clears only after every previously failing event is delivered", async () => fixture(async ({ pending, storage, workspaceId, canonical, recover }) => {
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?partial-recovery=${Date.now()}`);
+  assert.equal((await store.flushPendingSharedState()).ok, false);
+  assert.ok(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+  recover();
+  assert.deepEqual(await store.flushPendingSharedState(), { ok: true });
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+  assert.equal(canonical.get("space-partial-failing").events[0].notes[0].id, "local-failing-note");
+  const healthyIds = canonical.get("space-partial-healthy").events[0].notes.map(({ id }) => id);
+  assert.equal(new Set(healthyIds).size, healthyIds.length);
+}));
+
+test("healthy canonical progress survives simultaneous shared and personal failures", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?partial-personal-failure=${Date.now()}`);
+  const result = await store.flushPendingSharedState();
+  assert.equal(result.ok, false);
+  assert.ok(result.error.failures.some((error) => error.status === 503));
+  const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+  assert.ok(queued.events[0].notes.some(({ id }) => id === "remote-healthy-note"));
+  assert.ok(queued.events[1].notes.some(({ id }) => id === "local-failing-note"));
+}, { workspaceStatus: 503 }));
+
+test("shared deletion outcomes use event ids and never claim a failed deletion succeeded", async () => fixture(async ({ config, pending }) => {
+  pending.deletedEvents = pending.events.map((event) => ({
+    id: event.id, sharedSpaceId: event.sharedSpaceId, sharedSpaceKey: event.sharedSpaceKey,
+    deletedAt: "2026-08-24T09:01:00.000Z"
+  }));
+  pending.events = [];
+  await assert.rejects(syncSharedEvents(config, pending), (error) => {
+    assert.deepEqual(error.partialSharedState.succeededEventIds, ["healthy"]);
+    assert.deepEqual(error.partialSharedState.failedEventIds, ["failing"]);
+    assert.equal(error.persistedState, undefined);
+    return true;
+  });
+}));
+
+test("a stale partial flush cannot replace a newer outbox or its local state", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?partial-superseded=${Date.now()}`);
+  await store.flushPendingSharedState();
+  assert.ok(store.loadState().events[1].notes.some(({ id }) => id === "newer-note"));
+  const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+  assert.ok(queued.events[1].notes.some(({ id }) => id === "newer-note"));
+}, { beforeWorkspaceResponse({ storage, pending, workspaceId }) {
+  const newer = structuredClone(pending);
+  newer.events[1].notes.push(note("newer-note"));
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(newer));
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(newer));
+} }));
+
+for (const firstResult of ["mixed", "complete"]) {
+for (const path of ["save", "flush", "load"]) {
+  test(`an unsuccessful immediate retry preserves the previous ${firstResult} attempt's healthy progress during ${path}`, async () => fixture(async ({ pending, storage, workspaceId, workspaceWrites }) => {
+    const store = await import(`../src/data/localStore.mjs?partial-retry-${path}=${Date.now()}`);
+    let result;
+    if (path === "save") result = await store.saveSharedState(pending, { awaitCloud: true });
+    else {
+      storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+      storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+      result = path === "flush" ? await store.flushPendingSharedState() : await store.loadSharedState();
+    }
+    const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+    assert.ok(queued, "a later failed attempt cannot erase a partially committed outbox");
+    assert.ok(workspaceWrites[0].events.find(({ id }) => id === "healthy").notes.some(({ id }) => id === "remote-healthy-note"), "the first canonical pass merged the remote note");
+    assert.ok(queued.events.find(({ id }) => id === "healthy").notes.some(({ id }) => id === "remote-healthy-note"));
+    assert.ok(queued.events.find(({ id }) => id === "failing").notes.some(({ id }) => id === "local-failing-note"));
+    assert.ok(store.loadState().events.find(({ id }) => id === "healthy").notes.some(({ id }) => id === "remote-healthy-note"));
+    if (path === "save") {
+      assert.equal(result.pending, true);
+      assert.equal(result.reverted, undefined);
+      assert.equal(result.persistedState, undefined);
+      assert.deepEqual(new Set(result.failedEventIds), new Set(["healthy", "failing"]));
+    }
+  }, {
+    canonicalStatus(id, attempt) {
+      return attempt === 1 ? firstResult === "complete" || id === "space-partial-healthy" ? 200 : 503 : 403;
+    },
+    workspaceStatus(attempt) { return firstResult === "complete" && attempt === 1 ? 503 : 200; }
+  }));
+}
+}

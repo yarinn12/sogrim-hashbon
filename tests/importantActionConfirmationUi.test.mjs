@@ -60,11 +60,11 @@ test("confirmation supports app back, browser back, Escape and focus restoration
   assert.match(app, /\.important-action-dialog\[role="alertdialog"\]/);
   assert.match(app, /if \(event\.key === "Escape"\)/);
   assert.match(app, /restoreActionFocus\(returnFocus\)/);
-  assert.match(app, /pendingConfirmedEventDialog = cloneNavigationValue\(eventDialog\)/);
+  assert.match(app, /rememberConfirmedEventDialog\(eventDialog, previousEventDialog\)/);
   assert.match(app, /if \(pendingConfirmedEventDialog\)/);
   assert.match(
     app,
-    /if \(eventDialog\?\.eventId === confirmedDialog\.eventId\)[\s\S]*?shouldReplaceConfirmedDialogHistory = true/
+    /confirmedDialog\.participantId === state\.currentParticipantId &&\s*eventDialog\?\.eventId === confirmedDialog\.eventId[\s\S]*?shouldReplaceConfirmedDialogHistory = true/
   );
   assert.match(
     app,

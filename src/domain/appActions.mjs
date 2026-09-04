@@ -151,6 +151,52 @@ export function setEventCurrency(
   };
 }
 
+export function setEventCoverImage(state, eventId, coverImage) {
+  const updatedAt = new Date().toISOString();
+  return {
+    ...state,
+    events: state.events.map((event) => event.id === eventId ? {
+      ...event,
+      coverImage,
+      ...eventSettingTimestampUpdate(event, "coverImage", updatedAt)
+    } : event)
+  };
+}
+
+export function rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, field) {
+  if (!EVENT_SETTING_FIELDS.includes(field) || !previousEvent || !attemptedEvent) return state;
+  const clock = (event) => event.settingsFieldUpdatedAt?.[field] ?? event.settingsUpdatedAt ?? event.createdAt;
+  return {
+    ...state,
+    events: state.events.map((event) => {
+      if (event.id !== eventId || event[field] !== attemptedEvent[field] || clock(event) !== clock(attemptedEvent)) {
+        return event;
+      }
+      // Undo only this rejected field, not incoming notes or another device's
+      // settings. An undo must restore its old clock, never create a new edit.
+      const nextEvent = {
+        ...event,
+        settingsFieldUpdatedAt: { ...(event.settingsFieldUpdatedAt ?? {}) }
+      };
+      if (Object.hasOwn(previousEvent, field)) nextEvent[field] = previousEvent[field];
+      else delete nextEvent[field];
+      const previousClock = clock(previousEvent);
+      if (previousClock) nextEvent.settingsFieldUpdatedAt[field] = previousClock;
+      else delete nextEvent.settingsFieldUpdatedAt[field];
+      if (event.settingsUpdatedAt === attemptedEvent.settingsUpdatedAt) {
+        if (Object.hasOwn(previousEvent, "settingsUpdatedAt")) nextEvent.settingsUpdatedAt = previousEvent.settingsUpdatedAt;
+        else delete nextEvent.settingsUpdatedAt;
+      }
+      if (!["directSettlementTransfers", "roundSettlementTransfers"].includes(field)) return nextEvent;
+      const participants = (state.participants ?? []).filter((participant) => event.participantIds.includes(participant.id));
+      const settlement = reconcileSettlementTransfers(
+        participants, event.expenses, event.transfers, settlementOptionsForEvent(nextEvent)
+      );
+      return settlement.issues.length ? nextEvent : { ...nextEvent, transfers: settlement.transfers };
+    })
+  };
+}
+
 export function setEventRoundSettlementTransfers(
   state,
   eventId,

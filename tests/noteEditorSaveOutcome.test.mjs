@@ -11,6 +11,10 @@ const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const start = source.indexOf("async function saveEventNoteFromDialog(");
 const end = source.indexOf("\nfunction requestEventNoteDeletion(", start);
 const saveSource = source.slice(start, end);
+const deleteStart = source.indexOf("async function deleteEventNote(");
+const deleteSource = source.slice(deleteStart, source.indexOf("\nfunction requestEventLeave(", deleteStart));
+const saveGuardsStart = source.indexOf("function stateSaveIsCurrent(");
+const saveGuards = source.slice(saveGuardsStart, source.indexOf("\nfunction recordEventActivity(", saveGuardsStart));
 
 function initialState() {
   return addEventNote({
@@ -27,7 +31,7 @@ function initialState() {
   }, "event-editor", { id: "note-editor", title: "Original", body: "Original body", createdAt: "2026-09-01T00:00:00.000Z" });
 }
 
-function harness({ remote = null, current = null, unchanged = false, replaceStateDuringSave = false, duringSave = null, result = null, fail = false } = {}) {
+function harness({ remote = null, current = null, unchanged = false, replaceStateDuringSave = false, duringSave = null, result = null, fail = false, saveIsCurrent = true } = {}) {
   const initial = initialState();
   const baseNote = structuredClone(initial.events[0].notes[0]);
   const dialog = {
@@ -47,8 +51,8 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     makeId: () => "new-note",
     render: () => {}, reactivateDialogAfterRender: () => {},
     closeDialogWithHistory: () => { closed += 1; },
-    stateSaveCheckpoint: (request) => ({ request, revision: 1 }),
-    rejectedStateSaveIsCurrent: () => true,
+    stateSaveCheckpoint: (request) => ({ request, revision: 1, participantId: context.state.currentParticipantId }),
+    sharedStateSaveRevision: () => saveIsCurrent ? 1 : 2,
     completedSaveResult: (request) => Promise.resolve(request),
     persistState: async () => {
       writes += 1;
@@ -64,8 +68,9 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
       return result ?? { ok: true, mode: "cloud", persistedState: saved };
     }
   });
-  vm.runInContext(saveSource, context);
-  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), writes: () => writes, closed: () => closed };
+  vm.runInContext(saveGuards + saveSource, context);
+  vm.runInContext(deleteSource, context);
+  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), delete: () => context.deleteEventNote("event-editor", "note-editor"), writes: () => writes, closed: () => closed };
 }
 
 test("a deletion discovered during persistence is not reported as a successful note edit", async () => {
@@ -151,6 +156,80 @@ test("unexpected persistence failures preserve the editable draft", async () => 
   assert.equal(h.closed(), 0);
   assert.equal(h.dialog.saving, false);
   assert.equal(h.dialog.bodyDraft, "Local draft");
+});
+
+test("a failed note in a partially successful batch keeps its draft without claiming a receipt", async () => {
+  const h = harness({ result: {
+    ok: true, mode: "queued", pending: true, partial: true, failedEventIds: ["event-editor"]
+  } });
+  const result = await h.save();
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+  assert.equal(h.closed(), 0);
+  assert.equal(h.dialog.saving, false);
+  assert.equal(h.dialog.bodyDraft, "Local draft");
+  assert.match(h.dialog.error, /אישור/);
+});
+
+test("a sibling failure does not turn a successful note into a failed note", async () => {
+  const h = harness({ result: {
+    ok: true, mode: "queued", pending: true, partial: true, failedEventIds: ["different-event"]
+  } });
+  assert.equal((await h.save()).pending, true);
+  assert.equal(h.closed(), 1);
+});
+
+test("an unconfirmed note deletion preserves pending intent and healthy sibling progress", async () => {
+  const h = harness({
+    result: { ok: true, mode: "queued", pending: true, partial: true, failedEventIds: ["event-editor"] },
+    duringSave(context) { context.state.events.push({ id: "healthy", notes: [{ id: "confirmed-sibling-note" }] }); }
+  });
+  const result = await h.delete();
+  assert.equal(result.ok, false);
+  assert.equal(result.pending, true);
+  assert.equal(h.context.state.events[0].notes.length, 0);
+  assert.equal(h.context.state.events[0].deletedNotes[0].id, "note-editor");
+  assert.equal(h.context.state.events[1].notes[0].id, "confirmed-sibling-note");
+  assert.equal(h.context.eventDialog.bodyDraft, "Local draft");
+  assert.equal(h.context.eventDialog.saving, false);
+  assert.match(h.context.eventDialog.error, /אישור/);
+});
+
+test("a late partial deletion cannot restore the previous account's note dialog", async () => {
+  const replacement = { currentParticipantId: "account-other", events: [], participants: [], groups: [] };
+  const newDialog = { kind: "unrelated-dialog" };
+  const h = harness({
+    result: { ok: true, mode: "queued", pending: true, partial: true, failedEventIds: ["event-editor"] },
+    saveIsCurrent: false,
+    duringSave(context) { context.state = replacement; context.eventDialog = newDialog; }
+  });
+  await h.delete();
+  assert.equal(h.context.state, replacement);
+  assert.equal(h.context.eventDialog, newDialog);
+});
+
+test("a successful late deletion cannot close another account's dialog", async () => {
+  const replacement = { currentParticipantId: "account-other", events: [], participants: [], groups: [] };
+  const nextDialog = { kind: "note-editor", eventId: "other", bodyDraft: "New account draft" };
+  const h = harness({ duringSave(context) { context.state = replacement; context.eventDialog = nextDialog; } });
+  await h.delete();
+  assert.equal(h.context.state, replacement);
+  assert.equal(h.context.eventDialog, nextDialog);
+});
+
+test("a successful late deletion cannot close a different editor in the same account", async () => {
+  const nextDialog = { kind: "note-editor", eventId: "event-editor", noteId: "another-note", bodyDraft: "Keep me" };
+  const h = harness({ duringSave(context) { context.eventDialog = nextDialog; } });
+  await h.delete();
+  assert.equal(h.context.eventDialog, nextDialog);
+});
+
+test("an unexpected deletion failure restores the note and leaves a retry message", async () => {
+  const h = harness({ fail: true });
+  const result = await h.delete();
+  assert.equal(result.ok, false);
+  assert.equal(h.context.state.events[0].notes.length, 1);
+  assert.match(h.context.eventDialog.error, /לא הצלחנו למחוק/);
 });
 
 test("a title-only edit preserves the remote body and pin that arrived while editing", async () => {

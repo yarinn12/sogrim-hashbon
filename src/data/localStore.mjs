@@ -151,9 +151,20 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
       syncSelection.deletedEventIds?.length
     )
   );
-  let syncedState = prioritizeSharedEventWrite
-    ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
-    : state;
+  let syncedState = state;
+  let deferredSharedFailure = null;
+  try {
+    syncedState = prioritizeSharedEventWrite
+      ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
+      : state;
+  } catch (error) {
+    if (!error?.partialSharedState?.state) throw error;
+    // A broken sibling must not freeze personal-only changes or discard the
+    // healthy events' merged state. Still rethrow after this best-effort save:
+    // personal persistence is not proof that all shared changes were delivered.
+    deferredSharedFailure = error;
+    syncedState = error.partialSharedState.state;
+  }
   let initialSave;
   try {
     initialSave = await saveCloudStateWithRetry(
@@ -161,6 +172,10 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
       toCloudState(config, syncedState)
     );
   } catch (error) {
+    if (deferredSharedFailure) {
+      deferredSharedFailure.failures = [...deferredSharedFailure.failures, error];
+      throw deferredSharedFailure;
+    }
     if (prioritizeSharedEventWrite) {
       error.sharedEventPersisted = true;
       error.persistedState = syncedState;
@@ -169,6 +184,10 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
   }
   const canonicalCommittedState = syncedState;
   syncedState = mergeSharedStates(initialSave.state, syncedState);
+  if (deferredSharedFailure) {
+    deferredSharedFailure.partialSharedState.state = syncedState;
+    throw deferredSharedFailure;
+  }
 
   if (!prioritizeSharedEventWrite || initialSave.conflictCount) {
     let reconciliationSelection = initialSave.conflictCount && !prioritizeSharedEventWrite
@@ -226,8 +245,37 @@ async function syncAndPersistCloudState(
     return await syncAndPersistCloudStateOnce(config, state, syncSelection);
   } catch (error) {
     if (!isTransientSyncFailure(error)) throw error;
+    const selectedIds = [
+      ...(syncSelection?.eventIds ?? []),
+      ...(syncSelection?.deletedEventIds ?? [])
+    ];
+    const priorProgress = error.partialSharedState ?? (
+      error.sharedEventPersisted && error.persistedState
+        ? { state: error.persistedState, succeededEventIds: selectedIds }
+        : null
+    );
+    const hasPriorProgress = Boolean(priorProgress?.succeededEventIds?.length);
+    const retryState = hasPriorProgress ? priorProgress.state : state;
     await new Promise((resolve) => setTimeout(resolve, 350));
-    return syncAndPersistCloudStateOnce(config, state, syncSelection);
+    try {
+      return await syncAndPersistCloudStateOnce(config, retryState, syncSelection);
+    } catch (retryError) {
+      if (hasPriorProgress && !retryError.sharedEventPersisted) {
+        const latestProgress = retryError.partialSharedState;
+        // A later failure cannot undo a previous commit or erase its remote
+        // merges. Carry that progress forward, but use the latest failed IDs:
+        // historical success is not confirmation of the final attempted state.
+        retryError.partialSharedState = {
+          state: latestProgress?.state ?? retryState,
+          succeededEventIds: [...new Set([
+            ...priorProgress.succeededEventIds,
+            ...(latestProgress?.succeededEventIds ?? [])
+          ])],
+          failedEventIds: latestProgress?.failedEventIds ?? selectedIds
+        };
+      }
+      throw retryError;
+    }
   }
 }
 
@@ -794,7 +842,11 @@ async function loadSharedStateOnce(requestScope) {
         const mergedState = mergeSharedStates(remoteState, pendingState);
         const syncedState = (await syncAndPersistCloudState(
           runtimeConfig,
-          mergedState
+          mergedState,
+          // The durable outbox is a full snapshot, not the original save diff.
+          // Preserve its existing full reconciliation scope, but publish shared
+          // changes before a failing personal projection can block delivery.
+          buildSharedEventSyncSelection(null, mergedState)
         )).state;
         if (!loadAccountRequestIsCurrent(
           requestScope,
@@ -857,6 +909,10 @@ async function loadSharedStateOnce(requestScope) {
         );
       } catch (error) {
         // Keep the pending local snapshot available for a later retry.
+        const adoptedPartialState = adoptPartialSharedSyncState(error, {
+          runtimeConfig, pendingPayload, requestScope,
+          requestAccountGeneration, requestSaveGeneration
+        });
         if (isRetryablePendingSyncFailure(error)) {
           publishSyncStatus("reconnecting");
           schedulePendingSharedStateRetry();
@@ -877,6 +933,7 @@ async function loadSharedStateOnce(requestScope) {
           });
           emitOperationFailure("state_load", { screen: "boot", error });
         }
+        if (adoptedPartialState) return sharedStateLoadResult(loadState(), false);
       }
 
       return sharedStateLoadResult(
@@ -1113,7 +1170,7 @@ export async function saveSharedState(state) {
           const retryablePendingFailure = isRetryablePendingSyncFailure(error);
           const partiallyPersistedState = error?.sharedEventPersisted
             ? error.persistedState ?? sharedState
-            : null;
+            : partialSharedSyncState(error);
           if (
             hasSharedEventMutation &&
             requestAccountGeneration === accountStorageGeneration &&
@@ -1177,7 +1234,13 @@ export async function saveSharedState(state) {
             mode: acceptedPending ? "queued" : "cloud",
             error,
             ...(partiallyPersistedState
-              ? { partial: true, pending: true, persistedState: partiallyPersistedState }
+              ? {
+                  partial: true, pending: true,
+                  ...(error?.sharedEventPersisted ? { persistedState: partiallyPersistedState } : {})
+                }
+              : {}),
+            ...(error?.partialSharedState
+              ? { failedEventIds: error.partialSharedState.failedEventIds }
               : {}),
             ...(retryablePendingFailure && !partiallyPersistedState && pendingStateSaved
               ? { pending: true }
@@ -1283,8 +1346,18 @@ async function flushPendingSharedStateOnce() {
   publishSyncStatus("saving");
   try {
     const remoteState = await loadCloudState(runtimeConfig, pendingState);
+    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) {
+      return { ok: false, mode: "stale-account" };
+    }
+    // The read may have refreshed authentication. Do not make canonical
+    // delivery fail with the pre-refresh token and wait for another timer.
+    runtimeConfig = activateClientSpace(attachStoredAccountIdentity(runtimeConfig));
     const mergedState = mergeSharedStates(remoteState, pendingState);
-    const saved = await syncAndPersistCloudState(runtimeConfig, mergedState);
+    const saved = await syncAndPersistCloudState(
+      runtimeConfig,
+      mergedState,
+      buildSharedEventSyncSelection(null, mergedState)
+    );
     if (
       !loadRequestIsCurrent(
         requestScope,
@@ -1307,6 +1380,10 @@ async function flushPendingSharedStateOnce() {
     publishSyncStatus("saved");
     return { ok: true };
   } catch (error) {
+    adoptPartialSharedSyncState(error, {
+      runtimeConfig, pendingPayload, requestScope,
+      requestAccountGeneration, requestSaveGeneration
+    });
     const retryablePendingFailure = isRetryablePendingSyncFailure(error);
     if (retryablePendingFailure) {
       publishSyncStatus("reconnecting");
@@ -1336,6 +1413,26 @@ async function flushPendingSharedStateOnce() {
 
 export function sharedStateSaveRevision() {
   return sharedStateSaveGeneration;
+}
+
+function partialSharedSyncState(error) {
+  const partial = error?.partialSharedState;
+  return partial?.succeededEventIds?.length ? partial.state : null;
+}
+
+function adoptPartialSharedSyncState(error, {
+  runtimeConfig, pendingPayload, requestScope,
+  requestAccountGeneration, requestSaveGeneration
+}) {
+  const partial = partialSharedSyncState(error);
+  if (!partial || !loadRequestIsCurrent(requestScope, requestAccountGeneration, requestSaveGeneration) ||
+      pendingPayload !== pendingSharedStateRaw(runtimeConfig)) return false;
+  const visible = applyLocalParticipantId(
+    cleanLegacyStarterData(partial, loadProtectedParticipantId()), loadLocalParticipantId()
+  );
+  // Keep failed siblings durable, while retaining successful canonical merges.
+  if (!savePendingSharedState(runtimeConfig, partial)) return false;
+  return saveStateForScope(visible, requestScope);
 }
 
 export async function resetSharedState() {

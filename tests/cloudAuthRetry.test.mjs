@@ -804,6 +804,96 @@ test("an account workspace persists the signed-in participant instead of the fir
   }
 });
 
+for (const switchAfterRead of [false, true]) {
+test(switchAfterRead
+  ? "an outbox flush stops before canonical delivery when the account changes during its personal read"
+  : "an outbox flush uses the refreshed personal-read token for canonical delivery in the same attempt", async () => {
+  const previous = Object.fromEntries(
+    ["window", "location", "localStorage", "fetch", "SogrimAccountSession"].map((key) => [key, globalThis[key]])
+  );
+  const storage = new MemoryStorage();
+  const spaceId = "account-space";
+  const sharedId = "shared-auth-flush-space";
+  const location = { href: "https://sogrim-hesbon-app.vercel.app/", protocol: "https:", hostname: "sogrim-hesbon-app.vercel.app" };
+  const remote = {
+    currentParticipantId: "account-user-one",
+    participants: [{ id: "account-user-one", displayName: "User One", kind: "user", accountLinked: true }],
+    groups: [], events: [{
+      id: "auth-flush-event", name: "Auth flush", eventType: "standard", currency: "ILS",
+      participantIds: ["account-user-one"], adminIds: ["account-user-one"],
+      createdByParticipantId: "account-user-one", notes: [], expenses: [], transfers: [],
+      sharedSpaceId: sharedId, sharedSpaceKey: "auth-flush-shared-secret-long-enough"
+    }]
+  };
+  const pending = structuredClone(remote);
+  pending.events[0].notes.push({
+    id: "pending-auth-note", title: "Queued", body: "Deliver after refresh", pinned: false,
+    createdAt: "2026-08-24T09:00:00.000Z", updatedAt: "2026-08-24T09:00:00.000Z",
+    createdByParticipantId: "account-user-one", updatedByParticipantId: "account-user-one"
+  });
+  saveSession(storage, "expired-token");
+  storage.setItem("settle-friends-cloud-space", spaceId);
+  storage.setItem(`settle-friends-cloud-key:${spaceId}`, "abcdefghijklmnopqrstuvwxyz_123456");
+  storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(pending));
+  storage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(pending));
+  globalThis.window = { localStorage: storage, location, addEventListener() {}, dispatchEvent() {} };
+  globalThis.location = location;
+  globalThis.localStorage = storage;
+  let refreshCount = 0;
+  const canonicalTokens = [];
+  let canonicalWrite = null;
+  globalThis.SogrimAccountSession = { async refresh() {
+    refreshCount += 1;
+    saveSession(storage, "fresh-token");
+    return JSON.parse(storage.getItem("settle-friends-account-session"));
+  } };
+  globalThis.fetch = async (url, options = {}) => {
+    const address = new URL(String(url), location.href);
+    if (address.pathname === "/api/config") return jsonResponse({ storage: {
+      mode: "supabase", url: "https://auth-flush.supabase.co", anonKey: "anon-key", table: "app_snapshots"
+    } });
+    const token = options.headers?.authorization;
+    if (address.searchParams.get("id") === `eq.${sharedId}` || address.pathname.includes("/rpc/")) canonicalTokens.push(token);
+    if (token !== "Bearer fresh-token") return { ok: false, status: 401 };
+    if (address.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
+      canonicalWrite = JSON.parse(options.body).p_state;
+      return jsonResponse({ status: "updated", updatedAt: "2026-08-24T09:01:00.000Z" });
+    }
+    if (options.method === "PATCH") return jsonResponse([{ updated_at: "2026-08-24T09:02:00.000Z" }]);
+    if (switchAfterRead && address.searchParams.get("id") === `eq.${spaceId}`) {
+      const otherSession = JSON.parse(storage.getItem("settle-friends-account-session"));
+      otherSession.access_token = "other-account-token";
+      otherSession.user = { id: "user-two", user_metadata: {
+        account_space_id: "account-space-two", account_space_key: "other-account-secret-long-enough"
+      } };
+      storage.setItem("settle-friends-account-session", JSON.stringify(otherSession));
+      storage.setItem("settle-friends-cloud-space", "account-space-two");
+      storage.setItem("settle-friends-cloud-key:account-space-two", "other-account-secret-long-enough");
+    }
+    return jsonResponse([{ state: structuredClone(remote), updated_at: "2026-08-24T08:59:00.000Z" }]);
+  };
+  try {
+    const store = await import(`../src/data/localStore.mjs?outbox-fresh-token=${Date.now()}`);
+    const result = await store.flushPendingSharedState();
+    if (switchAfterRead) {
+      assert.deepEqual(result, { ok: false, mode: "stale-account" });
+      assert.deepEqual(canonicalTokens, [], "neither account may publish the stale request");
+      assert.ok(storage.getItem(`settle-friends-pending-sync:${spaceId}`), "original account keeps its outbox");
+      assert.equal(storage.getItem("settle-friends-state:account-space-two"), null);
+      return;
+    }
+    assert.equal(result.ok, true, result.error?.stack);
+    assert.equal(refreshCount, 1);
+    assert.ok(canonicalTokens.length > 0);
+    assert.ok(canonicalTokens.every((token) => token === "Bearer fresh-token"), "do not replay the expired credential after refresh");
+    assert.equal(canonicalWrite.events[0].notes[0].id, "pending-auth-note");
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${spaceId}`), null);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) restoreGlobal(key, value);
+  }
+});
+}
+
 function saveSession(
   storage,
   accessToken,

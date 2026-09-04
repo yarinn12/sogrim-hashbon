@@ -1422,9 +1422,10 @@ test("event cover supports reliable gallery and camera replacement", async () =>
   assert.match(app, /function encodeCanvasJpegWithinLimit\(/);
   assert.match(app, /maxLength: 240_000/);
   assert.match(app, /await updateEventCoverImage\(eventId, coverImage\)/);
-  assert.match(app, /async function updateEventCoverImage[\s\S]*?const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
+  const coverHandler = sourceBetween(app, "async function updateEventCoverImage(", "function renderSettlementRepaymentShortcut(");
+  assert.match(coverHandler, /stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(app, /state = previousState/);
-  assert.match(app, /settingsFieldUpdatedAt: \{[\s\S]*coverImage: updatedAt/);
+  assert.match(coverHandler, /setEventCoverImage\(state, eventId, coverImage\)/);
 });
 
 test("closed events keep non-financial manager controls available", async () => {
@@ -1473,22 +1474,22 @@ test("event settings let managers choose direct payer reimbursements", async () 
   assert.match(app, /setEventDirectSettlementTransfers\(state, eventId, direct\)/);
   assert.match(app, /סימוני תשלום שכבר בוצעו נשמרים/);
   assert.match(app, /לא יוצגו העברות נגדיות או כפולות/);
-  assert.match(repaymentHandler, /const previousDirect = usesDirectSettlementTransfers\(event\)/);
+  assert.match(repaymentHandler, /const previousEvent = cloneNavigationValue\(event\)/);
   assert.match(repaymentHandler, /const previousTransfers = eventSettlementTransfers\(event\)/);
   assert.match(repaymentHandler, /const transferPlanChanged = settlementTransferPlanKey\(previousTransfers\)/);
   assert.ok(
-    repaymentHandler.indexOf("render();") < repaymentHandler.indexOf("await persistState("),
+    repaymentHandler.indexOf("render();") < repaymentHandler.indexOf("persistState("),
     "the selected repayment mode should render before waiting for cloud persistence"
   );
   assert.match(repaymentHandler, /במקרה הזה סכומי ההעברות כבר היו זהים/);
-  assert.match(repaymentHandler, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
+  assert.match(repaymentHandler, /stateSaveCheckpoint\(persistState\(\{[\s\S]*?awaitCloud: true/);
   assert.match(
     repaymentHandler,
-    /if \(eventRepaymentModeRequestVersions\.get\(eventId\) !== requestVersion\) return;/
+    /if \(eventRepaymentModeRequestVersions\.get\(eventId\) !== requestVersion\) return result;/
   );
   assert.match(
     repaymentHandler,
-    /if \(!result\?\.ok && !result\?\.pending\) \{\s*state = setEventDirectSettlementTransfers\(/
+    /if \(!result\?\.ok && !result\?\.pending\) \{\s*if \(!rejectedStateSaveIsCurrent\(result, saveCheckpoint\)\) return result;\s*state = rollbackEventSettingChange\(/
   );
   assert.doesNotMatch(
     repaymentHandler,
