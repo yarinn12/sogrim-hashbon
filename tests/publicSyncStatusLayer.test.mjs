@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 test("public sync status reports cloud saves and recovery without cluttering screens", async () => {
-  const [index, sw, layer, localStore, circleDesign, app] = await Promise.all([
+  const [index, sw, layer, localStore, circleDesign, app, policy] = await Promise.all([
     readFile("index.html", "utf8"),
     readFile("sw.js", "utf8"),
     readFile("src/publicSyncStatusLayer.mjs", "utf8"),
     readFile("src/data/localStore.mjs", "utf8"),
     readFile("src/publicCircleDesignLayer.mjs", "utf8"),
-    readFile("src/app.mjs", "utf8")
+    readFile("src/app.mjs", "utf8"),
+    readFile("src/domain/userNoticePolicy.mjs", "utf8")
   ]);
 
   assert.match(index, /publicSyncStatusLayer\.mjs/);
@@ -129,8 +130,8 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /await flushPendingSharedState\(\)/);
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
-  assert.match(layer, /target\.textContent = "";\s*target\.hidden = true;/);
-  assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = true;/);
+  assert.match(layer, /pendingSync \? pendingSaveMessage\(pendingFailureKind\) : ""/);
+  assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = !message;/);
   assert.doesNotMatch(layer, /background: #fffaf0/);
   assert.match(layer, /return "המידע עודכן במכשיר אחר"/);
   assert.doesNotMatch(layer, /public-sync-dot/);
@@ -143,8 +144,9 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(localStore, /CLOUD_STATE_CONFLICT/);
   assert.match(localStore, /PENDING_SYNC_RETRY_DELAYS_MS/);
   assert.doesNotMatch(app, /השינוי לא נשמר כי הסנכרון לא זמין/);
-  assert.match(app, /אין לחשבון הרשאה לבצע את השינוי הזה/);
-  assert.match(app, /השינוי לא התקבל בשרת/);
+  assert.match(policy, /אין לחשבון הרשאה לבצע את השינוי הזה/);
+  assert.match(policy, /השינוי לא התקבל בשרת/);
+  assert.match(app, /notice = saveFailureMessage\(\{ failureKind \}\)/);
   assert.match(app, /foregroundMutation: options\.suppressRevertNotice !== true/);
   assert.match(app, /SHARED_REVERT_NOTICE_MAX_AGE_MS/);
   assert.match(app, /event\?\.detail\?\.foregroundMutation === true/);

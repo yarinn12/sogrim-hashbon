@@ -45,11 +45,14 @@ export async function loadNotificationInbox(
     async (inboxResponse) => ({
       response: inboxResponse,
       payload: inboxResponse.ok
-        ? await inboxResponse.json().catch(() => [])
+        ? await inboxResponse.json()
         : []
     })
   );
-  if (!response.ok) throw new Error("Notification inbox could not be loaded");
+  if (!response.ok) throw inboxRequestError(response);
+  if (!Array.isArray(payload)) {
+    throw Object.assign(new Error("Notification inbox returned an invalid response"), { code: "INBOX_INVALID_RESPONSE" });
+  }
 
   return {
     available: true,
@@ -85,7 +88,8 @@ export async function markNotificationRead(
       body: JSON.stringify({ read_at: new Date().toISOString() })
     }
   );
-  return response.ok;
+  if (!response.ok) throw inboxRequestError(response);
+  return true;
 }
 
 export async function markAllNotificationsRead(config, fetchImpl = fetch) {
@@ -108,7 +112,15 @@ export async function markAllNotificationsRead(config, fetchImpl = fetch) {
       body: JSON.stringify({ read_at: new Date().toISOString() })
     }
   );
-  return response.ok;
+  if (!response.ok) throw inboxRequestError(response);
+  return true;
+}
+
+function inboxRequestError(response) {
+  return Object.assign(new Error("Notification inbox request failed"), {
+    status: response.status,
+    code: response.status === 401 ? "AUTH_REQUIRED" : "INBOX_REQUEST_FAILED"
+  });
 }
 
 function inboxIdentity(config) {

@@ -1,6 +1,6 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
-import { noticePresentation } from "./domain/userNoticePolicy.mjs";
+import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
@@ -115,6 +115,7 @@ import {
   removeEventNote,
   updateEventNote
 } from "./domain/eventNotes.mjs";
+import { rollbackNoteOnlyStateChange } from "./data/noteSaveRollback.mjs";
 import {
   bindStateBackupToCurrentParticipant,
   parseStateBackup,
@@ -473,6 +474,7 @@ let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
 let expenseSaveInProgress = false;
+let expenseSaveRequest = null;
 const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;
 const SHARED_REVERT_NOTICE_MAX_AGE_MS = 8_000;
 const expenseDeleteRequests = new Set();
@@ -514,6 +516,7 @@ let notificationInbox = {
 };
 let notificationInboxRequest = null;
 let notificationInboxRefreshQueued = false;
+let notificationInboxOwnerId = "";
 let readFriendRequestNotificationIds = new Set();
 let notificationsReturnScreen = null;
 let adminAnalytics = {
@@ -789,18 +792,10 @@ function handleSharedSaveReverted(event) {
     return;
   }
   const failureKind = event?.detail?.failureKind ?? "unavailable";
-  notice = failureKind === "auth"
-    ? "השינוי לא נשמר כי החיבור לחשבון פג. התחברו מחדש ונסו שוב."
-    : failureKind === "permission"
-      ? "אין לחשבון הרשאה לבצע את השינוי הזה. המידע הוחזר לגרסה האחרונה שנשמרה."
-      : failureKind === "rejected"
-        ? "השינוי לא התקבל בשרת. המידע הוחזר לגרסה האחרונה שנשמרה."
-        : "לא הצלחנו לשמור את השינוי בשרת. המידע הוחזר לגרסה האחרונה שנשמרה.";
+  notice = saveFailureMessage({ failureKind });
   render();
-  if (expenseDraft) {
-    expenseDraft.error = "השינוי לא נשמר. בדקו את החיבור ונסו שוב.";
-    reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
-  }
+  // The operation's own handler owns its draft. A late background failure must
+  // never add an error to whichever unrelated editor happens to be open now.
 }
 document.addEventListener("settle-friends:notice", handleExternalNotice);
 if ("scrollRestoration" in window.history) {
@@ -4741,6 +4736,7 @@ function renderEventNotes(event) {
       ${renderEventHeader(event, activeEventParticipants(event))}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "notes")}
+      <p class="muted" data-inline-sync-status role="status" aria-live="polite" hidden></p>
       <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
         <div>
           <p class="eyebrow">פתקים משותפים</p>
@@ -5991,7 +5987,7 @@ function renderParticipantRelationshipBalance(event, participant, openBalance) {
   }
 
   const incoming = openBalance.direction === "incoming";
-  const reminderAllowed = incoming && paymentReminderEligibility(openBalance.reminderTransfer).allowed;
+  const reminderAllowed = incoming && paymentReminderEligibility(openBalance.reminderTransfer, event).allowed;
   const amountText = incoming
     ? `${formatEventMoney(event, openBalance.amount)} אליך`
     : `${formatEventMoney(event, openBalance.amount)} ל-${targetName}`;
@@ -10007,10 +10003,16 @@ async function captureExpenseAttachment(trigger) {
 
 async function applyExpenseAttachmentImage(file) {
   if (!file || !expenseDraft) return;
+  const activeDraft = expenseDraft;
+  const participantId = state.currentParticipantId;
+  const isCurrent = () => expenseDraft === activeDraft && state.currentParticipantId === participantId;
   try {
-    expenseDraft.attachmentImage = await compressEventCoverImage(file);
+    const image = await compressEventCoverImage(file);
+    if (!isCurrent()) return;
+    expenseDraft.attachmentImage = image;
     expenseDraft.error = "";
   } catch {
+    if (!isCurrent()) return;
     expenseDraft.error = "לא הצלחנו לעבד את התמונה. נסה תמונה אחרת.";
   }
   render();
@@ -10020,12 +10022,14 @@ async function applyExpenseAttachmentImage(file) {
 async function updateEventCoverImage(eventId, coverImage) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return false;
-  const previousState = state;
+  const previousEvent = cloneNavigationValue(event);
   state = setEventCoverImage(state, eventId, coverImage);
+  const attemptedEvent = cloneNavigationValue(getEvent(eventId));
   notice = coverImage ? "שומר את תמונת האירוע…" : "מסיר את תמונת האירוע…";
   render();
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
+      handlesSaveFailure: true,
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
@@ -10039,8 +10043,8 @@ async function updateEventCoverImage(eventId, coverImage) {
       mode: String(result?.mode ?? "unknown"),
       error: String(result?.error?.message ?? result?.error ?? "unknown")
     });
-    state = previousState;
-    notice = "לא הצלחנו לשמור את תמונת האירוע. התמונה הקודמת נשארה ללא שינוי.";
+    state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "coverImage");
+    notice = saveFailureMessage(result, "תמונת האירוע לא נשמרה.");
     render();
     return false;
   }
@@ -10648,7 +10652,7 @@ function renderTransferRow(
       : "is-personal-receiver"
     : "";
   const canSendReminder =
-    !paid && paymentReminderEligibility(transfer).allowed;
+    !paid && paymentReminderEligibility(transfer, event).allowed;
   const canUpdatePayment = canCurrentParticipantUpdateTransfer(event, transfer);
   const canUpdateGroupedPayments = groupedPaidTransfers.every((paidTransfer) =>
     canCurrentParticipantUpdateTransfer(event, paidTransfer)
@@ -10826,9 +10830,13 @@ function renderTransferPaidHistory(
   `;
 }
 
-function paymentReminderEligibility(transfer) {
+function paymentReminderEligibility(transfer, event) {
+  if (!isEventClosed(event)) return { allowed: false, reason: "event-open" };
+  if (!transfer || transfer.status === "paid") return { allowed: false, reason: "already-paid" };
+  // Visibility needs identity, not a fresh token: the guarded send path can
+  // recover expired authorization. Never use a stale runtime account on logout.
   const accountUserId = String(
-    runtimeConfig?.storage?.account?.userId ?? ""
+    loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
   ).trim();
   const currentAccountParticipantId = accountUserId
     ? `account-${accountUserId}`
@@ -10839,6 +10847,7 @@ function paymentReminderEligibility(transfer) {
 
   if (
     !currentAccountParticipantId ||
+    state.currentParticipantId !== currentAccountParticipantId ||
     transfer?.toParticipantId !== currentAccountParticipantId
   ) {
     return { allowed: false, reason: "not-recipient" };
@@ -16304,6 +16313,7 @@ async function saveEventNoteFromDialog(eventId) {
   reactivateDialogAfterRender(".event-note-modal");
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
+      handlesSaveFailure: true,
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
@@ -16316,11 +16326,14 @@ async function saveEventNoteFromDialog(eventId) {
   }
 
   if (!result?.ok && !result?.pending) {
-    if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
-    if (eventDialog === activeDialog) {
+    if (rejectedStateSaveIsCurrent(result, saveCheckpoint)) {
+      state = rollbackNoteOnlyStateChange(state, previousState, nextState) ?? state;
+    }
+    // A later save owns the state, but not this editor's busy indicator.
+    // Release the same draft even when rolling back that state is no longer safe.
+    if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
       activeDialog.saving = false;
-      activeDialog.error = "הפתק לא נשמר כדי למנוע הבדל בין המכשירים. בדקו את החיבור ונסו שוב.";
+      activeDialog.error = saveFailureMessage(result, "הפתק לא נשמר.", { draft: true });
       render();
       reactivateDialogAfterRender(".event-note-modal");
     }
@@ -16437,7 +16450,7 @@ async function deleteEventNote(eventId, noteId) {
   }
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackNoteOnlyStateChange(state, previousState, nextState) ?? state;
     if (eventDialog === activeDialog) {
       eventDialog = {
         ...editorSnapshot,
@@ -16876,14 +16889,16 @@ async function applyEventCurrencyChange(
   const nextCurrency = normalizeCurrency(currency);
   if (nextCurrency === eventCurrency(event)) return { ok: true, unchanged: true };
 
-  const previousState = state;
+  const previousEvent = cloneNavigationValue(event);
   state = setEventCurrency(state, eventId, nextCurrency, {
     allowExistingExpenses
   });
+  const attemptedEvent = cloneNavigationValue(getEvent(eventId));
   notice = "שומרים את מטבע האירוע...";
   render();
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
+      handlesSaveFailure: true,
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
@@ -16892,10 +16907,8 @@ async function applyEventCurrencyChange(
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
-    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
-      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
-      : "לא הצלחנו לשנות את מטבע האירוע. לא בוצע שינוי.";
+    state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "currency");
+    notice = saveFailureMessage(result, "מטבע האירוע לא נשמר.");
   } else if (result?.pending) {
     notice = `מטבע האירוע נשמר במכשיר כ${currencySelectLabel(nextCurrency)} ויסתנכרן אוטומטית.`;
   } else {
@@ -19079,7 +19092,7 @@ function syncExpenseSaveState() {
 }
 
 async function saveExpense(eventId, { continueAdding = false } = {}) {
-  if (!expenseDraft || expenseSaveInProgress) return;
+  if (!expenseDraft || (expenseSaveInProgress && expenseSaveRequest?.draft === expenseDraft)) return;
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
     expenseDraft.error = editBlockedMessage(event);
@@ -19102,6 +19115,11 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     return;
   }
 
+  const activeDraft = expenseDraft;
+  const participantId = state.currentParticipantId;
+  const request = { draft: activeDraft, participantId };
+  const isCurrent = () => expenseDraft === activeDraft && state.currentParticipantId === participantId;
+  expenseSaveRequest = request;
   expenseSaveInProgress = true;
   syncExpenseSaveState();
   try {
@@ -19152,11 +19170,14 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     );
     reconcileEventTransfers(getEvent(eventId), previousTransfers);
     const saveRequest = persistState({
+      handlesSaveFailure: true,
       foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
       forceSharedEventIds: [eventId]
     });
     const saveResult = await saveRequest;
+    if (state.currentParticipantId !== participantId) return saveResult;
     if (!saveResult?.ok) {
+      if (!isCurrent()) return saveResult;
       if (saveResult?.reverted && wasNewExpense) {
         delete expenseDraft.id;
         delete expenseDraft.createdByParticipantId;
@@ -19164,8 +19185,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
         expenseDraft.id = expense.id;
         expenseDraft.createdByParticipantId = expense.createdByParticipantId;
       }
-      expenseDraft.error =
-        "ההוצאה לא נשמרה כדי למנוע הבדל בין חברי הקבוצה. בדקו את החיבור ולחצו שוב על שמירה.";
+      expenseDraft.error = saveFailureMessage(saveResult, "ההוצאה לא נשמרה.", { draft: true });
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
       return;
@@ -19185,6 +19205,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
         expense.id
       );
     }
+    if (!isCurrent()) return saveResult;
     if (wasNewExpense) clearRememberedExpenseDraft(eventId);
 
     if (continueAdding && wasNewExpense) {
@@ -19196,14 +19217,17 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     expenseDraft = null;
     closeDialogWithHistory(rewindSteps);
   } catch (error) {
-    if (expenseDraft) {
+    if (isCurrent()) {
       expenseDraft.error = error instanceof Error ? error.message : "אי אפשר לשמור את ההוצאה.";
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
     }
   } finally {
-    expenseSaveInProgress = false;
-    if (expenseDraft) syncExpenseSaveState();
+    if (expenseSaveRequest === request) {
+      expenseSaveRequest = null;
+      expenseSaveInProgress = false;
+      if (expenseDraft) syncExpenseSaveState();
+    }
   }
 }
 
@@ -19258,7 +19282,7 @@ function continueExpenseEntry(event) {
 }
 
 async function saveQuickExpenses(eventId) {
-  if (!expenseDraft || expenseSaveInProgress) return;
+  if (!expenseDraft || (expenseSaveInProgress && expenseSaveRequest?.draft === expenseDraft)) return;
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
     expenseDraft.error = editBlockedMessage(event);
@@ -19266,6 +19290,11 @@ async function saveQuickExpenses(eventId) {
     return;
   }
 
+  const activeDraft = expenseDraft;
+  const participantId = state.currentParticipantId;
+  const request = { draft: activeDraft, participantId };
+  const isCurrent = () => expenseDraft === activeDraft && state.currentParticipantId === participantId;
+  expenseSaveRequest = request;
   expenseSaveInProgress = true;
   syncExpenseSaveState();
   const previousState = cloneNavigationValue(state);
@@ -19311,16 +19340,18 @@ async function saveQuickExpenses(eventId) {
     reconcileEventTransfers(event, previousTransfers);
     saveCheckpoint = stateSaveCheckpoint(
       persistState({
+      handlesSaveFailure: true,
         foregroundSaveBudgetMs: EXPENSE_FOREGROUND_SAVE_BUDGET_MS,
         forceSharedEventIds: [eventId]
       })
     );
     const saveResult = await saveCheckpoint.request;
+    if (state.currentParticipantId !== participantId) return saveResult;
     if (!saveResult?.ok && !saveResult?.pending) {
       if (!rejectedStateSaveIsCurrent(saveResult, saveCheckpoint)) return saveResult;
       state = previousState;
-      expenseDraft.error =
-        "הפריטים לא נשמרו כדי למנוע הבדל בין חברי האירוע. בדקו את החיבור ונסו שוב.";
+      if (!isCurrent()) return saveResult;
+      expenseDraft.error = saveFailureMessage(saveResult, "הפריטים לא נשמרו.", { draft: true });
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
       return saveResult;
@@ -19338,6 +19369,7 @@ async function saveQuickExpenses(eventId) {
         firstExpense.id
       );
     }
+    if (!isCurrent()) return saveResult;
     clearRememberedExpenseDraft(eventId);
     const rewindSteps = expenseDialogRewindSteps();
     expenseDraft = null;
@@ -19346,10 +19378,11 @@ async function saveQuickExpenses(eventId) {
     return saveResult;
   } catch (error) {
     const canRollback =
+      state.currentParticipantId === participantId &&
       !saveAccepted &&
       (!saveCheckpoint || rejectedStateSaveIsCurrent({ ok: false }, saveCheckpoint));
     if (canRollback) state = previousState;
-    if (expenseDraft) {
+    if (isCurrent()) {
       expenseDraft.error = saveAccepted
         ? "הפריטים נשמרו, אבל המסך לא הושלם כרגיל. אפשר לצאת ולחזור לאירוע."
         : "לא הצלחנו לשמור את הפריטים. אפשר לנסות שוב.";
@@ -19358,8 +19391,11 @@ async function saveQuickExpenses(eventId) {
     }
     return { ok: false, error };
   } finally {
-    expenseSaveInProgress = false;
-    if (expenseDraft) syncExpenseSaveState();
+    if (expenseSaveRequest === request) {
+      expenseSaveRequest = null;
+      expenseSaveInProgress = false;
+      if (expenseDraft) syncExpenseSaveState();
+    }
   }
 }
 
@@ -19387,13 +19423,13 @@ async function deleteExpense(eventId, expenseId) {
   reconcileEventTransfers(getEvent(eventId), previousTransfers);
   render();
   try {
-    const saveCheckpoint = stateSaveCheckpoint(persistState({ awaitCloud: true }));
+    const saveCheckpoint = stateSaveCheckpoint(persistState({
+      handlesSaveFailure: true, awaitCloud: true }));
     const saveResult = await saveCheckpoint.request;
     if (!saveResult?.ok && !saveResult?.pending) {
       if (!rejectedStateSaveIsCurrent(saveResult, saveCheckpoint)) return;
       state = loadState();
-      notice =
-        "המחיקה לא נשמרה כדי למנוע הבדל בין חברי האירוע. בדקו את החיבור ונסו שוב.";
+      notice = saveFailureMessage(saveResult, "המחיקה לא נשמרה.");
       render();
     }
   } finally {
@@ -19836,7 +19872,7 @@ async function markTransferPaid(transferId, trigger) {
   }
 
   const previousState = cloneNavigationValue(state);
-  const requestKey = `${event.id}:${transfer.id}`;
+  const requestKey = `${previousState.currentParticipantId}:${event.id}:${transfer.id}`;
   const requestVersion = (transferStatusRequestVersions.get(requestKey) ?? 0) + 1;
   transferStatusRequestVersions.set(requestKey, requestVersion);
   const hadPendingTransfers = event.transfers.some(
@@ -19857,6 +19893,7 @@ async function markTransferPaid(transferId, trigger) {
   notice = "שומרים את סימון התשלום…";
   render();
   const saveRequest = persistState({
+      handlesSaveFailure: true,
     awaitCloud: true,
     forceSharedEventIds: [event.id]
   });
@@ -19864,6 +19901,7 @@ async function markTransferPaid(transferId, trigger) {
   const result = await saveRequest;
   if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return result;
   transferStatusRequestVersions.delete(requestKey);
+  if (state.currentParticipantId !== previousState.currentParticipantId) return result;
   if (!result?.ok && !result?.pending) {
     state = rollbackTransferStatusChanges(
       state,
@@ -19878,7 +19916,7 @@ async function markTransferPaid(transferId, trigger) {
       suppressRevertNotice: true
     }).catch(() => {});
     settlementCelebration = null;
-    notice = "לא הצלחנו לשמור את סימון התשלום. המצב הקודם נשמר.";
+    notice = saveFailureMessage(result, "סימון התשלום לא נשמר.");
     render();
     return result;
   }
@@ -19927,7 +19965,7 @@ async function markTransfersPending(transferIds) {
   }
 
   const previousState = cloneNavigationValue(state);
-  const requestKey = `${event.id}:${transfers.map((transfer) => transfer.id).sort().join(",")}`;
+  const requestKey = `${previousState.currentParticipantId}:${event.id}:${transfers.map((transfer) => transfer.id).sort().join(",")}`;
   const requestVersion = (transferStatusRequestVersions.get(requestKey) ?? 0) + 1;
   transferStatusRequestVersions.set(requestKey, requestVersion);
   const markedAt = new Date().toISOString();
@@ -19957,6 +19995,7 @@ async function markTransfersPending(transferIds) {
   });
   if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return;
   transferStatusRequestVersions.delete(requestKey);
+  if (state.currentParticipantId !== previousState.currentParticipantId) return result;
   if (!result?.ok && !result?.pending) {
     const previousEvent = previousState.events.find((item) => item.id === event.id);
     state = rollbackTransferStatusChanges(
@@ -19992,14 +20031,17 @@ async function sendTransferReminder(eventId, transferId) {
   const transfer = event?.transfers?.find(
     (item) => item.id === transferId
   );
-  const eligibility = paymentReminderEligibility(transfer);
+  const eligibility = paymentReminderEligibility(transfer, event);
   if (!event || !transfer || !eligibility.allowed) {
-    notice = "אפשר לשלוח תזכורת רק למשתמש מחובר שחייב לך באירוע.";
+    notice = eligibility.reason === "event-open"
+      ? "אפשר לשלוח תזכורת לתשלום רק אחרי סגירת האירוע."
+      : "אפשר לשלוח תזכורת רק למשתמש מחובר שחייב לך באירוע.";
     render();
     return;
   }
 
   const payerName = participantName(transfer.fromParticipantId, event);
+  const reminderParticipantId = state.currentParticipantId;
   paymentReminderBusyId = transfer.id;
   notice = "";
   render();
@@ -20009,6 +20051,7 @@ async function sendTransferReminder(eventId, transferId) {
       event.id,
       transfer.id
     );
+    if (state.currentParticipantId !== reminderParticipantId) return result;
 
     if (result?.ok && result?.delivered > 0) {
       notice = `שלחנו תזכורת ל${payerName}.`;
@@ -20020,12 +20063,27 @@ async function sendTransferReminder(eventId, transferId) {
       notice = "לא הצלחנו לשלוח את התזכורת כרגע.";
     }
   } catch (error) {
+    if (state.currentParticipantId !== reminderParticipantId) return;
     if (error?.code === "REMINDER_COOLDOWN") {
       notice = "כבר נשלחה תזכורת לאחרונה. אפשר לנסות שוב מאוחר יותר.";
+    } else if (error?.code === "EVENT_NOT_CLOSED") {
+      notice = "האירוע עדיין פתוח. אפשר לשלוח תזכורת לתשלום רק אחרי סגירתו.";
     } else if (error?.code === "EVENT_NOT_SYNCED") {
-      notice = "האירוע עדיין מסתנכרן אצל הצד השני. נסו שוב בעוד רגע.";
+      notice = "השינויים באירוע עדיין לא אושרו בשרת. התזכורת לא נשלחה; נסו שוב בעוד רגע.";
     } else if (error?.code === "RECIPIENT_OFFLINE") {
       notice = "אפשר לשלוח תזכורת רק למשתמש מחובר.";
+    } else if (error?.code === "AUTH_REQUIRED" || error?.code === "STALE_ACCOUNT") {
+      notice = "החיבור לחשבון השתנה או פג תוקף. התחברו שוב כדי לשלוח תזכורת.";
+    } else if (error?.code === "REMINDER_NOT_ALLOWED") {
+      notice = error?.reason === "already-paid"
+        ? "ההעברה כבר סומנה כשולמה. אין צורך בתזכורת."
+        : error?.reason === "transfer-unavailable"
+          ? "ההעברה השתנתה או עדיין לא הסתנכרנה. פתחו מחדש את הסיכום ונסו שוב."
+          : "לא ניתן לשלוח תזכורת להעברה הזו במצב הנוכחי של האירוע.";
+    } else if (error?.code === "DELIVERY_UNCONFIRMED") {
+      notice = "לא התקבל אישור למסירת התזכורת. ייתכן שהיא הגיעה; לא נשלח אותה שוב אוטומטית.";
+    } else if (error?.code === "REMINDER_STORAGE_UNAVAILABLE" || error?.code === "PUSH_UNAVAILABLE") {
+      notice = "שירות התזכורות אינו זמין כרגע. נסו שוב בעוד רגע.";
     } else {
       notice = "לא הצלחנו לשלוח את התזכורת כרגע.";
     }
@@ -20036,13 +20094,48 @@ async function sendTransferReminder(eventId, transferId) {
 }
 
 async function sendPaymentReminderWithAccountRecovery(eventId, transferId) {
-  const initialConfig = await loadRuntimeConfig();
-  runtimeConfig = initialConfig;
+  // A locally expired session is still an identity, but not an authorization
+  // token. Capture it before any await and never send this action as another user.
   const expectedUserId = String(
-    initialConfig?.storage?.account?.userId ?? ""
+    loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
   ).trim();
-  const request = () =>
-    sendPaymentReminder(runtimeConfig, { eventId, transferId });
+  const assertCurrentAccount = () => {
+    if (!expectedUserId) {
+      const error = new Error("Account session is unavailable");
+      error.code = "AUTH_REQUIRED";
+      throw error;
+    }
+    if (!pendingMutationOwnerIsActive(expectedUserId) ||
+        state.currentParticipantId !== `account-${expectedUserId}`) {
+      const error = new Error("Account changed during reminder preparation");
+      error.code = "STALE_ACCOUNT";
+      throw error;
+    }
+  };
+  assertCurrentAccount();
+  // An expense can already be visible while its durable outbox is pending.
+  // This joins the existing write queue; an empty outbox performs no cloud write.
+  const synced = await flushPendingSharedState();
+  assertCurrentAccount();
+  if (!synced?.ok || synced.pending || synced.superseded) {
+    const error = new Error("Event changes are not confirmed by the server");
+    error.code = "EVENT_NOT_SYNCED";
+    throw error;
+  }
+  const initialConfig = await loadRuntimeConfig();
+  assertCurrentAccount();
+  runtimeConfig = initialConfig;
+  let reminderConfig = initialConfig;
+  const request = () => {
+    assertCurrentAccount();
+    const configuredUserId = String(reminderConfig?.storage?.account?.userId ?? "").trim();
+    if (configuredUserId && configuredUserId !== expectedUserId) {
+      const error = new Error("Reminder configuration belongs to another account");
+      error.code = "STALE_ACCOUNT";
+      throw error;
+    }
+    return sendPaymentReminder(reminderConfig, { eventId, transferId });
+  };
 
   try {
     const result = await request();
@@ -20054,9 +20147,15 @@ async function sendPaymentReminderWithAccountRecovery(eventId, transferId) {
   }
 
   const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+  assertCurrentAccount();
   if (!refreshedSession?.access_token) {
     const error = new Error("Account session is unavailable");
     error.code = "AUTH_REQUIRED";
+    throw error;
+  }
+  if (String(refreshedSession.user?.id ?? "").trim() !== expectedUserId) {
+    const error = new Error("Account changed during reminder recovery");
+    error.code = "STALE_ACCOUNT";
     throw error;
   }
 
@@ -20070,7 +20169,9 @@ async function sendPaymentReminderWithAccountRecovery(eventId, transferId) {
     throw error;
   }
 
+  assertCurrentAccount();
   runtimeConfig = freshConfig;
+  reminderConfig = freshConfig;
   return request();
 }
 
@@ -20082,11 +20183,26 @@ function paymentReminderSessionRefreshRequired(error) {
 }
 
 async function refreshNotificationInbox({ force = false } = {}) {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  if (notificationInboxOwnerId !== ownerId) {
+    notificationInboxOwnerId = ownerId;
+    readFriendRequestNotificationIds.clear();
+    notificationInbox = { status: "idle", available: false, items: [], error: "" };
+    notificationInboxRequest = null;
+    notificationInboxRefreshQueued = false;
+  }
+  const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
+  if (!ownerId || !isCurrent()) {
+    publishNotificationNavigationState();
+    return notificationInbox;
+  }
   if (notificationInboxRequest && !force) return notificationInboxRequest;
   if (notificationInboxRequest && force) {
     notificationInboxRefreshQueued = true;
     const pendingRequest = notificationInboxRequest;
     return pendingRequest.then(() => {
+      if (!isCurrent()) return notificationInbox;
       if (!notificationInboxRefreshQueued) return notificationInbox;
       notificationInboxRefreshQueued = false;
       return refreshNotificationInbox();
@@ -20105,10 +20221,10 @@ async function refreshNotificationInbox({ force = false } = {}) {
     if (["profile", "notifications"].includes(screen.name)) render();
   }
 
-  notificationInboxRequest = (async () => {
+  const request = (async () => {
     try {
-      runtimeConfig = await loadRuntimeConfig();
-      const result = await loadNotificationInbox(runtimeConfig);
+      const result = await withNotificationAccountRecovery(loadNotificationInbox, ownerId);
+      if (!isCurrent() || notificationInboxRequest !== request) return;
       notificationInbox = {
         status: "ready",
         available: result.available,
@@ -20116,6 +20232,7 @@ async function refreshNotificationInbox({ force = false } = {}) {
         error: ""
       };
     } catch (error) {
+      if (!isCurrent() || notificationInboxRequest !== request) return;
       emitOperationDeferred("notification_inbox", {
         screen: "notifications",
         error
@@ -20128,17 +20245,18 @@ async function refreshNotificationInbox({ force = false } = {}) {
             error: "load-failed"
           };
     } finally {
-      notificationInboxRequest = null;
-      publishNotificationNavigationState();
-      if (
-        ["profile", "notifications"].includes(screen.name) &&
-        previousRenderKey !== notificationInboxRenderKey()
-      ) {
-        render();
+      // An old account's completion must not release a newer account's request.
+      if (notificationInboxRequest === request) {
+        notificationInboxRequest = null;
+        if (isCurrent()) {
+          publishNotificationNavigationState();
+          if (["profile", "notifications"].includes(screen.name) &&
+              previousRenderKey !== notificationInboxRenderKey()) render();
+        }
       }
     }
   })();
-
+  notificationInboxRequest = request;
   return notificationInboxRequest;
 }
 
@@ -20151,6 +20269,9 @@ function notificationUnreadCount() {
 }
 
 function visibleNotificationInboxItems() {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const accountInbox = ownerId && notificationInboxOwnerId === ownerId &&
+    state.currentParticipantId === `account-${ownerId}` ? notificationInbox.items : [];
   const friendRequests = friendRelationships("pending", "incoming").map((friendship) => {
     const profile = friendProfileForRelationship(friendship);
     const id = `friend-request:${friendship.id}`;
@@ -20166,7 +20287,7 @@ function visibleNotificationInboxItems() {
       readAt: readFriendRequestNotificationIds.has(id) ? new Date().toISOString() : ""
     };
   });
-  return [...friendRequests, ...notificationInbox.items].sort(
+  return [...friendRequests, ...accountInbox].sort(
     (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)
   );
 }
@@ -20182,6 +20303,10 @@ function publishNotificationNavigationState() {
 }
 
 async function markAllInboxItemsRead() {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
+  if (!isCurrent()) return;
   friendRelationships("pending", "incoming").forEach((friendship) => {
     readFriendRequestNotificationIds.add(`friend-request:${friendship.id}`);
   });
@@ -20189,6 +20314,7 @@ async function markAllInboxItemsRead() {
     .filter((item) => !item.readAt)
     .map((item) => item.id);
   if (!unreadIds.length) {
+    publishNotificationNavigationState();
     render();
     return;
   }
@@ -20200,15 +20326,50 @@ async function markAllInboxItemsRead() {
       unreadIds.includes(item.id) ? { ...item, readAt } : item
     )
   };
+  publishNotificationNavigationState();
   render();
 
   try {
-    runtimeConfig = await loadRuntimeConfig();
-    const saved = await markAllNotificationsRead(runtimeConfig);
+    const saved = await withNotificationAccountRecovery(markAllNotificationsRead, ownerId);
     if (!saved) throw new Error("mark-all-failed");
+  } catch (error) {
+    if (!isCurrent()) return;
+    notificationInbox = {
+      ...notificationInbox,
+      items: notificationInbox.items.map(item => unreadIds.includes(item.id) && item.readAt === readAt
+        ? { ...item, readAt: "" } : item)
+    };
+    notice = saveFailureMessage({ error }, "סימון התראות האירוע לא נשמר.");
+    publishNotificationNavigationState();
+    render();
+  }
+}
+
+async function markInboxItemRead(notificationId) {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
+  const item = notificationInbox.items.find(candidate => candidate.id === notificationId);
+  if (!item || item.readAt || !isCurrent()) return false;
+  const readAt = new Date().toISOString();
+  notificationInbox = {
+    ...notificationInbox,
+    items: notificationInbox.items.map((candidate) =>
+      candidate.id === notificationId ? { ...candidate, readAt } : candidate
+    )
+  };
+  publishNotificationNavigationState();
+  try {
+    const saved = await withNotificationAccountRecovery(config => markNotificationRead(config, notificationId), ownerId);
+    if (!saved) throw new Error("mark-read-failed");
+    return true;
   } catch {
-    notice = "הסימון יסתנכרן בחיבור הבא.";
-    await refreshNotificationInbox({ force: true });
+    if (!isCurrent()) return false;
+    notificationInbox = { ...notificationInbox, items: notificationInbox.items.map(candidate =>
+      candidate.id === notificationId && candidate.readAt === readAt ? { ...candidate, readAt: "" } : candidate) };
+    publishNotificationNavigationState();
+    if (screen.name === "notifications") render();
+    return false;
   }
 }
 
@@ -20216,19 +20377,8 @@ async function openInboxNotification({ notificationId, eventId, view }) {
   const item = visibleNotificationInboxItems().find(
     (candidate) => candidate.id === notificationId
   );
-  if (item && !item.readAt) {
-    const readAt = new Date().toISOString();
-    notificationInbox = {
-      ...notificationInbox,
-      items: notificationInbox.items.map((candidate) =>
-        candidate.id === notificationId
-          ? { ...candidate, readAt }
-          : candidate
-      )
-    };
-    loadRuntimeConfig()
-      .then((config) => markNotificationRead(config, notificationId))
-      .catch(() => {});
+  if (item && !item.readAt && item.kind !== "friend-request") {
+    void markInboxItemRead(notificationId);
   }
 
   const destination = notificationInboxDestination(item, { eventId, view });
@@ -20392,8 +20542,9 @@ async function setEventManagementMode(eventId, mode) {
     return { ok: true, unchanged: true };
   }
 
-  const previousState = state;
+  const previousEvent = cloneNavigationValue(event);
   state = setEventAdminsCanEditOnly(state, eventId, adminsCanEditOnly);
+  const attemptedEvent = cloneNavigationValue(getEvent(eventId));
   expenseDraft = null;
   notice = "שומרים את אופן ניהול האירוע...";
   render();
@@ -20403,6 +20554,7 @@ async function setEventManagementMode(eventId, mode) {
   );
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
+      handlesSaveFailure: true,
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
@@ -20411,10 +20563,8 @@ async function setEventManagementMode(eventId, mode) {
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
-    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
-      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
-      : "לא הצלחנו לשנות את אופן הניהול. לא בוצע שינוי.";
+    state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "adminsCanEditOnly");
+    notice = saveFailureMessage(result, "אופן הניהול לא נשמר.");
   } else if (result?.pending) {
     notice = adminsCanEditOnly
       ? "המעבר לניהול מרוכז נשמר במכשיר ויסתנכרן עם שאר המשתתפים אוטומטית."
@@ -20541,8 +20691,9 @@ async function setEventRoundingMode(eventId, mode) {
   const enabled = mode !== "exact";
   if (usesRoundedSettlementTransfers(event) === enabled) return;
 
-  const previousState = state;
+  const previousEvent = cloneNavigationValue(event);
   state = setEventRoundSettlementTransfers(state, eventId, enabled);
+  const attemptedEvent = cloneNavigationValue(getEvent(eventId));
   const confirmedNotice = enabled
     ? "סכומים נוחים הופעלו. רק ההעברות הסופיות יעוגלו."
     : "עיגול הסכומים בוטל. ההעברות יוצגו בדיוק מלא.";
@@ -20550,6 +20701,7 @@ async function setEventRoundingMode(eventId, mode) {
   render();
   const saveCheckpoint = stateSaveCheckpoint(
     persistState({
+      handlesSaveFailure: true,
       awaitCloud: true,
       forceSharedEventIds: [eventId]
     })
@@ -20558,10 +20710,8 @@ async function setEventRoundingMode(eventId, mode) {
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
-    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
-      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
-      : "לא הצלחנו לשנות את עיגול הסכומים. לא בוצע שינוי.";
+    state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "roundSettlementTransfers");
+    notice = saveFailureMessage(result, "עיגול הסכומים לא נשמר.");
     render();
     reactivateDialogAfterRender(
       ".event-modal",
@@ -21200,41 +21350,49 @@ async function publishEventInvitation(
   }
 }
 
-async function sendEventActivityNotificationWithAccountRecovery(payload) {
-  const initialConfig = await loadRuntimeConfig();
-  runtimeConfig = initialConfig;
-  const expectedUserId = String(
-    initialConfig?.storage?.account?.userId ?? ""
-  ).trim();
-  const request = () => sendEventActivityNotification(runtimeConfig, payload);
-
-  try {
-    return await request();
-  } catch (error) {
-    if (!eventInviteAuthRefreshRequired(error) || !expectedUserId) {
-      throw error;
+async function withNotificationAccountRecovery(request, expectedUserId = String(
+  loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
+).trim()) {
+  const assertCurrent = () => {
+    if (!expectedUserId) throw Object.assign(new Error("Account session is unavailable"), { code: "AUTH_REQUIRED" });
+    if (!pendingMutationOwnerIsActive(expectedUserId) || state.currentParticipantId !== `account-${expectedUserId}`) {
+      throw Object.assign(new Error("Account changed during notification operation"), { code: "STALE_ACCOUNT" });
     }
+  };
+  const execute = async config => {
+    assertCurrent();
+    const configuredUserId = String(config?.storage?.account?.userId ?? "").trim();
+    if (configuredUserId && configuredUserId !== expectedUserId) {
+      throw Object.assign(new Error("Notification config belongs to another account"), { code: "STALE_ACCOUNT" });
+    }
+    if (!configuredUserId || !config?.storage?.account?.accessToken) {
+      throw Object.assign(new Error("Account authorization expired"), { code: "AUTH_REQUIRED" });
+    }
+    runtimeConfig = config;
+    const result = await request(config);
+    assertCurrent();
+    return result;
+  };
+  assertCurrent();
+  try {
+    return await execute(await loadRuntimeConfig());
+  } catch (error) {
+    assertCurrent();
+    if (!eventInviteAuthRefreshRequired(error)) throw error;
   }
-
   const refreshedSession = await globalThis.SogrimAccountSession?.refresh?.();
+  assertCurrent();
   if (!refreshedSession?.access_token) {
-    const error = new Error("Account session is unavailable");
-    error.code = "AUTH_REQUIRED";
-    throw error;
+    throw Object.assign(new Error("Account session is unavailable"), { code: "AUTH_REQUIRED" });
   }
-
-  const freshConfig = await loadRuntimeConfig();
-  const freshUserId = String(
-    freshConfig?.storage?.account?.userId ?? ""
-  ).trim();
-  if (freshUserId !== expectedUserId) {
-    const error = new Error("Account changed during notification recovery");
-    error.code = "AUTH_REQUIRED";
-    throw error;
+  if (String(refreshedSession.user?.id ?? "").trim() !== expectedUserId) {
+    throw Object.assign(new Error("Account changed during notification recovery"), { code: "STALE_ACCOUNT" });
   }
+  return execute(await loadRuntimeConfig());
+}
 
-  runtimeConfig = freshConfig;
-  return request();
+async function sendEventActivityNotificationWithAccountRecovery(payload) {
+  return withNotificationAccountRecovery(config => sendEventActivityNotification(config, payload));
 }
 
 function pendingEventMembershipOwnerId() {
@@ -21922,8 +22080,10 @@ function publishEventActivityAfterSave(
   kind,
   activityId
 ) {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
   completedSaveResult(saveRequest)
     .then(async (result) => {
+      if (!pendingMutationOwnerIsActive(ownerId) || state.currentParticipantId !== `account-${ownerId}`) return;
       if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
         return;
       }
@@ -22690,6 +22850,7 @@ async function setEventRepaymentMode(eventId, mode) {
     `[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`
   );
   const saveCheckpoint = stateSaveCheckpoint(persistState({
+      handlesSaveFailure: true,
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   }));
@@ -22702,9 +22863,7 @@ async function setEventRepaymentMode(eventId, mode) {
     state = rollbackEventSettingChange(
       state, eventId, previousEvent, nextEvent, "directSettlementTransfers"
     );
-    notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
-      ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
-      : "לא הצלחנו לשנות את אופן ההחזר. לא בוצע שינוי.";
+    notice = saveFailureMessage(result, "אופן ההחזר לא נשמר.");
     render();
     reactivateDialogAfterRender(
       ".event-modal",

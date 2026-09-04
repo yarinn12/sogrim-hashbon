@@ -49,6 +49,7 @@ function accountState({
           {
             id: EVENT_ID,
             name: "ארוחת שישי",
+            closedAt: "2026-09-04T09:00:00.000Z",
             currency: "ILS",
             sharedSpaceId: SHARED_SPACE_ID,
             sharedSpaceKey,
@@ -267,6 +268,94 @@ test("server fails closed when the authoritative shared transfer is already paid
 
   assert.equal(result.status, 403);
   assert.equal(result.payload.code, "REMINDER_NOT_ALLOWED");
+});
+
+test("an open canonical event rejects a reminder even if the caller's personal copy says closed", async () => {
+  const authoritativeState = accountState();
+  delete authoritativeState.events[0].closedAt;
+  authoritativeState.events[0].locked = false;
+  const { fetchImpl, requests } = createReminderFetch({ authoritativeState });
+  const result = await sendPaymentReminder({ runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID, fetchImpl });
+  assert.equal(result.status, 409);
+  assert.equal(result.payload.code, "EVENT_NOT_CLOSED");
+  assert.equal(requests.some(request => /reserve_payment_reminder|notification_inbox|fcm.googleapis/.test(request.url)), false);
+});
+
+test("a closed canonical event can send even if the personal copy still says open", async () => {
+  const senderState = accountState();
+  delete senderState.events[0].closedAt;
+  const { fetchImpl } = createReminderFetch({ senderState });
+  const config = runtimeConfig();
+  config.launch.pushDeliveryReady = false;
+  const result = await sendPaymentReminder({ runtimeConfig: config,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID, fetchImpl });
+  assert.equal(result.payload.ok, true);
+  assert.equal(result.payload.inbox, true);
+});
+
+test("reminder settlement uses canonical participants even when the personal projection is stale", async () => {
+  const senderState = accountState();
+  senderState.participants = [];
+  const authoritativeState = accountState();
+  authoritativeState.events[0].transfers = [];
+  const { fetchImpl, requests } = createReminderFetch({ senderState, authoritativeState });
+  const config = runtimeConfig();
+  config.launch.pushDeliveryReady = false;
+  const result = await sendPaymentReminder({ runtimeConfig: config,
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID, fetchImpl });
+  assert.equal(result.status, 200);
+  assert.equal(result.payload.inbox, true);
+  assert.ok(requests.some(request => request.url.endsWith("/rpc/reserve_payment_reminder")));
+});
+
+test("invalid canonical settlement cannot authorize a leftover pending transfer", async () => {
+  const authoritativeState = accountState();
+  authoritativeState.participants = [];
+  const { fetchImpl, requests } = createReminderFetch({ authoritativeState });
+  const result = await sendPaymentReminder({ runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID, fetchImpl });
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.reason, "transfer-unavailable");
+  assert.equal(requests.some(request => /reserve_payment_reminder|notification_inbox|fcm.googleapis/.test(request.url)), false);
+});
+
+test("the client preserves a specific server rejection reason without retrying", async () => {
+  let attempts = 0;
+  await assert.rejects(sendClientPaymentReminder({ storage: { account: { userId: CREDITOR_USER_ID, accessToken: "synthetic-token" } } },
+    { eventId: EVENT_ID, transferId: TRANSFER_ID }, async () => {
+      attempts++;
+      return jsonResponse({ ok: false, code: "REMINDER_NOT_ALLOWED", reason: "already-paid" }, 403);
+    }), { code: "REMINDER_NOT_ALLOWED", reason: "already-paid" });
+  assert.equal(attempts, 1);
+});
+
+test("a stale transfer amount is rejected rather than reminding about a different canonical debt", async () => {
+  const { fetchImpl, requests } = createReminderFetch();
+  const result = await sendPaymentReminder({ runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID.replace(/5000$/, "6000"), fetchImpl });
+  assert.equal(result.status, 403);
+  assert.equal(result.payload.reason, "transfer-unavailable");
+  assert.equal(requests.some(request => /reserve_payment_reminder|notification_inbox|fcm.googleapis/.test(request.url)), false);
+});
+
+test("an inbox-confirmed reminder stays successful if the subsequent device lookup fails", async () => {
+  const mock = createReminderFetch();
+  const result = await sendPaymentReminder({ runtimeConfig: runtimeConfig(),
+    env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" }, authorization: "Bearer account-access-token",
+    eventId: EVENT_ID, transferId: TRANSFER_ID,
+    fetchImpl: (url, options) => {
+      if (String(url).includes("/rest/v1/push_devices?")) throw new Error("Device lookup unavailable");
+      return mock.fetchImpl(url, options);
+    } });
+  assert.equal(result.payload.inbox, true);
+  assert.equal(result.payload.reason, "in-app-only");
+  assert.equal(mock.requests.some(request => request.options.method === "DELETE"), false);
 });
 
 test("server reminder deadline includes the authenticated-user response body", async () => {

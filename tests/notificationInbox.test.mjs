@@ -11,6 +11,22 @@ import { DEFAULT_REQUEST_TIMEOUT_MS } from "../src/data/fetchTimeout.mjs";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
 
+for (const operation of [
+  fetchImpl => loadNotificationInbox(runtimeConfig(), {}, fetchImpl),
+  fetchImpl => markNotificationRead(runtimeConfig(), "notification-1", fetchImpl),
+  fetchImpl => markAllNotificationsRead(runtimeConfig(), fetchImpl)
+]) {
+  test("inbox authentication rejection retains its status for guarded recovery", async () => {
+    await assert.rejects(operation(async () => new Response(null, { status: 401 })), { status: 401 });
+  });
+}
+
+for (const body of ["not-json", "null", "{}"] ) {
+  test(`malformed inbox response ${body} cannot masquerade as an empty inbox`, async () => {
+    await assert.rejects(loadNotificationInbox(runtimeConfig(), {}, async () => new Response(body)));
+  });
+}
+
 function runtimeConfig(publicUrl = "") {
   return {
     publicUrl,

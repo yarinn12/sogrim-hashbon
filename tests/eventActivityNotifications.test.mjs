@@ -1196,13 +1196,14 @@ test("event-closed notifications require the canonical closed state and an admin
 test("event invitations and saved activities recover one expired account session", async () => {
   const app = await readFile(new URL("../src/app.mjs", import.meta.url), "utf8");
   const helper = app.slice(
-    app.indexOf("async function sendEventActivityNotificationWithAccountRecovery"),
+    app.indexOf("async function withNotificationAccountRecovery"),
     app.indexOf("function pendingEventMembershipOwnerId")
   );
 
   assert.match(helper, /eventInviteAuthRefreshRequired\(error\)/);
   assert.match(helper, /SogrimAccountSession\?\.refresh\?\.\(\)/);
-  assert.match(helper, /freshUserId !== expectedUserId/);
+  assert.match(helper, /configuredUserId !== expectedUserId/);
+  assert.match(helper, /assertCurrent\(\)/);
   assert.equal(
     (app.match(/sendEventActivityNotificationWithAccountRecovery\(\{/g) ?? []).length,
     2

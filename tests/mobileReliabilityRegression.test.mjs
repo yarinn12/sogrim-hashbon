@@ -72,7 +72,7 @@ test("quick expense batches wait for a durable result and emit one bounded activ
     "async function deleteExpense"
   );
 
-  assert.match(quickSave, /if \(!expenseDraft \|\| expenseSaveInProgress\) return/);
+  assert.match(quickSave, /expenseSaveInProgress && expenseSaveRequest\?\.draft === expenseDraft/);
   assert.match(
     quickSave,
     /saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?const saveResult = await saveCheckpoint\.request/

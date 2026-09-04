@@ -32,6 +32,7 @@ const cloudState = {
   events: [{
     id: EVENT_ID,
     name: "קוריאה",
+    closedAt: "2026-08-27T10:00:00.000Z",
     currency: "ILS",
     participantIds: [MAOR_ID, YARIN_ID],
     adminIds: [YARIN_ID],
@@ -60,7 +61,7 @@ const cloudState = {
   deletedParticipants: []
 };
 
-test("a recipient can send an in-app reminder even without system push capability", async ({ page }) => {
+test("a recipient can send a closed-event in-app reminder even without system push capability", async ({ page }) => {
   let reminderRequests = 0;
   const corsHeaders = {
     "access-control-allow-origin": "*",

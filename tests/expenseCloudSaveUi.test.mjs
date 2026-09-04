@@ -35,7 +35,7 @@ test("failed shared expense sync stays retryable after the durable state is rest
   assert.match(source, /if \(!saveResult\?\.ok\)/);
   assert.match(source, /if \(saveResult\?\.reverted && wasNewExpense\)/);
   assert.match(source, /delete expenseDraft\.id;/);
-  assert.match(source, /למנוע הבדל בין חברי הקבוצה/);
+  assert.match(source, /saveFailureMessage\(saveResult, "ההוצאה לא נשמרה\.", \{ draft: true \}\)/);
   assert.ok(
     source.indexOf("delete expenseDraft.id;") <
       source.indexOf("expenseDraft = null;")
@@ -59,7 +59,7 @@ test("expense deletion waits for the durable cloud outcome", () => {
   assert.notEqual(end, -1);
 
   const source = appSource.slice(start, end);
-  assert.match(source, /stateSaveCheckpoint\(persistState\(\{ awaitCloud: true \}\)\)/);
+  assert.match(source, /stateSaveCheckpoint\(persistState\(\{\s*handlesSaveFailure: true,\s*awaitCloud: true \}\)\)/);
   assert.match(source, /await saveCheckpoint\.request/);
   assert.match(source, /if \(!saveResult\?\.ok && !saveResult\?\.pending\)/);
   assert.match(source, /rejectedStateSaveIsCurrent\(saveResult, saveCheckpoint\)/);

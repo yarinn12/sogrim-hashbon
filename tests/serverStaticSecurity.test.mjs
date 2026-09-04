@@ -189,6 +189,28 @@ test("production API requests emit redacted completion diagnostics", async () =>
   }
 });
 
+test("reminder rejection logs explain the failure without logging the transfer or credentials", async () => {
+  const logs = [];
+  const server = createServer(createAppHandler({ root: process.cwd(), port: 0,
+    serverRequestLogger: (...entry) => logs.push(entry),
+    paymentReminderService: async () => ({ status: 403, payload: { ok: false,
+      code: "REMINDER_NOT_ALLOWED", reason: "transfer-unavailable" } }) }));
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/notifications/payment-reminder`, {
+      method: "POST", headers: { "content-type": "application/json", authorization: "Bearer must-not-be-logged" },
+      body: JSON.stringify({ eventId: "private-event-not-for-log", transferId: "private-transfer-not-for-log" })
+    });
+    assert.equal(response.status, 403);
+    assert.equal(logs[0][1].failureCode, "REMINDER_NOT_ALLOWED");
+    assert.equal(logs[0][1].failureReason, "transfer-unavailable");
+    assert.doesNotMatch(JSON.stringify(logs), /must-not-be-logged|private-event|private-transfer/);
+  } finally {
+    server.closeAllConnections?.();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
 test("production public config and invite metadata never derive from Host", async () => {
   const handler = createAppHandler({
     root: process.cwd(),

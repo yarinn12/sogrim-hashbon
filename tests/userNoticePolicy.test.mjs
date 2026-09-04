@@ -10,7 +10,8 @@ test("routine progress notices stay inline instead of interrupting the user", ()
     "שומרים את סימון התשלום…",
     "שומרים את האיחוד…",
     "פותח את האירוע ושומר…",
-    "מסיר את תמונת האירוע…"
+    "מסיר את תמונת האירוע…",
+    "שומרים את אופן הניהול..."
   ]) {
     assert.equal(isRoutineProgressNotice(message), true);
     assert.equal(noticePresentation(message).visible, false);

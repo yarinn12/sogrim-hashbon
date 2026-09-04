@@ -93,7 +93,7 @@ test("expense steps explain invalid input while final saving stays guarded", () 
     /\$\{canEdit && expenseFlowReady\("review"\) \? "" : "disabled"\}/
   );
   assert.match(app, /<fieldset class="expense-flow-fields" \$\{!canEdit \? "disabled" : ""\}>/);
-  assert.match(app, /if \(!expenseDraft \|\| expenseSaveInProgress\) return;/);
+  assert.match(app, /expenseSaveInProgress && expenseSaveRequest\?\.draft === expenseDraft/);
 });
 
 test("critical destructive actions use 48px while compact chips keep a 44px floor", () => {

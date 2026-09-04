@@ -6,6 +6,11 @@ import {
   syncFailureStatus
 } from "../src/data/localStore.mjs";
 
+test("a code bug mentioning connection is not retried forever as a network outage", () => {
+  assert.equal(isTransientSyncFailure(new TypeError("Cannot read properties of null (reading 'connection')")), false);
+  assert.equal(isTransientSyncFailure(new TypeError("Failed to fetch")), true);
+});
+
 test("sync failures distinguish the network from server and account errors", () => {
   assert.equal(syncFailureStatus(new Error("Failed to fetch"), true), "unavailable");
   assert.equal(
@@ -41,7 +46,8 @@ test("wrapped shared-event failures preserve their real cause", () => {
     cause: Object.assign(new Error("forbidden"), { status: 403 })
   });
   assert.equal(syncFailureStatus(serverFailure, true), "unavailable");
-  assert.equal(syncFailureStatus(serverFailure, false), "offline");
+  assert.equal(syncFailureStatus(serverFailure, false), "unavailable");
+  assert.equal(syncFailureStatus(new TypeError("Failed to fetch"), false), "offline");
 });
 
 test("write conflicts stay queued as transient failures instead of rolling back", () => {

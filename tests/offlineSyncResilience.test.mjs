@@ -429,7 +429,7 @@ test("a recovered pending-state conflict is reported as saved instead of remaini
   assert.ok(recoverySave > recoveryCall, "successful recovery clears the warning");
   assert.match(
     load,
-    /catch \(error\) \{[\s\S]*?if \(isRetryablePendingSyncFailure\(error\)\) \{[\s\S]*?publishSyncStatus\("reconnecting"\);[\s\S]*?\} else \{[\s\S]*?publishSyncFailure\(error\);/,
+    /catch \(error\) \{[\s\S]*?if \(isRetryablePendingSyncFailure\(error\)\) \{[\s\S]*?publishSyncStatus\("reconnecting", \{ failureKind: saveFailureKind\(error\) \}\);[\s\S]*?\} else \{[\s\S]*?publishSyncFailure\(error, \{ pending: true \}\);/,
     "retryable recovery failures stay queued while permanent failures surface"
   );
 });
@@ -484,12 +484,12 @@ test("a cloud read for the wrong event is rejected instead of merged", () => {
 });
 
 test("sync failures surface a status rather than failing silently", () => {
-  assert.match(localStore, /function publishSyncFailure\(error\) \{/);
-  assert.match(localStore, /publishSyncStatus\(syncFailureStatus\(error\)\)/);
+  assert.match(localStore, /function publishSyncFailure\(error, \{ pending = false \} = \{\}\) \{/);
+  assert.match(localStore, /publishSyncStatus\(syncFailureStatus\(error\), \{ pending, failureKind: saveFailureKind\(error\) \}\)/);
   assert.match(localStore, /export function syncFailureStatus\(/);
   assert.match(
     localStore,
-    /if \(!online\) return "offline";/
+    /if \(!online && saveFailureKind\(error\) === "connection"\) return "offline";/
   );
   assert.match(localStore, /return "unavailable";/);
   assert.match(localStore, /syncAndPersistCloudStateOnce/);
@@ -520,7 +520,7 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(localStore, /Math\.min\(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS\.length - 1\)/);
   assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);
   assert.match(localStore, /const FOREGROUND_SAVE_BUDGET_MS = 1_500;/);
-  assert.match(localStore, /awaitCloud\s*\? cloudWriteQueue\s*:\s*settleSaveWithinUiBudget\(/);
+  assert.match(localStore, /awaitCloud \|\| budgetStartedBeforeConfig\s*\? cloudWriteQueue\s*:\s*settleSaveWithinUiBudget\(/);
   assert.match(
     localStore,
     /foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS/
@@ -540,10 +540,11 @@ test("a failed shared-event write restores the last durable state instead of div
 
   assert.match(save, /const hasSharedEventMutation = Boolean\(/);
   assert.match(save, /requestSaveGeneration === sharedStateSaveGeneration/);
-  assert.match(save, /saveState\(previousState\);/);
+  assert.match(save, /rollbackNoteOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\?\s*rollbackSettingsOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\? previousState/);
+  assert.match(save, /saveState\(revertedState\);/);
   assert.match(
     save,
-    /publishSharedSaveReverted\(syncSelection, error, \{[\s\S]*?foregroundMutation,[\s\S]*?requestedAt: requestStartedAt/
+    /publishSharedSaveReverted\(syncSelection, error, \{[\s\S]*?foregroundMutation: foregroundMutation && mayNotifyFailure\(\),[\s\S]*?requestedAt: requestStartedAt/
   );
   assert.match(localStore, /failureKind: sharedSaveFailureKind\(error\)/);
   assert.match(localStore, /SHARED_SAVE_REVERTED_EVENT/);

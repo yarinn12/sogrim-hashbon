@@ -2,10 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 import * as eventNotes from "../src/domain/eventNotes.mjs";
 const { addEventNote, updateEventNote, removeEventNote } = eventNotes;
 import { mergeSharedEventWriteState } from "../src/data/sharedEventStore.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+import { rollbackNoteOnlyStateChange } from "../src/data/noteSaveRollback.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const start = source.indexOf("async function saveEventNoteFromDialog(");
@@ -42,9 +44,9 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   let writes = 0;
   let closed = 0;
   const context = vm.createContext({
-    state: current ?? initial, eventDialog: dialog, structuredClone,
+    state: current ?? initial, eventDialog: dialog, structuredClone, saveFailureMessage,
     ...eventNotes,
-    mergeSharedStates, saveState: () => {}, emitOperationDeferred: () => {},
+    mergeSharedStates, rollbackNoteOnlyStateChange, saveState: () => {}, emitOperationDeferred: () => {},
     getEvent: (id) => context.state.events.find((event) => event.id === id),
     canCurrentParticipantEdit: () => true,
     cloneNavigationValue: structuredClone,
@@ -230,6 +232,58 @@ test("an unexpected deletion failure restores the note and leaves a retry messag
   assert.equal(result.ok, false);
   assert.equal(h.context.state.events[0].notes.length, 1);
   assert.match(h.context.eventDialog.error, /לא הצלחנו למחוק/);
+});
+
+test("a failed deletion does not discard unrelated data received during its save", async () => {
+  const h = harness({
+    result: { ok: false },
+    duringSave(context) {
+      context.state = addEventNote(context.state, "event-editor", {
+        id: "remote-new-note", body: "Arrived from another device",
+        participantId: "account-owner", createdAt: "2026-09-04T10:00:00.000Z"
+      });
+    }
+  });
+  await h.delete();
+  assert.ok(h.context.state.events[0].notes.some(note => note.id === "remote-new-note"));
+  assert.ok(h.context.state.events[0].notes.some(note => note.id === "note-editor"));
+});
+
+test("a failed superseded note save releases its own editor without undoing newer work", async () => {
+  let newerState;
+  const h = harness({
+    result: { ok: false }, saveIsCurrent: false,
+    duringSave(context) {
+      newerState = { ...context.state, profile: { displayName: "Newer profile" } };
+      context.state = newerState;
+    }
+  });
+  const result = await h.save();
+  assert.equal(result.ok, false);
+  assert.equal(h.context.state, newerState);
+  assert.equal(h.context.eventDialog, h.dialog);
+  assert.equal(h.dialog.saving, false, "a later save generation must not leave this editor permanently busy");
+  assert.match(h.dialog.error, /לא נשמר|אישור/);
+  assert.equal(h.dialog.bodyDraft, "Local draft");
+});
+
+test("a failed superseded save cannot change the next editor's busy state or error", async () => {
+  const nextDialog = { kind: "note-editor", eventId: "event-editor", saving: true, error: "New operation" };
+  const h = harness({ result: { ok: false }, saveIsCurrent: false,
+    duringSave(context) { context.eventDialog = nextDialog; } });
+  await h.save();
+  assert.equal(h.context.eventDialog, nextDialog);
+  assert.equal(nextDialog.saving, true);
+  assert.equal(nextDialog.error, "New operation");
+});
+
+test("late failed saves never modify another account even if a dialog reference survived the switch", async () => {
+  const replacement = { currentParticipantId: "account-other", participants: [], events: [] };
+  const h = harness({ result: { ok: false },
+    duringSave(context) { context.state = replacement; } });
+  await h.save();
+  assert.equal(h.context.state, replacement);
+  assert.equal(h.dialog.error, "");
 });
 
 test("a title-only edit preserves the remote body and pin that arrived while editing", async () => {

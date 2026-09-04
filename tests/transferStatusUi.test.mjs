@@ -38,7 +38,7 @@ test("settlement screen lets a paid transfer return to pending", async () => {
   assert.match(app, /transfer\.toParticipantId === participantId/);
   assert.match(app, /const previousState = cloneNavigationValue\(state\)/);
   assert.match(app, /const result = await saveRequest/);
-  assert.match(app, /לא הצלחנו לשמור את סימון התשלום\. המצב הקודם נשמר/);
+  assert.match(app, /notice = saveFailureMessage\(result, "סימון התשלום לא נשמר\."\)/);
 });
 
 test("failed payment actions roll back only their own transfer changes", async () => {

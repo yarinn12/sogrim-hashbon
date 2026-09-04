@@ -270,7 +270,7 @@ test("confirming clears the pending action before running it, so a double tap ca
 });
 
 test("expense saving is guarded against concurrent submits", () => {
-  assert.match(app, /if \(!expenseDraft \|\| expenseSaveInProgress\) return;/);
+  assert.match(app, /expenseSaveInProgress && expenseSaveRequest\?\.draft === expenseDraft/);
   assert.match(app, /expenseSaveInProgress = true;/);
   assert.match(app, /expenseSaveInProgress = false;/);
 });

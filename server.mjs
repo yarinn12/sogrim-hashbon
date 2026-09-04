@@ -465,6 +465,13 @@ export function createAppHandler({
         eventId: body?.eventId,
         transferId: body?.transferId
       });
+      if (result.status >= 400) {
+        // Diagnostic enums only: no account IDs, balances, tokens or request body.
+        response.reminderFailure = {
+          failureCode: String(result.payload?.code ?? "REMINDER_FAILED").slice(0, 80),
+          failureReason: String(result.payload?.reason ?? "").slice(0, 80)
+        };
+      }
       sendJson(response, result.status, result.payload);
       return;
     }
@@ -961,7 +968,8 @@ function logApiRequestCompletion(logger, request, response, {
     path: requestPath,
     status: Number(response?.statusCode ?? 0) || 0,
     durationMs: Math.max(0, Date.now() - Number(requestStartedAt || Date.now())),
-    outcome: outcome === "aborted" ? "aborted" : "completed"
+    outcome: outcome === "aborted" ? "aborted" : "completed",
+    ...(response.reminderFailure ?? {})
   });
 }
 

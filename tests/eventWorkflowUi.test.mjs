@@ -179,9 +179,9 @@ test("expense saving ignores duplicate or stale save actions", async () => {
   );
 
   assert.match(app, /let expenseSaveInProgress = false/);
-  assert.match(saveExpense, /if \(!expenseDraft \|\| expenseSaveInProgress\) return/);
+  assert.match(saveExpense, /expenseSaveInProgress && expenseSaveRequest\?\.draft === expenseDraft/);
   assert.match(saveExpense, /expenseSaveInProgress = true/);
-  assert.match(saveExpense, /finally \{\s*expenseSaveInProgress = false/);
+  assert.match(saveExpense, /finally \{\s*if \(expenseSaveRequest === request\) \{\s*expenseSaveRequest = null;\s*expenseSaveInProgress = false/);
 });
 
 test("every expense route uses the same app-like navigation shell", async () => {
@@ -1396,14 +1396,14 @@ test("event settings expose friendly settlement rounding with an exact fallback"
   assert.match(app, /סכומי ההוצאות נשמרים בדיוק כפי שהוזנו/);
   assert.match(app, /<details class="event-setting-more">/);
   assert.match(app, /setEventRoundSettlementTransfers\(state, eventId, enabled\)/);
-  assert.match(roundingHandler, /const previousState = state/);
+  assert.match(roundingHandler, /const previousEvent = cloneNavigationValue\(event\)/);
   assert.match(
     roundingHandler,
     /const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true[\s\S]*?const result = await saveCheckpoint\.request/
   );
   assert.match(
     roundingHandler,
-    /if \(!result\?\.ok && !result\?\.pending\) \{\s*if \(!rejectedStateSaveIsCurrent\(result, saveCheckpoint\)\) return result;\s*state = previousState/
+    /if \(!result\?\.ok && !result\?\.pending\) \{\s*if \(!rejectedStateSaveIsCurrent\(result, saveCheckpoint\)\) return result;\s*state = rollbackEventSettingChange\(state, eventId, previousEvent, attemptedEvent, "roundSettlementTransfers"\)/
   );
 });
 

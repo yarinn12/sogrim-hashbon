@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildSharedEventState, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
+import { setEventAdminsCanEditOnly, setEventRoundSettlementTransfers, setEventCurrency, setEventCoverImage } from "../src/domain/appActions.mjs";
+import { addEventNote, updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 
 const stamp = "2026-08-24T09:00:00.000Z";
 function note(id) {
@@ -9,7 +11,7 @@ function note(id) {
 }
 const response = (payload) => ({ ok: true, status: 200, async json() { return structuredClone(payload); } });
 
-async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, canonicalStatus = null } = {}) {
+async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, beforeCanonicalResponse = null, canonicalStatus = null } = {}) {
   const globals = Object.fromEntries(["window", "location", "localStorage", "fetch"].map((key) => [key, globalThis[key]]));
   const entries = new Map();
   const storage = {
@@ -59,6 +61,7 @@ async function fixture(run, { allFail = false, status = 403, workspaceStatus = 2
     if (address.pathname.endsWith("/rpc/join_shared_event")) return response({ ok: true });
     if (address.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
       const body = JSON.parse(options.body);
+      beforeCanonicalResponse?.({ storage, body, workspaceId });
       const attempt = (canonicalAttempts.get(body.p_snapshot_id) ?? 0) + 1;
       canonicalAttempts.set(body.p_snapshot_id, attempt);
       const writeStatus = canonicalStatus
@@ -142,6 +145,76 @@ test("no successful event never claims partial publication or accepts a forbidde
   assert.equal(result.reverted, true);
   assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
 }, { allFail: true }));
+
+for (const mutation of ["create", "edit", "delete"]) {
+  test(`permanent note ${mutation} rejection preserves a concurrent durable refresh and clears rejected intent`, async () => {
+    let refreshDuringWrite = () => {};
+    await fixture(async ({ state, storage, workspaceId }) => {
+      const store = await import(`../src/data/localStore.mjs?note-rollback-${mutation}=${Date.now()}`);
+      const before = addEventNote(state, "healthy", {
+        id: "existing-note", title: "Before", body: "Original", createdAt: stamp
+      });
+      store.saveState(before);
+      const attempted = mutation === "create"
+        ? addEventNote(before, "healthy", { id: "rejected-note", body: "Rejected creation" })
+        : mutation === "edit"
+          ? updateEventNote(before, "healthy", "existing-note", { title: "Rejected title" })
+          : removeEventNote(before, "healthy", "existing-note");
+      const refreshed = addEventNote(structuredClone(attempted), "healthy", { id: "incoming-note", body: "Other device" });
+      refreshed.events[0].currency = "USD";
+      refreshed.events[1].name = "Updated elsewhere";
+      refreshDuringWrite = () => store.saveState(refreshed);
+      let snapshotAtNotice;
+      globalThis.window.dispatchEvent = event => {
+        if (event.type === "sogrim:shared-save-reverted") snapshotAtNotice = store.loadState();
+      };
+      const result = await store.saveSharedState(attempted, { awaitCloud: true, foregroundMutation: true });
+      assert.ok(snapshotAtNotice, "the revert notice was dispatched");
+      assert.equal(result.ok, false);
+      assert.equal(result.reverted, true);
+      const durable = store.loadState();
+      const event = durable.events.find(event => event.id === "healthy");
+      assert.ok(event.notes.some(note => note.id === "incoming-note"));
+      assert.equal(event.currency, "USD");
+      assert.equal(durable.events[1].name, "Updated elsewhere");
+      assert.equal(event.notes.find(note => note.id === "existing-note").title, "Before");
+      assert.equal(event.notes.some(note => note.id === "rejected-note"), false);
+      assert.equal((event.deletedNotes ?? []).some(note => note.id === "existing-note"), false);
+      assert.deepEqual(snapshotAtNotice, durable, "the UI reload sees the corrected durable state");
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+    }, { allFail: true, beforeCanonicalResponse: () => refreshDuringWrite() });
+  });
+}
+
+for (const [field, change] of [
+  ["adminsCanEditOnly", state => setEventAdminsCanEditOnly(state, "healthy", true)],
+  ["roundSettlementTransfers", state => setEventRoundSettlementTransfers(state, "healthy", false)],
+  ["currency", state => setEventCurrency(state, "healthy", "USD")],
+  ["coverImage", state => setEventCoverImage(state, "healthy", "new-cover")]
+]) {
+  test(`a rejected ${field} write preserves incoming notes in durable storage before the UI revert event`, async () => {
+    let duringWrite = () => {};
+    await fixture(async ({ state }) => {
+      const store = await import(`../src/data/localStore.mjs?settings-rollback-${field}=${Date.now()}`);
+      const before = structuredClone(state);
+      Object.assign(before.events[0], { adminsCanEditOnly: false, roundSettlementTransfers: true, currency: "ILS", coverImage: "" });
+      store.saveState(before);
+      const attempted = change(before);
+      const latest = addEventNote(structuredClone(attempted), "healthy", { id: "incoming-setting-note", body: "Other device note" });
+      latest.events[1].name = "Other device rename";
+      duringWrite = () => store.saveState(latest);
+      let atNotice;
+      globalThis.window.dispatchEvent = event => { if (event.type === "sogrim:shared-save-reverted") atNotice = store.loadState(); };
+      const result = await store.saveSharedState(attempted, { awaitCloud: true, foregroundMutation: true });
+      assert.equal(result.ok, false); assert.equal(result.reverted, true);
+      const durable = store.loadState();
+      assert.equal(durable.events[0][field], before.events[0][field]);
+      assert.ok(durable.events[0].notes.some(note => note.id === "incoming-setting-note"));
+      assert.equal(durable.events[1].name, "Other device rename");
+      assert.deepEqual(atNotice, durable);
+    }, { allFail: true, beforeCanonicalResponse: () => duringWrite() });
+  });
+}
 
 test("the outbox clears only after every previously failing event is delivered", async () => fixture(async ({ pending, storage, workspaceId, canonical, recover }) => {
   storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));

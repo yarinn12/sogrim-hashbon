@@ -1,6 +1,7 @@
 import { GoogleAuth } from "google-auth-library";
 
 import { formatCurrency, normalizeCurrency } from "../domain/currencies.mjs";
+import { isEventClosed } from "../domain/eventFilters.mjs";
 import {
   reconcileSettlementTransfers,
   settlementOptionsForEvent
@@ -84,7 +85,7 @@ export async function sendPaymentReminder({
     fetchImpl
   });
   const senderWorkspaceEvent = eventFromState(senderState, normalizedEventId);
-  const senderEvent = await loadAuthoritativeSharedEvent({
+  const canonicalState = await loadAuthoritativeSharedEventState({
     supabaseUrl,
     serviceRoleKey,
     eventId: normalizedEventId,
@@ -92,8 +93,9 @@ export async function sendPaymentReminder({
     senderUserId: sender.id,
     fetchImpl
   });
+  const senderEvent = eventFromState(canonicalState, normalizedEventId);
   const senderTransfer = transferFromState(
-    senderState,
+    canonicalState,
     senderEvent,
     normalizedTransferId
   );
@@ -106,7 +108,19 @@ export async function sendPaymentReminder({
     senderTransfer.toParticipantId !== senderParticipantId
   ) {
     return failure(403, "Only the payment recipient can send this reminder", {
-      code: "REMINDER_NOT_ALLOWED"
+      code: "REMINDER_NOT_ALLOWED",
+      reason: !senderEvent ? "event-unavailable"
+        : !isActiveEventParticipant(senderEvent, senderParticipantId) ? "sender-inactive"
+          : !senderTransfer ? "transfer-unavailable"
+            : senderTransfer.status === "paid" ? "already-paid" : "not-recipient"
+    });
+  }
+
+  // Enforce the rule on the canonical snapshot too: a stale/modified client
+  // must not send reminders while an event is open (including after reopening).
+  if (!isEventClosed(senderEvent)) {
+    return failure(409, "Payment reminders require a closed event", {
+      code: "EVENT_NOT_CLOSED"
     });
   }
 
@@ -121,7 +135,8 @@ export async function sendPaymentReminder({
 
   if (!isActiveEventParticipant(senderEvent, `account-${recipientUserId}`)) {
     return failure(403, "The payer is no longer in this event", {
-      code: "REMINDER_NOT_ALLOWED"
+      code: "REMINDER_NOT_ALLOWED",
+      reason: "payer-inactive"
     });
   }
 
@@ -135,7 +150,7 @@ export async function sendPaymentReminder({
   });
   if (!canonicalMembers) {
     return failure(403, "The reminder participants are no longer active", {
-      code: "REMINDER_NOT_ALLOWED"
+      code: "REMINDER_NOT_ALLOWED", reason: "membership-unavailable"
     });
   }
 
@@ -191,6 +206,15 @@ export async function sendPaymentReminder({
         })
       : [];
   } catch (error) {
+    // Once the inbox committed, a later device lookup failure cannot unsend it
+    // or release its cooldown. Preserve the confirmed in-app delivery receipt.
+    if (storedInInbox) {
+      return finishInAppOnlyReminder({
+        supabaseUrl, serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl: cleanupFetchImpl
+      });
+    }
     // No FCM request has started, so this reservation is safe to release.
     await deleteReminderReservation({
       supabaseUrl,
@@ -592,7 +616,7 @@ async function loadAccountState({
     .find((state) => eventFromState(state, eventId)) ?? null;
 }
 
-async function loadAuthoritativeSharedEvent({
+async function loadAuthoritativeSharedEventState({
   supabaseUrl,
   serviceRoleKey,
   eventId,
@@ -637,7 +661,7 @@ async function loadAuthoritativeSharedEvent({
 
   const rows = payload;
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
-  return eventFromState(snapshot?.state, eventId);
+  return eventFromState(snapshot?.state, eventId) ? snapshot.state : null;
 }
 
 function isActiveEventParticipant(event, participantId) {
@@ -815,6 +839,7 @@ function transferFromState(state, event, transferId) {
     Array.isArray(event.transfers) ? event.transfers : [],
     settlementOptionsForEvent(event)
   );
+  if (settlement.issues.length) return null;
   return settlement.transfers.find((transfer) => transfer.id === transferId) ?? null;
 }
 

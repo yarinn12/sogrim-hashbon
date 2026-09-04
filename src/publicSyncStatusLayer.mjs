@@ -3,6 +3,7 @@ import {
   loadRuntimeConfig
 } from "./data/localStore.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { pendingSaveMessage } from "./domain/userNoticePolicy.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
@@ -29,6 +30,9 @@ const ONLINE_MUTATION_ACTIONS = new Set([
 const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
 let currentStatus = "";
+let pendingSync = false;
+let pendingFailureKind = "";
+let connectivityRevision = 0;
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
 let mutationLockReason = "";
@@ -52,6 +56,10 @@ if (navigator.onLine === false) void handleOffline();
 
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
+  if (typeof event.detail?.pending === "boolean") {
+    pendingSync = event.detail.pending;
+    pendingFailureKind = pendingSync ? event.detail.failureKind ?? "" : "";
+  }
   const currentScreenSignature = screenSignature();
 
   if (status === "offline") {
@@ -86,9 +94,15 @@ async function handleOffline() {
     return offlineProbePromise;
   }
 
+  const revision = ++connectivityRevision;
   offlineProbePromise = confirmServerIsUnreachable()
     .then((offline) => {
-      if (!offline) return;
+      if (revision !== connectivityRevision || navigator.onLine !== false) return;
+      if (!offline) {
+        mutationLockReason = "";
+        syncMutationControls();
+        return;
+      }
       mutationLockReason = "offline";
       showStatus("");
       syncMutationControls();
@@ -111,9 +125,6 @@ async function confirmServerIsUnreachable() {
       signal: controller.signal
     });
     if (response.ok) {
-      mutationLockReason = "";
-      showStatus("");
-      syncMutationControls();
       return false;
     }
   } catch {
@@ -125,9 +136,13 @@ async function confirmServerIsUnreachable() {
 }
 
 async function recoverOnlineMutationAccess() {
+  ++connectivityRevision;
+  // A rejected outbox entry says nothing about connectivity for other actions.
+  // Release a stale offline lock immediately when the browser comes online.
+  mutationLockReason = navigator.onLine === false ? "offline" : "";
+  syncMutationControls();
   if (reconnectPromise) return reconnectPromise;
 
-  mutationLockReason = "reconnecting";
   showStatus("reconnecting");
   syncMutationControls();
   reconnectPromise = flushPendingSharedState()
@@ -138,15 +153,13 @@ async function recoverOnlineMutationAccess() {
           throw result?.error ?? new Error("Sync unavailable");
         }
       }
-      mutationLockReason = "";
+      mutationLockReason = navigator.onLine === false ? "offline" : "";
       showStatus("");
       return result;
     })
     .catch(() => {
-      if (mutationLockReason !== "conflict") {
-        mutationLockReason = "offline";
-        showStatus("");
-      }
+      mutationLockReason = navigator.onLine === false ? "offline" : "";
+      showStatus("");
       return { ok: false };
     })
     .finally(() => {
@@ -206,6 +219,10 @@ async function handleRetryClick(event) {
   button.disabled = true;
   try {
     await flushPendingSharedState();
+  } catch {
+    // Preserve the pending indicator; a failed explicit retry is not proof of
+    // offline connectivity and must not become an unhandled rejection.
+    syncInlineStatusTargets();
   } finally {
     button.disabled = false;
   }
@@ -299,10 +316,11 @@ function syncInlineStatusTargets() {
       .split(/\s+/)
       .filter((name) => name && !name.startsWith("is-sync-"))
       .join(" ")}`;
-    if (target.textContent) target.textContent = "";
-    target.hidden = true;
+    const message = pendingSync ? pendingSaveMessage(pendingFailureKind) : "";
+    if (target.textContent !== message) target.textContent = message;
+    target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");
-    if (routeStatus) routeStatus.hidden = true;
+    if (routeStatus) routeStatus.hidden = !message;
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {

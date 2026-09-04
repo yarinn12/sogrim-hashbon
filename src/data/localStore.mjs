@@ -32,6 +32,9 @@ import {
   loadStoredAccountSession
 } from "./accountAuth.mjs";
 import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
+import { rollbackNoteOnlyStateChange } from "./noteSaveRollback.mjs";
+import { rollbackSettingsOnlyStateChange } from "./settingsSaveRollback.mjs";
+import { saveFailureKind } from "../domain/userNoticePolicy.mjs";
 import {
   emitOperationDeferred,
   emitOperationFailure
@@ -914,7 +917,7 @@ async function loadSharedStateOnce(requestScope) {
           requestAccountGeneration, requestSaveGeneration
         });
         if (isRetryablePendingSyncFailure(error)) {
-          publishSyncStatus("reconnecting");
+          publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
           schedulePendingSharedStateRetry();
           logQueuedSync(error, {
             sharedEventMutation: true,
@@ -924,7 +927,7 @@ async function loadSharedStateOnce(requestScope) {
           });
           emitOperationDeferred("state_load", { screen: "boot", error });
         } else {
-          publishSyncFailure(error);
+          publishSyncFailure(error, { pending: true });
           logSyncFailure(error, {
             sharedEventMutation: true,
             pending: true,
@@ -1005,6 +1008,22 @@ async function loadSharedStateOnce(requestScope) {
 }
 
 export async function saveSharedState(state) {
+  const options = arguments[1] ?? {};
+  let canReturnQueued = null;
+  let returnedToBackground = false;
+  // The worker persists the outbox and local snapshot synchronously, before
+  // its first await. Start the UI budget there, not after config/auth I/O.
+  const completion = saveSharedStateToCompletion(state, options, (isCurrent) => {
+    canReturnQueued = isCurrent;
+  }, () => options.handlesSaveFailure !== true || returnedToBackground);
+  const result = await (options.awaitCloud || !canReturnQueued
+    ? completion
+    : settleSaveWithinUiBudget(completion, canReturnQueued, options.foregroundSaveBudgetMs));
+  returnedToBackground = Boolean(result?.completion);
+  return result;
+}
+
+async function saveSharedStateToCompletion(state, options, onDurableStart, mayNotifyFailure) {
   const {
     forceSharedParticipantIds = [],
     forceSharedEventIds = [],
@@ -1012,7 +1031,7 @@ export async function saveSharedState(state) {
     foregroundMutation = false,
     awaitCloud = false,
     foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS
-  } = arguments[1] ?? {};
+  } = options;
   const requestStartedAt = Date.now();
   let requestScope = synchronizeAccountStorageScope();
   const requestAccountUserId = activeAccountUserId();
@@ -1065,7 +1084,7 @@ export async function saveSharedState(state) {
     )
   );
   if (crashSafePendingConfig && !crashSafePendingStateSaved) {
-    const error = new Error("The local sync outbox is unavailable");
+    const error = Object.assign(new Error("The local sync outbox is unavailable"), { code: "LOCAL_STORAGE_UNAVAILABLE" });
     emitOperationFailure("state_save", { screen: "app", error });
     return { ok: false, mode: "local", error };
   }
@@ -1073,6 +1092,11 @@ export async function saveSharedState(state) {
   const requestSaveGeneration = ++sharedStateSaveGeneration;
   let requestAccountGeneration = accountStorageGeneration;
   const stateSnapshot = clone(cleanState);
+  const budgetStartedBeforeConfig = Boolean(localSaved && crashSafePendingStateSaved);
+  if (budgetStartedBeforeConfig) {
+    onDurableStart(() => Boolean(localSaved && crashSafePendingStateSaved &&
+      activeAccountUserId() === requestAccountUserId));
+  }
   const runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   const sharedState = toCloudState(runtimeConfig, stateSnapshot);
   const currentScope = synchronizeAccountStorageScope();
@@ -1154,8 +1178,13 @@ export async function saveSharedState(state) {
           if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
             clearPendingSharedState(runtimeConfig);
           }
-          resetPendingSharedStateRetry();
-          publishSyncStatus("saved");
+          if (pendingSharedStateRaw(runtimeConfig)) {
+            publishSyncStatus("reconnecting");
+            schedulePendingSharedStateRetry();
+          } else {
+            resetPendingSharedStateRetry();
+            publishSyncStatus("saved");
+          }
           return {
             ok: true,
             mode: "cloud",
@@ -1188,10 +1217,20 @@ export async function saveSharedState(state) {
               // A background retry will persist them when the service recovers.
               pendingStateSaved = savePendingSharedState(runtimeConfig, sharedState);
             } else {
-              saveState(previousState);
+              const latestState = loadState();
+              let revertedState = previousState;
+              try {
+                revertedState = rollbackNoteOnlyStateChange(latestState, previousState, stateSnapshot) ??
+                  rollbackSettingsOnlyStateChange(latestState, previousState, stateSnapshot) ?? previousState;
+              } catch (rollbackError) {
+                // Recovery must still finish and report the original failure
+                // even if an incomplete legacy snapshot defeats a narrow undo.
+                emitOperationDeferred("state_save", { error: rollbackError });
+              }
+              saveState(revertedState);
               if (!suppressRevertNotice) {
                 publishSharedSaveReverted(syncSelection, error, {
-                  foregroundMutation,
+                  foregroundMutation: foregroundMutation && mayNotifyFailure(),
                   requestedAt: requestStartedAt
                 });
               }
@@ -1221,7 +1260,7 @@ export async function saveSharedState(state) {
           if (acceptedPending) {
             // A durable local snapshot is a successful user save. Cloud delivery
             // continues in the background and must not trigger false failure UI.
-            publishSyncStatus("reconnecting");
+            publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
             logQueuedSync(error, syncOutcome);
             emitOperationDeferred("state_save", { error });
           } else {
@@ -1250,7 +1289,7 @@ export async function saveSharedState(state) {
         }
       });
 
-    return awaitCloud
+    return awaitCloud || budgetStartedBeforeConfig
       ? cloudWriteQueue
       : settleSaveWithinUiBudget(
           cloudWriteQueue,
@@ -1282,7 +1321,7 @@ export async function saveSharedState(state) {
       return {
         ok: false,
         mode: "local",
-        error: new Error("Local storage is unavailable")
+        error: Object.assign(new Error("Local storage is unavailable"), { code: "LOCAL_STORAGE_UNAVAILABLE" })
       };
     }
   }
@@ -1295,7 +1334,7 @@ export async function saveSharedState(state) {
     : {
         ok: false,
         mode: "local",
-        error: new Error("Local storage is unavailable")
+        error: Object.assign(new Error("Local storage is unavailable"), { code: "LOCAL_STORAGE_UNAVAILABLE" })
       };
 }
 
@@ -1386,7 +1425,7 @@ async function flushPendingSharedStateOnce() {
     });
     const retryablePendingFailure = isRetryablePendingSyncFailure(error);
     if (retryablePendingFailure) {
-      publishSyncStatus("reconnecting");
+      publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
       schedulePendingSharedStateRetry();
       logQueuedSync(error, {
         sharedEventMutation: true,
@@ -1395,7 +1434,7 @@ async function flushPendingSharedStateOnce() {
         reverted: false
       });
     } else {
-      publishSyncFailure(error);
+      publishSyncFailure(error, { pending: true });
       logSyncFailure(error, {
         sharedEventMutation: true,
         pending: true,
@@ -1863,8 +1902,8 @@ function clearPendingSharedState(config) {
   } catch {}
 }
 
-function publishSyncFailure(error) {
-  publishSyncStatus(syncFailureStatus(error));
+function publishSyncFailure(error, { pending = false } = {}) {
+  publishSyncStatus(syncFailureStatus(error), { pending, failureKind: saveFailureKind(error) });
 }
 
 export function syncFailureStatus(
@@ -1875,7 +1914,7 @@ export function syncFailureStatus(
   if (errors.some((item) => item?.code === "CLOUD_STATE_CONFLICT")) {
     return "conflict";
   }
-  if (!online) return "offline";
+  if (!online && saveFailureKind(error) === "connection") return "offline";
   return "unavailable";
 }
 
@@ -1896,11 +1935,8 @@ function flattenSyncErrors(error) {
 
 function isNetworkFailure(error) {
   if (!error) return false;
-  if (["NETWORK_TIMEOUT", "ERR_NETWORK"].includes(error.code)) return true;
   if (error.name === "AbortError") return true;
-  if (Number(error.status ?? 0) > 0) return false;
-  return /(failed to fetch|fetch failed|network(?:error| request)|load failed|connection|internet)/i
-    .test(String(error.message ?? ""));
+  return saveFailureKind(error) === "connection";
 }
 
 export function isTransientSyncFailure(error) {
@@ -1966,13 +2002,19 @@ async function settleSaveWithinUiBudget(
   durablePendingSaved,
   foregroundSaveBudgetMs = FOREGROUND_SAVE_BUDGET_MS
 ) {
-  if (!durablePendingSaved || typeof globalThis.setTimeout !== "function") {
+  const canReturnQueued = typeof durablePendingSaved === "function"
+    ? durablePendingSaved : () => Boolean(durablePendingSaved);
+  if (!canReturnQueued() || typeof globalThis.setTimeout !== "function") {
     return saveRequest;
   }
 
   let timeoutId = 0;
   const queuedResult = new Promise((resolve) => {
     timeoutId = globalThis.setTimeout(() => {
+      if (!canReturnQueued()) {
+        resolve(saveRequest);
+        return;
+      }
       publishSyncStatus("reconnecting");
       resolve({
         ok: true,
@@ -2014,12 +2056,17 @@ function logQueuedSync(error, outcome) {
   });
 }
 
-function publishSyncStatus(status) {
+function publishSyncStatus(status, details = {}) {
   if (typeof window === "undefined" || !window.dispatchEvent) return;
 
   const EventConstructor = globalThis.CustomEvent;
   if (typeof EventConstructor !== "function") return;
-  window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail: { status } }));
+  window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail: {
+    status,
+    ...(status === "reconnecting" ? { pending: true } : {}),
+    ...(["saved", ""].includes(status) ? { pending: false } : {}),
+    ...details
+  } }));
 }
 
 function publishSharedSaveReverted(
@@ -2043,23 +2090,7 @@ function publishSharedSaveReverted(
 }
 
 function sharedSaveFailureKind(error) {
-  const errors = flattenSyncErrors(error);
-  const codes = new Set(
-    errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean)
-  );
-  const statuses = new Set(
-    errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0)
-  );
-  if (statuses.has(401) || codes.has("CLOUD_STATE_AUTH_EXPIRED")) return "auth";
-  if (
-    statuses.has(403) ||
-    codes.has("SHARED_EVENT_MEMBERSHIP_REVOKED") ||
-    codes.has("SHARED_EVENT_CREATE_NOT_ALLOWED")
-  ) {
-    return "permission";
-  }
-  if ([400, 409, 422].some((status) => statuses.has(status))) return "rejected";
-  return "unavailable";
+  return saveFailureKind(error);
 }
 
 function saveLocalParticipantId(participantId) {

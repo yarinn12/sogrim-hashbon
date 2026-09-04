@@ -111,7 +111,7 @@ test("localStore keeps local-mode saves on the current device", async () => {
     localStore,
     /return localSaved\s*\?\s*\{ ok: true, mode: "local" \}/
   );
-  assert.match(localStore, /error: new Error\("Local storage is unavailable"\)/);
+  assert.match(localStore, /error: Object.assign\(new Error\("Local storage is unavailable"\), \{ code: "LOCAL_STORAGE_UNAVAILABLE" \}\)/);
   assert.doesNotMatch(localStore, /method: "PUT"[\s\S]*\/api\/state/);
 });
 

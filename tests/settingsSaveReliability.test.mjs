@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import * as actions from "../src/domain/appActions.mjs";
@@ -19,6 +20,34 @@ function functionSource(name) {
 }
 
 const baseTime = "2026-01-01T00:00:00.000Z";
+
+for (const [handler, args, field] of [
+  ["setEventManagementMode", ["settings", "centralized"], "adminsCanEditOnly"],
+  ["setEventRoundingMode", ["settings", "exact"], "roundSettlementTransfers"],
+  ["applyEventCurrencyChange", ["settings", "USD"], "currency"],
+  ["updateEventCoverImage", ["settings", "new-cover"], "coverImage"]
+]) {
+  test(`${handler} failure preserves incoming notes and unrelated remote settings`, async () => {
+    const h = harness(); const before = structuredClone(h.context.state.events[0]);
+    const request = h.context[handler](...args);
+    h.context.state = structuredClone(h.context.state);
+    h.context.state.events[0].notes.push({ id: "remote-note" });
+    h.context.state.events[0].name = "Remote name";
+    h.requests[0].resolve({ ok: false }); await request;
+    assert.equal(h.context.state.events[0][field], before[field]);
+    assert.equal(h.context.state.events[0].notes[0]?.id, "remote-note");
+    assert.equal(h.context.state.events[0].name, "Remote name");
+  });
+  test(`${handler} failure does not roll back a newer remote revision of its own field`, async () => {
+    const h = harness(); const request = h.context[handler](...args);
+    h.context.state = structuredClone(h.context.state);
+    const attempted = h.context.state.events[0][field];
+    h.context.state.events[0].settingsFieldUpdatedAt[field] = "2099-01-01T00:00:00.000Z";
+    h.requests[0].resolve({ ok: false }); await request;
+    assert.equal(h.context.state.events[0][field], attempted);
+    assert.equal(h.context.state.events[0].settingsFieldUpdatedAt[field], "2099-01-01T00:00:00.000Z");
+  });
+}
 function initialState() {
   return {
     currentParticipantId: "account-a", groups: [],
@@ -34,7 +63,7 @@ function harness() {
   const requests = [];
   const renders = [];
   const context = vm.createContext({
-    ...actions, ...permissions, ...settings, ...currencies, isEventClosed,
+    ...actions, ...permissions, ...settings, ...currencies, isEventClosed, saveFailureMessage,
     currencySelectLabel: (value) => value,
     managementModeRequiresAdmin: (mode) => mode === "centralized",
     state: initialState(), notice: "", expenseDraft: null,

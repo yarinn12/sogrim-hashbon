@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
+import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 function section(start, end) {
@@ -123,7 +124,7 @@ function expenseDeletionHarness() {
   let reloads = 0;
   const request = new Promise(resolve => {finishSave = resolve;});
   const ctx = vm.createContext({
-    state:initial,expenseDeleteRequests:new Set(), notice:"New account notice",
+    state:initial,expenseDeleteRequests:new Set(), notice:"New account notice", saveFailureMessage,
     getEvent:(id)=>ctx.state.events.find(event=>event.id===id),canCurrentParticipantEdit:()=>true,
     removeExpense:(state)=>({...state,events:[{...state.events[0],expenses:[]}]}),
     recordEventActivity() {},reconcileEventTransfers() {},render() {},

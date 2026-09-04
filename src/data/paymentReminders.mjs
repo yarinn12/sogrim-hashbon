@@ -47,6 +47,7 @@ export async function sendPaymentReminder(
     payload?.error || "Payment reminder could not be sent"
   );
   error.code = payload?.code || "REMINDER_FAILED";
+  error.reason = String(payload?.reason ?? "");
   error.status = response.status;
   error.retryAt = payload?.retryAt || "";
   error.retryable = Boolean(payload?.retryable);
