@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 test.use({ serviceWorkers: "block" });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const status of [403, 503, "partial-create", "partial-edit"]) {
+for (const status of [403, 503, "partial-create", "partial-edit", "partial-delete"]) {
 const partialRetry = String(status).startsWith("partial-");
+const deleteRetry = status === "partial-delete";
 test(partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   const origin = "https://egress-cache-test.supabase.co";
@@ -65,7 +66,9 @@ test(partialRetry ? `note ${status} retry confirms one note without duplication`
     }
     if (url.pathname.endsWith("/rpc/join_shared_event")) return reply(true);
     if (url.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
-      if (request.postDataJSON().p_state.events[0]?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
+      const writtenEvent = request.postDataJSON().p_state.events[0];
+      if (deleteRetry ? writtenEvent?.deletedNotes?.some(note => note.id === "cache-sync-note")
+        : writtenEvent?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
       // One canonical commit followed by a failed personal write and rejected
       // immediate canonical retry creates genuine partial progress in the store.
       if (writeStatus === "partial") {
@@ -131,10 +134,31 @@ test(partialRetry ? `note ${status} retry confirms one note without duplication`
   await page.locator('[data-action="open-event-notes"]').click();
   if (status === "partial-create") await page.locator('[data-action="new-event-note"]').click();
   else await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
-  await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
+  if (!deleteRetry) await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
   writeStatus = partialRetry ? "partial" : status;
-  await page.locator('[data-action="save-event-note"]').click();
-  if (partialRetry) {
+  if (deleteRetry) {
+    await page.locator('[data-action="request-delete-event-note"]').click();
+    await page.locator('[data-action="confirm-important-action"]').click();
+  } else await page.locator('[data-action="save-event-note"]').click();
+  if (deleteRetry) {
+    await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור למחיקת");
+    await expect(page.locator('[data-action="save-event-note"]')).toBeDisabled();
+    await expect(page.locator('[data-action="event-note-body"]')).toHaveAttribute("readonly", "");
+    expect(canonicalAttempts).toBeGreaterThanOrEqual(2);
+    const tombstone = structuredClone(shared.state.events[0].deletedNotes.find(note => note.id === "cache-sync-note"));
+    const attemptsBeforeRetry = canonicalAttempts;
+    writeStatus = 200;
+    await page.locator('[data-action="request-delete-event-note"]').click();
+    await page.locator('[data-action="confirm-important-action"]').click();
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    await expect(page.locator(".important-action-dialog")).toHaveCount(0);
+    expect(canonicalAttempts).toBeGreaterThan(attemptsBeforeRetry);
+    expect(shared.state.events[0].notes.some(note => note.id === "cache-sync-note")).toBe(false);
+    expect(shared.state.events[0].deletedNotes.filter(note => note.id === "cache-sync-note")).toEqual([tombstone]);
+    expect(personal.state.events[0].notes.some(note => note.id === "cache-sync-note")).toBe(false);
+    await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBeNull();
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+  } else if (partialRetry) {
     await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
     await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("טיוטה שלא תאבד");
     expect(canonicalAttempts).toBeGreaterThanOrEqual(2);

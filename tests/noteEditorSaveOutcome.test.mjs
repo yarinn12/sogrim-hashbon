@@ -14,6 +14,7 @@ const start = source.indexOf("async function saveEventNoteFromDialog(");
 const end = source.indexOf("\nfunction requestEventNoteDeletion(", start);
 const saveSource = source.slice(start, end);
 const deleteStart = source.indexOf("async function deleteEventNote(");
+const requestDeleteSource = source.slice(end, deleteStart);
 const deleteSource = source.slice(deleteStart, source.indexOf("\nfunction requestEventLeave(", deleteStart));
 const saveGuardsStart = source.indexOf("function stateSaveIsCurrent(");
 const saveGuards = source.slice(saveGuardsStart, source.indexOf("\nfunction recordEventActivity(", saveGuardsStart));
@@ -45,6 +46,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   let closed = 0;
   let ids = 0;
   let historyReplacements = 0;
+  const confirmations = [];
   const context = vm.createContext({
     state: current ?? initial, eventDialog: dialog, structuredClone, saveFailureMessage,
     ...eventNotes,
@@ -55,6 +57,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     makeId: () => `new-note-${++ids}`,
     render: () => {}, reactivateDialogAfterRender: () => {},
     renderReplacingBrowserHistory: () => { historyReplacements += 1; },
+    openImportantActionDialog: action => confirmations.push(action),
     closeDialogWithHistory: () => { closed += 1; },
     stateSaveCheckpoint: (request) => ({ request, revision: 1, participantId: context.state.currentParticipantId }),
     sharedStateSaveRevision: () => saveIsCurrent ? 1 : 2,
@@ -75,8 +78,9 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     }
   });
   vm.runInContext(saveGuards + saveSource, context);
+  vm.runInContext(requestDeleteSource, context);
   vm.runInContext(deleteSource, context);
-  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), delete: () => context.deleteEventNote("event-editor", "note-editor"), writes: () => writes, closed: () => closed, historyReplacements: () => historyReplacements };
+  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), delete: () => context.deleteEventNote("event-editor", "note-editor"), requestDelete: () => context.requestEventNoteDeletion("event-editor", "note-editor"), confirmations, writes: () => writes, closed: () => closed, historyReplacements: () => historyReplacements };
 }
 
 test("a deletion discovered during persistence is not reported as a successful note edit", async () => {
@@ -300,6 +304,82 @@ test("an unconfirmed note deletion preserves pending intent and healthy sibling 
   assert.equal(h.context.eventDialog.bodyDraft, "Local draft");
   assert.equal(h.context.eventDialog.saving, false);
   assert.match(h.context.eventDialog.error, /אישור/);
+});
+
+test("an unconfirmed note deletion can open its confirmation again even though the local note is gone", async () => {
+  const h = harness({ result: partialNoteResult });
+  await h.delete();
+  assert.equal(h.context.state.events[0].notes.length, 0);
+  h.requestDelete();
+  assert.equal(h.confirmations.length, 1, "the visible retry-delete button must not be a dead control");
+  assert.equal(h.confirmations[0].payload.noteId, "note-editor");
+});
+
+test("retrying an unconfirmed deletion republishes the same tombstone and closes after confirmation", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
+  await h.delete();
+  const deletion = structuredClone(h.context.state.events[0].deletedNotes[0]);
+  const result = await h.delete();
+  assert.equal(h.writes(), 2, "a local tombstone is not proof of a completed shared deletion");
+  assert.equal(result.mode, "cloud");
+  assert.equal(h.context.eventDialog, null);
+  assert.deepEqual(h.context.state.events[0].deletedNotes, [deletion]);
+});
+
+test("a remote deletion without this editor's pending intent does not enable a replay", async () => {
+  const h = harness();
+  h.context.state = removeEventNote(h.context.state, "event-editor", "note-editor");
+  h.requestDelete();
+  await h.delete();
+  assert.equal(h.confirmations.length, 0);
+  assert.equal(h.writes(), 0);
+});
+
+test("repeated partial deletion retries keep the original tombstone unchanged", async () => {
+  const h = harness({ result: ({ writes }) => writes < 3 ? partialNoteResult : null });
+  await h.delete();
+  const deletion = structuredClone(h.context.state.events[0].deletedNotes[0]);
+  await h.delete();
+  assert.equal(h.context.eventDialog.pendingNoteDeletion.noteId, "note-editor");
+  assert.equal((await h.delete()).mode, "cloud");
+  assert.equal(h.writes(), 3);
+  assert.deepEqual(h.context.state.events[0].deletedNotes, [deletion]);
+  assert.equal(h.context.eventDialog, null);
+});
+
+test("a rejected deletion retry keeps its earlier intent and offers accurate recovery feedback", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult
+    : writes === 2 ? { ok: false, error: { status: 403 } } : null });
+  await h.delete();
+  const deletion = structuredClone(h.context.state.events[0].deletedNotes[0]);
+  assert.equal((await h.delete()).ok, false);
+  assert.deepEqual(h.context.state.events[0].deletedNotes, [deletion]);
+  assert.match(h.context.eventDialog.error, /אין לחשבון הרשאה/);
+  assert.doesNotMatch(h.context.eventDialog.error, /לא בוצע שינוי/);
+  h.requestDelete();
+  assert.equal(h.confirmations.length, 1);
+  assert.equal((await h.delete()).mode, "cloud");
+  assert.equal(h.context.eventDialog, null);
+});
+
+test("a pending deletion cannot be retried by another account even if the editor survived", async () => {
+  const h = harness({ result: partialNoteResult });
+  await h.delete();
+  h.context.state.currentParticipantId = "account-other";
+  h.requestDelete();
+  await h.delete();
+  assert.equal(h.confirmations.length, 0);
+  assert.equal(h.writes(), 1);
+});
+
+test("a pending deletion retry still requires event edit permission", async () => {
+  const h = harness({ result: partialNoteResult });
+  await h.delete();
+  h.context.canCurrentParticipantEdit = () => false;
+  h.requestDelete();
+  await h.delete();
+  assert.equal(h.confirmations.length, 0);
+  assert.equal(h.writes(), 1);
 });
 
 test("a late partial deletion cannot restore the previous account's note dialog", async () => {

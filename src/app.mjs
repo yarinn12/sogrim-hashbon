@@ -6840,6 +6840,7 @@ function renderEventNoteDialog(event) {
   const note = (event.notes ?? []).find((item) => item.id === eventDialog.noteId);
   const isNew = !eventDialog.noteId;
   const canEdit = canCurrentParticipantEdit(event);
+  const pendingDeletion = pendingEventNoteDeletionMatches(event, eventDialog.noteId);
   const title = isNew ? "פתק חדש" : canEdit ? "עריכת פתק" : "פתק משותף";
   const body = `
     <form class="event-note-editor" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId ?? "")}">
@@ -6852,7 +6853,7 @@ function renderEventNoteDialog(event) {
           maxlength="${MAX_EVENT_NOTE_TITLE_LENGTH}"
           value="${escapeAttribute(eventDialog.titleDraft ?? note?.title ?? "")}"
           placeholder="למשל פרטי הטיסה"
-          ${canEdit ? "" : "readonly"}
+          ${canEdit && !pendingDeletion ? "" : "readonly"}
         />
       </label>
       <label class="field event-note-body-field">
@@ -6863,11 +6864,11 @@ function renderEventNoteDialog(event) {
           maxlength="${MAX_EVENT_NOTE_BODY_LENGTH}"
           rows="8"
           placeholder="כתבו כאן מידע שכולם צריכים לראות…"
-          ${canEdit ? "" : "readonly"}
+          ${canEdit && !pendingDeletion ? "" : "readonly"}
         >${escapeHtml(eventDialog.bodyDraft ?? note?.body ?? "")}</textarea>
       </label>
       ${canEdit ? `
-        <button class="event-note-pin-toggle${eventDialog.pinned ? " is-active" : ""}" type="button" data-action="toggle-event-note-pin" aria-pressed="${eventDialog.pinned ? "true" : "false"}">
+        <button class="event-note-pin-toggle${eventDialog.pinned ? " is-active" : ""}" type="button" data-action="toggle-event-note-pin" aria-pressed="${eventDialog.pinned ? "true" : "false"}" ${pendingDeletion ? "disabled" : ""}>
           <span aria-hidden="true">${iconSvg("pin")}</span>
           <span>${eventDialog.pinned ? "הפתק מוצמד" : "הצמד לראש הרשימה"}</span>
         </button>
@@ -6875,8 +6876,8 @@ function renderEventNoteDialog(event) {
       ${eventDialog.error ? `<p class="field-error" id="event-note-error" role="alert">${escapeHtml(eventDialog.error)}</p>` : ""}
       ${canEdit ? `
         <div class="event-note-editor-actions">
-          ${isNew ? "" : `<button class="secondary-button event-note-delete" type="button" data-action="request-delete-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId)}">${iconSvg("trash")}<span>מחק פתק</span></button>`}
-          <button class="primary-button" type="submit" data-action="save-event-note" data-event-id="${escapeAttribute(event.id)}" ${eventDialog.saving ? "disabled" : ""}>${eventDialog.saving ? "שומרים…" : "שמור פתק"}</button>
+          ${isNew ? "" : `<button class="secondary-button event-note-delete" type="button" data-action="request-delete-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(eventDialog.noteId)}">${iconSvg("trash")}<span>${pendingDeletion ? "נסה שוב למחוק" : "מחק פתק"}</span></button>`}
+          <button class="primary-button" type="submit" data-action="save-event-note" data-event-id="${escapeAttribute(event.id)}" ${eventDialog.saving || pendingDeletion ? "disabled" : ""}>${eventDialog.saving ? "שומרים…" : "שמור פתק"}</button>
         </div>
       ` : ""}
     </form>
@@ -16408,11 +16409,22 @@ async function saveEventNoteFromDialog(eventId) {
   return result;
 }
 
+function pendingEventNoteDeletionMatches(event, noteId) {
+  return Boolean(
+    event && eventDialog?.kind === "note-editor" &&
+    eventDialog.eventId === event.id && eventDialog.noteId === noteId &&
+    eventDialog.pendingNoteDeletion?.noteId === noteId &&
+    eventDialog.pendingNoteDeletion.participantId === state.currentParticipantId &&
+    event.deletedNotes?.some(deletion => deletion.id === noteId)
+  );
+}
+
 function requestEventNoteDeletion(eventId, noteId, trigger) {
   const event = getEvent(eventId);
   const note = event?.notes?.find((item) => item.id === noteId);
-  if (!event || !note || !canCurrentParticipantEdit(event)) return;
-  const title = String(note.title ?? "").trim() || "הפתק הזה";
+  const pendingDeletion = pendingEventNoteDeletionMatches(event, noteId);
+  if (!event || (!note && !pendingDeletion) || !canCurrentParticipantEdit(event)) return;
+  const title = String(note?.title ?? (pendingDeletion ? eventDialog.titleDraft : "") ?? "").trim() || "הפתק הזה";
   openImportantActionDialog(
     {
       kind: "delete-event-note",
@@ -16432,10 +16444,13 @@ async function deleteEventNote(eventId, noteId) {
   const previousState = cloneNavigationValue(state);
   const activeDialog = eventDialog;
   const editorSnapshot = cloneNavigationValue(eventDialog);
+  const pendingDeletion = pendingEventNoteDeletionMatches(event, noteId);
   const nextState = removeEventNote(state, eventId, noteId, {
     participantId: state.currentParticipantId
   });
-  if (nextState === state) return;
+  // A previously accepted local deletion still needs a real shared receipt.
+  // Reuse its tombstone and force the same event write on explicit retry.
+  if (nextState === state && !pendingDeletion) return;
 
   state = nextState;
   const saveCheckpoint = stateSaveCheckpoint(
@@ -16455,6 +16470,7 @@ async function deleteEventNote(eventId, noteId) {
     if (!stateSaveIsCurrent(saveCheckpoint) || eventDialog !== activeDialog) return result;
     eventDialog = {
       ...editorSnapshot,
+      pendingNoteDeletion: { noteId, participantId: state.currentParticipantId },
       saving: false,
       error: "עדיין לא התקבל אישור למחיקת הפתק המשותף. המחיקה ממתינה לסנכרון."
     };
@@ -16468,7 +16484,9 @@ async function deleteEventNote(eventId, noteId) {
       eventDialog = {
         ...editorSnapshot,
         saving: false,
-        error: "לא הצלחנו למחוק את הפתק. לא בוצע שינוי ואפשר לנסות שוב."
+        error: pendingDeletion
+          ? saveFailureMessage(result, "לא התקבל אישור להשלמת המחיקה.")
+          : "לא הצלחנו למחוק את הפתק. לא בוצע שינוי ואפשר לנסות שוב."
       };
     }
   } else if (eventDialog === activeDialog) {
