@@ -147,6 +147,42 @@ async function checkView(page, name) {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Horizontal overflow");
   await page.screenshot({ path: join(outputRoot, `${fixture.runId}-${name}.png`), fullPage: true });
 }
+
+async function inspectFailurePage(page, role) {
+  if (page.isClosed()) return { role, closed: true };
+  return page.evaluate(currentRole => {
+    const gate = document.querySelector("#public-account-auth-gate");
+    const email = gate?.querySelector('input[name="email"]');
+    const password = gate?.querySelector('input[name="password"]');
+    const submit = gate?.querySelector('button[type="submit"]');
+    const locationUrl = new URL(window.location.href);
+    let storedSession = null;
+    try {
+      storedSession = JSON.parse(
+        window.localStorage.getItem("settle-friends-account-session") ?? "null"
+      );
+    } catch {}
+    return {
+      role: currentRole,
+      path: locationUrl.pathname,
+      queryKeys: [...locationUrl.searchParams.keys()].sort(),
+      authGatePresent: Boolean(gate),
+      authGateBusy: gate?.getAttribute("aria-busy") ?? null,
+      authGateError: gate?.querySelector("[role=alert]")?.textContent?.trim().slice(0, 300) ?? "",
+      authGateStatus: gate?.querySelector("[data-account-auth-status]")?.textContent?.trim().slice(0, 300) ?? "",
+      emailLength: email?.value?.length ?? 0,
+      passwordLength: password?.value?.length ?? 0,
+      submitDisabled: submit?.disabled ?? null,
+      appInert: document.querySelector("#app")?.hasAttribute("inert") ?? null,
+      documentClasses: [...document.documentElement.classList].sort(),
+      hasStoredSession: Boolean(storedSession?.access_token && storedSession?.user?.id),
+      storedSessionHasWorkspace: Boolean(
+        storedSession?.user?.user_metadata?.account_space_id &&
+        storedSession?.user?.user_metadata?.account_space_key
+      )
+    };
+  }, role).catch(error => ({ role, diagnosticError: error.message }));
+}
 async function step(name, run) {
   stage = name;
   console.log(JSON.stringify({ stage, status: "running" }));
@@ -303,6 +339,9 @@ try {
       })), participants: row.state.participants.map(p => ({ id: p.id, displayName: p.displayName, username: p.username, accountLinked: p.accountLinked })) }));
     } catch (diagnosticError) { report.canonicalDiagnostic = diagnosticError.message; }
   }
+  report.browserStateAtFailure = await Promise.all(
+    pages.map((page, index) => inspectFailurePage(page, index === 0 ? "a" : "b"))
+  );
   for (const [index, page] of pages.entries()) if (!page.isClosed()) await page.screenshot({ path: join(outputRoot, `${fixture.runId}-failure-${index}.png`), fullPage: true }).catch(() => {});
   process.exitCode = 1;
 } finally {
