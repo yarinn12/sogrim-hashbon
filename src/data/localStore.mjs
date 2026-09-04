@@ -122,6 +122,7 @@ let accountIdentityGeneration = 0;
 let sharedStateSaveGeneration = 0;
 let pendingSyncFlushPromise = null;
 let pendingSyncRetryTimer = 0;
+let pendingSyncRetryGeneration = 0;
 let pendingSyncRetryAttempt = 0;
 let pendingSyncRetryNotBefore = 0;
 let activeAccountStorageScope = "";
@@ -1171,12 +1172,15 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
     requestScope = currentScope;
     requestAccountGeneration = accountStorageGeneration;
     if (requestSaveGeneration === sharedStateSaveGeneration) {
-      localSaved = saveState(stateSnapshot);
       const rebasedPendingConfig = pendingSyncConfig(runtimeConfig);
       crashSafePendingStateSaved = Boolean(
         rebasedPendingConfig &&
           savePendingSharedState(rebasedPendingConfig, sharedState)
       );
+      // Preserve the same outbox-before-view invariant used at save entry.
+      // If destination storage is full, retain the original outbox without
+      // advancing a new local snapshot that cannot yet be delivered.
+      localSaved = crashSafePendingStateSaved && saveState(stateSnapshot);
     }
   }
 
@@ -2037,11 +2041,16 @@ function schedulePendingSharedStateRetry() {
   ];
   pendingSyncRetryAttempt += 1;
   pendingSyncRetryNotBefore = Date.now() + delay;
+  const retryGeneration = ++pendingSyncRetryGeneration;
   pendingSyncRetryTimer = globalThis.window.setTimeout(async () => {
-    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) return;
+    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration) ||
+        retryGeneration !== pendingSyncRetryGeneration) return;
     pendingSyncRetryTimer = 0;
     const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
-    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) return;
+    // Online recovery or a newer edit may replace this retry while it awaits
+    // the flush. Only the callback that still owns the schedule may change it.
+    if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration) ||
+        retryGeneration !== pendingSyncRetryGeneration) return;
     if (result?.ok && !result?.pending) {
       resetPendingSharedStateRetry();
     } else if (result?.pending || isRetryablePendingSyncFailure(result?.error)) {
@@ -2051,6 +2060,8 @@ function schedulePendingSharedStateRetry() {
 }
 
 function resetPendingSharedStateRetry() {
+  // clearTimeout cannot retract a callback already queued by the browser.
+  pendingSyncRetryGeneration += 1;
   if (
     pendingSyncRetryTimer &&
     typeof globalThis.window?.clearTimeout === "function"

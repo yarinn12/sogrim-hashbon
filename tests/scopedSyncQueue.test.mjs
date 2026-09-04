@@ -17,7 +17,7 @@ async function within(promise, ms = 500) {
 async function fixture(run, { paused = ["a"], status = 200 } = {}) {
   const names = ["window", "location", "localStorage", "fetch", "SogrimAccountSession"];
   const previous = new Map(names.map(name => [name, globalThis[name]]));
-  const entries = new Map(), timers = new Map(), calls = [], requests = [];
+  const entries = new Map(), timers = new Map(), calls = [], requests = [], listeners = new Map();
   const scheduled = [], cancelled = [];
   let timerId = 0;
   const storage = { getItem: key => entries.get(key) ?? null,
@@ -39,7 +39,7 @@ async function fixture(run, { paused = ["a"], status = 200 } = {}) {
     storage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(states[id]));
   };
   activate("a");
-  globalThis.window = { location, localStorage: storage, addEventListener() {}, dispatchEvent() {},
+  globalThis.window = { location, localStorage: storage, addEventListener(name, callback) { listeners.set(name, callback); }, dispatchEvent() {},
     setTimeout(callback, delay) { const id = ++timerId; timers.set(id, callback); scheduled.push({ id, delay }); return id; },
     clearTimeout(id) { cancelled.push(id); timers.delete(id); }
   };
@@ -64,7 +64,7 @@ async function fixture(run, { paused = ["a"], status = 200 } = {}) {
   };
   try {
     const store = await import(`../src/data/localStore.mjs?scoped-queue=${crypto.randomUUID()}`);
-    await run({ store, states, storage, activate, started, gates, calls, timers, scheduled, cancelled,
+    await run({ store, states, storage, activate, started, gates, calls, timers, scheduled, cancelled, listeners,
       pause(id) { paused.push(id); gates[id] = deferred(); started[id] = deferred(); },
       track(promise) { requests.push(promise); return promise; },
       queue(id) { storage.setItem(`settle-friends-pending-sync:queue-space-${id}`, JSON.stringify(states[id])); }
@@ -104,6 +104,19 @@ test("a new account starts with its own retry timer and initial backoff", async 
   assert.equal(h.scheduled.length, 2, "B has its own retry instead of relying on A's callback");
   assert.equal(h.scheduled[1].delay, oldTimer.delay, "A's backoff must not delay B's first retry");
   assert.equal(h.timers.size, 1);
+}, { paused: [], status: 401 }));
+
+test("an obsolete same-account retry callback cannot replace the new online-recovery timer", async () => fixture(async h => {
+  await h.store.saveSharedState(h.states.a, { awaitCloud: true });
+  const oldCallback = h.timers.get(h.scheduled[0].id);
+  h.listeners.get("online")();
+  await h.store.flushPendingSharedState();
+  assert.equal(h.scheduled.length, 2, "online recovery replaced the original timer");
+  const timersBefore = [...h.timers.keys()];
+  const writesBefore = h.calls.length;
+  await oldCallback();
+  assert.equal(h.calls.length, writesBefore, "an already-queued cancelled callback cannot duplicate recovery");
+  assert.deepEqual([...h.timers.keys()], timersBefore, "the replacement remains the only tracked retry");
 }, { paused: [], status: 401 }));
 
 test("an already-running old retry cannot alter the new account's retry after its await", async () => fixture(async h => {
