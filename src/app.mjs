@@ -15301,7 +15301,9 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       return;
     }
 
-    let nextNetwork = await loadFriendNetwork(runtimeConfig);
+    let nextNetwork = await loadFriendNetwork(runtimeConfig, globalThis.fetch, {
+      preferCachedProfiles: true
+    });
     const ownNetworkProfile = nextNetwork.profiles.find(
       (profile) => profile.user_id === nextNetwork.userId
     );

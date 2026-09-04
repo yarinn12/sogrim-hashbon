@@ -1,5 +1,5 @@
-const PWA_RELEASE = "461";
-const CACHE_NAME = "settle-friends-live-v461";
+const PWA_RELEASE = "462";
+const CACHE_NAME = "settle-friends-live-v462";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -48,6 +48,7 @@ const CACHE_FILES = [
   "/src/publicAccessibilityLayer.mjs",
   "/src/data/accessibilityPreferences.mjs",
   "/src/data/cloudStore.mjs",
+  "/src/data/versionedReadCache.mjs",
   "/src/data/cloudConflictRetry.mjs",
   "/src/data/accountAuth.mjs",
   "/src/data/adminAnalyticsStore.mjs",

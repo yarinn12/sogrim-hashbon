@@ -123,9 +123,9 @@ let pendingSyncRetryNotBefore = 0;
 let activeAccountStorageScope = "";
 const recoveredEventIndexPersistJobs = new Map();
 
-async function loadCloudState(config, fallbackState) {
+async function loadCloudState(config, fallbackState, options = {}) {
   return withFreshCloudAccount(config, (freshConfig) =>
-    loadCloudStateRequest(freshConfig, fallbackState)
+    loadCloudStateRequest(freshConfig, fallbackState, globalThis.fetch, options)
   );
 }
 
@@ -269,7 +269,7 @@ async function hydrateAccessibleSharedEventState(
   try {
     return {
       state: await withFreshCloudAccount(config, (freshConfig) =>
-        recoverAccessibleSharedEvents(freshConfig, initialState)
+        recoverAccessibleSharedEvents(freshConfig, initialState, globalThis.fetch, { preferCached: true })
       ),
       authoritative: true
     };
@@ -892,7 +892,8 @@ async function loadSharedStateOnce(requestScope) {
       let state = cleanLegacyStarterData(
         await loadCloudState(
           runtimeConfig,
-          toCloudState(runtimeConfig, localState)
+          toCloudState(runtimeConfig, localState),
+          { preferCached: true }
         ),
         loadProtectedParticipantId()
       );

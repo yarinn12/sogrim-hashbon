@@ -672,10 +672,11 @@ export async function refreshSharedEvents(runtimeConfig, state, fetchImpl = fetc
 export async function recoverAccessibleSharedEvents(
   runtimeConfig,
   state,
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  options = {}
 ) {
   if (runtimeConfig?.storage?.mode !== "supabase") return state;
-  const rows = await readAccessibleSharedCloudStates(runtimeConfig, fetchImpl);
+  const rows = await readAccessibleSharedCloudStates(runtimeConfig, fetchImpl, options);
   const rowsByEventId = new Map();
   for (const row of rows) {
     const eventId =

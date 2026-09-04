@@ -1,8 +1,11 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { createScopedReadCache } from "./versionedReadCache.mjs";
 
 const snapshotVersions = new Map();
 const snapshotObserverVersions = new Map();
 const ACCESSIBLE_SHARED_STATE_PAGE_SIZE = 500;
+const CHANGED_SHARED_STATE_BATCH_SIZE = 20;
+const snapshotReadCache = createScopedReadCache();
 export const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 
 export class CloudStateConflictError extends Error {
@@ -22,10 +25,10 @@ export class CloudStateAuthError extends Error {
   }
 }
 
-export async function loadCloudState(config, fallbackState, fetchImpl = fetch) {
+export async function loadCloudState(config, fallbackState, fetchImpl = fetch, options = {}) {
   if (config.storage?.mode !== "supabase") return fallbackState;
 
-  const state = await readCloudState(config, fetchImpl);
+  const state = await readCloudState(config, fetchImpl, options);
   if (state) return state;
 
   // Production no longer allows clients to create ownerless workspaces. A
@@ -61,9 +64,30 @@ export class CloudStateIdentityError extends Error {
 export async function readCloudState(
   config,
   fetchImpl = fetch,
-  { timeoutMs } = {}
+  { timeoutMs, preferCached = false } = {}
 ) {
   if (config.storage?.mode !== "supabase") return null;
+
+  const cache = preferCached ? snapshotReadCache(config, fetchImpl) : null;
+  const cacheKey = `personal:${config.storage.spaceId}`;
+  if (cache?.has(cacheKey)) {
+    const { response, payload: versions } = await fetchCloudJsonWithTimeout(
+      fetchImpl, snapshotVersionReadUrl(config),
+      { headers: cloudHeaders(config) }, timeoutMs
+    );
+    if (!response.ok) throw cloudResponseError(response, "Cloud state version unavailable");
+    const version = String(versions?.[0]?.updated_at ?? "").trim();
+    if (!version) {
+      cache.remove(cacheKey);
+      forgetSnapshotVersion(config);
+      return null;
+    }
+    const cached = cache.get(cacheKey, version);
+    if (cached) {
+      rememberSnapshotVersion(config, version);
+      return cached;
+    }
+  }
 
   const { response, payload: rows } = await fetchCloudJsonWithTimeout(
     fetchImpl,
@@ -77,9 +101,11 @@ export async function readCloudState(
   const state = rows[0]?.state;
   if (state) {
     rememberSnapshotVersion(config, rows[0]?.updated_at);
+    cache?.set(cacheKey, rows[0]?.updated_at, state);
     return state;
   }
 
+  cache?.remove(cacheKey);
   forgetSnapshotVersion(config);
   return null;
 }
@@ -206,7 +232,9 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
   rememberSnapshotVersion(config, rows?.[0]?.updated_at ?? nextVersion);
 }
 
-export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch) {
+export async function readAccessibleSharedCloudStates(
+  config, fetchImpl = fetch, { preferCached = false } = {}
+) {
   if (config.storage?.mode !== "supabase") return [];
   // An authenticated recovery read without its bearer token is not an
   // authoritative empty membership list. Returning [] here used to make the
@@ -216,7 +244,55 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
     throw new CloudStateAuthError();
   }
 
+  const cache = preferCached ? snapshotReadCache(config, fetchImpl) : null;
+  // Cold start keeps the original single full scan. Warm scans still fetch
+  // the entire authorized membership/version index, even when the personal
+  // workspace is unchanged, so new joins and revocations are never hidden.
+  const versionOnly = Boolean(cache?.hasPrefix("shared:"));
+  const index = await readAccessibleSharedCloudRows(config, fetchImpl, {
+    select: versionOnly ? "id,updated_at" : "id,state,updated_at"
+  });
+  cache?.retain("shared:", new Set(index.map((row) => `shared:${row.id}`)));
+  let rows = index;
+  if (versionOnly) {
+    const resolved = new Map();
+    const changedIds = [];
+    for (const row of index) {
+      const cached = cache.get(`shared:${row.id}`, row.updated_at);
+      if (cached) resolved.set(row.id, cached);
+      else changedIds.push(row.id);
+    }
+    for (let offset = 0; offset < changedIds.length; offset += CHANGED_SHARED_STATE_BATCH_SIZE) {
+      const changed = await readAccessibleSharedCloudRows(config, fetchImpl, {
+        ids: changedIds.slice(offset, offset + CHANGED_SHARED_STATE_BATCH_SIZE)
+      });
+      for (const row of changed) resolved.set(row.id, row);
+    }
+    // Missing or revoked rows are omitted, not resurrected from the cache.
+    // The existing recovery layer confirms apparent removals independently.
+    rows = index.map((row) => resolved.get(row.id)).filter(Boolean);
+  }
+
+  return rows.filter((row) => row?.id && row?.state).map((row) => {
+    if (cache && cache.version(`shared:${row.id}`) !== row.updated_at) {
+      cache.set(`shared:${row.id}`, row.updated_at, row);
+    }
+    rememberSnapshotVersion({
+      ...config,
+      storage: { ...config.storage, spaceId: row.id,
+        spaceKey: RECOVERED_MEMBER_SPACE_KEY, snapshotKind: "shared_event" }
+    }, row.updated_at);
+    return row;
+  });
+}
+
+async function readAccessibleSharedCloudRows(
+  config, fetchImpl, { select = "id,state,updated_at", ids = null } = {}
+) {
   const rowsById = new Map();
+  const idFilter = ids
+    ? `&id=in.(${ids.map((id) => encodeURIComponent(postgrestQuotedValue(id))).join(",")})`
+    : "";
   let lastSeenId = "";
   let expectedRowCount = null;
   while (true) {
@@ -226,9 +302,9 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
     const { response, payload: pageRows } = await fetchCloudJsonWithTimeout(
       fetchImpl,
       `${config.storage.url}/rest/v1/${encodeURIComponent(config.storage.table)}` +
-        `?snapshot_kind=eq.shared_event&select=id,state,updated_at` +
+        `?snapshot_kind=eq.shared_event&select=${select}` +
         `&order=id.asc&limit=${ACCESSIBLE_SHARED_STATE_PAGE_SIZE}` +
-        cursorFilter,
+        cursorFilter + idFilter,
       {
         headers: {
           ...cloudHeaders(config),
@@ -240,7 +316,8 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
       throw cloudResponseError(response, "Shared event recovery unavailable");
     }
 
-    const normalizedPage = Array.isArray(pageRows) ? pageRows : [];
+    if (!Array.isArray(pageRows)) throw new Error("Shared event recovery payload invalid");
+    const normalizedPage = pageRows;
     expectedRowCount ??= contentRangeTotal(response.headers?.get?.("content-range"));
     if (normalizedPage.length === 0) break;
     for (const row of normalizedPage) {
@@ -261,23 +338,11 @@ export async function readAccessibleSharedCloudStates(config, fetchImpl = fetch)
     lastSeenId = nextLastSeenId;
   }
 
-  return [...rowsById.values()]
-    .filter((row) => row?.id && row?.state)
-    .map((row) => {
-      rememberSnapshotVersion(
-        {
-          ...config,
-          storage: {
-            ...config.storage,
-            spaceId: row.id,
-            spaceKey: RECOVERED_MEMBER_SPACE_KEY,
-            snapshotKind: "shared_event"
-          }
-        },
-        row.updated_at
-      );
-      return row;
-    });
+  return [...rowsById.values()];
+}
+
+function postgrestQuotedValue(value) {
+  return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
 
 function contentRangeTotal(value) {

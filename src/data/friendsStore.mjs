@@ -3,6 +3,7 @@ import { CloudStateAuthError } from "./cloudStore.mjs";
 import { runtimePublicOrigin } from "../domain/publicOrigin.mjs";
 import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
+import { createScopedReadCache } from "./versionedReadCache.mjs";
 
 const FRIEND_CODE_PATTERN = /^[a-f0-9]{20}$/;
 const SHARED_SPACE_ID_PATTERN = /^[a-zA-Z0-9_-]{3,80}$/;
@@ -17,6 +18,8 @@ const REPORT_CATEGORIES = new Set([
 ]);
 const PROFILE_SELECT =
   "user_id,username,username_customized,display_name,avatar_preset,avatar_image,avatar_image_updated_at,updated_at";
+const PROFILE_VERSION_SELECT = PROFILE_SELECT.split(",").filter((field) => field !== "avatar_image").join(",");
+const profileReadCache = createScopedReadCache({ maxEntries: 128, maxBytes: 4_000_000 });
 const AVATAR_IMAGE_PROFILE_SELECT =
   "user_id,username,username_customized,display_name,avatar_preset,avatar_image,updated_at";
 const LEGACY_PROFILE_SELECT =
@@ -86,7 +89,9 @@ export async function syncFriendProfile(
   }
 }
 
-export async function loadFriendNetwork(config, fetchImpl = fetch) {
+export async function loadFriendNetwork(
+  config, fetchImpl = fetch, { preferCachedProfiles = false } = {}
+) {
   if (!friendNetworkAvailable(config)) {
     return emptyFriendNetwork("signed-out");
   }
@@ -136,7 +141,9 @@ export async function loadFriendNetwork(config, fetchImpl = fetch) {
     ])
   ].filter(Boolean);
   const profiles = visibleUserIds.length
-    ? await readFriendProfiles(config, visibleUserIds, fetchImpl)
+    ? await (preferCachedProfiles ? readFriendProfilesCached : readFriendProfiles)(
+        config, visibleUserIds, fetchImpl
+      )
     : [];
 
   return {
@@ -221,6 +228,54 @@ async function readFriendProfiles(config, userIds, fetchImpl, timeoutMs) {
       timeoutMs
     );
   }
+}
+
+async function readFriendProfilesCached(config, userIds, fetchImpl) {
+  const cache = profileReadCache(config, fetchImpl);
+  let profiles;
+  if (cache && userIds.some((id) => cache.has(`profile:${id}`))) {
+    let versions;
+    try {
+      versions = await readRows(config, "user_profiles", {
+        user_id: `in.(${userIds.join(",")})`, select: PROFILE_VERSION_SELECT
+      }, fetchImpl);
+    } catch (error) {
+      // Older schemas without an avatar clock keep their existing full-read
+      // compatibility path. Auth/network failures must never serve cache.
+      if (!missingAvatarImageUpdatedAtColumn(error)) throw error;
+      return readFriendProfiles(config, userIds, fetchImpl);
+    }
+    if (!Array.isArray(versions)) throw new Error("Profile version payload invalid");
+    const resolved = new Map();
+    const changedIds = [];
+    cache.retain("profile:", new Set(versions.map((row) => `profile:${row.user_id}`)));
+    for (const row of versions) {
+      const cached = cache.get(`profile:${row.user_id}`, profileReadVersion(row));
+      if (cached) resolved.set(row.user_id, cached);
+      else changedIds.push(row.user_id);
+    }
+    for (let offset = 0; offset < changedIds.length; offset += 20) {
+      const changed = await readFriendProfiles(config, changedIds.slice(offset, offset + 20), fetchImpl);
+      for (const row of changed) resolved.set(row.user_id, row);
+    }
+    profiles = versions.map((row) => resolved.get(row.user_id)).filter(Boolean);
+  } else {
+    profiles = await readFriendProfiles(config, userIds, fetchImpl);
+  }
+  for (const row of profiles) {
+    const version = profileReadVersion(row);
+    if (cache && cache.version(`profile:${row.user_id}`) !== version) {
+      cache.set(`profile:${row.user_id}`, version, row);
+    }
+  }
+  return profiles;
+}
+
+function profileReadVersion(row) {
+  if (!row?.updated_at || !Object.hasOwn(row, "avatar_image_updated_at")) return "";
+  // All lightweight fields participate, not only the client-written clock.
+  // Avatar removal, username changes and metadata-only repairs stay visible.
+  return JSON.stringify(PROFILE_VERSION_SELECT.split(",").map((field) => row[field]));
 }
 
 function missingAvatarImageUpdatedAtColumn(error) {
