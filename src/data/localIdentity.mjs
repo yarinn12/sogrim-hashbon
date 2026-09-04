@@ -30,7 +30,7 @@ export function hasSharedStateChanged(previousState, nextState) {
   );
 }
 
-function jsonValuesEqual(left, right) {
+export function jsonValuesEqual(left, right) {
   if (Object.is(left, right)) return true;
   if (typeof left !== typeof right || left === null || right === null) {
     return false;

@@ -167,17 +167,40 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
     }
     throw error;
   }
+  const canonicalCommittedState = syncedState;
   syncedState = mergeSharedStates(initialSave.state, syncedState);
 
   if (!prioritizeSharedEventWrite || initialSave.conflictCount) {
-    syncedState = await syncSharedEvents(
-      config,
-      syncedState,
-      globalThis.fetch,
-      initialSave.conflictCount && !prioritizeSharedEventWrite
-        ? null
-        : syncSelection
-    );
+    let reconciliationSelection = initialSave.conflictCount && !prioritizeSharedEventWrite
+      ? null
+      : syncSelection;
+    if (prioritizeSharedEventWrite) {
+      // Atomic note projection advances the personal workspace version too.
+      // A CAS retry is therefore not evidence of another shared mutation.
+      // Republish only selected events whose shared payload actually changed
+      // during workspace reconciliation, preserving the original write scope.
+      const changed = buildSharedEventSyncSelection(canonicalCommittedState, syncedState);
+      const selectedIds = new Set([
+        ...(syncSelection.eventIds ?? []),
+        ...(syncSelection.deletedEventIds ?? [])
+      ]);
+      reconciliationSelection = {
+        eventIds: changed.eventIds.filter((id) => selectedIds.has(id)),
+        deletedEventIds: changed.deletedEventIds.filter((id) => selectedIds.has(id))
+      };
+    }
+    if (
+      !prioritizeSharedEventWrite ||
+      reconciliationSelection.eventIds.length ||
+      reconciliationSelection.deletedEventIds.length
+    ) {
+      syncedState = await syncSharedEvents(
+        config,
+        syncedState,
+        globalThis.fetch,
+        reconciliationSelection
+      );
+    }
   }
   const syncedSharedState = toCloudState(config, syncedState);
   let finalSave = initialSave;

@@ -31,6 +31,7 @@ import {
   fetchWithTimeout
 } from "./fetchTimeout.mjs";
 import { loadStoredAccountSession } from "./accountAuth.mjs";
+import { jsonValuesEqual } from "./localIdentity.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
 export const EVENT_SPACE_KEY_FIELD = "sharedSpaceKey";
@@ -127,8 +128,10 @@ export function buildSharedEventSyncSelection(
     if (
       !previousEvent ||
       forcedEventIds.has(event.id) ||
-      sharedEventFingerprint(previousState, event.id) !==
-        sharedEventFingerprint(nextState, event.id) ||
+      !jsonValuesEqual(
+        buildSharedEventState(previousState, event.id),
+        buildSharedEventState(nextState, event.id)
+      ) ||
       [...forcedParticipantIds].some((participantId) =>
         referencedParticipantIds(event).has(participantId)
       )
@@ -147,8 +150,7 @@ export function buildSharedEventSyncSelection(
     .filter((deletion) => {
       if (!eventShareCredentials(deletion)) return false;
       return (
-        JSON.stringify(previousDeletions.get(deletion.id) ?? null) !==
-        JSON.stringify(deletion)
+        !jsonValuesEqual(previousDeletions.get(deletion.id) ?? null, deletion)
       );
     })
     .map((deletion) => deletion.id);
@@ -790,10 +792,6 @@ async function sharedEventMembershipWasRevoked(runtimeConfig, credentials, fetch
     if (error?.code === "CLOUD_STATE_AUTH_EXPIRED") throw error;
     return error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED";
   }
-}
-
-function sharedEventFingerprint(state, eventId) {
-  return JSON.stringify(buildSharedEventState(state, eventId));
 }
 
 function selectedIds(values) {
