@@ -16353,11 +16353,7 @@ async function saveEventNoteFromDialog(eventId) {
       // A partial save retained this exact local intent, but did not confirm
       // it in the shared event. Retry the same note, including unchanged fields,
       // instead of treating it as a new draft or an already-confirmed no-op.
-      activeDialog.noteId = noteId;
-      activeDialog.baseNote = cloneNavigationValue(requestedNote);
-      activeDialog.pendingNoteSave = true;
-      activeDialog.pendingNoteFields = requestedFields;
-      activeDialog.saving = false;
+      retainUnconfirmedEventNoteDraft(activeDialog, requestedNote, requestedFields);
       activeDialog.error = "עדיין לא התקבל אישור לשמירת הפתק המשותף. הטיוטה נשארה כאן ואפשר לנסות שוב.";
       // Assigning an ID to this same draft is not navigation to a new editor.
       renderReplacingBrowserHistory();
@@ -16390,23 +16386,34 @@ async function saveEventNoteFromDialog(eventId) {
         ? (persistedNote.pinned === true) !== (requestedNote.pinned === true)
         : persistedNote[field] !== requestedNote[field])
     ) {
-      if (eventDialog === activeDialog) {
-        activeDialog.saving = false;
+      if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
+        // This ID may already be published (and even edited/deleted by a
+        // peer). A conflicting receipt must not turn it back into a new note
+        // on retry. Keep the original fields as unconfirmed user intent too.
+        retainUnconfirmedEventNoteDraft(activeDialog, requestedNote, requestedFields);
         activeDialog.error = persistedNote
           ? "הפתק השתנה במכשיר אחר והשינוי שלך לא נשמר. הטיוטה נשארה כאן כדי שלא תאבד."
           : "הפתק נמחק במכשיר אחר והשינוי שלך לא נשמר. הטיוטה נשארה כאן כדי שלא תאבד.";
-        render();
+        renderReplacingBrowserHistory();
         reactivateDialogAfterRender(".event-note-modal");
       }
       return { ...result, ok: false, conflict: true };
     }
   }
 
-  if (eventDialog === activeDialog) {
+  if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
     eventDialog = null;
     closeDialogWithHistory();
   }
   return result;
+}
+
+function retainUnconfirmedEventNoteDraft(dialog, requestedNote, requestedFields) {
+  dialog.noteId = requestedNote.id;
+  dialog.baseNote = cloneNavigationValue(requestedNote);
+  dialog.pendingNoteSave = true;
+  dialog.pendingNoteFields = [...requestedFields];
+  dialog.saving = false;
 }
 
 function pendingEventNoteDeletionMatches(event, noteId) {

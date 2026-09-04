@@ -245,6 +245,83 @@ test("a remote deletion between partial note save and retry is not resurrected",
   assert.equal(h.context.state.events[0].notes.length, 0);
 });
 
+for (const mutation of ["edit", "delete"]) {
+  for (const partial of [false, true]) {
+    test(`a new note ${mutation === "edit" ? "edited" : "deleted"} remotely before its ${partial ? "partial" : "complete"} receipt cannot become a second note on retry`, async () => {
+      let assignedId;
+      const h = harness({ result: ({ writes, saved }) => {
+        if (writes !== 1) return null;
+        assignedId = saved.events[0].notes.find(note => note.body === "Local draft").id;
+        const persistedState = mutation === "edit"
+          ? updateEventNote(saved, "event-editor", assignedId, {
+              body: "Remote revision", participantId: "account-owner", updatedAt: "2099-01-01T00:00:00.000Z"
+            })
+          : removeEventNote(saved, "event-editor", assignedId, {
+              participantId: "account-owner", deletedAt: "2099-01-01T00:00:00.000Z"
+            });
+        return { ok: true, mode: partial ? "queued" : "cloud", persistedState,
+          ...(partial ? { pending: true, partial: true } : {}) };
+      } });
+      h.dialog.noteId = "";
+      h.dialog.baseNote = null;
+      assert.equal((await h.save()).conflict, true);
+      assert.equal(h.closed(), 0);
+      const retried = await h.save();
+      assert.equal(h.writes(), 1, "retry must not create a replacement identity for an already-published note");
+      assert.equal(retried.conflict, true);
+      assert.equal(h.dialog.noteId, assignedId);
+      assert.equal(h.dialog.bodyDraft, "Local draft");
+      assert.equal(h.historyReplacements(), 1, "binding the existing draft to its published ID is not a new history entry");
+      assert.equal(h.context.state.events[0].notes.some(note => note.body === "Local draft"), false);
+    });
+  }
+}
+
+test("an unpublished rejected new note can still be saved after the rejection is resolved", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? { ok: false } : null });
+  h.dialog.noteId = "";
+  h.dialog.baseNote = null;
+  assert.equal((await h.save()).ok, false);
+  assert.equal(h.dialog.noteId, "", "a genuinely unpublished draft must not be mistaken for a remotely deleted note");
+  assert.equal((await h.save()).ok, true);
+  assert.equal(h.context.state.events[0].notes.filter(note => note.body === "Local draft").length, 1);
+  assert.equal(h.closed(), 1);
+});
+
+test("explicitly accepting the competing revision resolves a new note conflict without duplication", async () => {
+  const h = harness({ result: ({ writes, saved }) => writes === 1 ? {
+    ok: true, mode: "cloud", persistedState: updateEventNote(saved, "event-editor", "new-note-1", {
+      body: "Remote revision", participantId: "account-owner", updatedAt: "2099-01-01T00:00:00.000Z"
+    })
+  } : null });
+  h.dialog.noteId = "";
+  h.dialog.baseNote = null;
+  assert.equal((await h.save()).conflict, true);
+  h.dialog.bodyDraft = "Remote revision";
+  assert.equal((await h.save()).ok, true);
+  assert.equal(h.writes(), 2);
+  assert.equal(h.closed(), 1);
+  assert.equal(h.context.state.events[0].notes.length, 2, "the original fixture note plus the single published new note");
+});
+
+for (const conflicting of [false, true]) {
+  test(`a late ${conflicting ? "conflicting" : "successful"} receipt cannot mutate a surviving editor in another account`, async () => {
+    const replacement = { currentParticipantId: "account-other", participants: [], events: [] };
+    const h = harness({
+      result: ({ saved }) => ({ ok: true, mode: "cloud", persistedState: conflicting
+        ? removeEventNote(saved, "event-editor", "note-editor", { deletedAt: "2099-01-01T00:00:00.000Z" }) : saved }),
+      duringSave(context) { context.state = replacement; }
+    });
+    await h.save();
+    assert.equal(h.context.state, replacement);
+    assert.equal(h.context.eventDialog, h.dialog);
+    assert.equal(h.dialog.pendingNoteSave, undefined);
+    assert.equal(h.dialog.error, "");
+    assert.equal(h.closed(), 0);
+    assert.equal(h.historyReplacements(), 0);
+  });
+}
+
 test("a remote change to an unconfirmed field is not accepted as the user's retry", async () => {
   const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
   await h.save();

@@ -1,14 +1,18 @@
 import { expect, test } from "@playwright/test";
+import { updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 test.use({ serviceWorkers: "block" });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
 for (const { status, restart = false } of [
   ...[403, 503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
-  ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true }))
+  ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
+  ...["receipt-edit", "receipt-delete"].map(status => ({ status }))
 ]) {
 const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
-test(restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
+const receiptConflict = String(status).startsWith("receipt-");
+test(receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
+  let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
   const userId = "egress-cache-user";
   const participantId = `account-${userId}`;
@@ -43,6 +47,10 @@ test(restart ? `note ${status} survives restart during outage and recovers autom
         updatedAt: initialVersion }]
     }]
   };
+  if (receiptConflict) {
+    initialState.participants.push({ id: "account-concurrent-peer", displayName: "משתתף נוסף", kind: "user", accountLinked: true });
+    initialState.events[0].participantIds.push("account-concurrent-peer");
+  }
   let personal = { id: spaceId, state: structuredClone(initialState), updated_at: initialVersion };
   const shared = { id: sharedId, state: structuredClone(initialState), updated_at: initialVersion };
   const reads = [];
@@ -91,6 +99,19 @@ test(restart ? `note ${status} survives restart during outage and recovers autom
         return reply(rows, { headers: { ...headers, "content-range": "0-0/1" } });
       }
       const body = request.postDataJSON();
+      if (receiptConflict && canonicalAttempts > 0 && !competingNoteId) {
+        // The new note is already canonical and visible to another member,
+        // while the creator still awaits personal persistence. Simulate that
+        // member's edit/deletion before a transient failure forces a reread.
+        competingNoteId = shared.state.events[0].notes.find(note => note.body === "טיוטה שלא תאבד").id;
+        const changedAt = new Date(Date.now() + 1_000).toISOString();
+        shared.state = status === "receipt-delete"
+          ? removeEventNote(shared.state, eventId, competingNoteId, { participantId: "account-concurrent-peer", deletedAt: changedAt })
+          : updateEventNote(shared.state, eventId, competingNoteId, { participantId: "account-concurrent-peer", body: "שינוי מהמכשיר השני", updatedAt: changedAt });
+        shared.updated_at = changedAt;
+        personal = { ...personal, state: structuredClone(shared.state), updated_at: changedAt };
+        return reply({ message: "Synthetic personal response lost after peer update" }, { status: 503 });
+      }
       if (writeStatus === "partial" && canonicalAttempts > 0) {
         return reply({ message: "Synthetic personal outage" }, { status: 503 });
       }
@@ -139,15 +160,34 @@ test(restart ? `note ${status} survives restart during outage and recovers autom
   await expect(eventButton).toBeVisible();
   await eventButton.click();
   await page.locator('[data-action="open-event-notes"]').click();
-  if (status === "partial-create") await page.locator('[data-action="new-event-note"]').click();
+  if (status === "partial-create" || receiptConflict) await page.locator('[data-action="new-event-note"]').click();
   else await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
   if (!deleteRetry) await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
-  writeStatus = partialRetry ? "partial" : status;
+  writeStatus = receiptConflict ? 200 : partialRetry ? "partial" : status;
   if (deleteRetry) {
     await page.locator('[data-action="request-delete-event-note"]').click();
     await page.locator('[data-action="confirm-important-action"]').click();
   } else await page.locator('[data-action="save-event-note"]').click();
-  if (restart) {
+  if (receiptConflict) {
+    await expect(page.locator(".event-note-modal")).toContainText("השינוי שלך לא נשמר");
+    expect(competingNoteId).toBeTruthy();
+    const attemptsBeforeRetry = canonicalAttempts;
+    await page.locator('[data-action="save-event-note"]').click();
+    await expect(page.locator('[data-action="save-event-note"]')).toBeEnabled();
+    await expect(page.locator(".event-note-modal")).toContainText(status === "receipt-delete" ? "נמחק" : "אותו שדה");
+    await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("טיוטה שלא תאבד");
+    expect(canonicalAttempts).toBe(attemptsBeforeRetry);
+    for (const snapshot of [shared, personal]) {
+      const event = snapshot.state.events.find(event => event.id === eventId);
+      expect(event.notes.filter(note => note.body === "טיוטה שלא תאבד")).toHaveLength(0);
+      if (status === "receipt-delete") {
+        expect(event.deletedNotes.filter(note => note.id === competingNoteId)).toHaveLength(1);
+      } else {
+        expect(event.notes.filter(note => note.id === competingNoteId)).toHaveLength(1);
+        expect(event.notes.find(note => note.id === competingNoteId).body).toBe("שינוי מהמכשיר השני");
+      }
+    }
+  } else if (restart) {
     if (partialRetry) await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
     else await expect(page.locator(".event-note-modal")).toHaveCount(0);
     const pendingBefore = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
