@@ -43,6 +43,8 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   };
   let writes = 0;
   let closed = 0;
+  let ids = 0;
+  let historyReplacements = 0;
   const context = vm.createContext({
     state: current ?? initial, eventDialog: dialog, structuredClone, saveFailureMessage,
     ...eventNotes,
@@ -50,8 +52,9 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     getEvent: (id) => context.state.events.find((event) => event.id === id),
     canCurrentParticipantEdit: () => true,
     cloneNavigationValue: structuredClone,
-    makeId: () => "new-note",
+    makeId: () => `new-note-${++ids}`,
     render: () => {}, reactivateDialogAfterRender: () => {},
+    renderReplacingBrowserHistory: () => { historyReplacements += 1; },
     closeDialogWithHistory: () => { closed += 1; },
     stateSaveCheckpoint: (request) => ({ request, revision: 1, participantId: context.state.currentParticipantId }),
     sharedStateSaveRevision: () => saveIsCurrent ? 1 : 2,
@@ -67,12 +70,13 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
       if (replaceStateDuringSave) context.state = structuredClone(context.state);
       else Object.assign(context.state, saved);
       duringSave?.(context);
-      return result ?? { ok: true, mode: "cloud", persistedState: saved };
+      return (typeof result === "function" ? result({ writes, saved, context }) : result)
+        ?? { ok: true, mode: "cloud", persistedState: saved };
     }
   });
   vm.runInContext(saveGuards + saveSource, context);
   vm.runInContext(deleteSource, context);
-  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), delete: () => context.deleteEventNote("event-editor", "note-editor"), writes: () => writes, closed: () => closed };
+  return { context, dialog, save: () => context.saveEventNoteFromDialog("event-editor"), delete: () => context.deleteEventNote("event-editor", "note-editor"), writes: () => writes, closed: () => closed, historyReplacements: () => historyReplacements };
 }
 
 test("a deletion discovered during persistence is not reported as a successful note edit", async () => {
@@ -171,6 +175,107 @@ test("a failed note in a partially successful batch keeps its draft without clai
   assert.equal(h.dialog.saving, false);
   assert.equal(h.dialog.bodyDraft, "Local draft");
   assert.match(h.dialog.error, /אישור/);
+});
+
+const partialNoteResult = {
+  ok: true, mode: "queued", pending: true, partial: true, failedEventIds: ["event-editor"]
+};
+
+test("retrying an unchanged unconfirmed note actually persists again before closing", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
+  assert.equal((await h.save()).ok, false);
+  assert.equal(h.closed(), 0);
+  const result = await h.save();
+  assert.equal(h.writes(), 2, "a pending local edit is not an already-confirmed unchanged edit");
+  assert.equal(result.mode, "cloud");
+  assert.equal(h.closed(), 1);
+});
+
+test("retrying a new unconfirmed note reuses its identity instead of creating a duplicate", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
+  h.dialog.noteId = "";
+  h.dialog.baseNote = null;
+  await h.save();
+  const firstId = h.context.state.events[0].notes.find(note => note.body === "Local draft").id;
+  assert.equal(h.closed(), 0);
+  assert.equal(h.historyReplacements(), 1, "the same draft must not add a new browser-history entry when it receives an ID");
+  await h.save();
+  assert.equal(h.writes(), 2);
+  const notes = h.context.state.events[0].notes.filter(note => note.body === "Local draft");
+  assert.equal(notes.length, 1, "one draft must remain one note across retries");
+  assert.equal(notes[0].id, firstId);
+});
+
+test("editing one's own unconfirmed draft before retry is not a remote conflict", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
+  await h.save();
+  h.dialog.bodyDraft = "Revised local draft";
+  const result = await h.save();
+  assert.equal(h.writes(), 2);
+  assert.equal(result.ok, true);
+  assert.equal(h.context.state.events[0].notes[0].body, "Revised local draft");
+});
+
+test("an unchanged retry still checks whether the originally requested field reached the cloud", async () => {
+  const h = harness({ result: ({ writes, saved }) => writes === 1 ? partialNoteResult : {
+    ok: true, mode: "cloud", persistedState: updateEventNote(saved, "event-editor", "note-editor", {
+      body: "Remote revision won", updatedAt: "2099-01-01T00:00:00.000Z"
+    })
+  } });
+  await h.save();
+  const result = await h.save();
+  assert.equal(h.writes(), 2);
+  assert.equal(result.conflict, true);
+  assert.equal(h.closed(), 0);
+  assert.equal(h.dialog.bodyDraft, "Local draft");
+});
+
+test("a remote deletion between partial note save and retry is not resurrected", async () => {
+  const h = harness({ result: partialNoteResult });
+  await h.save();
+  h.context.state = removeEventNote(h.context.state, "event-editor", "note-editor");
+  const result = await h.save();
+  assert.equal(result.conflict, true);
+  assert.equal(h.writes(), 1);
+  assert.equal(h.closed(), 0);
+  assert.equal(h.context.state.events[0].notes.length, 0);
+});
+
+test("a remote change to an unconfirmed field is not accepted as the user's retry", async () => {
+  const h = harness({ result: ({ writes }) => writes === 1 ? partialNoteResult : null });
+  await h.save();
+  h.context.state = updateEventNote(h.context.state, "event-editor", "note-editor", {
+    body: "Another device changed the pending field", updatedAt: "2099-01-01T00:00:00.000Z"
+  });
+  const result = await h.save();
+  assert.equal(result.conflict, true);
+  assert.equal(h.writes(), 1, "do not confirm a remote value that differs from the pending draft");
+  assert.equal(h.closed(), 0);
+  assert.equal(h.dialog.bodyDraft, "Local draft");
+});
+
+test("repeated partial retries keep one new note and allow a revised draft", async () => {
+  const h = harness({ result: ({ writes }) => writes <= 2 ? partialNoteResult : null });
+  h.dialog.noteId = "";
+  h.dialog.baseNote = null;
+  await h.save();
+  const id = h.context.state.events[0].notes.find(note => note.body === "Local draft").id;
+  await h.save();
+  assert.equal(h.closed(), 0);
+  h.dialog.bodyDraft = "Third attempt";
+  assert.equal((await h.save()).mode, "cloud");
+  assert.equal(h.writes(), 3);
+  assert.equal(h.context.state.events[0].notes.length, 2);
+  assert.equal(h.context.state.events[0].notes.find(note => note.id === id).body, "Third attempt");
+});
+
+test("a late partial save cannot mark a surviving editor as pending in another account", async () => {
+  const h = harness({ result: partialNoteResult,
+    duringSave(context) { context.state = { currentParticipantId: "account-other", participants: [], events: [] }; }
+  });
+  await h.save();
+  assert.equal(h.dialog.pendingNoteSave, undefined);
+  assert.equal(h.dialog.error, "");
 });
 
 test("a sibling failure does not turn a successful note into a failed note", async () => {

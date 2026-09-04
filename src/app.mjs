@@ -16268,7 +16268,8 @@ async function saveEventNoteFromDialog(eventId) {
     ? prepareEventNoteEdit(
         eventDialog.baseNote,
         event.notes?.find((note) => note.id === noteId),
-        { title, body, pinned: eventDialog.pinned === true }
+        { title, body, pinned: eventDialog.pinned === true },
+        { unconfirmedFields: eventDialog.pendingNoteFields ?? [] }
       )
     : null;
   if (edit?.conflict) {
@@ -16290,7 +16291,7 @@ async function saveEventNoteFromDialog(eventId) {
         participantId: state.currentParticipantId
       });
 
-  if (nextState === state) {
+  if (nextState === state && !eventDialog.pendingNoteSave) {
     if (eventDialog.noteId) {
       eventDialog = null;
       closeDialogWithHistory();
@@ -16306,9 +16307,13 @@ async function saveEventNoteFromDialog(eventId) {
   const requestedNote = cloneNavigationValue(
     nextState.events.find((item) => item.id === eventId)?.notes?.find((note) => note.id === noteId)
   );
-  const requestedFields = edit ? Object.keys(edit.patch) : ["title", "body", "pinned"];
+  const requestedFields = [...new Set([
+    ...(activeDialog.pendingNoteFields ?? []),
+    ...(edit ? Object.keys(edit.patch) : ["title", "body", "pinned"])
+  ])];
   state = nextState;
   activeDialog.saving = true;
+  activeDialog.error = "";
   render();
   reactivateDialogAfterRender(".event-note-modal");
   const saveCheckpoint = stateSaveCheckpoint(
@@ -16343,10 +16348,18 @@ async function saveEventNoteFromDialog(eventId) {
   if (result?.partial && result.failedEventIds?.includes(eventId)) {
     // A healthy sibling is not a receipt for this note. Preserve the draft
     // without rolling back successfully committed work in other events.
-    if (eventDialog === activeDialog) {
+    if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
+      // A partial save retained this exact local intent, but did not confirm
+      // it in the shared event. Retry the same note, including unchanged fields,
+      // instead of treating it as a new draft or an already-confirmed no-op.
+      activeDialog.noteId = noteId;
+      activeDialog.baseNote = cloneNavigationValue(requestedNote);
+      activeDialog.pendingNoteSave = true;
+      activeDialog.pendingNoteFields = requestedFields;
       activeDialog.saving = false;
       activeDialog.error = "עדיין לא התקבל אישור לשמירת הפתק המשותף. הטיוטה נשארה כאן ואפשר לנסות שוב.";
-      render();
+      // Assigning an ID to this same draft is not navigation to a new editor.
+      renderReplacingBrowserHistory();
       reactivateDialogAfterRender(".event-note-modal");
     }
     return { ...result, ok: false };

@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 test.use({ serviceWorkers: "block" });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const status of [403, 503]) {
-test(`note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
+for (const status of [403, 503, "partial-create", "partial-edit"]) {
+const partialRetry = String(status).startsWith("partial-");
+test(partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   const origin = "https://egress-cache-test.supabase.co";
   const userId = "egress-cache-user";
@@ -65,7 +66,11 @@ test(`note save feedback handles HTTP ${status} without false offline alerts`, a
     if (url.pathname.endsWith("/rpc/join_shared_event")) return reply(true);
     if (url.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
       if (request.postDataJSON().p_state.events[0]?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
-      if (writeStatus !== 200) return reply({ message: "Synthetic rejection" }, { status: writeStatus });
+      // One canonical commit followed by a failed personal write and rejected
+      // immediate canonical retry creates genuine partial progress in the store.
+      if (writeStatus === "partial") {
+        if (canonicalAttempts > 1) return reply({ message: "Synthetic later rejection" }, { status: 403 });
+      } else if (writeStatus !== 200) return reply({ message: "Synthetic rejection" }, { status: writeStatus });
       shared.state = request.postDataJSON().p_state;
       shared.updated_at = new Date().toISOString();
       return reply({ status: "updated", updatedAt: shared.updated_at });
@@ -80,6 +85,9 @@ test(`note save feedback handles HTTP ${status} without false offline alerts`, a
         return reply(rows, { headers: { ...headers, "content-range": "0-0/1" } });
       }
       const body = request.postDataJSON();
+      if (writeStatus === "partial" && canonicalAttempts > 0) {
+        return reply({ message: "Synthetic personal outage" }, { status: 503 });
+      }
       if (body?.state && url.searchParams.get("id") !== `eq.${sharedId}`) {
         personal = { ...personal, state: body.state, updated_at: body.updated_at || new Date().toISOString() };
       }
@@ -121,11 +129,29 @@ test(`note save feedback handles HTTP ${status} without false offline alerts`, a
   await expect(eventButton).toBeVisible();
   await eventButton.click();
   await page.locator('[data-action="open-event-notes"]').click();
-  await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
+  if (status === "partial-create") await page.locator('[data-action="new-event-note"]').click();
+  else await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
   await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
-  writeStatus = status;
+  writeStatus = partialRetry ? "partial" : status;
   await page.locator('[data-action="save-event-note"]').click();
-  if (status === 403) {
+  if (partialRetry) {
+    await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
+    await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("טיוטה שלא תאבד");
+    expect(canonicalAttempts).toBeGreaterThanOrEqual(2);
+    const attemptedId = shared.state.events[0].notes.find(note => note.body === "טיוטה שלא תאבד").id;
+    const attemptsBeforeRetry = canonicalAttempts;
+    writeStatus = 200;
+    await page.locator('[data-action="save-event-note"]').click();
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    expect(canonicalAttempts).toBeGreaterThan(attemptsBeforeRetry);
+    const savedNotes = shared.state.events[0].notes.filter(note => note.body === "טיוטה שלא תאבד");
+    expect(savedNotes).toHaveLength(1);
+    expect(savedNotes[0].id).toBe(attemptedId);
+    expect(personal.state.events[0].notes.filter(note => note.body === "טיוטה שלא תאבד")).toHaveLength(1);
+    await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBeNull();
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
+  } else if (status === 403) {
     await expect(page.locator(".event-note-modal")).toBeVisible();
     await expect(page.locator(".event-note-modal")).toContainText("אין לחשבון הרשאה");
     await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("טיוטה שלא תאבד");

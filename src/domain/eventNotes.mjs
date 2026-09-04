@@ -11,7 +11,7 @@ const FIELD_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})
 // Compare intent with the editor's opening snapshot, not the latest state.
 // Whole-note drafts are not whole-note replacements: untouched fields belong
 // to the current revision, and competing edits of one field need user review.
-export function prepareEventNoteEdit(baseNote, currentNote, draft) {
+export function prepareEventNoteEdit(baseNote, currentNote, draft, { unconfirmedFields = [] } = {}) {
   if (!baseNote || !currentNote || baseNote.id !== currentNote.id) {
     return { conflict: true, patch: {} };
   }
@@ -23,7 +23,11 @@ export function prepareEventNoteEdit(baseNote, currentNote, draft) {
     const base = normalize(baseNote, field);
     const current = normalize(currentNote, field);
     const desired = normalize(draft, field);
-    if (desired === base || desired === current) continue;
+    if (desired === current) continue;
+    // An unchanged draft field normally belongs to the current revision. If
+    // its earlier write is still unconfirmed, it remains the user's intent:
+    // a competing remote value must not silently become a successful retry.
+    if (desired === base && !unconfirmedFields.includes(field)) continue;
     if (current !== base) return { conflict: true, patch: {} };
     patch[field] = desired;
   }
