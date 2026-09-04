@@ -82,9 +82,9 @@ test("an unsent change is queued locally before the cloud write is attempted", (
     localStore.indexOf("export async function flushPendingSharedState")
   );
 
+  const outboxWrite = save.indexOf("savePendingSharedState(runtimeConfig, sharedState, syncSelection)");
   assert.ok(
-    save.indexOf("savePendingSharedState(runtimeConfig, sharedState)") <
-      save.indexOf("const saved = await withFreshCloudAccount("),
+    outboxWrite >= 0 && outboxWrite < save.indexOf("const saved = await withFreshCloudAccount("),
     "the pending snapshot is stored before the network call"
   );
   assert.match(save, /publishSyncStatus\("saving"\)/);

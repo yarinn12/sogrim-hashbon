@@ -125,6 +125,7 @@ let pendingSyncRetryTimer = 0;
 let pendingSyncRetryGeneration = 0;
 let pendingSyncRetryAttempt = 0;
 let pendingSyncRetryNotBefore = 0;
+let pendingSharedSyncCoverage = null;
 let activeAccountStorageScope = "";
 let activeStorageAccountUserId = "";
 const recoveredEventIndexPersistJobs = new Map();
@@ -1102,10 +1103,14 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
       error: new Error("State does not belong to the active account")
     };
   }
-  const syncSelection = buildSharedEventSyncSelection(previousState, cleanState, {
-    forceParticipantIds: forceSharedParticipantIds,
-    forceEventIds: forceSharedEventIds
-  });
+  const priorPendingConfig = pendingSyncConfig(LOCAL_RUNTIME_CONFIG);
+  const syncSelection = mergeSharedSyncSelections(
+    buildSharedEventSyncSelection(previousState, cleanState, {
+      forceParticipantIds: forceSharedParticipantIds,
+      forceEventIds: forceSharedEventIds
+    }),
+    priorPendingConfig ? pendingSharedStateSelection(priorPendingConfig) : null
+  );
   const hasSharedEventMutation = Boolean(
     syncSelection.eventIds.length || syncSelection.deletedEventIds.length
   );
@@ -1115,13 +1120,14 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
   // between those two writes can make a change look saved and then disappear
   // when an older cloud snapshot is loaded after restart.
   const crashSafePendingConfig = requestAccountUserId
-    ? pendingSyncConfig(LOCAL_RUNTIME_CONFIG)
+    ? priorPendingConfig
     : null;
   let crashSafePendingStateSaved = Boolean(
     crashSafePendingConfig &&
     savePendingSharedState(
       crashSafePendingConfig,
-      toSharedState(cleanState, { preserveCurrentParticipantId: true })
+      toSharedState(cleanState, { preserveCurrentParticipantId: true }),
+      syncSelection
     )
   );
   if (crashSafePendingConfig && !crashSafePendingStateSaved) {
@@ -1175,7 +1181,7 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
       const rebasedPendingConfig = pendingSyncConfig(runtimeConfig);
       crashSafePendingStateSaved = Boolean(
         rebasedPendingConfig &&
-          savePendingSharedState(rebasedPendingConfig, sharedState)
+          savePendingSharedState(rebasedPendingConfig, sharedState, syncSelection)
       );
       // Preserve the same outbox-before-view invariant used at save entry.
       // If destination storage is full, retain the original outbox without
@@ -1189,7 +1195,7 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
     // still deliver in queue order, but must never replace the newest durable
     // intent, even briefly: the process can stop after any storage write.
     let pendingStateSaved = (requestSaveGeneration === sharedStateSaveGeneration
-      ? savePendingSharedState(runtimeConfig, sharedState)
+      ? savePendingSharedState(runtimeConfig, sharedState, syncSelection)
       : Boolean(pendingSharedStateRaw(runtimeConfig))) || crashSafePendingStateSaved;
     publishSyncStatus("saving");
 
@@ -1959,9 +1965,39 @@ function loadPendingSharedState(config) {
   }
 }
 
-function savePendingSharedState(config, sharedState) {
+function mergeSharedSyncSelections(...selections) {
+  return Object.fromEntries(["eventIds", "deletedEventIds"].map(key => [key,
+    [...new Set(selections.flatMap(selection => selection?.[key] ?? []))]
+  ]));
+}
+
+function pendingSharedStateSelection(config) {
+  const payload = pendingSharedStateRaw(config);
+  if (!payload) return null;
+  const key = pendingSyncStorageKey(config);
+  if (pendingSharedSyncCoverage?.key === key && pendingSharedSyncCoverage.payload === payload) {
+    return pendingSharedSyncCoverage.selection;
+  }
+  // A restart/another tab can leave a durable outbox whose original diff is
+  // unknown. It requires the same full reconciliation as an explicit flush.
+  // Never infer that a locally visible note was already delivered remotely.
+  const pending = loadPendingSharedState(config);
+  return pending ? buildSharedEventSyncSelection(null, pending) : null;
+}
+
+function savePendingSharedState(config, sharedState, syncSelection = null) {
   try {
-    window.localStorage.setItem(pendingSyncStorageKey(config), JSON.stringify(sharedState));
+    const inherited = pendingSharedStateSelection(config);
+    const selection = mergeSharedSyncSelections(
+      inherited,
+      syncSelection ?? (inherited ? null : buildSharedEventSyncSelection(null, sharedState))
+    );
+    const key = pendingSyncStorageKey(config);
+    const payload = JSON.stringify(sharedState);
+    window.localStorage.setItem(key, payload);
+    // Preserve the union while a later snapshot supersedes an earlier one.
+    // Its eventual success may acknowledge only a write that covers them all.
+    pendingSharedSyncCoverage = { key, payload, selection };
     return true;
   } catch {
     return false;
@@ -1970,7 +2006,9 @@ function savePendingSharedState(config, sharedState) {
 
 function clearPendingSharedState(config) {
   try {
-    window.localStorage.removeItem(pendingSyncStorageKey(config));
+    const key = pendingSyncStorageKey(config);
+    window.localStorage.removeItem(key);
+    if (pendingSharedSyncCoverage?.key === key) pendingSharedSyncCoverage = null;
   } catch {}
 }
 
@@ -2274,6 +2312,7 @@ function resetAccountSyncWork() {
   // captured scope guards and cannot delay or acknowledge the new account.
   cloudWriteQueue = Promise.resolve();
   pendingSyncFlushPromise = null;
+  pendingSharedSyncCoverage = null;
   resetPendingSharedStateRetry();
 }
 

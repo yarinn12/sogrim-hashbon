@@ -61,7 +61,7 @@ async function fixture(run, { allFail = false, status = 403, workspaceStatus = 2
     if (address.pathname.endsWith("/rpc/join_shared_event")) return response({ ok: true });
     if (address.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
       const body = JSON.parse(options.body);
-      beforeCanonicalResponse?.({ storage, body, workspaceId });
+      await beforeCanonicalResponse?.({ storage, body, workspaceId });
       const attempt = (canonicalAttempts.get(body.p_snapshot_id) ?? 0) + 1;
       canonicalAttempts.set(body.p_snapshot_id, attempt);
       const writeStatus = canonicalStatus
@@ -229,6 +229,85 @@ test("the outbox clears only after every previously failing event is delivered",
   const healthyIds = canonical.get("space-partial-healthy").events[0].notes.map(({ id }) => id);
   assert.equal(new Set(healthyIds).size, healthyIds.length);
 }));
+
+for (const recovered of [false, true]) {
+  test(`saving another event cannot acknowledge an earlier queued note when its server ${recovered ? "recovers" : "still fails"}`, async () => fixture(async ({ state, storage, workspaceId, canonical, recover }) => {
+    const store = await import(`../src/data/localStore.mjs?pending-selection-${recovered}=${crypto.randomUUID()}`);
+    const first = addEventNote(state, "failing", { id: "queued-first-note", body: "Must reach the shared event" });
+    assert.equal((await store.saveSharedState(first, { awaitCloud: true })).pending, true);
+    if (recovered) recover();
+    const second = addEventNote(store.loadState(), "healthy", { id: "second-event-note", body: "A separate successful save" });
+    const result = await store.saveSharedState(second, { awaitCloud: true });
+    assert.ok(canonical.get("space-partial-healthy").events[0].notes.some(note => note.id === "second-event-note"));
+    if (recovered) {
+      assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "queued-first-note"), "the first note must be canonical before the new whole-state outbox is acknowledged");
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+    } else {
+      const pending = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+      assert.ok(pending?.events.find(event => event.id === "failing").notes.some(note => note.id === "queued-first-note"), "a different event's success cannot clear undelivered intent");
+      assert.equal(result.pending, true);
+    }
+  }, { status: 503 }));
+}
+
+test("overlapping event saves carry undelivered targets into the later queued write", async () => {
+  let release, signalStarted;
+  const gate = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { signalStarted = resolve; });
+  let paused = false;
+  await fixture(async ({ state, storage, workspaceId, canonical }) => {
+    const store = await import(`../src/data/localStore.mjs?overlapping-targets=${crypto.randomUUID()}`);
+    const first = store.saveSharedState(addEventNote(state, "failing", { id: "overlap-first", body: "First intent" }), { awaitCloud: true });
+    let second;
+    try {
+      await started;
+      second = store.saveSharedState(addEventNote(store.loadState(), "healthy", { id: "overlap-second", body: "Second intent" }), { awaitCloud: true });
+      release();
+      await Promise.all([first, second]);
+      assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "overlap-first"));
+      assert.ok(canonical.get("space-partial-healthy").events[0].notes.some(note => note.id === "overlap-second"));
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+    } finally { release(); await Promise.allSettled([first, second]); }
+  }, {
+    async beforeCanonicalResponse({ body }) {
+      if (!paused && body.p_snapshot_id === "space-partial-failing") { paused = true; signalStarted(); await gate; }
+    },
+    canonicalStatus(id, attempt) { return id === "space-partial-failing" && attempt <= 2 ? 503 : 200; }
+  });
+});
+
+test("a new save after restart reconciles the older outbox even without its in-memory selection", async () => fixture(async ({ state, storage, workspaceId, canonical, recover }) => {
+  const queued = addEventNote(state, "failing", { id: "restarted-pending-note", body: "Durable intent" });
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(queued));
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(queued));
+  recover();
+  const store = await import(`../src/data/localStore.mjs?restored-targets=${crypto.randomUUID()}`);
+  await store.saveSharedState(addEventNote(store.loadState(), "healthy", { id: "post-restart-note", body: "New intent" }), { awaitCloud: true });
+  assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "restarted-pending-note"));
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+}));
+
+test("tracked pending targets do not make a new save republish unrelated events", async () => fixture(async ({ state, storage, workspaceId, canonical, canonicalWrites, recover }) => {
+  state.events.push({ ...structuredClone(state.events[0]), id: "untouched", sharedSpaceId: "space-partial-untouched" });
+  canonical.set("space-partial-untouched", buildSharedEventState(state, "untouched"));
+  storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(state));
+  const store = await import(`../src/data/localStore.mjs?bounded-targets=${crypto.randomUUID()}`);
+  await store.saveSharedState(addEventNote(state, "failing", { id: "bounded-first", body: "Pending" }), { awaitCloud: true });
+  recover();
+  await store.saveSharedState(addEventNote(store.loadState(), "healthy", { id: "bounded-second", body: "New" }), { awaitCloud: true });
+  assert.ok(canonicalWrites.includes("space-partial-failing"));
+  assert.ok(canonicalWrites.includes("space-partial-healthy"));
+  assert.equal(canonicalWrites.includes("space-partial-untouched"), false);
+}, { status: 503 }));
+
+test("a personal-only save cannot clear a still-undelivered shared note", async () => fixture(async ({ state, storage, workspaceId, canonical, recover }) => {
+  const store = await import(`../src/data/localStore.mjs?personal-pending-targets=${crypto.randomUUID()}`);
+  await store.saveSharedState(addEventNote(state, "failing", { id: "before-private-save", body: "Pending shared note" }), { awaitCloud: true });
+  recover();
+  await store.saveSharedState({ ...store.loadState(), groups: [{ id: "private-group", name: "Private group", participantIds: [state.currentParticipantId] }] }, { awaitCloud: true });
+  assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "before-private-save"));
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+}, { status: 503 }));
 
 test("healthy canonical progress survives simultaneous shared and personal failures", async () => fixture(async ({ pending, storage, workspaceId }) => {
   storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));

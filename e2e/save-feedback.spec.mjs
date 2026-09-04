@@ -1,16 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
+import { isWebKitReloadDiagnostic } from "./helpers/reloadDiagnostics.mjs";
 test.use({ serviceWorkers: "block" });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
 for (const { status, restart = false } of [
   ...[403, 503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
-  ...["receipt-edit", "receipt-delete"].map(status => ({ status }))
+  ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status }))
 ]) {
 const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
 const receiptConflict = String(status).startsWith("receipt-");
-test(receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page }, testInfo) => {
+const pendingFollowup = String(status).startsWith("pending-next-");
+test(pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
@@ -20,6 +22,8 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
   const sharedId = "egress-cache-shared";
   const spaceKey = "abcdefghijklmnopqrstuvwxyz_123456";
   const eventId = "egress-cache-event";
+  const secondEventId = `${eventId}-second`;
+  const secondSharedId = `${sharedId}-second`;
   const initialVersion = "2026-09-04T08:00:00.000Z";
   const user = {
     id: userId, email: "egress-cache@example.com",
@@ -51,11 +55,42 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
     initialState.participants.push({ id: "account-concurrent-peer", displayName: "משתתף נוסף", kind: "user", accountLinked: true });
     initialState.events[0].participantIds.push("account-concurrent-peer");
   }
+  if (pendingFollowup) {
+    initialState.events.push({ ...structuredClone(initialState.events[0]),
+      id: secondEventId, name: "אירוע שני", sharedSpaceId: secondSharedId, notes: [] });
+  }
   let personal = { id: spaceId, state: structuredClone(initialState), updated_at: initialVersion };
   const shared = { id: sharedId, state: structuredClone(initialState), updated_at: initialVersion };
+  shared.state.events = [shared.state.events[0]];
+  const secondShared = pendingFollowup ? {
+    id: secondSharedId, state: { ...structuredClone(initialState), events: [structuredClone(initialState.events[1])] },
+    updated_at: initialVersion
+  } : null;
   const reads = [];
   const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+  const reloadDiagnostics = [];
+  let reloading = false;
+  page.on("pageerror", (error) => {
+    if (isWebKitReloadDiagnostic(error, { browserName, reloading, origin })) reloadDiagnostics.push(error.stack);
+    else errors.push(error.message);
+  });
+  // Preserve independent checks for real window errors and unhandled promise
+  // rejections, including throughout the document-replacement interval.
+  await page.exposeBinding("qaReportApplicationError", (_, message) => errors.push(message));
+  await page.addInitScript(() => {
+    addEventListener("error", event => {
+      if (event.message) window.qaReportApplicationError(event.message).catch(() => {});
+    });
+    addEventListener("unhandledrejection", event => {
+      window.qaReportApplicationError(String(event.reason?.stack ?? event.reason)).catch(() => {});
+    });
+  });
+  const reloadPage = async () => {
+    reloading = true;
+    try { await page.reload({ waitUntil: "commit" }); }
+    finally { reloading = false; }
+    await page.waitForLoadState("load");
+  };
   const headers = {
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
@@ -77,26 +112,30 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
     }
     if (url.pathname.endsWith("/rpc/join_shared_event")) return reply(true);
     if (url.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
-      const writtenEvent = request.postDataJSON().p_state.events[0];
+      const payload = request.postDataJSON();
+      const writtenEvent = payload.p_state.events[0];
+      const target = pendingFollowup && payload.p_snapshot_id === secondSharedId ? secondShared : shared;
       if (deleteRetry ? writtenEvent?.deletedNotes?.some(note => note.id === "cache-sync-note")
         : writtenEvent?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
       // One canonical commit followed by a failed personal write and rejected
       // immediate canonical retry creates genuine partial progress in the store.
       if (writeStatus === "partial") {
         if (canonicalAttempts > 1) return reply({ message: "Synthetic later rejection" }, { status: 403 });
-      } else if (writeStatus !== 200) return reply({ message: "Synthetic rejection" }, { status: writeStatus });
-      shared.state = request.postDataJSON().p_state;
-      shared.updated_at = new Date().toISOString();
-      return reply({ status: "updated", updatedAt: shared.updated_at });
+      } else if (writeStatus !== 200 && target !== secondShared) return reply({ message: "Synthetic rejection" }, { status: writeStatus });
+      target.state = payload.p_state;
+      target.updated_at = new Date().toISOString();
+      return reply({ status: "updated", updatedAt: target.updated_at });
     }
     if (url.pathname.endsWith("/app_snapshots")) {
       if (request.method() === "GET") {
         const fields = (url.searchParams.get("select") || "id,state,updated_at").split(",");
         const isIndex = url.searchParams.has("snapshot_kind");
-        const row = isIndex || url.searchParams.get("id") === `eq.${sharedId}` ? shared : personal;
-        const rows = [Object.fromEntries(fields.map((field) => [field, row[field]]))];
+        const row = url.searchParams.get("id") === `eq.${sharedId}` ? shared
+          : secondShared && url.searchParams.get("id") === `eq.${secondSharedId}` ? secondShared : personal;
+        const selectedRows = isIndex ? [shared, ...(secondShared ? [secondShared] : [])] : [row];
+        const rows = selectedRows.map(row => Object.fromEntries(fields.map((field) => [field, row[field]])));
         reads.push({ kind: isIndex ? "index" : row.id, fields, version: row.updated_at });
-        return reply(rows, { headers: { ...headers, "content-range": "0-0/1" } });
+        return reply(rows, { headers: { ...headers, "content-range": `0-${rows.length - 1}/${rows.length}` } });
       }
       const body = request.postDataJSON();
       if (receiptConflict && canonicalAttempts > 0 && !competingNoteId) {
@@ -163,12 +202,42 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
   if (status === "partial-create" || receiptConflict) await page.locator('[data-action="new-event-note"]').click();
   else await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
   if (!deleteRetry) await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
-  writeStatus = receiptConflict ? 200 : partialRetry ? "partial" : status;
+  writeStatus = receiptConflict ? 200 : partialRetry ? "partial" : pendingFollowup ? 503 : status;
   if (deleteRetry) {
     await page.locator('[data-action="request-delete-event-note"]').click();
     await page.locator('[data-action="confirm-important-action"]').click();
   } else await page.locator('[data-action="save-event-note"]').click();
-  if (receiptConflict) {
+  if (pendingFollowup) {
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+    await page.locator('[data-nav-destination="home"]').click();
+    await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
+    await page.locator('[data-action="open-event-notes"]').click();
+    await page.locator('[data-action="new-event-note"]').click();
+    await page.locator('[data-action="event-note-body"]').fill("פתק באירוע אחר");
+    // Keep the first event unavailable during navigation. Only the next Save
+    // may deliver its pending intent in the recovery case.
+    if (status === "pending-next-recovers") writeStatus = 200;
+    await page.locator('[data-action="save-event-note"]').click();
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    expect(secondShared.state.events[0].notes.filter(note => note.body === "פתק באירוע אחר")).toHaveLength(1);
+    const pending = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+    if (status === "pending-next-fails") {
+      expect(pending?.events.find(event => event.id === eventId)?.notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
+      expect(shared.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("נשמר בענן");
+      await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+      writeStatus = 200;
+      await reloadPage();
+    }
+    await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
+    expect(shared.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
+    expect(secondShared.state.events[0].notes.filter(note => note.body === "פתק באירוע אחר")).toHaveLength(1);
+    await page.locator('[data-nav-destination="home"]').click();
+    await eventButton.click();
+    await page.locator('[data-action="open-event-notes"]').click();
+    await expect(page.locator('.event-note-open[data-note-id="cache-sync-note"]')).toContainText("טיוטה שלא תאבד");
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+  } else if (receiptConflict) {
     await expect(page.locator(".event-note-modal")).toContainText("השינוי שלך לא נשמר");
     expect(competingNoteId).toBeTruthy();
     const attemptsBeforeRetry = canonicalAttempts;
@@ -208,7 +277,7 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
     };
     // Reload while writes still fail: neither a new JS runtime nor a stale
     // personal snapshot may discard the accepted local intent.
-    await page.reload();
+    await reloadPage();
     await expect(eventButton).toBeVisible();
     await eventButton.click();
     await page.locator('[data-action="open-event-notes"]').click();
@@ -226,7 +295,7 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
     // A fresh boot after recovery must deliver without an imported store call
     // or a second Save/Delete click.
     const recoveryStartedAt = Date.now();
-    await page.reload();
+    await reloadPage();
     await expect(eventButton).toBeVisible();
     await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
     await testInfo.attach("restart-recovery", { contentType: "application/json", body: JSON.stringify({
@@ -302,6 +371,9 @@ test(receiptConflict ? `new note ${status} conflict keeps the published identity
     expect(shared.state.events[0].notes.filter(note => note.id === "cache-sync-note")).toHaveLength(1);
     expect(shared.state.events[0].notes[0].body).toBe("טיוטה שלא תאבד");
   }
+  if (reloadDiagnostics.length) await testInfo.attach("webkit-document-replacement-diagnostics", {
+    contentType: "application/json", body: JSON.stringify(reloadDiagnostics)
+  });
   expect(errors).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("save-feedback.png"), fullPage: true, animations: "disabled" });
