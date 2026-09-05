@@ -143,6 +143,15 @@ test("store submission documents capture remaining Google and store work", async
   assert.match(listing, /https:\/\/sogrim-hesbon-app\.vercel\.app\/support/);
 });
 
+test("store review authentication receives the full runtime config and reports HTTP failures", async () => {
+  const readinessCheck = await readFile("scripts/verify-store-readiness.mjs", "utf8");
+
+  assert.match(readinessCheck, /signInWithPassword\(\s*config,\s*\{/);
+  assert.doesNotMatch(readinessCheck, /signInWithPassword\(\s*config\.storage,/);
+  assert.match(readinessCheck, /reviewAccountStatus = Number\(error\?\.status \?\? 0\) \|\| null/);
+  assert.match(readinessCheck, /status: reviewAccountStatus/);
+});
+
 test("verified app links and store submission declarations are prepared", async () => {
   const [vercel, server, packageJson, dataSafety, appPrivacy, releaseBuilder, readinessCheck] = await Promise.all([
     readFile("vercel.json", "utf8"),

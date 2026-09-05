@@ -219,9 +219,10 @@ try {
     ok: configResponse.ok && settingsResponse.ok && Boolean(settings.external?.apple)
   });
   let reviewAccountAuthenticated = false;
+  let reviewAccountStatus = null;
   try {
     const session = await signInWithPassword(
-      config.storage,
+      config,
       {
         email: storeReviewCredentials.email,
         password: storeReviewCredentials.password
@@ -231,10 +232,14 @@ try {
       session?.user?.id &&
       session.user.id === storeReviewCredentials.userId
     );
-  } catch {}
+    reviewAccountStatus = 200;
+  } catch (error) {
+    reviewAccountStatus = Number(error?.status ?? 0) || null;
+  }
   liveChecks.push({
     name: "Private store review account authenticates successfully",
-    ok: reviewAccountAuthenticated
+    ok: reviewAccountAuthenticated,
+    status: reviewAccountStatus
   });
 } catch {
   liveChecks.push({ name: "Live authentication configuration", ok: false });
