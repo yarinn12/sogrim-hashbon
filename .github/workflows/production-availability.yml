@@ -1,11 +1,9 @@
 name: Production availability
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
@@ -54,41 +52,101 @@ jobs:
         env:
           RECOVERY_PRODUCTION_ORIGIN: https://sogrim-hashbon-recovery.onrender.com
 
-      - name: Open one incident issue
+      - name: Open or update one incident issue
+        id: incident
         if: steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure'
         uses: actions/github-script@v8
+        env:
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
+          PARITY_OUTCOME: ${{ steps.parity.outcome }}
         with:
+          result-encoding: string
           script: |
+            const fs = require('fs');
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const incidentState = await import(pathToFileURL(
+              path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'production-incident-state.mjs')
+            ).href);
             const title = '[Production] Availability or deployment parity failed';
-            const existing = await github.rest.issues.listForRepo({
+            const readLog = (file) => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+            const boundaries = incidentState.collectFailureBoundaries([
+              {
+                label: 'availability',
+                outcome: process.env.VERIFY_OUTCOME,
+                log: readLog('production-availability.log')
+              },
+              {
+                label: 'failover',
+                outcome: process.env.PARITY_OUTCOME,
+                log: readLog('production-failover.log')
+              }
+            ]);
+            const body = incidentState.buildIncidentBody(boundaries);
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               per_page: 100
             });
-            if (!existing.data.some((issue) => issue.title === title)) {
+            const incident = existing.find((issue) => !issue.pull_request && issue.title === title);
+            if (!incident) {
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 title,
-                body: `The scheduled production check failed at ${new Date().toISOString()}. The app might be unavailable, stale, or serving different source/runtime policy across the primary and recovery origins. Open the failed workflow run for the exact boundary.`,
+                body,
                 labels: []
               });
+              return 'created';
             }
+            const classification = incidentState.classifyIncident(incident.body, boundaries);
+            if (classification === 'unchanged') {
+              core.info('Incident #' + incident.number + ' is unchanged; keeping this run quiet.');
+              return 'unchanged';
+            }
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: incident.number,
+              body
+            });
+            if (classification === 'adopted') {
+              core.info('Adopted existing incident #' + incident.number + ' without sending another failure alert.');
+              return 'adopted';
+            }
+            return classification;
 
       - name: Close recovered incident issue
         if: steps.verify.outcome == 'success' && steps.parity.outcome == 'success'
         uses: actions/github-script@v8
         with:
           script: |
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const { markRecoveryCheck } = await import(pathToFileURL(
+              path.join(process.env.GITHUB_WORKSPACE, 'scripts', 'production-incident-state.mjs')
+            ).href);
             const title = '[Production] Availability or deployment parity failed';
-            const existing = await github.rest.issues.listForRepo({
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
               per_page: 100
             });
-            for (const issue of existing.data.filter((item) => item.title === title)) {
+            const issue = existing.find((item) => !item.pull_request && item.title === title);
+            if (issue) {
+              const recovery = markRecoveryCheck(issue.body, 2);
+              if (!recovery.complete) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: recovery.body
+                });
+                core.info('Recovery check ' + recovery.streak + '/2 passed; waiting for one more successful run.');
+                return;
+              }
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -115,5 +173,9 @@ jobs:
           retention-days: 7
 
       - name: Fail after incident handling
-        if: steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure'
+        if: >-
+          (steps.verify.outcome == 'failure' || steps.parity.outcome == 'failure') &&
+          (github.event_name == 'workflow_dispatch' ||
+          steps.incident.outputs.result == 'created' ||
+          steps.incident.outputs.result == 'changed')
         run: exit 1

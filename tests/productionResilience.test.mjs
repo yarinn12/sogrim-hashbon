@@ -37,7 +37,9 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
   assert.match(failoverScript, /origin request failed/);
   assert.match(failoverScript, /reachable/);
   assert.match(workflow, /schedule:/);
-  assert.match(workflow, /push:/);
+  assert.match(workflow, /cron: "17 \* \* \* \*"/);
+  assert.doesNotMatch(workflow, /cron: "17,47 \* \* \* \*"/);
+  assert.doesNotMatch(workflow, /^\s*push:/m);
   assert.match(workflow, /set -o pipefail/);
   assert.match(workflow, /verify-production-availability\.mjs \| tee production-availability\.log/);
   assert.match(workflow, /verify-production-availability\.mjs --strict \| tee production-cdn\.log/);
@@ -46,7 +48,14 @@ test("production monitoring covers the app, API, invites and Supabase boundaries
     workflow,
     /RECOVERY_PRODUCTION_ORIGIN: https:\/\/sogrim-hashbon-recovery\.onrender\.com/
   );
-  assert.match(workflow, /Open one incident issue/);
+  assert.match(workflow, /Open or update one incident issue/);
+  assert.match(workflow, /production-incident-state\.mjs/);
+  assert.match(workflow, /github\.paginate/);
+  assert.match(workflow, /!issue\.pull_request/);
+  assert.match(workflow, /markRecoveryCheck\(issue\.body, 2\)/);
+  assert.match(workflow, /return 'unchanged'/);
+  assert.match(workflow, /steps\.incident\.outputs\.result == 'created'/);
+  assert.match(workflow, /steps\.incident\.outputs\.result == 'changed'/);
   assert.match(workflow, /Close recovered incident issue/);
 });
 
