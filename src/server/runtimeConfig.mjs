@@ -13,6 +13,7 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
   const supabaseUrl = normalizeUrl(env.SUPABASE_URL ?? "");
   const supabaseAnonKey = env.SUPABASE_ANON_KEY ?? "";
   const googleClientId = String(env.GOOGLE_CLIENT_ID ?? "").trim();
+  const googleIosClientId = String(env.GOOGLE_IOS_CLIENT_ID ?? "").trim();
   const authEmailDeliveryReady = parseBoolean(
     env.AUTH_EMAIL_DELIVERY_READY
   );
@@ -59,11 +60,13 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
   const cloudStorageReady = Boolean(supabaseUrl && supabaseAnonKey);
   const publicUrlReady = isPublicHttpUrl(publicUrl);
   const googleAuthReady = Boolean(googleClientId);
+  const googleIosAuthReady = Boolean(googleClientId && googleIosClientId);
 
   return {
     publicUrl,
     auth: {
-      googleClientId
+      googleClientId,
+      googleIosClientId
     },
     updates: {
       android: {
@@ -105,6 +108,7 @@ export function getRuntimeConfig(env = process.env, trustedPublicUrl = "") {
       publicUrlReady,
       cloudStorageReady,
       googleAuthReady,
+      googleIosAuthReady,
       authEmailDeliveryReady,
       accountDeletionReady,
       googlePlayBillingReady: premiumReady,

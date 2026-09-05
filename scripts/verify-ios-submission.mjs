@@ -12,6 +12,16 @@ const checks = [];
 const external = [];
 const expectedVersion = process.env.IOS_VERSION || metadata.version.number;
 const expectedBuild = process.env.IOS_BUILD || metadata.version.build;
+const expectedGoogleClientId = String(process.env.GOOGLE_CLIENT_ID ?? "").trim();
+const expectedGoogleIosClientId = String(
+  process.env.GOOGLE_IOS_CLIENT_ID ?? ""
+).trim();
+const configuredGoogleClientId = plistString(info, "GIDServerClientID");
+const configuredGoogleIosClientId = plistString(info, "GIDClientID");
+const reversedGoogleIosClientId = configuredGoogleIosClientId
+  .split(".")
+  .reverse()
+  .join(".");
 
 check("App name is 2-30 characters", metadata.app.name.length >= 2 && metadata.app.name.length <= 30);
 check("Subtitle is at most 30 characters", metadata.app.subtitle.length <= 30);
@@ -35,6 +45,23 @@ check("Privacy manifest declares no tracking", /NSPrivacyTracking<\/key>\s*<fals
 check("Privacy manifest covers feedback diagnostics", /NSPrivacyCollectedDataTypeOtherDiagnosticData/.test(privacy));
 check("iOS excludes Android-only advertising", !/CapacitorCommunityAdmob/.test(packageSwift));
 check("iOS excludes unsupported push delivery", !/CapacitorPushNotifications/.test(packageSwift) && !/com\.apple\.Push/.test(project));
+check(
+  "Native Google sign-in plugin is included for iOS",
+  /CapgoCapacitorSocialLogin/.test(packageSwift)
+);
+check(
+  "Google iOS and server client IDs are configured",
+  validGoogleClientId(configuredGoogleClientId) &&
+    validGoogleClientId(configuredGoogleIosClientId) &&
+    configuredGoogleClientId !== configuredGoogleIosClientId &&
+    (!expectedGoogleClientId || configuredGoogleClientId === expectedGoogleClientId) &&
+    (!expectedGoogleIosClientId || configuredGoogleIosClientId === expectedGoogleIosClientId)
+);
+check(
+  "Google iOS reversed client URL scheme is configured",
+  Boolean(configuredGoogleIosClientId) &&
+    info.includes(`<string>${reversedGoogleIosClientId}</string>`)
+);
 check("Shared Xcode scheme exists", existsSync("ios/App/App.xcodeproj/xcshareddata/xcschemes/App.xcscheme"));
 check(
   "Sign in with Apple uses accessible approved artwork",
@@ -53,6 +80,19 @@ if (checks.some((item) => !item.ok)) process.exitCode = 1;
 
 function check(name, ok) {
   checks.push({ name, ok: Boolean(ok) });
+}
+
+function plistString(source, key) {
+  return String(
+    source.match(new RegExp(`<key>${key}<\\/key>\\s*<string>([^<]+)<\\/string>`))?.[1] ?? ""
+  ).trim();
+}
+
+function validGoogleClientId(value) {
+  return (
+    /^\d{6,}-[A-Za-z0-9][A-Za-z0-9_-]{18,}[A-Za-z0-9]\.apps\.googleusercontent\.com$/.test(value) &&
+    !/placeholder|example|replace[-_]?me|your[-_]?client/i.test(value)
+  );
 }
 
 async function checkPng(name, path, width, height) {

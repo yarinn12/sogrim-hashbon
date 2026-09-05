@@ -7,6 +7,8 @@ const apiKeyId = required("APPSTORE_API_KEY_ID", /^[A-Z0-9]{10}$/);
 const version = required("IOS_VERSION", /^\d+(?:\.\d+){1,2}$/);
 const build = required("IOS_BUILD", /^[1-9]\d*$/);
 const releaseNotes = required("IOS_RELEASE_NOTES", /^[\s\S]{1,4000}$/);
+const googleClientId = requiredGoogleClientId("GOOGLE_CLIENT_ID");
+const googleIosClientId = requiredGoogleClientId("GOOGLE_IOS_CLIENT_ID");
 const privateKey = String(process.env.APPSTORE_API_PRIVATE_KEY ?? "").trim();
 const certificateBase64 = String(
   process.env.APPSTORE_CERTIFICATES_FILE_BASE64 ?? ""
@@ -14,6 +16,12 @@ const certificateBase64 = String(
 const certificatePassword = String(
   process.env.APPSTORE_CERTIFICATES_PASSWORD ?? ""
 );
+
+if (googleClientId === googleIosClientId) {
+  fail(
+    "GOOGLE_IOS_CLIENT_ID must be a separate Google OAuth client of type iOS for com.sogrimhashbon.app."
+  );
+}
 
 if (
   !privateKey.startsWith("-----BEGIN PRIVATE KEY-----") ||
@@ -46,6 +54,17 @@ console.log(
 function required(name, pattern) {
   const value = String(process.env[name] ?? "").trim();
   if (!pattern.test(value)) fail(`${name} is missing or invalid.`);
+  return value;
+}
+
+function requiredGoogleClientId(name) {
+  const value = required(
+    name,
+    /^\d{6,}-[A-Za-z0-9][A-Za-z0-9_-]{18,}[A-Za-z0-9]\.apps\.googleusercontent\.com$/
+  );
+  if (/placeholder|example|replace[-_]?me|your[-_]?client/i.test(value)) {
+    fail(`${name} is missing or invalid.`);
+  }
   return value;
 }
 

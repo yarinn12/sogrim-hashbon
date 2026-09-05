@@ -50,6 +50,7 @@ import {
   runtimePublicOrigin
 } from "../domain/publicOrigin.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { invalidateVersionedReadCacheSession } from "./versionedReadCache.mjs";
 
 const STORAGE_KEY = "settle-friends-state";
 const RUNTIME_CONFIG_TIMEOUT_MS = 4_000;
@@ -1739,6 +1740,9 @@ export function clearLocalProfile(accountUserId = "") {
 export function clearLocalAccountData(accountSpaceId = "", accountUserId = "") {
   accountStorageGeneration += 1;
   accountIdentityGeneration += 1;
+  // A same-user sign-out/sign-in must not reuse cache objects that an in-flight
+  // request from the previous authenticated session can still populate.
+  invalidateVersionedReadCacheSession();
   resetAccountSyncWork();
   sharedStateLoadPromise = null;
   sharedStateLoadScope = "";

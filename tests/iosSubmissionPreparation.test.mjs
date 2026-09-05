@@ -2,12 +2,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync, verify } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 test("iOS release automation is safe, manual and TestFlight-ready", async () => {
-  const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes] = await Promise.all([
+  const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
     readFile("scripts/prepare-ios-release.mjs", "utf8"),
@@ -22,6 +22,7 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
     readFile("scripts/export-apple-distribution-p12.ps1", "utf8"),
     readFile("ios/App/App.xcodeproj/project.pbxproj", "utf8"),
     readFile("ios/App/App/Info.plist", "utf8"),
+    readFile("ios/App/App/AppDelegate.swift", "utf8"),
     readFile("ios/App/App/Base.lproj/LaunchScreen.storyboard", "utf8"),
     readFile("ios/App/App/PrivacyInfo.xcprivacy", "utf8"),
     readFile("docs/store-submission/app-store-metadata-he.json", "utf8").then(JSON.parse),
@@ -29,7 +30,8 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
     readFile("docs/store-submission/apple-connect-checklist-he.md", "utf8"),
     readFile("docs/store-submission/apple-handoff-he.md", "utf8"),
     readFile("docs/store-submission/apple-accessibility-he.md", "utf8"),
-    readFile("docs/store-submission/apple-review-notes-en.txt", "utf8")
+    readFile("docs/store-submission/apple-review-notes-en.txt", "utf8"),
+    readFile(".env.example", "utf8")
   ]);
 
   assert.match(packageJson.scripts["native:ios:prepare-release"], /prepare-ios-release/);
@@ -55,6 +57,9 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
     workflow.indexOf("    steps:")
   );
   assert.doesNotMatch(jobEnvironment, /secrets\./);
+  assert.match(jobEnvironment, /GOOGLE_CLIENT_ID: \$\{\{ vars\.GOOGLE_CLIENT_ID \}\}/);
+  assert.match(jobEnvironment, /GOOGLE_IOS_CLIENT_ID: \$\{\{ vars\.GOOGLE_IOS_CLIENT_ID \}\}/);
+  assert.match(exampleEnv, /^GOOGLE_IOS_CLIENT_ID=$/m);
   assert.ok(
     workflow.indexOf("Select and verify Xcode 26.6") < workflow.indexOf("Run release checks"),
     "Xcode must be selected before native release checks"
@@ -70,15 +75,34 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(workflow, /uses-non-exempt-encryption: "false"/);
   assert.doesNotMatch(workflow, /push:/);
   assert.match(workflowEnv, /APPSTORE_CERTIFICATES_FILE_BASE64/);
+  assert.match(workflowEnv, /GOOGLE_IOS_CLIENT_ID/);
   assert.match(workflowEnv, /BEGIN PRIVATE KEY/);
   assert.match(workflowEnv, /certificate\[0\] !== 0x30/);
   assert.match(iconScript, /1024x1024/);
   assert.match(iconScript, /source\[25\] !== 2/);
   assert.match(script, /APPLE_TEAM_ID/);
+  assert.match(script, /requiredGoogleClientId\("GOOGLE_IOS_CLIENT_ID"\)/);
+  assert.match(script, /GIDClientID/);
+  assert.match(script, /GIDServerClientID/);
+  assert.match(script, /upsertGoogleUrlScheme/);
   assert.match(script, /app-store-metadata-he\.json/);
   assert.match(submissionCheck, /Sign in with Apple uses accessible approved artwork/);
   assert.match(submissionCheck, /Apple Team ID is configured in both app build configurations/);
   assert.match(submissionCheck, /Apple Universal Links association matches Team ID/);
+  assert.match(submissionCheck, /Native Google sign-in plugin is included for iOS/);
+  assert.match(submissionCheck, /Google iOS reversed client URL scheme is configured/);
+  assert.match(appDelegate, /import GoogleSignIn/);
+  const googleCallbackIndex = appDelegate.indexOf(
+    "GIDSignIn.sharedInstance.handle(url)"
+  );
+  const capacitorCallbackIndex = appDelegate.indexOf(
+    "ApplicationDelegateProxy.shared.application(app, open: url, options: options)"
+  );
+  assert.ok(googleCallbackIndex >= 0, "Google must receive its iOS callback URL");
+  assert.ok(
+    capacitorCallbackIndex > googleCallbackIndex,
+    "Google must handle its callback before Capacitor receives unmatched URLs"
+  );
   assert.match(submissionCheck, /Native launch screen hands directly to the web intro without a logo flash/);
   assert.doesNotMatch(submissionCheck, /scaleAspectFit/);
   assert.match(submissionCheck, /sign-in-with-apple-iw\.png/);
@@ -128,6 +152,10 @@ test("Apple workflow configuration fails fast without exposing credentials", () 
       "-----BEGIN PRIVATE KEY-----\nPRIVATE-MARKER\n-----END PRIVATE KEY-----",
     APPSTORE_CERTIFICATES_FILE_BASE64: certificate.toString("base64"),
     APPSTORE_CERTIFICATES_PASSWORD: "PASSWORD-MARKER",
+    GOOGLE_CLIENT_ID:
+      "123456789012-webclientvalue1234567890.apps.googleusercontent.com",
+    GOOGLE_IOS_CLIENT_ID:
+      "123456789012-iosclientvalue1234567890.apps.googleusercontent.com",
     IOS_VERSION: "3.33",
     IOS_BUILD: "56",
     IOS_RELEASE_NOTES: "TestFlight release"
@@ -151,6 +179,125 @@ test("Apple workflow configuration fails fast without exposing credentials", () 
   assert.notEqual(rejected.status, 0);
   assert.match(rejected.stderr, /APPLE_TEAM_ID is missing or invalid/);
   assert.doesNotMatch(rejected.stderr, /PRIVATE-MARKER|PASSWORD-MARKER/);
+
+  const missingGoogleIos = spawnSync(
+    process.execPath,
+    [resolve("scripts/verify-ios-workflow-env.mjs")],
+    {
+      encoding: "utf8",
+      env: { ...validEnvironment, GOOGLE_IOS_CLIENT_ID: "" }
+    }
+  );
+  assert.notEqual(missingGoogleIos.status, 0);
+  assert.match(
+    missingGoogleIos.stderr,
+    /GOOGLE_IOS_CLIENT_ID is missing or invalid/
+  );
+  assert.doesNotMatch(
+    missingGoogleIos.stderr,
+    /PRIVATE-MARKER|PASSWORD-MARKER/
+  );
+
+  const placeholderGoogleIos = spawnSync(
+    process.execPath,
+    [resolve("scripts/verify-ios-workflow-env.mjs")],
+    {
+      encoding: "utf8",
+      env: {
+        ...validEnvironment,
+        GOOGLE_IOS_CLIENT_ID:
+          "123456789012-placeholder_value_123.apps.googleusercontent.com"
+      }
+    }
+  );
+  assert.notEqual(placeholderGoogleIos.status, 0);
+  assert.match(
+    placeholderGoogleIos.stderr,
+    /GOOGLE_IOS_CLIENT_ID is missing or invalid/
+  );
+  assert.doesNotMatch(
+    placeholderGoogleIos.stderr,
+    /PRIVATE-MARKER|PASSWORD-MARKER/
+  );
+});
+
+test("iOS release preparation writes Google plist settings idempotently", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sogrim-ios-release-"));
+  const metadataDirectory = join(directory, "docs", "store-submission");
+  const appDirectory = join(directory, "ios", "App", "App");
+  const projectDirectory = join(directory, "ios", "App", "App.xcodeproj");
+  await Promise.all([
+    mkdir(metadataDirectory, { recursive: true }),
+    mkdir(appDirectory, { recursive: true }),
+    mkdir(projectDirectory, { recursive: true })
+  ]);
+  await writeFile(
+    join(metadataDirectory, "app-store-metadata-he.json"),
+    JSON.stringify({ version: { number: "4.26", build: "154" } }),
+    "utf8"
+  );
+  await writeFile(
+    join(appDirectory, "Info.plist"),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+\t<key>CFBundleURLTypes</key>
+\t<array>
+\t\t<dict>
+\t\t\t<key>CFBundleURLSchemes</key>
+\t\t\t<array>
+\t\t\t\t<string>com.sogrimhashbon.app</string>
+\t\t\t\t<string>com.googleusercontent.apps.stale-client</string>
+\t\t\t</array>
+\t\t</dict>
+\t</array>
+</dict>
+</plist>
+`,
+    "utf8"
+  );
+  await writeFile(
+    join(projectDirectory, "project.pbxproj"),
+    `CODE_SIGN_STYLE = Automatic;
+CURRENT_PROJECT_VERSION = 1;
+MARKETING_VERSION = 1.0;
+CODE_SIGN_STYLE = Automatic;
+CURRENT_PROJECT_VERSION = 1;
+MARKETING_VERSION = 1.0;
+`,
+    "utf8"
+  );
+
+  const googleClientId =
+    "123456789012-a1b2c3d4e5f6g7h8i9j0k1l2.apps.googleusercontent.com";
+  const googleIosClientId =
+    "123456789012-z9y8x7w6v5u4t3s2r1q0p9o8.apps.googleusercontent.com";
+  const scriptPath = resolve("scripts/prepare-ios-release.mjs");
+  for (let run = 0; run < 2; run += 1) {
+    const result = spawnSync(process.execPath, [scriptPath], {
+      cwd: directory,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        APPLE_TEAM_ID: "TEAMID1234",
+        GOOGLE_CLIENT_ID: googleClientId,
+        GOOGLE_IOS_CLIENT_ID: googleIosClientId,
+        IOS_VERSION: "4.26",
+        IOS_BUILD: "154"
+      }
+    });
+    assert.equal(result.status, 0, result.stderr);
+  }
+
+  const info = await readFile(join(appDirectory, "Info.plist"), "utf8");
+  const reversedIosClientId = googleIosClientId.split(".").reverse().join(".");
+  assert.equal(info.match(/<key>GIDClientID<\/key>/g)?.length, 1);
+  assert.equal(info.match(/<key>GIDServerClientID<\/key>/g)?.length, 1);
+  assert.equal(info.match(new RegExp(`<string>${reversedIosClientId}<\\/string>`, "g"))?.length, 1);
+  assert.match(info, new RegExp(`<key>GIDClientID<\\/key>\\s*<string>${googleIosClientId}<\\/string>`));
+  assert.match(info, new RegExp(`<key>GIDServerClientID<\\/key>\\s*<string>${googleClientId}<\\/string>`));
+  assert.match(info, /<string>com\.sogrimhashbon\.app<\/string>/);
+  assert.doesNotMatch(info, /stale-client/);
 });
 
 test("Apple client secret generator creates a valid six-month ES256 token", async () => {

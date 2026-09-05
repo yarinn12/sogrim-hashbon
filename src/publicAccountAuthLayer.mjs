@@ -391,17 +391,14 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   removeSessionValue(AUTH_CHANGED_MARKER);
   const accountDeleted = sessionValue(ACCOUNT_DELETED_MARKER) === "1";
   removeSessionValue(ACCOUNT_DELETED_MARKER);
-  googleEnabled = Boolean(
-    runtimeConfig.auth?.googleClientId ||
-    runtimeConfig.launch?.googleAuthReady
-  );
+  googleEnabled = googleAuthConfiguredForCurrentPlatform();
   appleEnabled = false;
   emailAuthExpanded = !googleEnabled && !appleEnabled;
   // Start preparing Google before the gate is painted. On slower phones the
   // old flow could consume the first tap merely loading the provider SDK, so
   // the account picker only appeared after another tap.
   if (googleEnabled) {
-    if (isNativeAndroid()) {
+    if (isNativeGooglePlatform()) {
       prepareNativeGoogleSignIn().catch(() => {});
     } else {
       initializeWebGoogleIdentity().catch(() => {});
@@ -1509,10 +1506,10 @@ async function handleAccountClick(event) {
   }
 
   if (action === "google") {
-    // The browser uses Google's official rendered control. Only Android's
-    // native button is handled here, so a browser tap can never be spent just
+    // The browser uses Google's official rendered control. Only a native app
+    // button is handled here, so a browser tap can never be spent just
     // replacing a fallback with the real Google button.
-    if (authBusy || !isNativeAndroid()) return;
+    if (authBusy || !isNativeGooglePlatform()) return;
     setAuthBusy(true);
     try {
       await signInWithNativeGoogle();
@@ -1525,7 +1522,7 @@ async function handleAccountClick(event) {
   }
 
   if (action === "retry-google") {
-    if (authBusy || isNativeAndroid()) return;
+    if (authBusy || isNativeGooglePlatform()) return;
     setAuthBusy(true);
     try {
       await renderWebGoogleButton();
@@ -1776,13 +1773,35 @@ function isNativeAndroid() {
   );
 }
 
+function isNativeIos() {
+  return Boolean(
+    globalThis.Capacitor?.isNativePlatform?.() &&
+    globalThis.Capacitor?.getPlatform?.() === "ios"
+  );
+}
+
+function isNativeGooglePlatform() {
+  return isNativeAndroid() || isNativeIos();
+}
+
+function googleAuthConfiguredForCurrentPlatform() {
+  const webClientId = String(
+    runtimeConfig?.auth?.googleClientId ?? ""
+  ).trim();
+  if (!webClientId) return false;
+  if (!isNativeIos()) return true;
+  return Boolean(
+    String(runtimeConfig?.auth?.googleIosClientId ?? "").trim()
+  );
+}
+
 async function renderWebGoogleButton() {
   const control = document.querySelector("[data-account-google-control]");
   const target = control?.querySelector("[data-account-google-button]");
   if (
     !control ||
     !target ||
-    isNativeAndroid() ||
+    isNativeGooglePlatform() ||
     control.classList.contains("is-google-ready") ||
     control.classList.contains("is-google-rendering")
   ) {
@@ -1983,8 +2002,19 @@ function prepareNativeGoogleSignIn() {
       .then(async ({ SocialLogin }) => {
         const webClientId = String(runtimeConfig?.auth?.googleClientId ?? "").trim();
         if (!webClientId) throw new Error("Google client is unavailable");
+        const google = { webClientId, mode: "online" };
+        if (isNativeIos()) {
+          const iOSClientId = String(
+            runtimeConfig?.auth?.googleIosClientId ?? ""
+          ).trim();
+          if (!iOSClientId) {
+            throw new Error("Google iOS client is unavailable");
+          }
+          google.iOSClientId = iOSClientId;
+          google.iOSServerClientId = webClientId;
+        }
         await SocialLogin.initialize({
-          google: { webClientId, mode: "online" }
+          google
         });
         return SocialLogin;
       })
@@ -1999,16 +2029,22 @@ function prepareNativeGoogleSignIn() {
 
 async function signInWithNativeGoogle() {
   const socialLogin = await prepareNativeGoogleSignIn();
+  const options = isNativeIos()
+    ? {
+        scopes: ["openid", "email", "profile"],
+        forcePrompt: true
+      }
+    : {
+        // The bottom credential sheet can first fail with NoCredentialException
+        // and only then retry with the standard Google chooser. Going directly
+        // to the standard chooser removes that silent delay from the first tap.
+        style: "standard",
+        filterByAuthorizedAccounts: false,
+        autoSelectEnabled: false
+      };
   const login = await socialLogin.login({
     provider: "google",
-    options: {
-      // The bottom credential sheet can first fail with NoCredentialException
-      // and only then retry with the standard Google chooser. Going directly
-      // to the standard chooser removes that silent delay from the first tap.
-      style: "standard",
-      filterByAuthorizedAccounts: false,
-      autoSelectEnabled: false
-    }
+    options
   });
   const result = login?.result;
   const idToken = String(result?.idToken ?? "").trim();
@@ -2650,7 +2686,9 @@ async function refreshProviderOptions() {
     providerEnabled("google"),
     providerEnabled("apple")
   ]);
-  const nextGoogleEnabled = googleEnabled || googleAvailable;
+  const nextGoogleEnabled =
+    googleAuthConfiguredForCurrentPlatform() &&
+    (googleEnabled || googleAvailable);
   if (
     nextGoogleEnabled === googleEnabled &&
     appleAvailable === appleEnabled
@@ -2665,7 +2703,7 @@ async function refreshProviderOptions() {
 function enableProviderOptions() {
   const slot = document.querySelector("[data-google-auth-slot]");
   if (!slot) return;
-  const googleSelector = isNativeAndroid()
+  const googleSelector = isNativeGooglePlatform()
     ? '[data-account-action="google"]'
     : "[data-account-google-control]";
   const existingGoogle = slot.querySelector(googleSelector);
@@ -2687,7 +2725,7 @@ function enableProviderOptions() {
   }
 
   if (
-    !isNativeAndroid() &&
+    !isNativeGooglePlatform() &&
     !existingGoogle.classList.contains("is-google-ready")
   ) {
     renderWebGoogleButton().catch(() => {});
@@ -2701,7 +2739,7 @@ function appleProviderMarkup() {
 }
 
 function providerOptionsMarkup() {
-  const googleMarkup = isNativeAndroid()
+  const googleMarkup = isNativeGooglePlatform()
     ? `<button class="account-google-button account-google-fallback" type="button" data-account-action="google">
         ${googleIcon()}
         <span>המשך עם Google</span>

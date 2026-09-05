@@ -178,7 +178,7 @@ async function loadNativeBootstrapRuntimeConfig() {
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return {
-        ...validateNativeBootstrapConfig(await response.json(), {
+        ...validateNativeBootstrapConfig(applyBuildGoogleAuth(await response.json()), {
           expectedAndroidBuild: androidBuild
         }),
         publicUrl: publicAppOrigin,
@@ -207,6 +207,28 @@ async function loadNativeBootstrapRuntimeConfig() {
       `Native runtime bootstrap is unavailable (remote: ${remoteError?.message ?? "unknown error"}; local: ${localError.message}). Refusing to build a disconnected store release.`
     );
   }
+}
+
+function applyBuildGoogleAuth(config) {
+  const googleClientId = String(buildEnv.GOOGLE_CLIENT_ID ?? "").trim();
+  const googleIosClientId = String(buildEnv.GOOGLE_IOS_CLIENT_ID ?? "").trim();
+  if (!googleClientId && !googleIosClientId) return config;
+  const auth = {
+    ...(config?.auth ?? {}),
+    ...(googleClientId ? { googleClientId } : {}),
+    ...(googleIosClientId ? { googleIosClientId } : {})
+  };
+  return {
+    ...config,
+    auth,
+    launch: {
+      ...(config?.launch ?? {}),
+      googleAuthReady: Boolean(auth.googleClientId),
+      googleIosAuthReady: Boolean(
+        auth.googleClientId && auth.googleIosClientId
+      )
+    }
+  };
 }
 
 function validateNativeBootstrapConfig(config, options = {}) {

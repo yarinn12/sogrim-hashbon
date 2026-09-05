@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createScopedReadCache } from "../src/data/versionedReadCache.mjs";
+import {
+  createScopedReadCache,
+  invalidateVersionedReadCacheSession
+} from "../src/data/versionedReadCache.mjs";
 import { readCloudState, readCloudStateIfChanged, readAccessibleSharedCloudStates, saveCloudState } from "../src/data/cloudStore.mjs";
 import { loadFriendNetwork } from "../src/data/friendsStore.mjs";
 
@@ -207,7 +210,28 @@ test("membership query values containing reserved punctuation remain one quoted 
   assert.equal(result[0].updated_at, V2);
 });
 
-test("account/token switches and late old responses cannot contaminate a scoped cache", () => {
+test("same-user access-token rotation keeps personal and membership reads version-only", async () => {
+  const cfg = config("token-rotation");
+  const personal = snapshot(cfg.storage.spaceId);
+  personal.snapshot_kind = "personal";
+  const server = fakeSnapshots([personal, snapshot("shared-after-rotation")]);
+  await readCloudState(cfg, server.fetch, optimized);
+  await sharedReads(cfg, server);
+  const fullBytes = server.bytes;
+
+  cfg.storage.account.accessToken = "refreshed-token";
+
+  await readCloudState(cfg, server.fetch, optimized);
+  await sharedReads(cfg, server);
+  assert.deepEqual(
+    server.requests.slice(-2).map((request) => request.select),
+    ["updated_at", "id,updated_at"]
+  );
+  assert.equal(server.requests.filter((request) => request.select.includes("state")).length, 2);
+  assert.ok(server.bytes - fullBytes < fullBytes * 0.02);
+});
+
+test("account switches, logout generations and late responses cannot contaminate a cache", () => {
   const cacheFor = createScopedReadCache();
   const cfgA = config("scope-a");
   const cfgB = config("scope-b");
@@ -219,9 +243,14 @@ test("account/token switches and late old responses cannot contaminate a scoped 
   cacheA.set("row", V2, { owner: "late A" });
   assert.equal(cacheB.get("row", V2), null);
   assert.equal(cacheFor(cfgA, transport).get("row", V1), null);
-  cacheB.set("row", V1, { owner: "B" });
-  cfgB.storage.account.accessToken = "refreshed-token";
-  assert.equal(cacheFor(cfgB, transport).get("row", V1), null);
+
+  const beforeLogout = cacheFor(cfgA, transport);
+  beforeLogout.set("row", V1, { owner: "before logout" });
+  invalidateVersionedReadCacheSession();
+  const afterLogout = cacheFor(cfgA, transport);
+  beforeLogout.set("row", V2, { owner: "late previous session" });
+  assert.equal(afterLogout.get("row", V1), null);
+  assert.equal(afterLogout.get("row", V2), null);
   assert.equal(cacheFor({ storage: { mode: "supabase" } }, transport), null);
 });
 
@@ -326,6 +355,7 @@ test("optimized reads are wired into account recovery and preserve fast event in
   const sw = readFileSync(new URL("../sw.js", import.meta.url), "utf8");
   assert.match(local, /recoverAccessibleSharedEvents\(freshConfig, initialState, globalThis.fetch, \{ preferCached: true \}\)/);
   assert.match(local, /let state = cleanLegacyStarterData\([\s\S]*?preferCached: true/);
+  assert.match(local, /clearLocalAccountData[\s\S]*?invalidateVersionedReadCacheSession\(\)/);
   assert.match(app, /loadFriendNetwork\(runtimeConfig, globalThis.fetch, \{\s*preferCachedProfiles: true/);
   assert.match(app, /ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000/);
   assert.match(app, /BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS = 15_000/);

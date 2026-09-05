@@ -41,7 +41,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
     "@capacitor/browser",
     "@capacitor/camera",
     "@capacitor/haptics",
-    "@capacitor/share"
+    "@capacitor/share",
+    "@capgo/capacitor-social-login"
   ]);
   assert.ok(!config.ios.includePlugins.includes("@capacitor-community/admob"));
   assert.ok(!config.ios.includePlugins.includes("@capacitor/push-notifications"));
@@ -78,6 +79,8 @@ test("Capacitor store projects use a stable app id and local web bundle", async 
   assert.match(buildScript, /runtimeApiOrigins\(\{ publicUrl: publicAppOrigin \}\)/);
   assert.match(buildScript, /apiBaseUrl/);
   assert.match(buildScript, /globalThis\.SogrimNativeRuntimeConfig/);
+  assert.match(buildScript, /applyBuildGoogleAuth/);
+  assert.match(buildScript, /GOOGLE_IOS_CLIENT_ID/);
   assert.match(buildScript, /loadEnvFile\(join\(root, "\.env\.local"\), buildEnv, \{ loadPrivate: true \}\)/);
   assert.match(buildScript, /validateNativeBootstrapConfig/);
   assert.match(buildScript, /expectedAndroidBuild: androidBuild/);

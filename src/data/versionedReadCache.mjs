@@ -1,5 +1,11 @@
 // Cache only confirmed server payloads. Callers must recheck both authorization
 // and the server version before reuse; this is not a time-based/offline cache.
+let accountCacheGeneration = 0;
+
+export function invalidateVersionedReadCacheSession() {
+  accountCacheGeneration += 1;
+}
+
 export function createScopedReadCache({ maxEntries = 128, maxBytes = 8_000_000 } = {}) {
   let activeScope = "";
   let activeTransport;
@@ -7,8 +13,19 @@ export function createScopedReadCache({ maxEntries = 128, maxBytes = 8_000_000 }
   return (config, transport) => {
     const storage = config?.storage;
     const account = storage?.account;
+    // Access tokens rotate during one authenticated session. Re-keying on every
+    // rotation turns the next validated read into a full snapshot download.
+    // Logout/account-switch flows advance the explicit generation instead, and
+    // a user-id change still creates a new cache object immediately. In-flight
+    // requests retain the old object and therefore cannot populate the new scope.
     const scope = storage?.mode === "supabase" && account?.userId && account?.accessToken
-      ? JSON.stringify([storage.url, storage.table, storage.anonKey, account.userId, account.accessToken])
+      ? JSON.stringify([
+          storage.url,
+          storage.table,
+          storage.anonKey,
+          account.userId,
+          accountCacheGeneration
+        ])
       : "";
     if (!scope) {
       activeScope = "";

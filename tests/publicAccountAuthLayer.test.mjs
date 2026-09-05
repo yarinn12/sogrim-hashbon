@@ -174,12 +174,17 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /nonce: webGoogleNonce/);
   assert.doesNotMatch(layer, /accounts\.id\.prompt\(\)/);
   assert.doesNotMatch(layer, /secureOAuthUrl\(googleOAuthUrl\)/);
-  assert.doesNotMatch(layer, /scopes: \["openid", "email", "profile"\]/);
+  assert.match(layer, /scopes: \["openid", "email", "profile"\]/);
+  assert.match(layer, /iOSClientId/);
+  assert.match(layer, /iOSServerClientId = webClientId/);
+  assert.match(layer, /forcePrompt: true/);
+  assert.match(layer, /function isNativeIos\(\)/);
+  assert.match(layer, /function isNativeGooglePlatform\(\)/);
   assert.match(layer, /filterByAuthorizedAccounts: false/);
   assert.match(layer, /autoSelectEnabled: false/);
   assert.match(layer, /style: "standard"/);
   assert.doesNotMatch(layer, /style: "bottom"/);
-  assert.match(layer, /if \(authBusy \|\| !isNativeAndroid\(\)\) return;\s*setAuthBusy\(true\);\s*try \{\s*await signInWithNativeGoogle\(\)/);
+  assert.match(layer, /if \(authBusy \|\| !isNativeGooglePlatform\(\)\) return;\s*setAuthBusy\(true\);\s*try \{\s*await signInWithNativeGoogle\(\)/);
   assert.match(
     layer,
     /accountSession = saveAccountSession\(\s*await signInWithIdToken\(runtimeConfig,[\s\S]*?canResumeOffline\(accountSession, error\)[\s\S]*?resumeAccountLocally\(accountSession\)/
@@ -197,7 +202,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /assets\/sign-in-with-apple-iw\.png/);
   assert.match(
     layer,
-    /if \(action === "google"\) \{[\s\S]*?if \(authBusy \|\| !isNativeAndroid\(\)\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
+    /if \(action === "google"\) \{[\s\S]*?if \(authBusy \|\| !isNativeGooglePlatform\(\)\) return;\s*setAuthBusy\(true\);[\s\S]*?finally \{\s*setAuthBusy\(false\)/
   );
   assert.match(
     layer,
@@ -573,7 +578,7 @@ test("account gate prioritizes provider login and progressively reveals email", 
   assert.match(layer, /class="account-email-auth"/);
   assert.match(layer, /providerAvailable/);
   assert.match(layer, /emailAuthExpanded = !googleEnabled && !appleEnabled/);
-  assert.match(layer, /runtimeConfig\.launch\?\.googleAuthReady/);
+  assert.match(layer, /googleAuthConfiguredForCurrentPlatform\(\)/);
   assert.match(layer, /refreshProviderOptions\(\)\.catch/);
   assert.match(
     layer,

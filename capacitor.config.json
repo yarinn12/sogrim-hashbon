@@ -16,7 +16,8 @@
       "@capacitor/browser",
       "@capacitor/camera",
       "@capacitor/haptics",
-      "@capacitor/share"
+      "@capacitor/share",
+      "@capgo/capacitor-social-login"
     ]
   },
   "plugins": {

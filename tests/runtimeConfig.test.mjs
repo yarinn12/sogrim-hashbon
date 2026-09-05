@@ -9,7 +9,10 @@ import {
 test("getRuntimeConfig stays in local mode without cloud environment values", () => {
   const config = getRuntimeConfig({});
 
-  assert.deepEqual(config.auth, { googleClientId: "" });
+  assert.deepEqual(config.auth, {
+    googleClientId: "",
+    googleIosClientId: ""
+  });
   assert.deepEqual(config.updates, {
     android: {
       minimumSupportedBuild: 0,
@@ -32,6 +35,7 @@ test("getRuntimeConfig stays in local mode without cloud environment values", ()
   assert.deepEqual(config.storage, { mode: "local" });
   assert.equal(config.launch.publicUrlReady, false);
   assert.equal(config.launch.cloudStorageReady, false);
+  assert.equal(config.launch.googleIosAuthReady, false);
   assert.equal(config.launch.authEmailDeliveryReady, false);
   assert.equal(config.launch.accountDeletionReady, false);
   assert.equal(config.launch.pushDeliveryReady, false);
@@ -45,6 +49,7 @@ test("getRuntimeConfig enables Supabase mode when public cloud values exist", ()
     SUPABASE_URL: "https://demo.supabase.co",
     SUPABASE_ANON_KEY: "anon-key",
     GOOGLE_CLIENT_ID: "google-client-id",
+    GOOGLE_IOS_CLIENT_ID: "google-ios-client-id",
     AUTH_EMAIL_DELIVERY_READY: "true",
     SUPABASE_SERVICE_ROLE_KEY: "service-role-key"
   });
@@ -56,12 +61,16 @@ test("getRuntimeConfig enables Supabase mode when public cloud values exist", ()
     table: "app_snapshots",
     spaceId: "friends-beta"
   });
-  assert.deepEqual(config.auth, { googleClientId: "google-client-id" });
+  assert.deepEqual(config.auth, {
+    googleClientId: "google-client-id",
+    googleIosClientId: "google-ios-client-id"
+  });
   assert.equal(config.monetization.adsEnabled, false);
   assert.equal(config.publicUrl, "https://settle.example.com");
   assert.equal(config.launch.publicUrlReady, true);
   assert.equal(config.launch.cloudStorageReady, true);
   assert.equal(config.launch.googleAuthReady, true);
+  assert.equal(config.launch.googleIosAuthReady, true);
   assert.equal(config.launch.authEmailDeliveryReady, true);
   assert.equal(config.launch.accountDeletionReady, true);
   assert.equal(config.launch.pushDeliveryReady, false);
