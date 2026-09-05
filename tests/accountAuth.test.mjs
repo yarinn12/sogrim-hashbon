@@ -463,6 +463,27 @@ test("native Google ID tokens create the same Supabase account session", async (
   assert.equal(session.user.id, "google-user");
 });
 
+test("a Supabase project restriction remains a retryable Google auth failure", async () => {
+  await assert.rejects(
+    signInWithIdToken(
+      config,
+      { provider: "google", token: "google-id-token" },
+      async () => jsonResponse(402, {
+        message: "Project restricted",
+        reason: "exceed_egress_quota"
+      })
+    ),
+    (error) => {
+      assert.equal(error.status, 402);
+      assert.equal(
+        accountAuthErrorMessage(error, "google"),
+        "שירות החשבון אינו זמין כרגע. אפשר לנסות שוב לאחר שהשירות יחזור."
+      );
+      return true;
+    }
+  );
+});
+
 test("OAuth uses a one-time PKCE verifier instead of returning reusable tokens", async () => {
   const pkce = await createOAuthPkce();
   const url = new URL(
@@ -818,6 +839,12 @@ test("account auth errors stay helpful without exposing account existence", () =
   assert.equal(
     accountAuthErrorMessage(new Error("Failed to fetch"), "google"),
     "לא הצלחנו להגיע לשירות החשבון. כדאי לבדוק את החיבור ולנסות שוב."
+  );
+  const temporarilyRestricted = new Error("Project restricted");
+  temporarilyRestricted.status = 402;
+  assert.equal(
+    accountAuthErrorMessage(temporarilyRestricted, "google"),
+    "שירות החשבון אינו זמין כרגע. אפשר לנסות שוב לאחר שהשירות יחזור."
   );
 });
 

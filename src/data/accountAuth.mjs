@@ -864,6 +864,9 @@ export function authCallbackType(hashValue) {
 export function accountAuthErrorMessage(error, mode = "login") {
   const message = String(error?.message ?? "").toLowerCase();
   const status = Number(error?.status ?? 0);
+  if (status === 402) {
+    return "שירות החשבון אינו זמין כרגע. אפשר לנסות שוב לאחר שהשירות יחזור.";
+  }
   if (
     message.includes("failed to fetch") ||
     message.includes("network") ||

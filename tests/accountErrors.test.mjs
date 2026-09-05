@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { isTransientAccountError } from "../src/domain/accountErrors.mjs";
 
 test("retry-later account responses keep the signed-in session", () => {
-  for (const status of [408, 425, 429, 500, 502, 503, undefined]) {
+  for (const status of [402, 408, 425, 429, 500, 502, 503, undefined]) {
     assert.equal(
       isTransientAccountError({ status }),
       true,
