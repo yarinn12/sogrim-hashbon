@@ -2,6 +2,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
+test("leaving an expense route preserves its draft before releasing modal state and recording history", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const render = app.slice(app.indexOf("function render() {"), app.indexOf("function commitRenderedScreen(html)"));
+  assert.match(render, /expenseDraft && \(screen\.name !== "event" \|\| screen\.eventId !== expenseDraft\.eventId\)/);
+  const clearDraft = render.indexOf("expenseDraft = null;");
+  assert.ok(clearDraft > render.indexOf("rememberExpenseDraft();"));
+  assert.ok(clearDraft < render.indexOf("syncBrowserHistory();"));
+  assert.ok(clearDraft < render.indexOf("clearDialogBackgroundInert();"));
+});
+
 test("app renders a consistent back button across screens", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 

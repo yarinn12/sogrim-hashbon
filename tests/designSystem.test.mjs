@@ -52,7 +52,7 @@ test("Hebrew font loading does not block the app from rendering", async () => {
   assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
   assert.match(html, /as="style"/);
   assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=475"/);
+  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=476"/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
   assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
   assert.match(loader, /fontStylesheet\.media = "all"/);
@@ -207,6 +207,16 @@ test("final design coherence layer follows the restrained non-AI visual contract
   assert.doesNotMatch(genericLayer, /backdrop-filter:\s*blur/i);
   assert.doesNotMatch(genericLayer, /font-weight:\s*(?:7\d{2}|8\d{2})/);
   assert.doesNotMatch(genericLayer, /border-radius:\s*(?:1[3-9]|[2-9]\d)px/);
+});
+
+test("expense category grids keep intrinsic height instead of inheriting a nested scroller", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const start = layer.indexOf("html.ledger-workspace-v1 .expense-step-modal .expense-template-grid {");
+  assert.ok(start >= 0);
+  const grid = layer.slice(start, layer.indexOf("}", start));
+  assert.match(grid, /overflow: visible !important/);
+  assert.match(grid, /min-height: min-content !important/);
+  assert.match(layer, /\.expense-flow-body \{[^}]*grid-auto-rows: max-content !important/);
 });
 
 test("narrow headers keep profile and route controls at the 44px touch floor", async () => {

@@ -8718,6 +8718,7 @@ const CSS = `
     min-height: 0 !important;
     flex: 1 1 auto !important;
     display: grid !important;
+    grid-auto-rows: max-content !important;
     align-content: start !important;
     gap: 16px !important;
     padding: 24px 22px !important;
@@ -8826,6 +8827,10 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-step-modal .expense-template-grid {
     width: min(100%, 460px) !important;
+    /* The form body owns scrolling. The old horizontal template strip's
+       overflow would otherwise let this grid collapse below its button rows. */
+    overflow: visible !important;
+    min-height: min-content !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 8px !important;
     margin: 0 !important;
@@ -17412,16 +17417,22 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-actions {
-    position: static !important;
-    z-index: auto !important;
-    width: auto !important;
+    position: relative !important;
+    z-index: 4 !important;
+    width: 100% !important;
     max-width: 100% !important;
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    justify-items: end !important;
+    justify-items: center !important;
     gap: 0 !important;
-    margin: 0 !important;
-    margin-inline-start: auto !important;
+    margin: 14px 0 16px !important;
+  }
+
+  /* Share the hero's lower edge without leaving document flow. Only overlap
+     the hero (or an out-of-flow toast), never an inline status message. */
+  html.ledger-workspace-v1 .product-home-screen > .top + .home-quick-actions,
+  html.ledger-workspace-v1 .product-home-screen > .top + .app-toast + .home-quick-actions {
+    margin-top: calc(-1 * var(--home-create-overlap, 28px)) !important;
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .section-title-row > .home-events-heading {
@@ -17430,8 +17441,7 @@ const CSS = `
     gap: 12px !important;
   }
 
-  /* Older empty-home themes hid this title row when it contained only copy.
-     It now owns the create action and must remain visible in both states. */
+  /* Keep the events heading visible for both populated and confirmed-empty homes. */
   html.ledger-workspace-v1 body #app .screen[data-screen-kind="home"]
     .section-title-row:has(> .home-events-heading) {
     display: grid !important;
@@ -17467,7 +17477,7 @@ const CSS = `
     grid-template-columns: minmax(0, 1.48fr) minmax(126px, 0.92fr) !important;
     align-items: stretch !important;
     gap: 8px !important;
-    margin: 16px 0 6px !important;
+    margin: 0 0 6px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action {

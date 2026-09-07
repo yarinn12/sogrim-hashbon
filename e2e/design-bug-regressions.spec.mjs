@@ -130,6 +130,77 @@ test("expense templates preserve a custom name and still switch templates", asyn
   await expect(expenseName).toHaveValue("שתייה");
 });
 
+test("landscape expense templates keep full hit areas inside the form scroll", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="show-expense-form"]').first().click();
+  await page.locator('[data-action="expense-total"]').fill("120");
+  await page.locator('[data-action="expense-step-next"]').click();
+  const name = page.locator('[data-action="expense-name"]');
+  const grid = page.locator(".expense-step-modal .expense-template-grid");
+  for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }]) {
+    await page.setViewportSize(viewport);
+    await expect.poll(() => grid.evaluate(element => element.scrollHeight - element.clientHeight), {
+      message: "the category grid must not become a clipped inner scroller"
+    }).toBeLessThanOrEqual(1);
+    const templates = grid.locator('[data-action="expense-template"]');
+    for (const template of await templates.all()) {
+      await name.fill("");
+      const label = await template.getAttribute("data-template");
+      // Normal click includes scrolling and hit testing. Never force it.
+      await template.click({ timeout: 5000 });
+      await expect(name).toHaveValue(label);
+    }
+    await page.locator(".expense-flow-body").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    await page.screenshot({ path: testInfo.outputPath(`expense-categories-${viewport.width}.png`) });
+    await expect(page.locator('[data-action="expense-step-next"]')).toBeInViewport();
+  }
+});
+
+for (const destination of ["profile", "notifications"]) {
+  test(`leaving an expense for ${destination} releases navigation and preserves the draft`, async ({ page }) => {
+    const errors = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+    await page.locator('[data-action="show-expense-form"]').first().click();
+    await page.locator('[data-action="expense-total"]').fill("123");
+    await page.locator('[data-action="expense-step-next"]').click();
+    await page.locator('[data-action="expense-name"]').fill("טיוטה שנשמרת במעבר מסך");
+    await page.locator(`[data-nav-destination="${destination}"]:visible`).first().click();
+    await expect(page.locator(`[data-screen-kind="${destination}"]`)).toBeVisible();
+    await expect(page.locator("body")).not.toHaveClass(/app-dialog-open/);
+    await expect(page.locator("[data-app-dialog-inert], [data-app-dialog-inert-container]")).toHaveCount(0);
+
+    if (destination === "profile") {
+      // History still owns its expense snapshot, not the unrelated destination.
+      await page.goBack();
+      await expect(page.locator(".expense-step-modal")).toBeVisible();
+      await expect(page.locator('[data-action="expense-name"]')).toHaveValue("טיוטה שנשמרת במעבר מסך");
+      await page.goForward();
+      await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+    } else {
+      await page.locator('[data-nav-destination="profile"]:visible').first().click();
+    }
+    await page.locator('[data-action="groups"]').first().click();
+    await expect(page.locator('[data-screen-kind="groups"]')).toBeVisible();
+    const notifications = page.locator('[data-nav-destination="notifications"]:visible').first();
+    await notifications.focus();
+    await expect(notifications).toBeFocused();
+    await notifications.press("Enter");
+    await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
+    await page.locator('[data-nav-destination="home"]:visible').first().click();
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+    await page.locator('[data-action="show-expense-form"]').first().click();
+    await expect(page.locator('[data-action="expense-total"]')).toHaveValue("123");
+    await page.locator('[data-action="expense-step-next"]').click();
+    await expect(page.locator('[data-action="expense-name"]')).toHaveValue("טיוטה שנשמרת במעבר מסך");
+    // Reopening a genuine expense dialog must still protect its background.
+    await expect(page.locator("body")).toHaveClass(/app-dialog-open/);
+    await expect.poll(() => page.locator("[data-app-dialog-inert]").count()).toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+  });
+}
+
 test("a late expense template frame cannot redirect the user's next edit", async ({ page }) => {
   await installDelayedDialogFrameFixture(page, "expense-template");
   await page.reload();

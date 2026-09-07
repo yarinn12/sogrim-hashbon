@@ -168,7 +168,7 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
   const modal = page.locator(".event-note-modal");
   await expect(modal).toBeVisible();
   await settleCoherenceMotion(page);
-  const metrics = await modal.evaluate(element => {
+  const measure = () => modal.evaluate(element => {
     const box = element.getBoundingClientRect();
     const form = element.querySelector(".event-note-editor");
     const formBox = form.getBoundingClientRect();
@@ -186,6 +186,13 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
       pinRadius: styles(".event-note-pin-toggle").borderRadius,
       saveRadius: styles('[data-action="save-event-note"]').borderRadius };
   });
+  // A late render can start another reveal after the general settle check.
+  // Measure the actual assertion snapshot only once its ancestors are opaque.
+  let metrics;
+  await expect.poll(async () => {
+    metrics = await measure();
+    return metrics.ancestors.every(({ opacity }) => Number(opacity) === 1);
+  }, { message: "measure the note form in its fully opaque state" }).toBe(true);
   await testInfo.attach("note-editor-metrics", { body: JSON.stringify(metrics), contentType: "application/json" });
   await page.screenshot({ path: testInfo.outputPath("note-editor-spacing.png") });
   expect(metrics.leftInset).toBeGreaterThanOrEqual(16);
@@ -1483,21 +1490,36 @@ async function assertSingleDecisionExpenseStep(page) {
   const dialog = page.locator(".expense-step-modal");
   const nav = page.locator(".event-route-primary-nav");
   await expect(nav).toBeVisible();
-  await expect.poll(async () => {
-    const rect = await dialog.evaluate((element) => element.getBoundingClientRect());
-    return Math.round(rect.top);
-  }, { message: "expense flow settles against the top edge" }).toBeLessThanOrEqual(4);
-  await expect.poll(async () => {
-    return await page.evaluate(() => {
-      const dialog = document.querySelector(".expense-step-modal");
-      const nav = document.querySelector(".event-route-primary-nav");
-      if (!dialog || !nav) return Number.POSITIVE_INFINITY;
-      return Math.abs(
-        Math.round(dialog.getBoundingClientRect().bottom) -
-          Math.round(nav.getBoundingClientRect().top)
-      );
-    });
-  }, { message: "expense flow reserves the bottom navigation area" }).toBeLessThanOrEqual(24);
+  const usesFullscreenModal = await page.evaluate(() =>
+    matchMedia("(max-width: 1024px), (hover: none) and (pointer: coarse)").matches
+  );
+  if (usesFullscreenModal) {
+    await expect.poll(async () => {
+      const rect = await dialog.evaluate((element) => element.getBoundingClientRect());
+      return Math.round(rect.top);
+    }, { message: "expense flow settles against the top edge" }).toBeLessThanOrEqual(4);
+    await expect.poll(async () => {
+      return await page.evaluate(() => {
+        const dialog = document.querySelector(".expense-step-modal");
+        const nav = document.querySelector(".event-route-primary-nav");
+        if (!dialog || !nav) return Number.POSITIVE_INFINITY;
+        return Math.abs(
+          Math.round(dialog.getBoundingClientRect().bottom) -
+            Math.round(nav.getBoundingClientRect().top)
+        );
+      });
+    }, { message: "expense flow reserves the bottom navigation area" }).toBeLessThanOrEqual(24);
+  } else {
+    await expect.poll(() => dialog.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return Math.abs(rect.left - (innerWidth - rect.right));
+    }), { message: "desktop expense dialogs stay horizontally centered" }).toBeLessThanOrEqual(1);
+    const box = await dialog.boundingBox();
+    const navigation = await nav.boundingBox();
+    expect(box.y, "desktop dialogs retain their intended top gutter").toBeGreaterThanOrEqual(16);
+    expect(box.x).toBeGreaterThanOrEqual(16);
+    expect(box.y + box.height, "desktop expense dialog never covers navigation").toBeLessThanOrEqual(navigation.y);
+  }
 
   const actions = dialog.locator(".expense-modal-actions");
   await expect(actions).toBeVisible();

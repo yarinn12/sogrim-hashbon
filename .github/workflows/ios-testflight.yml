@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.27"
+        default: "4.28"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "155"
+        default: "156"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפרנו את רענון הסנכרון בחזרה לאפליקציה ובחזרת האינטרנט, את תגובת השמירה ואת מיקום כפתור אירוע חדש."
+        default: "החזרנו את אירוע חדש למרכז הקצה הירוק ותיקנו גלילת קטגוריות הוצאה וניווט בעת יציאה מטיוטת הוצאה."
 
 permissions:
   contents: read

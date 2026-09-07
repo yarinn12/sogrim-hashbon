@@ -1670,7 +1670,10 @@ test("home screen keeps creation primary and exposes a secondary friends entry",
   assert.match(home, /class="screen font-hebrew product-home-screen\$\{sortedEvents\.length \? "" : " product-empty-home"\}"/);
   assert.match(home, /data-product-screen="home"/);
   assert.equal([...home.matchAll(/class="home-events-heading"/g)].length, 2);
-  assert.equal([...home.matchAll(/<h2>אירועים<\/h2>\s*\$\{renderHomeCreateEventAction\(\)\}/g)].length, 2);
+  assert.equal([...home.matchAll(/renderHomeCreateEventAction\(\)/g)].length, 2); // One call and its declaration.
+  assert.match(home, /<\/header>\s*\$\{renderNotice\(\)\}\s*\$\{awaitingAuthoritativeEvents \? "" : renderHomeCreateEventAction\(\)\}/);
+  assert.doesNotMatch(home, /<h2>אירועים<\/h2>\s*\$\{renderHomeCreateEventAction\(\)\}/);
+  assert.ok(home.indexOf(': renderHomeCreateEventAction()') < home.indexOf('class="home-benefit-actions"'));
   assert.match(home, /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)/);
   assert.equal([...createAction.matchAll(/data-action="new-event"/g)].length, 1);
   assert.match(createAction, /<button class="home-quick-action is-primary home-create-event-action" data-action="new-event"/);

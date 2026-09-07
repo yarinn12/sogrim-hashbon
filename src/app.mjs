@@ -860,6 +860,12 @@ function render() {
   rememberExpenseDraft();
   syncNewEventDraftFromRenderedDetails();
   ensureRenderableScreen();
+  // Expense dialogs belong to their event route only. Preserve the draft above,
+  // but do not carry an invisible modal (or its inert navigation) into another
+  // screen or into that screen's browser-history snapshot.
+  if (expenseDraft && (screen.name !== "event" || screen.eventId !== expenseDraft.eventId)) {
+    expenseDraft = null;
+  }
   syncBrowserHistory();
   if (
     !eventDialog &&
@@ -2383,6 +2389,7 @@ function renderHome() {
         </div>
       </header>
       ${renderNotice()}
+      ${awaitingAuthoritativeEvents ? "" : renderHomeCreateEventAction()}
       ${
         awaitingAuthoritativeEvents
           ? ""
@@ -2401,7 +2408,6 @@ function renderHome() {
               <div class="section-title-row">
                 <div class="home-events-heading">
                   <h2>אירועים</h2>
-                  ${renderHomeCreateEventAction()}
                 </div>
                 ${renderEventStatusFilter(sortedEvents)}
               </div>
@@ -2422,7 +2428,6 @@ function renderHome() {
               <div class="section-title-row">
                 <div class="home-events-heading">
                   <h2>אירועים</h2>
-                  ${renderHomeCreateEventAction()}
                 </div>
                 <p class="muted">פתח אירוע חדש. הזמנה שקיבלת נפתחת ישירות מהקישור.</p>
               </div>

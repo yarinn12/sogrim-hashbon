@@ -171,7 +171,8 @@ function injectDynamicTypeStyles(document) {
     html.dynamic-type-preview #app
       .screen[data-screen-kind="home"]
       .home-quick-actions {
-      margin-block: 0 !important;
+      /* Half of the compact 50px action, preserving its hero-edge placement. */
+      --home-create-overlap: 25px;
     }
 
     html.${ACTIVE_CLASS} #app

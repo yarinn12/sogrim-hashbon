@@ -222,6 +222,8 @@ test("an empty home reuses the approved compact home hero copy", async () => {
     /const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה\."/
   );
   assert.equal([...home.matchAll(/class="home-events-heading"/g)].length, 2);
+  assert.match(home, /awaitingAuthoritativeEvents \? "" : renderHomeCreateEventAction\(\)/);
+  assert.doesNotMatch(home, /<h2>אירועים<\/h2>\s*\$\{renderHomeCreateEventAction\(\)\}/);
   assert.match(home, /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)/);
   assert.match(createAction, /const label = "אירוע חדש"/);
   assert.match(createAction, /home-create-event-action/);

@@ -83,7 +83,7 @@ test.beforeEach(async ({ page, request }) => {
   }, { participantId: OWNER_ID, state: emptyAccountState });
 });
 
-test("home anchors new-event to the event heading across narrow and tablet layouts", async ({ page }, testInfo) => {
+test("home centers new-event across the hero edge in narrow and tablet layouts", async ({ page }, testInfo) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   const viewports = testInfo.project.name === "ipad-webkit"
@@ -91,7 +91,9 @@ test("home anchors new-event to the event heading across narrow and tablet layou
         { width: 768, height: 1024 },
         { width: 1194, height: 834 }
       ]
-    : [
+    : testInfo.project.name === "desktop-wide"
+      ? [{ width: 1440, height: 1000 }]
+      : [
         { width: 390, height: 844 },
         { width: 375, height: 667 },
         { width: 320, height: 568 }
@@ -103,13 +105,13 @@ test("home anchors new-event to the event heading across narrow and tablet layou
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
     await waitForHomePresentation(page);
     await expect(page.locator(".home-create-event-action")).toBeVisible();
+    await expectCenteredHomeCreateAction(page);
 
     const layout = await page.evaluate(() => {
       const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
       const hero = screen?.querySelector(":scope > .top");
       const copy = hero?.querySelector(".brand");
       const action = screen?.querySelector('[data-action="new-event"]');
-      const heading = action?.closest(".home-events-heading");
       const promo = screen?.querySelector(".home-empty-visual");
       const promoImage = promo?.querySelector("img");
       const brandImage = screen?.querySelector(".product-brand-image");
@@ -134,8 +136,6 @@ test("home anchors new-event to the event heading across narrow and tablet layou
         hero: rect(hero),
         copy: rect(copy),
         action: rect(action),
-        heading: rect(heading),
-        headingTitle: rect(heading?.querySelector("h2")),
         actionPosition: action ? getComputedStyle(action).position : "",
         wrapperPosition: action ? getComputedStyle(action.parentElement).position : "",
         actionContentFits: action ? action.scrollWidth <= action.clientWidth : false,
@@ -151,14 +151,8 @@ test("home anchors new-event to the event heading across narrow and tablet layou
     expect(layout.screen.right).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.hero.left).toBeGreaterThanOrEqual(0);
     expect(layout.hero.right).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.heading).not.toBeNull();
-    expect(layout.action.top).toBeGreaterThanOrEqual(layout.heading.top - 1);
-    expect(layout.action.bottom).toBeLessThanOrEqual(layout.heading.bottom + 1);
-    expect(layout.action.left).toBeGreaterThanOrEqual(layout.heading.left - 1);
-    expect(layout.action.right).toBeLessThanOrEqual(layout.heading.right + 1);
-    expect(layout.headingTitle.left - layout.action.right).toBeGreaterThanOrEqual(10);
     expect(["fixed", "absolute"]).not.toContain(layout.actionPosition);
-    expect(layout.wrapperPosition).toBe("static");
+    expect(layout.wrapperPosition).toBe("relative");
     expect(layout.actionContentFits).toBe(true);
     expect(layout.action.height).toBeGreaterThanOrEqual(44);
     const screenCenter = (layout.screen.left + layout.screen.right) / 2;
@@ -171,10 +165,9 @@ test("home anchors new-event to the event heading across narrow and tablet layou
     expect(layout.brandImageFit).toBe("contain");
     expect(layout.brandImageTransform).toBe("none");
 
-    if (viewport.width >= 721) {
+    if (viewport.width >= 721 && viewport.width <= 1366) {
       expect(layout.screen.width).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
-      // This is now an inline, content-sized action rather than the old
-      // centered 240px hero action; verify its target and container bounds.
+      // Keep the current content-sized button styling, only restore its placement.
       expect(layout.action.width).toBeGreaterThanOrEqual(44);
       expect(layout.action.width).toBeLessThanOrEqual(240);
       expect(Math.abs(screenCenter - viewport.width / 2)).toBeLessThanOrEqual(2);
@@ -183,14 +176,19 @@ test("home anchors new-event to the event heading across narrow and tablet layou
     await page.locator(".home-create-event-action").click({ trial: true });
     await page.screenshot({ path: testInfo.outputPath(`home-event-action-${viewport.width}.png`) });
   }
-  await page.locator(".home-create-event-action").click();
+  const actionBounds = await page.locator(".home-create-event-action").boundingBox();
+  // Click the upper half that overlaps the hero, not just the exposed lower half.
+  await page.locator(".home-create-event-action").click({
+    position: { x: actionBounds.width / 2, y: actionBounds.height / 4 }
+  });
   await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test("the first-event action is identical to the regular new-event action", async ({ page, request }) => {
+test("the first-event action is identical to the regular new-event action", async ({ page, request }, testInfo) => {
   await page.goto("/");
   const emptyAction = await homeCreateActionPresentation(page);
+  await expectCenteredHomeCreateAction(page);
 
   await request.put("/api/state", { data: populatedAccountState });
   const populatedPage = await page.context().newPage();
@@ -212,11 +210,39 @@ test("the first-event action is identical to the regular new-event action", asyn
   await populatedPage.goto("/");
   await expect(populatedPage.locator(".event-row")).toHaveCount(1);
   const populatedAction = await homeCreateActionPresentation(populatedPage);
+  await expectCenteredHomeCreateAction(populatedPage);
+  await populatedPage.screenshot({ path: testInfo.outputPath("home-populated-centered-action.png") });
+  await populatedPage.locator(".home-create-event-action").click();
+  await expect(populatedPage.locator('[data-screen-kind="new-event"]')).toBeVisible();
   await populatedPage.close();
 
   expect(emptyAction.text).toBe("אירוע חדש");
   expect(populatedAction.text).toBe("אירוע חדש");
   expect(emptyAction.presentation).toEqual(populatedAction.presentation);
+});
+
+test("hero-edge action respects large text and inline feedback", async ({ page }, testInfo) => {
+  await page.goto("/?dynamic-type-preview=28");
+  await waitForHomePresentation(page);
+  await expect(page.locator("html")).toHaveClass(/dynamic-type-preview/);
+  await page.locator(".home-create-event-action").scrollIntoViewIfNeeded();
+  await expectCenteredHomeCreateAction(page);
+  await page.screenshot({ path: testInfo.outputPath("home-overlap-large-text.png") });
+
+  // Exercise the CSS boundary with an inline status fixture. Unlike a fixed
+  // toast, a message in document flow must never be covered by the action.
+  const noticeGap = await page.locator('.screen[data-screen-kind="home"]').evaluate((screen) => {
+    const notice = document.createElement("div");
+    notice.className = "notice";
+    notice.setAttribute("role", "status");
+    notice.textContent = "הודעת בדיקה שצריכה להישאר קריאה";
+    screen.querySelector(":scope > .top").after(notice);
+    const action = screen.querySelector(".home-create-event-action").getBoundingClientRect();
+    return action.top - notice.getBoundingClientRect().bottom;
+  });
+  expect(noticeGap).toBeGreaterThanOrEqual(0);
+  await page.locator(".home-create-event-action").click();
+  await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
 });
 
 test("an old event joined today appears first on home", async ({ page, request }) => {
@@ -267,6 +293,38 @@ async function homeCreateActionPresentation(page) {
       }
     };
   });
+}
+
+async function expectCenteredHomeCreateAction(page) {
+  const screen = page.locator('#app .screen[data-screen-kind="home"]');
+  await expect(screen.locator('[data-action="new-event"]')).toHaveCount(1);
+  await expect(screen.locator('.home-events-heading [data-action="new-event"]')).toHaveCount(0);
+  const placement = await screen.evaluate((element) => {
+    const hero = element.querySelector(":scope > .top").getBoundingClientRect();
+    const button = element.querySelector('[data-action="new-event"]');
+    const action = button.getBoundingClientRect();
+    const copy = element.querySelector(":scope > .top .brand").getBoundingClientRect();
+    const benefits = element.querySelector(".home-benefit-actions").getBoundingClientRect();
+    const wrapper = element.querySelector(".home-quick-actions");
+    return {
+      directChild: wrapper.parentElement === element,
+      centerOffset: Math.abs((action.left + action.right - hero.left - hero.right) / 2),
+      edgeOffset: Math.abs((action.top + action.bottom) / 2 - hero.bottom),
+      copyGap: action.top - copy.bottom,
+      bothHalvesClickable: [0.25, 0.75].every((fraction) =>
+        button.contains(document.elementFromPoint((action.left + action.right) / 2, action.top + action.height * fraction))
+      ),
+      benefitsGap: benefits.top - action.bottom,
+      withinHeroWidth: action.left >= hero.left && action.right <= hero.right
+    };
+  });
+  expect(placement.directChild).toBe(true);
+  expect(placement.centerOffset).toBeLessThanOrEqual(1);
+  expect(placement.edgeOffset).toBeLessThanOrEqual(3);
+  expect(placement.copyGap).toBeGreaterThanOrEqual(0);
+  expect(placement.bothHalvesClickable).toBe(true);
+  expect(placement.benefitsGap).toBeGreaterThanOrEqual(12);
+  expect(placement.withinHeroWidth).toBe(true);
 }
 
 async function waitForHomePresentation(page) {
