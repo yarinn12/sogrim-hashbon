@@ -8,8 +8,11 @@ android
 ios
 tests
 e2e
+e2e-sync
 test-results
+test-results-sync
 playwright-report
+playwright-report-sync
 docs
 supabase
 build

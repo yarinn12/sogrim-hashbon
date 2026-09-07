@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.28"
+        default: "4.29"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "156"
+        default: "157"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "החזרנו את אירוע חדש למרכז הקצה הירוק ותיקנו גלילת קטגוריות הוצאה וניווט בעת יציאה מטיוטת הוצאה."
+        default: "שיפור אמינות הסנכרון בפתקים ובהוצאות, התאוששות מחיבור שנקטע ושיפורי גלילה וניווט."
 
 permissions:
   contents: read

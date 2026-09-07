@@ -28,7 +28,7 @@ function capturePendingRetryTimers() {
   };
 }
 
-async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, beforeCanonicalResponse = null, canonicalStatus = null } = {}) {
+async function fixture(run, { allFail = false, status = 403, workspaceStatus = 200, beforeWorkspaceResponse = null, beforeCanonicalResponse = null, beforeSnapshotResponse = null, canonicalStatus = null } = {}) {
   const globals = Object.fromEntries(["window", "location", "localStorage", "fetch"].map((key) => [key, globalThis[key]]));
   const entries = new Map();
   const storage = {
@@ -100,6 +100,7 @@ async function fixture(run, { allFail = false, status = 403, workspaceStatus = 2
     }
     const id = address.searchParams.get("id")?.replace(/^eq\./, "");
     assert.ok(id === workspaceId || canonical.has(id), "only fixture resources are accessible");
+    await beforeSnapshotResponse?.({ storage, workspaceId, id });
     return response([{ state: id === workspaceId ? state : canonical.get(id), updated_at: stamp }]);
   };
   try {
@@ -122,6 +123,82 @@ test("mixed shared sync carries successful merges separately from an authoritati
     assert.equal(error.sharedEventPersisted, undefined);
     return true;
   });
+}));
+
+for (const path of ["flush", "load"]) {
+  test(`a restarted ${path} retries only the events in the durable save scope`, async () => fixture(async ({ state, storage, workspaceId, canonicalWrites, workspaceWrites, recover }) => {
+    const store = await import(`../src/data/localStore.mjs?durable-scope-save=${crypto.randomUUID()}`);
+    const changed = addEventNote(state, "healthy", { id: "scoped-note", body: "Only this event changed" });
+    assert.equal((await store.saveSharedState(changed, { awaitCloud: true })).pending, true);
+    recover();
+    const restarted = await import(`../src/data/localStore.mjs?durable-scope-restart=${crypto.randomUUID()}`);
+    await (path === "flush" ? restarted.flushPendingSharedState() : restarted.loadSharedState());
+    assert.ok(canonicalWrites.includes("space-partial-healthy"));
+    assert.ok(!canonicalWrites.includes("space-partial-failing"), "recovery must not widen one queued edit to every group");
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+    for (const written of workspaceWrites) assert.equal(written.__pendingSync, undefined, "local delivery metadata must never enter cloud state");
+  }, { allFail: true, status: 503 }));
+}
+
+test("legacy outbox partial success leaves only the failed event marked pending", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?legacy-partial-scope=${crypto.randomUUID()}`);
+  assert.equal((await store.flushPendingSharedState()).ok, false);
+  assert.deepEqual(store.pendingSharedSyncStatus().pendingEventIds, ["failing"]);
+  const restarted = await import(`../src/data/localStore.mjs?legacy-partial-status=${crypto.randomUUID()}`);
+  assert.deepEqual(restarted.pendingSharedSyncStatus().pendingEventIds, ["failing"]);
+  assert.ok(JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`)).events[1].notes.length);
+}));
+
+test("an empty recovery explicitly clears a stale pending indicator", async () => fixture(async () => {
+  const statuses = [];
+  window.dispatchEvent = event => statuses.push(event.detail);
+  const store = await import(`../src/data/localStore.mjs?empty-pending-status=${crypto.randomUUID()}`);
+  assert.equal((await store.flushPendingSharedState()).empty, true);
+  assert.ok(statuses.some(detail => detail?.pending === false), "an empty outbox must acknowledge that no delivery remains");
+}));
+
+test("a later rejected save cannot discard an older accepted outbox", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?retain-rejected-prior=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  const priorPayload = storage.getItem(`settle-friends-pending-sync:${workspaceId}`);
+  assert.deepEqual(store.pendingSharedSyncStatus().pendingEventIds, ["failing"]);
+  const next = { ...store.loadState(), groups: [{ id: "private-group", name: "Private", participantIds: [pending.currentParticipantId] }] };
+  const result = await store.saveSharedState(next, { awaitCloud: true });
+  assert.equal(result.ok, false, "a permanent rejection must not be advertised as a successful cloud save");
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), priorPayload, "previously accepted notes must stay queued after a later rejection");
+  assert.deepEqual(store.pendingSharedSyncStatus().pendingEventIds, ["failing"]);
+}));
+
+test("malformed delivery metadata never silently narrows a legacy outbox", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  const saved = { ...pending, __pendingSync: { version: 1, selection: { eventIds: [], deletedEventIds: "invalid" } } };
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(saved));
+  const store = await import(`../src/data/localStore.mjs?malformed-scope=${crypto.randomUUID()}`);
+  assert.deepEqual(new Set(store.pendingSharedSyncStatus().pendingEventIds), new Set(["healthy", "failing"]));
+  assert.ok(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+}));
+
+test("a personal-only conflict retry does not republish unchanged shared groups", async () => fixture(async ({ state, canonicalWrites, workspaceWrites }) => {
+  const store = await import(`../src/data/localStore.mjs?personal-conflict-scope=${crypto.randomUUID()}`);
+  const changed = { ...state, groups: [{ id: "private-group", name: "Private", participantIds: [state.currentParticipantId] }] };
+  const result = await store.saveSharedState(changed, { awaitCloud: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, "cloud");
+  assert.ok(workspaceWrites.length >= 2, "the personal snapshot actually exercised conflict recovery");
+  assert.deepEqual(canonicalWrites, [], "a private change cannot turn an old group's permission into a failed save");
+}, { workspaceStatus: attempt => attempt === 1 ? 409 : 200 }));
+
+test("partial deletion progress preserves only the unacknowledged deletion scope", async () => fixture(async ({ pending, storage, workspaceId }) => {
+  pending.deletedEvents = pending.events.map(event => ({ id: event.id, sharedSpaceId: event.sharedSpaceId,
+    sharedSpaceKey: event.sharedSpaceKey, deletedAt: "2026-08-24T09:01:00.000Z" }));
+  pending.events = [];
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+  const store = await import(`../src/data/localStore.mjs?deletion-scope=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  const saved = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+  assert.deepEqual(saved.__pendingSync.selection, { eventIds: [], deletedEventIds: ["failing"] });
+  assert.ok(saved.deletedEvents.some(event => event.id === "failing"));
 }));
 
 for (const path of ["save", "flush", "load"]) {
@@ -408,6 +485,171 @@ test("a stale partial flush cannot replace a newer outbox or its local state", a
   storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(newer));
   storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(newer));
 } }));
+
+for (const outcome of ["success", "partial", "rejected", "temporary"]) {
+  test(`a late ${outcome} save cannot overwrite another tab's newer local note`, async () => fixture(async ({ pending, storage, workspaceId, recover }) => {
+    if (outcome === "success") recover();
+    const store = await import(`../src/data/localStore.mjs?other-tab-${outcome}=${crypto.randomUUID()}`);
+    await store.saveSharedState(pending, { awaitCloud: true });
+    assert.ok(store.loadState().events[1].notes.some(item => item.id === "newer-tab-note"), "an older response must not replace the other tab's visible state");
+    const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+    assert.ok(queued?.events[1].notes.some(item => item.id === "newer-tab-note"), "the newer durable outbox must not be replaced or acknowledged");
+  }, {
+    allFail: ["rejected", "temporary"].includes(outcome),
+    status: outcome === "temporary" ? 503 : 403,
+    beforeCanonicalResponse({ storage, workspaceId }) {
+      const key = `settle-friends-pending-sync:${workspaceId}`;
+      const newer = JSON.parse(storage.getItem(key));
+      if (newer?.events[1].notes.some(item => item.id === "newer-tab-note")) return;
+      delete newer.__pendingSync;
+      newer.events[1].notes.push(note("newer-tab-note"));
+      storage.setItem(key, JSON.stringify(newer));
+      storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(newer));
+    }
+  }));
+}
+
+for (const path of ["save", "flush", "load"]) {
+  for (const newerPending of [false, true]) {
+    for (const status of [403, 503]) {
+      test(`late HTTP ${status} during ${path} cannot label another tab's ${newerPending ? "new outbox" : "completed save"} as failed`, async () => {
+        let replaced = false;
+        await fixture(async ({ pending, storage, workspaceId }) => {
+          const clock = capturePendingRetryTimers();
+          const statuses = [];
+          window.dispatchEvent = event => { if (event.type === "sogrim:sync-status") statuses.push(event.detail); };
+          const store = await import(`../src/data/localStore.mjs?obsolete-status-${crypto.randomUUID()}`);
+          if (path !== "save") {
+            storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+            storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+          }
+          const result = await (path === "save" ? store.saveSharedState(pending, { awaitCloud: true })
+            : path === "flush" ? store.flushPendingSharedState() : store.loadSharedState());
+          assert.ok(replaced, "the other tab changed durable state while this request was in flight");
+          assert.equal(statuses.at(-1)?.pending, newerPending);
+          assert.ok(!statuses.at(-1)?.failureKind, "an obsolete failure is not evidence about newer work");
+          assert.equal(clock.timers.size, newerPending ? 1 : 0, "retry current work, never resurrect a completed outbox");
+          if (path === "load") assert.ok(result.events[1].notes.some(item => item.id === "newer-tab-note"), "a failed old load must return current durable state");
+        }, {
+          allFail: true, status,
+          beforeCanonicalResponse({ storage, workspaceId }) {
+            if (replaced) return;
+            replaced = true;
+            const key = `settle-friends-pending-sync:${workspaceId}`;
+            const newer = JSON.parse(storage.getItem(key));
+            newer.events[1].notes.push(note("newer-tab-note"));
+            storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(newer));
+            if (newerPending) storage.setItem(key, JSON.stringify(newer));
+            else storage.removeItem(key);
+          }
+        });
+      });
+    }
+  }
+}
+
+for (const readFails of [false, true]) {
+  for (const newerPending of [false, true]) {
+    test(`a ${readFails ? "failed" : "successful"} read during retry backoff preserves another tab's ${newerPending ? "pending" : "acknowledged"} note`, async () => {
+      let armed = false, replaced = false;
+      await fixture(async ({ pending, storage, workspaceId }) => {
+        const clock = capturePendingRetryTimers();
+        const store = await import(`../src/data/localStore.mjs?backoff-tab-${crypto.randomUUID()}`);
+        await store.saveSharedState(pending, { awaitCloud: true });
+        assert.equal(clock.timers.size, 1, "exercise a read during actual retry backoff");
+        armed = true;
+        const loaded = await store.loadSharedState();
+        for (const snapshot of [loaded, store.loadState()]) {
+          assert.ok(snapshot.events[1].notes.some(item => item.id === "backoff-other-tab-note"));
+        }
+        assert.equal(Boolean(storage.getItem(`settle-friends-pending-sync:${workspaceId}`)), newerPending);
+        assert.equal(clock.timers.size, newerPending ? 1 : 0);
+      }, {
+        allFail: true, status: 503,
+        beforeSnapshotResponse({ storage, workspaceId }) {
+          if (!armed) return;
+          if (!replaced) {
+            replaced = true;
+            const key = `settle-friends-pending-sync:${workspaceId}`;
+            const newer = JSON.parse(storage.getItem(key));
+            newer.events[1].notes.push(note("backoff-other-tab-note"));
+            storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(newer));
+            if (newerPending) storage.setItem(key, JSON.stringify(newer));
+            else storage.removeItem(key);
+          }
+          if (readFails) throw Object.assign(new Error("Synthetic temporary read failure"), { status: 503 });
+        }
+      });
+    });
+  }
+}
+
+for (const driver of ["save", "flush"]) {
+  test(`a foreground read cannot duplicate the canonical write owned by an in-flight ${driver}`, async () => {
+    let release, signalStarted, held = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    await fixture(async ({ state, pending, storage, workspaceId, canonicalWrites, workspaceWrites, recover }) => {
+      recover();
+      const store = await import(`../src/data/localStore.mjs?read-during-write-${crypto.randomUUID()}`);
+      if (driver === "flush") {
+        storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+        storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+      }
+      const saving = driver === "save" ? store.saveSharedState(pending, { awaitCloud: true }) : store.flushPendingSharedState();
+      try {
+        await started;
+        state.events[0].notes.push(note("remote-personal-note"));
+        const readsBefore = canonicalWrites.length;
+        const loaded = await store.loadSharedState();
+        assert.equal(canonicalWrites.length, readsBefore, "refresh may read but cannot start another publication");
+        assert.equal(workspaceWrites.length, 0);
+        assert.ok(loaded.events[0].notes.some(item => item.id === "remote-personal-note"), "remote account updates still reach the UI while saving");
+      } finally { release(); await saving; }
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+    }, { beforeCanonicalResponse: async () => {
+      if (held >= 2) return;
+      held++;
+      if (held === 2) signalStarted();
+      await gate;
+    } });
+  });
+}
+
+for (const driver of ["save", "flush"]) {
+  test(`startup outbox recovery owns publication before a later ${driver}`, async () => {
+    let release, signalStarted, held = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    const started = new Promise(resolve => { signalStarted = resolve; });
+    await fixture(async ({ pending, storage, workspaceId, canonicalWrites, workspaceWrites, recover }) => {
+      recover();
+      const store = await import(`../src/data/localStore.mjs?write-during-startup-${crypto.randomUUID()}`);
+      storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+      storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+      const loading = store.loadSharedState();
+      let saving;
+      const newer = structuredClone(pending);
+      newer.events[0].notes.push(note("edit-during-startup"));
+      try {
+        await started;
+        const writesBefore = canonicalWrites.length;
+        saving = driver === "save"
+          ? store.saveSharedState(newer, { awaitCloud: true })
+          : store.flushPendingSharedState();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(canonicalWrites.length, writesBefore, "startup and foreground cannot publish the same outbox in parallel");
+        assert.equal(workspaceWrites.length, 0);
+      } finally { release(); await Promise.all([loading, saving]); }
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+      if (driver === "save") assert.ok(store.loadState().events.find(event => event.id === "healthy").notes.some(item => item.id === "edit-during-startup"));
+    }, { beforeCanonicalResponse: async () => {
+      if (held >= 2) return;
+      held++;
+      if (held === 2) signalStarted();
+      await gate;
+    } });
+  });
+}
 
 for (const firstResult of ["mixed", "complete"]) {
 for (const path of ["save", "flush", "load"]) {

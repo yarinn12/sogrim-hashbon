@@ -10,7 +10,9 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
   workers: 1,
+  forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  failOnFlakyTests: Boolean(process.env.CI),
   timeout: 90_000,
   expect: { timeout: 8_000 },
   reporter: process.env.CI
@@ -21,7 +23,7 @@ export default defineConfig({
     locale: "he-IL",
     timezoneId: "Asia/Jerusalem",
     reducedMotion: "reduce",
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure"
   },

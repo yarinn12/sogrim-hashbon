@@ -1,6 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+
+test("event route dialogs receive an explicit event id without relying on window.event", async () => {
+  const app = await readFile("src/app.mjs", "utf8");
+  const start = app.indexOf("function renderEventDialogShell(");
+  const end = app.indexOf("\nfunction renderEventRoutePrimaryNav", start);
+  const context = vm.createContext({ escapeAttribute: value => String(value), escapeHtml: value => String(value),
+    iconSvg: () => "", renderEventRoutePrimaryNav: () => "", event: undefined });
+  vm.runInContext(app.slice(start, end), context);
+  for (const routeMode of [false, true]) {
+    const html = context.renderEventDialogShell({ eventId: "event-scope-fixture", title: "Share", body: "Fixture", routeMode });
+    if (routeMode) assert.match(html, /data-sync-event-id="event-scope-fixture"/);
+  }
+  const calls = [...app.matchAll(/return renderEventDialogShell\(\{\s*eventId: event\.id,/g)];
+  assert.equal(calls.length, 18, "all event dialog callers supply their actual event id");
+});
 
 test("public sync status reports cloud saves and recovery without cluttering screens", async () => {
   const [index, sw, layer, localStore, circleDesign, app, policy] = await Promise.all([
@@ -130,7 +146,12 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /await flushPendingSharedState\(\)/);
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
-  assert.match(layer, /pendingSync \? pendingSaveMessage\(pendingFailureKind\) : ""/);
+  assert.match(layer, /pendingHere && pendingNoticeReady \? pendingSaveMessage\(pendingFailureKind\) : ""/);
+  assert.match(layer, /pendingEventIds\.includes\(eventId\)/);
+  assert.match(app, /data-sync-account-summary/);
+  for (const match of app.matchAll(/<[^>]*data-inline-sync-status[^>]*>/g)) {
+    assert.match(match[0], /data-sync-event-id=|data-sync-account-summary/, "every target declares its event or account scope");
+  }
   assert.match(layer, /if \(routeStatus\) routeStatus\.hidden = !message;/);
   assert.doesNotMatch(layer, /background: #fffaf0/);
   assert.match(layer, /return "המידע עודכן במכשיר אחר"/);

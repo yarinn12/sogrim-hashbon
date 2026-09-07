@@ -411,6 +411,109 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+// The invite path has its own transactional boundary: membership, canonical
+// participant and personal index must all commit, or none of them may remain.
+async function withOpenInvite(run, { workspace = true, expired = false, closed = false } = {}) {
+  await withSnapshot(ids.admin, async (_initial, save) => {
+    await db.exec("reset role");
+    const userId = "00000000-0000-4000-8000-000000000095";
+    const participantId = `account-${userId}`;
+    const token = "a".repeat(64);
+    await db.query("insert into auth.users (id,email) values ($1::uuid,$2)",
+      [userId, "invite-join@example.invalid"]);
+    if (workspace) {
+      await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+      await db.query(`insert into public.app_snapshots (id,access_key_hash,owner_user_id,state)
+        values ('invite-workspace',encode(extensions.digest($1,'sha256'),'hex'),$2::uuid,$3::jsonb)`,
+        [spaceKey, userId, JSON.stringify({ currentParticipantId: participantId,
+          participants: [{ id: participantId, kind: "user", displayName: "Invite member" }],
+          groups: [], events: [], deletedEvents: [] })]);
+    }
+    const inviteId = (await db.query(`insert into public.event_invite_tokens
+      (event_id,kind,token_hash,space_id,space_key,created_by,expires_at)
+      values ('integrity-probe','open',$1,$2,$3,$4::uuid,$5::timestamptz) returning id`,
+      [token, snapshotId, spaceKey, ids.admin.slice(8),
+        new Date(Date.now() + (expired ? -60_000 : 60_000)).toISOString()])).rows[0].id;
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [ids.admin.slice(8)]);
+    await db.query("select set_config('request.jwt.claim.role','service_role',true)");
+    await db.exec("set local role service_role");
+    const redeem = async (hash = token) => (await db.query(
+      "select public.redeem_event_invite_membership($1::uuid,$2,$3::uuid) as value",
+      [inviteId, hash, userId])).rows[0].value;
+    const inspect = async () => {
+      await db.exec("reset role");
+      const shared = (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+      const members = (await db.query("select participant_id,status from private.shared_snapshot_members where snapshot_id=$1 and user_id=$2::uuid", [snapshotId,userId])).rows;
+      const personal = (await db.query("select state from public.app_snapshots where id='invite-workspace'")).rows[0]?.state;
+      const receipt = (await db.query("select last_redeemed_at from public.event_invite_tokens where id=$1::uuid", [inviteId])).rows[0];
+      await db.exec("set local role service_role");
+      return { shared, members, personal, receipt };
+    };
+    await run({ userId, participantId, redeem, inspect, save });
+  }, value => {
+    value.events[0].locked = closed;
+    return value;
+  });
+}
+
+test("SQL invite redemption makes membership, canonical data and personal index readable together", async () => {
+  await withOpenInvite(async ({ userId, participantId, redeem, inspect, save }) => {
+    const result = await redeem();
+    assert.equal(result.status, "joined");
+    assert.equal(result.canonicalParticipantReady, true);
+    assert.equal(result.workspaceIndexed, true);
+    const committed = await inspect();
+    assert.deepEqual(committed.members, [{ participant_id: participantId, status: "active" }]);
+    assert.ok(committed.shared.state.events[0].participantIds.includes(participantId));
+    assert.equal(committed.personal.events[0].sharedSpaceId, snapshotId);
+    assert.deepEqual(committed.personal.events[0].expenses, committed.shared.state.events[0].expenses);
+    assert.ok(committed.receipt.last_redeemed_at);
+    // Verify actual RLS visibility and a first note write by the new member.
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    const readable = (await db.query("select id from public.app_snapshots where id in ($1,'invite-workspace')", [snapshotId])).rows;
+    assert.equal(readable.length, 2);
+    const candidate = structuredClone(committed.shared.state);
+    const at = new Date().toISOString();
+    candidate.events[0].notes = [{ id: "joined-member-note", title: "First note", body: "After joining",
+      createdAt: at, updatedAt: at, createdByParticipantId: participantId, updatedByParticipantId: participantId }];
+    assert.equal((await save(candidate, committed.shared.version)).status, "updated");
+  });
+});
+
+test("SQL repeated invite redemption does not duplicate members, events or canonical writes", async () => {
+  await withOpenInvite(async ({ redeem, inspect }) => {
+    await redeem();
+    const first = await inspect();
+    assert.equal((await redeem()).status, "existing");
+    const second = await inspect();
+    assert.equal(second.shared.version, first.shared.version);
+    assert.deepEqual(second.shared.state, first.shared.state);
+    assert.equal(second.members.length, 1);
+    assert.equal(second.personal.events.filter(event => event.id === "integrity-probe").length, 1);
+    assert.equal((await db.query("select current_setting('request.jwt.claim.sub') as id")).rows[0].id, ids.admin.slice(8));
+  });
+});
+
+for (const [name, options, badHash, code] of [
+  ["missing workspace", { workspace: false }, false, "P0002"],
+  ["expired link", { expired: true }, false, "42501"],
+  ["closed event", { closed: true }, false, "42501"],
+  ["wrong token", {}, true, "42501"]
+]) {
+  test(`SQL invite rejection for ${name} leaves no partial join or receipt`, async () => {
+    await withOpenInvite(async ({ redeem, inspect }) => {
+      const before = await inspect();
+      await db.exec("savepoint invite_attempt");
+      await assert.rejects(redeem(badHash ? "b".repeat(64) : undefined), { code });
+      await db.exec("rollback to savepoint invite_attempt");
+      assert.deepEqual(await inspect(), before);
+    }, options);
+  });
+}
+
 test("SQL authenticated RPC rejects payment status from an unrelated active member", async () => {
   await withSnapshot(ids.other, async (previous, save) => {
     await assert.rejects(save(markPaid(previous, ids.other)), { code: "42501", message: "Shared event payment status attribution is invalid" });

@@ -22,7 +22,9 @@ audit/backups/
 .codex/qa-screenshots/
 work/*backup*.json
 playwright-report/
+playwright-report-sync/
 test-results/
+test-results-sync/
 .qa-playwright/
 .agents/
 .impeccable/

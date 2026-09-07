@@ -1,0 +1,26 @@
+{
+  "description": "Local verification candidate; not a deployed or signed release.",
+  "inputs": [
+    "src",
+    "server.mjs",
+    "supabase",
+    "tests",
+    "e2e",
+    "e2e-sync",
+    "scripts",
+    "index.html",
+    "styles.css",
+    "assets",
+    "sw.js",
+    "package.json",
+    "package-lock.json",
+    "playwright.config.mjs",
+    "playwright.sync.config.mjs",
+    ".github/workflows/qa.yml",
+    ".vercelignore",
+    ".dockerignore",
+    ".gitignore"
+  ],
+  "sha256": "EE6348E5B8C7E1FBC9F499B8BAE309F87D6B4502CC831324A2D1685FA00F4217",
+  "fileCount": 796
+}

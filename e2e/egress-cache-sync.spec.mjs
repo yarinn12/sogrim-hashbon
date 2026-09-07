@@ -114,7 +114,10 @@ test("version-only refreshes preserve shared notes on home and in an open event"
   await expect(eventButton).toBeVisible();
   const metadataIndexes = () => reads.filter((read) => read.kind === "index" && !read.fields.includes("state"));
   await expect.poll(() => metadataIndexes().length, { timeout: 25_000 }).toBeGreaterThan(0);
-  expect(reads.some((read) => read.kind === spaceId && read.fields.join(",") === "updated_at")).toBe(true);
+  // The account-version and shared-index probes are independent background
+  // requests. Both must complete before changing the fixture, in either order.
+  await expect.poll(() => reads.some((read) => read.kind === spaceId && read.fields.join(",") === "updated_at"),
+    { timeout: 25_000 }).toBe(true);
 
   // Another device updates the canonical event while this account's personal
   // snapshot version stays unchanged. A warm account scan must still find it.

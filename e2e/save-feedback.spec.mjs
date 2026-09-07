@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { setTimeout as delay } from "node:timers/promises";
 import { updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 import { isWebKitReloadDiagnostic } from "./helpers/reloadDiagnostics.mjs";
 import { installNoteEditorDiagnostics, attachNoteEditorDiagnostics, installDelayedDialogFrameFixture } from "./helpers/noteEditorDiagnostics.mjs";
@@ -8,7 +9,7 @@ test.afterEach(async ({ page }, testInfo) => {
 });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
 for (const { status, restart = false, delayedDialogFrame = false } of [
-  ...[403, 503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
+  ...[403, 503, "delayed-success", "transient-recovery", "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
   ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status })),
   { status: "pending-next-recovers", delayedDialogFrame: true }
@@ -17,6 +18,7 @@ const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
 const receiptConflict = String(status).startsWith("receipt-");
 const pendingFollowup = String(status).startsWith("pending-next-");
+const quietRecovery = ["delayed-success", "transient-recovery"].includes(status);
 const testName = pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
 test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
@@ -125,6 +127,14 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
       const target = pendingFollowup && payload.p_snapshot_id === secondSharedId ? secondShared : shared;
       if (deleteRetry ? writtenEvent?.deletedNotes?.some(note => note.id === "cache-sync-note")
         : writtenEvent?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
+      if (quietRecovery && canonicalAttempts > 0) {
+        if (status === "transient-recovery" && canonicalAttempts <= 2) {
+          return reply({ message: "Synthetic temporary outage" }, { status: 503 });
+        }
+        // Model a slow acknowledgement; the recovery case first exhausts the
+        // immediate retries, then delivers inside the bounded quiet window.
+        await delay(2_500);
+      }
       // One canonical commit followed by a failed personal write and rejected
       // immediate canonical retry creates genuine partial progress in the store.
       if (writeStatus === "partial") {
@@ -211,17 +221,46 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
   if (status === "partial-create" || receiptConflict) await page.locator('[data-action="new-event-note"]').click();
   else await page.locator('.event-note-open[data-note-id="cache-sync-note"]').click();
   if (!deleteRetry) await page.locator('[data-action="event-note-body"]').fill("טיוטה שלא תאבד");
-  writeStatus = receiptConflict ? 200 : partialRetry ? "partial" : pendingFollowup ? 503 : status;
+  if (quietRecovery) await page.evaluate(() => {
+    window.__qaSyncFeedback = { statuses: [], visible: [] };
+    addEventListener("sogrim:sync-status", event => window.__qaSyncFeedback.statuses.push(event.detail));
+    new MutationObserver(() => {
+      for (const node of document.querySelectorAll("[data-inline-sync-status], .public-sync-status")) {
+        if (!node.hidden && node.getClientRects().length && node.textContent.trim()) {
+          window.__qaSyncFeedback.visible.push(node.textContent.trim());
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden"] });
+  });
+  writeStatus = receiptConflict || quietRecovery ? 200 : partialRetry ? "partial" : pendingFollowup ? 503 : status;
   if (deleteRetry) {
     await page.locator('[data-action="request-delete-event-note"]').click();
     await page.locator('[data-action="confirm-important-action"]').click();
   } else await page.locator('[data-action="save-event-note"]').click();
-  if (pendingFollowup) {
+  if (quietRecovery) {
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBeNull();
+    await expect(page.locator('.event-note-open[data-note-id="cache-sync-note"]')).toContainText("טיוטה שלא תאבד");
+    expect(shared.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
+    expect(personal.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
+    const feedback = await page.evaluate(() => window.__qaSyncFeedback);
+    expect(feedback.statuses.some(detail => detail.status === "saving")).toBe(true);
+    if (status === "transient-recovery") {
+      expect(feedback.statuses.some(detail => detail.pending === true)).toBe(true);
+      expect(canonicalAttempts).toBeGreaterThanOrEqual(3);
+    }
+    expect(feedback.visible).toEqual([]);
+    expect(feedback.statuses.at(-1).pending).toBe(false);
+    await testInfo.attach("quiet-sync-feedback", { contentType: "application/json", body: JSON.stringify(feedback) });
+  } else if (pendingFollowup) {
     await expect(page.locator(".event-note-modal")).toHaveCount(0);
     await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
     await page.locator('[data-nav-destination="home"]').click();
+    await expect(page.locator("[data-sync-account-summary]")).toBeVisible();
     await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     await page.locator('[data-action="open-event-notes"]').click();
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     if (delayedDialogFrame) await page.evaluate(() => { window.__qaDelayNextNoteDialog = true; });
     await page.locator('[data-action="new-event-note"]').click();
     if (delayedDialogFrame) {
@@ -243,6 +282,11 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     if (status === "pending-next-fails") {
       expect(pending?.events.find(event => event.id === eventId)?.notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
       expect(shared.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("נשמר בענן");
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+      await page.locator('[data-nav-destination="home"]').click();
+      await expect(page.locator("[data-sync-account-summary]")).toBeVisible();
+      await eventButton.click();
+      await page.locator('[data-action="open-event-notes"]').click();
       await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
       writeStatus = 200;
       await reloadPage();

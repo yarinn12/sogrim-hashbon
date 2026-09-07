@@ -112,7 +112,9 @@ for (const mutation of ["note", "expense", "settings"]) {
       assert.equal(result.mode, "queued");
       assert.equal(result.pending, true);
       assert.equal(result.reverted, undefined);
-      assert.deepEqual(JSON.parse(storage.getItem(pendingKey)), changed);
+      const { __pendingSync, ...queuedState } = JSON.parse(storage.getItem(pendingKey));
+      assert.deepEqual(queuedState, changed);
+      assert.deepEqual(__pendingSync, { version: 1, selection: { eventIds: ["event-recovery"], deletedEventIds: [] } });
       assert.deepEqual(JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`)), changed);
       for (let attempt = 0; attempt < 8; attempt += 1) await runRetry();
       assert.deepEqual(delays, [1_200, 3_500, 8_000, 15_000, 30_000, 60_000, 120_000, 120_000, 120_000], "persistent restrictions use capped backoff, not a tight retry loop");

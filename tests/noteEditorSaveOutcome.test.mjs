@@ -51,6 +51,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     state: current ?? initial, eventDialog: dialog, structuredClone, saveFailureMessage,
     ...eventNotes,
     mergeSharedStates, rollbackNoteOnlyStateChange, saveState: () => {}, emitOperationDeferred: () => {},
+    loadState: () => context.state,
     getEvent: (id) => context.state.events.find((event) => event.id === id),
     canCurrentParticipantEdit: () => true,
     cloneNavigationValue: structuredClone,
@@ -129,6 +130,42 @@ test("successful note edits close normally", async () => {
   assert.equal((await h.save()).ok, true);
   assert.equal(h.closed(), 1);
   assert.equal(h.context.eventDialog, null);
+});
+
+for (const change of ["add", "edit", "delete"]) {
+  test(`adopting a note receipt preserves another tab's durable ${change} before its storage event arrives`, async () => {
+    let durable, persisted;
+    const current = addEventNote(initialState(), "event-editor", {
+      id: "other-tab-note", title: "Other note", body: "Before", createdAt: "2026-09-01T00:00:00.000Z"
+    });
+    const h = harness({ current, duringSave(context) {
+      durable = change === "add"
+        ? addEventNote(context.state, "event-editor", { id: "new-tab-note", title: "New from another tab", body: "Keep", createdAt: "2026-09-02T00:00:00.000Z" })
+        : change === "edit"
+          ? updateEventNote(context.state, "event-editor", "other-tab-note", { body: "Newer tab body", updatedAt: "2099-01-01T00:00:00.000Z" })
+          : removeEventNote(context.state, "event-editor", "other-tab-note", { deletedAt: "2099-01-01T00:00:00.000Z" });
+    } });
+    h.context.loadState = () => structuredClone(durable);
+    h.context.saveState = next => { persisted = structuredClone(next); };
+    assert.equal((await h.save()).ok, true);
+    for (const snapshot of [h.context.state, persisted]) {
+      const notes = snapshot.events[0].notes;
+      if (change === "add") assert.ok(notes.some(note => note.id === "new-tab-note"));
+      if (change === "edit") assert.equal(notes.find(note => note.id === "other-tab-note").body, "Newer tab body");
+      if (change === "delete") assert.ok(!notes.some(note => note.id === "other-tab-note"));
+    }
+  });
+}
+
+test("receipt adoption never imports durable data belonging to a different account", async () => {
+  const h = harness();
+  const otherAccount = addEventNote(initialState(), "event-editor", {
+    id: "private-other-account-note", title: "Private", body: "Do not import"
+  });
+  otherAccount.currentParticipantId = "account-other";
+  h.context.loadState = () => otherAccount;
+  assert.equal((await h.save()).ok, true);
+  assert.ok(!h.context.state.events[0].notes.some(note => note.id === "private-other-account-note"));
 });
 
 test("an unseen remote title merges with the local body and is acknowledged as success", async () => {

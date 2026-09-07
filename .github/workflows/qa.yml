@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  unit-and-mobile:
+  unit:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -41,19 +41,84 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  mobile:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [android-mobile, iphone-webkit, ipad-webkit, iphone-large-text, reflow-200]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
       - name: Run mobile layout QA
-        run: npm run qa:mobile
+        run: npm run qa:mobile -- --project=${{ matrix.project }}
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: playwright-report
-          path: playwright-report/
+          name: playwright-report-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
+
+  two-client-sync:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Verify independent-user synchronization
+        run: npm run qa:sync
+      - name: Upload synchronization diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: two-client-sync-report
+          path: |
+            playwright-report-sync/
+            test-results-sync/
+          retention-days: 7
+
+  # Preserve the existing required-check name, but fail closed if any lane
+  # fails, is cancelled or skipped. The deploy workflow still waits for all QA.
+  unit-and-mobile:
+    if: ${{ always() }}
+    needs: [unit, mobile, two-client-sync]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every verification lane to pass
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          MOBILE_RESULT: ${{ needs.mobile.result }}
+          SYNC_RESULT: ${{ needs.two-client-sync.result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$MOBILE_RESULT" = success
+          test "$SYNC_RESULT" = success
 
   backup-runtime:
     runs-on: ubuntu-latest

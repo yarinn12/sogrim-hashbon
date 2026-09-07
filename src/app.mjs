@@ -133,6 +133,7 @@ import {
   sharedStateSaveRevision,
   loadLocalProfile,
   flushPendingSharedState,
+  pendingSharedSyncStatus,
   resetSharedState,
   saveState,
   saveLocalProfile,
@@ -2401,6 +2402,8 @@ function renderHome() {
             </section>`
       }
 
+      <p class="muted" data-inline-sync-status data-sync-account-summary role="status" aria-live="polite" hidden></p>
+
       ${
         sortedEvents.length
           ? `
@@ -4468,7 +4471,7 @@ function renderEvent(event) {
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "expenses")}
       ${renderEventCover(event)}
-      ${isEmptyEvent ? '<p class="muted" data-inline-sync-status role="status" aria-live="polite" hidden></p>' : ""}
+      ${isEmptyEvent ? `<p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>` : ""}
       ${isEmptyEvent ? renderEventStartPanel(event) : ""}
       ${isEmptyEvent ? "" : renderEventPersonalBalance(event, participants)}
 
@@ -4563,7 +4566,7 @@ function renderEventActionDock(event, total, canEdit) {
         <span>סה"כ באירוע</span>
         <strong class="amount"><span class="font-num">${formatEventMoney(event, total)}</span></strong>
         <span class="event-action-sync-wrap">
-          <small class="event-action-sync" data-inline-sync-status hidden></small>
+          <small class="event-action-sync" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" hidden></small>
           <button type="button" class="event-action-sync-retry" data-inline-sync-retry data-sync-retry hidden>נסה שוב</button>
         </span>
       </div>
@@ -4774,7 +4777,7 @@ function renderEventNotes(event) {
       ${renderEventHeader(event, activeEventParticipants(event))}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "notes")}
-      <p class="muted" data-inline-sync-status role="status" aria-live="polite" hidden></p>
+      <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
       <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
         <div>
           <p class="eyebrow">פתקים משותפים</p>
@@ -5216,6 +5219,7 @@ function renderImportantActionDialog() {
 }
 
 function renderEventDialogShell({
+  eventId,
   eyebrow,
   title,
   description,
@@ -5269,7 +5273,7 @@ function renderEventDialogShell({
         ${
           routeMode
             ? `<div class="event-route-sync-status" data-route-sync-status hidden role="status" aria-live="polite">
-                <span data-inline-sync-status hidden></span>
+                <span data-inline-sync-status data-sync-event-id="${escapeAttribute(eventId)}" hidden></span>
                 <button type="button" data-inline-sync-retry data-sync-retry hidden>נסה שוב</button>
               </div>`
             : ""
@@ -5345,6 +5349,7 @@ function renderEventParticipantsDialog(event) {
       : "";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "",
     title: "מי באירוע",
     description: event.name,
@@ -5409,6 +5414,7 @@ function renderEventParticipantAddDialog(event) {
       : "מי מצטרף לאירוע?";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "",
     title: routeTitle,
     description: "",
@@ -5452,6 +5458,7 @@ function renderEventOfflineParticipantRenameDialog(event) {
   const error = eventDialog?.error ?? "";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "משתתפים",
     title: "עריכת שם אופליין",
     description: "השם יתעדכן בכל מקום שבו האדם הזה מופיע. ההוצאות שלו יישארו ללא שינוי.",
@@ -5540,6 +5547,7 @@ function renderConnectedEventParticipantProfile(event, participant) {
   const targetName = participantName(participant.id, event);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "משתתף באירוע",
     title: "ניהול משתתף",
     description: event.name,
@@ -5728,6 +5736,7 @@ function renderEventParticipantReportDialog(event) {
   const busy = friendNetworkBusyAction === `report:${participant.id}`;
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "בטיחות",
     title: `דיווח על ${participantName(participant.id, event)}`,
     description: "הדיווח פרטי ואינו נשלח למשתמש שעליו דיווחת.",
@@ -6061,6 +6070,7 @@ function renderOfflineEventParticipantProfile(event, participant) {
   const message = eventDialog?.message ?? "";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "משתתף באירוע",
     title: "ניהול משתתף",
     description: event.name,
@@ -6155,6 +6165,7 @@ function renderEventParticipantLinkDialog(event) {
   const candidates = linkableEventAccountParticipants(event, participant.id);
   const canInvite = canCurrentParticipantEdit(event) && !isEventClosed(event);
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "",
     title: "קישור לחשבון",
     description: participantName(participant.id, event),
@@ -6697,6 +6708,7 @@ function renderEventShareDialog(event) {
         };
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הזמנה לאירוע",
     title: dialogCopy.title,
     description: dialogCopy.description,
@@ -6923,6 +6935,7 @@ function renderEventNoteDialog(event) {
   `;
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: event.name,
     title,
     description: canEdit ? "השינויים יופיעו אצל כל משתתפי האירוע." : "האירוע סגור ולכן הפתק מוצג לקריאה בלבד.",
@@ -7224,6 +7237,7 @@ function renderEventSettingsDialog(event) {
   const dangerStatus = canManage ? "עזיבה או מחיקת האירוע" : canLeave ? "עזיבת האירוע" : "אין פעולות זמינות";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "הגדרות האירוע",
     description: "בוחרים נושא אחד ומטפלים בו במסך נפרד.",
@@ -7304,6 +7318,7 @@ function renderEventSettingsDialog(event) {
 
 function renderEventParticipantIdentityDialog(event) {
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "בדיקת שמות",
     title: "שמות דומים",
     description: "בודקים רק כשנוח. שום דבר לא משתנה בלי אישור מפורש.",
@@ -7497,6 +7512,7 @@ function renderEventSettingsManagementDialog(event) {
       .join(", ") || "אין מנהל";
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "אופן ניהול",
     description: `מנהל האירוע: ${adminNames}`,
@@ -7527,6 +7543,7 @@ function renderEventSettingsCurrencyDialog(event) {
   const hasExistingExpenses = event.expenses.length > 0;
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "מטבע האירוע",
     description: "כל הסכומים באירוע מוצגים באותו מטבע.",
@@ -7563,6 +7580,7 @@ function renderEventSettingsRepaymentDialog(event) {
   const direct = usesDirectSettlementTransfers(event);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "חלוקת ההחזרים",
     description: "בוחרים אם לקזז בין כולם או להחזיר ישירות למי ששילם.",
@@ -7633,6 +7651,7 @@ function renderEventSettingsRoundingDialog(event) {
   const rounded = usesRoundedSettlementTransfers(event);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "עיגול סכומים",
     description: "בוחרים אם לעגל את ההעברות הסופיות או להשאיר אותן מדויקות.",
@@ -7702,6 +7721,7 @@ function renderEventSettingsActivityDialog(event) {
   const entries = eventActivityEntries(event);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "פעילות באירוע",
     description: "הפעולות החשובות נשמרות כאן לפי סדר הזמן.",
@@ -7795,6 +7815,7 @@ function renderEventSettingsLockDialog(event) {
   const canManage = canCurrentParticipantManage(event);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "עריכת האירוע",
     description: "נעילה מונעת שינוי בהוצאות ובמשתתפים עד שפותחים שוב.",
@@ -7823,6 +7844,7 @@ function renderEventSettingsDangerDialog(event) {
   const canLeave = canLeaveEvent(state, event.id, state.currentParticipantId);
 
   return renderEventDialogShell({
+    eventId: event.id,
     eyebrow: "הגדרות",
     title: "עזיבה ומחיקה",
     description: "הפעולות כאן דורשות אישור לפני ביצוע.",
@@ -8021,7 +8043,7 @@ function renderExpenseForm(event) {
 
       ${renderExpenseFlowProgress(flowStep)}
       <p class="expense-loop-status" role="status" aria-live="polite" hidden></p>
-      <p class="expense-sync-status" data-inline-sync-status role="status" aria-live="polite" hidden></p>
+      <p class="expense-sync-status" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
       ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
       <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
       <div class="expense-flow-body">
@@ -8307,7 +8329,7 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
         </div>
         ${renderExpenseFlowProgress("participants")}
         <p class="expense-loop-status" role="status" aria-live="polite" hidden></p>
-        <p class="expense-sync-status" data-inline-sync-status role="status" aria-live="polite" hidden></p>
+        <p class="expense-sync-status" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
         ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
         <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
           <div class="expense-flow-body expense-participant-add-route-body">
@@ -16666,7 +16688,13 @@ async function saveEventNoteFromDialog(eventId) {
     // and never import a receipt from a different signed-in account.
     if (state.currentParticipantId === previousState.currentParticipantId) {
       try {
-        state = mergeSharedStates(result.persistedState, state);
+        // Another tab can have saved before its storage event reaches this UI.
+        // Include that durable intent before adopting our older server receipt.
+        const durableState = loadState();
+        const currentState = durableState.currentParticipantId === state.currentParticipantId
+          ? mergeSharedStates(durableState, state)
+          : state;
+        state = mergeSharedStates(result.persistedState, currentState);
         saveState(state);
       } catch (error) {
         emitOperationDeferred("state_load", { error });
@@ -17323,9 +17351,15 @@ function canRestoreActionFocus(returnTarget, target) {
   if (returnTarget.returnContext && returnTarget.returnContext !== dialogReturnContext()) return false;
   const focused = document.activeElement;
   // Delayed close/retry callbacks are fallbacks, not a new user instruction.
+  // Routed event screens use a region instead of a modal dialog. Its fallback
+  // focus is not a user-selected field; restore only to a control inside it.
+  // The choice layer may create that control next frame; a missing target can
+  // use the bounded retry, but a newer field or screen still stops it.
+  const isReturnRegion = focused?.matches?.('.event-modal[role="region"]') &&
+    (!target || focused.contains(target));
   if (focused?.isConnected && focused !== target && focused !== document.body &&
     focused !== document.documentElement && focused !== app &&
-    !focused.matches('[role="dialog"], [role="alertdialog"]')) return false;
+    !focused.matches('[role="dialog"], [role="alertdialog"]') && !isReturnRegion) return false;
   const modal = activeReturnFocusModal();
   if (modal && !modal.contains(target)) return false;
   return !target?.disabled && !target?.closest('[inert], [hidden], [aria-hidden="true"]');
@@ -19255,12 +19289,12 @@ function activateExpenseEntryDialog() {
           ? '[data-action="quick-expense-payer"]'
           : '[data-action="quick-item-amount"][data-index="0"]'
     : expenseFlowFocusSelector(normalizeExpenseFlowStep(expenseDraft?.flowStep));
+  // The new step is already rendered. Initialize before focus/user input:
+  // a deferred reset could scroll a replacement step or undo a user's gesture.
+  const dialog = app.querySelector(".expense-step-modal");
+  const scrollSurface = dialog?.querySelector(".expense-flow-body");
+  if (scrollSurface) scrollSurface.scrollTop = 0;
   activateDialog(".expense-modal", focusSelector);
-  requestAnimationFrame(() => {
-    const dialog = app.querySelector(".expense-step-modal");
-    const scrollSurface = dialog?.querySelector(".expense-flow-body");
-    if (scrollSurface) scrollSurface.scrollTop = 0;
-  });
 }
 
 function createQuickItemDraft(sharedBy = state.currentParticipantId, sharedByParticipantIds) {
@@ -22066,8 +22100,20 @@ function retryPendingEventMembershipInvitations() {
   );
   if (!pendingEntries.length) return Promise.resolve();
 
+  const accountGeneration = versionedReadCacheSessionGeneration();
   pendingEventMembershipRetryRequest = (async () => {
+    // Membership recovery is follow-up work, not a second event publisher.
+    // The ordered outbox also waits for an in-flight initial creation, so a
+    // slow acknowledgement cannot trigger a competing create RPC here.
+    const publication = await flushPendingSharedState();
+    const pendingPublication = pendingSharedSyncStatus();
+    if ((!publication?.ok || publication.pending) &&
+        (!pendingPublication.pending || !pendingPublication.pendingEventIds.length)) return;
     for (const entry of pendingEntries) {
+      if (ownerUserId !== pendingEventMembershipOwnerId() ||
+          accountGeneration !== versionedReadCacheSessionGeneration()) return;
+      // Partial failure in another event must not block this healthy event.
+      if (pendingPublication.pendingEventIds.includes(entry.eventId)) continue;
       const event = getEvent(entry.eventId);
       const participant = state.participants.find(
         (item) => item.id === entry.participantId

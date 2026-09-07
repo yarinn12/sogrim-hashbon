@@ -9,6 +9,7 @@
     "qa": "node scripts/run-tests.mjs",
     "qa:coverage": "node scripts/run-tests.mjs --coverage",
     "qa:mobile": "playwright test",
+    "qa:sync": "playwright test --config playwright.sync.config.mjs",
     "qa:memory": "node scripts/verify-account-memory.mjs",
     "qa:accounts-live": "node scripts/audit-account-integrity-live.mjs",
     "qa:auth-live": "node scripts/verify-auth-recovery-live.mjs",

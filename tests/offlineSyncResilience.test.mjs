@@ -309,7 +309,7 @@ test("an online flush also keeps a newer pending snapshot", () => {
   assert.match(flush, /const pendingPayload = pendingSharedStateRaw\(runtimeConfig\);/);
   assert.match(
     flush,
-    /pendingPayload !== pendingSharedStateRaw\(runtimeConfig\)[\s\S]*?return \{ ok: true, pending: true, superseded: true \};/
+    /pendingPayload !== pendingSharedStateRaw\(runtimeConfig\)[\s\S]*?const pending = reconcileCurrentPendingSync\(runtimeConfig\);\s*return \{ ok: true, pending, superseded: true \};/
   );
   assert.ok(
     flush.indexOf("clearPendingSharedState(runtimeConfig)") >
@@ -448,11 +448,11 @@ test("a queued write never freezes reads from another device during retry backof
     localStore.indexOf("export async function saveSharedState")
   );
   const deferredBranch = load.slice(
-    load.indexOf("if (shouldDeferPendingSharedStateRetry())"),
-    load.indexOf("try {", load.indexOf("if (shouldDeferPendingSharedStateRetry())") + 80)
+    load.indexOf("if (shouldDeferPendingSharedStateRetry()"),
+    load.indexOf("try {", load.indexOf("if (shouldDeferPendingSharedStateRetry()") + 80)
   );
 
-  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(\)\) \{[\s\S]*?await loadCloudState\(/);
+  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(\) \|\|[\s\S]*?await loadCloudState\(/);
   assert.match(load, /const mergedPendingState = mergeSharedStates\(remoteState, pendingState\)/);
   assert.match(load, /saveStateForScope\(visiblePendingState, requestScope\)/);
   assert.doesNotMatch(
@@ -1418,7 +1418,7 @@ test("a late cloud save cannot repopulate local data after sign out", () => {
   assert.match(localStore, /let requestAccountGeneration = accountStorageGeneration/);
   assert.match(
     localStore,
-    /requestAccountGeneration === accountStorageGeneration &&\s*requestSaveGeneration === sharedStateSaveGeneration\s*\) \{\s*Object\.assign\(state, syncedState\);\s*saveState\(syncedState\);/
+    /requestAccountGeneration === accountStorageGeneration &&\s*requestSaveGeneration === sharedStateSaveGeneration &&\s*pendingPayload === pendingSharedStateRaw\(runtimeConfig\)\s*\) \{\s*Object\.assign\(state, syncedState\);\s*saveState\(syncedState\);/
   );
   assert.match(
     localStore,

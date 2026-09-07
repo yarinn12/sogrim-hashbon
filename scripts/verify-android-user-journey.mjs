@@ -363,22 +363,6 @@ async function openAndInspectOverlay(page, action, label) {
       check("share: authenticated participant receives a working invitation link", shareReady);
     }
   }
-  if (label === "home") {
-    const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
-    check(
-      `${label}: native bootstrap API uses a public HTTPS address`,
-      apiBaseUrl?.protocol === "https:" &&
-        !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(apiBaseUrl.hostname)
-    );
-    check(
-      `${label}: native update policy matches the installed build`,
-      state.nativeBootstrapCurrentBuild === expectedAndroidBuild
-    );
-    check(
-      `${label}: native update policy includes a final decision`,
-      typeof state.nativeBootstrapUpdateRequired === "boolean"
-    );
-  }
   await inspect(page, label);
   await androidBack();
   if (label === "share") {
@@ -615,6 +599,22 @@ async function inspect(page, label) {
   const state = await evaluate(page, inspectionExpression());
   screens.push({ label, ...state });
   captureScreenshot(label);
+  if (label === "home") {
+    const apiBaseUrl = safelyParseUrl(state.nativeBootstrapApiBaseUrl);
+    check(
+      `${label}: native bootstrap API uses a public HTTPS address`,
+      apiBaseUrl?.protocol === "https:" &&
+        !["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(apiBaseUrl.hostname)
+    );
+    check(
+      `${label}: native update policy matches the installed build`,
+      state.nativeBootstrapCurrentBuild === expectedAndroidBuild
+    );
+    check(
+      `${label}: native update policy includes a final decision`,
+      typeof state.nativeBootstrapUpdateRequired === "boolean"
+    );
+  }
   check(`${label}: no horizontal overflow`, !state.horizontalOverflow);
   check(`${label}: no duplicate element ids`, state.duplicateIds.length === 0);
   check(`${label}: no unnamed visible controls`, state.unnamedControls.length === 0);

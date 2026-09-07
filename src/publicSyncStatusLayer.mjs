@@ -1,12 +1,15 @@
 import {
   flushPendingSharedState,
-  loadRuntimeConfig
+  loadRuntimeConfig,
+  pendingSharedSyncStatus
 } from "./data/localStore.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { pendingSaveMessage } from "./domain/userNoticePolicy.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
+const PENDING_NOTICE_GRACE_MS = 5_000;
+const TRANSIENT_PENDING_FAILURES = new Set(["", "server", "connection"]);
 const ROUTINE_SYNC_STATUSES = new Set([
   "saving",
   "saved",
@@ -30,8 +33,14 @@ const ONLINE_MUTATION_ACTIONS = new Set([
 const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
 let currentStatus = "";
-let pendingSync = false;
+const initialPendingStatus = pendingSharedSyncStatus();
+let pendingSync = initialPendingStatus.pending;
+let pendingEventIds = initialPendingStatus.pendingEventIds;
 let pendingFailureKind = "";
+// A restored outbox is already undelivered work. Only newly queued, ordinary
+// saves get a short quiet window; retries must not restart that window.
+let pendingNoticeReady = initialPendingStatus.pending;
+let pendingNoticeTimer = null;
 let connectivityRevision = 0;
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
@@ -44,6 +53,9 @@ injectStyles();
 window.addEventListener(STATUS_EVENT, handleSyncStatus);
 window.addEventListener("offline", handleOffline);
 window.addEventListener("online", recoverOnlineMutationAccess);
+window.addEventListener("storage", refreshPendingStatusFromStorage);
+document.addEventListener("account-auth-ready", refreshPendingStatus);
+document.addEventListener("account-session-refreshed", refreshPendingStatus);
 document.addEventListener("click", handleRetryClick);
 document.addEventListener("click", handleDismissClick);
 document.addEventListener("click", blockOfflineMutation, true);
@@ -59,6 +71,9 @@ function handleSyncStatus(event) {
   if (typeof event.detail?.pending === "boolean") {
     pendingSync = event.detail.pending;
     pendingFailureKind = pendingSync ? event.detail.failureKind ?? "" : "";
+    pendingEventIds = pendingSync
+      ? (Array.isArray(event.detail.pendingEventIds) ? event.detail.pendingEventIds : null)
+      : [];
   }
   const currentScreenSignature = screenSignature();
 
@@ -87,6 +102,21 @@ function handleSyncStatus(event) {
   if (!["saving", "saved"].includes(status)) activeSaveScreenSignature = "";
   showStatus(status);
   if (status === "saved") activeSaveScreenSignature = "";
+}
+
+function refreshPendingStatusFromStorage(event) {
+  if (event.storageArea && event.storageArea !== window.localStorage) return;
+  if (event.key !== null && !String(event.key).startsWith("settle-friends-pending-sync:") &&
+      !["settle-friends-account-session", "settle-friends-cloud-space"].includes(event.key)) return;
+  refreshPendingStatus();
+}
+
+function refreshPendingStatus() {
+  const pendingStatus = pendingSharedSyncStatus();
+  handleSyncStatus({ detail: {
+    status: pendingStatus.pending ? "reconnecting" : "",
+    ...pendingStatus
+  } });
 }
 
 async function handleOffline() {
@@ -303,7 +333,26 @@ function screenSignature() {
   return `${screen}:${screenKind}`;
 }
 
+function syncPendingNoticeTiming() {
+  if (!pendingSync || navigator.onLine === false ||
+      !TRANSIENT_PENDING_FAILURES.has(pendingFailureKind)) {
+    window.clearTimeout(pendingNoticeTimer);
+    pendingNoticeTimer = null;
+    pendingNoticeReady = pendingSync;
+    return;
+  }
+  if (pendingNoticeReady || pendingNoticeTimer !== null) return;
+  const timer = window.setTimeout(() => {
+    if (pendingNoticeTimer !== timer) return;
+    pendingNoticeTimer = null;
+    pendingNoticeReady = pendingSync;
+    syncInlineStatusTargets();
+  }, PENDING_NOTICE_GRACE_MS);
+  pendingNoticeTimer = timer;
+}
+
 function syncInlineStatusTargets() {
+  syncPendingNoticeTiming();
   const hasEventActionDock = Boolean(document.querySelector(".event-action-dock"));
   const hasEventRouteDialog = Boolean(
     document.querySelector('[data-event-route-dialog="true"]')
@@ -316,7 +365,9 @@ function syncInlineStatusTargets() {
       .split(/\s+/)
       .filter((name) => name && !name.startsWith("is-sync-"))
       .join(" ")}`;
-    const message = pendingSync ? pendingSaveMessage(pendingFailureKind) : "";
+    const eventId = target.dataset.syncEventId;
+    const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
+    const message = pendingHere && pendingNoticeReady ? pendingSaveMessage(pendingFailureKind) : "";
     if (target.textContent !== message) target.textContent = message;
     target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");

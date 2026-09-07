@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import vm from "node:vm";
 import {
   chooseAndroidDevice,
   parseSmokeResult,
@@ -67,6 +68,30 @@ test("Android journey verifies settlement content above the fixed navigation", a
     journey,
     /querySelectorAll\('\.product-app-identity,\.product-header-profile-avatar'\)/
   );
+});
+
+test("Android home inspection actually checks native API and update bootstrap evidence", async () => {
+  const source = await readFile("scripts/verify-android-user-journey.mjs", "utf8");
+  const inspectBody = source.slice(source.indexOf("async function inspect(page, label)"), source.indexOf("function inspectionExpression()"));
+  for (const valid of [true, false]) {
+    const checks = [];
+    const snapshot = { duplicateIds: [], unnamedControls: [], smallControls: [], blockedControls: [], clippedModalHeaders: [],
+      nativeBootstrapApiBaseUrl: valid ? "https://app.example.com" : "http://localhost",
+      nativeBootstrapCurrentBuild: valid ? 156 : 0,
+      nativeBootstrapUpdateRequired: valid ? false : undefined };
+    const context = vm.createContext({ sleep: async () => {}, evaluate: async () => snapshot,
+      inspectionExpression: () => "local synthetic fixture", screens: [], captureScreenshot() {}, expectedAndroidBuild: 156,
+      safelyParseUrl: value => { try { return new URL(value); } catch { return null; } },
+      check: (name, ok) => checks.push({ name, ok }) });
+    vm.runInContext(inspectBody, context);
+    await context.inspect({}, "home");
+    const nativeChecks = checks.filter(check => check.name.startsWith("home: native"));
+    assert.equal(nativeChecks.length, 3, "home checks must run in inspect, not in an unrelated overlay branch");
+    assert.ok(nativeChecks.every(check => check.ok === valid));
+  }
+  assert.match(source, /nativeBootstrapApiBaseUrl:.*SogrimNativeRuntimeConfig\?\.apiBaseUrl/);
+  assert.match(source, /nativeBootstrapCurrentBuild:\s*Number\(\s*globalThis\.SogrimNativeRuntimeConfig\?\.updates\?\.android\?\.currentBuild/);
+  assert.match(source, /nativeBootstrapUpdateRequired:\s*globalThis\.SogrimNativeRuntimeConfig\?\.updates\?\.android\?\.required/);
 });
 
 test("Android font-scale screenshots wait for the branded splash to finish", async () => {

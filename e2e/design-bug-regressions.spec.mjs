@@ -148,13 +148,52 @@ test("landscape expense templates keep full hit areas inside the form scroll", a
       await name.fill("");
       const label = await template.getAttribute("data-template");
       // Normal click includes scrolling and hit testing. Never force it.
-      await template.click({ timeout: 5000 });
+      try {
+        await template.click({ timeout: 5000 });
+      } catch (error) {
+        await testInfo.attach("expense-template-hit-test", { contentType: "application/json", body: JSON.stringify(await template.evaluate(element => {
+          const nodes = [];
+          for (let node = element; node; node = node.parentElement) {
+            const rect = node.getBoundingClientRect(), css = getComputedStyle(node);
+            nodes.push({ tag: node.tagName, className: node.className, x: rect.x, y: rect.y, width: rect.width, height: rect.height,
+              scrollTop: node.scrollTop, clientHeight: node.clientHeight, scrollHeight: node.scrollHeight,
+              overflowY: css.overflowY, position: css.position, transform: css.transform, flex: css.flex });
+          }
+          return { viewport: { width: innerWidth, height: innerHeight }, nodes };
+        })) });
+        throw error;
+      }
       await expect(name).toHaveValue(label);
     }
     await page.locator(".expense-flow-body").evaluate(element => { element.scrollTop = element.scrollHeight; });
     await page.screenshot({ path: testInfo.outputPath(`expense-categories-${viewport.width}.png`) });
     await expect(page.locator('[data-action="expense-step-next"]')).toBeInViewport();
   }
+});
+
+test("a delayed expense step frame preserves the user's landscape scroll", async ({ page }) => {
+  await installDelayedDialogFrameFixture(page, "expense-step-next");
+  await page.reload();
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="show-expense-form"]').first().click();
+  await page.locator('[data-action="expense-total"]').fill("120");
+  await page.evaluate(() => { window.__qaDelayNextNoteDialog = true; });
+  await page.locator('[data-action="expense-step-next"]').click();
+  const position = await page.evaluate(() => {
+    const body = document.querySelector(".expense-flow-body");
+    body.scrollTop = body.scrollHeight;
+    const before = body.scrollTop;
+    const frames = window.__qaFlushDialogFrames();
+    return { before, after: body.scrollTop, frames };
+  });
+  expect(position.frames).toBeGreaterThan(0);
+  expect(position.before).toBeGreaterThan(40);
+  expect(position.after).toBe(position.before);
+  const template = page.locator('[data-action="expense-template"]').last();
+  const label = await template.getAttribute("data-template");
+  await template.click();
+  await expect(page.locator('[data-action="expense-name"]')).toHaveValue(label);
 });
 
 for (const destination of ["profile", "notifications"]) {

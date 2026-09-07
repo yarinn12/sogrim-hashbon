@@ -52,21 +52,34 @@ function functionSource(name) {
   return layer.slice(match.index, end ? match.index + 1 + end.index : undefined);
 }
 function harness(result) {
-  const statuses = [], target = { className: "hint", textContent: "", hidden: true, closest: () => null };
+  const statuses = [], target = { className: "hint", textContent: "", hidden: true, dataset: { syncEventId: "event-a" }, closest: () => null };
+  const timers = new Map();
+  let nextTimer = 0;
   const context = vm.createContext({
+    window: { localStorage: {}, setTimeout: (callback, delay) => { const id = ++nextTimer; timers.set(id, { callback, delay }); return id; },
+      clearTimeout: id => timers.delete(id) },
     navigator: { onLine: true }, pendingSaveMessage, saveFailureKind,
-    currentStatus: "", pendingSync: false, pendingFailureKind: "", connectivityRevision: 0,
+    currentStatus: "", pendingSync: false, pendingEventIds: null, pendingFailureKind: "", connectivityRevision: 0,
+    pendingNoticeReady: false, pendingNoticeTimer: null, PENDING_NOTICE_GRACE_MS: 5_000,
+    TRANSIENT_PENDING_FAILURES: new Set(["", "server", "connection"]),
     mutationLockReason: "offline", reconnectPromise: null, offlineProbePromise: null,
     flushPendingSharedState: async () => { if (result instanceof Error) throw result; return result; },
     loadRuntimeConfig: async () => ({ storage: { mode: "supabase" } }),
+    pendingSharedSyncStatus: () => ({ pending: false, pendingEventIds: [] }),
     showStatus: status => statuses.push(status), syncMutationControls: () => {},
     activeSaveScreenSignature: "", screenSignature: () => "event:notes",
     document: { body: { classList: { toggle() {} } }, querySelector: () => null,
       querySelectorAll: selector => selector === "[data-inline-sync-status]" ? [target] : [] }
   });
-  for (const name of ["recoverOnlineMutationAccess", "handleOffline", "handleSyncStatus", "syncInlineStatusTargets"])
+  for (const name of ["recoverOnlineMutationAccess", "handleOffline", "handleSyncStatus", "syncPendingNoticeTiming", "syncInlineStatusTargets", "refreshPendingStatusFromStorage", "refreshPendingStatus"])
     vm.runInContext(functionSource(name), context);
-  return { context, statuses, target };
+  return { context, statuses, target, timers, expireGrace() {
+    context.syncInlineStatusTargets();
+    for (const [id, timer] of timers) {
+      assert.equal(timer.delay, 5_000);
+      timers.delete(id); timer.callback();
+    }
+  } };
 }
 for (const result of [{ ok: false, error: { status: 403 } }, { ok: false, error: { status: 503 } }, new TypeError("bad code")]) {
   test(`online recovery does not lock unrelated actions on ${JSON.stringify(result)}`, async () => {
@@ -78,7 +91,7 @@ for (const result of [{ ok: false, error: { status: 403 } }, { ok: false, error:
 test("pending delivery has a passive inline indicator, cleared only by an explicit completion", () => {
   const h = harness({ ok: true });
   h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true } });
-  h.context.syncInlineStatusTargets();
+  h.expireGrace();
   assert.equal(h.target.hidden, false); assert.match(h.target.textContent, /ממתין לסנכרון/);
   h.context.handleSyncStatus({ detail: { status: "saving" } });
   h.context.syncInlineStatusTargets(); assert.equal(h.target.hidden, false);
@@ -90,6 +103,53 @@ test("a read failure without a durable outbox never claims a locally saved chang
   h.context.handleSyncStatus({ detail: { status: "unavailable", pending: false } });
   h.context.syncInlineStatusTargets(); assert.equal(h.target.hidden, true);
 });
+
+test("a pending change in one event never labels another event as unsynced", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });
+  h.expireGrace();
+  assert.equal(h.target.hidden, false);
+  h.target.dataset.syncEventId = "event-b";
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true, "navigation to an unchanged event must not carry the warning");
+  delete h.target.dataset.syncEventId;
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false, "the account overview must still disclose undelivered work");
+});
+
+test("partial progress clears healthy event warnings while preserving the failed event", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a", "event-b"] } });
+  h.context.handleSyncStatus({ detail: { status: "unavailable", pending: true, pendingEventIds: ["event-b"], failureKind: "permission" } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+  h.target.dataset.syncEventId = "event-b";
+  h.context.syncInlineStatusTargets();
+  assert.match(h.target.textContent, /הרשאה/);
+  h.context.handleSyncStatus({ detail: { status: "", pending: false, pendingEventIds: [] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+});
+
+test("another tab completing the outbox clears the indicator without a new save", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });
+  h.context.refreshPendingStatusFromStorage({ key: "settle-friends-pending-sync:space-a" });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+});
+
+test("account refresh replaces the old account's pending event scope", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });
+  h.context.pendingSharedSyncStatus = () => ({ pending: true, pendingEventIds: ["event-b"] });
+  h.context.refreshPendingStatus();
+  h.expireGrace();
+  assert.equal(h.target.hidden, true);
+  h.target.dataset.syncEventId = "event-b";
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+});
 test("a stale offline probe cannot relock controls after an online event", async () => {
   const h = harness({ ok: true }); let complete;
   h.context.navigator.onLine = false;
@@ -98,4 +158,65 @@ test("a stale offline probe cannot relock controls after an online event", async
   h.context.navigator.onLine = true;
   await h.context.recoverOnlineMutationAccess(); complete(true); await request;
   assert.equal(h.context.mutationLockReason, "");
+});
+
+for (const failureKind of ["", "server", "connection"]) {
+  test(`ordinary pending ${failureKind || "delivery"} stays quiet during its bounded grace period`, () => {
+    const h = harness({ ok: true });
+    h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, failureKind } });
+    h.context.syncInlineStatusTargets();
+    assert.equal(h.target.hidden, true);
+    const timer = h.context.pendingNoticeTimer;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      h.context.handleSyncStatus({ detail: { status: "saving" } });
+      h.context.syncInlineStatusTargets();
+    }
+    assert.equal(h.context.pendingNoticeTimer, timer, "retries cannot postpone disclosure forever");
+    h.expireGrace();
+    assert.equal(h.target.hidden, false, "genuinely undelivered work remains visible after five seconds");
+  });
+}
+
+test("a cloud acknowledgement cancels pending feedback without a late flash", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true } });
+  h.context.syncInlineStatusTargets();
+  const lateCallback = [...h.timers.values()][0].callback;
+  h.context.handleSyncStatus({ detail: { status: "saved", pending: false } });
+  h.context.syncInlineStatusTargets();
+  lateCallback();
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.target.hidden, true);
+  assert.equal(h.context.pendingNoticeReady, false);
+});
+
+for (const failureKind of ["auth", "permission", "rejected", "missing", "storage", "unavailable", "conflict"]) {
+  test(`actionable pending ${failureKind} bypasses the quiet grace period`, () => {
+    const h = harness({ ok: true });
+    h.context.handleSyncStatus({ detail: { status: "unavailable", pending: true, failureKind } });
+    h.context.syncInlineStatusTargets();
+    assert.equal(h.target.hidden, false);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+test("offline pending work is disclosed immediately without disabling local-first saves", () => {
+  const h = harness({ ok: true });
+  h.context.navigator.onLine = false;
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  assert.equal(h.timers.size, 0);
+});
+
+test("a new save gets its own quiet window after the previous outbox is acknowledged", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true } });
+  h.expireGrace();
+  h.context.handleSyncStatus({ detail: { status: "saved", pending: false } });
+  h.context.syncInlineStatusTargets();
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+  assert.equal(h.timers.size, 1);
 });

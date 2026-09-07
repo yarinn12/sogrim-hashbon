@@ -11,9 +11,12 @@ www
 build
 artifacts
 playwright-report
+playwright-report-sync
 test-results
+test-results-sync
 tests
 e2e
+e2e-sync
 design-audits
 design-plans
 docs

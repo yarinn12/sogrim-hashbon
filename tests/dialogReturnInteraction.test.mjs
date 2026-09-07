@@ -15,13 +15,17 @@ function harness() {
   const h = { modals: [], nodes: [] };
   const document = { activeElement: null };
   class Element {
-    constructor(action = "", { modal = false, hidden = false } = {}) {
+    constructor(action = "", { modal = false, hidden = false, routeRegion = false } = {}) {
       this.dataset = { action }; this.isConnected = true; this.modal = modal;
+      this.routeRegion = routeRegion;
       this.hidden = hidden; this.inert = false; this.disabled = false; this.parent = null;
     }
     focus() { if (!this.blockFocus && !this.inert && !this.disabled) document.activeElement = this; }
     contains(target) { return target === this || target?.parent === this; }
-    matches(selector) { return this.modal && selector.includes('role="dialog"'); }
+    matches(selector) {
+      return (this.modal && selector.includes('role="dialog"')) ||
+        (this.routeRegion && selector.includes('.event-modal[role="region"]'));
+    }
     closest(selector) {
       if (selector.includes("[inert]") || selector.includes("[hidden]")) {
         return (selector.includes("[inert]") && (this.inert || this.parent?.inert)) ||
@@ -116,6 +120,54 @@ test("closing a confirmation may restore a control inside its remaining parent d
   h.restore(h.descriptor(opener));
   assert.equal(h.document.activeElement, opener);
 });
+
+test("return focus waits for a choice trigger enhanced on the next frame", () => {
+  const h = harness(), region = new h.Element("", { routeRegion: true }), opener = h.node("");
+  opener.dataset.choiceSelectAction = "event-currency";
+  const descriptor = h.descriptor(opener);
+  opener.isConnected = false; h.nodes = []; region.focus();
+  h.restore(descriptor);
+  assert.equal(h.frames.length, 1);
+  const replacement = h.node("");
+  replacement.dataset.choiceSelectAction = "event-currency";
+  replacement.parent = region;
+  h.frame();
+  assert.equal(h.document.activeElement, replacement);
+});
+
+test("waiting for a rebuilt choice trigger stops when the user selects another field", () => {
+  const h = harness(), region = new h.Element("", { routeRegion: true }), opener = h.node("");
+  opener.dataset.choiceSelectAction = "event-currency";
+  const descriptor = h.descriptor(opener);
+  opener.isConnected = false; h.nodes = []; region.focus();
+  h.restore(descriptor);
+  assert.equal(h.frames.length, 1);
+  const input = h.node("new-field"); input.parent = region; input.focus();
+  h.frame();
+  assert.equal(h.document.activeElement, input);
+  assert.equal(h.frames.length, 0);
+});
+
+for (const path of ["action", "pending"]) {
+  test(`${path} focus returns from a routed event region to its rebuilt choice trigger`, () => {
+    const h = harness(), region = new h.Element("", { routeRegion: true }), opener = h.node("");
+    opener.dataset.choiceSelectAction = "event-currency";
+    const descriptor = h.descriptor(opener);
+    opener.isConnected = false; h.nodes = [];
+    const replacement = h.node("");
+    replacement.dataset.choiceSelectAction = "event-currency";
+    replacement.parent = region;
+    region.focus();
+    if (path === "action") h.restore(descriptor); else h.pending(descriptor);
+    assert.equal(h.document.activeElement, replacement);
+  });
+  test(`${path} focus does not escape a different routed event region`, () => {
+    const h = harness(), region = new h.Element("", { routeRegion: true }), opener = h.node("edit-note");
+    region.focus();
+    if (path === "action") h.restore(h.descriptor(opener)); else h.pending(h.descriptor(opener));
+    assert.equal(h.document.activeElement, region);
+  });
+}
 
 test("old close scroll cannot move a newer modal", () => {
   const h = harness(); h.context.deactivateDialog();
