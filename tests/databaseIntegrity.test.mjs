@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants } from "../src/domain/appActions.mjs";
-import { buildSharedEventState, mergeSharedEventWriteState } from "../src/data/sharedEventStore.mjs";
+import { buildSharedEventState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 
@@ -411,6 +411,45 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+test("SQL full member note write and conflict retry ignore a replica-only membership clock", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const local = structuredClone(previous), at = new Date().toISOString();
+    local.events[0].membershipUpdatedAt = at;
+    local.events[0].sharedSpaceId = snapshotId;
+    local.events[0].sharedSpaceKey = spaceKey;
+    local.events[0].notes = [{ id: "member-clock-note", title: "Member note", body: "Synthetic body",
+      createdAt: at, updatedAt: at, createdByParticipantId: ids.sender, updatedByParticipantId: ids.sender }];
+    let writes = 0;
+    const writtenClocks = [];
+    const response = value => ({ ok: true, status: 200, json: async () => value });
+    const result = await saveSharedEventState({ storage: { mode: "supabase", url: "https://sync-test.invalid",
+      table: "app_snapshots", anonKey: "synthetic", account: { userId: ids.sender.slice(8), accessToken: "synthetic-token" } } },
+      local, "integrity-probe", async (url, options = {}) => {
+        if (url.includes("/rpc/update_shared_event_snapshot")) {
+          const body = JSON.parse(options.body);
+          writes++;
+          // Exercise the final wire payload, including its projection and retry.
+          writtenClocks.push(body.p_state.events[0].membershipUpdatedAt);
+          if (writes === 1) return response({ status: "conflict" });
+          return response(await save(body.p_state, body.p_expected_updated_at));
+        }
+        assert.equal(options.method ?? "GET", "GET");
+        const row = (await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+        return response([row]);
+      });
+    assert.equal(writes, 2);
+    assert.deepEqual(writtenClocks, [previous.events[0].membershipUpdatedAt, previous.events[0].membershipUpdatedAt]);
+    assert.equal(result.events[0].notes[0].id, "member-clock-note");
+    assert.equal((await db.query("select state->'events'->0->'notes' as notes from public.app_snapshots where id=$1", [snapshotId])).rows[0].notes[0].id, "member-clock-note");
+  }, value => {
+    delete value.deletedEvents;
+    value.events[0].membershipUpdatedAt = "2026-08-29T00:00:00.000Z";
+    value.events[0].expenses = [];
+    value.events[0].transfers = [];
+    return value;
+  });
+});
+
 // The invite path has its own transactional boundary: membership, canonical
 // participant and personal index must all commit, or none of them may remain.
 async function withOpenInvite(run, { workspace = true, expired = false, closed = false } = {}) {

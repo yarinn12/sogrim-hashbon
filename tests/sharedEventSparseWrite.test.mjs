@@ -57,3 +57,36 @@ test("member content and own profile changes survive sparse event normalization"
   assert.deepEqual(merged.events[0].expenses, local.events[0].expenses);
   assert.deepEqual(protectedFields(merged.events[0]), protectedFields(remote.events[0]));
 });
+
+test("member retry cannot turn an unchanged membership into a global clock settings edit", () => {
+  const local = structuredClone(remote);
+  local.events[0].membershipUpdatedAt = "2026-09-07T10:00:00.000Z";
+  for (let retry = 0; retry < 3; retry++) {
+    const merged = mergeSharedEventWriteState(remote, local, config);
+    assert.deepEqual(protectedFields(merged.events[0]), protectedFields(remote.events[0]));
+    local.events = merged.events;
+  }
+});
+
+test("member clock normalization preserves a missing canonical global clock", () => {
+  const canonical = structuredClone(remote), local = structuredClone(remote);
+  delete canonical.events[0].membershipUpdatedAt;
+  assert.equal(Object.hasOwn(mergeSharedEventWriteState(canonical, local, config).events[0], "membershipUpdatedAt"), false);
+});
+
+test("member clock normalization does not discard actual membership intent or admin clocks", () => {
+  const clock = "2026-09-07T10:00:00.000Z";
+  for (const change of [
+    event => { event.inactiveParticipantIds = ["account-peer"]; },
+    event => { event.participantIds.push("guest-one"); },
+    event => { event.membershipUpdatedAtByParticipant["account-peer"] = clock; }
+  ]) {
+    const local = structuredClone(remote);
+    local.events[0].membershipUpdatedAt = clock;
+    change(local.events[0]);
+    assert.equal(mergeSharedEventWriteState(remote, local, config).events[0].membershipUpdatedAt, clock);
+  }
+  const local = structuredClone(remote);
+  local.events[0].membershipUpdatedAt = clock;
+  assert.equal(mergeSharedEventWriteState(remote, local, { storage: { account: { userId: "owner" } } }).events[0].membershipUpdatedAt, clock);
+});

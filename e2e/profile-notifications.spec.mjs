@@ -55,9 +55,14 @@ test.beforeEach(async ({ page }) => {
     "access-control-allow-headers": "authorization, apikey, content-type, prefer",
     "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
   };
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  yesterday.setHours(12, 0, 0, 0);
+  // CI runs in UTC while these browser projects use Asia/Jerusalem. Build
+  // the calendar-day fixture in the same timezone as its rendered label.
+  const yesterday = await page.evaluate(() => {
+    const date = new Date();
+    date.setDate(date.getDate() - 1);
+    date.setHours(12, 0, 0, 0);
+    return date.toISOString();
+  });
   const twoMinutesAgo = new Date(Date.now() - 2 * 60_000).toISOString();
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
   const threeHoursAgo = new Date(Date.now() - 3 * 60 * 60_000).toISOString();
@@ -120,7 +125,7 @@ test.beforeEach(async ({ page }) => {
       body: "הראל הזמין אותך להשתתף באירוע סוף שבוע ארוך בצפון",
       view: "summary",
       action_url: "",
-      created_at: yesterday.toISOString(),
+      created_at: yesterday,
       read_at: null
     }
   ];

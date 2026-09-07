@@ -379,6 +379,10 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     return merged;
   }
 
+  merged.events = merged.events.map((event) => remoteEvent?.id === event.id
+    ? preserveUnchangedMemberClock(remoteEvent, event)
+    : event);
+
   // A regular member may publish their own profile (and add a new offline
   // guest), but must never relay a stale or forged profile for somebody else.
   // The database enforces the same boundary; keeping it here also prevents a
@@ -464,6 +468,25 @@ function attributionBaselineForParticipantMerge(remoteState, candidateState, act
       Object.fromEntries(Object.entries(entry).map(([field, value]) => [field,
         ["actorParticipantId", "subjectParticipantId", "fromParticipantId", "toParticipantId"].includes(field) ? remap(value) : value]))) } : {})
   };
+}
+
+function preserveUnchangedMemberClock(canonical, candidate) {
+  // Old personal replicas can carry a later global membership clock despite
+  // having exactly the canonical membership and per-participant clocks. A
+  // member content write must not republish that bookkeeping as a settings
+  // edit. Keep real joins/leaves/guest additions and versioned membership
+  // intent intact; admin writes never take this path.
+  if (["participantIds", "inactiveParticipantIds", "adminIds"].some((field) =>
+    !jsonValuesEqual(canonical[field] ?? [], candidate[field] ?? [])) ||
+    !jsonValuesEqual(canonical.membershipUpdatedAtByParticipant, candidate.membershipUpdatedAtByParticipant)) {
+    return candidate;
+  }
+  if (Object.hasOwn(canonical, "membershipUpdatedAt")) {
+    candidate.membershipUpdatedAt = canonical.membershipUpdatedAt;
+  } else {
+    delete candidate.membershipUpdatedAt;
+  }
+  return candidate;
 }
 
 function preserveSparseEventDefaults(canonical, candidate) {
