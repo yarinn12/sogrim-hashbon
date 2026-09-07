@@ -172,8 +172,14 @@ export function startProductMetricTransport({
   };
 
   const scheduleFlush = (delay = FLUSH_DELAY_MS) => {
-    if (flushTimer || stopped) return;
-    flushTimer = windowRef.setTimeout(() => flush(), delay);
+    // The active request owns scheduling its successor, including backoff.
+    // A timer created mid-request can fire too early and leave a stale timer
+    // id behind, permanently stranding the remaining diagnostics.
+    if (flushTimer || flushInFlight || stopped) return;
+    flushTimer = windowRef.setTimeout(() => {
+      flushTimer = 0;
+      return flush();
+    }, delay);
   };
 
   const restorePendingBatch = (batch) => {

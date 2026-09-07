@@ -685,7 +685,7 @@ test("pending invite mutations retry after transient server failures without use
 test("foreground and connectivity signals share the same pending mutation recovery", () => {
   const app = readFileSync("src/app.mjs", "utf8");
   const listeners = app.slice(
-    app.indexOf('window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync)'),
+    app.indexOf('window.addEventListener(NATIVE_RESUME_EVENT,'),
     app.indexOf("document.addEventListener(PUSH_STATUS_EVENT")
   );
 
@@ -695,7 +695,7 @@ test("foreground and connectivity signals share the same pending mutation recove
   );
   assert.match(
     listeners,
-    /window\.addEventListener\("online", \(\) => \{\s*recoverPendingMutations\(\{ resetBackoff: true \}\)/
+    /window\.addEventListener\("online", \(\) => \{(?:\s*\/\/[^\n]*\n)*\s*if \(appBootHydrated\) void requestResumeSync\(\{ force: true \}\);\s*recoverPendingMutations\(\{ resetBackoff: true \}\)/
   );
   assert.match(
     listeners,

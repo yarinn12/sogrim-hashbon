@@ -119,6 +119,32 @@ test("personal cache never hides a deleted row or failed authorization check", a
   assert.equal(await readCloudState(cfg, server.fetch, optimized), null);
 });
 
+for (const kind of ["personal", "shared_event"]) {
+  test(`${kind} foreground observers reuse a separately read payload only after checking its current server version`, async () => {
+    const cfg = config(`observer-reuse-${kind}`);
+    cfg.storage.snapshotKind = kind;
+    if (kind === "shared_event") cfg.storage.account.spaceId = "other-personal-workspace";
+    const server = fakeSnapshots([snapshot(cfg.storage.spaceId)]);
+    const observer = { observerKey: `foreground-${kind}` };
+    await readCloudStateIfChanged(cfg, server.fetch, observer);
+    const row = server.rows.get(cfg.storage.spaceId);
+    row.updated_at = V2;
+    row.state.events[0].notes[0].text = "second device";
+    const separateRead = await readCloudState(cfg, server.fetch);
+    separateRead.events[0].notes[0].text = "unconfirmed local edit";
+    const beforeBytes = server.bytes, beforeCalls = server.requests.length;
+    const update = await readCloudStateIfChanged(cfg, server.fetch, observer);
+    assert.equal(update.changed, true, "a different reader must not acknowledge this observer");
+    assert.equal(update.state.events[0].notes[0].text, "second device");
+    assert.equal(server.requests.length - beforeCalls, 1, "reuse must not download the snapshot a second time");
+    assert.ok(server.bytes - beforeBytes < 1_000);
+    assert.equal((await readCloudStateIfChanged(cfg, server.fetch, observer)).changed, false);
+    row.updated_at = V3;
+    row.state.events[0].notes[0].text = "newer than cache";
+    assert.equal((await readCloudStateIfChanged(cfg, server.fetch, observer)).state.events[0].notes[0].text, "newer than cache");
+  });
+}
+
 test("warm membership checks fetch only a changed note and preserve caller isolation", async () => {
   const cfg = config("membership-changed-note");
   const server = fakeSnapshots([snapshot("a"), snapshot("b")]);

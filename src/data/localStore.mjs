@@ -1,7 +1,9 @@
 import { demoState } from "./demoData.mjs";
 import {
   loadCloudState as loadCloudStateRequest,
-  saveCloudState as saveCloudStateRequest
+  saveCloudState as saveCloudStateRequest,
+  readCloudSnapshot,
+  cachedCloudSnapshotForWrite
 } from "./cloudStore.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
@@ -137,17 +139,26 @@ async function loadCloudState(config, fallbackState, options = {}) {
   );
 }
 
-async function saveCloudState(config, state) {
-  return withFreshCloudAccount(config, (freshConfig) =>
-    saveCloudStateRequest(freshConfig, state)
-  );
-}
-
 async function saveCloudStateWithRetry(config, state) {
-  return saveCloudStateWithConflictRetry({
-    state,
-    loadLatest: (fallbackState) => loadCloudState(config, fallbackState),
-    save: (candidate) => saveCloudState(config, candidate)
+  return withFreshCloudAccount(config, async (freshConfig) => {
+    let expectedVersion = "";
+    const readLatestForWrite = async () => {
+      const snapshot = await readCloudSnapshot(freshConfig, globalThis.fetch);
+      expectedVersion = snapshot.version;
+      return snapshot.state;
+    };
+    const cached = cachedCloudSnapshotForWrite(freshConfig, globalThis.fetch);
+    expectedVersion = cached?.version ?? "";
+    const baseState = cached ? cached.state : await readLatestForWrite();
+    // A background read may be newer than the open editor. Its version only
+    // belongs to the payload it returned, not to this older local draft.
+    return saveCloudStateWithConflictRetry({
+      state: baseState ? mergeSharedStates(baseState, state) : state,
+      loadLatest: readLatestForWrite,
+      save: (candidate) => saveCloudStateRequest(
+        freshConfig, candidate, globalThis.fetch, { expectedVersion }
+      )
+    });
   });
 }
 
@@ -166,7 +177,11 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
       ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
       : state;
   } catch (error) {
-    if (!error?.partialSharedState?.state) throw error;
+    if (!error?.partialSharedState?.state ||
+        !error.partialSharedState.succeededEventIds?.length) throw error;
+    // A wholly rejected shared write has no committed progress to mirror.
+    // Copying its optimistic payload into the personal cloud would resurrect
+    // a rejected event on reload, even after the local rollback cleared it.
     // A broken sibling must not freeze personal-only changes or discard the
     // healthy events' merged state. Still rethrow after this best-effort save:
     // personal persistence is not proof that all shared changes were delivered.
@@ -2062,7 +2077,9 @@ export function isTransientSyncFailure(error) {
     if (item?.code === "CLOUD_STATE_CONFLICT") return true;
     if (isNetworkFailure(item)) return true;
     const status = Number(item?.status ?? 0);
-    return status === 408 || status === 425 || status === 429 || status >= 500;
+    // Supabase project restrictions do not reject the mutation itself. Keep
+    // its durable outbox entry and use the existing capped recovery backoff.
+    return status === 402 || status === 408 || status === 425 || status === 429 || status >= 500;
   });
 }
 

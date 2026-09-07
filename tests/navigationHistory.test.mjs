@@ -193,9 +193,11 @@ test("closing a dialog restores the exact action that opened it", async () => {
   assert.match(app, /if \(snapshot\.dialogSelector && !currentDialog\) return/);
   assert.match(
     app,
-    /const activeModalDialog =\s*document\.body\.classList\.contains\("app-dialog-open"\) &&\s*app\.querySelector\(':is\(\[role="dialog"\], \[role="alertdialog"\]\)\[aria-modal="true"\]'\)/
+    /document\.querySelectorAll\(':is\(\[role="dialog"\], \[role="alertdialog"\]\)\[aria-modal="true"\]'\)/
   );
-  assert.match(app, /if \(!returnTarget \|\| activeModalDialog\) return/);
+  assert.match(app, /if \(!returnTarget \|\| activeReturnFocusModal\(\)\) return/);
+  assert.match(app, /scheduleDialogReturnScroll\(closingDialogScrollY\)/);
+  assert.match(app, /returnTarget\.returnContext !== dialogReturnContext\(\)/);
 });
 
 test("closing an expense keeps its draft and template rerenders keep focus", async () => {
@@ -209,9 +211,10 @@ test("closing an expense keeps its draft and template rerenders keep focus", asy
     app,
     /if \(action === "cancel-expense"\) \{[\s\S]*?rememberExpenseDraft\(\);[\s\S]*?expenseDraft = null;/
   );
-  assert.match(applyTemplate, /activateDialog\("\.expense-modal"\)/);
-  assert.match(applyTemplate, /requestAnimationFrame/);
-  assert.match(applyTemplate, /\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(applyTemplate, /reactivateDialogAfterRender\(\s*"\.expense-modal"/);
+  assert.match(applyTemplate, /data-action="expense-template"/);
+  assert.match(applyTemplate, /CSS\.escape\(template\)/);
+  assert.doesNotMatch(applyTemplate, /requestAnimationFrame/);
 });
 
 test("browser back from an event invite restores focus to the participant invite action", async () => {

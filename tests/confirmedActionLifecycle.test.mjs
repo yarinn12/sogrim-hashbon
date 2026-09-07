@@ -34,7 +34,7 @@ function lifecycle({ action = async (ctx) => { ctx.eventDialog = null; } } = {})
     document: { body: { classList: { remove() {} } } },
     app: { querySelector: () => null },
     window: { history: { back() { rewinds++; } }, setTimeout() {}, scrollTo() {} },
-    requestAnimationFrame() {}, hasIndependentHistoryDialog: () => false,
+    requestAnimationFrame() {}, scheduleDialogReturnScroll() {}, hasIndependentHistoryDialog: () => false,
     cloneNavigationValue: (value) => value == null ? null : structuredClone(value),
     render() {}, clearDialogBackgroundInert() {}, activateDialog() {}, deactivateDialog() {},
     restoreActionFocus() {}, restorePendingDialogReturnFocus() {}, historyEventDialogFocusSelector: () => "",

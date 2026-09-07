@@ -42,6 +42,7 @@ test("version-only refreshes preserve shared notes on home and in an open event"
   let personal = { id: spaceId, state: structuredClone(initialState), updated_at: initialVersion };
   const shared = { id: sharedId, state: structuredClone(initialState), updated_at: initialVersion };
   const reads = [];
+  const syncTimings = [];
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const headers = {
@@ -123,17 +124,26 @@ test("version-only refreshes preserve shared notes on home and in an open event"
     shared.state.events[0].updatedAt = version;
     shared.updated_at = version;
   };
+  const homeRefreshStartedAt = performance.now();
   updateNote("פתק שהתעדכן ממכשיר שני", "2026-09-04T08:01:00.000Z");
   await expect.poll(() => reads.some((read) =>
     read.kind === "index" && read.fields.includes("state") && read.version === shared.updated_at
   ), { timeout: 25_000 }).toBe(true);
+  syncTimings.push({ boundary: "home-to-canonical-download", milliseconds: Math.round(performance.now() - homeRefreshStartedAt) });
 
   await eventButton.click();
   await page.locator('[data-action="open-event-notes"]').click();
   await expect(page.getByText("פתק שהתעדכן ממכשיר שני", { exact: true })).toBeVisible();
+  const visibleRefreshStartedAt = performance.now();
   updateNote("עדכון בזמן שהפתקים פתוחים", "2026-09-04T08:02:00.000Z");
   await expect(page.getByText("עדכון בזמן שהפתקים פתוחים", { exact: true }))
     .toBeVisible({ timeout: 8_000 });
+  syncTimings.push({ boundary: "open-notes-to-visible-update", milliseconds: Math.round(performance.now() - visibleRefreshStartedAt) });
+  await testInfo.attach("sync-timings-local-mock", { body: JSON.stringify({
+    kind: "local-browser-synthetic-backend", device: testInfo.project.name,
+    samples: syncTimings, limits: "Includes assertion polling overhead; excludes real API/network and push delivery"
+  }, null, 2), contentType: "application/json" });
+  console.log(JSON.stringify({ diagnostic: "local-sync-timing", device: testInfo.project.name, samples: syncTimings }));
   await expect(page.getByText("פתק שהתעדכן ממכשיר שני", { exact: true })).toHaveCount(0);
   // Visibility alone would not catch a card obscured by fixed navigation.
   // A normal (non-forced) click must open the actual updated note editor.
@@ -141,6 +151,12 @@ test("version-only refreshes preserve shared notes on home and in an open event"
   await expect(page.locator(".event-note-modal")).toBeVisible();
   await expect(page.locator('[data-action="event-note-title"]'))
     .toHaveValue("עדכון בזמן שהפתקים פתוחים");
+  // A full-page screenshot can include background content below a fixed modal;
+  // verify the real viewport and hit target, not merely the modal's existence.
+  const saveNote = page.locator('.event-note-modal [data-action="save-event-note"]');
+  await expect(saveNote).toBeEnabled();
+  await saveNote.click({ trial: true });
+  await page.screenshot({ path: testInfo.outputPath("warm-cache-note-save-viewport.png"), animations: "disabled" });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
   expect(errors).toEqual([]);

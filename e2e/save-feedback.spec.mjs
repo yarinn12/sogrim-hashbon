@@ -1,18 +1,24 @@
 import { expect, test } from "@playwright/test";
 import { updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 import { isWebKitReloadDiagnostic } from "./helpers/reloadDiagnostics.mjs";
+import { installNoteEditorDiagnostics, attachNoteEditorDiagnostics, installDelayedDialogFrameFixture } from "./helpers/noteEditorDiagnostics.mjs";
 test.use({ serviceWorkers: "block" });
+test.afterEach(async ({ page }, testInfo) => {
+  if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await attachNoteEditorDiagnostics(page, testInfo);
+});
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const { status, restart = false } of [
+for (const { status, restart = false, delayedDialogFrame = false } of [
   ...[403, 503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
-  ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status }))
+  ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status })),
+  { status: "pending-next-recovers", delayedDialogFrame: true }
 ]) {
 const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
 const receiptConflict = String(status).startsWith("receipt-");
 const pendingFollowup = String(status).startsWith("pending-next-");
-test(pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`, async ({ page, browserName }, testInfo) => {
+const testName = pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
+test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
@@ -97,6 +103,8 @@ test(pendingFollowup ? `note ${status} keeps earlier pending work covered by the
     "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
   };
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(testInfo.project.use.baseURL).origin ? route.continue() : route.abort());
+  if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await installNoteEditorDiagnostics(page);
+  if (delayedDialogFrame) await installDelayedDialogFrameFixture(page);
   await page.route("**/api/config", (route) => route.fulfill({ json: {
     publicUrl: testInfo.project.use.baseURL,
     storage: { mode: "supabase", url: origin, anonKey: "test-anon-key", table: "app_snapshots" }
@@ -195,6 +203,7 @@ test(pendingFollowup ? `note ${status} keeps earlier pending work covered by the
 
 
   await page.goto("/");
+  if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await expect.poll(() => page.evaluate(() => typeof window.__qaNoteEditorState)).toBe("function");
   const eventButton = page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first();
   await expect(eventButton).toBeVisible();
   await eventButton.click();
@@ -213,8 +222,17 @@ test(pendingFollowup ? `note ${status} keeps earlier pending work covered by the
     await page.locator('[data-nav-destination="home"]').click();
     await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
     await page.locator('[data-action="open-event-notes"]').click();
+    if (delayedDialogFrame) await page.evaluate(() => { window.__qaDelayNextNoteDialog = true; });
     await page.locator('[data-action="new-event-note"]').click();
-    await page.locator('[data-action="event-note-body"]').fill("פתק באירוע אחר");
+    if (delayedDialogFrame) {
+      const deferredFrames = await page.evaluate(() => {
+        document.querySelector('[data-action="event-note-body"]').focus();
+        return window.__qaFlushDialogFrames();
+      });
+      expect(deferredFrames).toBeGreaterThan(0);
+      await page.keyboard.insertText("פתק באירוע אחר");
+      await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("פתק באירוע אחר");
+    } else await page.locator('[data-action="event-note-body"]').fill("פתק באירוע אחר");
     // Keep the first event unavailable during navigation. Only the next Save
     // may deliver its pending intent in the recovery case.
     if (status === "pending-next-recovers") writeStatus = 200;

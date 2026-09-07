@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { installDelayedDialogFrameFixture } from "./helpers/noteEditorDiagnostics.mjs";
 
 const OWNER_ID = "person-design-regression-owner";
 const EVENT_ID = "event-design-regression";
@@ -127,6 +128,32 @@ test("expense templates preserve a custom name and still switch templates", asyn
   await expect(expenseName).toHaveValue("אוכל");
   await page.locator('[data-action="expense-template"][data-template="שתייה"]').click();
   await expect(expenseName).toHaveValue("שתייה");
+});
+
+test("a late expense template frame cannot redirect the user's next edit", async ({ page }) => {
+  await installDelayedDialogFrameFixture(page, "expense-template");
+  await page.reload();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="show-expense-form"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="expense-total"]').fill("120");
+  await page.locator('[data-action="expense-step-next"]').click();
+  const name = page.locator('[data-action="expense-name"]');
+  await name.fill("ארוחת יום הולדת");
+  await page.evaluate(() => { window.__qaDelayNextNoteDialog = true; });
+  await page.locator('[data-action="expense-template"][data-template="אוכל"]').click();
+  const frames = await page.evaluate(() => {
+    document.querySelector('[data-action="expense-name"]').focus();
+    return window.__qaFlushDialogFrames();
+  });
+  expect(frames).toBeGreaterThan(0);
+  await expect(name).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await expect(name).toHaveValue("");
+  await page.locator('[data-action="expense-template"][data-template="אוכל"]').click();
+  await expect(name).toHaveValue("אוכל");
+  await page.locator('[data-action="expense-template"][data-template="שתייה"]').click();
+  await expect(name).toHaveValue("שתייה");
 });
 
 test("restaurant expense back and accessibility controls never overlap", async ({ page }) => {

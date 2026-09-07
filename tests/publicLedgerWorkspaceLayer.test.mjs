@@ -28,7 +28,7 @@ test("mobile headers, tablet workspaces and compact actions keep safe geometry",
     ledger,
     /\.product-route-controls\[hidden\] \{[\s\S]*?calc\(\(100vw - 960px\) \/ 2 \+ 24px\)/
   );
-  assert.match(ledger, /\.home-quick-actions \{[\s\S]*?margin: 14px 0 16px !important;/);
+  assert.match(ledger, /\.home-quick-actions \{[\s\S]*?position: static !important;[\s\S]*?margin: 0 !important;/);
   assert.match(ledger, /\.expense-row-actions-menu button \{[\s\S]*?min-height: 44px !important;/);
   assert.match(coherence, /--app-danger: #b94739/);
   assert.match(
@@ -906,7 +906,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   );
   assert.match(
     layer,
-    /\.product-home-screen \.home-quick-actions \{[\s\S]*?width: 100% !important;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?margin: 14px 0 16px !important/
+    /\.product-home-screen \.home-quick-actions \{[\s\S]*?width: auto !important;[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important;[\s\S]*?margin: 0 !important/
   );
   assert.match(
     layer,
@@ -930,7 +930,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   );
   assert.match(
     layer,
-    /\.product-home-screen \.home-quick-action\.is-primary \{[\s\S]*?width: clamp\(174px, 48%, 190px\) !important;[\s\S]*?max-width: calc\(100% - 24px\) !important;[\s\S]*?display: flex !important;[\s\S]*?justify-content: center !important;[\s\S]*?background: #ffffff !important;[\s\S]*?0 14px 32px rgba\(18, 58, 46, 0\.12\)/
+    /\.product-home-screen \.home-quick-action\.is-primary \{[\s\S]*?width: max-content !important;[\s\S]*?max-width: 100% !important;[\s\S]*?display: flex !important;[\s\S]*?justify-content: center !important;[\s\S]*?background: #ffffff !important;[\s\S]*?0 14px 32px rgba\(18, 58, 46, 0\.12\)/
   );
   assert.match(
     layer,

@@ -41,6 +41,12 @@ test.beforeEach(async ({ page, request }) => {
 });
 
 async function beginMotionCapture(page) {
+  // The motion layer establishes its initial screen baseline in a frame.
+  // It deliberately skips frames while the splash exists. A visible home
+  // screen behind that overlay is not yet an initialized motion baseline.
+  await expect(page.locator("#app-splash")).toHaveCount(0);
+  // Wait for the mutation-delivery and enhancement frames after splash removal.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.evaluate(() => {
     const originalAnimate = globalThis.Motion?.animate;
     if (typeof originalAnimate !== "function") throw new Error("Motion.animate is unavailable");
@@ -48,6 +54,7 @@ async function beginMotionCapture(page) {
     globalThis.Motion.animate = (target, keyframes, options) => {
       globalThis.__capturedProductMotion.push({
         className: target instanceof Element ? target.className : "",
+        screenKind: target instanceof Element ? target.closest(".screen")?.dataset.screenKind : "",
         duration: Number(options?.duration ?? 0)
       });
       return originalAnimate(target, keyframes, options);
@@ -63,6 +70,9 @@ test("core navigation and dialogs use the app motion system", async ({ page }) =
 
   await page.locator('[data-action="new-event"]').click();
   await expect(page.locator('#app .screen[data-screen-kind="new-event"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => globalThis.__capturedProductMotion.some(
+    call => call.screenKind === "new-event"
+  ))).toBe(true);
   await page.locator("[data-open-accessibility]:visible").first().click();
   await expect(page.locator('.accessibility-center[role="dialog"]')).toBeVisible();
   await expect.poll(

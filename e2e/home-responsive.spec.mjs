@@ -83,12 +83,9 @@ test.beforeEach(async ({ page, request }) => {
   }, { participantId: OWNER_ID, state: emptyAccountState });
 });
 
-test("the empty home hero stays intact on iPhone and iPad", async ({ page }, testInfo) => {
-  test.skip(
-    !["iphone-webkit", "iphone-large-text", "ipad-webkit"].includes(testInfo.project.name),
-    "This regression targets iOS and iPadOS layouts"
-  );
-
+test("home anchors new-event to the event heading across narrow and tablet layouts", async ({ page }, testInfo) => {
+  const errors = [];
+  page.on("pageerror", error => errors.push(error.message));
   const viewports = testInfo.project.name === "ipad-webkit"
     ? [
         { width: 768, height: 1024 },
@@ -105,12 +102,14 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     await page.goto("/");
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
     await waitForHomePresentation(page);
+    await expect(page.locator(".home-create-event-action")).toBeVisible();
 
     const layout = await page.evaluate(() => {
       const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
       const hero = screen?.querySelector(":scope > .top");
       const copy = hero?.querySelector(".brand");
       const action = screen?.querySelector('[data-action="new-event"]');
+      const heading = action?.closest(".home-events-heading");
       const promo = screen?.querySelector(".home-empty-visual");
       const promoImage = promo?.querySelector("img");
       const brandImage = screen?.querySelector(".product-brand-image");
@@ -135,6 +134,11 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
         hero: rect(hero),
         copy: rect(copy),
         action: rect(action),
+        heading: rect(heading),
+        headingTitle: rect(heading?.querySelector("h2")),
+        actionPosition: action ? getComputedStyle(action).position : "",
+        wrapperPosition: action ? getComputedStyle(action.parentElement).position : "",
+        actionContentFits: action ? action.scrollWidth <= action.clientWidth : false,
         promo: rect(promo),
         promoImageFit: promoImage ? getComputedStyle(promoImage).objectFit : "",
         brandImageFit: brandImage ? getComputedStyle(brandImage).objectFit : "",
@@ -147,14 +151,19 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
     expect(layout.screen.right).toBeLessThanOrEqual(layout.viewportWidth);
     expect(layout.hero.left).toBeGreaterThanOrEqual(0);
     expect(layout.hero.right).toBeLessThanOrEqual(layout.viewportWidth);
-    expect(layout.action.top).toBeGreaterThanOrEqual(layout.hero.bottom + 12);
-    expect(layout.action.top).toBeLessThanOrEqual(layout.hero.bottom + 28);
+    expect(layout.heading).not.toBeNull();
+    expect(layout.action.top).toBeGreaterThanOrEqual(layout.heading.top - 1);
+    expect(layout.action.bottom).toBeLessThanOrEqual(layout.heading.bottom + 1);
+    expect(layout.action.left).toBeGreaterThanOrEqual(layout.heading.left - 1);
+    expect(layout.action.right).toBeLessThanOrEqual(layout.heading.right + 1);
+    expect(layout.headingTitle.left - layout.action.right).toBeGreaterThanOrEqual(10);
+    expect(["fixed", "absolute"]).not.toContain(layout.actionPosition);
+    expect(layout.wrapperPosition).toBe("static");
+    expect(layout.actionContentFits).toBe(true);
     expect(layout.action.height).toBeGreaterThanOrEqual(44);
     const screenCenter = (layout.screen.left + layout.screen.right) / 2;
-    const actionHorizontalCenter = (layout.action.left + layout.action.right) / 2;
-    expect(Math.abs(actionHorizontalCenter - screenCenter)).toBeLessThanOrEqual(2);
     if (viewport.width < 721) {
-      expect(layout.action.width).toBeGreaterThanOrEqual(174);
+      expect(layout.action.width).toBeGreaterThanOrEqual(44);
       expect(layout.action.width).toBeLessThanOrEqual(190);
     }
     expect(layout.promo.width / layout.promo.height).toBeCloseTo(1672 / 941, 2);
@@ -164,10 +173,19 @@ test("the empty home hero stays intact on iPhone and iPad", async ({ page }, tes
 
     if (viewport.width >= 721) {
       expect(layout.screen.width).toBeCloseTo(Math.min(viewport.width - 32, 960), 0);
-      expect(layout.action.width).toBe(240);
+      // This is now an inline, content-sized action rather than the old
+      // centered 240px hero action; verify its target and container bounds.
+      expect(layout.action.width).toBeGreaterThanOrEqual(44);
+      expect(layout.action.width).toBeLessThanOrEqual(240);
       expect(Math.abs(screenCenter - viewport.width / 2)).toBeLessThanOrEqual(2);
     }
+    await page.locator(".home-create-event-action").scrollIntoViewIfNeeded();
+    await page.locator(".home-create-event-action").click({ trial: true });
+    await page.screenshot({ path: testInfo.outputPath(`home-event-action-${viewport.width}.png`) });
   }
+  await page.locator(".home-create-event-action").click();
+  await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test("the first-event action is identical to the regular new-event action", async ({ page, request }) => {

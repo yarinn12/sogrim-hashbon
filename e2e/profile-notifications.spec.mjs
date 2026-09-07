@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { PGlite } from "@electric-sql/pglite";
 import {
   expectStrictSmoothness,
   finishStrictSmoothnessProbe,
@@ -687,6 +689,19 @@ test("signed-out gift state uses the available mobile canvas instead of leaving 
 });
 
 test("a gallery profile image persists after reload without a false sync warning", async ({ page }) => {
+  let canonicalProfile = { user_id: USER_ID, display_name: "ירין יצחק", username: "yarin",
+    avatar_preset: "avatar-1", avatar_image: null, updated_at: "2026-08-18T06:00:00.000Z" };
+  await page.route("https://profile-notifications.supabase.co/rest/v1/user_profiles*", route => {
+    const headers = { "access-control-allow-origin": "*",
+      "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+      "access-control-allow-methods": "GET, PATCH, OPTIONS" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
+    if (route.request().method() === "PATCH") {
+      expect(route.request().headers().prefer).toBe("return=representation");
+      canonicalProfile = { ...canonicalProfile, ...route.request().postDataJSON() };
+    }
+    return route.fulfill({ headers, json: [canonicalProfile] });
+  });
   await page.locator('[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
   const picker = page.locator(".profile-avatar-picker-shell");
@@ -706,6 +721,7 @@ test("a gallery profile image persists after reload without a false sync warning
     .locator(".product-header-profile-avatar img")
     .getAttribute("src");
   expect(uploadedSource).toMatch(/^data:image\/jpeg;base64,/);
+  expect(canonicalProfile.avatar_image).toBe(uploadedSource);
 
   await page.reload();
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -758,6 +774,95 @@ test("a temporary cloud outage queues the save without a false failure notice", 
   expect(notices.join(" ")).not.toMatch(/לא (?:הצלחנו )?לשמור|הסנכרון לא זמין/);
 });
 
+test("delayed profile PATCH retains the newer SQL identity through reload", async ({ page }, testInfo) => {
+  // Use the shipped trigger, not a JavaScript imitation of its conflict rules.
+  // This narrow browser fixture uses a text synthetic owner; the complete schema,
+  // UUID/RLS rules, and upgrade path are exercised in databaseIntegrity.test.mjs.
+  const database = new PGlite();
+  const versions = [0, 1, 2].map(step => new Date(Date.now() + (step + 1) * 1000).toISOString());
+  const pageErrors = [];
+  page.on("pageerror", error => pageErrors.push(error.message));
+  const readProfile = async () => (await database.query("select * from public.user_profiles where user_id=$1", [USER_ID])).rows[0];
+  const headers = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+    "access-control-allow-methods": "GET, PATCH, OPTIONS"
+  };
+  let releaseOld;
+  let signalOld;
+  const oldGate = new Promise(resolve => { releaseOld = resolve; });
+  const oldArrived = new Promise(resolve => { signalOld = resolve; });
+  const endpoint = "https://profile-notifications.supabase.co/rest/v1/user_profiles*";
+  const handler = async route => {
+    const request = route.request();
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
+    if (request.method() === "PATCH") {
+      expect(new URL(request.url()).searchParams.get("user_id")).toBe(`eq.${USER_ID}`);
+      const fields = request.postDataJSON();
+      if (fields.display_name === "Obsolete Profile") {
+        signalOld();
+        await oldGate;
+      }
+      const entries = Object.entries(fields);
+      const allowed = new Set(["display_name", "avatar_preset", "avatar_image", "avatar_image_updated_at", "updated_at"]);
+      expect(entries.length).toBeGreaterThan(0);
+      expect(entries.every(([key]) => allowed.has(key))).toBe(true);
+      await database.query(`update public.user_profiles set ${entries.map(([key], i) => `${key}=$${i + 1}`).join(",")}
+        where user_id=$${entries.length + 1}`, [...entries.map(([, value]) => value), USER_ID]);
+    } else {
+      expect(request.method()).toBe("GET");
+    }
+    return route.fulfill({ headers, json: [await readProfile()] });
+  };
+  try {
+    await database.exec(`create schema private;
+      create table public.user_profiles (user_id text primary key, display_name text, avatar_preset text,
+        avatar_image text, avatar_image_updated_at timestamptz, updated_at timestamptz not null,
+        username text, username_customized boolean);`);
+    await database.exec(readFileSync(new URL("../supabase/migrations/20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8"));
+    await database.query(`insert into public.user_profiles (user_id, display_name, avatar_preset, updated_at, username, username_customized)
+      values ($1, 'Original Profile', 'avatar-1', $2, 'yarin', true)`, [USER_ID, versions[0]]);
+    await page.route(endpoint, handler);
+    await page.evaluate(async ({ userId, version }) => {
+      const { syncFriendProfile } = await import("./src/data/friendsStore.mjs");
+      const config = { storage: { mode: "supabase", url: "https://profile-notifications.supabase.co", anonKey: "anon-key",
+        account: { userId, accessToken: "access-token" } } };
+      window.__delayedProfileReceipt = syncFriendProfile(config, {
+        displayName: "Obsolete Profile", avatarPreset: "avatar-2", profileUpdatedAt: version
+      }).then(value => ({ value }), error => ({ error: error.message }));
+    }, { userId: USER_ID, version: versions[1] });
+    await oldArrived;
+    const latest = await page.evaluate(async ({ userId, version }) => {
+      const { syncFriendProfile } = await import("./src/data/friendsStore.mjs");
+      return syncFriendProfile({ storage: { mode: "supabase", url: "https://profile-notifications.supabase.co", anonKey: "anon-key",
+        account: { userId, accessToken: "access-token" } } }, {
+        displayName: "Latest Profile", avatarPreset: "avatar-3", profileUpdatedAt: version
+      });
+    }, { userId: USER_ID, version: versions[2] });
+    expect(latest.display_name).toBe("Latest Profile");
+    releaseOld();
+    const oldReceipt = await page.evaluate(() => window.__delayedProfileReceipt);
+    expect(oldReceipt.error).toBeUndefined();
+    expect(oldReceipt.value.display_name).toBe("Latest Profile");
+    expect(oldReceipt.value.avatar_preset).toBe("avatar-3");
+    expect((await readProfile()).display_name).toBe("Latest Profile");
+
+    await page.reload();
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    await page.locator('[data-nav-destination="profile"]').click();
+    await expect(page.locator('[data-profile-identity="display-name"] .profile-identity-copy')).toContainText("Latest Profile");
+    expect((await readProfile()).display_name).toBe("Latest Profile");
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({ path: testInfo.outputPath("canonical-profile.png"), fullPage: true });
+    expect(pageErrors).toEqual([]);
+  } finally {
+    releaseOld();
+    // Drain test routes before closing their database, including background reads.
+    await page.unrouteAll({ behavior: "wait" });
+    await database.close();
+  }
+});
+
 test("notification inbox stays readable and completes its main mobile actions", async ({ page }) => {
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
   await page.locator('[data-nav-destination="notifications"]').click();
@@ -790,6 +895,208 @@ test("notification inbox stays readable and completes its main mobile actions", 
   await page.locator('[data-action="go-back"]').click();
   await expect(page.locator('[data-screen-kind="notifications"]')).toBeVisible();
 });
+
+for (const refreshStatus of [200, 503]) {
+test(`late inbox HTTP ${refreshStatus} cannot undo mark-all read or resurrect its badge`, async ({ page }, testInfo) => {
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  let releaseRead;
+  const readGate = new Promise((resolve) => { releaseRead = resolve; });
+  let readsStarted = 0;
+  let marksSaved = 0;
+  const headers = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+    "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
+  };
+  await page.route("https://profile-notifications.supabase.co/rest/v1/notification_inbox*", async (route) => {
+    if (route.request().method() === "PATCH") {
+      marksSaved += 1;
+      return route.fulfill({ status: 204, headers });
+    }
+    if (route.request().method() !== "GET") return route.fallback();
+    readsStarted += 1;
+    await readGate;
+    return route.fulfill({ status: refreshStatus, headers, json: refreshStatus === 200
+      ? ["expense", "invite"].map((kind) => ({
+          id: `notification-${kind}`, event_id: EVENT_ID,
+          kind: kind === "expense" ? "expense-created" : "event-invite",
+          title: "תוכן מהרענון המאוחר", body: "הסימון כנקרא חייב להישמר",
+          created_at: new Date().toISOString(), read_at: null
+        }))
+      : { message: "synthetic temporary refresh failure" }
+    });
+  });
+  try {
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect(page.locator(".notification-inbox-item")).toHaveCount(5);
+    await expect.poll(() => readsStarted).toBeGreaterThan(0);
+    await page.locator('[data-action="mark-all-notifications-read"]').click();
+    await expect.poll(() => marksSaved).toBe(1);
+    await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(5);
+    const completedRead = page.waitForResponse((response) =>
+      response.url().includes("/notification_inbox") && response.request().method() === "GET"
+    );
+    releaseRead();
+    await completedRead;
+    if (refreshStatus === 200) {
+      await expect(page.locator(".notification-inbox-item")).toHaveCount(2);
+      await expect(page.locator(".notification-inbox-item").first()).toContainText("תוכן מהרענון המאוחר");
+    }
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator(".notification-inbox-item:not(.is-read)")).toHaveCount(0);
+    await expect(page.locator(".product-nav-badge")).toBeHidden();
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({ path: testInfo.outputPath(`inbox-after-${refreshStatus}.png`), fullPage: true });
+  } finally {
+    releaseRead();
+  }
+});
+}
+
+const inboxFaultHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+  "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
+};
+const faultInboxRow = (id, readAt = null) => ({
+  id, event_id: EVENT_ID, kind: "event-closed", title: id, body: "בדיקת סנכרון",
+  created_at: new Date().toISOString(), view: "summary", read_at: readAt
+});
+
+test("foreground inbox receives new rows and remote reads without push or navigation", async ({ page }, testInfo) => {
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  const rows = [faultInboxRow("peer-notification")];
+  let reads = 0;
+  await page.route("https://profile-notifications.supabase.co/rest/v1/notification_inbox*", route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    reads++;
+    return route.fulfill({ headers: inboxFaultHeaders, json: rows });
+  });
+  const started = performance.now();
+  await expect(page.locator(".product-nav-badge")).toHaveText("1", { timeout: 16_000 });
+  const badgeMs = Math.round(performance.now() - started);
+  expect(reads).toBe(1);
+  await page.locator('[data-nav-destination="notifications"]').click();
+  await expect(page.getByText("peer-notification", { exact: true })).toBeVisible();
+  await expect.poll(() => reads).toBe(2); // Explicit entry refresh, not an extra timer read.
+  rows[0].read_at = new Date().toISOString();
+  rows.push(faultInboxRow("another-peer-notification", rows[0].read_at));
+  const remoteStarted = performance.now();
+  await expect(page.getByText("another-peer-notification", { exact: true })).toBeVisible({ timeout: 16_000 });
+  const remoteMs = Math.round(performance.now() - remoteStarted);
+  await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(2);
+  await expect(page.locator(".product-nav-badge")).toBeHidden();
+  expect(reads).toBe(3);
+  expect(errors).toEqual([]);
+  await assertNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath("foreground-inbox-synchronized.png"), fullPage: true });
+  const observation = { device: testInfo.project.name, badgeMs, remoteMs, inboxReads: reads,
+    scope: "local UI with mocked peer/backend, real timers, no push or resume event" };
+  console.log(JSON.stringify(observation));
+  await testInfo.attach("foreground-inbox-timings", { body: JSON.stringify(observation), contentType: "application/json" });
+});
+
+test("same-account login lifecycle rejects a late inbox response and reads the fresh session immediately", async ({ page }, testInfo) => {
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  let release; const gate = new Promise(resolve => { release = resolve; }); let reads = 0;
+  await page.route("https://profile-notifications.supabase.co/rest/v1/notification_inbox*", async route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const requestNumber = ++reads;
+    if (requestNumber === 1) await gate;
+    return route.fulfill({ headers: inboxFaultHeaders,
+      json: [faultInboxRow(requestNumber === 1 ? "obsolete-login-row" : "current-login-row")] });
+  });
+  try {
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect.poll(() => reads).toBe(1);
+    // Exercise the real session invalidation helpers, not Google or live accounts.
+    await page.evaluate(async () => {
+      const auth = await import("/src/data/accountAuth.mjs");
+      const session = auth.loadStoredAccountSession(localStorage);
+      auth.clearAccountSession(localStorage);
+      auth.saveAccountSession(session, localStorage);
+    });
+    await expect(page.getByText("current-login-row", { exact: true })).toBeVisible({ timeout: 5_000 });
+    const oldResponse = page.waitForResponse(response => response.url().includes("/notification_inbox") &&
+      response.request().method() === "GET");
+    release(); await oldResponse;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.getByText("obsolete-login-row", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("current-login-row", { exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("inbox-session-ownership.png"), fullPage: true });
+  } finally { release(); }
+});
+
+test("server-confirmed read markers survive a delayed write error with an identical clock", async ({ page }, testInfo) => {
+  const errors = []; page.on("pageerror", error => errors.push(error.message));
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  await page.clock.setFixedTime(new Date());
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  let confirmedReadAt = "", reads = 0;
+  await page.route("https://profile-notifications.supabase.co/rest/v1/notification_inbox*", async route => {
+    const method = route.request().method();
+    if (method === "PATCH") {
+      confirmedReadAt = route.request().postDataJSON().read_at;
+      await gate;
+      return route.fulfill({ status: 503, headers: inboxFaultHeaders, json: { message: "delayed synthetic failure" } });
+    }
+    if (method !== "GET") return route.fallback();
+    reads++;
+    return route.fulfill({ headers: inboxFaultHeaders, json: [faultInboxRow("confirmed-on-server", confirmedReadAt || null)] });
+  });
+  try {
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect(page.getByText("confirmed-on-server", { exact: true })).toBeVisible();
+    await page.locator('[data-action="mark-all-notifications-read"]').click();
+    await expect.poll(() => confirmedReadAt).not.toBe("");
+    const initialReads = reads;
+    await page.locator('[data-nav-destination="home"]').click();
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect.poll(() => reads).toBeGreaterThan(initialReads);
+    await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(1);
+    const response = page.waitForResponse(item => item.url().includes("/notification_inbox") && item.request().method() === "PATCH");
+    release(); await response;
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(1);
+    await expect(page.locator(".product-nav-badge")).toBeHidden();
+    await expect(page.locator('[data-action="mark-all-notifications-read"]')).toHaveCount(0);
+    expect(errors).toEqual([]);
+    await page.screenshot({ path: testInfo.outputPath("inbox-confirmed-read-after-error.png"), fullPage: true });
+  } finally { release(); }
+});
+
+for (const fieldName of ["name", "username"]) {
+test(`late inbox update preserves the active profile ${fieldName} input and selection`, async ({ page }) => {
+  await expect(page.locator(".product-nav-badge")).toHaveText("2");
+  let release; const gate = new Promise(resolve => { release = resolve; }); let started = false;
+  await page.route("https://profile-notifications.supabase.co/rest/v1/notification_inbox*", async route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    started = true; await gate;
+    return route.fulfill({ headers: inboxFaultHeaders, json: [faultInboxRow("changed-during-profile-edit")] });
+  });
+  try {
+    await page.locator('[data-nav-destination="notifications"]').click();
+    await expect.poll(() => started).toBe(true);
+    await page.locator('[data-nav-destination="profile"]').click();
+    await page.locator(`[data-action="edit-profile-${fieldName}"]`).click();
+    const field = page.locator(`[data-action="profile-${fieldName}"]`);
+    const draft = fieldName === "name" ? "בדיקת עריכה פעילה" : "editing_draft";
+    await field.fill(draft);
+    await field.evaluate(element => { window.inboxEditingProbe = element; element.setSelectionRange(2, 5); });
+    const response = page.waitForResponse(item => item.url().includes("/notification_inbox") && item.request().method() === "GET");
+    release(); await response;
+    await expect(page.locator(".product-nav-badge")).toHaveText("1");
+    await expect(field).toHaveValue(draft);
+    await expect(field).toBeFocused();
+    expect(await field.evaluate(element => ({ same: element === window.inboxEditingProbe,
+      start: element.selectionStart, end: element.selectionEnd }))).toEqual({ same: true, start: 2, end: 5 });
+  } finally { release(); }
+});
+}
 
 test("every notification opens the surface described by its message", async ({ page }) => {
   const openNotifications = async () => {

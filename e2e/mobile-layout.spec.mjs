@@ -153,6 +153,101 @@ test("shared notes keep the exact event header brand mark", async ({ page }) => 
 
   expect(notesBrand).toEqual(eventBrand);
   expect(notesBrand).toEqual(appBrand);
+  if (process.env.CAPTURE_COHERENCE_ALL === "1") {
+    await captureCoherenceScreen(page, "05-notes-empty");
+    await page.locator('[data-action="new-event-note"]').click();
+    await expect(page.locator(".event-note-modal")).toBeVisible();
+    await captureCoherenceScreen(page, "06-note-editor");
+  }
+});
+
+test("note editor shares the form gutters, spacing and control shapes", async ({ page }, testInfo) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-notes"]').click();
+  await page.locator('[data-action="new-event-note"]').click();
+  const modal = page.locator(".event-note-modal");
+  await expect(modal).toBeVisible();
+  await settleCoherenceMotion(page);
+  const metrics = await modal.evaluate(element => {
+    const box = element.getBoundingClientRect();
+    const form = element.querySelector(".event-note-editor");
+    const formBox = form.getBoundingClientRect();
+    const field = element.querySelector(".field");
+    const styles = selector => getComputedStyle(element.querySelector(selector));
+    const root = getComputedStyle(document.documentElement);
+    const ancestors = [];
+    for (let current = element; current; current = current.parentElement) {
+      ancestors.push({ className: current.className, opacity: getComputedStyle(current).opacity });
+    }
+    return { leftInset: formBox.left - box.left, rightInset: box.right - formBox.right,
+      panelBackground: getComputedStyle(element).backgroundColor, ancestors,
+      fieldMargin: getComputedStyle(field).marginBlock,
+      eyebrow: styles(".eyebrow").color, brand: root.getPropertyValue("--app-brand").trim(),
+      pinRadius: styles(".event-note-pin-toggle").borderRadius,
+      saveRadius: styles('[data-action="save-event-note"]').borderRadius };
+  });
+  await testInfo.attach("note-editor-metrics", { body: JSON.stringify(metrics), contentType: "application/json" });
+  await page.screenshot({ path: testInfo.outputPath("note-editor-spacing.png") });
+  expect(metrics.leftInset).toBeGreaterThanOrEqual(16);
+  expect(metrics.rightInset).toBeGreaterThanOrEqual(16);
+  expect(Math.abs(metrics.leftInset - metrics.rightInset)).toBeLessThanOrEqual(1);
+  expect(metrics.fieldMargin).toBe("0px");
+  expect(metrics.pinRadius).toBe(metrics.saveRadius);
+  expect(metrics.panelBackground).toBe("rgb(255, 255, 255)");
+  expect(metrics.ancestors.filter(({ opacity }) => Number(opacity) < 1), "settled form must not show the screen underneath").toEqual([]);
+  await expect(modal.locator(".eyebrow")).toHaveCSS("color", "rgb(22, 78, 63)");
+  await modal.locator('[data-action="event-note-title"]').fill("פרטי הטיסה");
+  await modal.locator('[data-action="event-note-body"]').fill("נפגשים בטרמינל שלוש, ליד הכניסה.");
+  await modal.locator('[data-action="toggle-event-note-pin"]').click();
+  await expect(modal.locator('[data-action="toggle-event-note-pin"]')).toHaveAttribute("aria-pressed", "true");
+  const save = modal.locator('[data-action="save-event-note"]');
+  await save.scrollIntoViewIfNeeded();
+  await save.click();
+  await expect(modal).toHaveCount(0);
+  await expect(page.locator(".event-note-open")).toContainText("פרטי הטיסה");
+  await assertLayoutHealth(page, "saved note");
+});
+
+test("event cover settings use the neighboring panel surface", async ({ page }, testInfo) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-settings"]').first().click();
+  await settleCoherenceMotion(page);
+  const surfaces = await page.locator(".event-settings-modal").evaluate(modal =>
+    [".event-cover-settings", ".event-settings-menu"].map(selector => {
+      const style = getComputedStyle(modal.querySelector(selector));
+      return { radius: style.borderRadius, border: style.borderColor, background: style.backgroundColor };
+    }));
+  expect(surfaces[0]).toEqual(surfaces[1]);
+  await page.screenshot({ path: testInfo.outputPath("event-settings-surfaces.png") });
+});
+
+test("new event actions stay below participant choices without covering them", async ({ page }, testInfo) => {
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.locator('[data-action="new-event-name"]').fill("אירוע בדיקת ריווח");
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await page.locator('[data-action="open-new-event-participants"]').click();
+  await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
+  await settleCoherenceMotion(page);
+  const footerGap = await page.locator(".new-event-participants-screen").evaluate(screen =>
+    screen.querySelector(".new-event-participant-footer").getBoundingClientRect().top -
+    screen.querySelector(".new-event-participant-additions").getBoundingClientRect().bottom);
+  await page.screenshot({ path: testInfo.outputPath("participant-choices.png") });
+  expect(footerGap, "creation actions must not float over participant choices").toBeGreaterThanOrEqual(16);
+  await assertLayoutHealth(page, "new event participant choices");
+
+  await page.locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]').click();
+  await page.locator('[data-action="new-event-guest-name"]').fill("נועה כהן");
+  await page.locator('[data-action="new-event-add-guest"]').click();
+  await page.locator('[data-action="close-new-event-participant-view"]').click();
+  await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
+  const create = page.locator('[data-action="create-event"]');
+  await create.scrollIntoViewIfNeeded();
+  await settleCoherenceMotion(page);
+  await assertLayoutHealth(page, "new event creation actions");
+  await page.screenshot({ path: testInfo.outputPath("participant-actions.png") });
+  await create.click();
+  await expect(page.locator('[data-screen-kind="event"] h1')).toContainText("אירוע בדיקת ריווח");
 });
 
 test("participant pictures never cover the event title or participant count", async ({
@@ -936,6 +1031,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT_ID}"]`))
     .toBeVisible();
   await assertLayoutHealth(page, "event expenses");
+  if (process.env.CAPTURE_COHERENCE_ALL === "1") await captureCoherenceScreen(page, "02-event");
 
   const inactiveWorkspaceTabs = page.locator(
     ".event-workspace-tab:is(.event-workspace-summary, .event-workspace-notes)"
@@ -995,6 +1091,8 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     });
   }
 
+  await page.screenshot({ path: test.info().outputPath("core-mobile-ledger.png"), fullPage: false });
+
   await page.evaluate(() => window.scrollTo(0, 0));
   await page
     .locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`)
@@ -1005,6 +1103,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(page.locator(".event-workspace-nav")).toHaveCSS("position", "static");
   await assertLayoutHealth(page, "event summary");
   await assertCompactSettlementFirstView(page);
+  if (process.env.CAPTURE_COHERENCE_ALL === "1") await captureCoherenceScreen(page, "03-summary");
 
   const keyboardTransfer = page.locator('.transfer-row:has(.transfer-explanation)').first();
   if (await keyboardTransfer.count()) {
@@ -1071,6 +1170,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await assertFocusedControlIsVisible(page);
   await assertLayoutHealth(page, "expense dialog");
   await assertSingleDecisionExpenseStep(page);
+  if (process.env.CAPTURE_COHERENCE_ALL === "1") await captureCoherenceScreen(page, "04-expense-editor");
   if (process.env.CAPTURE_EXPENSE_DIALOG === "1") {
     await page.screenshot({
       path: "design-audits/expense-dialog-current.png",
@@ -1201,6 +1301,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(settingsDialog).toBeVisible();
   await expect(page.locator(".event-action-dock")).toHaveCount(0);
   await assertLayoutHealth(page, "settings dialog");
+  if (process.env.CAPTURE_COHERENCE_ALL === "1") await captureCoherenceScreen(page, "04b-settings");
   if (process.env.CAPTURE_EVENT_SETTINGS === "1") {
     await page.waitForTimeout(550);
     await page.screenshot({
@@ -1305,9 +1406,11 @@ test("core mobile journey remains readable, reachable and correctly layered", as
     await assertLayoutHealth(page, "new event details");
     await captureCoherenceScreen(page, "11-new-event-details");
 
-    const newEventParticipants = page.locator(".new-event-participants");
-    await newEventParticipants.locator(":scope > summary").click();
-    await expect(newEventParticipants).toHaveAttribute("open", "");
+    await page.locator('[data-action="new-event-name"]').fill("בדיקת אחידות");
+    await page.locator('[data-action="open-new-event-settlement"]').click();
+    await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+    await page.locator('[data-action="open-new-event-participants"]').click();
+    await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
     await assertLayoutHealth(page, "new event participants");
     await captureCoherenceScreen(page, "11b-new-event-participants");
   }
@@ -1315,9 +1418,9 @@ test("core mobile journey remains readable, reachable and correctly layered", as
 
 async function captureCoherenceScreen(page, name) {
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(250);
+  await settleCoherenceMotion(page);
   await page.screenshot({
-    path: `design-audits/consistency-current/${name}.png`,
+    path: test.info().outputPath(`${name}.png`),
     fullPage: false
   });
 }
@@ -1433,6 +1536,24 @@ async function settleServiceWorkerBeforeReload(page) {
       new Promise((resolve) => setTimeout(resolve, 2_000))
     ]);
   });
+}
+
+async function settleCoherenceMotion(page) {
+  await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+    animation.playState === "running" &&
+    Number.isFinite(animation.effect?.getComputedTiming().endTime)
+  ).length), { message: "capture the settled interface, not an intermediate animation frame" }).toBe(0);
+  await expect.poll(() => page.locator('[role="dialog"][aria-modal="true"]').evaluateAll(dialogs =>
+    dialogs.flatMap(dialog => {
+      const translucent = [];
+      for (let element = dialog; element; element = element.parentElement) {
+        if (Number(getComputedStyle(element).opacity) < 1) translucent.push(element.className);
+      }
+      return translucent;
+    })), { message: "dialog reveal must finish before its visual capture" }).toEqual([]);
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 async function assertExpenseStepStartsAtTop(page, step) {

@@ -447,6 +447,68 @@ test("product metrics recover when a transport request never responds", async ()
   stop();
 });
 
+for (const status of [202, 503]) {
+  test(`metrics arriving during a slow HTTP ${status} batch cannot strand the queue or bypass retry backoff`, async () => {
+    let finish, started;
+    const didStart = new Promise(resolve => { started = resolve; });
+    const response = new Promise(resolve => { finish = resolve; });
+    const requests = [];
+    const harness = createTransportHarness({
+      fetchImpl: async (_url, options) => {
+        requests.push(JSON.parse(options.body).events);
+        if (requests.length > 1) return { ok: true, status: 202 };
+        started();
+        return response;
+      }
+    });
+    const stop = startProductMetricTransport(harness.options);
+    const firstFlush = harness.runNextTimer();
+    try {
+      await didStart;
+      harness.documentRef.emit("sogrim:product-metric", {
+        detail: { eventName: "expense_started", screen: "expense" }
+      });
+      // Reproduce a request that outlives the timer created by a new event.
+      if (harness.timerCount()) await harness.runNextTimer();
+      finish({ ok: status === 202, status });
+      await firstFlush;
+      assert.equal(harness.timerCount(), 1, "completion must schedule the remaining batch");
+      assert.equal(harness.nextDelay(), status === 202 ? 700 : 5_000);
+      await harness.runNextTimer();
+      assert.equal(requests.length, 2);
+      assert.equal(requests[1].some(item => item.eventName === "expense_started"), true);
+      assert.equal(harness.timerCount(), 0);
+    } finally {
+      finish({ ok: true, status: 202 });
+      await firstFlush;
+      stop();
+    }
+  });
+}
+
+test("a new metric cannot shorten the backoff of an in-flight failed batch", async () => {
+  let finish, started;
+  const didStart = new Promise(resolve => { started = resolve; });
+  const response = new Promise(resolve => { finish = resolve; });
+  const harness = createTransportHarness({ fetchImpl: async () => { started(); return response; } });
+  const stop = startProductMetricTransport(harness.options);
+  const firstFlush = harness.runNextTimer();
+  try {
+    await didStart;
+    harness.documentRef.emit("sogrim:product-metric", {
+      detail: { eventName: "expense_started", screen: "expense" }
+    });
+    finish({ ok: false, status: 503 });
+    await firstFlush;
+    assert.equal(harness.timerCount(), 1);
+    assert.equal(harness.nextDelay(), 5_000, "a pending 700ms timer must not replace the failure backoff");
+  } finally {
+    finish({ ok: true, status: 202 });
+    await firstFlush;
+    stop();
+  }
+});
+
 test("product metrics collapse identical client error storms without losing later errors", async () => {
   const requests = [];
   let currentTime = NOW;
@@ -607,6 +669,7 @@ function createTransportHarness({ fetchImpl, now = () => NOW } = {}) {
     documentRef,
     windowRef,
     timerCount: () => timers.size,
+    nextDelay: () => timers.values().next().value?.delay,
     async runNextTimer() {
       const next = timers.entries().next().value;
       assert.ok(next, "expected a scheduled product metric flush");

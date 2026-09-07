@@ -131,6 +131,7 @@ let accountFeedbackHistoryClosing = false;
 let accountRefreshTimer = null;
 let accountRefreshPromise = null;
 let accountRefreshGeneration = 0;
+let accountProfileUpdateQueue = null;
 let accountConfigRetryTimer = null;
 let accountConfigRetryPromise = null;
 let accountSyncReloadScheduled = false;
@@ -923,31 +924,55 @@ async function updateSignedInAccountProfile({
     return false;
   }
 
-  const currentMetadata = accountSession.user.user_metadata ?? {};
-  const normalizedAvatarImage = normalizeAvatarImage(
-    avatarImage ?? currentMetadata.avatar_image
-  );
-  // A gallery image is a large data URL. Keeping it in auth metadata bloats every
-  // refreshed JWT and can make an otherwise valid sign-in/profile update fail.
-  // Gallery avatars are persisted in the shared state and user_profiles instead.
-  const accountMetadataAvatarImage = normalizedAvatarImage.startsWith("https://")
-    ? normalizedAvatarImage
+  const userId = accountSession.user.id;
+  const generation = accountRefreshGeneration;
+  const scope = JSON.stringify([userId, generation]);
+  const isCurrent = () => accountRefreshGeneration === generation &&
+    accountSession?.user?.id === userId &&
+    loadStoredAccountSession()?.user?.id === userId;
+  if (!isCurrent()) return false;
+  const previous = accountProfileUpdateQueue?.scope === scope
+    ? accountProfileUpdateQueue.request
     : null;
-  const normalizedUsername = normalizeUsername(
-    username ?? currentMetadata.username
-  );
-  accountSession = saveAccountSession(
-    await updateAccountUser(runtimeConfig, accountSession, {
+  const request = (async () => {
+    // Metadata is a whole-object write. Serialize this account's updates and
+    // merge omitted fields only when the write starts, after the prior edit.
+    if (previous) await previous.catch(() => {});
+    if (!isCurrent()) return false;
+    const activeSession = loadStoredAccountSession();
+    const currentMetadata = activeSession.user.user_metadata ?? {};
+    const normalizedAvatarImage = normalizeAvatarImage(
+      avatarImage ?? currentMetadata.avatar_image
+    );
+    // Gallery images stay in shared state/user_profiles, not the refreshed JWT.
+    const accountMetadataAvatarImage = normalizedAvatarImage.startsWith("https://")
+      ? normalizedAvatarImage
+      : null;
+    const normalizedUsername = normalizeUsername(username ?? currentMetadata.username);
+    const updatedSession = await updateAccountUser(runtimeConfig, activeSession, {
       ...currentMetadata,
       full_name: displayName,
       name: displayName,
       display_name: displayName,
       username: normalizedUsername || null,
       avatar_image: accountMetadataAvatarImage
-    })
-  );
-  scheduleAccountSessionRefresh();
-  return true;
+    });
+    if (!isCurrent() || updatedSession?.user?.id !== userId) return false;
+    // Updating /user does not rotate tokens. Retain any tokens refreshed while
+    // that request was pending instead of resurrecting its captured session.
+    accountSession = saveAccountSession({
+      ...loadStoredAccountSession(),
+      user: updatedSession.user
+    });
+    scheduleAccountSessionRefresh();
+    return true;
+  })();
+  accountProfileUpdateQueue = { scope, request };
+  try {
+    return await request;
+  } finally {
+    if (accountProfileUpdateQueue?.request === request) accountProfileUpdateQueue = null;
+  }
 }
 
 function lockAccountGate() {

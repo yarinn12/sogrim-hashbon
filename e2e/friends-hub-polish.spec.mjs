@@ -13,6 +13,7 @@ const OFFLINE_DANI_ID = "offline-dani";
 const OFFLINE_MAOR_ID = "offline-maor";
 const SPACE_ID = "space-friends-hub-polish";
 const SPACE_KEY = "abcdefghijklmnopqrstuvwxyz_123456";
+const pageErrors = new WeakMap();
 
 const profiles = [
   {
@@ -209,6 +210,9 @@ const seededState = {
 };
 
 test.beforeEach(async ({ page }) => {
+  const errors = [];
+  pageErrors.set(page, errors);
+  page.on("pageerror", error => errors.push(error.message));
   const corsHeaders = {
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, apikey, content-type, prefer",
@@ -337,6 +341,92 @@ test.beforeEach(async ({ page }) => {
     .toBeVisible();
   await expect(page.locator('[data-friend-identity-section="connected"] .friend-row'))
     .toHaveCount(1);
+});
+
+test.afterEach(async ({ page }) => {
+  expect(pageErrors.get(page) ?? []).toEqual([]);
+});
+
+async function holdFriendRpc(page, rpc, result, onComplete = () => {}) {
+  const calls = [];
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const headers = {
+    "access-control-allow-origin": "*",
+    "access-control-allow-headers": "authorization, apikey, content-type, prefer",
+    "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
+  };
+  await page.route(`https://friends-hub-polish.supabase.co/rest/v1/rpc/${rpc}`, async route => {
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers, body: "" });
+    calls.push(route.request().postDataJSON());
+    await gate;
+    onComplete();
+    await route.fulfill({ headers, json: result });
+  });
+  return { calls, release };
+}
+
+test("a delayed friend request keeps a newer search draft and releases the submit button", async ({ page }, testInfo) => {
+  const rpc = await holdFriendRpc(page, "request_friendship_by_username", { status: "pending" });
+  try {
+    await page.locator('[data-action="open-friend-add"]').click();
+    const field = page.locator('[data-action="friend-code"]');
+    await field.fill("@harel");
+    await page.locator('[data-action="send-friend-request"]').click();
+    await expect.poll(() => rpc.calls.length).toBe(1);
+    await expect(page.locator('[data-action="send-friend-request"]')).toBeDisabled();
+    await field.fill("@new_person");
+    rpc.release();
+    await expect(page.locator('[data-action="send-friend-request"]')).toBeEnabled();
+    await expect(field).toHaveValue("@new_person");
+    await expect(page.getByRole("heading", { name: "הוספת חבר", exact: true })).toBeVisible();
+    expect(rpc.calls).toEqual([{ p_username: "harel" }]);
+    await page.screenshot({ path: testInfo.outputPath("new-friend-draft-preserved.png") });
+  } finally { rpc.release(); }
+});
+
+test("a normal friend request completes the requests-tab flow once", async ({ page }) => {
+  const rpc = await holdFriendRpc(page, "request_friendship_by_username", { status: "pending" });
+  try {
+    await page.locator('[data-action="open-friend-add"]').click();
+    await page.locator('[data-action="friend-code"]').fill("@harel");
+    await page.locator('[data-action="send-friend-request"]').click();
+    await expect.poll(() => rpc.calls.length).toBe(1);
+    rpc.release();
+    await expect(page.locator('[data-screen-kind="groups"][data-friends-tab="requests"]')).toBeVisible();
+    await expect(page.locator(".notice")).toContainText("בקשת החברות נשלחה");
+    await expect(page.locator('[data-action="cancel-friend-request"]')).toBeEnabled();
+    expect(rpc.calls.length).toBe(1);
+  } finally { rpc.release(); }
+});
+
+test("accepting a friend while navigating away refreshes the roster without hijacking the new screen", async ({ page }, testInfo) => {
+  let accepted = false;
+  const rpc = await holdFriendRpc(page, "manage_friendship", { status: "accepted" }, () => { accepted = true; });
+  await page.route("https://friends-hub-polish.supabase.co/rest/v1/friendships?*", route => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      headers: { "access-control-allow-origin": "*" },
+      json: friendships.map(friendship => accepted && friendship.id === "friendship-ariel"
+        ? { ...friendship, status: "accepted", responded_at: new Date().toISOString() }
+        : friendship)
+    });
+  });
+  try {
+    await page.locator('[data-action="friends-hub-tab"][data-tab="requests"]').click();
+    await page.locator('[data-action="accept-friend-request"]').click();
+    await expect.poll(() => rpc.calls.length).toBe(1);
+    await page.locator('[data-nav-destination="home"]').click();
+    rpc.release();
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    await page.locator('[data-nav-destination="profile"]').click();
+    await page.locator('[data-action="groups"][data-tab="people"]').click();
+    await expect(page.locator('[data-friend-identity-section="connected"] .friend-row')).toHaveCount(2);
+    await expect(page.locator('.friend-remove-button svg')).toHaveCount(5);
+    await expect(page.locator('.friend-remove-button svg').first()).toBeVisible();
+    expect(rpc.calls).toEqual([{ p_friendship_id: "friendship-ariel", p_action: "accept" }]);
+    await page.screenshot({ path: testInfo.outputPath("accepted-friend-refreshed.png"), fullPage: true });
+  } finally { rpc.release(); }
 });
 
 test("friends and requests remain distinct while groups stay hidden without data loss", async ({ page }) => {

@@ -171,8 +171,9 @@ test("validation errors are announced, including the profile screen", () => {
   );
   assert.match(
     app,
-    /document[\s\S]*?querySelector\('\[data-action="profile-name"\]'\)[\s\S]*?focus\(\{ preventScroll: true \}\)/
+    /focusProfileIdentityInput\('\[data-action="profile-name"\]'\)/
   );
+  assert.match(app, /function focusProfileIdentityInput\(selector\)[\s\S]*?target\.focus\(\{ preventScroll: true \}\)/);
   assert.match(
     inviteJoinLayer,
     /errorNode\.closest\("form"\)\?\.querySelector\('input\[name="displayName"\]'\)[\s\S]*?focus\(\{ preventScroll: true \}\)/

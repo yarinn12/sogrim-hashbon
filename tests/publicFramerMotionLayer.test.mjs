@@ -35,9 +35,11 @@ test("public Framer Motion layer adds purposeful product motion without changing
     /clipPath/
   );
   assert.match(layer, /\.product-home-screen \.top/);
-  assert.match(layer, /opacity:\s*\[0,\s*1\]/);
+  assert.match(layer, /opacity:\s*\[0\.88,\s*1\]/);
   assert.match(layer, /y:\s*\[12,\s*0\]/);
-  assert.match(layer, /duration:\s*0\.5/);
+  assert.match(layer, /duration:\s*0\.22/);
+  assert.doesNotMatch(layer, /duration:\s*0\.[3-9]/);
+  assert.match(layer, /if \(initialContent \|\| prefersReducedMotion\(\)\) return/);
   assert.match(layer, /ease:\s*\[/);
   assert.match(layer, /prefers-reduced-motion: reduce/);
   assert.match(layer, /scale\(0\.96\)/);
@@ -50,12 +52,10 @@ test("public Framer Motion layer adds purposeful product motion without changing
 test("public motion covers app-wide state feedback without animating layout properties", async () => {
   const layer = await readFile("src/publicFramerMotionLayer.mjs", "utf8");
 
-  assert.match(layer, /function animateActionFeedback/);
-  assert.ok(
-    layer.indexOf('document.addEventListener("click", animateActionFeedback, true)') >
-      layer.indexOf("function animateActionFeedback"),
-    "WebKit must see the action feedback declaration before it is registered"
-  );
+  assert.match(layer, /function animateProductMotion/);
+  assert.match(layer, /function finishInactiveMotion/);
+  assert.doesNotMatch(layer, /addEventListener\("click", animateActionFeedback/);
+  assert.match(layer, /:active:not\(:disabled\):not\(\[aria-disabled="true"\]\):not\(\[data-motion-static\]\)/);
   assert.ok(
     layer.lastIndexOf("startMotionPolish();") >
       layer.indexOf("function animateSelectionChanges"),

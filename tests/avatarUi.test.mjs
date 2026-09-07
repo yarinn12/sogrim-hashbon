@@ -25,7 +25,8 @@ test("profile offers a compact accessible avatar picker", async () => {
   assert.doesNotMatch(app, /data-action="profile-avatar-url"/);
   assert.doesNotMatch(app, /action === "save-profile-avatar-url"/);
   assert.match(app, /async function persistProfileAvatarDraft\(\)/);
-  assert.match(app, /await persistProfileAvatarDraft\(\)/);
+  assert.match(app, /await finishProfileAvatarSave\(\)/);
+  assert.match(app, /const request = persistProfileAvatarDraft\(\)/);
   assert.match(app, /function compressProfileAvatarImage\(croppedCanvas\)/);
   assert.match(app, /maxLength: 180_000/);
   assert.match(app, /normalizeAvatarImage\(dataUrl\)/);

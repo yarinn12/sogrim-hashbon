@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { assertLiveQaWritesAllowed } from "./liveQaWriteGuard.mjs";
 
 import { signInWithPassword } from "../src/data/accountAuth.mjs";
 import { submitAppFeedback } from "../src/data/appFeedback.mjs";
@@ -7,6 +8,7 @@ import { loadEnvFile } from "../src/server/envFile.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
+assertLiveQaWritesAllowed();
 
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey =

@@ -290,9 +290,10 @@ test("friend startup loads first and isolates optional profile and cache sync fa
   const refresh = app.slice(start, end);
 
   assert.ok(start >= 0 && end > start);
+  const loadIndex = refresh.indexOf("loadFriendNetwork(");
+  const syncIndex = refresh.indexOf("syncFriendProfile(");
   assert.ok(
-    refresh.indexOf("loadFriendNetwork(runtimeConfig)") <
-      refresh.indexOf("syncFriendProfile(runtimeConfig, localProfile)"),
+    loadIndex >= 0 && syncIndex > loadIndex,
     "the online roster should load before an optional profile refresh"
   );
   assert.match(refresh, /const profileNeedsSync = Boolean/);

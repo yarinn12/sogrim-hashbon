@@ -180,7 +180,7 @@ test("queued cloud writes use immutable snapshots and stale completions cannot r
   );
 });
 
-test("queued writes keep their snapshot and stop at an account boundary", async () => {
+test("queued writes keep their snapshot and stop at an account boundary", { timeout: 5_000 }, async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -223,6 +223,13 @@ test("queued writes keep their snapshot and stop at an account boundary", async 
       });
     }
 
+    if (!["POST", "PATCH"].includes(options.method)) {
+      const previousWrite = writes.at(-1);
+      return jsonResponse(previousWrite ? [{
+        state: previousWrite.state,
+        updated_at: `2026-08-12T00:00:0${writes.length}.000Z`
+      }] : []);
+    }
     const write = {
       authorization: options.headers.authorization,
       state: JSON.parse(options.body).state
@@ -462,7 +469,9 @@ test("shared event writes also retry through a merge on conflict", () => {
   );
 
   assert.match(save, /saveCloudStateWithConflictRetry\(\{/);
-  assert.match(save, /loadLatest: \(\) => readCloudState\(config, fetchImpl\)/);
+  assert.match(save, /loadLatest: readLatestForWrite/);
+  assert.match(save, /const snapshot = await readCloudSnapshot\(config, fetchImpl\);\s*expectedVersion = snapshot\.version;/);
+  assert.match(save, /\{ expectedVersion \}/);
   assert.match(
     save,
     /save: \(candidate\) =>[\s\S]*?saveCloudState\([\s\S]*?requireSharedEventPayload\(candidate, eventId\)/
@@ -732,7 +741,7 @@ test("an expired account session keeps the latest state in the durable outbox", 
   }
 });
 
-test("a late same-account cloud load cannot overwrite a newer local edit", async () => {
+test("a late same-account cloud load cannot overwrite a newer local edit", { timeout: 5_000 }, async () => {
   const previousWindow = globalThis.window;
   const previousLocation = globalThis.location;
   const previousLocalStorage = globalThis.localStorage;
@@ -749,6 +758,7 @@ test("a late same-account cloud load cannot overwrite a newer local edit", async
   const changedState = queueTestState("Newer Local Edit");
   const readStarted = deferred();
   const releaseRead = deferred();
+  let personalReadCount = 0;
 
   saveTestAccount(storage, {
     userId: "user-a",
@@ -785,6 +795,10 @@ test("a late same-account cloud load cannot overwrite a newer local edit", async
       return { ok: false, status: 401 };
     }
     if (requestUrl.includes("snapshot_kind")) return jsonResponse([]);
+    // The original read was already accepted before expiry. Any later read
+    // used to establish a write baseline sees the same expired authorization
+    // as the write, without waiting behind that earlier response body.
+    if (++personalReadCount > 1) return { ok: false, status: 401 };
     readStarted.resolve();
     await releaseRead.promise;
     return jsonResponse([{

@@ -21,7 +21,29 @@ export const PAYMENT_REMINDER_REQUEST_TIMEOUT_MS = 10_000;
 const DEADLINE_FETCH = Symbol("payment-reminder-deadline-fetch");
 const DEADLINE_REMAINING_MS = Symbol("payment-reminder-deadline-remaining-ms");
 
-export async function sendPaymentReminder({
+class ReminderReadUnavailable extends Error {
+  constructor(reason) {
+    super("Payment reminder data is temporarily unavailable");
+    this.reason = reason;
+  }
+}
+
+export async function sendPaymentReminder(options) {
+  try {
+    return await deliverPaymentReminder(options);
+  } catch (error) {
+    // An upstream outage does not prove an expired session or revoked access.
+    // Keep real authorization failures distinct; never retry delivery here.
+    if (!(error instanceof ReminderReadUnavailable)) throw error;
+    return failure(503, "Payment reminder storage is temporarily unavailable", {
+      code: "REMINDER_STORAGE_UNAVAILABLE",
+      reason: error.reason,
+      retryable: true
+    });
+  }
+}
+
+async function deliverPaymentReminder({
   runtimeConfig,
   env = process.env,
   authorization = "",
@@ -225,6 +247,19 @@ export async function sendPaymentReminder({
     throw error;
   }
   if (!devices.length) {
+    if (!storedInInbox) {
+      // Neither channel accepted the reminder. Do not lock out the next attempt
+      // for twelve hours or misreport a storage failure as disabled preferences.
+      await deleteReminderReservation({
+        supabaseUrl, serviceRoleKey,
+        reminderId: reservation.reminder_id,
+        fetchImpl: cleanupFetchImpl
+      });
+      return failure(503, "Payment reminder storage is temporarily unavailable", {
+        code: "REMINDER_STORAGE_UNAVAILABLE",
+        retryable: true
+      });
+    }
     await completeReminderReservation({
       supabaseUrl,
       serviceRoleKey,
@@ -586,7 +621,8 @@ async function loadAuthenticatedUser({
     },
     null
   );
-  if (!response.ok) return null;
+  if ([401, 403].includes(response.status)) return null;
+  if (!response.ok) throw new ReminderReadUnavailable("auth-unavailable");
   return payload;
 }
 
@@ -609,7 +645,7 @@ async function loadAccountState({
     { headers: serviceHeaders(serviceRoleKey) },
     []
   );
-  if (!response.ok) return null;
+  if (!response.ok) throw new ReminderReadUnavailable("workspace-unavailable");
   const rows = payload;
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
@@ -657,7 +693,7 @@ async function loadAuthoritativeSharedEventState({
     { headers: serviceHeaders(serviceRoleKey) },
     []
   );
-  if (!response.ok) return null;
+  if (!response.ok) throw new ReminderReadUnavailable("shared-event-unavailable");
 
   const rows = payload;
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
@@ -757,7 +793,7 @@ async function verifyCanonicalNotificationMembership({
     },
     false
   );
-  if (!response.ok) return false;
+  if (!response.ok) throw new ReminderReadUnavailable("membership-unavailable");
   return payload === true;
 }
 

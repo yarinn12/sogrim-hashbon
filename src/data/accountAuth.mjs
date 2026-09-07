@@ -7,6 +7,7 @@ import {
   normalizeSpaceKey
 } from "../domain/cloudSpace.mjs";
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
+import { invalidateVersionedReadCacheSession } from "./versionedReadCache.mjs";
 import { normalizeAvatarImage } from "../domain/avatarPresets.mjs";
 import { normalizeUsername } from "../domain/usernames.mjs";
 
@@ -78,6 +79,9 @@ export function saveAccountSession(session, storage = globalThis.localStorage) {
 }
 
 export function clearAccountSession(storage = globalThis.localStorage) {
+  // Credential invalidation also ends all in-flight read ownership, even when
+  // a terminal auth error deliberately preserves the account's durable outbox.
+  invalidateVersionedReadCacheSession();
   try {
     storage?.removeItem(ACCOUNT_SESSION_STORAGE_KEY);
   } catch {}

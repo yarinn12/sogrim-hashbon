@@ -171,7 +171,7 @@ function injectDynamicTypeStyles(document) {
     html.dynamic-type-preview #app
       .screen[data-screen-kind="home"]
       .home-quick-actions {
-      margin-block: 0 6px !important;
+      margin-block: 0 !important;
     }
 
     html.${ACTIVE_CLASS} #app

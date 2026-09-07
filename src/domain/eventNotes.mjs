@@ -235,6 +235,19 @@ export function mergeCanonicalEventNotes(canonicalEvent, localEvent, { actorPart
           updatedByParticipantId: actorParticipantId
         };
       }
+      if (currentNote && actorParticipantId && !note.fieldUpdatedAt) {
+        // Legacy envelopes have no per-field clocks. The canonical creator is
+        // still immutable, including after guest linking and stale CAS retries.
+        if (NOTE_FIELDS.every((field) => noteFieldValue(note, field) === noteFieldValue(currentNote, field))) {
+          return clone(currentNote);
+        }
+        return {
+          ...note, createdAt: currentNote.createdAt,
+          createdByParticipantId: currentNote.createdByParticipantId,
+          updatedAt: monotonicTimestamp(note.updatedAt, currentNote.updatedAt),
+          updatedByParticipantId: actorParticipantId
+        };
+      }
       const committedTime = parsedTimestamp(currentNote?.updatedAt);
       if (!Number.isFinite(committedTime) || parsedTimestamp(note.updatedAt) !== committedTime) {
         return note;

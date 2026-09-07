@@ -149,7 +149,7 @@ for (const path of ["save", "flush", "load"]) {
   }));
 }
 
-test("no successful event never claims partial publication or accepts a forbidden foreground save", async () => fixture(async ({ config, pending, storage, workspaceId }) => {
+test("no successful event never claims partial publication or accepts a forbidden foreground save", async () => fixture(async ({ config, pending, storage, workspaceId, workspaceWrites }) => {
   await assert.rejects(syncSharedEvents(config, pending), (error) => {
     assert.deepEqual(error.partialSharedState.succeededEventIds, []);
     assert.equal(error.persistedState, undefined);
@@ -161,6 +161,7 @@ test("no successful event never claims partial publication or accepts a forbidde
   assert.equal(result.ok, false);
   assert.equal(result.reverted, true);
   assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+  assert.equal(workspaceWrites.length, 0, "a wholly rejected shared mutation must not leak into the personal cloud replica");
 }, { allFail: true }));
 
 for (const failure of ["shared sibling", "personal receipt"]) {

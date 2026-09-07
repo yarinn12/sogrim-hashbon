@@ -2,6 +2,7 @@ import {
   CloudStateAuthError,
   readAccessibleSharedCloudStates,
   readCloudState,
+  readCloudSnapshot,
   readCloudStateIfChanged,
   RECOVERED_MEMBER_SPACE_KEY,
   saveCloudState
@@ -24,6 +25,8 @@ import {
 import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 import { markParticipantMembershipChanges } from "../domain/eventMembership.mjs";
 import { mergeCanonicalEventNotes } from "../domain/eventNotes.mjs";
+import { mergeEventActivityLogs } from "../domain/eventActivityLog.mjs";
+import { normalizeParticipantDisplayName, participantHasConnectedAccount } from "../domain/participantIdentity.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
@@ -223,7 +226,13 @@ export async function saveSharedEventState(
   let config = eventCloudConfig(runtimeConfig, credentials);
   if (!config || !payload) return state;
 
-  let remote = await readCloudState(config, fetchImpl);
+  let expectedVersion = "";
+  const readLatestForWrite = async () => {
+    const snapshot = await readCloudSnapshot(config, fetchImpl);
+    expectedVersion = snapshot.version;
+    return snapshot.state;
+  };
+  let remote = await readLatestForWrite();
   if (!remote) {
     const recovered = await findAccessibleSharedEvent(
       runtimeConfig,
@@ -243,6 +252,7 @@ export async function saveSharedEventState(
       payload = buildSharedEventState(workingState, eventId);
       config = eventCloudConfig(runtimeConfig, credentials);
       remote = recovered.state;
+      expectedVersion = recovered.updated_at ?? "";
     } else {
       try {
         await createSharedEventSnapshot(
@@ -271,6 +281,7 @@ export async function saveSharedEventState(
         payload = buildSharedEventState(workingState, eventId);
         config = eventCloudConfig(runtimeConfig, credentials);
         remote = raced.state;
+        expectedVersion = raced.updated_at ?? "";
       }
 
       if (!remote) {
@@ -297,13 +308,14 @@ export async function saveSharedEventState(
   );
   const saved = await saveCloudStateWithConflictRetry({
     state: mergedPayload,
-    loadLatest: () => readCloudState(config, fetchImpl),
+    loadLatest: readLatestForWrite,
     mergeStates: mergeForWrite,
     save: (candidate) =>
       saveCloudState(
         config,
         requireSharedEventPayload(candidate, eventId),
-        fetchImpl
+        fetchImpl,
+        { expectedVersion }
       )
   });
 
@@ -346,12 +358,14 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     throw new CloudStateAuthError("Cloud account identity is unavailable");
   }
   const actorParticipantId = `account-${actorUserId}`;
+  const attributionBaseline = attributionBaselineForParticipantMerge(remoteState, merged, actorParticipantId);
   // This runs before every write, including each optimistic-conflict retry.
   merged.events = (merged.events ?? []).map((event) =>
     remoteEvent?.id === event.id
       ? preserveSparseEventDefaults(remoteEvent, {
           ...event,
-          ...mergeCanonicalEventNotes(remoteEvent, event, { actorParticipantId })
+          ...mergeCanonicalEventNotes(attributionBaseline, event, { actorParticipantId }),
+          ...canonicalActivityForWrite(attributionBaseline, event)
         })
       : event
   );
@@ -379,6 +393,76 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
       const remoteParticipant = remoteParticipants.get(participant?.id);
       return remoteParticipant ? clone(remoteParticipant) : participant;
     })
+  };
+}
+
+function canonicalActivityForWrite(canonical, candidate) {
+  if (!Object.hasOwn(canonical ?? {}, "activityLog") && !Object.hasOwn(candidate ?? {}, "activityLog")) return {};
+  const committed = new Map((canonical?.activityLog ?? []).map((entry) => [entry.id, entry]));
+  const additions = (candidate?.activityLog ?? []).filter((entry) => !committed.has(entry.id));
+  // A stale replica cannot rewrite committed history. Keep raw canonical
+  // records, including legacy serialization; normalize only genuinely new IDs.
+  if (!additions.length) return { activityLog: clone(canonical?.activityLog ?? []) };
+  return { activityLog: mergeEventActivityLogs(canonical?.activityLog, additions)
+    .map((entry) => clone(committed.get(entry.id) ?? entry)) };
+}
+
+function attributionBaselineForParticipantMerge(remoteState, candidateState, actorParticipantId) {
+  const previous = remoteState?.events?.[0];
+  const candidate = candidateState?.events?.[0];
+  if (!previous || previous.id !== candidate?.id) return previous;
+  const admins = previous.adminIds?.length ? previous.adminIds : [previous.createdByParticipantId];
+  if (!admins.includes(actorParticipantId)) return previous;
+  const activeIds = (event) => (event.participantIds ?? [])
+    .filter((id) => !(event.inactiveParticipantIds ?? []).includes(id));
+  const oldActive = activeIds(previous), newActive = activeIds(candidate);
+  const links = (candidate.participantAccountLinks ?? []).filter((link) =>
+    link?.linkedByParticipantId === actorParticipantId &&
+    !(previous.participantAccountLinks ?? []).some((old) =>
+      old.sourceParticipantId === link.sourceParticipantId && old.targetParticipantId === link.targetParticipantId));
+  const globalMerges = (candidateState.deletedParticipants ?? []).filter((deletion) =>
+    deletion?.reason === "merged" && !(remoteState.deletedParticipants ?? []).some((old) =>
+      old.id === deletion.id && old.targetParticipantId === deletion.targetParticipantId));
+  const eventLink = links.length === 1 ? links[0] : null;
+  const globalMerge = globalMerges.length === 1 ? globalMerges[0] : null;
+  if (!eventLink && !globalMerge) return previous;
+  const source = eventLink?.sourceParticipantId ?? globalMerge?.id;
+  const target = eventLink?.targetParticipantId ?? globalMerge?.targetParticipantId;
+  if (typeof source !== "string" || typeof target !== "string") return previous;
+  const sourceParticipant = remoteState.participants?.find((item) => item.id === source);
+  if (!sourceParticipant || participantHasConnectedAccount(sourceParticipant) || source.startsWith("account-") ||
+    !oldActive.includes(actorParticipantId)) return previous;
+  if (eventLink) {
+    if (!/^account-[0-9a-fA-F-]{36}$/.test(target) || !Number.isFinite(Date.parse(eventLink.linkedAt)) ||
+      !oldActive.includes(source) || !oldActive.includes(target) || newActive.includes(source) || !newActive.includes(target) ||
+      oldActive.filter((id) => !newActive.includes(id)).length !== 1 ||
+      newActive.some((id) => !oldActive.includes(id))) return previous;
+  } else {
+    const targetParticipant = remoteState.participants?.find((item) => item.id === target) ??
+      candidateState.participants?.find((item) => item.id === target);
+    const expectedIds = new Set((previous.participantIds ?? []).map((id) => id === source ? target : id));
+    const actualIds = new Set(candidate.participantIds ?? []);
+    if (!targetParticipant || !Number.isFinite(Date.parse(globalMerge.deletedAt)) ||
+      candidateState.participants?.some((item) => item.id === source) ||
+      !candidateState.participants?.some((item) => item.id === target) || expectedIds.size !== actualIds.size ||
+      [...expectedIds].some((id) => !actualIds.has(id))) return previous;
+    if (!target.startsWith("account-") && !participantHasConnectedAccount(targetParticipant) &&
+      (!normalizeParticipantDisplayName(sourceParticipant.displayName) ||
+        normalizeParticipantDisplayName(sourceParticipant.displayName) !== normalizeParticipantDisplayName(targetParticipant.displayName))) return previous;
+  }
+  const remap = (value) => value === source ? target : value;
+  // Only the identity baseline moves. SQL independently verifies canonical
+  // admin/target membership and the visible merge before accepting a remap.
+  return {
+    ...previous,
+    notes: (previous.notes ?? []).map((note) => ({ ...note,
+      createdByParticipantId: remap(note.createdByParticipantId),
+      updatedByParticipantId: remap(note.updatedByParticipantId) })),
+    deletedNotes: (previous.deletedNotes ?? []).map((deletion) => ({ ...deletion,
+      deletedByParticipantId: remap(deletion.deletedByParticipantId) })),
+    ...(Object.hasOwn(previous, "activityLog") ? { activityLog: previous.activityLog.map((entry) =>
+      Object.fromEntries(Object.entries(entry).map(([field, value]) => [field,
+        ["actorParticipantId", "subjectParticipantId", "fromParticipantId", "toParticipantId"].includes(field) ? remap(value) : value]))) } : {})
   };
 }
 
@@ -442,7 +526,11 @@ export async function syncSharedEvents(
       } catch (error) {
         const event = state.events?.find((item) => item.id === eventId);
         const credentials = eventShareCredentials(event);
-        if (credentials && await sharedEventMembershipWasRevoked(
+        // Only an access-related rejection warrants a membership probe.
+        // A quota/network failure cannot establish revocation, and probing it
+        // adds another failed round trip before the outbox can back off.
+        if ([403, 404, 410].includes(Number(error?.status)) &&
+            credentials && await sharedEventMembershipWasRevoked(
           runtimeConfig,
           credentials,
           fetchImpl
@@ -529,12 +617,18 @@ export async function saveSharedEventDeletion(
       }
     ]
   };
-  const remote = await readCloudState(config, fetchImpl);
+  let expectedVersion = "";
+  const readLatestForWrite = async () => {
+    const snapshot = await readCloudSnapshot(config, fetchImpl);
+    expectedVersion = snapshot.version;
+    return snapshot.state;
+  };
+  const remote = await readLatestForWrite();
   const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
   await saveCloudStateWithConflictRetry({
     state: mergedPayload,
-    loadLatest: () => readCloudState(config, fetchImpl),
-    save: (candidate) => saveCloudState(config, candidate, fetchImpl)
+    loadLatest: readLatestForWrite,
+    save: (candidate) => saveCloudState(config, candidate, fetchImpl, { expectedVersion })
   });
 
   return true;

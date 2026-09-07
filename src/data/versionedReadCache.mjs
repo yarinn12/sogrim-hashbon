@@ -6,6 +6,10 @@ export function invalidateVersionedReadCacheSession() {
   accountCacheGeneration += 1;
 }
 
+export function versionedReadCacheSessionGeneration() {
+  return accountCacheGeneration;
+}
+
 export function createScopedReadCache({ maxEntries = 128, maxBytes = 8_000_000 } = {}) {
   let activeScope = "";
   let activeTransport;

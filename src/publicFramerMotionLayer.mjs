@@ -53,7 +53,7 @@ const CSS = `
   html.motion-polish-v2 {
     --motion-fast: 110ms;
     --motion-state: 190ms;
-    --motion-layout: 280ms;
+    --motion-layout: 220ms;
     --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
     --motion-accent: var(--app-accent, var(--accent, #087b74));
     --motion-focus: rgba(8, 123, 116, 0.18);
@@ -61,6 +61,8 @@ const CSS = `
 
   html.motion-polish-v2 :where(
     button,
+    summary,
+    [role="button"],
     .primary-button,
     .secondary-button,
     .icon-button,
@@ -86,12 +88,12 @@ const CSS = `
 
   html.motion-polish-v2 :where(
     button,
+    summary,
+    [role="button"],
     .primary-button,
     .secondary-button,
-    .icon-button,
-    .event-row,
-    .group-row
-  ):active:not(:disabled) {
+    .icon-button
+  ):active:not(:disabled):not([aria-disabled="true"]):not([data-motion-static]) {
     transform: translateY(1px) scale(0.96) !important;
     transition-duration: var(--motion-fast) !important;
   }
@@ -220,7 +222,7 @@ const CSS = `
   }
 
   html.motion-polish-v2 .motion-row-added {
-    animation: motion-row-settle 520ms var(--motion-ease);
+    animation: motion-row-settle 320ms var(--motion-ease);
   }
 
   @keyframes motion-row-settle {
@@ -264,6 +266,7 @@ let framerMotionScheduled = false;
 let lastScreenKey = "";
 let activeDialogSignature = "";
 let rowStateReady = false;
+let lastRowScreenKey = "";
 let lastNoticeSignature = "";
 let lastParticipantDetailSignature = "";
 let lastParticipantAddSignature = "";
@@ -275,6 +278,35 @@ const selectionStates = new WeakMap();
 const disclosureStates = new WeakMap();
 let moneyValues = new Map();
 let moneyStateReady = false;
+const activeMotionAnimations = new Map();
+
+function animateProductMotion(target, keyframes, options) {
+  const motion = globalThis.Motion;
+  if (!motion?.animate || !document.contains(target) || document.hidden || prefersReducedMotion()) return;
+  // Each element has one motion owner. Completing an old reveal leaves its
+  // content visible, rather than freezing it halfway through a transition.
+  const previous = activeMotionAnimations.get(target);
+  if (previous) {
+    activeMotionAnimations.delete(target);
+    previous.complete();
+  }
+  const animation = motion.animate(target, keyframes, options);
+  activeMotionAnimations.set(target, animation);
+  const release = () => {
+    if (activeMotionAnimations.get(target) === animation) activeMotionAnimations.delete(target);
+  };
+  Promise.resolve(animation).then(release, release);
+  return animation;
+}
+
+function finishInactiveMotion() {
+  const settleAll = document.hidden || prefersReducedMotion();
+  for (const [target, animation] of activeMotionAnimations) {
+    if (!settleAll && document.contains(target)) continue;
+    activeMotionAnimations.delete(target);
+    animation.complete();
+  }
+}
 
 function activateMotionPolish() {
   document.documentElement.classList.add(ROOT_CLASS);
@@ -291,6 +323,8 @@ function scheduleFramerMotionEnhancement() {
 
   requestAnimationFrame(() => {
     framerMotionScheduled = false;
+    finishInactiveMotion();
+    if (document.hidden) return;
     if (document.querySelector("#app-splash")) return;
     animateHomeHero();
     animateScreenChange();
@@ -310,26 +344,27 @@ function scheduleFramerMotionEnhancement() {
 
 async function animateHomeHero() {
   const target = document.querySelector(".product-home-screen .top");
-  if (!target || prefersReducedMotion()) return;
+  if (!target) return;
 
   const signature = [
     target.querySelector("h1")?.textContent?.trim() ?? "",
     ...[...target.querySelectorAll("button")].map((button) => button.textContent?.trim() ?? "")
   ].join("|");
   if (signature === lastAnimatedHomeHeroSignature) return;
-
+  const initialContent = !lastAnimatedHomeHeroSignature;
   lastAnimatedHomeHeroSignature = signature;
+  if (initialContent || prefersReducedMotion()) return;
   const motion = globalThis.Motion;
   if (!motion?.animate || !document.contains(target)) return;
 
-  motion.animate(
+  animateProductMotion(
     target,
     {
-      opacity: [0, 1],
-      y: [12, 0]
+      opacity: [0.88, 1],
+      y: [4, 0]
     },
     {
-      duration: 0.5,
+      duration: 0.22,
       ease: [0.22, 1, 0.36, 1]
     }
   );
@@ -367,15 +402,15 @@ function animateScreenChange() {
     .slice(0, 5);
 
   sections.forEach((section, index) => {
-    motion.animate(
+    animateProductMotion(
       section,
       {
         opacity: [0.78, 1],
-        x: [12, 0]
+        x: [8, 0]
       },
       {
-        duration: 0.28,
-        delay: Math.min(index * 0.035, 0.14),
+        duration: 0.22,
+        delay: Math.min(index * 0.02, 0.06),
         ease: [0.22, 1, 0.36, 1]
       }
     );
@@ -404,16 +439,16 @@ function animateDialogOpen() {
   );
   if (!motion?.animate || !panel) return;
 
-  motion.animate(backdrop, { opacity: [0, 1] }, { duration: 0.18, ease: [0.25, 1, 0.5, 1] });
-  motion.animate(
+  animateProductMotion(backdrop, { opacity: [0.85, 1] }, { duration: 0.14, ease: [0.25, 1, 0.5, 1] });
+  animateProductMotion(
     panel,
     {
-      opacity: [0.88, 1],
-      y: [18, 0],
-      scale: [0.985, 1]
+      opacity: [0.94, 1],
+      y: [12, 0],
+      scale: [0.99, 1]
     },
     {
-      duration: 0.3,
+      duration: 0.22,
       ease: [0.22, 1, 0.36, 1]
     }
   );
@@ -421,14 +456,18 @@ function animateDialogOpen() {
 
 function animateNewRows() {
   const rows = [...document.querySelectorAll(ROW_SELECTOR)].slice(0, 40);
-  if (!rowStateReady) {
+  const screenKey = currentMotionScreenKey();
+  if (!rowStateReady || lastRowScreenKey !== screenKey) {
     rows.forEach(rememberRow);
     rowStateReady = true;
+    lastRowScreenKey = screenKey;
     return;
   }
 
   const newRows = rows.filter((row) => !rowWasRemembered(row)).slice(0, 6);
-  newRows.forEach(rememberRow);
+  // Remember the entire visible batch, not just the animated subset. Otherwise
+  // our own class changes keep animating the next six rows on every frame.
+  rows.forEach(rememberRow);
   if (!newRows.length || prefersReducedMotion()) return;
 
   const motion = globalThis.Motion;
@@ -436,7 +475,7 @@ function animateNewRows() {
 
   newRows.forEach((row, index) => {
     row.classList.add("motion-row-added");
-    motion.animate(
+    animateProductMotion(
       row,
       {
         opacity: [0.72, 1],
@@ -444,12 +483,12 @@ function animateNewRows() {
         scale: [0.99, 1]
       },
       {
-        duration: 0.26,
-        delay: Math.min(index * 0.04, 0.2),
+        duration: 0.22,
+        delay: Math.min(index * 0.016, 0.08),
         ease: [0.22, 1, 0.36, 1]
       }
     );
-    window.setTimeout(() => row.classList.remove("motion-row-added"), 560);
+    window.setTimeout(() => row.classList.remove("motion-row-added"), 340);
   });
 }
 
@@ -471,15 +510,15 @@ function animateParticipantDetail() {
   const motion = globalThis.Motion;
   if (!motion?.animate) return;
   [...detail.children].slice(0, 6).forEach((element, index) => {
-    motion.animate(
+    animateProductMotion(
       element,
       {
-        opacity: [0, 1],
+        opacity: [0.9, 1],
         y: [6, 0]
       },
       {
-        duration: 0.24,
-        delay: Math.min(index * 0.035, 0.14),
+        duration: 0.22,
+        delay: Math.min(index * 0.02, 0.06),
         ease: [0.22, 1, 0.36, 1]
       }
     );
@@ -504,15 +543,15 @@ function animateParticipantAdd() {
     ".event-participant-add-options > *, .participant-add-privacy-note"
   );
   choices.forEach((element, index) => {
-    motion.animate(
+    animateProductMotion(
       element,
       {
-        opacity: [0, 1],
+        opacity: [0.9, 1],
         y: [8, 0]
       },
       {
-        duration: 0.28,
-        delay: Math.min(index * 0.045, 0.16),
+        duration: 0.22,
+        delay: Math.min(index * 0.02, 0.06),
         ease: [0.22, 1, 0.36, 1]
       }
     );
@@ -535,14 +574,14 @@ function animateNotice() {
 
   const motion = globalThis.Motion;
   if (!motion?.animate) return;
-  motion.animate(
+  animateProductMotion(
     notice,
     {
       opacity: [0.55, 1],
       y: [4, 0]
     },
     {
-      duration: 0.28,
+      duration: 0.2,
       ease: [0.22, 1, 0.36, 1]
     }
   );
@@ -552,6 +591,8 @@ const rememberedRowKeys = new Set();
 
 function rowKey(row) {
   const id =
+    row.getAttribute("data-note-id") ||
+    row.getAttribute("data-notification-id") ||
     row.getAttribute("data-expense-id") ||
     row.getAttribute("data-event-id") ||
     row.getAttribute("data-transfer-id") ||
@@ -570,7 +611,10 @@ function rowKey(row) {
 
 function rememberRow(row) {
   const key = rowKey(row);
-  if (key) rememberedRowKeys.add(key);
+  if (key) {
+    rememberedRowKeys.add(key);
+    if (rememberedRowKeys.size > 1024) rememberedRowKeys.delete(rememberedRowKeys.values().next().value);
+  }
   else animatedFallbackRows.add(row);
 }
 
@@ -605,33 +649,10 @@ function animateExpenseStep() {
   const body = dialog.querySelector(".expense-flow-body");
   if (!motion?.animate || !body) return;
 
-  motion.animate(
+  animateProductMotion(
     body,
     { opacity: [0.9, 1], y: [7, 0] },
-    { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-  );
-}
-
-function animateActionFeedback(event) {
-  if (prefersReducedMotion()) return;
-  const trigger = event.target?.closest?.(
-    'button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary'
-  );
-  if (!trigger) return;
-
-  if (trigger.matches("summary")) {
-    requestAnimationFrame(() => {
-      const disclosure = trigger.closest("details");
-      if (disclosure?.open) animateDisclosurePanel(disclosure);
-    });
-  }
-
-  const motion = globalThis.Motion;
-  if (!motion?.animate) return;
-  motion.animate(
-    trigger,
-    { scale: [0.97, 1] },
-    { duration: 0.16, ease: [0.22, 1, 0.36, 1] }
+    { duration: 0.18, ease: [0.22, 1, 0.36, 1] }
   );
 }
 
@@ -654,19 +675,11 @@ function animateSelectionChanges() {
     if (previous === undefined || previous === selected || !selected) return;
     if (prefersReducedMotion() || !motion?.animate) return;
 
-    motion.animate(
+    animateProductMotion(
       control,
-      { scale: [0.985, 1.015, 1] },
+      { scale: [0.98, 1] },
       { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
     );
-    const icon = control.querySelector("svg, .command-card-icon, .event-management-option-icon");
-    if (icon) {
-      motion.animate(
-        icon,
-        { opacity: [0.65, 1], scale: [0.9, 1.06] },
-        { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
-      );
-    }
   });
 }
 
@@ -704,12 +717,12 @@ function animateDisclosureElements(elements) {
   const motion = globalThis.Motion;
   if (!motion?.animate) return;
   elements.forEach((element, index) => {
-    motion.animate(
+    animateProductMotion(
       element,
       { opacity: [0.82, 1], y: [6, 0] },
       {
-        duration: 0.24,
-        delay: Math.min(index * 0.025, 0.075),
+        duration: 0.2,
+        delay: Math.min(index * 0.015, 0.045),
         ease: [0.22, 1, 0.36, 1]
       }
     );
@@ -738,7 +751,7 @@ function animateValidationChange() {
 
   const motion = globalThis.Motion;
   if (!motion?.animate) return;
-  motion.animate(
+  animateProductMotion(
     invalid,
     { x: [0, -4, 3, -2, 0] },
     { duration: 0.24, ease: [0.25, 1, 0.5, 1] }
@@ -755,7 +768,7 @@ function currentMotionScreenKey() {
   ].join(":");
 }
 
-function moneyMotionKey(element, index) {
+function moneyMotionKey(element, index, screenKey = currentMotionScreenKey()) {
   const scope = element.closest(
     "[data-expense-id], [data-transfer-id], [data-event-id], [data-participant-id], [data-group-id]"
   );
@@ -769,16 +782,17 @@ function moneyMotionKey(element, index) {
       ].join(":")
     : `position-${index}`;
   const classKey = [...element.classList].slice(0, 3).join(".") || element.tagName.toLowerCase();
-  return `${currentMotionScreenKey()}|${scopeKey}|${classKey}|${index}`;
+  return `${screenKey}|${scopeKey}|${classKey}|${index}`;
 }
 
 function animateMoneyChanges() {
   const elements = [...document.querySelectorAll(MONEY_SELECTOR)].slice(0, 120);
   const nextValues = new Map();
   const changed = [];
+  const screenKey = currentMotionScreenKey();
 
   elements.forEach((element, index) => {
-    const key = moneyMotionKey(element, index);
+    const key = moneyMotionKey(element, index, screenKey);
     const value = element.textContent?.replace(/\s+/g, " ").trim() || "";
     nextValues.set(key, value);
     if (moneyStateReady && moneyValues.has(key) && moneyValues.get(key) !== value) {
@@ -796,7 +810,7 @@ function animateMoneyChanges() {
   const motion = globalThis.Motion;
   if (!motion?.animate) return;
   changed.slice(0, 10).forEach((element) => {
-    motion.animate(
+    animateProductMotion(
       element,
       { opacity: [0.68, 1], y: [-3, 0], scale: [0.985, 1] },
       { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
@@ -816,7 +830,7 @@ function syncBusyStates() {
       (element.matches("button:disabled") && busyText.test(element.textContent || ""));
     if (!isBusy) return;
     active.add(element);
-    element.classList.add("motion-control-busy");
+    if (!element.classList.contains("motion-control-busy")) element.classList.add("motion-control-busy");
   });
 
   document.querySelectorAll(".motion-control-busy").forEach((element) => {
@@ -844,7 +858,19 @@ function startMotionPolish() {
       "open"
     ]
   });
-  document.addEventListener("click", animateActionFeedback, true);
+  // CSS :active owns press/release feedback. The open-attribute observer owns
+  // disclosures, avoiding a second reveal from a competing click callback.
+  new MutationObserver(() => {
+    finishInactiveMotion();
+    scheduleFramerMotionEnhancement();
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  if (reducedMotion?.addEventListener) reducedMotion.addEventListener("change", finishInactiveMotion);
+  else reducedMotion?.addListener?.(finishInactiveMotion);
+  document.addEventListener("visibilitychange", () => {
+    finishInactiveMotion();
+    if (!document.hidden) scheduleFramerMotionEnhancement();
+  });
   scheduleFramerMotionEnhancement();
 }
 

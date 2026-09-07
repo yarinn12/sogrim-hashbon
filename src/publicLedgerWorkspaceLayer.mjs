@@ -17412,14 +17412,29 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-actions {
-    position: relative !important;
-    z-index: 4 !important;
-    width: 100% !important;
+    position: static !important;
+    z-index: auto !important;
+    width: auto !important;
+    max-width: 100% !important;
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    justify-items: center !important;
+    justify-items: end !important;
     gap: 0 !important;
-    margin: 14px 0 16px !important;
+    margin: 0 !important;
+    margin-inline-start: auto !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .section-title-row > .home-events-heading {
+    align-items: center !important;
+    flex-wrap: wrap !important;
+    gap: 12px !important;
+  }
+
+  /* Older empty-home themes hid this title row when it contained only copy.
+     It now owns the create action and must remain visible in both states. */
+  html.ledger-workspace-v1 body #app .screen[data-screen-kind="home"]
+    .section-title-row:has(> .home-events-heading) {
+    display: grid !important;
   }
 
   html.ledger-workspace-v1 body #app
@@ -17452,7 +17467,7 @@ const CSS = `
     grid-template-columns: minmax(0, 1.48fr) minmax(126px, 0.92fr) !important;
     align-items: stretch !important;
     gap: 8px !important;
-    margin: 0 0 6px !important;
+    margin: 16px 0 6px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action {
@@ -17507,8 +17522,9 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary {
-    width: clamp(174px, 48%, 190px) !important;
-    max-width: calc(100% - 24px) !important;
+    width: max-content !important;
+    min-width: min(174px, 100%) !important;
+    max-width: 100% !important;
     box-sizing: border-box !important;
     min-height: 56px !important;
     display: flex !important;

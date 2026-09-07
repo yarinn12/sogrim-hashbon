@@ -63,7 +63,7 @@ export function saveFailureKind(error) {
   if (has("CLOUD_STATE_CONFLICT")) return "conflict";
   if (status(400, 409, 422)) return "rejected";
   if (status(404, 410)) return "missing";
-  if (status(408, 425, 429) || errors.some(item => Number(item.status) >= 500)) return "server";
+  if (status(402, 408, 425, 429) || errors.some(item => Number(item.status) >= 500)) return "server";
   if (has("NETWORK_TIMEOUT", "ERR_NETWORK") || errors.some(item =>
     !Number(item.status) && /^(failed to fetch|fetch failed|networkerror|network request failed|load failed)\b/i.test(String(item.message ?? ""))
   )) return "connection";

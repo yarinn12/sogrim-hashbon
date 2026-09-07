@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { assertLiveQaWritesAllowed } from "./liveQaWriteGuard.mjs";
 import postgres from "postgres";
 
 import {
@@ -22,6 +23,7 @@ import { loadEnvFile } from "../src/server/envFile.mjs";
 
 loadEnvFile(".env.local");
 loadEnvFile(".env");
+assertLiveQaWritesAllowed();
 
 const supabaseUrl = requiredEnv("SUPABASE_URL").replace(/\/+$/, "");
 const anonKey = process.env.SUPABASE_ANON_KEY || requiredEnv("SUPABASE_PUBLISHABLE_KEY");
@@ -36,6 +38,11 @@ if (!databaseUrl) throw new Error("Database URL is required");
 const origin = String(
   process.env.TWO_ACCOUNT_QA_ORIGIN || "https://sogrim-hesbon-app.vercel.app"
 ).replace(/\/+$/, "");
+// Verify the app/backend pair before creating any disposable accounts.
+const configResponse = await fetch(`${origin}/api/config`, { signal: AbortSignal.timeout(15_000) });
+assert.equal(configResponse.ok, true, "Public runtime configuration is unavailable");
+const publicConfig = await configResponse.json();
+assert.equal(publicConfig.storage?.url?.replace(/\/+$/, ""), supabaseUrl, "QA backend does not match the selected app");
 const suffix = `${Date.now()}-${randomBytes(4).toString("hex")}`;
 const eventId = `event-atomic-notes-${suffix}`;
 const noteId = `note-atomic-${suffix}`;
@@ -51,6 +58,7 @@ const sql = postgres(databaseUrl, {
   idle_timeout: 5,
   ssl: "require"
 });
+let report;
 
 try {
   const owner = await createAccount("owner", "בעל פתק אטומי");
@@ -419,7 +427,7 @@ try {
     assert.equal(legacyFieldSaved.fieldUpdatedAt.body, legacyFieldNote.updatedAt);
   }
 
-  console.log(JSON.stringify({
+  report = {
     ok: true,
     recipientClientReadsBeforeCreateAssertion: 0,
     atomicPersonalWorkspaceReplication: true,
@@ -445,8 +453,9 @@ try {
     concurrentIndependentFieldsReplicated: true,
     concurrentFieldsElapsedMs,
     legacyFieldClockWritesVerified: 2,
-    temporaryDataCleanup: true
-  }));
+    replicationReadTransport: "postgres",
+    temporaryDataCleanup: false
+  };
 } finally {
   const cleanupErrors = [];
   for (const spaceId of createdSpaceIds) {
@@ -472,6 +481,8 @@ try {
     throw new AggregateError(cleanupErrors, "Atomic shared-note QA cleanup failed");
   }
 }
+// Never report successful cleanup before the finally block has finished.
+console.log(JSON.stringify({ ...report, temporaryDataCleanup: true }));
 
 async function assertNoteEverywhere(expectedBody, deleted, owner, member) {
   const [result] = await sql`
@@ -656,6 +667,7 @@ function sharedEvent(profile) {
 
 async function adminRequest(path, { method = "GET", body } = {}) {
   const response = await fetch(`${supabaseUrl}${path}`, {
+    signal: AbortSignal.timeout(15_000),
     method,
     headers: {
       apikey: serviceRoleKey,

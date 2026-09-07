@@ -388,9 +388,16 @@ test("server reminder deadline includes the authenticated-user response body", a
   assert.equal(requestSignal?.aborted, true);
 });
 
-test("a pre-FCM reminder deadline releases its reservation after a stalled inbox write", async () => {
+test("a pre-FCM reminder deadline releases its reservation after a stalled inbox write", async (t) => {
+  // Reach the reserved/inbox stage deterministically even under full-suite CPU
+  // load. Only then expire the shared deadline; the actual abort timer still runs.
+  const start = Date.parse("2026-09-07T12:00:00.000Z");
+  t.mock.timers.enable({ apis: ["Date"], now: start });
   const { fetchImpl, requests } = createReminderFetch({
-    inboxHandler: () => new Promise(() => {})
+    inboxHandler: () => {
+      t.mock.timers.setTime(start + 26);
+      return new Promise(() => {});
+    }
   });
 
   await assert.rejects(
@@ -618,6 +625,56 @@ test("server keeps the in-app reminder available when system push is unavailable
     false
   );
 });
+
+for (const deviceMode of ["disabled", "none", "lookup-failed"]) {
+  test(`a failed inbox with ${deviceMode} push does not consume the reminder cooldown`, async () => {
+    const mock = createReminderFetch({ inboxStatus: 503 });
+    const config = runtimeConfig();
+    config.launch.pushDeliveryReady = deviceMode !== "disabled";
+    const result = await sendPaymentReminder({
+      runtimeConfig: config,
+      env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+      authorization: "Bearer account-access-token",
+      eventId: EVENT_ID, transferId: TRANSFER_ID,
+      fetchImpl: (url, options) => String(url).includes("/rest/v1/push_devices?")
+        ? Promise.resolve(jsonResponse([], deviceMode === "lookup-failed" ? 503 : 200))
+        : mock.fetchImpl(url, options)
+    });
+    assert.equal(result.status, 503);
+    assert.equal(result.payload.code, "REMINDER_STORAGE_UNAVAILABLE");
+    assert.equal(result.payload.retryable, true);
+    assert.ok(mock.requests.some(request => request.options.method === "DELETE"));
+    assert.equal(mock.requests.some(request => request.options.method === "PATCH" ||
+      request.url.includes("fcm.googleapis.com/")), false);
+  });
+}
+
+for (const stage of ["auth", "personal", "shared", "membership"]) {
+  for (const status of [402, 429, 503]) {
+    test(`a ${status} ${stage} outage is not reported as invalid credentials or missing membership`, async () => {
+      const mock = createReminderFetch();
+      const result = await sendPaymentReminder({
+        runtimeConfig: runtimeConfig(),
+        env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+        authorization: "Bearer account-access-token",
+        eventId: EVENT_ID, transferId: TRANSFER_ID,
+        fetchImpl: (url, options) => {
+          const address = new URL(url);
+          const matches = stage === "auth" ? address.pathname.endsWith("/auth/v1/user")
+            : stage === "membership" ? address.pathname.endsWith("/verify_shared_event_notification_parties")
+              : address.pathname.endsWith("/app_snapshots") &&
+                (stage === "shared" ? address.searchParams.has("snapshot_kind") : !address.searchParams.has("snapshot_kind"));
+          return matches ? Promise.resolve(jsonResponse({ message: "synthetic upstream outage" }, status))
+            : mock.fetchImpl(url, options);
+        }
+      });
+      assert.equal(result.status, 503);
+      assert.equal(result.payload.code, "REMINDER_STORAGE_UNAVAILABLE");
+      assert.equal(result.payload.retryable, true);
+      assert.equal(mock.requests.some(request => /reserve_payment_reminder|notification_inbox|fcm.googleapis/.test(request.url)), false);
+    });
+  }
+}
 
 test("server reports success when inbox delivery works but every push attempt fails", async () => {
   const { fetchImpl, requests } = createReminderFetch({

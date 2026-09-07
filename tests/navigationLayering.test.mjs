@@ -138,7 +138,11 @@ test("browser back from a settings subsection restores focus to its card", () =>
 test("closing a dialog via browser back restores the prior scroll position", () => {
   const popstate = slice(app, "function handleBrowserHistoryBack(event)", "function currentHistoryView");
 
-  assert.match(popstate, /requestAnimationFrame\(\(\) => window\.scrollTo\(0, closingDialogScrollY\)\)/);
+  assert.match(popstate, /scheduleDialogReturnScroll\(closingDialogScrollY\)/);
+  const restoreScroll = slice(app, "function scheduleDialogReturnScroll(", "function archiveGroupInState(");
+  assert.match(restoreScroll, /context !== dialogReturnContext\(\)/);
+  assert.match(restoreScroll, /window\.scrollY !== initialScrollY/);
+  assert.match(restoreScroll, /window\.scrollTo\(0, scrollY\)/);
 });
 
 test("browser back out of a finished event creation lands on home, not the wizard", () => {

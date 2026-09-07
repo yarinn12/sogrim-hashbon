@@ -221,10 +221,8 @@ test("an empty home reuses the approved compact home hero copy", async () => {
     home,
     /const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה\."/
   );
-  assert.match(
-    home,
-    /awaitingAuthoritativeEvents \? "" : renderHomeCreateEventAction\(\)/
-  );
+  assert.equal([...home.matchAll(/class="home-events-heading"/g)].length, 2);
+  assert.match(home, /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)/);
   assert.match(createAction, /const label = "אירוע חדש"/);
   assert.match(createAction, /home-create-event-action/);
   assert.doesNotMatch(`${home}\n${createAction}`, /מתחילים מאירוע ראשון|פתח אירוע ראשון/);
@@ -333,7 +331,8 @@ test("public profile save keeps Google identity fields when renaming the visitor
   assert.match(saveProfileFromDraft, /authProvider: participant\?\.authProvider \?\? localProfile\?\.authProvider/);
   assert.match(saveProfileFromDraft, /authSubject: participant\?\.authSubject \?\? localProfile\?\.authSubject/);
   assert.match(saveProfileFromDraft, /email: participant\?\.email \?\? localProfile\?\.email/);
-  assert.match(saveProfileFromDraft, /const sharedProfileSaveResult = await saveSharedState\(state\)/);
+  assert.match(saveProfileFromDraft, /\[profileSaveResult, sharedStateResult\] = await Promise\.allSettled\([\s\S]*?saveSharedState\(state\)/);
+  assert.match(saveProfileFromDraft, /const sharedProfileSaveResult = sharedStateResult\.status === "fulfilled"/);
   assert.match(saveProfileFromDraft, /sharedProfileSaveResult\?\.pending !== true/);
   assert.match(saveProfileFromDraft, /הפרופיל נשמר במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
 });

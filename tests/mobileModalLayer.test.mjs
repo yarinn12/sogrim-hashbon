@@ -78,7 +78,8 @@ test("dialog rerenders preserve modality, scroll position, and input focus", asy
   const addGuest = app.slice(addGuestStart, addGuestEnd);
 
   assert.match(app, /function reactivateDialogAfterRender\(selector, focusSelector = "", scrollTop = 0\)/);
-  assert.match(app, /focusSelector \? app\.querySelector\(focusSelector\) : null/);
+  assert.match(app, /focusSelector \? dialog\.querySelector\(focusSelector\) : null/);
+  assert.match(app, /dialog !== renderedDialog/);
   assert.match(app, /dialog\.scrollTop = Math\.max\(0, scrollTop\)/);
   assert.match(app, /focusTarget\?\.closest\("details"\)\?\.setAttribute\("open", ""\)/);
   assert.match(app, /focus\(\{ preventScroll: true \}\)/);

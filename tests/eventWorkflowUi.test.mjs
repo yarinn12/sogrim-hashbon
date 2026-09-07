@@ -76,8 +76,9 @@ test("connected participants expose private reporting and reversible blocking wi
   assert.match(report, /data-action="participant-report-category"/);
   assert.match(report, /data-action="participant-report-details"/);
   assert.match(report, /data-action="submit-participant-report"/);
-  assert.match(app, /await submitUserReport\(runtimeConfig/);
-  assert.match(app, /await blockConnectedUser\(runtimeConfig, targetUserId\)/);
+  assert.match(app, /await submitUserReport\(config/);
+  assert.match(app, /await blockConnectedUser\(config, targetUserId\)/);
+  assert.match(app, /const config = await loadFriendActionConfig\(request\)/);
 });
 
 test("app bootstraps only after render-time constants are initialized", async () => {
@@ -1668,10 +1669,9 @@ test("home screen keeps creation primary and exposes a secondary friends entry",
 
   assert.match(home, /class="screen font-hebrew product-home-screen\$\{sortedEvents\.length \? "" : " product-empty-home"\}"/);
   assert.match(home, /data-product-screen="home"/);
-  assert.match(
-    home,
-    /awaitingAuthoritativeEvents \? "" : renderHomeCreateEventAction\(\)/
-  );
+  assert.equal([...home.matchAll(/class="home-events-heading"/g)].length, 2);
+  assert.equal([...home.matchAll(/<h2>אירועים<\/h2>\s*\$\{renderHomeCreateEventAction\(\)\}/g)].length, 2);
+  assert.match(home, /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)/);
   assert.equal([...createAction.matchAll(/data-action="new-event"/g)].length, 1);
   assert.match(createAction, /<button class="home-quick-action is-primary home-create-event-action" data-action="new-event"/);
   assert.match(createAction, /<span class="home-quick-action-icon" aria-hidden="true">/);

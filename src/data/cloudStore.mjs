@@ -1,5 +1,5 @@
 import { fetchWithTimeout } from "./fetchTimeout.mjs";
-import { createScopedReadCache } from "./versionedReadCache.mjs";
+import { createScopedReadCache, versionedReadCacheSessionGeneration } from "./versionedReadCache.mjs";
 
 const snapshotVersions = new Map();
 const snapshotObserverVersions = new Map();
@@ -49,7 +49,17 @@ export async function loadCloudState(config, fallbackState, fetchImpl = fetch, o
     return fallbackState;
   }
 
-  await saveCloudState(config, fallbackState, fetchImpl);
+  try {
+    // This request observed a missing row. A different read may already know
+    // about a concurrent creation, but it must never turn our insert into a
+    // conditional replacement of the other device's new workspace.
+    await saveCloudState(config, fallbackState, fetchImpl, { expectedVersion: "" });
+  } catch (error) {
+    if (error?.code !== "CLOUD_STATE_CONFLICT") throw error;
+    const created = await readCloudState(config, fetchImpl, options);
+    if (created) return created;
+    throw error;
+  }
   return fallbackState;
 }
 
@@ -64,13 +74,27 @@ export class CloudStateIdentityError extends Error {
 export async function readCloudState(
   config,
   fetchImpl = fetch,
+  options = {}
+) {
+  return (await readCloudSnapshot(config, fetchImpl, options)).state;
+}
+
+// Keep a response's payload and version together through every await. A
+// concurrent background read may advance the shared write-version registry,
+// but that is not evidence that this observer received the newer payload.
+export async function readCloudSnapshot(
+  config,
+  fetchImpl = fetch,
   { timeoutMs, preferCached = false } = {}
 ) {
-  if (config.storage?.mode !== "supabase") return null;
+  if (config.storage?.mode !== "supabase") return { state: null, version: "" };
 
-  const cache = preferCached ? snapshotReadCache(config, fetchImpl) : null;
+  // Retain confirmed personal/shared payloads for independently version-checked
+  // readers. Forced reads still go to the server and never acknowledge another
+  // foreground observer. Signed-out callers do not receive a cache scope.
+  const cache = snapshotReadCache(config, fetchImpl);
   const cacheKey = `personal:${config.storage.spaceId}`;
-  if (cache?.has(cacheKey)) {
+  if (preferCached && (cache?.has(cacheKey) || cache?.has(`shared:${config.storage.spaceId}`))) {
     const { response, payload: versions } = await fetchCloudJsonWithTimeout(
       fetchImpl, snapshotVersionReadUrl(config),
       { headers: cloudHeaders(config) }, timeoutMs
@@ -79,13 +103,14 @@ export async function readCloudState(
     const version = String(versions?.[0]?.updated_at ?? "").trim();
     if (!version) {
       cache.remove(cacheKey);
+      cache.remove(`shared:${config.storage.spaceId}`);
       forgetSnapshotVersion(config);
-      return null;
+      return { state: null, version: "" };
     }
-    const cached = cache.get(cacheKey, version);
+    const cached = confirmedSnapshotPayload(cache, config.storage.spaceId, version);
     if (cached) {
       rememberSnapshotVersion(config, version);
-      return cached;
+      return { state: cached, version };
     }
   }
 
@@ -100,14 +125,38 @@ export async function readCloudState(
 
   const state = rows[0]?.state;
   if (state) {
-    rememberSnapshotVersion(config, rows[0]?.updated_at);
-    cache?.set(cacheKey, rows[0]?.updated_at, state);
-    return state;
+    const version = String(rows[0]?.updated_at ?? "").trim();
+    rememberSnapshotVersion(config, version);
+    cache?.set(cacheKey, version, state);
+    return { state, version };
   }
 
   cache?.remove(cacheKey);
+  cache?.remove(`shared:${config.storage.spaceId}`);
   forgetSnapshotVersion(config);
-  return null;
+  return { state: null, version: "" };
+}
+
+// Membership scans and visible-event reads receive the same canonical payload.
+// Reuse either copy ONLY after this caller has independently validated the
+// matching version and authorization on the server. Never reuse a write draft.
+function confirmedSnapshotPayload(cache, spaceId, version) {
+  return cache?.get(`personal:${spaceId}`, version)
+    ?? cache?.get(`shared:${spaceId}`, version)?.state
+    ?? null;
+}
+
+// This is a write baseline, never an authoritative UI/offline read. The caller
+// must merge its edit with this payload and pass this exact version to the
+// conditional write, whose server-side check revalidates access and freshness.
+export function cachedCloudSnapshotForWrite(config, fetchImpl = fetch) {
+  if (!isAccountOwnedSpace(config)) return null;
+  const cache = snapshotReadCache(config, fetchImpl);
+  const key = `personal:${config.storage.spaceId}`;
+  const version = cache?.version(key);
+  if (!version || version !== snapshotVersions.get(snapshotVersionKey(config))) return null;
+  const state = cache.get(key, version);
+  return state ? { state, version } : null;
 }
 
 export async function readCloudStateIfChanged(
@@ -119,15 +168,20 @@ export async function readCloudStateIfChanged(
     return { changed: false, missing: false, state: null };
   }
 
+  // Capture the cache object before awaiting I/O, just like observer ownership.
+  const cache = snapshotReadCache(config, fetchImpl);
   const normalizedObserverKey = String(observerKey ?? "").trim();
-  const knownVersion = normalizedObserverKey
-    ? snapshotObserverVersions.get(
-        snapshotObserverVersionKey(config, normalizedObserverKey)
-      )
+  // Capture account/session ownership before the network can suspend. Late
+  // responses from a signed-out session must not acknowledge the next one.
+  const observerVersionKey = normalizedObserverKey
+    ? snapshotObserverVersionKey(config, normalizedObserverKey)
+    : "";
+  const knownVersion = observerVersionKey
+    ? snapshotObserverVersions.get(observerVersionKey)
     : snapshotVersions.get(snapshotVersionKey(config));
   if (!knownVersion) {
-    const state = await readCloudState(config, fetchImpl);
-    rememberSnapshotObserverVersion(config, normalizedObserverKey);
+    const { state, version } = await readCloudSnapshot(config, fetchImpl, { preferCached: true });
+    rememberSnapshotObserverVersion(observerVersionKey, version);
     return {
       changed: Boolean(state),
       missing: !state,
@@ -146,16 +200,27 @@ export async function readCloudStateIfChanged(
 
   const updatedAt = String(rows[0]?.updated_at ?? "").trim();
   if (!updatedAt) {
+    cache?.remove(`personal:${config.storage.spaceId}`);
+    cache?.remove(`shared:${config.storage.spaceId}`);
     forgetSnapshotVersion(config);
-    forgetSnapshotObserverVersion(config, normalizedObserverKey);
+    snapshotObserverVersions.delete(observerVersionKey);
     return { changed: true, missing: true, state: null };
   }
   if (updatedAt === knownVersion) {
     return { changed: false, missing: false, state: null };
   }
 
-  const state = await readCloudState(config, fetchImpl);
-  rememberSnapshotObserverVersion(config, normalizedObserverKey);
+  const cached = confirmedSnapshotPayload(cache, config.storage.spaceId, updatedAt);
+  if (cached) {
+    // The authenticated version request above revalidated access and freshness.
+    // Deliver the payload to THIS observer even if a different reader cached it.
+    rememberSnapshotVersion(config, updatedAt);
+    rememberSnapshotObserverVersion(observerVersionKey, updatedAt);
+    return { changed: true, missing: false, state: cached };
+  }
+
+  const { state, version } = await readCloudSnapshot(config, fetchImpl);
+  rememberSnapshotObserverVersion(observerVersionKey, version);
   return {
     changed: true,
     missing: !state,
@@ -163,7 +228,7 @@ export async function readCloudStateIfChanged(
   };
 }
 
-export async function saveCloudState(config, state, fetchImpl = fetch) {
+export async function saveCloudState(config, state, fetchImpl = fetch, { expectedVersion } = {}) {
   if (config.storage?.mode !== "supabase") return;
 
   if (!config.storage.spaceKey) {
@@ -181,7 +246,12 @@ export async function saveCloudState(config, state, fetchImpl = fetch) {
     throw new CloudStateIdentityError();
   }
 
-  const currentVersion = snapshotVersions.get(snapshotVersionKey(config));
+  // Read/merge/write workflows pin the version of their own source payload.
+  // A concurrent read may advance the global registry without updating that
+  // candidate; borrowing its version would silently bypass conflict recovery.
+  const currentVersion = expectedVersion === undefined
+    ? snapshotVersions.get(snapshotVersionKey(config))
+    : String(expectedVersion ?? "").trim();
   const isUpdate = Boolean(currentVersion);
   if (isSharedEventSpace(config)) {
     if (!isUpdate) throw new CloudStateConflictError();
@@ -260,7 +330,13 @@ export async function readAccessibleSharedCloudStates(
     for (const row of index) {
       const cached = cache.get(`shared:${row.id}`, row.updated_at);
       if (cached) resolved.set(row.id, cached);
-      else changedIds.push(row.id);
+      else {
+        // The visible reader may already have fetched this exact update. This
+        // index rechecked membership, so no second large download is needed.
+        const state = confirmedSnapshotPayload(cache, row.id, row.updated_at);
+        if (state) resolved.set(row.id, { ...row, state });
+        else changedIds.push(row.id);
+      }
     }
     for (let offset = 0; offset < changedIds.length; offset += CHANGED_SHARED_STATE_BATCH_SIZE) {
       const changed = await readAccessibleSharedCloudRows(config, fetchImpl, {
@@ -462,24 +538,18 @@ function snapshotVersionKey(config) {
 }
 
 function snapshotObserverVersionKey(config, observerKey) {
-  return `${observerKey}\u0000${snapshotVersionKey(config)}`;
+  const identity = JSON.stringify([
+    observerKey,
+    config.storage.account?.userId ?? "",
+    versionedReadCacheSessionGeneration()
+  ]);
+  return `${identity}\u0000${snapshotVersionKey(config)}`;
 }
 
-function rememberSnapshotObserverVersion(config, observerKey) {
-  if (!observerKey) return;
-  const version = snapshotVersions.get(snapshotVersionKey(config));
-  if (!version) return;
-  snapshotObserverVersions.set(
-    snapshotObserverVersionKey(config, observerKey),
-    version
-  );
-}
-
-function forgetSnapshotObserverVersion(config, observerKey) {
-  if (!observerKey) return;
-  snapshotObserverVersions.delete(
-    snapshotObserverVersionKey(config, observerKey)
-  );
+function rememberSnapshotObserverVersion(observerVersionKey, version) {
+  if (!observerVersionKey) return;
+  if (version) snapshotObserverVersions.set(observerVersionKey, version);
+  else snapshotObserverVersions.delete(observerVersionKey);
 }
 
 function rememberSnapshotVersion(config, version) {

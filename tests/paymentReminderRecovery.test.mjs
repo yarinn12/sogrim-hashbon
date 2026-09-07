@@ -14,6 +14,7 @@ function deferred() { let resolve; const promise = new Promise(done => { resolve
 function harness({ config = null, flush = null, send = null, refresh = null } = {}) {
   const calls = [], refreshes = [];
   const context = vm.createContext({
+    generation: 0, versionedReadCacheSessionGeneration: () => context.generation,
     session: { user: { id: A } }, state: { currentParticipantId: `account-${A}` },
     runtimeConfig: configFor(A), window: { localStorage: {} },
     loadStoredAccountSession: () => context.session,
@@ -41,6 +42,16 @@ test("a locally expired runtime identity refreshes once before sending the remin
   assert.equal((await h.run()).ok, true);
   assert.equal(h.refreshes.length, 1);
   assert.equal(h.calls.length, 1);
+});
+
+test("a late authentication rejection from an old login cannot retry in a new login to the same account", async () => {
+  const h = harness({ send: async () => {
+    h.context.generation += 2;
+    throw Object.assign(new Error("Old session expired"), { code: "AUTH_REQUIRED", status: 401 });
+  } });
+  await assert.rejects(h.run(), { code: "STALE_ACCOUNT" });
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.refreshes.length, 0);
 });
 
 test("the bell waits for pending cloud changes before asking the server to resolve the transfer", async () => {

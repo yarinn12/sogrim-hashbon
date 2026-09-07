@@ -7,6 +7,12 @@ www
 android
 ios
 tests
+e2e
+test-results
+playwright-report
+docs
+supabase
+build
 artifacts
 audit
 work

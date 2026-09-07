@@ -31,6 +31,10 @@ const accountLinkMigration = await readFile(
   "supabase/migrations/20260826223000_allow_guarded_event_account_links.sql",
   "utf8"
 );
+const paymentPartyMigration = await readFile(
+  "supabase/migrations/20260906090000_enforce_payment_parties_and_note_timestamps.sql",
+  "utf8"
+);
 const adminEventDeletionMigration = await readFile(
   "supabase/migrations/20260827143000_allow_admin_shared_event_deletion.sql",
   "utf8"
@@ -199,13 +203,21 @@ test("account linking preserves financial history through a narrowly authorized 
 
   for (const name of [
     "private.authorized_shared_event_account_link",
-    "private.has_authorized_transfer_status_changes",
     "private.guard_shared_event_financial_integrity",
     "private.has_preserved_paid_history_for_account_link",
     "private.revoke_event_invites_after_member_removal"
   ]) {
     assert.equal(lastFunctionSource(schema, name), functionSource(accountLinkMigration, name));
   }
+  // The newer migration replaces both overloads; compare its four-argument
+  // definition explicitly rather than mistaking the legacy wrapper for it.
+  const marker = "-- Mandatory payment parties and finite note envelopes (2026-09-06).";
+  assert.ok(schema.includes(marker));
+  const currentPaymentGuard = functionSource(schema.slice(schema.indexOf(marker)), "private.has_authorized_transfer_status_changes");
+  assert.equal(currentPaymentGuard, functionSource(paymentPartyMigration, "private.has_authorized_transfer_status_changes"));
+  assert.match(currentPaymentGuard, /private\.authorized_shared_event_account_link/);
+  assert.match(currentPaymentGuard, /account_link is not null/);
+  assert.match(currentPaymentGuard, /private\.can_update_transfer_payment/);
   assert.equal(
     lastFunctionSource(schema, "private.guard_shared_event_history_and_limits"),
     functionSource(transferStatusReversalMigration, "private.guard_shared_event_history_and_limits")

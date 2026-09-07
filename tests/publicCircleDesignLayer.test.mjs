@@ -229,7 +229,7 @@ test("expense entry follows the calm two-glance mobile flow", async () => {
   assert.match(app, /function syncExpenseSaveState/);
   assert.match(app, /dialogReturnScrollY = window\.scrollY/);
   assert.match(app, /window\.scrollTo\(0, 0\)/);
-  assert.match(app, /window\.scrollTo\(0, returnScrollY\)/);
+  assert.match(app, /scheduleDialogReturnScroll\(returnScrollY\)/);
   assert.match(layer, /\.expense-template-grid \{[\s\S]*?flex-wrap: nowrap !important/);
   assert.match(layer, /\.expense-detail-shortcut/);
   assert.match(layer, /--circle-placeholder: #657672/);

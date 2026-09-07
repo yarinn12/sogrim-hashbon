@@ -341,7 +341,7 @@ test("native resume refreshes shared state without duplicate concurrent syncs", 
 
   assert.match(bridge, /addListener\?\.\("appStateChange"/);
   assert.match(bridge, /settle-friends:native-resume/);
-  assert.match(app, /addEventListener\(NATIVE_RESUME_EVENT, requestResumeSync\)/);
+  assert.match(app, /addEventListener\(NATIVE_RESUME_EVENT, \(\) => requestResumeSync\(\{ force: true \}\)\)/);
   assert.match(
     app,
     /if \(resumeSyncRequest\) \{[\s\S]*?force[\s\S]*?queueForcedResumeSync\(\{ includeSecondary \}\)[\s\S]*?: resumeSyncRequest;/

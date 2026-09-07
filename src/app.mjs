@@ -3,6 +3,7 @@ import { iconSvg } from "./uiIcons.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
+import { versionedReadCacheSessionGeneration } from "./data/versionedReadCache.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
 import {
   formatClockTime,
@@ -318,6 +319,7 @@ const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;
 // could rate-limit the very sync requests meant to keep devices current.
 const BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS = 15_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
+const NOTIFICATION_INBOX_SYNC_INTERVAL_MS = 12_000;
 const PENDING_MUTATION_RETRY_BASE_MS = 5_000;
 const PENDING_MUTATION_RETRY_MAX_MS = 60_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
@@ -463,6 +465,9 @@ let profileUsernameError = "";
 let profileNameEditing = false;
 let profileUsernameEditing = false;
 let profileSaveRequest = null;
+let profileSaveRequestOwnerScope = "";
+let profileAvatarRequest = null;
+let profileAvatarRevision = 0;
 let state = syncLocalProfile(loadState());
 profileAvatarDraft =
   normalizeAvatarPreset(localProfile?.avatarPreset) || profileAvatarDraft;
@@ -470,6 +475,7 @@ profileAvatarImageDraft = normalizeAvatarImage(localProfile?.avatarImage);
 let screen = initialScreenFromLaunchAction();
 let newEventDraft = null;
 let createEventBusy = false;
+let createEventRequest = null;
 let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
@@ -479,6 +485,7 @@ const EXPENSE_FOREGROUND_SAVE_BUDGET_MS = 350;
 const SHARED_REVERT_NOTICE_MAX_AGE_MS = 8_000;
 const expenseDeleteRequests = new Set();
 let paymentReminderBusyId = "";
+let paymentReminderRequest = null;
 const SETTLEMENT_OPEN_TRANSFER_STORAGE_KEY = "settlement-open-transfer-ids";
 const PROFILE_IMAGE_PICKER_RETURN_STORAGE_KEY = "profile-image-picker-return";
 const PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX =
@@ -516,7 +523,11 @@ let notificationInbox = {
 };
 let notificationInboxRequest = null;
 let notificationInboxRefreshQueued = false;
+let notificationInboxFollowUpRequest = null;
 let notificationInboxOwnerId = "";
+let notificationInboxGeneration = -1;
+const notificationInboxReadRequests = new Map();
+let lastNotificationInboxRefreshAt = 0;
 let readFriendRequestNotificationIds = new Set();
 let notificationsReturnScreen = null;
 let adminAnalytics = {
@@ -536,6 +547,9 @@ let friendCodeDraft = friendInviteCodeFromUrl(window.location.href);
 let friendNetwork = emptyFriendNetwork();
 let friendNetworkBusyAction = "";
 let friendNetworkPollRequest = null;
+let friendNetworkPollScope = "";
+let friendNetworkRefreshRevision = 0;
+let friendNetworkActionRequest = null;
 let importantActionDialog = null;
 let eventStatusMenu = null;
 let settlementCelebration = null;
@@ -585,10 +599,12 @@ let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let eventWorkspaceSwipe = null;
 let resumeSyncRequest = null;
+let resumeSyncScope = "";
 let resumeSyncFollowUpRequest = null;
 let resumeSyncFollowUpPending = false;
 let resumeSyncFollowUpIncludeSecondary = false;
 let visibleEventSyncRequest = null;
+let visibleEventSyncScope = "";
 let pendingEventMembershipRetryRequest = null;
 let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
@@ -621,7 +637,10 @@ app.addEventListener("contextmenu", handleEventContextMenu);
 window.addEventListener("popstate", handleBrowserHistoryBack);
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
-window.addEventListener(NATIVE_RESUME_EVENT, requestResumeSync);
+// Android can resume without a matching browser visibilitychange. A request
+// captured before suspension (or its cooldown) must not satisfy this return.
+// The existing forced-follow-up queue coalesces repeated lifecycle signals.
+window.addEventListener(NATIVE_RESUME_EVENT, () => requestResumeSync({ force: true }));
 window.addEventListener(NATIVE_RESUME_EVENT, () => {
   recoverPendingMutations({ resetBackoff: true }).catch(() => {});
   if (accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY) {
@@ -653,6 +672,9 @@ function runAppInteraction(handler, event) {
   });
 }
 window.addEventListener("online", () => {
+  // Incoming peer changes need a fresh read even when this device's outbox
+  // is empty. Reuse the session-owned queue instead of waiting for Home's poll.
+  if (appBootHydrated) void requestResumeSync({ force: true });
   recoverPendingMutations({ resetBackoff: true }).catch(() => {});
   if (accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY) {
     retryAccountEventHydration().catch(() => {});
@@ -668,6 +690,7 @@ document.addEventListener("visibilitychange", () => {
 });
 window.setInterval(requestVisibleEventSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 window.setInterval(requestVisibleFriendNetworkSync, FRIEND_NETWORK_SYNC_INTERVAL_MS);
+window.setInterval(requestVisibleNotificationInboxSync, ACTIVE_EVENT_SYNC_INTERVAL_MS);
 document.addEventListener("keydown", handleDialogKeydown);
 window.addEventListener("resize", scheduleOpenExpenseMenuPosition);
 window.addEventListener("orientationchange", scheduleOpenExpenseMenuPosition);
@@ -1306,7 +1329,7 @@ function handleBrowserHistoryBack(event) {
     pendingDialogReturnScrollY = 0;
     dialogReturnFocus = null;
     dialogReturnScrollY = 0;
-    requestAnimationFrame(() => window.scrollTo(0, closingDialogScrollY));
+    scheduleDialogReturnScroll(closingDialogScrollY);
   }
   window.setTimeout(restorePendingDialogReturnFocus, 220);
   if (pendingImportantActionReturnFocus) {
@@ -1569,9 +1592,17 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
       row.classList.add("is-explanation-open");
     }
 
+    // This snapshot predates the new DOM. If the user already focused a live
+    // control, restoring its old focus/caret would steal ongoing input.
+    const focusedElement = document.activeElement;
+    if (focusedElement?.isConnected && focusedElement !== document.body &&
+      focusedElement !== document.documentElement && focusedElement !== app) return;
+    // A dialog may have opened during this render, after the snapshot was
+    // captured. Its activation owns both focus and page position; the old
+    // background snapshot must not scroll the page back underneath it.
+    const focusRoot = currentDialog ?? app.querySelector('[aria-modal="true"]') ?? app;
+    if (focusRoot !== app && !currentDialog) return;
     window.scrollTo?.(0, Math.max(0, snapshot.pageScrollY ?? 0));
-
-    const focusRoot = currentDialog ?? app;
     const focusTarget = findFocusReplacement(focusRoot, snapshot.focus);
     if (!focusTarget || focusTarget.disabled || focusTarget.inert) return;
     focusTarget.focus({ preventScroll: true });
@@ -2352,7 +2383,6 @@ function renderHome() {
         </div>
       </header>
       ${renderNotice()}
-      ${awaitingAuthoritativeEvents ? "" : renderHomeCreateEventAction()}
       ${
         awaitingAuthoritativeEvents
           ? ""
@@ -2369,8 +2399,9 @@ function renderHome() {
           ? `
             <section class="section">
               <div class="section-title-row">
-                <div>
+                <div class="home-events-heading">
                   <h2>אירועים</h2>
+                  ${renderHomeCreateEventAction()}
                 </div>
                 ${renderEventStatusFilter(sortedEvents)}
               </div>
@@ -2389,10 +2420,11 @@ function renderHome() {
             : `
             <section class="section home-empty-events">
               <div class="section-title-row">
-                <div>
+                <div class="home-events-heading">
                   <h2>אירועים</h2>
-                  <p class="muted">פתח אירוע חדש. הזמנה שקיבלת נפתחת ישירות מהקישור.</p>
+                  ${renderHomeCreateEventAction()}
                 </div>
+                <p class="muted">פתח אירוע חדש. הזמנה שקיבלת נפתחת ישירות מהקישור.</p>
               </div>
               <div class="empty-state home-empty-visual">
                 <img src="./sogrim-home-hero.png" alt="חברים סוגרים יחד חשבון במסעדה" width="1672" height="941" fetchpriority="high" decoding="async" />
@@ -4431,6 +4463,7 @@ function renderEvent(event) {
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "expenses")}
       ${renderEventCover(event)}
+      ${isEmptyEvent ? '<p class="muted" data-inline-sync-status role="status" aria-live="polite" hidden></p>' : ""}
       ${isEmptyEvent ? renderEventStartPanel(event) : ""}
       ${isEmptyEvent ? "" : renderEventPersonalBalance(event, participants)}
 
@@ -5254,6 +5287,7 @@ function renderNewEventSettlement() {
   return `
     <section class="screen font-hebrew new-event-settlement-screen" data-screen-kind="new-event" data-event-creation-step="settlement">
       <header class="top">${renderAppBackButton()}<div class="brand"><p class="eyebrow">אירוע חדש</p><h1>איך סוגרים את החשבון?</h1></div></header>
+      ${renderNotice()}
       ${renderEventCreationProgress("settlement")}
       <section class="panel create-event-panel new-event-settlement-panel">
         ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "משפיע רק על ההעברות הסופיות, לא על ההוצאות." })}
@@ -9716,7 +9750,39 @@ function renderSettlement(event) {
   `;
 }
 
+function profileSaveOwnerScope() {
+  return JSON.stringify([
+    state.currentParticipantId,
+    loadStoredAccountSession(window.localStorage)?.user?.id ?? "",
+    versionedReadCacheSessionGeneration()
+  ]);
+}
+
+function focusProfileIdentityInput(selector) {
+  const target = app.querySelector(selector);
+  if (!target) return;
+  const ownerScope = profileSaveOwnerScope();
+  const returnContext = dialogReturnContext();
+  requestAnimationFrame(() => {
+    // An earlier edit/validation frame must not focus a replacement field after
+    // another render, or reselect text the user has already started typing.
+    if (ownerScope !== profileSaveOwnerScope() || !target.isConnected ||
+        document.activeElement === target) return;
+    if (canRestoreActionFocus({ returnContext }, target)) {
+      target.focus({ preventScroll: true });
+    }
+  });
+}
+
 async function saveProfileAvatarImage(file) {
+  const ownerScope = profileSaveOwnerScope();
+  const originScreen = screen;
+  const avatarRevision = profileAvatarRevision;
+  const request = {};
+  profileAvatarRequest = request;
+  const isCurrent = () => profileAvatarRequest === request &&
+    ownerScope === profileSaveOwnerScope() && originScreen === screen &&
+    avatarRevision === profileAvatarRevision;
   if (file.type && !file.type.startsWith("image/")) {
     profileError = "אפשר לבחור קובץ תמונה בלבד.";
     render();
@@ -9732,17 +9798,13 @@ async function saveProfileAvatarImage(file) {
       description: "הזז והגדל עד שהאזור הרצוי נמצא בתוך העיגול."
     });
     if (!croppedCanvas) return;
+    if (!isCurrent()) return;
     profileAvatarImageDraft = compressProfileAvatarImage(croppedCanvas);
     profileError = "";
     render();
-    await persistProfileAvatarDraft();
-    render();
-    requestAnimationFrame(() => {
-      app
-        .querySelector(".profile-avatar-picker-summary")
-        ?.focus({ preventScroll: true });
-    });
+    await finishProfileAvatarSave();
   } catch (error) {
+    if (!isCurrent()) return;
     profileAvatarPendingPreview = "";
     console.warn("[images] Profile image processing failed", {
       type: String(file?.type ?? ""),
@@ -9751,10 +9813,57 @@ async function saveProfileAvatarImage(file) {
     });
     profileError = "לא הצלחנו לפתוח את התמונה. נסה תמונה אחרת מהגלריה.";
     render();
+  } finally {
+    if (profileAvatarRequest === request) profileAvatarRequest = null;
   }
 }
 
+async function finishProfileAvatarSave() {
+  const ownerScope = profileSaveOwnerScope();
+  const originScreen = screen;
+  const request = persistProfileAvatarDraft();
+  const revision = profileAvatarRevision;
+  const isCurrent = () => ownerScope === profileSaveOwnerScope() &&
+    originScreen === screen && revision === profileAvatarRevision;
+  await request;
+  if (!isCurrent()) return;
+  render();
+  requestAnimationFrame(() => {
+    if (!isCurrent()) return;
+    const target = app.querySelector(".profile-avatar-picker-summary");
+    if (canRestoreActionFocus({ returnContext: dialogReturnContext() }, target)) {
+      target?.focus({ preventScroll: true });
+    }
+  });
+}
+
+function freshProfileEditTimestamp(observedProfile = null) {
+  const participant = state.participants.find(item => item.id === state.currentParticipantId);
+  const ownerUserId = loadStoredAccountSession()?.user?.id;
+  const ownNetworkProfile = ownerUserId
+    ? friendNetwork.profiles?.find(profile => profile.user_id === ownerUserId)
+    : null;
+  const ownObservedProfile = ownerUserId && observedProfile?.user_id === ownerUserId
+    ? observedProfile : null;
+  let timestamp = new Date().getTime();
+  for (const version of [
+    participant?.profileUpdatedAt, participant?.avatarImageUpdatedAt,
+    localProfile?.profileUpdatedAt, localProfile?.avatarImageUpdatedAt,
+    ownNetworkProfile?.updated_at, ownNetworkProfile?.avatar_image_updated_at,
+    ownObservedProfile?.updated_at, ownObservedProfile?.avatar_image_updated_at
+  ]) {
+    const previous = Date.parse(normalizeProfileUpdatedAt(version));
+    if (Number.isFinite(previous)) timestamp = Math.max(timestamp, previous + 1);
+  }
+  // Advance only a new user edit. Retries must retain their original version,
+  // otherwise an old queued write could overwrite a genuinely newer edit.
+  return new Date(timestamp).toISOString();
+}
+
 async function persistProfileAvatarDraft() {
+  const ownerScope = profileSaveOwnerScope();
+  const originScreen = screen;
+  const revision = ++profileAvatarRevision;
   const participantId = state.currentParticipantId;
   const currentParticipant = state.participants.find(
     (participant) => participant.id === participantId
@@ -9762,9 +9871,12 @@ async function persistProfileAvatarDraft() {
   if (!currentParticipant || !localProfile) return false;
 
   const avatarImage = normalizeAvatarImage(profileAvatarImageDraft);
+  const avatarImageSyncRequired = Boolean(avatarImage ||
+    normalizeAvatarImage(currentParticipant.avatarImage) ||
+    normalizeAvatarImage(localProfile.avatarImage));
   const avatarPreset =
     normalizeAvatarPreset(profileAvatarDraft) || AVATAR_PRESETS[0].id;
-  const profileUpdatedAt = new Date().toISOString();
+  const profileUpdatedAt = freshProfileEditTimestamp();
   const displayName = currentParticipant.displayName || localProfile.displayName;
 
   state = {
@@ -9791,6 +9903,7 @@ async function persistProfileAvatarDraft() {
     profileUpdatedAt
   });
 
+  const friendProfileSyncRequired = friendNetworkAvailable(runtimeConfig);
   const [accountResult, stateResult, friendProfileResult] = await Promise.allSettled([
     globalThis.SogrimAccountProfile?.updateProfile?.({
       displayName,
@@ -9798,7 +9911,7 @@ async function persistProfileAvatarDraft() {
       avatarImage
     }) ?? true,
     saveSharedState(state),
-    friendNetworkAvailable(runtimeConfig)
+    friendProfileSyncRequired
       ? syncFriendProfile(runtimeConfig, localProfile)
       : true
   ]);
@@ -9809,10 +9922,25 @@ async function persistProfileAvatarDraft() {
     stateResult.value !== false &&
     stateResult.value?.ok !== false;
   const stateSynced = stateSaved && stateResult.value?.pending !== true;
-  const friendProfileSynced =
-    friendProfileResult.status === "fulfilled" && friendProfileResult.value !== false;
+  const canonicalProfile = friendProfileResult.status === "fulfilled"
+    ? friendProfileResult.value : null;
+  const friendProfileSynced = !friendProfileSyncRequired || Boolean(
+    canonicalProfile &&
+    canonicalProfile.display_name === String(displayName).trim() &&
+    normalizeAvatarPreset(canonicalProfile.avatar_preset) === avatarPreset &&
+    (Object.hasOwn(canonicalProfile, "avatar_image")
+      ? normalizeAvatarImage(canonicalProfile.avatar_image) === avatarImage
+      : !avatarImageSyncRequired)
+  );
   const fullySynced = accountSynced && stateSynced && friendProfileSynced;
-  if (stateSynced) rememberPublishedSharedProfile(state.currentParticipantId);
+  if (ownerScope !== profileSaveOwnerScope()) return fullySynced;
+  if (stateSynced && revision === profileAvatarRevision) {
+    rememberPublishedSharedProfile(participantId, profileUpdatedAt);
+  }
+  if (revision !== profileAvatarRevision || originScreen !== screen ||
+      state.participants.find(item => item.id === participantId)?.profileUpdatedAt !== profileUpdatedAt) {
+    return fullySynced;
+  }
   notice = fullySynced
     ? "תמונת הפרופיל נשמרה."
     : "התמונה נשמרה במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
@@ -9820,6 +9948,8 @@ async function persistProfileAvatarDraft() {
 }
 
 async function publishCurrentProfileToSharedEventsOnce() {
+  const ownerScope = profileSaveOwnerScope();
+  const avatarRevision = profileAvatarRevision;
   const participantId = state.currentParticipantId;
   const participant = state.participants.find((item) => item.id === participantId);
   const profileUpdatedAt = String(participant?.profileUpdatedAt ?? "").trim();
@@ -9831,27 +9961,39 @@ async function publishCurrentProfileToSharedEventsOnce() {
   );
   if (!hasSharedEvent) return false;
   const markerKey = `${PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX}${participantId}`;
-  if (window.localStorage.getItem(markerKey) === profileUpdatedAt) return false;
+  try {
+    if (window.localStorage.getItem(markerKey) === profileUpdatedAt) return false;
+  } catch {
+    // This optional deduplication marker must not prevent synchronization.
+  }
 
   const result = await saveSharedState(state, {
     forceSharedParticipantIds: [participantId],
     suppressRevertNotice: true
   });
   if (result?.ok && result?.pending !== true) {
-    rememberPublishedSharedProfile(participantId);
+    if (ownerScope === profileSaveOwnerScope() && avatarRevision === profileAvatarRevision) {
+      rememberPublishedSharedProfile(participantId, profileUpdatedAt);
+    }
     return true;
   }
   return false;
 }
 
-function rememberPublishedSharedProfile(participantId) {
+function rememberPublishedSharedProfile(participantId, profileUpdatedAt) {
   const participant = state.participants.find((item) => item.id === participantId);
-  const profileUpdatedAt = String(participant?.profileUpdatedAt ?? "").trim();
-  if (!participantId || !profileUpdatedAt) return;
-  window.localStorage.setItem(
-    `${PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX}${participantId}`,
-    profileUpdatedAt
-  );
+  // A response only acknowledges the version actually submitted, never a newer
+  // local edit that happened while the request was in flight.
+  if (!participantId || !profileUpdatedAt ||
+      String(participant?.profileUpdatedAt ?? "").trim() !== profileUpdatedAt) return;
+  try {
+    window.localStorage.setItem(
+      `${PROFILE_SHARED_PUBLICATION_STORAGE_KEY_PREFIX}${participantId}`,
+      profileUpdatedAt
+    );
+  } catch {
+    // Retry publication next time if browser storage is unavailable.
+  }
 }
 
 function encodeCanvasJpegWithinLimit(
@@ -10658,7 +10800,7 @@ function renderTransferRow(
   const canUpdateGroupedPayments = groupedPaidTransfers.every((paidTransfer) =>
     canCurrentParticipantUpdateTransfer(event, paidTransfer)
   );
-  const reminderBusy = paymentReminderBusyId === transfer.id;
+  const reminderBusy = Boolean(paymentReminderRequest?.isCurrent()) && paymentReminderBusyId === transfer.id;
   const explanationOpen = openSettlementTransferIds.has(transfer.id);
   const explanationId = `transfer-explanation-${transfer.id}`;
   return `
@@ -11953,6 +12095,11 @@ async function handleClick(event) {
   }
 
   if (action === "save-profile") {
+    const ownerScope = profileSaveOwnerScope();
+    if (profileSaveRequestOwnerScope !== ownerScope) {
+      profileSaveRequestOwnerScope = ownerScope;
+      profileSaveRequest = null;
+    }
     if (!profileSaveRequest) {
       const request = saveProfileFromDraft();
       const trackedRequest = request.finally(() => {
@@ -11969,18 +12116,14 @@ async function handleClick(event) {
     profileNameEditing = true;
     profileError = "";
     render();
-    window.requestAnimationFrame(() => {
-      document.querySelector('[data-action="profile-name"]')?.focus({ preventScroll: true });
-    });
+    focusProfileIdentityInput('[data-action="profile-name"]');
   }
 
   if (action === "edit-profile-username") {
     profileUsernameEditing = true;
     profileUsernameError = "";
     render();
-    window.requestAnimationFrame(() => {
-      document.querySelector('[data-action="profile-username"]')?.focus({ preventScroll: true });
-    });
+    focusProfileIdentityInput('[data-action="profile-username"]');
   }
 
   if (action === "cancel-profile-name-edit") {
@@ -13159,13 +13302,7 @@ async function handleClick(event) {
     if (profileAvatarPendingPreview) URL.revokeObjectURL(profileAvatarPendingPreview);
     profileAvatarPendingPreview = "";
     profileAvatarImageDraft = "";
-    await persistProfileAvatarDraft();
-    render();
-    requestAnimationFrame(() => {
-      app
-        .querySelector(".profile-avatar-picker-summary")
-        ?.focus({ preventScroll: true });
-    });
+    await finishProfileAvatarSave();
     return;
   }
 
@@ -14322,13 +14459,7 @@ async function handleChange(event) {
     if (pickerShell instanceof HTMLDetailsElement) {
       pickerShell.open = false;
     }
-    await persistProfileAvatarDraft();
-    render();
-    requestAnimationFrame(() => {
-      app
-        .querySelector(".profile-avatar-picker-summary")
-        ?.focus({ preventScroll: true });
-    });
+    await finishProfileAvatarSave();
     return;
   }
 
@@ -14542,7 +14673,13 @@ async function handleChange(event) {
 }
 
 async function createEventFromDraft() {
+  if (createEventRequest && !createEventRequest.isCurrent()) {
+    createEventRequest = null;
+    createEventBusy = false;
+  }
   if (createEventBusy) return;
+  const request = captureFriendAccountContext();
+  if (!request.isCurrent() || !newEventDraft) return;
   ensureCurrentParticipantInNewEventDraft();
   if (newEventDraft.participantIds.length === 0) {
     notice = "צריך לבחור לפחות משתתף אחד.";
@@ -14558,7 +14695,8 @@ async function createEventFromDraft() {
   }
 
   const submittedDraft = structuredClone(newEventDraft);
-  const stateBeforeCreate = structuredClone(state);
+  const activeDraft = newEventDraft;
+  const submittedScreen = screen;
   const inviteAfterCreate = newEventDraft.inviteAfterCreate === true;
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
@@ -14617,69 +14755,88 @@ async function createEventFromDraft() {
   }
 
   state.events.unshift(event);
+  createEventRequest = request;
   createEventBusy = true;
-  const saveRequest = persistState({
-    awaitCloud: invitedAccountParticipants.length > 0,
-    forceSharedEventIds: invitedAccountParticipants.length ? [event.id] : []
-  });
-  render();
+  const restoreRejectedCreation = (result) => {
+    if (!request.isCurrent()) return;
+    // Never restore the entire pre-save account: another event may have been
+    // edited or synchronized while this request was waiting.
+    state = { ...state, events: state.events.filter(item => item.id !== event.id) };
+    saveState(state);
+    for (const participant of invitedAccountParticipants) {
+      forgetPendingEventMembershipInvitation(event.id, participant.id);
+    }
+    if (newEventDraft !== activeDraft || screen !== submittedScreen) return;
+    newEventDraft = submittedDraft;
+    screen = { name: "new-event-settlement" };
+    notice = saveFailureMessage(result, "האירוע לא נשמר.", { draft: true });
+    render();
+  };
 
   try {
+    // Keep canonical shared publication in the first durable outbox entry, but
+    // use the store's bounded foreground budget (also covers slow config/auth).
+    // A queued result is possible only after BOTH local state and outbox persist.
+    const saveRequest = persistState({
+      forceSharedEventIds: invitedAccountParticipants.length ? [event.id] : []
+    });
+    for (const participant of invitedAccountParticipants) {
+      rememberPendingEventMembershipInvitation(event.id, participant.id);
+    }
+    render();
     const saveResult = await saveRequest;
+    if (!request.isCurrent()) return;
     if (!saveResult?.ok && !saveResult?.pending) {
-      state = stateBeforeCreate;
-      saveState(stateBeforeCreate);
-      newEventDraft = submittedDraft;
-      screen = { name: "new-event-settlement" };
-      notice = "לא הצלחנו לשמור את האירוע. הפרטים נשארו כאן ואפשר לנסות שוב.";
-      render();
+      restoreRejectedCreation(saveResult);
       return;
     }
     emitProductMetric("event_created", {
       screen: "new_event",
       detail: normalizeEventType(event.eventType)
     });
-    newEventDraft = null;
-    joinEventDraft = null;
-    screen = { name: "event", eventId: event.id };
-    notice = "";
-    appHistoryDepth = 0;
-    lastNavigationViewKey = "";
-    render();
-
-    // Selecting an existing account during event creation is already an
-    // explicit invitation. Publish the shared event and activate those
-    // memberships immediately; otherwise the event exists only in the
-    // creator's personal workspace and the other device has nothing to load.
-    for (const participant of invitedAccountParticipants) {
-      rememberPendingEventMembershipInvitation(event.id, participant.id);
+    if (newEventDraft === activeDraft && screen === submittedScreen) {
+      newEventDraft = null;
+      joinEventDraft = null;
+      screen = { name: "event", eventId: event.id };
+      notice = ""; // The existing inline sync status distinguishes queued/cloud.
+      appHistoryDepth = 0;
+      lastNavigationViewKey = "";
+      render();
     }
     if (saveResult?.pending) {
       schedulePendingMutationRecovery({ resetBackoff: true });
     }
-    if (!saveResult?.pending) {
-      for (const participant of invitedAccountParticipants) {
-        await publishEventInvitation(event.id, participant, {
-          showMessage: false
-        });
-      }
-    }
-
-    if (!inviteAfterCreate || saveResult?.pending) return;
-    await openPreparedEventShare(
-      event.id,
-      app.querySelector('[data-action="open-event-share"]')
-    );
-  } catch {
-    state = stateBeforeCreate;
-    saveState(stateBeforeCreate);
-    newEventDraft = submittedDraft;
-    screen = { name: "new-event-settlement" };
-    notice = "לא הצלחנו לשמור את האירוע. הפרטים נשארו כאן ואפשר לנסות שוב.";
-    render();
+    // Invitations/link preparation are follow-up work, not part of the form
+    // lock or its rollback. They must wait for a confirmed cloud save.
+    void finishCreatedEventPublication(saveResult, event.id, invitedAccountParticipants, request, inviteAfterCreate);
+  } catch (error) {
+    restoreRejectedCreation({ ok: false, error });
   } finally {
-    createEventBusy = false;
-    if (newEventDraft) render();
+    if (createEventRequest === request) {
+      createEventRequest = null;
+      createEventBusy = false;
+      if (request.isCurrent() && newEventDraft) render();
+    }
+  }
+}
+
+async function finishCreatedEventPublication(saveResult, eventId, participants, request, inviteAfterCreate) {
+  try {
+    const result = await completedSaveResult(saveResult);
+    if (!request.isCurrent() || !getEvent(eventId)) return;
+    if (!result?.ok || result?.pending || result.mode !== "cloud") return;
+    for (const participant of participants) {
+      if (!request.isCurrent() || !getEvent(eventId)?.participantIds.includes(participant.id)) return;
+      await publishEventInvitation(eventId, participant, { showMessage: false });
+    }
+    // Do not open a delayed share sheet on top of newer navigation or editing.
+    if (!request.isCurrent() || !inviteAfterCreate || screen.name !== "event" ||
+        screen.eventId !== eventId || newEventDraft || expenseDraft || eventDialog) return;
+    await openPreparedEventShare(eventId, app.querySelector('[data-action="open-event-share"]'));
+  } catch (error) {
+    if (!request.isCurrent()) return;
+    emitOperationDeferred("event_invite", { screen: "new_event", error });
+    schedulePendingMutationRecovery({ resetBackoff: true });
   }
 }
 
@@ -14988,28 +15145,40 @@ async function sendFriendRequest() {
     return;
   }
 
-  friendNetworkBusyAction = "request";
+  const request = beginFriendNetworkAction("request");
+  if (!request) return;
+  const originScreen = screen;
+  const submittedDraft = friendCodeDraft;
+  const isCurrentDraft = () => request.isCurrent() &&
+    screen === originScreen && friendCodeDraft === submittedDraft;
   notice = "";
   let completedTab = "";
   render();
   try {
-    runtimeConfig = await loadRuntimeConfig();
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
     const result = requestTarget.type === "username"
-      ? await requestFriendshipByUsername(runtimeConfig, requestTarget.value)
-      : await requestFriendship(runtimeConfig, requestTarget.value);
-    friendCodeDraft = "";
-    notice = result?.status === "accepted"
-      ? "בקשת החברות ההדדית אושרה."
-      : "בקשת החברות נשלחה.";
-    completedTab = result?.status === "accepted" ? "people" : "requests";
+      ? await requestFriendshipByUsername(config, requestTarget.value)
+      : await requestFriendship(config, requestTarget.value);
+    if (!request.isCurrent()) return;
+    if (isCurrentDraft()) {
+      friendCodeDraft = "";
+      notice = result?.status === "accepted"
+        ? "בקשת החברות ההדדית אושרה."
+        : "בקשת החברות נשלחה.";
+      completedTab = result?.status === "accepted" ? "people" : "requests";
+    }
   } catch (error) {
-    notice = friendRequestErrorMessage(error);
+    if (!request.isCurrent()) return;
+    if (isCurrentDraft()) notice = friendRequestErrorMessage(error);
   } finally {
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
   }
   if (completedTab) {
     screen = { name: "groups", tab: completedTab };
   }
+  if (!request.isCurrent()) return;
+  if (completedTab || screen === originScreen) render();
   await refreshFriendNetwork({ preserveNotice: true });
 }
 
@@ -15040,31 +15209,37 @@ async function sendEventFriendRequest(eventId, participantId) {
   }
 
   const busyKey = `event-friend:${participantId}`;
-  if (friendNetworkBusyAction) return;
-  friendNetworkBusyAction = busyKey;
+  const request = beginFriendNetworkAction(busyKey);
+  if (!request) return;
+  const originScreen = screen;
   eventDialog = { ...eventDialog, message: "" };
+  const activeDialog = eventDialog;
   render();
   reactivateDialogAfterRender(".event-modal");
 
   let message = "";
   try {
-    runtimeConfig = await loadRuntimeConfig();
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
     const result = await requestFriendshipFromEvent(
-      runtimeConfig,
+      config,
       sharedSpaceId,
       targetUserId
     );
+    if (!request.isCurrent()) return;
     message = result?.status === "accepted"
       ? "אתם חברים עכשיו."
       : "בקשת החברות נשלחה.";
   } catch (error) {
+    if (!request.isCurrent()) return;
     message = friendRequestErrorMessage(error);
   } finally {
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
   }
 
   await refreshFriendNetwork({ preserveNotice: true });
   if (
+    request.isCurrent() && screen === originScreen && eventDialog === activeDialog &&
     eventDialog?.eventId === eventId &&
     eventDialog?.kind === "participant-profile" &&
     eventDialog?.participantId === participantId
@@ -15076,7 +15251,7 @@ async function sendEventFriendRequest(eventId, participantId) {
 }
 
 async function sendParticipantReport() {
-  if (eventDialog?.kind !== "participant-report" || friendNetworkBusyAction) return;
+  if (eventDialog?.kind !== "participant-report") return;
 
   const event = getEvent(eventDialog.eventId);
   const participant = state.participants.find(
@@ -15097,27 +15272,34 @@ async function sendParticipantReport() {
   }
 
   const busyKey = `report:${participant.id}`;
-  friendNetworkBusyAction = busyKey;
+  const request = beginFriendNetworkAction(busyKey);
+  if (!request) return;
+  const originScreen = screen;
   eventDialog = { ...eventDialog, error: "" };
+  const activeDialog = eventDialog;
+  const isCurrentDialog = () => request.isCurrent() &&
+    screen === originScreen && eventDialog === activeDialog;
   render();
   reactivateDialogAfterRender(".event-modal");
 
   try {
-    runtimeConfig = await loadRuntimeConfig();
-    await submitUserReport(runtimeConfig, {
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
+    await submitUserReport(config, {
       sharedSpaceId,
       targetUserId,
       category,
       details
     });
+    if (!isCurrentDialog()) return;
     const nextDialog = {
       eventId: event.id,
       kind: "participant-profile",
       participantId: participant.id,
-      historyBaseDepth: eventDialog.historyBaseDepth,
+      historyBaseDepth: activeDialog.historyBaseDepth,
       message: "הדיווח נשלח ונשמר לבדיקה."
     };
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
     eventDialog = nextDialog;
     if (appHistoryDepth > 0 && window.history?.back) {
       rememberConfirmedEventDialog(nextDialog);
@@ -15129,13 +15311,16 @@ async function sendParticipantReport() {
       reactivateDialogAfterRender(".event-modal");
     }
   } catch (error) {
-    friendNetworkBusyAction = "";
+    if (!isCurrentDialog()) return;
+    finishFriendNetworkAction(request);
     eventDialog = {
       ...eventDialog,
       error: reportSubmissionErrorMessage(error)
     };
     render();
     reactivateDialogAfterRender(".event-modal");
+  } finally {
+    finishFriendNetworkAction(request);
   }
 }
 
@@ -15169,13 +15354,20 @@ async function performConnectedUserBlock({
   eventId = ""
 }) {
   const busyKey = `user-safety:${targetUserId}`;
-  if (friendNetworkBusyAction) return;
-  friendNetworkBusyAction = busyKey;
+  const request = beginFriendNetworkAction(busyKey);
+  if (!request) return;
+  const originScreen = screen;
+  const originDialog = eventDialog;
+  const isCurrentSurface = () => request.isCurrent() &&
+    screen === originScreen && eventDialog === originDialog;
   try {
-    runtimeConfig = await loadRuntimeConfig();
-    await blockConnectedUser(runtimeConfig, targetUserId);
-    notice = "המשתמש נחסם. ההיסטוריה הכספית לא השתנתה.";
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
+    await blockConnectedUser(config, targetUserId);
+    if (!request.isCurrent()) return;
+    if (isCurrentSurface()) notice = "המשתמש נחסם. ההיסטוריה הכספית לא השתנתה.";
     await refreshFriendNetwork({ preserveNotice: true });
+    if (!isCurrentSurface()) return;
     if (
       eventId &&
       eventDialog?.eventId === eventId &&
@@ -15190,26 +15382,35 @@ async function performConnectedUserBlock({
       screen = { name: "groups", tab: "people" };
     }
   } catch (error) {
+    if (!isCurrentSurface()) return;
     const message = userSafetyErrorMessage(error, "לא הצלחנו לחסום את המשתמש כרגע.");
     notice = message;
     if (eventDialog?.eventId === eventId) {
       eventDialog = { ...eventDialog, message };
     }
   } finally {
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
   }
-  render();
+  if (request.isCurrent()) render();
 }
 
 async function performConnectedUserUnblock(targetUserId, eventId = "") {
-  if (!targetUserId || friendNetworkBusyAction) return;
-  friendNetworkBusyAction = `user-safety:${targetUserId}`;
+  if (!targetUserId) return;
+  const request = beginFriendNetworkAction("user-safety:" + targetUserId);
+  if (!request) return;
+  const originScreen = screen;
+  const originDialog = eventDialog;
+  const isCurrentSurface = () => request.isCurrent() &&
+    screen === originScreen && eventDialog === originDialog;
   render();
   try {
-    runtimeConfig = await loadRuntimeConfig();
-    await unblockConnectedUser(runtimeConfig, targetUserId);
-    notice = "החסימה בוטלה. חברות אינה מתחדשת אוטומטית.";
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
+    await unblockConnectedUser(config, targetUserId);
+    if (!request.isCurrent()) return;
+    if (isCurrentSurface()) notice = "החסימה בוטלה. חברות אינה מתחדשת אוטומטית.";
     await refreshFriendNetwork({ preserveNotice: true });
+    if (!isCurrentSurface()) return;
     if (eventId && eventDialog?.eventId === eventId) {
       eventDialog = {
         ...eventDialog,
@@ -15217,12 +15418,14 @@ async function performConnectedUserUnblock(targetUserId, eventId = "") {
       };
     }
   } catch (error) {
-    notice = userSafetyErrorMessage(error, "לא הצלחנו לבטל את החסימה כרגע.");
+    if (!request.isCurrent()) return;
+    if (isCurrentSurface()) notice = userSafetyErrorMessage(error, "לא הצלחנו לבטל את החסימה כרגע.");
   } finally {
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
   }
+  if (!request.isCurrent()) return;
   render();
-  if (eventDialog) reactivateDialogAfterRender(".event-modal");
+  if (eventDialog === originDialog && eventDialog) reactivateDialogAfterRender(".event-modal");
 }
 
 function reportSubmissionErrorMessage(error) {
@@ -15249,23 +15452,33 @@ function userSafetyErrorMessage(error, fallback) {
 }
 
 async function performFriendshipAction(friendshipId, action) {
-  if (!friendshipId || friendNetworkBusyAction) return;
-  friendNetworkBusyAction = friendshipId;
+  if (!friendshipId) return;
+  const request = beginFriendNetworkAction(friendshipId);
+  if (!request) return;
+  const originScreen = screen;
+  const originDialog = eventDialog;
+  const isCurrentSurface = () => request.isCurrent() &&
+    screen === originScreen && eventDialog === originDialog;
   render();
   try {
-    runtimeConfig = await loadRuntimeConfig();
-    await manageFriendship(runtimeConfig, friendshipId, action);
-    notice = {
+    const config = await loadFriendActionConfig(request);
+    if (!config) return;
+    await manageFriendship(config, friendshipId, action);
+    if (!request.isCurrent()) return;
+    if (isCurrentSurface()) notice = {
       accept: "בקשת החברות אושרה.",
       decline: "בקשת החברות נדחתה.",
       cancel: "בקשת החברות בוטלה.",
       remove: "החבר הוסר מהרשימה."
     }[action] ?? "רשימת החברים עודכנה.";
   } catch {
-    notice = "לא הצלחנו לעדכן את בקשת החברות כרגע.";
+    if (!request.isCurrent()) return;
+    if (isCurrentSurface()) notice = "לא הצלחנו לעדכן את בקשת החברות כרגע.";
   } finally {
-    friendNetworkBusyAction = "";
+    finishFriendNetworkAction(request);
   }
+  if (!request.isCurrent()) return;
+  if (isCurrentSurface()) render();
   await refreshFriendNetwork({ preserveNotice: true });
 }
 
@@ -15306,11 +15519,71 @@ function requestOfflineFriendRemoval(participantId, trigger) {
   );
 }
 
+function resetObsoleteFriendNetworkAction(context) {
+  if (friendNetworkActionRequest && friendNetworkActionRequest.scope !== context.scope) {
+    friendNetworkActionRequest = null;
+    friendNetworkBusyAction = "";
+  }
+}
+
+function beginFriendNetworkAction(key) {
+  const context = captureFriendAccountContext();
+  if (!context.ownerUserId || !context.isCurrent()) return null;
+  resetObsoleteFriendNetworkAction(context);
+  if (friendNetworkBusyAction) return null;
+  friendNetworkActionRequest = context;
+  friendNetworkBusyAction = key;
+  // Reads that began before this action must not reapply a pre-action roster.
+  friendNetworkRefreshRevision += 1;
+  return context;
+}
+
+function finishFriendNetworkAction(request) {
+  if (friendNetworkActionRequest !== request) return;
+  friendNetworkActionRequest = null;
+  friendNetworkBusyAction = "";
+  friendNetworkRefreshRevision += 1;
+}
+
+async function loadFriendActionConfig(request) {
+  const config = await loadRuntimeConfig();
+  if (!request.isCurrent()) return null;
+  if (!request.acceptsConfig(config)) {
+    throw Object.assign(new Error("Sign in is required"), { code: "AUTH_REQUIRED" });
+  }
+  runtimeConfig = config;
+  return config;
+}
+
+function captureFriendAccountContext() {
+  const ownerUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const participantId = state.currentParticipantId;
+  const generation = versionedReadCacheSessionGeneration();
+  const isCurrent = () => participantId === state.currentParticipantId &&
+    (!ownerUserId || participantId === `account-${ownerUserId}`) &&
+    ownerUserId === String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() &&
+    generation === versionedReadCacheSessionGeneration();
+  return {
+    ownerUserId,
+    scope: JSON.stringify([participantId, ownerUserId, generation]),
+    isCurrent,
+    acceptsConfig: config => isCurrent() &&
+      String(config?.storage?.account?.userId ?? "").trim() === ownerUserId
+  };
+}
+
 async function refreshFriendNetwork({ preserveNotice = false } = {}) {
-  const previousNotice = notice;
+  const context = captureFriendAccountContext();
+  if (!context.isCurrent()) return;
+  const revision = ++friendNetworkRefreshRevision;
+  const isCurrent = () => context.isCurrent() && revision === friendNetworkRefreshRevision;
+  // This background read never owns the notice. In particular, preserveNotice
+  // must not restore text captured before a newer save or explicit dismissal.
   const previousRenderKey = friendNetworkRenderKey();
   try {
-    runtimeConfig = await loadRuntimeConfig();
+    const config = await loadRuntimeConfig();
+    if (!isCurrent() || !context.acceptsConfig(config)) return;
+    runtimeConfig = config;
     if (!friendNetworkAvailable(runtimeConfig)) {
       friendNetwork = emptyFriendNetwork("signed-out");
       if (
@@ -15325,6 +15598,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     let nextNetwork = await loadFriendNetwork(runtimeConfig, globalThis.fetch, {
       preferCachedProfiles: true
     });
+    if (!isCurrent() || nextNetwork.userId !== context.ownerUserId) return;
     const ownNetworkProfile = nextNetwork.profiles.find(
       (profile) => profile.user_id === nextNetwork.userId
     );
@@ -15408,6 +15682,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
     if (profileNeedsSync) {
       try {
         const syncedProfile = await syncFriendProfile(runtimeConfig, localProfile);
+        if (!isCurrent()) return;
         if (syncedProfile?.user_id) {
           nextNetwork = {
             ...nextNetwork,
@@ -15420,6 +15695,7 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
           };
         }
       } catch {
+        if (!isCurrent()) return;
         console.warn("[friends] Profile refresh skipped");
       }
     }
@@ -15435,11 +15711,13 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
       try {
         await saveSharedState(state, { suppressRevertNotice: true });
       } catch {
+        if (!isCurrent()) return;
         console.warn("[friends] Local friend cache save deferred");
       }
     }
-    if (preserveNotice) notice = previousNotice || notice;
+    if (!isCurrent()) return;
   } catch (error) {
+    if (!isCurrent()) return;
     console.warn("[friends] Online friend load failed");
     emitOperationDeferred("friend_network", { screen: "groups", error });
     friendNetwork = friendNetwork.status === "ready"
@@ -15449,7 +15727,6 @@ async function refreshFriendNetwork({ preserveNotice = false } = {}) {
           staleAt: friendNetwork.staleAt || new Date().toISOString()
         }
       : emptyFriendNetwork("error");
-    if (preserveNotice) notice = previousNotice || notice;
   }
 
   const visibleFriendDataChanged = previousRenderKey !== friendNetworkRenderKey();
@@ -15507,13 +15784,15 @@ function friendNetworkRenderKey() {
 }
 
 async function hydrateOwnPublicAvatarBeforeFirstRender() {
-  if (!localProfile || !friendNetworkAvailable(runtimeConfig)) return;
+  const context = captureFriendAccountContext();
+  if (!localProfile || !friendNetworkAvailable(runtimeConfig) ||
+      !context.acceptsConfig(runtimeConfig)) return;
 
   try {
     const ownNetworkProfile = await loadOwnFriendProfile(runtimeConfig, {
       timeoutMs: OWN_PROFILE_STARTUP_WAIT_MS
     });
-    if (!ownNetworkProfile) return;
+    if (!context.isCurrent() || ownNetworkProfile?.user_id !== context.ownerUserId) return;
 
     const avatarResolution = resolveProfileAvatar(
       {
@@ -15540,6 +15819,13 @@ async function hydrateOwnPublicAvatarBeforeFirstRender() {
 }
 
 function requestVisibleFriendNetworkSync() {
+  const context = captureFriendAccountContext();
+  if (!context.isCurrent()) return Promise.resolve();
+  resetObsoleteFriendNetworkAction(context);
+  if (friendNetworkPollScope !== context.scope) {
+    friendNetworkPollScope = context.scope;
+    friendNetworkPollRequest = null;
+  }
   const screenUsesFriends = [
     "groups",
     "friend-add",
@@ -15561,11 +15847,12 @@ function requestVisibleFriendNetworkSync() {
     return Promise.resolve();
   }
   if (friendNetworkPollRequest) return friendNetworkPollRequest;
-  friendNetworkPollRequest = refreshFriendNetwork({ preserveNotice: true })
+  const request = refreshFriendNetwork({ preserveNotice: true })
     .catch(() => {})
     .finally(() => {
-      friendNetworkPollRequest = null;
+      if (friendNetworkPollRequest === request) friendNetworkPollRequest = null;
     });
+  friendNetworkPollRequest = request;
   return friendNetworkPollRequest;
 }
 
@@ -16981,6 +17268,7 @@ function createActionFocusDescriptor(element) {
 
   return {
     element,
+    returnContext: dialogReturnContext(),
     action: element.dataset.action ?? "",
     choiceSelectAction: element.dataset.choiceSelectAction ?? "",
     eventId: element.dataset.eventId ?? "",
@@ -16992,17 +17280,20 @@ function createActionFocusDescriptor(element) {
 
 function restoreActionFocus(returnTarget, attempt = 0) {
   if (!returnTarget) return;
-  if (returnTarget.element?.isConnected) {
-    returnTarget.element.focus({ preventScroll: true });
-    if (document.activeElement === returnTarget.element || attempt >= 8) return;
-    requestAnimationFrame(() => restoreActionFocus(returnTarget, attempt + 1));
-    return;
-  }
+  const target = findActionReturnTarget(returnTarget);
+  if (!canRestoreActionFocus(returnTarget, target)) return;
+  target?.focus({ preventScroll: true });
+  if (document.activeElement === target || attempt >= 8) return;
+  requestAnimationFrame(() => restoreActionFocus(returnTarget, attempt + 1));
+}
 
+function findActionReturnTarget(returnTarget) {
+  if (returnTarget.element?.isConnected) return returnTarget.element;
+  if (!returnTarget.action && !returnTarget.choiceSelectAction) return null;
   const focusCandidates = returnTarget.choiceSelectAction
     ? app.querySelectorAll("[data-choice-select-action]")
     : app.querySelectorAll("[data-action]");
-  const replacement = [...focusCandidates].find((element) =>
+  return [...focusCandidates].find((element) =>
     (returnTarget.choiceSelectAction
       ? element.dataset.choiceSelectAction === returnTarget.choiceSelectAction
       : element.dataset.action === returnTarget.action) &&
@@ -17011,10 +17302,38 @@ function restoreActionFocus(returnTarget, attempt = 0) {
     (!returnTarget.groupId || element.dataset.groupId === returnTarget.groupId) &&
     (!returnTarget.participantId || element.dataset.participantId === returnTarget.participantId)
   );
+}
 
-  replacement?.focus({ preventScroll: true });
-  if (document.activeElement === replacement || attempt >= 8) return;
-  requestAnimationFrame(() => restoreActionFocus(returnTarget, attempt + 1));
+function dialogReturnContext() {
+  return JSON.stringify([state.currentParticipantId, screen]);
+}
+
+function activeReturnFocusModal() {
+  return [...document.querySelectorAll(':is([role="dialog"], [role="alertdialog"])[aria-modal="true"]')]
+    .filter(dialog => !dialog.closest('[hidden], [inert], [aria-hidden="true"]') && dialog.getClientRects().length)
+    .at(-1) ?? null;
+}
+
+function canRestoreActionFocus(returnTarget, target) {
+  if (returnTarget.returnContext && returnTarget.returnContext !== dialogReturnContext()) return false;
+  const focused = document.activeElement;
+  // Delayed close/retry callbacks are fallbacks, not a new user instruction.
+  if (focused?.isConnected && focused !== target && focused !== document.body &&
+    focused !== document.documentElement && focused !== app &&
+    !focused.matches('[role="dialog"], [role="alertdialog"]')) return false;
+  const modal = activeReturnFocusModal();
+  if (modal && !modal.contains(target)) return false;
+  return !target?.disabled && !target?.closest('[inert], [hidden], [aria-hidden="true"]');
+}
+
+function scheduleDialogReturnScroll(scrollY) {
+  const context = dialogReturnContext();
+  const initialScrollY = window.scrollY;
+  requestAnimationFrame(() => {
+    if (context !== dialogReturnContext() || window.scrollY !== initialScrollY ||
+      document.body.classList.contains("app-dialog-open") || activeReturnFocusModal()) return;
+    window.scrollTo(0, scrollY);
+  });
 }
 
 function archiveGroupInState(groupId) {
@@ -18662,15 +18981,19 @@ async function restoreStateBackup(restoredState) {
 }
 
 async function saveProfileFromDraft() {
+  const ownerScope = profileSaveOwnerScope();
+  const originScreen = screen;
+  const nameDraft = profileNameDraft;
+  const usernameDraft = profileUsernameDraft;
+  let observedUsernameProfile = null;
+  const isCurrentDraft = () => ownerScope === profileSaveOwnerScope() &&
+    screen === originScreen && profileNameDraft === nameDraft &&
+    profileUsernameDraft === usernameDraft;
   const displayName = normalizeProfileName(profileNameDraft);
   if (!isFullProfileName(displayName)) {
     profileError = "צריך להזין שם פרטי ושם משפחה כדי להמשיך.";
     render();
-    window.requestAnimationFrame(() => {
-      document
-        .querySelector('[data-action="profile-name"]')
-        ?.focus({ preventScroll: true });
-    });
+    focusProfileIdentityInput('[data-action="profile-name"]');
     return;
   }
 
@@ -18681,35 +19004,39 @@ async function saveProfileFromDraft() {
     if (!username) {
       profileUsernameError = usernameValidationMessage(profileUsernameDraft);
       render();
-      window.requestAnimationFrame(() => {
-        document
-          .querySelector('[data-action="profile-username"]')
-          ?.focus({ preventScroll: true });
-      });
+      focusProfileIdentityInput('[data-action="profile-username"]');
       return;
     }
 
     if (username && username !== currentUsername) {
       try {
-        runtimeConfig = await loadRuntimeConfig();
+        const config = await loadRuntimeConfig();
+        if (!isCurrentDraft()) return;
+        runtimeConfig = config;
         await setFriendUsername(runtimeConfig, username);
+        if (!isCurrentDraft()) return;
+        // The username RPC advances the public profile version using server
+        // time. Observe it before stamping this fresh name/avatar edit, even
+        // when the device clock is behind. Do not rebase an already queued edit.
+        observedUsernameProfile = await loadOwnFriendProfile(config);
+        if (!isCurrentDraft()) return;
+        if (!observedUsernameProfile || observedUsernameProfile.user_id !== config.storage.account.userId) {
+          throw new Error("Profile sync is unavailable");
+        }
         profileUsernameDraft = username;
         profileUsernameError = "";
       } catch (error) {
+        if (!isCurrentDraft()) return;
         profileUsernameError = profileUsernameErrorMessage(error);
         render();
-        window.requestAnimationFrame(() => {
-          document
-            .querySelector('[data-action="profile-username"]')
-            ?.focus({ preventScroll: true });
-        });
+        focusProfileIdentityInput('[data-action="profile-username"]');
         return;
       }
     }
   }
 
   const invitedEventId = parseInviteEventId(window.location.href);
-  const profileUpdatedAt = new Date().toISOString();
+  const profileUpdatedAt = freshProfileEditTimestamp(observedUsernameProfile);
   const nextState = ensureNamedParticipant(
     state,
     {
@@ -18759,24 +19086,32 @@ async function saveProfileFromDraft() {
   screen = profileSaveDestination;
   notice = `נכנסת בתור ${participantName(state.currentParticipantId)}.`;
 
-  const [profileSaveResult] = await Promise.allSettled([
+  // Start both writes against this account now. Waiting for auth metadata first
+  // adds latency and could accidentally submit a different account's later state.
+  const [profileSaveResult, sharedStateResult] = await Promise.allSettled([
     globalThis.SogrimAccountProfile?.updateProfile?.({
       displayName,
       username: profileUsernameDraft,
       avatarImage: profileAvatarImageDraft
-    }) ?? globalThis.SogrimAccountProfile?.updateDisplayName?.(displayName)
+    }) ?? globalThis.SogrimAccountProfile?.updateDisplayName?.(displayName),
+    saveSharedState(state)
   ]);
-  const sharedProfileSaveResult = await saveSharedState(state);
+  if (ownerScope !== profileSaveOwnerScope()) return;
+  const sharedProfileSaveResult = sharedStateResult.status === "fulfilled"
+    ? sharedStateResult.value
+    : { ok: false };
   const accountProfileSynced =
     profileSaveResult.status === "fulfilled" &&
     profileSaveResult.value !== false;
   const sharedProfileSynced =
-    sharedProfileSaveResult?.ok !== false &&
+    sharedProfileSaveResult !== false && sharedProfileSaveResult?.ok !== false &&
     sharedProfileSaveResult?.pending !== true;
-  if ((!accountProfileSynced || !sharedProfileSynced) && localProfile?.authSubject) {
+  if (screen === profileSaveDestination &&
+      (!accountProfileSynced || !sharedProfileSynced) && localProfile?.authSubject) {
     notice = "הפרופיל נשמר במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
   }
   await refreshFriendNetwork({ preserveNotice: true });
+  if (ownerScope !== profileSaveOwnerScope()) return;
   if (screen === profileSaveDestination) {
     appHistoryDepth = 0;
     lastNavigationViewKey = "";
@@ -19022,12 +19357,10 @@ function applyExpenseTemplate(template) {
     expenseDraft.name = template;
   }
   render();
-  activateDialog(".expense-modal");
-  requestAnimationFrame(() => {
-    [...app.querySelectorAll('[data-action="expense-template"]')]
-      .find((button) => button.dataset.template === template)
-      ?.focus({ preventScroll: true });
-  });
+  reactivateDialogAfterRender(
+    ".expense-modal",
+    `[data-action="expense-template"][data-template="${CSS.escape(template)}"]`
+  );
 }
 
 function nextExpensePayerId(event) {
@@ -20063,6 +20396,14 @@ async function markTransfersPending(transferIds) {
 }
 
 async function sendTransferReminder(eventId, transferId) {
+  // Use the existing account/session context so a new login does not inherit
+  // an old request's busy state, even when signing back into the same account.
+  const request = captureFriendAccountContext();
+  if (!request.isCurrent()) return;
+  if (paymentReminderRequest && !paymentReminderRequest.isCurrent()) {
+    paymentReminderRequest = null;
+    paymentReminderBusyId = "";
+  }
   if (paymentReminderBusyId) return;
 
   const event = getEvent(eventId);
@@ -20079,7 +20420,7 @@ async function sendTransferReminder(eventId, transferId) {
   }
 
   const payerName = participantName(transfer.fromParticipantId, event);
-  const reminderParticipantId = state.currentParticipantId;
+  paymentReminderRequest = request;
   paymentReminderBusyId = transfer.id;
   notice = "";
   render();
@@ -20089,7 +20430,7 @@ async function sendTransferReminder(eventId, transferId) {
       event.id,
       transfer.id
     );
-    if (state.currentParticipantId !== reminderParticipantId) return result;
+    if (!request.isCurrent() || paymentReminderRequest !== request) return result;
 
     if (result?.ok && result?.delivered > 0) {
       notice = `שלחנו תזכורת ל${payerName}.`;
@@ -20101,7 +20442,7 @@ async function sendTransferReminder(eventId, transferId) {
       notice = "לא הצלחנו לשלוח את התזכורת כרגע.";
     }
   } catch (error) {
-    if (state.currentParticipantId !== reminderParticipantId) return;
+    if (!request.isCurrent() || paymentReminderRequest !== request) return;
     if (error?.code === "REMINDER_COOLDOWN") {
       notice = "כבר נשלחה תזכורת לאחרונה. אפשר לנסות שוב מאוחר יותר.";
     } else if (error?.code === "EVENT_NOT_CLOSED") {
@@ -20126,8 +20467,11 @@ async function sendTransferReminder(eventId, transferId) {
       notice = "לא הצלחנו לשלוח את התזכורת כרגע.";
     }
   } finally {
-    paymentReminderBusyId = "";
-    render();
+    if (paymentReminderRequest === request) {
+      paymentReminderRequest = null;
+      paymentReminderBusyId = "";
+      if (request.isCurrent()) render();
+    }
   }
 }
 
@@ -20137,13 +20481,15 @@ async function sendPaymentReminderWithAccountRecovery(eventId, transferId) {
   const expectedUserId = String(
     loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
   ).trim();
+  const expectedGeneration = versionedReadCacheSessionGeneration();
   const assertCurrentAccount = () => {
     if (!expectedUserId) {
       const error = new Error("Account session is unavailable");
       error.code = "AUTH_REQUIRED";
       throw error;
     }
-    if (!pendingMutationOwnerIsActive(expectedUserId) ||
+    if (versionedReadCacheSessionGeneration() !== expectedGeneration ||
+        !pendingMutationOwnerIsActive(expectedUserId) ||
         state.currentParticipantId !== `account-${expectedUserId}`) {
       const error = new Error("Account changed during reminder preparation");
       error.code = "STALE_ACCOUNT";
@@ -20177,8 +20523,10 @@ async function sendPaymentReminderWithAccountRecovery(eventId, transferId) {
 
   try {
     const result = await request();
+    assertCurrentAccount();
     if (result?.reason !== "unavailable" || !expectedUserId) return result;
   } catch (error) {
+    assertCurrentAccount();
     if (!paymentReminderSessionRefreshRequired(error) || !expectedUserId) {
       throw error;
     }
@@ -20220,16 +20568,36 @@ function paymentReminderSessionRefreshRequired(error) {
   );
 }
 
+function requestVisibleNotificationInboxSync() {
+  const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  if (document.visibilityState !== "visible" || navigator.onLine === false || !appBootHydrated ||
+      !ownerId || state.currentParticipantId !== `account-${ownerId}` || profileNameEditing || profileUsernameEditing) {
+    return Promise.resolve();
+  }
+  const sameSession = notificationInboxOwnerId === ownerId &&
+    notificationInboxGeneration === versionedReadCacheSessionGeneration();
+  const elapsed = Date.now() - lastNotificationInboxRefreshAt;
+  if (sameSession && elapsed >= 0 && elapsed < NOTIFICATION_INBOX_SYNC_INTERVAL_MS) return Promise.resolve();
+  // No forced follow-up: repeated ticks share the existing request. This only
+  // reads the bounded inbox; it must not increase full account snapshot traffic.
+  return refreshNotificationInbox().catch(() => {});
+}
+
 async function refreshNotificationInbox({ force = false } = {}) {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
-  if (notificationInboxOwnerId !== ownerId) {
+  const generation = versionedReadCacheSessionGeneration();
+  if (notificationInboxOwnerId !== ownerId || notificationInboxGeneration !== generation) {
     notificationInboxOwnerId = ownerId;
+    notificationInboxGeneration = generation;
+    notificationInboxReadRequests.clear();
     readFriendRequestNotificationIds.clear();
     notificationInbox = { status: "idle", available: false, items: [], error: "" };
     notificationInboxRequest = null;
     notificationInboxRefreshQueued = false;
+    notificationInboxFollowUpRequest = null;
   }
   const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    generation === versionedReadCacheSessionGeneration() &&
     pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
   if (!ownerId || !isCurrent()) {
     publishNotificationNavigationState();
@@ -20237,18 +20605,26 @@ async function refreshNotificationInbox({ force = false } = {}) {
   }
   if (notificationInboxRequest && !force) return notificationInboxRequest;
   if (notificationInboxRequest && force) {
+    if (notificationInboxFollowUpRequest) return notificationInboxFollowUpRequest;
     notificationInboxRefreshQueued = true;
     const pendingRequest = notificationInboxRequest;
-    return pendingRequest.then(() => {
+    const followUpRequest = pendingRequest.then(() => {
       if (!isCurrent()) return notificationInbox;
       if (!notificationInboxRefreshQueued) return notificationInbox;
       notificationInboxRefreshQueued = false;
+      // All callers queued behind the same GET await this promise. Once its
+      // follow-up starts, a later push may queue one more read behind that GET.
+      if (notificationInboxFollowUpRequest === followUpRequest) notificationInboxFollowUpRequest = null;
       return refreshNotificationInbox();
+    }).finally(() => {
+      if (notificationInboxFollowUpRequest === followUpRequest) notificationInboxFollowUpRequest = null;
     });
+    notificationInboxFollowUpRequest = followUpRequest;
+    return followUpRequest;
   }
 
-  const previousInbox = notificationInbox;
   const previousRenderKey = notificationInboxRenderKey();
+  lastNotificationInboxRefreshAt = Date.now();
   const hasUsableInbox = notificationInbox.status === "ready";
   if (!hasUsableInbox) {
     notificationInbox = {
@@ -20256,17 +20632,30 @@ async function refreshNotificationInbox({ force = false } = {}) {
       status: "loading",
       error: ""
     };
-    if (["profile", "notifications"].includes(screen.name)) render();
+    if (notificationInboxCanRender()) render();
   }
 
   const request = (async () => {
     try {
       const result = await withNotificationAccountRecovery(loadNotificationInbox, ownerId);
       if (!isCurrent() || notificationInboxRequest !== request) return;
+      // A GET may have captured unread rows before a concurrent mark-read
+      // completed. Reads are monotonic: preserve the latest local markers,
+      // including pending ones whose own write handler still owns rollback.
+      const localReadTimes = new Map(notificationInbox.items
+        .filter((item) => item.readAt)
+        .map((item) => [item.id, item.readAt]));
+      // A server marker is confirmed even when it equals an optimistic timestamp.
+      // A delayed PATCH failure no longer owns rollback of that item.
+      for (const item of result.items) {
+        if (item.readAt) notificationInboxReadRequests.delete(item.id);
+      }
       notificationInbox = {
         status: "ready",
         available: result.available,
-        items: result.items,
+        items: result.items.map((item) => !item.readAt && localReadTimes.has(item.id)
+          ? { ...item, readAt: localReadTimes.get(item.id) }
+          : item),
         error: ""
       };
     } catch (error) {
@@ -20275,20 +20664,22 @@ async function refreshNotificationInbox({ force = false } = {}) {
         screen: "notifications",
         error
       });
-      notificationInbox = hasUsableInbox
-        ? previousInbox
-        : {
-            ...notificationInbox,
-            status: "error",
-            error: "load-failed"
-          };
+      // Keep the current inbox, including read updates/rollbacks made during
+      // this request. Restoring the captured snapshot would undo those actions.
+      if (!hasUsableInbox) {
+        notificationInbox = {
+          ...notificationInbox,
+          status: "error",
+          error: "load-failed"
+        };
+      }
     } finally {
       // An old account's completion must not release a newer account's request.
       if (notificationInboxRequest === request) {
         notificationInboxRequest = null;
         if (isCurrent()) {
           publishNotificationNavigationState();
-          if (["profile", "notifications"].includes(screen.name) &&
+          if (notificationInboxCanRender() &&
               previousRenderKey !== notificationInboxRenderKey()) render();
         }
       }
@@ -20296,6 +20687,13 @@ async function refreshNotificationInbox({ force = false } = {}) {
   })();
   notificationInboxRequest = request;
   return notificationInboxRequest;
+}
+
+function notificationInboxCanRender() {
+  // Editing can begin after a background request starts. Update the badge, but
+  // leave the active profile input and its selection/focus untouched.
+  return screen.name === "notifications" ||
+    (screen.name === "profile" && !profileNameEditing && !profileUsernameEditing);
 }
 
 function notificationInboxRenderKey() {
@@ -20309,6 +20707,7 @@ function notificationUnreadCount() {
 function visibleNotificationInboxItems() {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
   const accountInbox = ownerId && notificationInboxOwnerId === ownerId &&
+    notificationInboxGeneration === versionedReadCacheSessionGeneration() &&
     state.currentParticipantId === `account-${ownerId}` ? notificationInbox.items : [];
   const friendRequests = friendRelationships("pending", "incoming").map((friendship) => {
     const profile = friendProfileForRelationship(friendship);
@@ -20342,7 +20741,9 @@ function publishNotificationNavigationState() {
 
 async function markAllInboxItemsRead() {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const generation = versionedReadCacheSessionGeneration();
   const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    notificationInboxGeneration === generation && generation === versionedReadCacheSessionGeneration() &&
     pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
   if (!isCurrent()) return;
   friendRelationships("pending", "incoming").forEach((friendship) => {
@@ -20358,6 +20759,8 @@ async function markAllInboxItemsRead() {
   }
 
   const readAt = new Date().toISOString();
+  const readRequest = Symbol("mark-all-read");
+  unreadIds.forEach(id => notificationInboxReadRequests.set(id, readRequest));
   notificationInbox = {
     ...notificationInbox,
     items: notificationInbox.items.map((item) =>
@@ -20372,24 +20775,34 @@ async function markAllInboxItemsRead() {
     if (!saved) throw new Error("mark-all-failed");
   } catch (error) {
     if (!isCurrent()) return;
+    const failedIds = new Set(unreadIds.filter(id => notificationInboxReadRequests.get(id) === readRequest));
+    if (!notificationInbox.items.some(item => failedIds.has(item.id))) return;
     notificationInbox = {
       ...notificationInbox,
-      items: notificationInbox.items.map(item => unreadIds.includes(item.id) && item.readAt === readAt
+      items: notificationInbox.items.map(item => failedIds.has(item.id) && item.readAt === readAt
         ? { ...item, readAt: "" } : item)
     };
     notice = saveFailureMessage({ error }, "סימון התראות האירוע לא נשמר.");
     publishNotificationNavigationState();
     render();
+  } finally {
+    unreadIds.forEach(id => {
+      if (notificationInboxReadRequests.get(id) === readRequest) notificationInboxReadRequests.delete(id);
+    });
   }
 }
 
 async function markInboxItemRead(notificationId) {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const generation = versionedReadCacheSessionGeneration();
   const isCurrent = () => notificationInboxOwnerId === ownerId &&
+    notificationInboxGeneration === generation && generation === versionedReadCacheSessionGeneration() &&
     pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
   const item = notificationInbox.items.find(candidate => candidate.id === notificationId);
   if (!item || item.readAt || !isCurrent()) return false;
   const readAt = new Date().toISOString();
+  const readRequest = Symbol("mark-read");
+  notificationInboxReadRequests.set(notificationId, readRequest);
   notificationInbox = {
     ...notificationInbox,
     items: notificationInbox.items.map((candidate) =>
@@ -20400,14 +20813,19 @@ async function markInboxItemRead(notificationId) {
   try {
     const saved = await withNotificationAccountRecovery(config => markNotificationRead(config, notificationId), ownerId);
     if (!saved) throw new Error("mark-read-failed");
-    return true;
+    return isCurrent();
   } catch {
     if (!isCurrent()) return false;
+    if (notificationInboxReadRequests.get(notificationId) !== readRequest) {
+      return Boolean(notificationInbox.items.find(candidate => candidate.id === notificationId)?.readAt);
+    }
     notificationInbox = { ...notificationInbox, items: notificationInbox.items.map(candidate =>
       candidate.id === notificationId && candidate.readAt === readAt ? { ...candidate, readAt: "" } : candidate) };
     publishNotificationNavigationState();
     if (screen.name === "notifications") render();
     return false;
+  } finally {
+    if (notificationInboxReadRequests.get(notificationId) === readRequest) notificationInboxReadRequests.delete(notificationId);
   }
 }
 
@@ -21391,9 +21809,11 @@ async function publishEventInvitation(
 async function withNotificationAccountRecovery(request, expectedUserId = String(
   loadStoredAccountSession(window.localStorage)?.user?.id ?? ""
 ).trim()) {
+  const generation = versionedReadCacheSessionGeneration();
   const assertCurrent = () => {
     if (!expectedUserId) throw Object.assign(new Error("Account session is unavailable"), { code: "AUTH_REQUIRED" });
-    if (!pendingMutationOwnerIsActive(expectedUserId) || state.currentParticipantId !== `account-${expectedUserId}`) {
+    if (generation !== versionedReadCacheSessionGeneration() ||
+        !pendingMutationOwnerIsActive(expectedUserId) || state.currentParticipantId !== `account-${expectedUserId}`) {
       throw Object.assign(new Error("Account changed during notification operation"), { code: "STALE_ACCOUNT" });
     }
   };
@@ -22119,9 +22539,11 @@ function publishEventActivityAfterSave(
   activityId
 ) {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const generation = versionedReadCacheSessionGeneration();
   completedSaveResult(saveRequest)
     .then(async (result) => {
-      if (!pendingMutationOwnerIsActive(ownerId) || state.currentParticipantId !== `account-${ownerId}`) return;
+      if (generation !== versionedReadCacheSessionGeneration() ||
+          !pendingMutationOwnerIsActive(ownerId) || state.currentParticipantId !== `account-${ownerId}`) return;
       if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
         return;
       }
@@ -22142,11 +22564,14 @@ function completedSaveResult(saveRequest) {
 
 function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0) {
   if (!selector) return;
+  const renderedDialog = app.querySelector(selector);
   activateDialog(selector);
   requestAnimationFrame(() => {
     const dialog = app.querySelector(selector);
-    if (!dialog) return;
-    const focusTarget = focusSelector ? app.querySelector(focusSelector) : null;
+    if (!dialog || dialog !== renderedDialog) return;
+    // Validation and async rerenders must not undo a newer field selection.
+    if (document.activeElement !== dialog && dialog.contains(document.activeElement)) return;
+    const focusTarget = focusSelector ? dialog.querySelector(focusSelector) : null;
     focusTarget?.closest("details")?.setAttribute("open", "");
     dialog.scrollTop = Math.max(0, scrollTop);
     focusTarget?.focus({ preventScroll: true });
@@ -22171,8 +22596,13 @@ function activateDialog(selector, focusSelector = "") {
   immediateFocusTarget?.focus({ preventScroll: true });
   requestAnimationFrame(() => {
     const dialog = app.querySelector(selector);
-    if (!dialog) return;
+    // A later render may already own a different modal at the same selector.
+    if (!dialog || dialog !== immediateDialog) return;
     setDialogBackgroundInert(dialog);
+    // Opening focus is a fallback, not permission to override a field the user
+    // focused before this frame ran. WebKit can otherwise send the next typed
+    // text to the dialog container instead of the note/expense input.
+    if (document.activeElement !== dialog && dialog.contains(document.activeElement)) return;
     dialog.scrollTop = 0;
     const focusTarget = focusSelector ? dialog.querySelector(focusSelector) : dialog;
     focusTarget?.focus({ preventScroll: true });
@@ -22183,12 +22613,7 @@ function rememberDialogReturnFocus(element) {
   if (!(element instanceof HTMLElement)) return;
   if (element === document.body || element === document.documentElement || element === app) return;
 
-  dialogReturnFocus = {
-    element,
-    action: element.dataset.action ?? "",
-    eventId: element.dataset.eventId ?? "",
-    expenseId: element.dataset.expenseId ?? ""
-  }
+  dialogReturnFocus = createActionFocusDescriptor(element);
 }
 
 function deactivateDialog({ deferFocus = false } = {}) {
@@ -22199,36 +22624,22 @@ function deactivateDialog({ deferFocus = false } = {}) {
   pendingDialogReturnFocus = dialogReturnFocus;
   pendingDialogReturnScrollY = returnScrollY;
   dialogReturnFocus = null;
-  requestAnimationFrame(() => window.scrollTo(0, returnScrollY));
+  scheduleDialogReturnScroll(returnScrollY);
   if (!deferFocus) window.setTimeout(restorePendingDialogReturnFocus, 120);
 }
 
 function restorePendingDialogReturnFocus() {
   const returnTarget = pendingDialogReturnFocus;
-  const activeModalDialog =
-    document.body.classList.contains("app-dialog-open") &&
-    app.querySelector(':is([role="dialog"], [role="alertdialog"])[aria-modal="true"]');
-  if (!returnTarget || activeModalDialog) return;
+  pendingDialogReturnFocus = null;
+  pendingDialogReturnScrollY = 0;
+  if (!returnTarget || activeReturnFocusModal()) return;
 
-  if (returnTarget.element?.isConnected) {
-    pendingDialogReturnFocus = null;
-    pendingDialogReturnScrollY = 0;
-    returnTarget.element.focus({ preventScroll: true });
-    return;
-  }
-
-  const replacement = [...app.querySelectorAll("[data-action]")].find((element) =>
-    element.dataset.action === returnTarget.action &&
-    (!returnTarget.eventId || element.dataset.eventId === returnTarget.eventId) &&
-    (!returnTarget.expenseId || element.dataset.expenseId === returnTarget.expenseId)
-  );
+  const replacement = findActionReturnTarget(returnTarget);
   const fallback = app.querySelector(
     '[data-action="show-expense-form"], [data-action="open-event-settings"]'
   );
   const focusTarget = replacement ?? fallback;
-  pendingDialogReturnFocus = null;
-  pendingDialogReturnScrollY = 0;
-  focusTarget?.focus({ preventScroll: true });
+  if (focusTarget) restoreActionFocus({ ...returnTarget, element: focusTarget }, 8);
 }
 
 function setDialogBackgroundInert(dialog) {
@@ -23031,6 +23442,26 @@ function renderScopedLocalFallback(error) {
 }
 
 function requestResumeSync({ force = false, includeSecondary = true } = {}) {
+  const requestParticipantId = state.currentParticipantId;
+  const requestAccountId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  if (requestAccountId && requestParticipantId !== `account-${requestAccountId}`) return Promise.resolve();
+  const requestSessionGeneration = versionedReadCacheSessionGeneration();
+  const requestScope = JSON.stringify([requestParticipantId, requestAccountId, requestSessionGeneration]);
+  const isCurrentAccount = () =>
+    requestParticipantId === state.currentParticipantId &&
+    requestAccountId === String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() &&
+    requestSessionGeneration === versionedReadCacheSessionGeneration();
+  if (resumeSyncScope !== requestScope) {
+    // A previous account's slow request must not block the current account.
+    // Its callbacks retain their own ownership guard and cannot release these
+    // new request/follow-up slots when they eventually finish.
+    resumeSyncScope = requestScope;
+    resumeSyncRequest = null;
+    resumeSyncFollowUpRequest = null;
+    resumeSyncFollowUpPending = false;
+    resumeSyncFollowUpIncludeSecondary = false;
+    lastResumeSyncAt = 0;
+  }
   if (resumeSyncRequest) {
     return force
       ? queueForcedResumeSync({ includeSecondary })
@@ -23042,8 +23473,9 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
 
   lastResumeSyncAt = Date.now();
   const saveRevisionAtRequest = sharedStateSaveRevision();
-  resumeSyncRequest = loadSharedState()
+  const request = loadSharedState()
     .then((sharedState) => {
+      if (!isCurrentAccount()) return;
       if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
         // A local save may complete while this remote read is in flight. The
         // remote payload can still contain newer changes from another phone,
@@ -23066,13 +23498,14 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
       state = nextState;
       render();
     })
-    .then(() => includeSecondary
+    .then(() => isCurrentAccount() && includeSecondary
       ? Promise.all([
           refreshFriendNetwork(),
           refreshNotificationInbox({ force: true })
         ])
       : undefined)
     .catch((error) => {
+      if (!isCurrentAccount()) return;
       // Foreground refresh is intentionally non-blocking, but a swallowed
       // failure left us blind to devices that repeatedly stayed stale. The
       // metrics transport deduplicates this signal, so normal offline use does
@@ -23080,10 +23513,11 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
       emitOperationDeferred("state_load", { error });
     })
     .finally(() => {
-      resumeSyncRequest = null;
+      if (resumeSyncRequest === request) resumeSyncRequest = null;
     });
 
-  return resumeSyncRequest;
+  resumeSyncRequest = request;
+  return request;
 }
 
 function requestResumeSyncAfterPaint(options, onSynced = null) {
@@ -23102,9 +23536,13 @@ function queueForcedResumeSync({ includeSecondary = false } = {}) {
   if (resumeSyncFollowUpRequest) return resumeSyncFollowUpRequest;
 
   const activeRequest = resumeSyncRequest ?? Promise.resolve();
-  resumeSyncFollowUpRequest = Promise.resolve(activeRequest)
+  const requestScope = resumeSyncScope;
+  const requestSessionGeneration = versionedReadCacheSessionGeneration();
+  const followUpRequest = Promise.resolve(activeRequest)
     .catch(() => {})
     .then(() => {
+      if (requestScope !== resumeSyncScope ||
+          requestSessionGeneration !== versionedReadCacheSessionGeneration()) return;
       const shouldIncludeSecondary = resumeSyncFollowUpIncludeSecondary;
       resumeSyncFollowUpPending = false;
       resumeSyncFollowUpIncludeSecondary = false;
@@ -23114,7 +23552,14 @@ function queueForcedResumeSync({ includeSecondary = false } = {}) {
       });
     })
     .finally(() => {
+      if (resumeSyncFollowUpRequest !== followUpRequest) return;
       resumeSyncFollowUpRequest = null;
+      if (requestScope !== resumeSyncScope ||
+          requestSessionGeneration !== versionedReadCacheSessionGeneration()) {
+        resumeSyncFollowUpPending = false;
+        resumeSyncFollowUpIncludeSecondary = false;
+        return;
+      }
       if (resumeSyncFollowUpPending) {
         void queueForcedResumeSync({
           includeSecondary: resumeSyncFollowUpIncludeSecondary
@@ -23122,7 +23567,8 @@ function queueForcedResumeSync({ includeSecondary = false } = {}) {
       }
     });
 
-  return resumeSyncFollowUpRequest;
+  resumeSyncFollowUpRequest = followUpRequest;
+  return followUpRequest;
 }
 
 function requestVisibleEventSync() {
@@ -23158,11 +23604,22 @@ function requestVisibleEventSync() {
   // Do not make the open event wait behind a slower account/profile refresh.
   // The canonical event snapshot is independent and can be merged safely even
   // while that broader request is still running.
-  if (visibleEventSyncRequest) return visibleEventSyncRequest;
+  const requestParticipantId = state.currentParticipantId;
+  const requestAccountId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  if (requestAccountId && requestParticipantId !== `account-${requestAccountId}`) return Promise.resolve();
+  const requestSessionGeneration = versionedReadCacheSessionGeneration();
+  const requestScope = JSON.stringify([requestParticipantId, requestAccountId, requestSessionGeneration]);
+  const isCurrentAccount = () =>
+    requestParticipantId === state.currentParticipantId &&
+    requestAccountId === String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() &&
+    requestSessionGeneration === versionedReadCacheSessionGeneration();
+  if (visibleEventSyncRequest && visibleEventSyncScope === requestScope) return visibleEventSyncRequest;
 
   const saveRevisionAtRequest = sharedStateSaveRevision();
-  visibleEventSyncRequest = loadRuntimeConfig()
+  const request = loadRuntimeConfig()
     .then((config) => {
+      const configuredAccountId = String(config?.storage?.account?.userId ?? "").trim();
+      if (!isCurrentAccount() || (configuredAccountId && configuredAccountId !== requestAccountId)) return null;
       runtimeConfig = config;
       return readSharedEventStateIfChanged(
         config,
@@ -23173,6 +23630,7 @@ function requestVisibleEventSync() {
       );
     })
     .then((sharedEventRead) => {
+      if (!isCurrentAccount()) return;
       const localSaveCompletedDuringRead =
         saveRevisionAtRequest !== sharedStateSaveRevision();
       if (!sharedEventRead?.changed) return;
@@ -23193,14 +23651,21 @@ function requestVisibleEventSync() {
       }
     })
     .catch((error) => {
+      if (!isCurrentAccount()) return;
       emitOperationDeferred("state_load", { error });
       return requestResumeSync({ includeSecondary: false });
     })
     .finally(() => {
+      // A new account starts its own request immediately. The previous
+      // account's completion must not release that newer in-flight slot.
+      if (visibleEventSyncRequest !== request) return;
       visibleEventSyncRequest = null;
+      visibleEventSyncScope = "";
     });
 
-  return visibleEventSyncRequest;
+  visibleEventSyncScope = requestScope;
+  visibleEventSyncRequest = request;
+  return request;
 }
 
 bootstrapApp();

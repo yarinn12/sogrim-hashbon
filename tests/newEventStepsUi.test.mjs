@@ -209,18 +209,20 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(createFlow, /const inviteAfterCreate = newEventDraft\.inviteAfterCreate === true/);
   assert.match(
     createFlow,
-    /const saveRequest = persistState\(\{[\s\S]*?awaitCloud: invitedAccountParticipants\.length > 0,[\s\S]*?forceSharedEventIds: invitedAccountParticipants\.length \? \[event\.id\] : \[\]/
+    /const saveRequest = persistState\(\{[\s\S]*?forceSharedEventIds: invitedAccountParticipants\.length \? \[event\.id\] : \[\]/
   );
   assert.match(createFlow, /const submittedDraft = structuredClone\(newEventDraft\)/);
-  assert.match(createFlow, /const stateBeforeCreate = structuredClone\(state\)/);
+  assert.doesNotMatch(createFlow, /awaitCloud:|state = stateBeforeCreate/);
   assert.match(createFlow, /const saveResult = await saveRequest/);
   assert.match(createFlow, /if \(!saveResult\?\.ok && !saveResult\?\.pending\)/);
   assert.match(createFlow, /newEventDraft = submittedDraft/);
   assert.match(
     createFlow,
-    /state = stateBeforeCreate;\s+saveState\(stateBeforeCreate\);\s+newEventDraft = submittedDraft/
+    /events: state\.events\.filter\(item => item\.id !== event\.id\)/
   );
-  assert.match(createFlow, /if \(!inviteAfterCreate \|\| saveResult\?\.pending\) return/);
+  assert.match(createFlow, /void finishCreatedEventPublication\(saveResult/);
+  assert.match(createFlow, /const result = await completedSaveResult\(saveResult\)/);
+  assert.match(createFlow, /result\.mode !== "cloud"/);
   assert.match(
     createFlow,
     /const invitedAccountParticipants = event\.participantIds[\s\S]*?accountUserIdFromParticipantId/
@@ -239,11 +241,11 @@ test("new event participants offer friends, offline names, and an invite link or
   );
   assert.match(
     createFlow,
-    /if \(!saveResult\?\.pending\) \{[\s\S]*?await publishEventInvitation\(event\.id, participant,[\s\S]*?showMessage: false/
+    /await publishEventInvitation\(eventId, participant, \{ showMessage: false \}\)/
   );
   assert.ok(
-    createFlow.indexOf("await publishEventInvitation") <
-      createFlow.indexOf("if (!inviteAfterCreate || saveResult?.pending) return")
+    createFlow.indexOf("const result = await completedSaveResult(saveResult)") <
+      createFlow.indexOf("await publishEventInvitation")
   );
   assert.ok(
     createFlow.indexOf("const saveResult = await saveRequest") <
@@ -356,7 +358,7 @@ test("the event creator stays selected while other participant removals ask for 
   );
   assert.match(
     app,
-    /async function createEventFromDraft\(\) \{\s*if \(createEventBusy\) return;\s*ensureCurrentParticipantInNewEventDraft\(\)/
+    /async function createEventFromDraft\(\) \{[\s\S]*?if \(createEventBusy\) return;[\s\S]*?ensureCurrentParticipantInNewEventDraft\(\)/
   );
 });
 

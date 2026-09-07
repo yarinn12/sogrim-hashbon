@@ -23,6 +23,9 @@ const CSS = `
     --app-radius-card: 10px;
     --app-radius-panel: 12px;
     --app-radius-hero: 12px;
+    --app-form-gap: 16px;
+    --app-form-inset: 20px;
+    --app-touch-target: 44px;
     --app-shadow-card: 0 1px 3px rgba(15, 23, 42, 0.05);
     --app-shadow-panel: 0 1px 3px rgba(15, 23, 42, 0.06);
     --app-shadow-hero:
@@ -356,6 +359,62 @@ const CSS = `
 
   html.design-coherence-v1 :is(.event-modal-header, .expense-modal-header) .muted {
     color: var(--app-faint) !important;
+  }
+
+  /* The note editor keeps the established form rhythm. Its fullscreen shell
+     removes panel padding, so the body owns its inset rather than relying on
+     the old panel. Field margins must not double the editor's grid gap. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-note-modal > .event-modal-header {
+    margin-block-end: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-note-modal > .event-modal-header .eyebrow {
+    color: var(--app-brand) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-note-modal > .event-modal-body {
+    padding: var(--app-form-gap) var(--app-form-inset)
+      max(var(--app-form-gap), env(safe-area-inset-bottom)) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-editor {
+    min-width: 0 !important;
+    gap: var(--app-form-gap) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-editor > .field {
+    min-width: 0 !important;
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-pin-toggle {
+    border-radius: var(--app-radius-control) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-row {
+    grid-template-columns: minmax(0, 1fr) auto var(--app-touch-target) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-chevron {
+    width: var(--app-touch-target) !important;
+    min-width: var(--app-touch-target) !important;
+    color: var(--app-muted) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-note-copy > small {
+    color: var(--app-muted) !important;
+  }
+
+  /* Keep the creation actions in reading order after the participant choices.
+     A sticky footer here overlaps the choices on short and enlarged-text screens.
+     Participant editor subviews retain their existing save-and-return footer. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .new-event-participants-screen:not(.new-event-participant-subscreen)
+    > .new-event-participant-footer {
+    position: static !important;
   }
 
   html.design-coherence-v1 .app-choice-option {
@@ -3431,6 +3490,13 @@ const CSS = `
     border-radius: var(--app-radius-card) !important;
     background: var(--app-surface) !important;
     box-shadow: var(--app-shadow-card) !important;
+  }
+
+  html.design-coherence-v1 body #app
+    .event-settings-modal .event-cover-settings {
+    border-color: var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    background: var(--app-surface) !important;
   }
 
   html.design-coherence-v1 body #app

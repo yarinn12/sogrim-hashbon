@@ -60,6 +60,7 @@ export default defineConfig({
     timeout: 30_000,
     env: {
       ...process.env,
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1",
       APP_LOCAL_STATE_FILE: ".qa-playwright/app-state.json",
       APP_PUBLIC_URL: " ",
       SUPABASE_URL: " ",
