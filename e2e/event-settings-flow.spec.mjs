@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import {
   expectStrictSmoothness,
   finishStrictSmoothnessProbe,
@@ -144,7 +145,9 @@ test("event cover upload previews the exact wide crop before saving", async ({ p
   await page
     .locator('.event-cover-settings [data-action="event-cover-image"]')
     .first()
-    .setInputFiles("icon-192.png");
+    // Windows WebKit can fail to decode a path-backed File even on a blank
+    // page. Supply the same bytes in memory; exercise the real picker/cropper.
+    .setInputFiles({ name: "icon-192.png", mimeType: "image/png", buffer: readFileSync("icon-192.png") });
 
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-rectangle");

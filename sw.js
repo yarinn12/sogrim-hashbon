@@ -93,6 +93,7 @@ const CACHE_FILES = [
   "/src/domain/eventTypes.mjs",
   "/src/domain/expenseDraft.mjs",
   "/src/domain/expenseDraftMemory.mjs",
+  "/src/domain/noteDraftMemory.mjs",
   "/src/domain/friendContacts.mjs",
   "/src/domain/groupIdentity.mjs",
   "/src/domain/quickExpenses.mjs",

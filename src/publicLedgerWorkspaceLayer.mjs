@@ -19568,6 +19568,15 @@ const CSS = `
     max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - env(safe-area-inset-bottom)) !important;
   }
 
+  @media (min-width: 600px) and (max-height: 450px) {
+    /* Keep the complete category row inside the short landscape scrollport.
+       Multiple rows could leave the first button centers behind the header. */
+    html.ledger-workspace-v1 .expense-step-modal .expense-template-grid {
+      width: 100% !important;
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+    }
+  }
+
   html.ledger-workspace-v1 .expense-route-backdrop .event-route-primary-nav {
     display: grid !important;
     z-index: 230 !important;

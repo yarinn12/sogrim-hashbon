@@ -71,6 +71,7 @@ import {
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
+import { noteDraftMemoryKey, parseNoteDraftMemory, serializeNoteDraftMemory } from "./domain/noteDraftMemory.mjs";
 import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteSnapshot,
@@ -862,6 +863,7 @@ function handleExternalNotice(event) {
 
 function render() {
   rememberExpenseDraft();
+  rememberEventNoteDraft();
   syncNewEventDraftFromRenderedDetails();
   ensureRenderableScreen();
   // Expense dialogs belong to their event route only. Preserve the draft above,
@@ -8221,6 +8223,7 @@ function renderExpenseForm(event) {
 
       ${flowStep === "review" ? renderExpenseFlowReview(event, participants) : ""}
       ${expenseDraft.error ? `<p class="error" id="expense-form-error" role="alert" tabindex="-1">${escapeHtml(expenseDraft.error)}</p>` : ""}
+      ${expenseDraft.recoveryConflict && flowStep === "review" ? `<button class="secondary-button" type="button" data-action="cancel-expense">סגור בלי לשמור את הטיוטה</button>` : ""}
       </div>
       </fieldset>
 
@@ -12758,7 +12761,8 @@ async function handleClick(event) {
       bodyDraft: "",
       pinned: false,
       error: "",
-      saving: false
+      saving: false,
+      ...restoreEventNoteDraft(selectedEvent)
     });
     requestResumeSyncAfterPaint({ force: true, includeSecondary: false });
     return;
@@ -12777,7 +12781,8 @@ async function handleClick(event) {
       bodyDraft: note.body ?? "",
       pinned: note.pinned === true,
       error: "",
-      saving: false
+      saving: false,
+      ...restoreEventNoteDraft(selectedEvent, noteId)
     });
     requestResumeSyncAfterPaint({ force: true, includeSecondary: false });
     return;
@@ -13330,6 +13335,7 @@ async function handleClick(event) {
   }
 
   if (action === "close-event-dialog") {
+    clearRememberedEventNoteDraft(eventDialog);
     const historyBaseDepth = Number.isFinite(eventDialog?.historyBaseDepth)
       ? eventDialog.historyBaseDepth
       : Math.max(0, appHistoryDepth - 1);
@@ -13433,7 +13439,8 @@ async function handleClick(event) {
 
   if (action === "cancel-expense") {
     const rewindSteps = expenseDialogRewindSteps();
-    rememberExpenseDraft();
+    if (expenseDraft?.id) clearRememberedExpenseDraft(expenseDraft.eventId, expenseDraft.id);
+    else rememberExpenseDraft();
     expenseDraft = null;
     closeDialogWithHistory(rewindSteps);
   }
@@ -14195,6 +14202,7 @@ function goBackInApp() {
 
   if (eventDialog || expenseDraft) {
     if (expenseDraft) rememberExpenseDraft();
+    clearRememberedEventNoteDraft(eventDialog);
     eventDialog = null;
     const rewindSteps = expenseDialogRewindSteps();
     expenseDraft = null;
@@ -14415,6 +14423,7 @@ function handleInput(event) {
     if (eventDialog?.kind !== "note-editor") return;
     eventDialog.titleDraft = target.value.slice(0, MAX_EVENT_NOTE_TITLE_LENGTH);
     eventDialog.error = "";
+    rememberEventNoteDraft();
     scheduleBrowserHistoryReplacement();
     return;
   }
@@ -14422,6 +14431,7 @@ function handleInput(event) {
     if (eventDialog?.kind !== "note-editor") return;
     eventDialog.bodyDraft = target.value.slice(0, MAX_EVENT_NOTE_BODY_LENGTH);
     eventDialog.error = "";
+    rememberEventNoteDraft();
     scheduleBrowserHistoryReplacement();
     return;
   }
@@ -16697,6 +16707,7 @@ async function saveEventNoteFromDialog(eventId) {
 
   if (nextState === state && !eventDialog.pendingNoteSave) {
     if (eventDialog.noteId) {
+      clearRememberedEventNoteDraft(eventDialog);
       eventDialog = null;
       closeDialogWithHistory();
       return { ok: true, unchanged: true };
@@ -16811,6 +16822,7 @@ async function saveEventNoteFromDialog(eventId) {
   }
 
   if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
+    clearRememberedEventNoteDraft(activeDialog);
     eventDialog = null;
     closeDialogWithHistory();
   }
@@ -16906,6 +16918,7 @@ async function deleteEventNote(eventId, noteId) {
       };
     }
   } else if (eventDialog === activeDialog) {
+    clearRememberedEventNoteDraft(activeDialog);
     eventDialog = null;
   }
   render();
@@ -19358,6 +19371,7 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
   if (existingExpense) {
     expenseDraft = {
       id: existingExpense.id,
+      baseExpenseUpdatedAt: existingExpense.updatedAt ?? "",
       eventId,
       mode: "single",
       flowStep: "review",
@@ -19381,6 +19395,8 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
       quickInlineGuestName: "",
       error: ""
     };
+    const rememberedEdit = restoreExpenseDraft(event, existingExpense.id);
+    if (rememberedEdit) expenseDraft = { ...rememberedEdit, historyBaseDepth: appHistoryDepth };
     render();
     activateExpenseEntryDialog();
     return;
@@ -19500,8 +19516,50 @@ function renderRestoredDraftNote() {
   return `<p class="draft-restored-note" role="status">הטיוטה האחרונה שלך שוחזרה אוטומטית</p>`;
 }
 
+function rememberEventNoteDraft() {
+  if (eventDialog?.kind !== "note-editor") return;
+  try {
+    if (!canCurrentParticipantEdit(getEvent(eventDialog.eventId))) return;
+    const key = noteDraftMemoryKey(state.currentParticipantId, eventDialog.eventId, eventDialog.noteId);
+    const previousKey = eventDialog.draftMemoryNoteId === undefined ? key
+      : noteDraftMemoryKey(state.currentParticipantId, eventDialog.eventId, eventDialog.draftMemoryNoteId);
+    const serialized = serializeNoteDraftMemory(eventDialog);
+    if (serialized) window.localStorage.setItem(key, serialized);
+    else window.localStorage.removeItem(key);
+    if (previousKey !== key) window.localStorage.removeItem(previousKey);
+    eventDialog.draftMemoryNoteId = eventDialog.noteId || "";
+  } catch {
+    // Browser storage can be unavailable; keep the active editor usable.
+  }
+}
+
+function restoreEventNoteDraft(event, noteId = "") {
+  try {
+    if (!canCurrentParticipantEdit(event)) return null;
+    if (noteId && !event.notes?.some(note => note.id === noteId)) return null;
+    const key = noteDraftMemoryKey(state.currentParticipantId, event.id, noteId);
+    const raw = window.localStorage.getItem(key);
+    const draft = parseNoteDraftMemory(raw, { eventId: event.id, noteId });
+    if (raw && !draft) window.localStorage.removeItem(key);
+    return draft ? { ...draft, draftMemoryNoteId: noteId } : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearRememberedEventNoteDraft(dialog) {
+  if (dialog?.kind !== "note-editor") return;
+  try {
+    for (const noteId of new Set([dialog.noteId || "", dialog.draftMemoryNoteId ?? dialog.noteId ?? ""])) {
+      window.localStorage.removeItem(noteDraftMemoryKey(state.currentParticipantId, dialog.eventId, noteId));
+    }
+  } catch {
+    // A storage error must not turn a successful save into a reported failure.
+  }
+}
+
 function rememberExpenseDraft() {
-  const key = expenseDraftMemoryKey(state?.currentParticipantId, expenseDraft?.eventId);
+  const key = expenseDraftMemoryKey(state?.currentParticipantId, expenseDraft?.eventId, expenseDraft?.id);
   const serializedDraft = serializeExpenseDraftMemory(expenseDraft);
   if (!key) return;
 
@@ -19511,24 +19569,35 @@ function rememberExpenseDraft() {
       return;
     }
     window.localStorage.setItem(key, serializedDraft);
+    if (expenseDraft.draftMemoryExpenseId !== undefined) {
+      const previousKey = expenseDraftMemoryKey(state.currentParticipantId, expenseDraft.eventId, expenseDraft.draftMemoryExpenseId);
+      if (previousKey !== key) window.localStorage.removeItem(previousKey);
+    }
+    expenseDraft.draftMemoryExpenseId = expenseDraft.id || "";
   } catch {
     // Draft recovery is a convenience; storage failures must never block expense entry.
   }
 }
 
-function restoreExpenseDraft(event) {
-  const key = expenseDraftMemoryKey(state.currentParticipantId, event?.id);
+function restoreExpenseDraft(event, expenseId = "") {
+  const key = expenseDraftMemoryKey(state.currentParticipantId, event?.id, expenseId);
   if (!key) return null;
 
   try {
     const rawDraft = window.localStorage.getItem(key);
     const restoredDraft = parseExpenseDraftMemory(rawDraft, {
       eventId: event.id,
+      expenseId,
       participantIds: activeEventParticipants(event).map(
         (participant) => participant.id
       ),
       fallbackParticipantId: state.currentParticipantId
     });
+    if (restoredDraft && expenseId) {
+      // An old editor must not silently replace a newer financial revision.
+      // Compare again at save time, including changes arriving after recovery.
+      restoredDraft.recoveredEdit = true;
+    }
     if (!restoredDraft && rawDraft) window.localStorage.removeItem(key);
     return restoredDraft;
   } catch {
@@ -19536,8 +19605,8 @@ function restoreExpenseDraft(event) {
   }
 }
 
-function clearRememberedExpenseDraft(eventId) {
-  const key = expenseDraftMemoryKey(state.currentParticipantId, eventId);
+function clearRememberedExpenseDraft(eventId, expenseId = "") {
+  const key = expenseDraftMemoryKey(state.currentParticipantId, eventId, expenseId);
   if (!key) return;
   try {
     window.localStorage.removeItem(key);
@@ -19701,6 +19770,15 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     return;
   }
 
+  if (expenseDraft.recoveredEdit && expenseDraft.baseExpenseUpdatedAt !==
+    (event.expenses?.find(expense => expense.id === expenseDraft.id)?.updatedAt ?? "")) {
+    expenseDraft.recoveryConflict = true;
+    expenseDraft.error = "ההוצאה השתנתה מאז שהטיוטה נוצרה. הטיוטה נשארה כאן ולא דרסנו את העדכון. אפשר להעתיק את הטקסט, לסגור ולפתוח שוב את ההוצאה.";
+    render();
+    reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+    return { ok: false, conflict: true };
+  }
+
   if (
     expenseDraft.id &&
     !event.expenses.some((expense) => expense.id === expenseDraft.id)
@@ -19782,6 +19860,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
         expenseDraft.id = expense.id;
         expenseDraft.createdByParticipantId = expense.createdByParticipantId;
       }
+      if (!saveResult?.reverted) expenseDraft.baseExpenseUpdatedAt = expense.updatedAt;
       expenseDraft.error = saveFailureMessage(saveResult, "ההוצאה לא נשמרה.", { draft: true });
       render();
       reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
@@ -19803,6 +19882,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       );
     }
     if (!isCurrent()) return saveResult;
+    clearRememberedExpenseDraft(eventId, activeDraft.id);
     if (wasNewExpense) clearRememberedExpenseDraft(eventId);
 
     if (continueAdding && wasNewExpense) {

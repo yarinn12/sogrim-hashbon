@@ -61,7 +61,8 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 30_000,
     env: {
-      ...process.env,
+      // Keep inherited credentials out of serialized Playwright reports.
+      // The child process inherits its environment; list only safe QA overrides here.
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1",
       APP_LOCAL_STATE_FILE: ".qa-playwright/app-state.json",
       APP_PUBLIC_URL: " ",

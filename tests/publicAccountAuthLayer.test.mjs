@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readSource as readFile } from "./helpers/readSource.mjs";
 
 test("account auth layer loads before the app and visual layers", async () => {
   const index = await readFile("index.html", "utf8");

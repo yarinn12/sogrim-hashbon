@@ -13,6 +13,19 @@ const participants = [
   { id: "maor", displayName: "מאור", kind: "guest" }
 ];
 
+for (const [label, transfers] of [["balanced", []], ["fully paid", [{
+  id: "paid", fromParticipantId: "avi", toParticipantId: "dani", amount: 5000, status: "paid"
+}]]]) {
+  test(`formatEventReport explains that a ${label} event has no open transfers`, () => {
+    const report = formatEventReport({eventName: "ארוחה", participants, currency: "ILS", transfers,
+      expenses: [{id: "meal", name: "ארוחה", total: 10000, payers: [{participantId: "dani", amount: 10000}],
+        sharedByParticipantIds: ["dani", "avi"]}]});
+    assert.ok(report.includes("- ארוחה:"));
+    assert.ok(report.endsWith("התחשבנות פתוחה:\nהכול סגור. אין העברות פתוחות."));
+    assert.ok(!report.includes("צריך להעביר"));
+  });
+}
+
 test("formatSettlementSummary lists only pending transfers", () => {
   const summary = formatSettlementSummary({
     eventName: "יציאה חמישי",

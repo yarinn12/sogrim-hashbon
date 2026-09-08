@@ -713,7 +713,9 @@ test("a gallery profile image persists after reload without a false sync warning
   await picker.locator(":scope > summary").click();
   await picker
     .locator('[data-action="profile-avatar-image"][data-image-source="gallery"]')
-    .setInputFiles("icon-192.png");
+    // Keep the native File/blob decoding path without Windows WebKit's
+    // intermittent path-backed fixture failure (also reproduced without the app).
+    .setInputFiles({ name: "icon-192.png", mimeType: "image/png", buffer: readFileSync("icon-192.png") });
   const cropDialog = page.locator(".image-crop-dialog");
   const cropStage = cropDialog.locator(".image-crop-stage.is-circle");
   await expect(cropDialog).toBeVisible();

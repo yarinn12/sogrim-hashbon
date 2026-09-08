@@ -239,6 +239,11 @@ export function validateSharedStateFinancials(state, label = "state") {
   ).entries()) {
     if (!event || typeof event !== "object" || Array.isArray(event)) continue;
     const eventLabel = `${label}.events[${eventIndex}]`;
+    for (const key of ["expenses", "transfers"]) {
+      if (event[key] !== undefined && !Array.isArray(event[key])) {
+        errors.push(`${eventLabel}.${key} must be an array.`);
+      }
+    }
     const eventParticipantIdList = Array.isArray(event.participantIds)
       ? event.participantIds
       : [];

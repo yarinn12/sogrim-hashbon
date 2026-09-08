@@ -2,6 +2,7 @@ import {
   validateSharedStateFinancials,
   validateSharedStateIdentifiers
 } from "./sharedStateMerge.mjs";
+import { validateSharedStateNotes } from "./eventNotes.mjs";
 
 export const BACKUP_VERSION = 2;
 
@@ -117,7 +118,8 @@ function validateStateShape(state) {
 
   const errors = [
     ...validateSharedStateIdentifiers(state),
-    ...validateSharedStateFinancials(state)
+    ...validateSharedStateFinancials(state),
+    ...validateSharedStateNotes(state)
   ];
   if (errors.length) {
     throw new Error(`Backup file contains invalid data: ${errors.join(" ")}`);

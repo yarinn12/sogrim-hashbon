@@ -1,13 +1,13 @@
 export const EXPENSE_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const EXPENSE_DRAFT_STORAGE_PREFIX = "settle-friends-expense-draft";
 
-export function expenseDraftMemoryKey(participantId, eventId) {
+export function expenseDraftMemoryKey(participantId, eventId, expenseId = "") {
   if (!participantId || !eventId) return "";
-  return `${EXPENSE_DRAFT_STORAGE_PREFIX}:${participantId}:${eventId}`;
+  return `${EXPENSE_DRAFT_STORAGE_PREFIX}:${participantId}:${eventId}${expenseId ? `:edit:${expenseId}` : ""}`;
 }
 
 export function serializeExpenseDraftMemory(draft, savedAt = Date.now()) {
-  if (!draft?.eventId || draft.id || !hasMeaningfulExpenseDraft(draft)) return "";
+  if (!draft?.eventId || !hasMeaningfulExpenseDraft(draft)) return "";
 
   return JSON.stringify({
     version: 1,
@@ -24,6 +24,7 @@ export function parseExpenseDraftMemory(
   rawValue,
   {
     eventId,
+    expenseId = "",
     participantIds = [],
     fallbackParticipantId = participantIds[0],
     now = Date.now(),
@@ -41,7 +42,7 @@ export function parseExpenseDraftMemory(
       now - payload.savedAt > maxAgeMs ||
       now < payload.savedAt ||
       !draft ||
-      draft.id ||
+      (draft.id || "") !== expenseId ||
       draft.eventId !== eventId ||
       !hasMeaningfulExpenseDraft(draft)
     ) {

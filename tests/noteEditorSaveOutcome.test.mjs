@@ -57,6 +57,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
     cloneNavigationValue: structuredClone,
     makeId: () => `new-note-${++ids}`,
     render: () => {}, reactivateDialogAfterRender: () => {},
+    clearRememberedEventNoteDraft: () => {},
     renderReplacingBrowserHistory: () => { historyReplacements += 1; },
     openImportantActionDialog: action => confirmations.push(action),
     closeDialogWithHistory: () => { closed += 1; },

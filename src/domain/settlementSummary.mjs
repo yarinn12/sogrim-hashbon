@@ -74,7 +74,7 @@ export function formatEventReport({
   const transfersHeadingIndex = settlementLines.indexOf(SETTLEMENT_HEADING);
   const pendingSummary = transfersHeadingIndex >= 0
     ? settlementLines.slice(transfersHeadingIndex + 1).filter((line, index) => index > 0 || line)
-    : settlementLines.slice(3);
+    : settlementLines.slice(2);
 
   return [
     `דוח אירוע - ${eventName}`,

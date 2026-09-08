@@ -51,7 +51,7 @@ test("expense draft memory restores a valid recent draft", () => {
   assert.equal(restored.quickInlineGuestName, "");
 });
 
-test("expense draft memory ignores expired, edited, or mismatched drafts", () => {
+test("expense draft memory ignores expired or mismatched drafts", () => {
   const now = Date.now();
   assert.equal(
     parseExpenseDraftMemory(
@@ -68,7 +68,26 @@ test("expense draft memory ignores expired, edited, or mismatched drafts", () =>
     }),
     null
   );
-  assert.equal(serializeExpenseDraftMemory({ ...draft, id: "expense-1" }), "");
+  assert.equal(parseExpenseDraftMemory(serializeExpenseDraftMemory({ ...draft, id: "expense-1" }), {
+    eventId: "event-1", participantIds: ["dani"]
+  }), null, "an edit must never be restored as a new expense");
+});
+
+test("edited expense drafts survive reload and stay separate from new and other edits", () => {
+  const edited = { ...draft, id: "expense-1", name: "Unsaved edit", total: "140" };
+  const raw = serializeExpenseDraftMemory(edited);
+  const options = { eventId: "event-1", expenseId: "expense-1", participantIds: ["dani"] };
+  assert.equal(parseExpenseDraftMemory(raw, options)?.name, "Unsaved edit");
+  assert.equal(parseExpenseDraftMemory(raw, options)?.id, "expense-1");
+  assert.equal(parseExpenseDraftMemory(raw, { ...options, expenseId: "expense-2" }), null);
+  assert.equal(parseExpenseDraftMemory(serializeExpenseDraftMemory(draft), options), null);
+  const keys = [
+    expenseDraftMemoryKey("dani", "event-1"),
+    expenseDraftMemoryKey("dani", "event-1", "expense-1"),
+    expenseDraftMemoryKey("dani", "event-1", "expense-2"),
+    expenseDraftMemoryKey("avi", "event-1", "expense-1")
+  ];
+  assert.equal(new Set(keys).size, keys.length);
 });
 
 test("expense draft memory ignores a dialog that closed before any input", () => {

@@ -166,6 +166,20 @@ test("landscape expense templates keep full hit areas inside the form scroll", a
       await expect(name).toHaveValue(label);
     }
     await page.locator(".expense-flow-body").evaluate(element => { element.scrollTop = element.scrollHeight; });
+    // Reproduce the clipped category row seen in the audit: with the short
+    // landscape form scrolled to its end, every category must retain its full
+    // hit area below the progress header, including the first row.
+    for (const template of await templates.all()) {
+      const hitArea = await template.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const viewport = element.closest(".expense-flow-body").getBoundingClientRect();
+        return { top: box.top - viewport.top, bottom: viewport.bottom - box.bottom,
+          hit: element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
+      });
+      expect(hitArea.top).toBeGreaterThanOrEqual(-1);
+      expect(hitArea.bottom).toBeGreaterThanOrEqual(-1);
+      expect(hitArea.hit).toBe(true);
+    }
     await page.screenshot({ path: testInfo.outputPath(`expense-categories-${viewport.width}.png`) });
     await expect(page.locator('[data-action="expense-step-next"]')).toBeInViewport();
   }
