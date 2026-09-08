@@ -43,6 +43,9 @@ check(
 check("Export compliance is declared", /ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/.test(info));
 check("Privacy manifest declares no tracking", /NSPrivacyTracking<\/key>\s*<false\/>/.test(privacy));
 check("Privacy manifest covers feedback diagnostics", /NSPrivacyCollectedDataTypeOtherDiagnosticData/.test(privacy));
+for (const type of ["PhotosorVideos", "Contacts", "PurchaseHistory", "CustomerSupport"]) {
+  check(`Privacy manifest covers persisted ${type}`, privacy.includes(`<string>NSPrivacyCollectedDataType${type}</string>`));
+}
 check("iOS excludes Android-only advertising", !/CapacitorCommunityAdmob/.test(packageSwift));
 check("iOS excludes unsupported push delivery", !/CapacitorPushNotifications/.test(packageSwift) && !/com\.apple\.Push/.test(project));
 check(
