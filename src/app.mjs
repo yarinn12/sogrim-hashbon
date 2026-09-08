@@ -5319,13 +5319,13 @@ function closeNewEventInlinePicker(target) {
 }
 
 function restoreNewEventInlinePickerFocus(action) {
-  requestAnimationFrame(() => {
-    app
-      .querySelector(`[data-action="${CSS.escape(action)}"]`)
-      ?.closest("details")
-      ?.querySelector("summary")
-      ?.focus({ preventScroll: true });
-  });
+  // render() has already committed the picker. Restore its keyboard target now;
+  // a delayed frame can steal focus after the user starts typing in another field.
+  app
+    .querySelector(`[data-action="${CSS.escape(action)}"]`)
+    ?.closest("details")
+    ?.querySelector("summary")
+    ?.focus({ preventScroll: true });
 }
 
 function renderNewEventSettlementOption({ action, value, selected, title, description }) {

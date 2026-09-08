@@ -245,6 +245,44 @@ test("a new user completes the first useful loop without help", async ({ page })
   await expect(participantAddRoute).toBeVisible();
 });
 
+test("a delayed currency frame cannot steal the next input or lose the saved event name", async ({ page }) => {
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  const nameInput = page.locator('[data-action="new-event-name"]');
+  await expect(nameInput).toBeFocused();
+  const picker = page.locator(".new-event-inline-picker").filter({ hasText: "מטבע האירוע" });
+  await picker.locator("summary").click();
+
+  // Hold application animation callbacks at the choice boundary, reproducing
+  // a delayed frame on a busy WebKit device without weakening the focus check.
+  await page.evaluate(() => {
+    const originalFrame = window.requestAnimationFrame.bind(window);
+    const frames = [];
+    window.requestAnimationFrame = callback => { frames.push(callback); return frames.length; };
+    window.__releaseNewEventChoiceFrames = () => {
+      window.requestAnimationFrame = originalFrame;
+      for (const callback of frames.splice(0)) callback(performance.now());
+      delete window.__releaseNewEventChoiceFrames;
+    };
+  });
+  await picker.locator('[data-action="new-event-currency-choice"][data-choice-value="ILS"]').click();
+  await nameInput.focus();
+  await page.evaluate(() => window.__releaseNewEventChoiceFrames());
+  await expect(nameInput).toBeFocused();
+  await nameInput.pressSequentially("ארוחת ערב");
+  await expect(nameInput).toHaveValue("ארוחת ערב");
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await page.locator('[data-action="open-new-event-participants"]').click();
+  await page.locator('[data-action="create-event"]').click();
+  const eventScreen = page.locator('[data-screen-kind="event"][data-event-id]');
+  await expect(eventScreen.locator("h1")).toHaveText("ארוחת ערב");
+  const eventId = await eventScreen.getAttribute("data-event-id");
+  await expect.poll(() => page.evaluate(id => {
+    const persisted = JSON.parse(localStorage.getItem("settle-friends-state") || "null");
+    return persisted?.events?.find(event => event.id === id)?.name;
+  }, eventId)).toBe("ארוחת ערב");
+});
+
 test("currency picker stays stable across repeated WebKit-style reopen cycles", async ({ page }) => {
   await page.locator('[data-action="new-event"]').first().click();
   await page
