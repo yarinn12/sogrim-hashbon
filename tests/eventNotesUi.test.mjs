@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
+// Git checkouts on Windows may use CRLF; inspect the same source on every OS.
+const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const layer = readFileSync(
   new URL("../src/publicLedgerWorkspaceLayer.mjs", import.meta.url),
   "utf8"
