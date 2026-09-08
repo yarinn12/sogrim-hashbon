@@ -131,6 +131,20 @@ test("partial progress clears healthy event warnings while preserving the failed
   assert.equal(h.target.hidden, true);
 });
 
+test("a pending personal receipt stays disclosed on home without labelling confirmed groups unsynced", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "unavailable", pending: true, pendingEventIds: [], failureKind: "server" } });
+  h.expireGrace();
+  assert.equal(h.target.hidden, true, "this group has a canonical acknowledgement");
+  delete h.target.dataset.syncEventId;
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false, "the personal backup has NOT been acknowledged");
+  assert.match(h.target.textContent, /ממתין לסנכרון/);
+  h.context.handleSyncStatus({ detail: { status: "saved", pending: false } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true);
+});
+
 test("another tab completing the outbox clears the indicator without a new save", () => {
   const h = harness({ ok: true });
   h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });

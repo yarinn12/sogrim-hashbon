@@ -150,6 +150,45 @@ test("legacy outbox partial success leaves only the failed event marked pending"
   assert.ok(JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`)).events[1].notes.length);
 }));
 
+for (const receiptStatus of [403, 503]) {
+for (const path of ["save", "flush", "load"]) {
+  test(`a failed personal receipt after confirmed shared writes retains only workspace delivery during ${path} HTTP ${receiptStatus}`, async () => {
+    let personalStatus = receiptStatus;
+    await fixture(async ({ pending, storage, workspaceId, canonical, canonicalWrites, workspaceWrites }) => {
+      const store = await import(`../src/data/localStore.mjs?confirmed-shared-receipt-${path}=${crypto.randomUUID()}`);
+      if (path === "save") await store.saveSharedState(pending, { awaitCloud: true });
+      else {
+        storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+        storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+        await (path === "flush" ? store.flushPendingSharedState() : store.loadSharedState());
+      }
+      // Assert final RPC payloads before checking the visible pending scope.
+      for (const id of ["healthy", "failing"]) {
+        assert.ok(canonical.get(`space-partial-${id}`).events[0].notes.some(n=>n.id===`local-${id}-note`));
+      }
+      const queued = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+      assert.ok(queued, "the unconfirmed personal backup must remain durable");
+      assert.deepEqual(store.pendingSharedSyncStatus(), { pending: true, pendingEventIds: [] },
+        "server-confirmed groups must not be labelled undelivered just because the personal receipt failed");
+      assert.deepEqual(queued.__pendingSync?.selection, { eventIds: [], deletedEventIds: [] });
+      assert.ok(queued.events.find(e=>e.id==="healthy").notes.some(n=>n.id==="remote-healthy-note"));
+      assert.ok(queued.events.find(e=>e.id==="failing").notes.some(n=>n.id==="local-failing-note"));
+      const writesBeforeRestart = canonicalWrites.length;
+      personalStatus = 200;
+      const restarted = await import(`../src/data/localStore.mjs?confirmed-shared-receipt-restart=${crypto.randomUUID()}`);
+      assert.deepEqual(restarted.pendingSharedSyncStatus(), { pending: true, pendingEventIds: [] });
+      assert.equal((await restarted.flushPendingSharedState()).ok, true);
+      assert.equal(canonicalWrites.length, writesBeforeRestart,
+        "a personal receipt retry cannot republish already-confirmed group writes");
+      assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+      for (const id of ["healthy", "failing"]) {
+        assert.ok(workspaceWrites.at(-1).events.find(e=>e.id===id).notes.some(n=>n.id===`local-${id}-note`));
+      }
+    }, { canonicalStatus: () => 200, workspaceStatus: () => personalStatus });
+  });
+}
+}
+
 test("an empty recovery explicitly clears a stale pending indicator", async () => fixture(async () => {
   const statuses = [];
   window.dispatchEvent = event => statuses.push(event.detail);
@@ -157,6 +196,30 @@ test("an empty recovery explicitly clears a stale pending indicator", async () =
   assert.equal((await store.flushPendingSharedState()).empty, true);
   assert.ok(statuses.some(detail => detail?.pending === false), "an empty outbox must acknowledge that no delivery remains");
 }));
+
+test("a new rejected edit cannot discard an older confirmed group's pending personal receipt", async () => {
+  let rejectNewWrite = false, personalStatus = 403;
+  await fixture(async ({ state, storage, workspaceId, canonical, canonicalWrites, workspaceWrites }) => {
+    const store = await import(`../src/data/localStore.mjs?new-edit-after-receipt=${crypto.randomUUID()}`);
+    await store.saveSharedState(addEventNote(state,"healthy",{id:"confirmed-before-receipt",body:"Already shared"}),{awaitCloud:true});
+    const prior = storage.getItem(`settle-friends-pending-sync:${workspaceId}`);
+    assert.deepEqual(store.pendingSharedSyncStatus(),{pending:true,pendingEventIds:[]});
+    rejectNewWrite = true;
+    const rejected = await store.saveSharedState(addEventNote(store.loadState(),"failing",{id:"rejected-new-note",body:"Not accepted"}),{awaitCloud:true});
+    assert.equal(rejected.ok,false);
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`),prior,
+      "a different rejected action cannot discard the earlier personal receipt");
+    assert.ok(canonical.get("space-partial-healthy").events[0].notes.some(n=>n.id==="confirmed-before-receipt"));
+    assert.ok(!canonical.get("space-partial-failing").events[0].notes.some(n=>n.id==="rejected-new-note"));
+    const acknowledgedWrites=canonicalWrites.length;
+    personalStatus=200;
+    assert.equal((await store.flushPendingSharedState()).ok,true);
+    assert.equal(canonicalWrites.length,acknowledgedWrites);
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`),null);
+    assert.ok(workspaceWrites.at(-1).events.find(e=>e.id==="healthy").notes.some(n=>n.id==="confirmed-before-receipt"));
+    assert.ok(!workspaceWrites.at(-1).events.find(e=>e.id==="failing").notes.some(n=>n.id==="rejected-new-note"));
+  },{canonicalStatus:()=>rejectNewWrite?403:200,workspaceStatus:()=>personalStatus});
+});
 
 test("a later rejected save cannot discard an older accepted outbox", async () => fixture(async ({ pending, storage, workspaceId }) => {
   storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));

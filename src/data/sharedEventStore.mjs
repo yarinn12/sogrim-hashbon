@@ -16,6 +16,7 @@ import {
 } from "../domain/cloudSpace.mjs";
 import {
   mergeSharedStates,
+  applyCanonicalEventAccountLinks,
   quarantineRemoteMergeTimestampMaps
 } from "../domain/sharedStateMerge.mjs";
 import {
@@ -342,7 +343,7 @@ async function findAccessibleSharedEvent(
 }
 
 export function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
-  const merged = mergeSharedStates(remoteState, localState);
+  const merged = mergeSharedStates(remoteState, applyCanonicalEventAccountLinks(localState,remoteState));
   const remoteEvent = remoteState?.events?.[0];
   const configuredUserId = String(
     runtimeConfig?.storage?.account?.userId ?? ""
@@ -1027,7 +1028,7 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
     deletedParticipants
   };
   const merged = mergeSharedStates(
-    state,
+    applyCanonicalEventAccountLinks(state,sharedState),
     quarantineRemoteMergeTimestampMaps(eventOnlyState)
   );
   const currentParticipantId = String(state.currentParticipantId ?? "").trim();

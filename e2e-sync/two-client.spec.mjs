@@ -15,6 +15,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
   const browsers = [];
   const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
+  const workspaceFailures = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -126,6 +127,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
         }
         const body = request.postDataJSON();
         if (id && id !== personal[i].id) return reply({message: 'Wrong workspace'}, 403);
+        if (workspaceFailures.has(i)) return reply({message:'Synthetic personal workspace receipt failure'},workspaceFailures.get(i));
         const expected = url.searchParams.get('updated_at')?.replace(/^eq\./, '');
         if (expected && expected !== personal[i].updated_at) return reply([]);
         personal[i].state = structuredClone(body.state); personal[i].updated_at = body.updated_at || stamp();
@@ -151,7 +153,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
     }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,seedPending:withAccountLink&&i===0});
     const page = await context.newPage(); pages.push(page);
-    page.on('pageerror', error => errors.push({client: i, message: error.message}));
+    page.on('pageerror', error => errors.push({client: i, message: error.message, stack:error.stack}));
     if(withAccountLink) page.on('console',message=>{
       if(/account-link|sync\]|save failed/i.test(message.text())) linkLogs.push({client:i,type:message.type(),message:message.text().slice(0,600)});
     });
@@ -171,6 +173,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
     },
     async offline(i, value) { if(value) blocked.add(i); else blocked.delete(i); await contexts[i].setOffline(value); },
     cloudUnavailable(i, value) { if (value) blocked.add(i); else blocked.delete(i); },
+    failWorkspace(i, status) { if (status) workspaceFailures.set(i,status); else workspaceFailures.delete(i); },
     close };
   } catch (error) {
     await close();
@@ -186,11 +189,63 @@ async function newNote(page, title, body) {
 const saveNote = page => page.locator('[data-action="save-event-note"]').click();
 const noteCard = (page, id) => page.locator(`.event-note-open[data-note-id="${id}"]`);
 
+for (const author of [0,1]) {
+  test(`a confirmed note survives a personal receipt failure without a false group warning on ${author?'iPhone':'Android'}`, async ({},testInfo)=>{
+    const f=await fixture(testInfo), a=f.pages[author], b=f.pages[1-author];
+    const title=`פתק שאושר בשרת ${author}`;
+    try {
+      for(const page of f.pages) await page.locator('[data-action="open-event-notes"]').click();
+      f.failWorkspace(author,403);
+      await newNote(a,title,'העותק המשותף נשמר גם כשהעותק האישי מתעכב');
+      await saveNote(a);
+      await expect(b.getByText(title,{exact:true})).toBeVisible({timeout:10000});
+      await expect.poll(()=>a.evaluate(spaceId=>{
+        const pending=JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)||'null');
+        return {pending:!!pending,eventIds:pending?.__pendingSync?.selection?.eventIds};
+      },f.personal[author].id)).toEqual({pending:true,eventIds:[]});
+      await expect(a.locator('[data-inline-sync-status]:visible')).toHaveCount(0);
+      const noteId=f.canonical.state.events[0].notes.find(n=>n.title===title).id;
+      const writesBeforeRestart=f.writes.filter(w=>w.client===author).length;
+      // Restart while the personal receipt is still rejected. The account-level
+      // warning remains truthful, but this confirmed group must stay unmarked.
+      // This scenario restarts a completed failed delivery, not a transport
+      // mid-request. WebKit reports CORS errors for intercepted cross-origin
+      // fetches aborted by reload, even in an isolated page with caught fetches.
+      // Keep strict page-error assertions; settle the current pass first.
+      await a.waitForLoadState('networkidle');
+      await a.reload();
+      await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+      await expect(a.locator('[data-inline-sync-status]:visible')).toHaveCount(1);
+      await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await a.locator('[data-action="open-event-notes"]').click();
+      await expect(noteCard(a,noteId)).toBeVisible();
+      await expect(a.locator('[data-inline-sync-status]:visible')).toHaveCount(0);
+      await a.screenshot({path:testInfo.outputPath('confirmed-group-personal-receipt-pending.png')});
+      f.failWorkspace(author,0);
+      await a.waitForLoadState('networkidle');
+      await a.reload();
+      await expect.poll(()=>a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).toBe(null);
+      expect(f.writes.filter(w=>w.client===author)).toHaveLength(writesBeforeRestart);
+      expect(f.personal[author].state.events.find(e=>e.id===eventId).notes.filter(n=>n.id===noteId)).toHaveLength(1);
+      await expect(noteCard(b,noteId)).toBeVisible();
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
+}
+
 test('an account link reaches the other device while an unrelated event remains pending', async ({},testInfo)=>{
   const f=await fixture(testInfo,{withAccountLink:true}),[a,b]=f.pages;
   const guest='guest-existing-person',target=`account-${ids[1]}`;
   try {
     for(const page of f.pages) await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    // The recipient keeps an old event while writing offline. Reconnect must
+    // retain that work and the link receipt, including after a process restart.
+    await f.offline(1,true);
+    await b.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+    await b.locator('[data-action="open-event-notes"]').click();
+    await newNote(b,'פתק שנכתב לפני האיחוד','הטיוטה הישנה נשמרת אחרי חיבור החשבון');
+    await saveNote(b);
+    await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
     await a.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
     await a.locator('[data-action="open-event-participant-link"]').click();
     await a.locator(`[data-action="link-offline-participant-account"][data-source-participant-id="${guest}"][data-target-participant-id="${target}"]`).click();
@@ -198,6 +253,7 @@ test('an account link reaches the other device while an unrelated event remains 
     await expect(confirmation).toBeVisible();
     const started=performance.now();await confirmation.locator('[data-action="confirm-important-action"]').click();
     await expect.poll(()=>f.canonical.state.events[0].participantIds.includes(guest),{timeout:12000}).toBe(false);
+    await f.offline(1,false);
     await expect.poll(()=>b.evaluate(({spaceId,eventId,guest,target})=>{
       const event=JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(e=>e.id===eventId);
       return {guestActive:event?.participantIds.includes(guest),targetActive:event?.participantIds.includes(target),
@@ -208,6 +264,13 @@ test('an account link reaches the other device while an unrelated event remains 
     const pending=await a.evaluate(spaceId=>JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)||'null'),f.personal[0].id);
     expect(pending?.events.find(e=>e.id==='unrelated-pending-event')?.notes.some(n=>n.id==='keep-pending-note')).toBe(true);
     expect(f.rejectedSiblingWrites).toBeGreaterThan(0);
+    expect(f.canonical.state.events[0].participantAccountLinks).toEqual(expect.arrayContaining([expect.objectContaining({sourceParticipantId:guest,targetParticipantId:target})]));
+    await expect.poll(()=>f.canonical.state.events[0].notes.some(note=>note.title==='פתק שנכתב לפני האיחוד')).toBe(true);
+    await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
+    await b.waitForLoadState('networkidle');await b.reload();
+    await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
     expect(f.canonical.state.events[0].participantAccountLinks).toEqual(expect.arrayContaining([expect.objectContaining({sourceParticipantId:guest,targetParticipantId:target})]));
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
     for(let i=0;i<2;i++)await f.pages[i].screenshot({path:testInfo.outputPath(`link-final-${i}.png`)});

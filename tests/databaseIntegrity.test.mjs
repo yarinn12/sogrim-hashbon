@@ -518,6 +518,62 @@ test("SQL full account link retry moves guest debt and reaches the target person
 });
 
 // The invite path has its own transactional boundary: membership, canonical
+test("SQL stale client retry after a committed account link keeps the receipt and new work", async () => {
+  const guest="guest-link-stale-client";
+  await withSnapshot(ids.admin,async (previous,save)=>{
+    const local={...structuredClone(previous),currentParticipantId:ids.admin};
+    local.events[0].sharedSpaceId=snapshotId;local.events[0].sharedSpaceKey=spaceKey;
+    local.events[0].participantAccountLinks=[];
+    const linked=buildSharedEventState(linkParticipantAccountInEvent(local,"integrity-probe",guest,ids.sender),"integrity-probe");
+    await save(linked);
+    const proof=linked.events[0].participantAccountLinks[0];
+    const at=new Date(Date.now()+1000).toISOString();
+    local.events[0].expenses.push({id:"offline-expense-after-link",name:"Offline taxi",total:200,
+      payers:[{participantId:guest,amount:200}],sharedByParticipantIds:[guest,ids.recipient],
+      updatedAt:at,createdByParticipantId:ids.admin});
+    local.events[0].notes=[{id:"offline-note-after-link",title:"Offline note",body:"Keep this new work",createdAt:at,updatedAt:at,
+      createdByParticipantId:ids.admin,updatedByParticipantId:ids.admin}];
+    let writes=0;
+    const response=value=>({ok:true,status:200,json:async()=>value});
+    const result=await saveSharedEventState({storage:{mode:"supabase",url:"https://stale-link.invalid",table:"app_snapshots",anonKey:"synthetic",
+      account:{userId:ids.admin.slice(8),accessToken:"synthetic-token"}}},local,"integrity-probe",async (url,options={})=>{
+      if(url.includes("/rpc/update_shared_event_snapshot")){
+        const body=JSON.parse(options.body),event=body.p_state.events[0];writes++;
+        assert.deepEqual(event.participantAccountLinks,[proof],"final wire payload must retain the committed receipt");
+        assert.equal(event.participantIds.includes(guest),false);
+        assert.equal(event.expenses.find(e=>e.id==="offline-expense-after-link").payers[0].participantId,ids.sender);
+        if(writes===1)return response({status:"conflict"});
+        return response(await save(body.p_state,body.p_expected_updated_at));
+      }
+      assert.equal(options.method??"GET","GET");
+      return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1",[snapshotId])).rows);
+    });
+    assert.equal(writes,2);
+    const canonical=(await db.query("select state from public.app_snapshots where id=$1",[snapshotId])).rows[0].state;
+    assert.equal(canonical.events[0].expenses.reduce((sum,e)=>sum+e.total,0),400);
+    assert.equal(canonical.events[0].notes[0].body,"Keep this new work");
+    const paid=canonical.events[0].transfers.find(transfer=>transfer.id==="stable-debt-before-link");
+    assert.equal(paid.status,"paid");assert.equal(paid.amount,100);
+    assert.equal(paid.fromParticipantId,ids.admin);assert.equal(paid.toParticipantId,ids.sender);
+    assert.equal(paid.markedPaidByParticipantId,ids.admin);
+    assert.equal(paid.paidAt,"2026-08-29T00:00:00.000Z");
+    const unrelated={...structuredClone(previous.events[0]),id:"unrelated-guest-event"};
+    const hydrated=mergeSharedEventIntoState({...local,events:[...local.events,unrelated]},canonical,{id:snapshotId,key:spaceKey});
+    assert.deepEqual(hydrated.events.find(e=>e.id==="integrity-probe").participantAccountLinks,[proof]);
+    assert.equal(hydrated.events.find(e=>e.id==="integrity-probe").participantIds.includes(guest),false);
+    assert.equal(hydrated.events.find(e=>e.id==="unrelated-guest-event").participantIds.includes(guest),true);
+    assert.deepEqual(result.events[0].participantAccountLinks,[proof]);
+  },previous=>{
+    previous.participants.push({id:guest,kind:"guest",displayName:"Offline person"});
+    previous.events[0].participantIds.push(guest);
+    previous.events[0].expenses=[{id:"existing-guest-expense",name:"Existing taxi",total:200,payers:[{participantId:guest,amount:200}],
+      sharedByParticipantIds:[guest,ids.admin],createdByParticipantId:ids.admin}];
+    previous.events[0].transfers=[{id:"stable-debt-before-link",fromParticipantId:ids.admin,toParticipantId:guest,amount:100,status:"paid",
+      paidAt:"2026-08-29T00:00:00.000Z",markedPaidByParticipantId:ids.admin}];
+    return previous;
+  });
+});
+
 test("SQL committed account links survive stale receipt arrays and reject guest resurrection", async () => {
   const guest = "guest-link-receipt";
   await withSnapshot(ids.admin, async (previous, save) => {

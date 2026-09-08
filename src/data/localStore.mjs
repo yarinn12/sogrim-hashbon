@@ -1635,6 +1635,10 @@ function reconcileCurrentPendingSync(config) {
 }
 
 function partialSharedSyncState(error) {
+  // Canonical group delivery and the personal workspace receipt are separate
+  // acknowledgements. A failed receipt must retain the confirmed merged state
+  // without making successful group writes pending again after restart.
+  if (error?.sharedEventPersisted && error.persistedState) return error.persistedState;
   const partial = error?.partialSharedState;
   return partial?.succeededEventIds?.length ? partial.state : null;
 }
@@ -1657,6 +1661,12 @@ function adoptPartialSharedSyncState(error, {
 
 function remainingPendingSharedSelection(config, error) {
   const selection = pendingSharedStateSelection(config);
+  if (error?.sharedEventPersisted && error.persistedState) {
+    // Callers check scope, generation and exact outbox identity before using
+    // this receipt. Keep the workspace outbox, but retry only its unconfirmed
+    // personal persistence; a newer user edit will add its own group targets.
+    return { eventIds: [], deletedEventIds: [] };
+  }
   const partial = error?.partialSharedState;
   // Only acknowledge the final attempt's confirmed successes. A later retry
   // can fail an event that succeeded earlier; that event must remain queued.
@@ -2294,25 +2304,25 @@ function logSyncFailure(error, outcome) {
   const errors = flattenSyncErrors(error);
   const codes = [...new Set(errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean))];
   const statuses = [...new Set(errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0))];
-  console.error("[sync] State save failed", {
+  console.error("[sync] State save failed", JSON.stringify({
     codes,
     statuses,
     transient: isTransientSyncFailure(error),
     online: globalThis.navigator?.onLine !== false,
     ...outcome
-  });
+  }));
 }
 
 function logQueuedSync(error, outcome) {
   const errors = flattenSyncErrors(error);
   const codes = [...new Set(errors.map((item) => String(item?.code ?? "").trim()).filter(Boolean))];
   const statuses = [...new Set(errors.map((item) => Number(item?.status ?? 0)).filter((status) => status > 0))];
-  console.info("[sync] State save queued for retry", {
+  console.info("[sync] State save queued for retry", JSON.stringify({
     codes,
     statuses,
     online: globalThis.navigator?.onLine !== false,
     ...outcome
-  });
+  }));
 }
 
 function publishSyncStatus(status, details = {}) {

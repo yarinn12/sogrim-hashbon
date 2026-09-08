@@ -447,6 +447,9 @@ function mergeEvent(remoteEvent, localEvent) {
     ...membership,
     ...lifecycle,
     ...settings,
+    ...(Object.hasOwn(remoteEvent,"participantAccountLinks") || Object.hasOwn(localEvent,"participantAccountLinks")
+      ? {participantAccountLinks:mergeAccountLinkReceipts(remoteEvent.participantAccountLinks,localEvent.participantAccountLinks)}
+      : {}),
     ...mergeEventNotes(remoteEvent, localEvent),
     participantAliases: {
       ...cloneValue(objectOrEmpty(remoteEvent.participantAliases)),
@@ -482,6 +485,38 @@ function mergeEvent(remoteEvent, localEvent) {
   }
 
   return mergedEvent;
+}
+
+function mergeAccountLinkReceipts(canonical = [], replica = []) {
+  const committedSources = new Set(canonical.map(link => link?.sourceParticipantId));
+  return cloneValue([...canonical, ...replica.filter(link => !committedSources.has(link?.sourceParticipantId))]);
+}
+
+// Only an authenticated canonical event can authorize identity redirection of
+// offline work. A personal replica's receipt must never grant a new link.
+export function applyCanonicalEventAccountLinks(state, canonicalState) {
+  const canonicalById = new Map((canonicalState?.events ?? []).map(event => [event.id,event]));
+  return {
+    ...state,
+    events:(state?.events ?? []).map(event => {
+      const canonical=canonicalById.get(event.id);
+      const links=(canonical?.participantAccountLinks ?? []).filter(link =>
+        isSafeSharedIdentifier(link?.sourceParticipantId) && !link.sourceParticipantId.startsWith("account-") &&
+        /^account-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(link.targetParticipantId) &&
+        Number.isFinite(Date.parse(link.linkedAt)) &&
+        !(canonical.participantIds ?? []).includes(link.sourceParticipantId));
+      if (!links.length) return event;
+      const redirects=new Map(links.map(link => [link.sourceParticipantId,link.targetParticipantId]));
+      const next=remapEventParticipantReferences(event,redirects,new Set());
+      // Retain the source removal clock; do not advance the target's membership
+      // because an old guest received a newer local edit after the link.
+      next.membershipUpdatedAtByParticipant={...event.membershipUpdatedAtByParticipant};
+      for(const link of links) next.membershipUpdatedAtByParticipant[link.sourceParticipantId]=
+        canonical.membershipUpdatedAtByParticipant?.[link.sourceParticipantId] ?? link.linkedAt;
+      next.participantAccountLinks=mergeAccountLinkReceipts(canonical.participantAccountLinks,event.participantAccountLinks);
+      return next;
+    })
+  };
 }
 
 function mergeEventSettings(remoteEvent, localEvent, membership) {
