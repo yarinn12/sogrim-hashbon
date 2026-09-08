@@ -20,6 +20,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const membershipReadHolds = new Map();
   const accountLinkWriteHolds = new Map();
   const noteReceiptHolds = new Map();
+  const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
@@ -169,6 +170,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        if (body.p_snapshot_id === sharedId && sharedWriteFailures.has(i)) {
+          rejectedSharedWrites.push({client:i,body});
+          return reply({code:'42501',message:'Synthetic shared write denied'},sharedWriteFailures.get(i));
+        }
         const linkHold = accountLinkWriteHolds.get(i);
         if (linkHold && body.p_snapshot_id === sharedId && body.p_state.events[0].participantAccountLinks?.length) {
           linkHold.arrived = true;
@@ -260,7 +265,8 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
-  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests,
+  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
+    failSharedWrites(i,status) {if(status)sharedWriteFailures.set(i,status);else sharedWriteFailures.delete(i);},
     failInvites(i, fail) {if(fail)inviteFailures.add(i);else inviteFailures.delete(i);},
     holdNextInvite(i) {let release;const ready=new Promise(resolve=>{release=resolve;});
       const hold={arrived:false,ready,release};inviteHolds.set(i,hold);return hold;},
@@ -1132,6 +1138,64 @@ for (const author of [0, 1]) {
       await expect(a.locator('[data-action="event-note-body"]')).toHaveValue('');
       expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
     } finally { hold.release(); await f.close(); }
+  });
+ }
+}
+
+for (const author of [0, 1]) {
+ for (const scenario of ['continued typing','peer title','peer body','unchanged rejected']) {
+  test(`an existing note can be edited again after restarting before its receipt on ${author ? 'iPhone' : 'Android'}: ${scenario}`, async ({}, testInfo) => {
+    const f = await fixture(testInfo), a = f.pages[author], b = f.pages[1-author];
+    let hold;
+    try {
+      for (const page of f.pages) await page.locator('[data-action="open-event-notes"]').click();
+      await newNote(a, 'פתק לעריכה חוזרת', 'תוכן מקורי');
+      await saveNote(a);
+      await expect(a.locator('.event-note-modal')).toHaveCount(0);
+      const id = f.canonical.state.events[0].notes[0].id;
+      await noteCard(a,id).click();
+      await a.locator('[data-action="event-note-body"]').fill('עריכה ראשונה');
+      hold = f.holdNextNoteReceipt(author);
+      await saveNote(a);
+      await expect.poll(() => hold.arrived).toBe(true);
+      expect(f.canonical.state.events[0].notes[0].body).toBe('עריכה ראשונה');
+      if (scenario.startsWith('peer')) {
+        await expect(noteCard(b,id)).toContainText('עריכה ראשונה');
+        await noteCard(b,id).click();
+        await b.locator(`[data-action="event-note-${scenario === 'peer title' ? 'title' : 'body'}"]`).fill('שינוי במכשיר השני');
+        await saveNote(b);
+        await expect(b.locator('.event-note-modal')).toHaveCount(0);
+      }
+      await a.reload();
+      hold.release();
+      await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+      await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await a.locator('[data-action="open-event-notes"]').click();
+      await noteCard(a,id).click();
+      await expect(a.locator('[data-action="event-note-body"]')).toHaveValue('עריכה ראשונה');
+      if (scenario === 'unchanged rejected') f.failSharedWrites(author,403);
+      else await a.locator('[data-action="event-note-body"]').fill('המשך עריכה אחרי רענון');
+      await saveNote(a);
+      if (scenario === 'peer body' || scenario === 'unchanged rejected') {
+        await expect(a.locator('#event-note-error')).toContainText(scenario === 'peer body' ? 'אותו שדה' : 'אין לחשבון הרשאה');
+        await expect(a.locator('[data-action="event-note-body"]')).toHaveValue(scenario === 'peer body' ? 'המשך עריכה אחרי רענון' : 'עריכה ראשונה');
+        expect(f.canonical.state.events[0].notes[0].body).toBe(scenario === 'peer body' ? 'שינוי במכשיר השני' : 'עריכה ראשונה');
+        if (scenario === 'unchanged rejected') {
+          expect(f.rejectedSharedWrites.length).toBeGreaterThan(0);
+          f.failSharedWrites(author,null);
+          await saveNote(a);
+          await expect(a.locator('.event-note-modal')).toHaveCount(0);
+        }
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+        return;
+      }
+      await expect(a.locator('.event-note-modal')).toHaveCount(0);
+      expect(f.canonical.state.events[0].notes.map(note => ({id:note.id,body:note.body})))
+        .toEqual([{id,body:'המשך עריכה אחרי רענון'}]);
+      await expect(noteCard(b,id)).toContainText('המשך עריכה אחרי רענון');
+      if (scenario === 'peer title') expect(f.canonical.state.events[0].notes[0].title).toBe('שינוי במכשיר השני');
+      expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+    } finally { hold?.release(); await f.close(); }
   });
  }
 }

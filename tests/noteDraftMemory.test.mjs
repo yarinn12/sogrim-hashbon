@@ -67,3 +67,14 @@ test("recovery rejects malformed or mismatched interrupted create identities", (
     assert.equal(parseNoteDraftMemory(raw, {eventId:draft.eventId, noteId:baseNote.id}), null);
   }
 });
+
+test("recovery rejects malformed interrupted edits instead of adopting an unrelated baseline", () => {
+  const note = {...baseNote,updatedAt:"2026-09-01T00:00:00.000Z"};
+  const valid = {note,beforeNote:note,fields:["body"]};
+  for (const edit of [{}, {...valid,note:{...note,id:"unrelated"}},
+    {...valid,beforeNote:{...note,id:"unrelated"}}, {...valid,note:{...note,updatedAt:"invalid"}},
+    {...valid,note:{...note,body:"x".repeat(5001)}}, {...valid,fields:"body"}]) {
+    const raw = serializeNoteDraftMemory({...draft,noteId:note.id,baseNote:note,interruptedNoteEdit:edit});
+    assert.equal(parseNoteDraftMemory(raw,{eventId:draft.eventId,noteId:note.id}),null);
+  }
+});

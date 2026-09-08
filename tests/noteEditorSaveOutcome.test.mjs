@@ -195,6 +195,78 @@ for (const remoteChange of ["none", "body", "title", "delete", "not committed"])
   });
 }
 
+for (const scenario of ["unchanged retry", "continued typing", "peer title", "peer body", "peer revert", "not committed", "retry rejected"]) {
+  test(`an interrupted existing-note edit remains saveable after restart: ${scenario}`, async () => {
+    let release, requested;
+    const waiting = new Promise(resolve => { release = resolve; });
+    const before = harness({ result: ({saved}) => { requested = saved; return waiting; } });
+    const values = attachDraftStorage(before);
+    before.context.render();
+    const interrupted = before.save();
+    let durable = structuredClone(requested);
+    if (scenario === "peer title" || scenario === "peer body") durable = updateEventNote(durable, "event-editor", "note-editor", {
+      [scenario === "peer title" ? "title" : "body"]: "Peer revision", updatedAt:"2099-01-01T00:00:00.000Z"
+    });
+    if (scenario === "peer revert") durable = updateEventNote(durable, "event-editor", "note-editor", {
+      body:"Original body", updatedAt:"2099-01-01T00:00:00.000Z"
+    });
+    if (scenario === "not committed") durable = initialState();
+    let finalPayload;
+    const after = harness({current:durable, result: ({saved}) => {
+      finalPayload = saved;
+      if (scenario === "retry rejected") return {ok:false};
+      return {ok:true, mode:"cloud", persistedState:saved};
+    }});
+    attachDraftStorage(after, values);
+    after.context.eventDialog = after.context.restoreEventNoteDraft(durable.events[0], "note-editor");
+    assert.ok(after.context.eventDialog);
+    const revised = ["continued typing", "peer title"].includes(scenario);
+    if (revised) after.context.eventDialog.bodyDraft = "Continued draft after restart";
+    try {
+      const result = await after.save();
+      if (scenario === "peer body" || scenario === "peer revert") {
+        assert.equal(result.conflict, true);
+        assert.equal(after.writes(), 0);
+        assert.equal(after.context.eventDialog.bodyDraft, "Local draft");
+      } else if (scenario === "retry rejected") {
+        assert.equal(result.ok, false);
+        assert.equal(after.writes(), 1);
+        assert.equal(after.closed(), 0);
+        assert.equal(after.context.eventDialog.bodyDraft, "Local draft");
+      } else {
+        assert.equal(result.ok, true, "our own earlier edit is not a conflicting peer revision");
+        assert.equal(after.writes(), 1, "retry must obtain a persistence receipt even if the local value is unchanged");
+        assert.equal(finalPayload.events[0].notes.length, 1);
+        assert.equal(finalPayload.events[0].notes[0].body, revised ? "Continued draft after restart" : "Local draft");
+        assert.equal(finalPayload.events[0].notes[0].title, scenario === "peer title" ? "Peer revision" : "Original");
+        assert.equal(values.size, 0);
+      }
+    } finally {
+      before.context.eventDialog = null;
+      release({ok:true,mode:"cloud",persistedState:requested});
+      await interrupted;
+    }
+  });
+}
+
+for (const partial of [false, true]) {
+  test(`a completed ${partial ? "partial" : "rejected"} edit drops interruption metadata and remains retryable after restart`, async () => {
+    const before = harness({result: partial
+      ? {ok:true,pending:true,partial:true,failedEventIds:["event-editor"]} : {ok:false}});
+    const values = attachDraftStorage(before);
+    await before.save();
+    assert.equal(before.context.eventDialog.interruptedNoteEdit, undefined);
+    const after = harness({current:structuredClone(before.context.state)});
+    attachDraftStorage(after, values);
+    after.context.eventDialog = after.context.restoreEventNoteDraft(after.context.state.events[0], "note-editor");
+    assert.equal(after.context.eventDialog.interruptedNoteEdit, undefined);
+    assert.equal((await after.save()).ok, true);
+    assert.equal(after.writes(), 1);
+    assert.equal(after.context.state.events[0].notes[0].body, "Local draft");
+    assert.equal(values.size, 0);
+  });
+}
+
 for (const change of ["add", "edit", "delete"]) {
   test(`adopting a note receipt preserves another tab's durable ${change} before its storage event arrives`, async () => {
     let durable, persisted;

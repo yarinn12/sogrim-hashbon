@@ -23,7 +23,8 @@ export function serializeNoteDraftMemory(draft, savedAt = Date.now()) {
     // The request can commit before its acknowledgement reaches this page.
     // Remember its identity before sending, while leaving the live editor's
     // new-note/rollback semantics unchanged.
-    pendingNoteCreation: draft.pendingNoteCreation
+    pendingNoteCreation: draft.pendingNoteCreation,
+    interruptedNoteEdit: draft.interruptedNoteEdit
   } });
 }
 
@@ -43,6 +44,9 @@ export function parseNoteDraftMemory(raw, { eventId, noteId = "", now = Date.now
       typeof creation.note.title !== "string" || typeof creation.note.body !== "string" ||
       creation.note.title.length > MAX_EVENT_NOTE_TITLE_LENGTH || creation.note.body.length > MAX_EVENT_NOTE_BODY_LENGTH ||
       !Array.isArray(creation.fields))) return null;
+    const edit = draft.interruptedNoteEdit;
+    if (edit && (!noteId || !validEditSnapshot(edit.note, noteId) ||
+      !validEditSnapshot(edit.beforeNote, noteId) || !Array.isArray(edit.fields))) return null;
     return {
       kind: "note-editor", eventId, noteId,
       titleDraft: draft.titleDraft, bodyDraft: draft.bodyDraft, pinned: draft.pinned === true,
@@ -52,6 +56,8 @@ export function parseNoteDraftMemory(raw, { eventId, noteId = "", now = Date.now
         ? draft.pendingNoteFields.filter(field => ["title", "body", "pinned"].includes(field)) : [],
       ...(creation ? { pendingNoteCreation: { note: creation.note,
         fields: creation.fields.filter(field => ["title", "body", "pinned"].includes(field)) } } : {}),
+      ...(edit ? { interruptedNoteEdit: { note: edit.note, beforeNote: edit.beforeNote,
+        fields: edit.fields.filter(field => ["title", "body", "pinned"].includes(field)) } } : {}),
       saving: false, error: "", restored: true
     };
   } catch {
@@ -65,4 +71,28 @@ export function recoverNoteDraftCreation(draft, event) {
     !event.deletedNotes?.some(note => note.id === creation.note.id))) return draft;
   return { ...draft, noteId: creation.note.id, baseNote: creation.note,
     pendingNoteSave: true, pendingNoteFields: creation.fields };
+}
+
+function validEditSnapshot(note, noteId) {
+  return note?.id === noteId && typeof note.title === "string" && typeof note.body === "string" &&
+    note.title.length <= MAX_EVENT_NOTE_TITLE_LENGTH && note.body.length <= MAX_EVENT_NOTE_BODY_LENGTH &&
+    Number.isFinite(Date.parse(note.updatedAt));
+}
+
+export function recoverInterruptedNoteEdit(draft, event) {
+  const edit = draft?.interruptedNoteEdit;
+  const current = event.notes?.find(note => note.id === draft?.noteId);
+  if (!edit || !current) return draft;
+  const baseNote = { ...draft.baseNote };
+  for (const field of edit.fields) {
+    const fieldTime = note => Date.parse(note.fieldUpdatedAt?.[field] ?? note.updatedAt);
+    const value = note => field === "pinned" ? note.pinned === true : String(note[field] ?? "");
+    // A restart can happen before the local write too. Recognize the exact
+    // earlier value only when its clock precedes this attempt; a peer reverting
+    // the field later is still a competing edit, not an unpublished request.
+    const unpublished = fieldTime(current) < fieldTime(edit.note) && value(current) === value(edit.beforeNote);
+    baseNote[field] = (unpublished ? edit.beforeNote : edit.note)[field];
+  }
+  return { ...draft, baseNote, pendingNoteSave: true,
+    pendingNoteFields: [...new Set([...(draft.pendingNoteFields ?? []), ...edit.fields])] };
 }

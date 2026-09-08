@@ -71,7 +71,7 @@ import {
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
-import { noteDraftMemoryKey, parseNoteDraftMemory, serializeNoteDraftMemory, recoverNoteDraftCreation } from "./domain/noteDraftMemory.mjs";
+import { noteDraftMemoryKey, parseNoteDraftMemory, serializeNoteDraftMemory, recoverNoteDraftCreation, recoverInterruptedNoteEdit } from "./domain/noteDraftMemory.mjs";
 import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteSnapshot,
@@ -16730,6 +16730,9 @@ async function saveEventNoteFromDialog(eventId) {
   ])];
   if (!activeDialog.noteId) {
     activeDialog.pendingNoteCreation = { note: requestedNote, fields: requestedFields };
+  } else {
+    activeDialog.interruptedNoteEdit = { note: requestedNote, fields: requestedFields,
+      beforeNote: cloneNavigationValue(event.notes.find(note => note.id === noteId)) };
   }
   state = nextState;
   activeDialog.saving = true;
@@ -16750,6 +16753,11 @@ async function saveEventNoteFromDialog(eventId) {
     result = { ok: false, error };
   }
 
+  if (state.currentParticipantId === previousState.currentParticipantId && eventDialog === activeDialog) {
+    // The completed outcome below owns recovery now. Keep this marker only
+    // when a page really disappears before receiving its result.
+    delete activeDialog.interruptedNoteEdit;
+  }
   if (!result?.ok && !result?.pending) {
     if (rejectedStateSaveIsCurrent(result, saveCheckpoint)) {
       state = rollbackNoteOnlyStateChange(state, previousState, nextState) ?? state;
@@ -19558,7 +19566,8 @@ function restoreEventNoteDraft(event, noteId = "") {
         memoryNoteId = "";
       }
     }
-    return draft ? { ...recoverNoteDraftCreation(draft, event), draftMemoryNoteId: memoryNoteId } : null;
+    return draft ? { ...recoverInterruptedNoteEdit(recoverNoteDraftCreation(draft, event), event),
+      draftMemoryNoteId: memoryNoteId } : null;
   } catch {
     return null;
   }
