@@ -37,6 +37,10 @@ Run 34226182982 passed unit, backup, two-client synchronization and four mobile 
 
 The final revision must pass the complete mobile matrix, unit/integration, independent-client and backup CI lanes before release. Local unit/integration verification passed all 2,870 tests without failures or skips (`work/hands-on-final-unit.log`).
 
+The first complete 920-case run (34231321253) found two existing assertions tied to deliberately replaced UI behavior on every profile: duplicate review expected wording from the removed pending notice, and close-event resilience centered the dialog over the whole viewport including navigation. The former now checks the empty duplicate list and absence of pending wording while preserving the full saved roster, payer, creator, account-link and 9,000-minor-unit expense assertions. The latter retains its 36px centering tolerance relative to the usable area above navigation and additionally requires viewport bounds and no navigation overlap. No application code or artifact changed for these assertion corrections.
+
+Both adjusted cases passed on all five profiles, 10/10 with no retries (`work/hands-on-ci-final-assertions.log`). The navigation measurement explicitly filters hidden duplicate navigation elements, as the main mobile layout suite does. The prior complete run passed all 24 independent-client scenarios, with only those two outdated assertions failing in the mobile matrix.
+
 Native AAB/APK artifacts were rebuilt from the final runtime; all 181 web assets in each package match. Both packages use version 4.41/build 169 and the existing release signing identity. The source fingerprint matches 624 inputs. Android build/lint is distinct from native Java unit testing; no substantive Java unit suite is claimed.
 
 - AAB SHA-256: `B126D316DA26949DEBB5AB7E6C08BC9AD01CB037830AD3C917E625C856DC51E2`.

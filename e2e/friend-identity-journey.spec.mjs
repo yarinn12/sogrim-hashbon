@@ -182,7 +182,10 @@ test("an offline name links to its connected account without losing money", asyn
   await expect(confirmation).toContainText("1");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
-  await expect(identityDialog).toContainText("חשבון אחד");
+  // The local fixture has no cloud acknowledgement. Its recovery remains
+  // silent; verify the reconciled roster and money below instead of a notice.
+  await expect(identityDialog).toContainText("אין שמות שדורשים בדיקה");
+  await expect(identityDialog).not.toContainText(/ממתין|ממתינים|נשמר במכשיר/);
   await expect(page.locator(".event-action-dock")).toHaveCount(0);
 
   await expect.poll(async () =>
