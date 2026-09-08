@@ -244,7 +244,11 @@ test("new event actions stay below participant choices without covering them", a
   await assertLayoutHealth(page, "new event participant choices");
 
   await page.locator('[data-action="set-new-event-participant-view"][data-participant-view="manual"]').click();
+  await page.locator('[data-action="new-event-add-guest"]').click();
+  await expect(page.getByRole("alert")).toContainText("יש להזין שם כדי להוסיף משתתף.");
+  await expect(page.locator('[data-action="new-event-guest-name"]')).toBeFocused();
   await page.locator('[data-action="new-event-guest-name"]').fill("נועה כהן");
+  await expect(page.getByRole("alert")).toHaveCount(0);
   await page.locator('[data-action="new-event-add-guest"]').click();
   await page.locator('[data-action="close-new-event-participant-view"]').click();
   await expect(page.locator("[data-new-event-participant-count]")).toContainText("2");
@@ -931,6 +935,72 @@ test("routine background sync never opens a sync surface", async ({ page }) => {
   }
 });
 
+test("offline friend names explain blank input and recover in the friends list", async ({ page }) => {
+  await page.getByRole("button", { name: "חברים", exact: true }).click();
+  await page.getByRole("button", { name: "הוסף חבר", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "שם מלא", exact: true });
+  await input.fill("   ");
+  await page.getByRole("button", { name: "הוסף לרשימת החברים", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("יש להזין שם כדי להוסיף חבר.");
+  await expect(input).toBeFocused();
+  await expect(input).toHaveAttribute("aria-invalid", "true");
+  await input.fill("חבר בדיקת טופס");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByRole("button", { name: "הוסף לרשימת החברים", exact: true }).click();
+  await expect(page.locator('[data-screen-kind="groups"]')).toContainText("חבר בדיקת טופס");
+});
+
+test("manual participant names explain blank input and recover without losing the flow", async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.getByRole("button", { name: "משתתפים באירוע", exact: true }).click();
+  await page.getByRole("button", { name: "הוסף משתתפים", exact: true }).click();
+  await page.getByRole("button", { name: "הוסף שם ידנית", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "שם חדש להוספה ידנית", exact: true });
+  for (const invalid of ["", "   ", "\u200f\u200e"]) {
+    await input.fill(invalid);
+    await page.getByRole("button", { name: "הוסף לאירוע", exact: true }).click();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    const error = page.getByRole("alert").filter({ hasText: "יש להזין שם כדי להוסיף משתתף." });
+    await expect(error).toBeVisible();
+    await expect(input).toHaveAttribute("aria-describedby", await error.getAttribute("id"));
+    expect(await input.evaluate(el => el.getBoundingClientRect().bottom)).toBeLessThan(800);
+  }
+  await input.fill("משתתף בדיקת טופס");
+  await expect(input).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.getByRole("alert").filter({ hasText: "יש להזין שם כדי להוסיף משתתף." })).toHaveCount(0);
+  await page.getByRole("button", { name: "הוסף לאירוע", exact: true }).click();
+  await expect(page.getByRole("button", { name: "ניהול משתתף בדיקת טופס", exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(eventId => {
+    const state = JSON.parse(localStorage.getItem("settle-friends-state"));
+    return state.events.find(event => event.id === eventId).participantIds.length;
+  }, EVENT_ID)).toBe(5);
+});
+
+for (const backMethod of ["button", "browser"]) {
+test(`one ${backMethod} back action leaves the participant roster after a completed account link`, async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.getByRole("button", { name: "משתתפים באירוע", exact: true }).click();
+  await page.getByRole("button", { name: "ניהול אריאל ניזרי מהטיול המשפחתי", exact: true }).click();
+  await page.getByRole("button", { name: /קישור לחשבון בחרו חשבון/ }).click();
+  await page.getByRole("list", { name: "חשבונות שכבר באירוע" }).getByText("Awesome Maor · מאור סיבוני", { exact: true }).click();
+  await page.getByRole("button", { name: "קשר לחשבון", exact: true }).click();
+  const roster = page.getByRole("region", { name: "מי באירוע", exact: true });
+  await expect(roster).toBeVisible();
+  await expect(roster).toContainText("3 משתתפים");
+  if (backMethod === "browser") await page.goBack();
+  else await page.getByRole("button", { name: "חזרה לאירוע", exact: true }).click();
+  await expect(roster).toHaveCount(0);
+  await expect(page.locator(".event-participant-route-modal")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "משתתפים באירוע", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "משתתפים באירוע", exact: true }).click();
+  await expect(roster).toContainText("3 משתתפים");
+  await expect(roster).not.toContainText("אריאל ניזרי מהטיול המשפחתי");
+  await page.getByRole("button", { name: "חזרה לאירוע", exact: true }).click();
+  await expect(roster).toHaveCount(0);
+});
+}
+
 test("expense notes and image stay visible after save and resume sync", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)
@@ -1087,6 +1157,64 @@ test("iPad landscape keeps expense entry inside the responsive tablet canvas", a
   await expect(dialog.locator('[data-action="expense-step-next"]')).toBeInViewport();
   expect(rect.radius).toBe("0px");
 });
+
+for (const orientation of ["portrait", "landscape"]) {
+test(`close-event confirmation stays readable and scrollable in ${orientation}`, async ({ page }, testInfo) => {
+  await page.setViewportSize(orientation === "landscape" ? { width: 667, height: 375 } : { width: 320, height: 800 });
+  await page.evaluate(() => document.documentElement.style.setProperty("font-size", "32px", "important"));
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  const summaryTab = page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first();
+  // The floating route controls intentionally clip content underneath them.
+  // Put the tab in the usable viewport, as with a user's scroll, before tapping.
+  await settleCoherenceMotion(page);
+  await summaryTab.evaluate(el => el.scrollIntoView({ block: "center" }));
+  await summaryTab.evaluate(el => {
+    const controlsBottom = document.querySelector(".product-route-controls")?.getBoundingClientRect().bottom ?? 0;
+    window.scrollBy(0, el.getBoundingClientRect().top - controlsBottom - 16);
+  });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await summaryTab.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+    return hit === el || el.contains(hit);
+  })).toBe(true);
+  await summaryTab.click();
+  await page.locator(".settlement-close-primary").first().click();
+  const dialog = page.locator(".settlement-close-confirmation");
+  await expect(dialog).toBeVisible();
+  const layout = await dialog.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    const heading = el.querySelector("h2");
+    const header = heading.getBoundingClientRect();
+    const nav = [...document.querySelectorAll('.bottom-nav, .app-bottom-nav, [aria-label="ניווט ראשי"]')]
+      .map(el => el.getBoundingClientRect()).filter(rect => rect.height > 0 && rect.bottom <= innerHeight + 1);
+    return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+      viewport: { width: innerWidth, height: innerHeight }, headingWidth: header.width,
+      overflow: getComputedStyle(el).overflowY, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight,
+      navTop: nav.length ? Math.min(...nav.map(rect => rect.top)) : innerHeight };
+  });
+  expect(layout.headingWidth).toBeGreaterThan(150);
+  expect(layout.top).toBeGreaterThanOrEqual(0);
+  expect(layout.left).toBeGreaterThanOrEqual(0);
+  expect(layout.right).toBeLessThanOrEqual(layout.viewport.width);
+  expect(layout.bottom).toBeLessThanOrEqual(layout.navTop);
+  if (layout.scrollHeight > layout.clientHeight + 1) expect(layout.overflow).toBe("auto");
+  const confirm = dialog.locator('[data-action="confirm-close-event"]');
+  await confirm.scrollIntoViewIfNeeded();
+  await expect(confirm).toBeVisible();
+  const hit = await confirm.evaluate(el => { const r=el.getBoundingClientRect(); const target=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return {reachable:el===target||el.contains(target),width:r.width,height:r.height}; });
+  expect(hit.reachable).toBe(true);
+  expect(hit.width).toBeGreaterThan(100);
+  expect(hit.height).toBeGreaterThanOrEqual(44);
+  await page.screenshot({ path: testInfo.outputPath(`close-confirmation-${orientation}.png`), fullPage: false });
+  await dialog.getByRole("button", { name: "ביטול", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".settlement-close-primary").first()).toBeVisible();
+  await page.locator(".settlement-close-primary").first().click();
+  await page.locator('[data-action="confirm-close-event"]').click();
+  await expect(page.locator(".app-toast")).toContainText("האירוע נסגר וננעל לעריכה");
+});
+}
 
 test("close-event action and its floating feedback stay polished on every mobile profile", async ({ page }, testInfo) => {
   await page

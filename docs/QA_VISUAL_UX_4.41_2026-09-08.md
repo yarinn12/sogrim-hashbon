@@ -1,5 +1,7 @@
 # Visual UX regressions — 8 September 2026
 
+Continued by the [hands-on app audit](QA_HANDS_ON_4.41_2026-09-08.md), which records additional UI-discovered defects and the final release gate. Validation below describes the initial four layout fixes before that extension.
+
 Scope: the participant page reported by the user, large text, navigation, event creation, long titles, portrait/landscape, and adjacent home/profile/settings/expense flows. All fixtures are synthetic; no production group or account was modified.
 
 ## Findings and fixes

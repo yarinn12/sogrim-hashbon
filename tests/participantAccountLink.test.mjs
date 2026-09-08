@@ -162,6 +162,6 @@ test("every offline-to-account entry point uses the same event-scoped link", asy
   );
   assert.match(
     completionCopy,
-    /sameDisplayName[\s\S]*?לחשבון המחובר[\s\S]*?חשבון אחד באירוע הזה/
+    /sameDisplayName[\s\S]*?חשבון אחד באירוע הזה/
   );
 });

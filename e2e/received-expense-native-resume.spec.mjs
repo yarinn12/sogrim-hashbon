@@ -114,7 +114,10 @@ for (const scenario of ["cold-personal-replica", "native-return-during-read", "n
       if (scenario === "native-return-during-read" || scenario === "native-resume-burst") {
         // Wait for the first normal foreground poll; the next periodic account
         // scan is 15 seconds away and cannot accidentally satisfy this check.
-        await expect.poll(() => metadataIndexes).toBeGreaterThan(0);
+        // Preparation only: Home scans every 15 seconds, and a foreground
+        // read during startup can consume the first polling opportunity.
+        // This is not the recovery deadline, which remains four seconds.
+        await expect.poll(() => metadataIndexes, { timeout: 20_000 }).toBeGreaterThan(0);
         await expect.poll(() => inFlightIndexes).toBe(0);
         holdNextIndex = true;
         await page.evaluate(() => window.dispatchEvent(new CustomEvent("settle-friends:native-resume")));
@@ -130,7 +133,7 @@ for (const scenario of ["cold-personal-replica", "native-return-during-read", "n
         await expect.poll(storedExpenseCount, { timeout: 4_000 }).toBe(1);
         console.log(JSON.stringify({ scenario, device: testInfo.project.name, receiveMs: Math.round(performance.now() - started) }));
       } else if (scenario.startsWith("online-return-")) {
-        await expect.poll(() => metadataIndexes).toBeGreaterThan(0);
+        await expect.poll(() => metadataIndexes, { timeout: 20_000 }).toBeGreaterThan(0);
         await expect.poll(() => inFlightIndexes).toBe(0);
         if (scenario === "online-return-open-event") {
           await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();

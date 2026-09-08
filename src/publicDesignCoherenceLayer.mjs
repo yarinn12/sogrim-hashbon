@@ -4295,7 +4295,7 @@ const CSS = `
     padding:
       calc(16px + env(safe-area-inset-top))
       14px
-      calc(16px + env(safe-area-inset-bottom)) !important;
+      calc(104px + env(safe-area-inset-bottom)) !important;
     background: rgba(7, 27, 24, 0.14) !important;
     pointer-events: auto !important;
   }
@@ -4304,10 +4304,17 @@ const CSS = `
     width: min(520px, calc(100vw - 28px)) !important;
     max-width: calc(100vw - 28px) !important;
     display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-auto-rows: max-content !important;
+    align-content: start !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 120px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
     gap: 12px !important;
     box-sizing: border-box !important;
     padding: 14px !important;
-    overflow: hidden !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
     border: 1px solid rgba(6, 75, 67, 0.2) !important;
     border-radius: var(--app-radius-panel) !important;
     color: var(--app-ink) !important;

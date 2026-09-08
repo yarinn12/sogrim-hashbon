@@ -1235,6 +1235,18 @@ function handleBrowserHistoryBack(event) {
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
 
   const previousEventDialog = cloneNavigationValue(eventDialog);
+  // Completed links can leave history entries for the removed source identity.
+  // Back from the roster must leave the participant flow, not reopen them.
+  const targetDialog = event.state.view?.eventDialog;
+  const rosterBaseDepth = eventDialog?.historyBaseDepth;
+  if (eventDialog?.kind === "participants" &&
+      Number.isFinite(rosterBaseDepth) &&
+      event.state.depth < appHistoryDepth &&
+      event.state.depth > rosterBaseDepth &&
+      targetDialog?.eventId === eventDialog.eventId) {
+    window.history.go(rosterBaseDepth - event.state.depth);
+    return;
+  }
   const targetScreenName = event.state.view?.screen?.name;
   const leavingCompletedEventCreation =
     screen.name === "event" &&
@@ -13987,6 +13999,16 @@ function goBackInApp() {
     return;
   }
 
+  if (eventDialog?.kind === "participants") {
+    const baseDepth = Number.isFinite(eventDialog.historyBaseDepth)
+      ? eventDialog.historyBaseDepth
+      : Math.max(0, appHistoryDepth - 1);
+    const rewindSteps = Math.max(1, appHistoryDepth - baseDepth);
+    eventDialog = null;
+    closeDialogWithHistory(rewindSteps);
+    return;
+  }
+
   if (eventDialog?.kind === "participants-add") {
     renderHistoryFallback();
     return;
@@ -14305,6 +14327,9 @@ function closeDialogWithHistory(rewindSteps = 1) {
 function handleInput(event) {
   const target = event.target;
   const action = target.dataset.action;
+  if (["event-guest-name", "new-event-guest-name", "friends-new-offline-name"].includes(action)) {
+    clearParticipantNameError(target);
+  }
 
   if (action === "participant-search") {
     rememberParticipantSearch(target);
@@ -15075,7 +15100,10 @@ function addGuestToDraft(draft) {
   const name = normalizeProfileName(
     String(draft.guestName ?? "").normalize("NFKC")
   );
-  if (!name) return;
+  if (!name.replace(/[\p{Cf}\s]/gu, "")) {
+    showParticipantNameError(app.querySelector('[data-action="new-event-guest-name"]'));
+    return;
+  }
   const { participant, created } = resolveOfflineParticipant(name, "guest");
   if (!draft.participantIds.includes(participant.id)) {
     draft.participantIds.push(participant.id);
@@ -15161,8 +15189,8 @@ function resolveOfflineParticipant(name, idPrefix = "guest") {
 
 function addOfflineFriend() {
   const name = normalizeProfileName(String(friendsNewOfflineName ?? "").normalize("NFKC"));
-  if (!name) {
-    app.querySelector('[data-action="friends-new-offline-name"]')?.focus();
+  if (!name.replace(/[\p{Cf}\s]/gu, "")) {
+    showParticipantNameError(app.querySelector('[data-action="friends-new-offline-name"]'), "יש להזין שם כדי להוסיף חבר.");
     return;
   }
 
@@ -17555,14 +17583,12 @@ function clearMergeParticipantsDraftFor(pendingMerge) {
 }
 
 function participantAccountLinkCompletionMessage(source, target, { pending = false } = {}) {
+  // Recovery stays durable and automatic without a routine pending notice.
+  // Only a confirmed cloud receipt may produce completion feedback.
+  if (pending) return "";
   const sameDisplayName =
     normalizeParticipantDisplayName(source?.displayName) ===
     normalizeParticipantDisplayName(target?.displayName);
-  if (pending) {
-    return sameDisplayName
-      ? `החיבור של ${target.displayName} לחשבון המחובר נשמר וממתין לאישור מהענן. לאחר האישור הם יוצגו כחשבון אחד באירוע הזה.`
-      : `החיבור של ${source.displayName} לחשבון של ${target.displayName} נשמר וממתין לאישור מהענן. נשלים אותו אוטומטית.`;
-  }
   return sameDisplayName
     ? `${target.displayName} מופיע עכשיו כחשבון אחד באירוע הזה.`
     : `קישרנו את ${source.displayName} לחשבון של ${target.displayName}.`;
@@ -17871,6 +17897,37 @@ function dropParticipantFromDrafts(
   }
 }
 
+function clearParticipantNameError(input) {
+  const errorId = input?.dataset?.participantNameError;
+  if (!errorId) return;
+  document.getElementById(errorId)?.remove();
+  const descriptions = (input.getAttribute("aria-describedby") ?? "")
+    .split(/\s+/).filter(id => id && id !== errorId);
+  if (descriptions.length) input.setAttribute("aria-describedby", descriptions.join(" "));
+  else input.removeAttribute("aria-describedby");
+  input.removeAttribute("aria-invalid");
+  input.setCustomValidity("");
+  delete input.dataset.participantNameError;
+}
+
+function showParticipantNameError(input, message = "יש להזין שם כדי להוסיף משתתף.") {
+  if (!(input instanceof HTMLInputElement)) return;
+  clearParticipantNameError(input);
+  const error = document.createElement("p");
+  error.id = "participant-name-error-" + (input.name || input.dataset.action);
+  error.className = "field-error";
+  error.setAttribute("role", "alert");
+  error.textContent = message;
+  const container = input.closest(".event-participant-offline-form, .inline-actions") ?? input.closest("label") ?? input;
+  container.insertAdjacentElement("afterend", error);
+  input.dataset.participantNameError = error.id;
+  input.setAttribute("aria-invalid", "true");
+  input.setAttribute("aria-describedby", [input.getAttribute("aria-describedby"), error.id].filter(Boolean).join(" "));
+  input.setCustomValidity(error.textContent);
+  input.focus();
+  error.scrollIntoView({ block: "nearest" });
+}
+
 async function addGuestToEvent(eventId) {
   const input =
     app.querySelector('.event-modal [data-action="event-guest-name"]') ??
@@ -17888,7 +17945,10 @@ async function addGuestToEvent(eventId) {
   const name = normalizeProfileName(
     String(input?.value ?? "").normalize("NFKC")
   );
-  if (!name) return;
+  if (!name.replace(/[\p{Cf}\s]/gu, "")) {
+    showParticipantNameError(input);
+    return;
+  }
   const event = getEvent(eventId);
   if (!canCurrentParticipantEdit(event)) {
     notice = editBlockedMessage(event);

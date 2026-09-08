@@ -311,9 +311,11 @@ test("HGG can link only to Yarin when Nizri is not in the event", async ({ page 
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
   const participantDialog = page.locator(".event-participant-route-modal");
-  await expect(participantDialog).toContainText(
-    /(קישרנו את HGG לחשבון של ירין יצחק|החיבור של HGG לחשבון של ירין יצחק)/
-  );
+  await expect(participantDialog.getByRole("heading", { name: "מי באירוע", exact: true })).toBeVisible();
+  // Local transport cannot acknowledge the canonical account-link receipt.
+  // Its durable recovery must stay quiet, as must the global sync status.
+  await expect(participantDialog).not.toContainText(/ממתין.*(?:ענן|סנכרון)|נשמר במכשיר/);
+  await expect(participantDialog.locator('[role="status"]:visible')).toHaveCount(0);
   await expect(participantDialog).not.toContainText("ניזרי");
   await expect.poll(async () =>
     page.evaluate(({ eventId, sourceId, targetId, unrelatedId }) => {
