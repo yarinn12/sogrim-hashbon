@@ -14,6 +14,7 @@ function section(start, end) {
 }
 const preparation = section("async function prepareSharedEventForInvitation(", "async function rotateCurrentEventInvite(");
 const mergeFlow = section("async function mergeParticipantsInStateNow(", "function dropParticipantFromDrafts(");
+const completionMessage = section("function participantAccountLinkCompletionMessage(", "async function mergeParticipantsInStateNow(");
 const owner = "account-00000000-0000-4000-8000-000000000081";
 const target = "account-00000000-0000-4000-8000-000000000082";
 const guest = "guest-offline-person";
@@ -64,12 +65,12 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
     pendingAccountLinkReceipt:(state)=>{const link=state.events[0].participantAccountLinks[0];return {...link,eventId:"link-event",ownerUserId:owner.slice(8)};},
     rememberPendingAccountLink:r=>{if(receiptStorageFails)return false;receipts.set(r.eventId,r);return true;},forgetPendingAccountLink:r=>receipts.delete(r.eventId),
     confirmPendingAccountLink:async receipt=>accountLinkIsConfirmed(canonical,receipt),
-    participantAccountLinkCompletionMessage:(_source,_target,{pending})=>pending?"Waiting for link confirmation":"Link confirmed",
+    normalizeParticipantDisplayName:name=>String(name??"").trim().toLowerCase(),
     clearMergeParticipantsDraftFor(){},emitOperationFailure(){},emitOperationDeferred(){},schedulePendingMutationRecovery(){},
     showAsyncEventParticipantMessage:(_id,message)=>messages.push(message),dropParticipantFromDrafts(){},
     render(){},reactivateDialogAfterRender(){}
   });
-  vm.runInContext(preparation+mergeFlow,ctx);
+  vm.runInContext(preparation+completionMessage+mergeFlow,ctx);
   return {ctx,initial,canonical,calls,receipts,messages,get switchedState(){return switchedState;},run:()=>ctx.mergeParticipantsInStateNow(pending)};
 }
 
@@ -120,7 +121,8 @@ test("an unacknowledged link remains pending, never a false successful merge", a
   assert.equal(result?.pending,true);assert.equal(result?.confirmed,false);
   assert.equal(h.receipts.size,1,"keep the link receipt for durable recovery");
   assert.equal(h.canonical.events[0].participantIds.includes(guest),true);
-  assert.equal(h.ctx.eventDialog.message,"Waiting for link confirmation");
+  assert.equal(h.ctx.eventDialog.message,"","pending recovery must stay quiet without claiming cloud confirmation");
+  assert.equal(h.ctx.notice,"");
 });
 
 test("the default invitation preparation still requires account cloud acknowledgement", async () => {

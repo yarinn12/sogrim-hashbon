@@ -182,7 +182,10 @@ test("an offline name links to its connected account without losing money", asyn
   await expect(confirmation).toContainText("1");
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
-  await expect(identityDialog).toContainText("חשבון אחד");
+  // The local fixture has no cloud acknowledgement. Its recovery remains
+  // silent; verify the reconciled roster and money below instead of a notice.
+  await expect(identityDialog).toContainText("אין שמות שדורשים בדיקה");
+  await expect(identityDialog).not.toContainText(/ממתין|ממתינים|נשמר במכשיר/);
   await expect(page.locator(".event-action-dock")).toHaveCount(0);
 
   await expect.poll(async () =>
@@ -311,9 +314,11 @@ test("HGG can link only to Yarin when Nizri is not in the event", async ({ page 
   await confirmation.locator('[data-action="confirm-important-action"]').click();
 
   const participantDialog = page.locator(".event-participant-route-modal");
-  await expect(participantDialog).toContainText(
-    /(קישרנו את HGG לחשבון של ירין יצחק|החיבור של HGG לחשבון של ירין יצחק)/
-  );
+  await expect(participantDialog.getByRole("heading", { name: "מי באירוע", exact: true })).toBeVisible();
+  // Local transport cannot acknowledge the canonical account-link receipt.
+  // Its durable recovery must stay quiet, as must the global sync status.
+  await expect(participantDialog).not.toContainText(/ממתין.*(?:ענן|סנכרון)|נשמר במכשיר/);
+  await expect(participantDialog.locator('[role="status"]:visible')).toHaveCount(0);
   await expect(participantDialog).not.toContainText("ניזרי");
   await expect.poll(async () =>
     page.evaluate(({ eventId, sourceId, targetId, unrelatedId }) => {

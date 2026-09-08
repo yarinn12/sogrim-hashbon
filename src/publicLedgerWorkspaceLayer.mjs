@@ -19230,7 +19230,7 @@ const CSS = `
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1 {
-    --event-route-nav-safe-height: 152px;
+    --event-route-nav-safe-height: calc(var(--dynamic-type-bottom-nav-block, 82px) + 14px);
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1

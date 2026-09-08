@@ -94,11 +94,25 @@ test("event closing remains responsive behind a stale sync lock", async ({ page 
   const confirmation = page.locator(".settlement-close-confirmation");
   await expect(confirmation).toBeVisible();
   await expect(confirmation).toContainText("בואו נסגור חשבון?");
-  const confirmationCenterOffset = await confirmation.evaluate((element) => {
+  const confirmationLayout = await confirmation.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    return Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2);
+    const navigationRects = [...document.querySelectorAll('.bottom-nav, .app-bottom-nav, [aria-label="ניווט ראשי"]')]
+      .map(el => el.getBoundingClientRect())
+      .filter(rect => rect.height > 0 && rect.bottom <= innerHeight + 1);
+    const navigationTop = Math.min(...navigationRects.map(rect => rect.top));
+    // Center inside the usable page above navigation, which must stay clear.
+    return {
+      centerOffset: Math.abs(rect.top + rect.height / 2 - navigationTop / 2),
+      top: rect.top,
+      bottom: rect.bottom,
+      navigationTop,
+      navigationCount: navigationRects.length
+    };
   });
-  expect(confirmationCenterOffset).toBeLessThan(36);
+  expect(confirmationLayout.navigationCount).toBeGreaterThan(0);
+  expect(confirmationLayout.centerOffset).toBeLessThan(36);
+  expect(confirmationLayout.top).toBeGreaterThanOrEqual(0);
+  expect(confirmationLayout.bottom).toBeLessThanOrEqual(confirmationLayout.navigationTop);
 
   const confirmButton = confirmation.locator('[data-action="confirm-close-event"]');
   await expect(confirmButton).toHaveText("סוגרים חשבון");
