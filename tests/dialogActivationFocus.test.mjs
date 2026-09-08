@@ -124,7 +124,7 @@ function reactivationHarness({ backgroundMatch = false } = {}) {
       querySelector: selector => selector === "title" ? title : null };
   };
   let dialog = makeDialog();
-  const context = vm.createContext({ document, window: {}, dialogReturnFocus: {},
+  const context = vm.createContext({ document, window: {}, importantActionDialog: null, dialogReturnFocus: {},
     app: { querySelector: selector => selector === ".event-modal" ? dialog :
       selector === "title" ? (backgroundMatch ? background : dialog?.title) : null },
     requestAnimationFrame: callback => frames.push(callback), setDialogBackgroundInert() {}

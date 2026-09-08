@@ -4408,6 +4408,47 @@ const CSS = `
 
   /* Destructive event settings keep the same quiet white task surfaces as the
      rest of the app; danger is communicated by the action, not a tinted page. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .event-participant-notice.is-account-link-success {
+    display: flex !important;
+    align-items: start !important;
+    gap: 8px !important;
+    min-height: 0 !important;
+    border: 1px solid color-mix(in srgb, var(--app-brand) 18%, var(--app-line)) !important;
+    color: var(--app-brand) !important;
+    background: var(--app-accent-soft) !important;
+  }
+
+  html.design-coherence-v1 body #app .is-account-link-success .ui-icon-svg {
+    width: 18px !important;
+    height: 18px !important;
+    flex: 0 0 18px !important;
+  }
+
+  html.design-coherence-v1 body #app .important-action-dialog[aria-busy="true"] .important-action-confirm-button {
+    opacity: 1 !important;
+    color: var(--app-brand) !important;
+    background: var(--app-surface-soft) !important;
+    border: 1px solid var(--app-line) !important;
+  }
+
+  html.design-coherence-v1 body #app .account-link-progress-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    margin-inline-end: 8px;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: account-link-progress 800ms linear infinite;
+  }
+
+  @keyframes account-link-progress { to { transform: rotate(360deg); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.design-coherence-v1 body #app .account-link-progress-spinner { animation: none; }
+  }
+
   html.design-coherence-v1 body #app .event-danger-zone {
     min-width: 0 !important;
     display: grid !important;

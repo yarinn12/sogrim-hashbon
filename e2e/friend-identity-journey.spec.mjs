@@ -184,10 +184,16 @@ test("an offline name links to its connected account without losing money", asyn
 
   // The local fixture has no cloud acknowledgement. Its recovery remains
   // silent; verify the reconciled roster and money below instead of a notice.
-  await expect(identityDialog).toContainText("אין שמות שדורשים בדיקה");
-  await expect(identityDialog).not.toContainText(/ממתין|ממתינים|נשמר במכשיר/);
+  const completedRoster = page.locator(".event-participant-roster-modal");
+  await expect(completedRoster).toBeVisible();
+  await expect(identityDialog).toHaveCount(0);
+  await expect(completedRoster).not.toContainText(/ממתין|ממתינים|נשמר במכשיר/);
+  await expect(completedRoster.locator(`[data-action="open-event-participant-profile"][data-participant-id="${ACCOUNT_ID}"]`)).toHaveCount(1);
+  await expect(completedRoster.locator(`[data-action="open-event-participant-profile"][data-participant-id="${OFFLINE_ID}"]`)).toHaveCount(0);
   await expect(page.locator(".event-action-dock")).toHaveCount(0);
-
+  await completedRoster.getByRole("button", { name: "חזרה לאירוע", exact: true }).click();
+  await expect(completedRoster).toHaveCount(0);
+  await expect(identityDialog).toHaveCount(0);
   await expect.poll(async () =>
     page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state") || "{}"))
   ).toMatchObject({

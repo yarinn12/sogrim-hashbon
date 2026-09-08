@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.41"
+        default: "4.42"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "169"
+        default: "170"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור ההצטרפות לקבוצות וההתאוששות מתקלה בחיבור, ותיקון איחודי משתמשים מתנגשים במקביל."
+        default: "שיפור חוויית קישור החשבון: תגובה מיידית, חזרה לרשימת המשתתפים ואישור הצלחה ברור, עם בדיקות סנכרון בין משתמשים."
 
 permissions:
   contents: read

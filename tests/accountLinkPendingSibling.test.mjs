@@ -39,7 +39,7 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
   const calls = [], receipts = new Map(), messages = [];
   let generation=0, switchedState;
   const ctx = vm.createContext({
-    state: structuredClone(initial), runtimeConfig: config, eventDialog: {eventId:"link-event",kind:"participant-link"},
+    state: structuredClone(initial), runtimeConfig: config, eventDialog: {eventId:"link-event",kind:"participant-link",participantId:guest},
     screen:{eventId:"link-event"},notice:"",localProfile:null,console:{info(){},warn(){}},
     versionedReadCacheSessionGeneration:()=>generation,
     getEvent:id=>ctx.state.events.find(e=>e.id===id),loadRuntimeConfig:async()=>config,
@@ -84,6 +84,16 @@ test("account linking proceeds when an unrelated event remains durably pending",
   assert.deepEqual(h.ctx.state.events[1],h.initial.events[1],"unrelated pending intent must remain untouched");
   assert.deepEqual(h.calls.map(c=>c.phase),["event-preflight","link-save"]);
   assert.equal(h.receipts.size,0);
+});
+
+test("finishing a link cannot close another participant profile opened while it was running", async () => {
+  const h=harness(), running=h.run();
+  h.ctx.eventDialog={eventId:"link-event",kind:"participant-profile",participantId:target};
+  const result=await running;
+  assert.equal(result.confirmed,true);
+  assert.equal(h.canonical.events[0].participantIds.includes(guest),false);
+  assert.equal(h.ctx.eventDialog.kind,"participant-profile");
+  assert.equal(h.ctx.eventDialog.participantId,target);
 });
 
 test("a late invitation preflight cannot replace the next account's state",async()=>{
@@ -165,4 +175,5 @@ test("a hard rejection of the actual link restores the previous state and receip
   assert.equal((await h.run()).ok,false);
   assert.deepEqual(h.ctx.state,h.initial);assert.equal(h.receipts.size,0);
   assert.equal(h.calls.some(c=>c.phase==="link-save"),true);
+  assert.match(h.ctx.notice,/לא הצלחנו לקשר את החשבון/,"the link picker must show the rejection, not silently return unchanged");
 });
