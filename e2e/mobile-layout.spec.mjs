@@ -793,6 +793,118 @@ test("participant roster keeps pending work silent and never stretches a status 
   await page.screenshot({ path: testInfo.outputPath("participants-without-pending-notice.png") });
 });
 
+test("large text keeps participant and settings header icons compact and tappable", async ({ page }, testInfo) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-participants"]').click();
+  for (const route of ["participants", "settings"]) {
+    const header = page.locator(".event-modal-header:visible");
+    await expect(header).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await settleCoherenceMotion(page);
+    const buttons = header.locator("button:visible");
+    const geometry = await buttons.evaluateAll(nodes => nodes.map(node => {
+      const rect = node.getBoundingClientRect();
+      const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return { label: node.getAttribute("aria-label"), width: rect.width, height: rect.height,
+        reachable: node === hit || node.contains(hit) };
+    }));
+    await testInfo.attach(`header-icons-${route}`, { contentType: "application/json", body: JSON.stringify(geometry) });
+    await page.screenshot({ path: testInfo.outputPath(`header-icons-${route}.png`) });
+    expect(geometry.length).toBeGreaterThanOrEqual(2);
+    for (const button of geometry) {
+      expect(button.label, `${route}: icon controls need an accessible name`).toBeTruthy();
+      expect(button.width, `${route}: ${button.label} hit width`).toBeGreaterThanOrEqual(44);
+      expect(button.height, `${route}: ${button.label} hit height`).toBeGreaterThanOrEqual(44);
+      expect(Math.max(button.width, button.height), `${route}: ${button.label} must not become a tall empty block`).toBeLessThanOrEqual(56);
+      expect(Math.abs(button.width - button.height), `${route}: ${button.label} must stay square`).toBeLessThanOrEqual(1);
+      expect(button.reachable, `${route}: ${button.label} must receive taps`).toBe(true);
+    }
+    if (route === "participants") {
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+      await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+      await page.locator('[data-action="open-event-settings"]').first().click();
+    }
+  }
+});
+
+test("large text navigation fits its labels without reserving a tall empty block", async ({ page }, testInfo) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  for (const destination of ["home", "profile", "notifications", "events"]) {
+    const nav = page.locator(".product-app-nav:visible");
+    if (destination !== "home") await nav.locator(`[data-nav-destination="${destination}"]`).click();
+    await expect(page.locator(`[data-screen-kind="${destination === "events" ? "home" : destination}"]`)).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await settleCoherenceMotion(page);
+    const geometry = await nav.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      const buttons = [...node.querySelectorAll(".product-nav-button")].map(button => {
+        const rect = button.getBoundingClientRect();
+        const content = [...button.children].map(child => child.getBoundingClientRect()).filter(rect => rect.width && rect.height);
+        const top = Math.min(...content.map(rect => rect.top));
+        const bottom = Math.max(...content.map(rect => rect.bottom));
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return { label: button.textContent.trim(), contentHeight: bottom - top,
+          contentInside: top >= rect.top && bottom <= rect.bottom && content.every(child => child.left >= rect.left - 1 && child.right <= rect.right + 1),
+          width: rect.width, height: rect.height, reachable: button === hit || button.contains(hit) };
+      });
+      return { height: box.height, top: box.top, bottom: box.bottom, viewportHeight: innerHeight, buttons };
+    });
+    await testInfo.attach(`bottom-nav-${destination}`, { contentType: "application/json", body: JSON.stringify(geometry) });
+    await page.screenshot({ path: testInfo.outputPath(`bottom-nav-${destination}.png`) });
+    expect(geometry.buttons).toHaveLength(4);
+    const contentHeight = Math.max(...geometry.buttons.map(button => button.contentHeight));
+    expect(geometry.height, `${destination}: navigation must size to labels and icons, with at most 48px of total vertical spacing`).toBeLessThanOrEqual(contentHeight + 48);
+    expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight + 1);
+    for (const button of geometry.buttons) {
+      expect(button.width).toBeGreaterThanOrEqual(44);
+      expect(button.height).toBeGreaterThanOrEqual(44);
+      expect(button.contentInside, `${destination}: ${button.label} must remain readable`).toBe(true);
+      expect(button.reachable, `${destination}: ${button.label} must receive taps`).toBe(true);
+    }
+  }
+});
+
+test("large text keeps creation step labels whole and the steps reachable", async ({ page }, testInfo) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  for (const step of ["details", "settlement", "participants"]) {
+    if (step !== "details") await page.locator(`[data-action="go-new-event-step"][data-new-event-step="${step}"]`).click();
+    await expect(page.locator(`[data-event-creation-step="${step}"]`)).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    await settleCoherenceMotion(page);
+    const progress = page.locator(".event-creation-progress");
+    const labels = await progress.locator("button > strong").evaluateAll(nodes => nodes.map(node => {
+      const text = node.firstChild;
+      const words = [...text.textContent.matchAll(/\S+/gu)].map(match => {
+        const range = document.createRange();
+        range.setStart(text, match.index); range.setEnd(text, match.index + match[0].length);
+        const rects = [...range.getClientRects()].filter(rect => rect.width && rect.height);
+        return { word: match[0], lines: new Set(rects.map(rect => Math.round(rect.top))).size };
+      });
+      const label = node.getBoundingClientRect(), button = node.closest("button").getBoundingClientRect();
+      return { text: node.textContent, words, width: button.width, height: button.height,
+        inside: label.left >= button.left - 1 && label.right <= button.right + 1 };
+    }));
+    await testInfo.attach(`creation-labels-${step}`, { contentType: "application/json", body: JSON.stringify(labels) });
+    await page.screenshot({ path: testInfo.outputPath(`creation-labels-${step}.png`) });
+    expect(labels).toHaveLength(4);
+    for (const label of labels) {
+      expect(label.width).toBeGreaterThanOrEqual(44);
+      expect(label.height).toBeGreaterThanOrEqual(44);
+      expect(label.inside, `${step}: ${label.text} stays inside its button`).toBe(true);
+      for (const word of label.words) expect(word.lines, `${step}: ${word.word} must not split into disconnected characters`).toBe(1);
+    }
+  }
+});
+
 test("routine background sync never opens a sync surface", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)

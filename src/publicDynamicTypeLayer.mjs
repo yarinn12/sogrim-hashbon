@@ -320,6 +320,23 @@ function injectDynamicTypeStyles(document) {
       flex: 0 0 48px !important;
     }
 
+    /* Header icons have no text to reflow. Keep their touch targets square
+       instead of inheriting the tall minimum used by text-bearing buttons. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) body #app
+      :is(.event-modal, .expense-modal, .app-choice-picker)
+      :is(.event-modal-header, .expense-modal-header, .app-choice-picker-header)
+      :is(.modal-close-button, .modal-section-back-button, .accessibility-entry-button) {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 48px !important;
+      min-height: 48px !important;
+      max-height: 48px !important;
+      padding: 0 !important;
+      flex: 0 0 48px !important;
+      align-self: center !important;
+    }
+
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
       .product-route-controls
       > :is(.app-back-button, .product-home-button, .accessibility-entry-button) {
@@ -433,9 +450,52 @@ function injectDynamicTypeStyles(document) {
       min-height: max(48px, 2.85rem) !important;
     }
 
+    /* Navigation labels retain their accessible font size on phones and
+       tablets; intrinsic content can grow beyond these compact minimums. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      .product-app-nav {
+      height: auto !important;
+      max-height: none !important;
+      min-height: calc(
+        var(--dynamic-type-bottom-nav-block, 82px) + env(safe-area-inset-bottom)
+      ) !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .product-nav-button {
+      height: auto !important;
+      max-height: none !important;
+      min-height: 64px !important;
+      padding-block: 7px !important;
+      font-size: var(--dynamic-text-11, 0.6875rem) !important;
+      line-height: 1.2 !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .product-nav-button span {
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+    }
+
     @media (max-width: 720px) {
+      /* Four narrow columns split Hebrew step names into individual letters
+         at large text sizes. Two columns keep the complete words readable. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+        .event-creation-progress {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
+        .event-creation-progress li > button {
+        min-height: 64px !important;
+      }
+
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) {
-        --dynamic-type-bottom-nav-block: max(82px, 5rem);
+        /* The bar may grow with its content, but must not reserve five text
+           lines of empty space when its labels occupy a single line. */
+        --dynamic-type-bottom-nav-block: 82px;
         --dynamic-type-bottom-gap: max(28px, 2rem);
         --dynamic-type-screen-end-space: calc(
           var(--dynamic-type-bottom-nav-block) +
@@ -461,36 +521,6 @@ function injectDynamicTypeStyles(document) {
         > .top
         .hero-actions {
         margin-top: max(12px, 0.5rem) !important;
-      }
-
-      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
-        .product-app-nav {
-        height: auto !important;
-        max-height: none !important;
-        min-height: calc(
-          var(--dynamic-type-bottom-nav-block) + env(safe-area-inset-bottom)
-        ) !important;
-      }
-
-      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
-        #app
-        .product-nav-button {
-        height: auto !important;
-        max-height: none !important;
-        min-height: max(64px, 4rem) !important;
-        padding-block: 7px !important;
-        font-size: var(--dynamic-text-11, 0.6875rem) !important;
-        line-height: 1.2 !important;
-        white-space: nowrap !important;
-        overflow-wrap: normal !important;
-      }
-
-      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
-        #app
-        .product-nav-button
-        span {
-        white-space: nowrap !important;
-        overflow-wrap: normal !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)

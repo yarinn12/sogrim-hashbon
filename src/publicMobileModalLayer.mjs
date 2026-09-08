@@ -220,6 +220,7 @@ const CSS = `
     html.ledger-workspace-v1 body #app
       .event-modal-backdrop[data-event-route-dialog="true"]
       :is(.event-task-modal, .event-participant-route-modal) {
+      display: grid !important;
       height: calc(
         100dvh - var(--event-route-nav-safe-height, 96px) -
           env(safe-area-inset-bottom)
@@ -256,6 +257,63 @@ const CSS = `
       overscroll-behavior-y: contain !important;
       touch-action: pan-y !important;
       -webkit-overflow-scrolling: touch;
+    }
+
+    /* The route already ends above navigation. A second 180px reservation
+       inside its scroller can push the focused last row behind the header. */
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-participant-route-modal > .event-modal-body {
+      padding-block-end: 24px !important;
+      scroll-padding-block: 12px !important;
+    }
+
+    /* A roster title has no length limit. Scroll it with the list so even a
+       narrow large-text viewport can reveal a complete participant row. */
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal {
+      display: block !important;
+      overflow-y: auto !important;
+      scroll-padding-block: 12px !important;
+      touch-action: pan-y !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal > .event-modal-header {
+      position: static !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-modal-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal > .event-modal-body {
+      overflow-y: visible !important;
+    }
+
+    /* Other participant routes also need their header to scroll in short
+       landscape windows, where the header alone can fill the viewport. */
+    @media (max-height: 500px) {
+      html.ledger-workspace-v1 body #app
+        .event-modal-backdrop[data-event-route-dialog="true"]
+        .event-participant-route-modal {
+        display: block !important;
+        overflow-y: auto !important;
+        scroll-padding-block: 12px !important;
+        touch-action: pan-y !important;
+      }
+
+      html.ledger-workspace-v1 body #app
+        .event-modal-backdrop[data-event-route-dialog="true"]
+        .event-participant-route-modal > .event-modal-header {
+        position: static !important;
+      }
+
+      html.ledger-workspace-v1 body #app
+        .event-modal-backdrop[data-event-route-dialog="true"]
+        .event-participant-route-modal > .event-modal-body {
+        overflow-y: visible !important;
+      }
     }
 
     html.ledger-workspace-v1 body #app
