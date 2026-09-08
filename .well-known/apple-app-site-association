@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "MA9S4L7WKS.com.sogrimhashbon.app",
+        "paths": [
+          "/i/*",
+          "/r/*",
+          "/auth/callback"
+        ]
+      }
+    ]
+  }
+}
