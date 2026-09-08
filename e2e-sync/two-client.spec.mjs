@@ -1,4 +1,5 @@
 import {test, expect, chromium, webkit, devices} from '@playwright/test';
+import {recordBrowserErrors} from './browser-error-recorder.mjs';
 
 // Two separate browser engines, cookies, storage, identities and caches.
 // All remote traffic is intercepted. The fake backend implements CAS and
@@ -13,7 +14,7 @@ const headers = {'access-control-allow-origin': '*',
 
 async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false} = {}) {
   const browsers = [];
-  const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
+  const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
@@ -60,6 +61,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     for(const hold of membershipReadHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
+    if(networkDiagnostics.length) console.log(JSON.stringify({kind:'expected-fixture-network-diagnostics',diagnostics:networkDiagnostics}));
   };
   try {
   for (let i = 0; i < 2; i++) {
@@ -67,6 +69,8 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
+    const failedUrls=new Set();
+    await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls});
     const user = {id: ids[i], email: `qa-${i}@example.test`, app_metadata: {provider: 'google'},
       user_metadata: {full_name: participants[i].displayName, username: `two_client_${i}`,
         account_space_id: personal[i].id, account_space_key: key}};
@@ -84,7 +88,11 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         return route.continue();
       }
       if (url.origin !== origin) return route.abort('blockedbyclient');
-      if (blocked.has(i)) return route.abort('internetdisconnected');
+      if (blocked.has(i)) {
+        failedUrls.add(request.url());
+        return route.abort('internetdisconnected');
+      }
+      failedUrls.delete(request.url());
       if (request.method() === 'OPTIONS') return route.fulfill({status: 204, headers});
       requests.push({client: i, method: request.method(), path: url.pathname, at: performance.now()});
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
@@ -146,7 +154,8 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       unexpectedWrites.push({client: i, path: url.pathname});
       return reply({message: 'Unimplemented write'}, 501);
     });
-    await context.addInitScript(({user, initial, spaceId, key, i, seedPending, seedLink}) => {
+    await context.addInitScript(({user, initial, spaceId, key, i, seedPending, seedLink, appOrigin}) => {
+      if(location.origin !== appOrigin) return;
       if (localStorage.getItem('two-client-seeded')) return;
       localStorage.setItem('two-client-seeded', '1');
       localStorage.setItem('settle-friends-account-session', JSON.stringify({access_token: `fixture-token-${i}`,
@@ -161,11 +170,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         displayName: user.user_metadata.full_name, username: user.user_metadata.username, avatarPreset: 'avatar-1',
         authProvider: 'google', authSubject: user.id, email: user.email}));
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,seedPending:withAccountLink&&i===0,
+    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,appOrigin:new URL(baseURL).origin,seedPending:withAccountLink&&i===0,
       seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
         targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
-    page.on('pageerror', error => errors.push({client: i, message: error.message, stack:error.stack}));
     if(withAccountLink) page.on('console',message=>{
       if(/account-link|sync\]|save failed/i.test(message.text())) linkLogs.push({client:i,type:message.type(),message:message.text().slice(0,600)});
     });

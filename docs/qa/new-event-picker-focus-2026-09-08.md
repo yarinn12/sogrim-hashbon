@@ -42,3 +42,35 @@ This issue affected new-event input and was found during the broader audit.
 Korea's existing linked membership and financial records were verified separately.
 
 Release target: PWA 487 / Android 4.38 (166).
+# Offline-test browser diagnostic correction
+
+QA run `34187906930` preserved both devices' two expenses and two notes, but one
+offline/reconnect scenario failed its final error-list assertion. The reported
+error was WebKit's native `Fetch API cannot load ... due to access control checks`
+diagnostic for a deliberately aborted fixture request, not an uncaught app
+exception. An isolated page with a caught fetch rejection reproduced the exact
+Playwright `pageerror` shape; no application code was needed. Playwright's WebKit
+adapter maps every JavaScript-source error-level console message to `pageerror`.
+Source: https://github.com/microsoft/playwright/blob/main/packages/playwright-core/src/server/webkit/wkPage.ts
+
+The synthetic two-client fixture now records that precise native diagnostic
+separately only when its exact URL was deliberately failed by that client. A new
+allowed request clears the URL. Unexpected CORS diagnostics still fail. Independent
+`error` and `unhandledrejection` listeners preserve every actual runtime failure,
+including an unhandled rejection from that same deliberately failed URL. All
+existing financial, persistence, empty-error-list and unexpected-write assertions
+remain unchanged. Expected network diagnostics are printed in the test report.
+
+Three browser regressions cover a caught expected rejection, an unhandled rejection
+at the same URL, an unplanned CORS failure, and a thrown application error. The
+caught-rejection regression failed against the original collector and passes with
+the corrected recorder. The other regressions verify the guard still reports real
+failures. Starting the recorder earlier also exposed the fixture's attempt to seed
+localStorage on `about:blank`; seeding is now limited to its intended app origin.
+No production error handler, network behavior or data was changed.
+
+Evidence: `work/probe-webkit-cors-errors.log`, `work/korea-4.38-monitor-red.log`,
+`work/korea-4.38-monitor-sync-green.log`. Six additional unchanged offline journeys
+(three runs of each reconnection order) passed before this fixture correction.
+All 17 tests in the corrected independent-browser suite passed locally, with no
+failures or skips. The 624-file packaged runtime fingerprint remains unchanged.
