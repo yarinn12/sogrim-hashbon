@@ -16,6 +16,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
+  const membershipReadHolds = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -56,6 +57,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const baseURL = testInfo.project.use.baseURL;
   const close = async () => {
     barrier?.release();
+    for(const hold of membershipReadHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
   };
@@ -123,7 +125,14 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
             : id === sharedId ? [canonical] : sibling && id === sibling.id && i===0 ? [sibling]
             : id === personal[i].id ? [personal[i]] : [];
           const fields = (url.searchParams.get('select') || 'id,state,updated_at').split(',');
-          return reply(rows.map(row => Object.fromEntries(fields.map(field => [field, structuredClone(row[field])]))));
+          const responseRows = rows.map(row => Object.fromEntries(fields.map(field => [field, structuredClone(row[field])])));
+          const hold = url.searchParams.has('snapshot_kind') && membershipReadHolds.get(i);
+          if(hold && !hold.arrived) {
+            hold.arrived = true;
+            await hold.ready;
+            membershipReadHolds.delete(i);
+          }
+          return reply(responseRows);
         }
         const body = request.postDataJSON();
         if (id && id !== personal[i].id) return reply({message: 'Wrong workspace'}, 403);
@@ -170,6 +179,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs,
     get conflicts() { return conflicts; },
     get rejectedSiblingWrites() { return rejectedSiblingWrites; },
+    holdNextMembershipRead(i) {
+      let release; const ready = new Promise(resolve=>{release=resolve;});
+      const hold = {arrived:false,ready,release}; membershipReadHolds.set(i,hold); return hold;
+    },
     collideNextWrites() {
       let release; const ready = new Promise(resolve => { release = resolve; });
       barrier = {arrivals:0, release, ready};
@@ -191,6 +204,132 @@ async function newNote(page, title, body) {
 }
 const saveNote = page => page.locator('[data-action="save-event-note"]').click();
 const noteCard = (page, id) => page.locator(`.event-note-open[data-note-id="${id}"]`);
+
+async function newExpense(page, name, amount) {
+  await page.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+  await page.locator('[data-action="expense-total"]').fill(amount);
+  await page.locator('[data-action="expense-step-next"]').click();
+  await page.locator('[data-action="expense-name"]').fill(name);
+  for (let step = 0; step < 3; step++) await page.locator('[data-action="expense-step-next"]').click();
+  await page.locator('[data-action="save-expense"]').click();
+  await expect(page.locator('.expense-row').filter({hasText:name})).toHaveCount(1);
+}
+
+async function storedEvent(page, spaceId) {
+  return page.evaluate(({spaceId,eventId}) => JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(event => event.id === eventId), {spaceId,eventId});
+}
+
+test('a user can save an expense while interrupted-join recovery has an older membership read in flight',async ({},testInfo)=>{
+  const f=await fixture(testInfo),[a,b]=f.pages;
+  try {
+    await a.waitForLoadState('networkidle');
+    const held=f.holdNextMembershipRead(0);
+    await a.evaluate(({owner,eventId})=>{
+      localStorage.setItem('settle-friends-pending-event-joins',JSON.stringify([{ownerUserId:owner,eventId,queuedAt:new Date().toISOString()}]));
+      document.dispatchEvent(new Event('settle-friends:pending-join'));
+    },{owner:ids[0],eventId});
+    await expect.poll(()=>held.arrived).toBe(true);
+    await newExpense(a,'הוצאה בזמן התאוששות הצטרפות','12.34');
+    held.release();
+    await expect(b.locator('.expense-row')).toContainText('הוצאה בזמן התאוששות הצטרפות');
+    await expect.poll(()=>a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-joins')||'[]').length),{timeout:15000}).toBe(0);
+    for(let i=0;i<2;i++) {
+      await expect.poll(()=>storedEvent(f.pages[i],f.personal[i].id).then(event=>event.expenses.map(expense=>expense.total))).toEqual([1234]);
+    }
+    expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
+
+for (const reconnectOrder of [[0, 1], [1, 0]]) {
+  test(`both offline devices preserve expenses and notes when reconnecting ${reconnectOrder.join('-')}`, async ({},testInfo) => {
+    const f = await fixture(testInfo);
+    try {
+      for (let i=0; i<2; i++) await f.offline(i,true);
+      for (let i=0; i<2; i++) {
+        await newExpense(f.pages[i], `הוצאה אופליין ${i}`, i ? '20.03' : '10.01');
+        await f.pages[i].locator('[data-action="open-event-notes"]').click();
+        await newNote(f.pages[i], `פתק אופליין ${i}`, `נשמר במכשיר ${i}`);
+        await saveNote(f.pages[i]);
+      }
+      expect(f.canonical.state.events[0].expenses).toHaveLength(0);
+      for (const i of reconnectOrder) {
+        await f.offline(i,false);
+        await expect.poll(() => f.pages[i].evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[i].id)).toBeNull();
+      }
+      await expect.poll(() => f.canonical.state.events[0].expenses.length).toBe(2);
+      const canonical = f.canonical.state.events[0];
+      expect(canonical.expenses.map(expense=>expense.total).sort((a,b)=>a-b)).toEqual([1001,2003]);
+      expect(new Set(canonical.expenses.map(expense=>expense.id)).size).toBe(2);
+      expect(canonical.notes).toHaveLength(2);
+      for (let i=0; i<2; i++) {
+        await expect.poll(async () => (await storedEvent(f.pages[i],f.personal[i].id))?.expenses.map(expense=>expense.id).sort()).toEqual(canonical.expenses.map(expense=>expense.id).sort());
+        for(let j=0;j<2;j++) await expect(f.pages[i].getByText(`פתק אופליין ${j}`,{exact:true})).toBeVisible();
+        await f.pages[i].waitForLoadState('networkidle'); await f.pages[i].reload();
+        await expect(f.pages[i].locator('[data-screen-kind="home"]')).toBeVisible();
+        expect((await storedEvent(f.pages[i],f.personal[i].id)).expenses.reduce((sum,expense)=>sum+expense.total,0)).toBe(3004);
+      }
+      expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+    } finally { await f.close(); }
+  });
+}
+
+test('an offline edit cannot resurrect a note deleted by the other device', async ({},testInfo) => {
+  const f = await fixture(testInfo), [a,b] = f.pages;
+  try {
+    for(const page of f.pages) await page.locator('[data-action="open-event-notes"]').click();
+    await newNote(a,'פתק לפני מחיקה','תוכן משותף'); await saveNote(a);
+    await expect(b.getByText('פתק לפני מחיקה',{exact:true})).toBeVisible();
+    const id=f.canonical.state.events[0].notes[0].id;
+    await f.offline(1,true); await noteCard(b,id).click();
+    await b.locator('[data-action="event-note-body"]').fill('עריכה במכשיר מנותק');
+    await noteCard(a,id).click(); await a.locator('[data-action="request-delete-event-note"]').click();
+    await a.locator('[data-action="confirm-important-action"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].deletedNotes.some(note=>note.id===id)).toBe(true);
+    await saveNote(b); await f.offline(1,false);
+    for(const page of f.pages) await expect(noteCard(page,id)).toHaveCount(0);
+    await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
+    expect(f.canonical.state.events[0].notes.some(note=>note.id===id)).toBe(false);
+    expect(f.canonical.state.events[0].deletedNotes.filter(note=>note.id===id)).toHaveLength(1);
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } finally { await f.close(); }
+});
+
+test('offline payment confirmation survives peer reopening and preserves the same transfer with undo', async ({},testInfo) => {
+  const f=await fixture(testInfo,{withExpense:true}),[a,b]=f.pages;
+  const paymentAction = (page, action) => page.locator(`.settlement-transfer-board [data-action="${action}"]`);
+  try {
+    for(const page of f.pages) await page.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await a.locator('[data-action="close-event"]').first().click();
+    await a.locator('[data-action="confirm-close-event"]').click();
+    await expect(paymentAction(b,'mark-paid')).toHaveCount(1);
+    const original=structuredClone(f.canonical.state.events[0].transfers[0]);
+    expect(original.amount).toBe(6000);
+    await f.offline(1,true); await paymentAction(b,'mark-paid').click();
+    await expect(paymentAction(b,'mark-pending')).toHaveCount(1);
+    await a.locator('[data-action="open-event-notes"]').click();
+    await expect(a.getByRole('button',{name:'האירוע סגור',exact:true})).toBeDisabled();
+    await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await a.locator('[data-action="reopen-event"]').first().click();
+    await a.locator('[data-action="confirm-important-action"]').click();
+    await a.locator('[data-action="open-event-notes"]').click();
+    await newNote(a,'פתק בזמן תשלום אופליין','הסכום נשמר'); await saveNote(a);
+    await f.offline(1,false);
+    await expect.poll(()=>f.canonical.state.events[0].transfers.find(t=>t.id===original.id)?.status).toBe('paid');
+    expect(f.canonical.state.events[0].transfers.filter(t=>t.id===original.id)).toHaveLength(1);
+    expect(f.canonical.state.events[0].transfers.find(t=>t.id===original.id).amount).toBe(6000);
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.notes.some(n=>n.title==='פתק בזמן תשלום אופליין'))).toBe(true);
+    await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await expect(paymentAction(a,'mark-pending')).toHaveCount(1);
+    await paymentAction(a,'mark-pending').click();
+    await expect.poll(()=>f.canonical.state.events[0].transfers.find(t=>t.id===original.id)?.status).toBe('pending');
+    await a.locator('[data-action="close-event"]').first().click();
+    await a.locator('[data-action="confirm-close-event"]').click();
+    await expect(paymentAction(b,'mark-paid')).toHaveCount(1);
+    expect(f.canonical.state.events[0].transfers.find(t=>t.id===original.id).amount).toBe(6000);
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } finally { await f.close(); }
+});
 
 test('an interrupted link recovers at a new time and is confirmed on both devices',async ({},testInfo)=>{
   const f=await fixture(testInfo,{withAccountLink:true,withInterruptedLink:true});
@@ -269,6 +408,7 @@ test('an account link reaches the other device while an unrelated event remains 
     // retain that work and the link receipt, including after a process restart.
     await f.offline(1,true);
     await b.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+    await newExpense(b,'הוצאה שנכתבה לפני האיחוד','12.34');
     await b.locator('[data-action="open-event-notes"]').click();
     await newNote(b,'פתק שנכתב לפני האיחוד','הטיוטה הישנה נשמרת אחרי חיבור החשבון');
     await saveNote(b);
@@ -284,7 +424,7 @@ test('an account link reaches the other device while an unrelated event remains 
     await expect.poll(()=>b.evaluate(({spaceId,eventId,guest,target})=>{
       const event=JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(e=>e.id===eventId);
       return {guestActive:event?.participantIds.includes(guest),targetActive:event?.participantIds.includes(target),
-        payer:event?.expenses?.[0]?.payers?.[0]?.participantId,total:event?.expenses?.[0]?.total};
+        payer:event?.expenses?.find(e=>e.id==='guest-expense')?.payers?.[0]?.participantId,total:event?.expenses?.find(e=>e.id==='guest-expense')?.total};
     },{spaceId:f.personal[1].id,eventId,guest,target}),{timeout:10000}).toEqual({guestActive:false,targetActive:true,payer:target,total:9000});
     await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
     await expect.poll(()=>a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]').length)).toBe(0);
@@ -293,6 +433,12 @@ test('an account link reaches the other device while an unrelated event remains 
     expect(f.rejectedSiblingWrites).toBeGreaterThan(0);
     expect(f.canonical.state.events[0].participantAccountLinks).toEqual(expect.arrayContaining([expect.objectContaining({sourceParticipantId:guest,targetParticipantId:target})]));
     await expect.poll(()=>f.canonical.state.events[0].notes.some(note=>note.title==='פתק שנכתב לפני האיחוד')).toBe(true);
+    await expect.poll(()=>f.canonical.state.events[0].expenses.find(expense=>expense.name==='הוצאה שנכתבה לפני האיחוד')?.total).toBe(1234);
+    for(const expense of f.canonical.state.events[0].expenses) {
+      expect(expense.sharedByParticipantIds).not.toContain(guest);
+      expect(expense.payers.some(payer=>payer.participantId===guest)).toBe(false);
+    }
+    expect(f.canonical.state.events[0].expenses.reduce((sum,expense)=>sum+expense.total,0)).toBe(10234);
     await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
     await b.waitForLoadState('networkidle');await b.reload();
     await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();

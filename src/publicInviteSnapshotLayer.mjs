@@ -29,6 +29,8 @@ import {
 } from "./data/pendingInvite.mjs";
 import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
 import { loadStoredAccountSession } from "./data/accountAuth.mjs";
+import { versionedReadCacheSessionGeneration } from "./data/versionedReadCache.mjs";
+import { rememberPendingEventJoin, forgetPendingEventJoin } from "./data/pendingEventJoins.mjs";
 
 const PENDING_INVITE_RETRY_BASE_MS = 5_000;
 const PENDING_INVITE_RETRY_MAX_MS = 60_000;
@@ -84,9 +86,12 @@ function startInviteImportAfterAccountReady() {
 }
 
 async function initializeInviteImport() {
+  const generation = versionedReadCacheSessionGeneration();
   const config = await loadRuntimeConfig();
+  if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return;
   runtimeConfig = config;
   const imported = await importIncomingSharedEvent(config);
+  if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return;
   if (imported) {
     resetPendingInviteRetry();
     cleanInviteAddress();
@@ -178,17 +183,23 @@ async function handleInviteSnapshotJoinClick(event) {
   event.preventDefault();
   event.stopImmediatePropagation();
   if (inviteJoinBusy) return;
+  const generation = versionedReadCacheSessionGeneration();
+  const requestIsCurrent = config => generation === versionedReadCacheSessionGeneration() &&
+    inviteImportOwnerIsActive(config);
   inviteJoinBusy = true;
   button.disabled = true;
 
   try {
     const joinRuntimeConfig = await loadRuntimeConfig();
+    if (!requestIsCurrent(joinRuntimeConfig)) return;
     runtimeConfig = joinRuntimeConfig;
     const credentials = await resolveEventInviteCredentials(
       joinRuntimeConfig,
       link
     );
     if (!credentials) return;
+    const receipt = rememberRedeemedInvite(eventId, joinRuntimeConfig);
+    if (!requestIsCurrent(joinRuntimeConfig)) return;
     let sharedEventState = null;
     try {
       sharedEventState = await readSharedEventState(
@@ -197,9 +208,11 @@ async function handleInviteSnapshotJoinClick(event) {
         eventId
       );
     } catch (error) {
+      if (!requestIsCurrent(joinRuntimeConfig)) return;
       if (openVerifiedCachedEvent(eventId)) return;
       throw error;
     }
+    if (!requestIsCurrent(joinRuntimeConfig)) return;
     if (!sharedEventState) {
       openVerifiedCachedEvent(eventId);
       return;
@@ -231,6 +244,7 @@ async function handleInviteSnapshotJoinClick(event) {
 
     saveState(state);
     const saveResult = await saveSharedState(state, { awaitCloud: true });
+    if (!requestIsCurrent(joinRuntimeConfig)) return;
     if (!saveResult?.ok && !saveResult?.partial) {
       document.dispatchEvent(new CustomEvent("settle-friends:notice", {
         detail: {
@@ -240,11 +254,13 @@ async function handleInviteSnapshotJoinClick(event) {
       }));
       return;
     }
+    forgetPendingEventJoin(receipt, window.localStorage);
     if (profile && !wasAlreadyParticipant) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId);
     }
     window.location.replace(buildEventInviteUrl(window.location.href, eventId));
   } catch {
+    if (generation !== versionedReadCacheSessionGeneration()) return;
     document.dispatchEvent(new CustomEvent("settle-friends:notice", {
       detail: {
         message: "לא הצלחנו להצטרף לאירוע כרגע. בדקו את החיבור ונסו שוב."
@@ -277,10 +293,13 @@ function recoverPendingInviteAfterReconnect({ resetBackoff = false } = {}) {
     return Promise.resolve(false);
   }
 
+  const generation = versionedReadCacheSessionGeneration();
   pendingInviteReconnectRequest = loadRuntimeConfig()
     .then(async (config) => {
+      if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return false;
       runtimeConfig = config;
       const imported = await importIncomingSharedEvent(config, rememberedInviteUrl);
+      if (generation !== versionedReadCacheSessionGeneration() || !inviteImportOwnerIsActive(config)) return false;
       if (imported) {
         resetPendingInviteRetry();
         cleanInviteAddress();
@@ -289,6 +308,7 @@ function recoverPendingInviteAfterReconnect({ resetBackoff = false } = {}) {
     })
     .finally(() => {
       pendingInviteReconnectRequest = null;
+      if (generation !== versionedReadCacheSessionGeneration()) return;
       if (parseInviteEventId(pendingInviteUrl(window.location.href))) {
         schedulePendingInviteRetry();
       }
@@ -332,11 +352,26 @@ function inviteImportOwnerIsActive(config) {
   return activeUserId === expectedUserId;
 }
 
+function rememberRedeemedInvite(eventId, config) {
+  const receipt = {
+    ownerUserId: String(config?.storage?.account?.userId ?? "").trim(),
+    eventId,
+    queuedAt: new Date().toISOString()
+  };
+  if (rememberPendingEventJoin(receipt, window.localStorage)) {
+    document.dispatchEvent(new Event("settle-friends:pending-join"));
+  }
+  return receipt;
+}
+
 async function importIncomingSharedEvent(
   config,
   inviteUrl = pendingInviteUrl(window.location.href)
 ) {
-  if (!inviteImportOwnerIsActive(config)) return false;
+  const generation = versionedReadCacheSessionGeneration();
+  const requestIsCurrent = () => generation === versionedReadCacheSessionGeneration() &&
+    inviteImportOwnerIsActive(config);
+  if (!requestIsCurrent()) return false;
   const url = new URL(inviteUrl, window.location.origin);
   const eventId = parseInviteEventId(url);
   let credentials = null;
@@ -345,12 +380,13 @@ async function importIncomingSharedEvent(
   } catch {
     return false;
   }
-  if (!inviteImportOwnerIsActive(config)) return false;
   if (!eventId || !credentials) return false;
+  const receipt = rememberRedeemedInvite(eventId, config);
+  if (!requestIsCurrent()) return false;
 
   try {
     const sharedEventState = await readSharedEventState(config, credentials, eventId);
-    if (!inviteImportOwnerIsActive(config)) return false;
+    if (!requestIsCurrent()) return false;
     if (!sharedEventState) return false;
     let state = mergeSharedEventIntoState(loadState(), sharedEventState, credentials);
     const profile = loadLocalProfile();
@@ -370,7 +406,9 @@ async function importIncomingSharedEvent(
     }
     saveState(state);
     const saveResult = await saveSharedState(state, { awaitCloud: true });
+    if (!requestIsCurrent()) return false;
     if (!saveResult?.ok && !saveResult?.partial) return false;
+    forgetPendingEventJoin(receipt, window.localStorage);
     if (profile && !wasAlreadyParticipant) {
       notifyJoinedEvent(saveResult, eventId, profile.participantId, config);
     }

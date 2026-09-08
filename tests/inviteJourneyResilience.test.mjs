@@ -732,7 +732,7 @@ test("late invite recovery cannot cross an account switch", () => {
   );
   assert.match(joinRecovery, /recoveredState = await recoverAccessibleSharedEvents/);
   assert.ok(
-    joinRecovery.indexOf("if (!pendingMutationOwnerIsActive(ownerUserId)) return;", joinRecovery.indexOf("recoveredState = await")) <
+    joinRecovery.indexOf("if (!recoveryIsCurrent()) return;", joinRecovery.indexOf("recoveredState = await")) <
       joinRecovery.indexOf("state = syncLocalProfile(recoveredState)"),
     "join recovery discards an old account response before mutating current state"
   );

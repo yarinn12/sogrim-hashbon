@@ -152,24 +152,41 @@ test("account deletion stops waiting when the identity response body stalls", as
   assert.equal(result.status, 502);
 });
 
-test("account deletion recovers when an ambiguous timed-out delete already completed", async () => {
+test("account deletion recovers when an ambiguous timed-out delete already completed", async (t) => {
+  // Control both the request timer and the shared deadline: process scheduling
+  // under the full suite must not consume the deliberately short retry budget.
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1_000 });
   let deleteAttempts = 0;
-  const result = await deleteSupabaseAccount({
+  let firstDeleteSignal;
+  let markDeleteStarted;
+  const deleteStarted = new Promise((resolve) => { markDeleteStarted = resolve; });
+  const deletion = deleteSupabaseAccount({
     runtimeConfig,
     env: { SUPABASE_SERVICE_ROLE_KEY: "service-key" },
     authorization: "Bearer token",
     confirmation: "delete-my-account",
     requestTimeoutMs: 60,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, options) => {
       if (url.endsWith("/auth/v1/user")) {
         return jsonResponse(200, { id: "2f1fcf8b-c17c-4c74-b53e-f9e2472597d2" });
       }
       deleteAttempts += 1;
-      if (deleteAttempts === 1) return new Promise(() => {});
+      assert.match(url, /\/auth\/v1\/admin\/users\/2f1fcf8b-c17c-4c74-b53e-f9e2472597d2$/);
+      if (deleteAttempts === 1) {
+        firstDeleteSignal = options.signal;
+        markDeleteStarted();
+        return new Promise(() => {});
+      }
       return jsonResponse(404, {});
     }
   });
 
+  await deleteStarted;
+  assert.equal(deleteAttempts, 1);
+  assert.equal(firstDeleteSignal.aborted, false);
+  t.mock.timers.tick(20);
+  const result = await deletion;
+  assert.equal(firstDeleteSignal.aborted, true);
   assert.equal(result.status, 200);
   assert.equal(result.payload.accountDeleted, true);
   assert.equal(deleteAttempts, 2);

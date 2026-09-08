@@ -17,6 +17,8 @@ import {
   readSharedEventState
 } from "./data/sharedEventStore.mjs";
 import { loadStoredAccountSession } from "./data/accountAuth.mjs";
+import { versionedReadCacheSessionGeneration } from "./data/versionedReadCache.mjs";
+import { rememberPendingEventJoin, forgetPendingEventJoin } from "./data/pendingEventJoins.mjs";
 
 const app = document.querySelector("#app");
 const STYLE_ID = "public-join-event-layer-style";
@@ -351,6 +353,9 @@ function focusJoinEventPanel() {
 
 async function joinExistingEventFromPublicPanel() {
   if (publicJoinBusy) return;
+  const generation = versionedReadCacheSessionGeneration();
+  const joinRequestIsCurrent = config => generation === versionedReadCacheSessionGeneration() &&
+    joinRuntimeOwnerIsActive(config);
   publicJoinBusy = true;
   const joinButtons = [
     ...document.querySelectorAll(
@@ -379,16 +384,27 @@ async function joinExistingEventFromPublicPanel() {
     }
 
     const joinRuntimeConfig = await loadRuntimeConfig();
-    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+    if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
     const inviteCredentials = await resolveEventInviteCredentials(
       joinRuntimeConfig,
       link
     );
-    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
     if (!inviteCredentials?.id || !inviteCredentials?.key) {
+      if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
       setJoinError(error, "הקישור לא תקין או שכבר בוטל. בקשו קישור חדש ממנהל האירוע.");
       return;
     }
+    // Redemption is already committed on the server. Retain its original
+    // owner-scoped receipt even if the app suspends or changes session now.
+    const receipt = {
+      ownerUserId: String(joinRuntimeConfig?.storage?.account?.userId ?? "").trim(),
+      eventId,
+      queuedAt: new Date().toISOString()
+    };
+    if (rememberPendingEventJoin(receipt, window.localStorage)) {
+      document.dispatchEvent(new Event("settle-friends:pending-join"));
+    }
+    if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
 
     let sharedEventState;
     try {
@@ -398,10 +414,11 @@ async function joinExistingEventFromPublicPanel() {
         eventId
       );
     } catch {
+      if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
       setJoinError(error, "לא הצלחנו לאמת את ההזמנה כרגע. בדקו את החיבור ונסו שוב.");
       return;
     }
-    if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+    if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
     if (!sharedEventState) {
       setJoinError(error, "האירוע כבר לא זמין או שהקישור בוטל.");
       return;
@@ -416,7 +433,7 @@ async function joinExistingEventFromPublicPanel() {
     let targetEvent = findEvent(state, eventId);
     if (!targetEvent) {
       const latestState = await loadSharedState();
-      if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+      if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
       state = mergeSharedEventIntoState(
         latestState,
         sharedEventState,
@@ -444,8 +461,8 @@ async function joinExistingEventFromPublicPanel() {
         { reactivateInactive: false }
       );
       saveState(state);
-      const saveResult = await saveSharedState(state, { awaitCloud: true });
-      if (!joinRuntimeOwnerIsActive(joinRuntimeConfig)) return;
+      const saveResult = await saveSharedState(state, { awaitCloud: true, forceSharedEventIds: [eventId] });
+      if (!joinRequestIsCurrent(joinRuntimeConfig)) return;
       if (!saveResult?.ok && !saveResult?.partial) {
         setJoinError(
           error,
@@ -453,9 +470,13 @@ async function joinExistingEventFromPublicPanel() {
         );
         return;
       }
+      forgetPendingEventJoin(receipt, window.localStorage);
     }
 
     window.location.href = buildEventInviteUrl(window.location.href, eventId);
+  } catch (error) {
+    if (generation !== versionedReadCacheSessionGeneration()) return;
+    throw error;
   } finally {
     publicJoinBusy = false;
     joinButtons.forEach((button) => {

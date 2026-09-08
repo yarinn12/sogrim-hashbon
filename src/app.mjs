@@ -711,6 +711,9 @@ document.addEventListener("account-session-refreshed", () => {
   })
     .catch((error) => emitOperationDeferred("state_load", { error }));
 });
+document.addEventListener("settle-friends:pending-join", () => {
+  schedulePendingMutationRecovery({ resetBackoff: true });
+});
 document.addEventListener(PUSH_STATUS_EVENT, handleIncomingPushStatus);
 for (const notification of
   globalThis.SogrimNative?.takePendingPushNotifications?.() ?? []) {
@@ -22016,28 +22019,39 @@ function retryPendingEventJoins() {
   }
 
   const ownerUserId = pendingEventMembershipOwnerId();
+  const generation = versionedReadCacheSessionGeneration();
+  const recoveryIsCurrent = () => pendingMutationOwnerIsActive(ownerUserId) &&
+    generation === versionedReadCacheSessionGeneration();
   const pendingEntries = loadPendingEventJoins(window.localStorage, ownerUserId);
   if (!ownerUserId || !pendingEntries.length) return Promise.resolve();
 
   pendingEventJoinRetryRequest = (async () => {
-    runtimeConfig = await loadRuntimeConfig();
+    const recoveryConfig = await loadRuntimeConfig();
     if (
-      !pendingMutationOwnerIsActive(ownerUserId) ||
-      runtimeConfig?.storage?.account?.userId !== ownerUserId
+      !recoveryIsCurrent() ||
+      recoveryConfig?.storage?.account?.userId !== ownerUserId
     ) return;
+    runtimeConfig = recoveryConfig;
 
+    const recoveryState = state;
+    const recoverySaveRevision = sharedStateSaveRevision();
     let recoveredState;
     try {
       recoveredState = await recoverAccessibleSharedEvents(runtimeConfig, state);
     } catch (error) {
+      if (!recoveryIsCurrent()) return;
       emitOperationDeferred("event_join", { screen: "invite", error });
       return;
     }
-    if (!pendingMutationOwnerIsActive(ownerUserId)) return;
+    if (!recoveryIsCurrent()) return;
+    // Recovery starts from a captured state. If the user edited while the
+    // membership read was in flight, retry from that newer state next time;
+    // never replace it with this older projection or discard the join receipt.
+    if (state !== recoveryState || sharedStateSaveRevision() !== recoverySaveRevision) return;
     state = syncLocalProfile(recoveredState);
 
     for (const entry of pendingEntries) {
-      if (!pendingMutationOwnerIsActive(ownerUserId)) return;
+      if (!recoveryIsCurrent()) return;
       markPendingEventJoinAttempt(entry, window.localStorage);
       try {
         let event = getEvent(entry.eventId);
@@ -22073,6 +22087,7 @@ function retryPendingEventJoins() {
           suppressRevertNotice: true,
           forceSharedEventIds: [entry.eventId]
         });
+        if (!recoveryIsCurrent()) return;
         // A confirmed server membership is already canonical. Once the local
         // account save is accepted or queued, normal outbox recovery owns the
         // remaining write and this receipt must not trigger duplicate joins.
@@ -22080,6 +22095,7 @@ function retryPendingEventJoins() {
           forgetPendingEventJoin(entry, window.localStorage);
         }
       } catch (error) {
+        if (!recoveryIsCurrent()) return;
         emitOperationDeferred("event_join", { screen: "invite", error });
       }
     }

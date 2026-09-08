@@ -127,14 +127,15 @@ test("the public join panel persists only a server-verified event", async () => 
   assert.match(joinFlow, /resolveEventInviteCredentials\(/);
   assert.match(joinFlow, /readSharedEventState\(/);
   assert.match(joinFlow, /mergeSharedEventIntoState\(/);
-  assert.match(joinFlow, /saveSharedState\(state, \{ awaitCloud: true \}\)/);
+  assert.match(joinFlow, /saveSharedState\(state, \{ awaitCloud: true, forceSharedEventIds: \[eventId\] \}\)/);
   assert.match(joinFlow, /if \(publicJoinBusy\) return;/);
   assert.match(joinFlow, /button\.setAttribute\("aria-busy", "true"\)/);
   assert.match(joinFlow, /finally \{[\s\S]*publicJoinBusy = false/);
-  assert.match(joinFlow, /joinRuntimeOwnerIsActive\(joinRuntimeConfig\)/);
+  assert.match(joinFlow, /generation === versionedReadCacheSessionGeneration\(\) &&\s*joinRuntimeOwnerIsActive\(config\)/);
+  assert.match(joinFlow, /joinRequestIsCurrent\(joinRuntimeConfig\)/);
   assert.ok(
-    joinFlow.lastIndexOf("joinRuntimeOwnerIsActive(joinRuntimeConfig)") >
-      joinFlow.indexOf("saveSharedState(state, { awaitCloud: true })"),
+    joinFlow.lastIndexOf("joinRequestIsCurrent(joinRuntimeConfig)") >
+      joinFlow.indexOf("saveSharedState(state, { awaitCloud: true, forceSharedEventIds: [eventId] })"),
     "a late join save is discarded if the account changed"
   );
   assert.ok(
@@ -213,9 +214,10 @@ test("a successful invite import cannot leak into the next account", async () =>
   );
 
   assert.match(importFlow, /clearPendingInviteUrl\(\);\s*return true;/);
-  assert.match(importFlow, /if \(!inviteImportOwnerIsActive\(config\)\) return false;/);
+  assert.match(importFlow, /generation === versionedReadCacheSessionGeneration\(\) &&\s*inviteImportOwnerIsActive\(config\)/);
+  assert.match(importFlow, /if \(!requestIsCurrent\(\)\) return false;/);
   assert.ok(
-    importFlow.lastIndexOf("inviteImportOwnerIsActive(config)") >
+    importFlow.lastIndexOf("requestIsCurrent()") >
       importFlow.indexOf("readSharedEventState("),
     "the active account is verified again after the cloud read"
   );
