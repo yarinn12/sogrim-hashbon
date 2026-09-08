@@ -249,14 +249,12 @@ async function handleNotificationPreferenceChange(event) {
     const synced = await syncNotificationPreferences(userId, preferences);
     if (!notificationActionIsCurrent(action)) return;
     if (synced === false) {
-      notificationError =
-        "הבחירה נשמרה במכשיר ותסתנכרן אוטומטית בחיבור הבא.";
+      notificationError = "";
     }
   } catch {
     if (!notificationActionIsCurrent(action)) return;
     registeredForCurrentAccount = false;
-    notificationError =
-      "הבחירה נשמרה במכשיר ותסתנכרן אוטומטית בחיבור הבא.";
+    notificationError = "";
   } finally {
     finishNotificationAction(action);
   }

@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=488"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=489"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -472,10 +472,10 @@ test("profile name edits update the authenticated cloud account", async () => {
 
   assert.match(app, /SogrimAccountProfile\?\.updateDisplayName\?\.\(displayName\)/);
   assert.match(app, /Promise\.allSettled/);
-  assert.match(app, /הפרופיל נשמר במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
+  assert.match(app, /\(!accountProfileSynced \|\| !sharedProfileSynced\)[\s\S]*?notice = "";/);
   assert.match(app, /sharedProfileSaveResult\?\.pending !== true/);
   assert.match(app, /תמונת הפרופיל נשמרה/);
-  assert.match(app, /התמונה נשמרה במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
+  assert.match(app, /notice = fullySynced\s*\? "תמונת הפרופיל נשמרה\."\s*: ""/);
 });
 
 test("account gate protects private content and preserves interrupted form work", async () => {

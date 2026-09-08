@@ -9986,7 +9986,7 @@ async function persistProfileAvatarDraft() {
   }
   notice = fullySynced
     ? "תמונת הפרופיל נשמרה."
-    : "התמונה נשמרה במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
+    : "";
   return fullySynced;
 }
 
@@ -10235,9 +10235,7 @@ async function updateEventCoverImage(eventId, coverImage) {
     return false;
   }
   notice = result?.pending
-    ? globalThis.navigator?.onLine === false
-      ? "התמונה נשמרה במכשיר ותסתנכרן כשהחיבור יחזור."
-      : "תמונת האירוע נשמרה ומסתנכרנת ברקע."
+    ? ""
     : coverImage
       ? "תמונת האירוע נשמרה."
       : "תמונת האירוע הוסרה.";
@@ -15025,7 +15023,7 @@ async function joinExistingEventFromDraft() {
     newEventDraft = null;
     screen = { name: "event", eventId };
     notice = saveResult?.partial || saveResult?.pending
-      ? "ההצטרפות אושרה והסנכרון יושלם אוטומטית כשהחיבור יתייצב."
+      ? ""
       : "הצטרפת לאירוע.";
     emitProductMetric("invite_joined", { screen: "invite" });
     // Clearing the draft ends this request, so the finally guard cannot paint
@@ -16826,7 +16824,7 @@ async function deleteEventNote(eventId, noteId) {
       ...editorSnapshot,
       pendingNoteDeletion: { noteId, participantId: state.currentParticipantId },
       saving: false,
-      error: "עדיין לא התקבל אישור למחיקת הפתק המשותף. המחיקה ממתינה לסנכרון."
+      error: "עדיין לא התקבל אישור למחיקת הפתק המשותף. אפשר לנסות שוב."
     };
     render();
     return { ...result, ok: false };
@@ -17295,7 +17293,7 @@ async function applyEventCurrencyChange(
     state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "currency");
     notice = saveFailureMessage(result, "מטבע האירוע לא נשמר.");
   } else if (result?.pending) {
-    notice = `מטבע האירוע נשמר במכשיר כ${currencySelectLabel(nextCurrency)} ויסתנכרן אוטומטית.`;
+    notice = "";
   } else {
     notice = `מטבע האירוע עודכן ל${currencySelectLabel(nextCurrency)}.`;
   }
@@ -17831,7 +17829,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
     }
   } else {
     notice = result?.pending
-      ? `אוחד. ${target.displayName} הוא עכשיו חשבון אחד והסנכרון יושלם אוטומטית.`
+      ? ""
       : `אוחד. ${target.displayName} הוא עכשיו חשבון אחד.`;
   }
   render();
@@ -19089,7 +19087,7 @@ async function restoreStateBackup(restoredState) {
     return result;
   }
   notice = result?.pending
-    ? "הגיבוי שוחזר במכשיר ויסתנכרן אוטומטית."
+    ? ""
     : "הגיבוי שוחזר.";
   render();
   return result;
@@ -19223,7 +19221,7 @@ async function saveProfileFromDraft() {
     sharedProfileSaveResult?.pending !== true;
   if (screen === profileSaveDestination &&
       (!accountProfileSynced || !sharedProfileSynced) && localProfile?.authSubject) {
-    notice = "הפרופיל נשמר במכשיר. השלמת הסנכרון תתבצע אוטומטית.";
+    notice = "";
   }
   await refreshFriendNetwork({ preserveNotice: true });
   if (ownerScope !== profileSaveOwnerScope()) return;
@@ -20169,9 +20167,7 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
     state = previousState;
     notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
   } else if (result?.pending) {
-    notice = resetPayments
-      ? "פתיחת האירוע ואיפוס סימוני התשלום נשמרו במכשיר ויסתנכרנו עם שאר המשתתפים אוטומטית."
-      : "פתיחת האירוע נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.";
+    notice = "";
   } else {
     notice = resetPayments
       ? "האירוע נפתח מחדש וכל סימוני התשלום אופסו."
@@ -20237,9 +20233,7 @@ async function toggleEventLock(eventId) {
         ? "לא הצלחנו לפתוח את האירוע. לא בוצע שינוי."
         : "לא הצלחנו לנעול את האירוע. לא בוצע שינוי.";
   } else if (result?.pending) {
-    notice = opening
-      ? "פתיחת האירוע לעריכה נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית."
-      : "נעילת האירוע לעריכה נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.";
+    notice = "";
   } else {
     notice = opening
       ? "האירוע נפתח לעריכה ונשמר."
@@ -20304,7 +20298,7 @@ async function leaveCurrentEvent(eventId) {
     return result;
   }
   notice = result?.pending
-    ? `העזיבה מ־"${event.name}" נשמרה במכשיר ותושלם אוטומטית כשהחיבור יחזור.`
+    ? ""
     : `עזבת את "${event.name}".`;
   render();
   return result;
@@ -20340,7 +20334,7 @@ async function deleteCurrentEvent(eventId) {
   }
 
   notice = result?.pending
-    ? `מחיקת האירוע "${event.name}" נשמרה במכשיר ותסתנכרן עם שאר המשתתפים אוטומטית.`
+    ? ""
     : `האירוע "${event.name}" נמחק.`;
   render();
 
@@ -21137,9 +21131,7 @@ async function setEventManagementMode(eventId, mode) {
     state = rollbackEventSettingChange(state, eventId, previousEvent, attemptedEvent, "adminsCanEditOnly");
     notice = saveFailureMessage(result, "אופן הניהול לא נשמר.");
   } else if (result?.pending) {
-    notice = adminsCanEditOnly
-      ? "המעבר לניהול מרוכז נשמר במכשיר ויסתנכרן עם שאר המשתתפים אוטומטית."
-      : "המעבר לניהול משותף נשמר במכשיר ויסתנכרן עם שאר המשתתפים אוטומטית.";
+    notice = "";
   } else {
     notice = adminsCanEditOnly
       ? "ניהול מרוכז הופעל ונשמר."
@@ -21238,9 +21230,7 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
     notice = eventDialog?.eventId === eventId ? "" : failureMessage;
   } else {
     const completionMessage = result?.pending
-      ? enabled
-        ? `${participantLabel} הוגדר כמנהל במכשיר הזה. השינוי יסתנכרן אוטומטית.`
-        : `הרשאת הניהול של ${participantLabel} הוסרה במכשיר הזה. השינוי יסתנכרן אוטומטית.`
+      ? ""
       : confirmedMessage;
     eventDialog = eventDialog?.eventId === eventId
       ? { ...eventDialog, message: completionMessage }
@@ -21291,7 +21281,7 @@ async function setEventRoundingMode(eventId, mode) {
     return;
   }
   notice = result?.pending
-    ? "הגדרת עיגול הסכומים נשמרה במכשיר ותסתנכרן אוטומטית."
+    ? ""
     : confirmedNotice;
   render();
   requestAnimationFrame(() => {
@@ -22060,6 +22050,10 @@ function retryPendingEventJoins() {
     // never replace it with this older projection or discard the join receipt.
     if (state !== recoveryState || sharedStateSaveRevision() !== recoverySaveRevision) return;
     state = syncLocalProfile(recoveredState);
+    // A cancelled join may still have committed on the server. Refresh the
+    // current view as soon as its membership arrives, without waiting for a
+    // save-status notice, the account write or an unrelated background poll.
+    if (hasSharedStateChanged(recoveryState, state)) render();
 
     for (const entry of pendingEntries) {
       if (!recoveryIsCurrent()) return;
@@ -22084,6 +22078,7 @@ function retryPendingEventJoins() {
             (item) => item.id === participantId
           );
           if (!participant) continue;
+          const beforeMembership = state;
           state = ensureNamedParticipant(
             state,
             { ...participant, id: participantId },
@@ -22092,6 +22087,7 @@ function retryPendingEventJoins() {
           );
           event = getEvent(entry.eventId);
           if (!isActiveEventParticipant(event, participantId)) continue;
+          if (hasSharedStateChanged(beforeMembership, state)) render();
         }
         const result = await saveSharedState(state, {
           awaitCloud: true,
@@ -23475,7 +23471,7 @@ async function setEventRepaymentMode(eventId, mode) {
     return;
   }
   notice = result?.pending
-    ? "אופן ההחזר נשמר במכשיר ויסתנכרן אוטומטית."
+    ? ""
     : confirmedNotice;
   render();
   requestAnimationFrame(() => {

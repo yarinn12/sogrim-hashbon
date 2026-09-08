@@ -91,11 +91,18 @@ export function saveFailureMessage(result, prefix = "השינוי לא נשמר.
   return `${prefix} ${guidance[kind] || guidance.unavailable}${draft ? " הטיוטה נשארה כאן." : ""}`;
 }
 
-export function pendingSaveMessage(failureKind = "", online = globalThis.navigator?.onLine !== false) {
-  if (failureKind === "auth") return "השינויים ממתינים במכשיר. התחברו מחדש כדי להשלים סנכרון.";
-  if (failureKind === "permission") return "השינויים ממתינים במכשיר. אין הרשאה לסנכרן אותם; בדקו עם מנהל האירוע.";
-  if (["rejected", "missing", "unavailable", "storage"].includes(failureKind)) {
-    return "השינויים ממתינים במכשיר והסנכרון לא הושלם. נדרשת בדיקה לפני ניסיון נוסף.";
-  }
-  return online ? "נשמר במכשיר · ממתין לסנכרון" : "נשמר במכשיר · יסתנכרן כשהחיבור יחזור";
+export function pendingSaveMessage(failureKind = "") {
+  // A durable outbox is background work, including after restart or while
+  // offline. Only a failure requiring action belongs in the interface. This
+  // presentation policy never changes the queue or acknowledges a cloud write.
+  const actionRequired = {
+    auth: "החיבור לחשבון פג. התחברו מחדש.",
+    permission: "אין הרשאה לבצע את השינוי. בדקו עם מנהל האירוע.",
+    rejected: "השינוי לא התקבל בשרת. בדקו את הפרטים לפני ניסיון נוסף.",
+    missing: "הפריט כבר אינו זמין. חזרו לאירוע ובדקו אם הוסר.",
+    storage: "האחסון במכשיר אינו זמין. פנו מקום ונסו שוב.",
+    unavailable: "אירעה תקלה בשמירה. אפשר לנסות שוב.",
+    conflict: "המידע השתנה במכשיר אחר. בדקו את הגרסה המעודכנת לפני ניסיון נוסף."
+  };
+  return actionRequired[failureKind] || "";
 }

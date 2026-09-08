@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync, readdirSync } from "node:fs";
 import {
   isRoutineProgressNotice,
   noticePresentation
 } from "../src/domain/userNoticePolicy.mjs";
+
+test("client copy never reintroduces the removed pending-sync announcement", () => {
+  const root = new URL("../src/", import.meta.url);
+  const forbidden = /ממתינ[\u0590-\u05ff]* לסנכרון|נשמר[\u0590-\u05ff]* במכשיר|השלמת הסנכרון|השינויים ממתינים במכשיר|[יוות]סתנכר[\u0590-\u05ff]* אוטומטית|הסנכרון יושלם אוטומטית|מסתנכרנת ברקע/;
+  for (const file of readdirSync(root, { recursive: true }).filter(file => file.endsWith(".mjs"))) {
+    const match = readFileSync(new URL(file.replaceAll("\\", "/"), root), "utf8").match(forbidden);
+    assert.equal(match?.[0] ?? "", "", file);
+  }
+});
 
 test("routine progress notices stay inline instead of interrupting the user", () => {
   for (const message of [

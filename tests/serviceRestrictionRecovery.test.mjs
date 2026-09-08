@@ -10,7 +10,7 @@ test("a project restriction is retryable without masking permanent rejections", 
   assert.equal(isRetryablePendingSyncFailure(restricted), true);
   assert.equal(isRetryablePendingSyncFailure({ cause: restricted }), true);
   assert.equal(saveFailureKind(restricted), "server");
-  assert.equal(pendingSaveMessage(saveFailureKind(restricted), true), "נשמר במכשיר · ממתין לסנכרון");
+  assert.equal(pendingSaveMessage(saveFailureKind(restricted), true), "");
   for (const status of [400, 403, 404, 409, 410, 422]) {
     assert.equal(isRetryablePendingSyncFailure({ status }), false, `HTTP ${status}`);
   }

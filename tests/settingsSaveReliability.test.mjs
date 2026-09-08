@@ -21,6 +21,27 @@ function functionSource(name) {
 
 const baseTime = "2026-01-01T00:00:00.000Z";
 
+for (const [handler, args, field, value] of [
+  ["setEventManagementMode", ["settings", "centralized"], "adminsCanEditOnly", true],
+  ["setEventRoundingMode", ["settings", "exact"], "roundSettlementTransfers", false],
+  ["applyEventCurrencyChange", ["settings", "USD"], "currency", "USD"],
+  ["updateEventCoverImage", ["settings", "new-cover"], "coverImage", "new-cover"],
+  ["setEventRepaymentMode", ["settings", "direct"], "directSettlementTransfers", true],
+  ["toggleEventLock", ["settings"], "locked", true]
+]) {
+  test(`pending-sync regression: ${handler} retains the queued setting without a pending or success notice`, async () => {
+    const h = harness();
+    const request = h.context[handler](...args);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].state.events[0][field], value);
+    h.requests[0].resolve({ ok: true, pending: true });
+    await request;
+    assert.equal(h.context.state.events[0][field], value);
+    assert.equal(h.context.notice, "");
+    assert.equal(h.renders.at(-1).notice, "");
+  });
+}
+
 for (const [handler, args, field] of [
   ["setEventManagementMode", ["settings", "centralized"], "adminsCanEditOnly"],
   ["setEventRoundingMode", ["settings", "exact"], "roundSettlementTransfers"],

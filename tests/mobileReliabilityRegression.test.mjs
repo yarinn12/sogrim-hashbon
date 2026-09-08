@@ -215,21 +215,21 @@ test("queued event lifecycle changes never masquerade as cloud-confirmed", () =>
   );
 
   assert.match(reopen, /else if \(result\?\.pending\)/);
-  assert.match(reopen, /נשמר(?:ה|ו) במכשיר ו(?:י|ת)סתנכר/);
+  assert.match(reopen, /else if \(result\?\.pending\) \{\s*notice = "";/);
   assert.match(lock, /else if \(result\?\.pending\)/);
-  assert.match(lock, /נשמרה במכשיר ותסתנכרן/);
+  assert.match(lock, /else if \(result\?\.pending\) \{\s*notice = "";/);
   assert.ok(
     deletion.indexOf("מוחק את האירוע") < deletion.indexOf("await saveCheckpoint.request"),
     "deletion shows progress instead of claiming success before persistence"
   );
-  assert.match(deletion, /result\?\.pending[\s\S]*?נשמרה במכשיר ותסתנכרן/);
+  assert.match(deletion, /notice = result\?\.pending\s*\? ""/);
   assert.ok(
     deletion.lastIndexOf('נמחק.`') > deletion.indexOf("await saveCheckpoint.request"),
     "confirmed deletion is announced only after the cloud result"
   );
 });
 
-test("queued management-mode changes stay visibly pending across devices", () => {
+test("queued management-mode changes stay quiet without claiming cloud success", () => {
   const managementMode = sourceBetween(
     app,
     "async function setEventManagementMode",
@@ -239,8 +239,7 @@ test("queued management-mode changes stay visibly pending across devices", () =>
   assert.match(managementMode, /awaitCloud: true/);
   assert.match(managementMode, /forceSharedEventIds: \[eventId\]/);
   assert.match(managementMode, /else if \(result\?\.pending\)/);
-  assert.match(managementMode, /המעבר לניהול מרוכז נשמר במכשיר ויסתנכרן/);
-  assert.match(managementMode, /המעבר לניהול משותף נשמר במכשיר ויסתנכרן/);
+  assert.match(managementMode, /else if \(result\?\.pending\) \{\s*notice = "";/);
   assert.ok(
     managementMode.indexOf("הופעל ונשמר") >
       managementMode.indexOf("await persistState"),
@@ -256,7 +255,7 @@ test("every event setting distinguishes queued saves from cloud confirmation", (
         "async function applyEventCurrencyChange",
         "async function resetApplicationState"
       ),
-      pendingMessage: /מטבע האירוע נשמר במכשיר.*ויסתנכרן אוטומטית/
+      pendingMessage: /else if \(result\?\.pending\) \{\s*notice = "";/
     },
     {
       source: sourceBetween(
@@ -264,7 +263,7 @@ test("every event setting distinguishes queued saves from cloud confirmation", (
         "async function toggleEventParticipantAdmin",
         "async function setEventRoundingMode"
       ),
-      pendingMessage: /השינוי יסתנכרן אוטומטית/
+      pendingMessage: /completionMessage = result\?\.pending\s*\? ""/
     },
     {
       source: sourceBetween(
@@ -272,7 +271,7 @@ test("every event setting distinguishes queued saves from cloud confirmation", (
         "async function setEventRoundingMode",
         "function syncSettlementCloseConfirmation"
       ),
-      pendingMessage: /עיגול הסכומים נשמרה במכשיר ותסתנכרן אוטומטית/
+      pendingMessage: /notice = result\?\.pending\s*\? ""/
     },
     {
       source: sourceBetween(
@@ -280,7 +279,7 @@ test("every event setting distinguishes queued saves from cloud confirmation", (
         "async function setEventRepaymentMode",
         "function settlementTransferPlanKey"
       ),
-      pendingMessage: /אופן ההחזר נשמר במכשיר ויסתנכרן אוטומטית/
+      pendingMessage: /notice = result\?\.pending\s*\? ""/
     }
   ];
 

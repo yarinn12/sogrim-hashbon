@@ -125,7 +125,7 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
       await expect(eventScreen).toBeVisible({ timeout: 3_000 });
       const displayedMs = Math.round(performance.now() - startedAt);
       const eventId = await eventScreen.getAttribute("data-event-id");
-      await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
       const outbox = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
       const queuedEvent = outbox.events.find(event => event.id === eventId);
       expect(queuedEvent).toBeTruthy();

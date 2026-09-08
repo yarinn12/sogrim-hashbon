@@ -6,6 +6,7 @@ import { recoverAccessibleSharedEvents, saveSharedEventState } from "../src/data
 import { ensureNamedParticipant } from "../src/domain/userProfile.mjs";
 import { isActiveEventParticipant } from "../src/domain/eventMembership.mjs";
 import * as queue from "../src/data/pendingEventJoins.mjs";
+import { hasSharedStateChanged } from "../src/data/localIdentity.mjs";
 
 const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const recovery = app.slice(app.indexOf("function retryPendingEventJoins()"), app.indexOf("function loadPendingEventMembershipInvitations()"));
@@ -15,7 +16,7 @@ const eventId = "join-recovery-trip", spaceId = "join-recovery-space";
 const receipt = { ownerUserId: owner, eventId, queuedAt: "2026-08-01T00:00:00.000Z" };
 let harnessNumber = 0;
 
-function harness({ duringConfig, duringRead, duringSave, removed = false } = {}) {
+function harness({ duringConfig, duringRead, duringSave, removed = false, cachedEvent = true, holdSave = false } = {}) {
   const values = new Map();
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
   queue.rememberPendingEventJoin(receipt, storage);
@@ -29,7 +30,11 @@ function harness({ duringConfig, duringRead, duringSave, removed = false } = {})
   }] };
   let canonical = structuredClone(initial), version = time, activeOwner = owner, generation = 0, revision = 0;
   let readHook = duringRead, configHook = duringConfig, saveHook = duringSave;
-  const writes = [], errors = [];
+  const writes = [], errors = [], renders = [];
+  let releaseSave;
+  let markSaveReached;
+  const saveReached = new Promise(resolve => { markSaveReached = resolve; });
+  const saveGate = holdSave ? new Promise(resolve => { releaseSave = resolve; }) : Promise.resolve();
   const config = { storage: { mode: "supabase", url: `https://join-recovery-${++harnessNumber}.invalid`, anonKey: "synthetic", table: "app_snapshots", account: { userId: owner, accessToken: "synthetic" } } };
   const switchSession = (differentAccount = false) => {
     generation++;
@@ -63,7 +68,9 @@ function harness({ duringConfig, duringRead, duringSave, removed = false } = {})
     const next = readHook; readHook = null; hook(next);
     return new Response(JSON.stringify(rows));
   };
-  const ctx = vm.createContext({ state: structuredClone(initial), runtimeConfig: config, window: { localStorage: storage },
+  const ctx = vm.createContext({ state: { ...structuredClone(initial), events: cachedEvent ? structuredClone(initial.events) : [] }, runtimeConfig: config, window: { localStorage: storage },
+    screen: { name: "home" }, notice: "", hasSharedStateChanged,
+    render: () => renders.push({ state: structuredClone(ctx.state), screen: structuredClone(ctx.screen), notice: ctx.notice }),
     navigator: { onLine: true }, appBootHydrated: true, pendingEventJoinRetryRequest: null,
     pendingEventMembershipOwnerId: () => activeOwner, pendingMutationOwnerIsActive: id => activeOwner === id,
     versionedReadCacheSessionGeneration: () => generation, sharedStateSaveRevision: () => revision,
@@ -73,12 +80,14 @@ function harness({ duringConfig, duringRead, duringSave, removed = false } = {})
     ensureNamedParticipant, isActiveEventParticipant, ...queue,
     saveSharedState: async (state, options) => {
       assert.deepEqual(Array.from(options.forceSharedEventIds), [eventId]);
+      markSaveReached();
+      await saveGate;
       await saveSharedEventState(config, state, eventId, transport);
       const next = saveHook; saveHook = null; hook(next);
       return { ok: true };
     }, emitOperationDeferred: (_kind, value) => errors.push(value) });
   vm.runInContext(recovery, ctx);
-  return { ctx, writes, errors, initial, get canonical() { return canonical; },
+  return { ctx, writes, errors, renders, releaseSave, saveReached, initial, get canonical() { return canonical; },
     pending: () => queue.loadPendingEventJoins(storage, owner), run: () => ctx.retryPendingEventJoins() };
 }
 
@@ -89,23 +98,45 @@ test("a recovered membership is persisted once and acknowledges its durable join
   await h.run(); assert.equal(h.writes.length, 1); assert.deepEqual(h.errors, []);
 });
 
+test("a server-confirmed join appears on the current screen before its account save finishes, without a notice", async () => {
+  const h = harness({ cachedEvent: false, holdSave: true });
+  const pending = h.run();
+  await h.saveReached;
+  try {
+    assert.equal(h.ctx.state.events[0]?.id, eventId, "canonical recovery completed");
+    assert.equal(h.renders.at(-1)?.state.events[0]?.id, eventId, "the home view receives the recovered event immediately");
+    assert.equal(h.renders.at(-1)?.screen.name, "home");
+    assert.equal(h.renders.at(-1)?.notice, "");
+    assert.equal(h.pending().length, 1, "the durable receipt remains until the save is accepted");
+  } finally {
+    h.releaseSave();
+    await pending;
+  }
+  assert.equal(h.pending().length, 0);
+  assert.equal(h.writes.length, 1);
+  assert.deepEqual(h.errors, []);
+});
+
 test("join recovery cannot replace the next account's runtime config after a late config read", async () => {
   const h = harness({ duringConfig: "different-account" }); await h.run();
   assert.equal(h.ctx.runtimeConfig.nextSession, true);
   assert.equal(h.ctx.runtimeConfig.storage.account.userId, "another-account");
   assert.equal(h.writes.length, 0); assert.equal(h.pending().length, 1);
+  assert.equal(h.renders.length, 0);
 });
 
 test("join recovery cannot cross sign-out and sign-in to the same account", async () => {
   const h = harness({ duringRead: "same-session-restart" }); await h.run();
   assert.equal(h.ctx.state.nextSession, true);
   assert.equal(h.writes.length, 0); assert.equal(h.pending().length, 1);
+  assert.equal(h.renders.length, 0);
 });
 
 test("a local expense entered during membership recovery survives and is included by the next retry", async () => {
   const h = harness({ duringRead: "local-edit" }); await h.run();
   assert.equal(h.ctx.state.events[0].expenses[0]?.id, "new-local-expense");
   assert.equal(h.writes.length, 0); assert.equal(h.pending().length, 1);
+  assert.equal(h.renders.length, 0);
   await h.run();
   assert.equal(h.writes.length, 1); assert.equal(h.pending().length, 0);
   assert.equal(h.writes[0].p_state.events[0].expenses[0].total, 1234);

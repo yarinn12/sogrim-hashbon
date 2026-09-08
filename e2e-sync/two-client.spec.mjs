@@ -715,7 +715,8 @@ test('Android-profile Chromium and iPhone-profile WebKit note UIs deliver create
     await f.offline(1, true);
     await newNote(b, 'פתק ללא רשת', 'טיוטה באייפון'); await saveNote(b);
     await expect(b.locator('.event-note-modal')).toHaveCount(0);
-    await expect(b.locator('[data-inline-sync-status]:visible').first()).toContainText('נשמר במכשיר · יסתנכרן כשהחיבור יחזור');
+    await expect(b.locator('[data-inline-sync-status]:visible')).toHaveCount(0);
+    expect(await b.evaluate(() => Object.keys(localStorage).some(key => key.includes('pending-sync') && localStorage.getItem(key).includes('טיוטה באייפון')))).toBe(true);
     expect(f.canonical.state.events[0].notes.some(note => note.title==='פתק ללא רשת')).toBe(false);
     started = performance.now(); await f.offline(1, false);
     await expect(a.getByText('פתק ללא רשת', {exact: true})).toBeVisible({timeout: 8000});

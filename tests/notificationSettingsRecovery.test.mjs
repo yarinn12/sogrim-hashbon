@@ -45,6 +45,27 @@ function harness({ checkPermission = async () => ({ receive: "granted" }), loadC
 
 async function drainMicrotasks() { for (let i = 0; i < 30; i += 1) await Promise.resolve(); }
 
+for (const outcome of ["unacknowledged", "outage"]) {
+  test(`queued notification preference stays silent after ${outcome} and delivers on recovery`, async () => {
+    let recovered = false;
+    const h = harness({ register: () => {
+      if (!recovered && outcome === "outage") throw Object.assign(new Error("Temporary outage"), { status: 503 });
+      return { ok: recovered };
+    } });
+    vm.runInContext('permissionState = "granted";', h.context);
+    await h.context.handleNotificationPreferenceChange({ target: new h.context.Element("eventUpdates", false), preventDefault() {}, stopImmediatePropagation() {} });
+    assert.equal(h.preferences.get("a").eventUpdates, false);
+    assert.equal(h.registrations.at(-1).preferences.eventUpdates, false);
+    assert.equal(vm.runInContext("notificationError", h.context), "");
+    assert.equal(vm.runInContext("registeredForCurrentAccount", h.context), false);
+    recovered = true;
+    await h.context.requestNotificationInitialization();
+    assert.equal(h.registrations.at(-1).preferences.eventUpdates, false);
+    assert.equal(vm.runInContext("registeredForCurrentAccount", h.context), true);
+    assert.equal(vm.runInContext("notificationError", h.context), "");
+  });
+}
+
 test("a newer preference write cannot be overtaken by an older background registration", async () => {
   const started = deferred(), release = deferred();
   let remotePreference = null;
