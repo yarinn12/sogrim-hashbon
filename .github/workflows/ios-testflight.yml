@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.43"
+        default: "4.44"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "171"
+        default: "173"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור סגירת החשבון בזמן שינויים ממשתמשים אחרים: חלון האישור ופירוט החישוב נשארים יציבים ומתעדכנים. פעולות הסגירה מוצגות בהתאם להרשאות. נשמרות טיוטות בזמן עדכונים, עם בדיקות סנכרון, תשלומים ותצוגה בטקסט מוגדל."
+        default: "שיפור שמירת טיוטות ושחזור פתקים והוצאות לאחר רענון או עדכון. מניעת כפילויות ודריסת שינויים של משתתפים אחרים, שיפור תצוגה לרוחב ותיקוני יציבות וסנכרון."
 
 permissions:
   contents: read
