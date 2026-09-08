@@ -34,6 +34,7 @@ jobs:
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+      IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: ${{ inputs.version }}
       IOS_BUILD: ${{ inputs.build }}
       IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
@@ -106,7 +107,6 @@ jobs:
             -archivePath build/ios/SogrimHashbon.xcarchive \
             clean archive \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_STYLE=Automatic \
             | tee build/ios/archive.log
 
       - name: Export IPA

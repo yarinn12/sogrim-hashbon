@@ -10,6 +10,11 @@ const version = String(process.env.IOS_VERSION ?? metadata.version.number).trim(
 const build = String(process.env.IOS_BUILD ?? metadata.version.build).trim();
 const googleClientId = requiredGoogleClientId("GOOGLE_CLIENT_ID");
 const googleIosClientId = requiredGoogleClientId("GOOGLE_IOS_CLIENT_ID");
+const provisioningProfile = String(process.env.IOS_PROVISIONING_PROFILE ?? "").trim();
+
+if (provisioningProfile && !/^[A-Za-z0-9][A-Za-z0-9 ._()-]{0,127}$/.test(provisioningProfile)) {
+  throw new Error("IOS_PROVISIONING_PROFILE must be a plain App Store profile name.");
+}
 
 if (!/^[A-Z0-9]{10}$/.test(teamId)) {
   throw new Error("Set APPLE_TEAM_ID to the 10-character Apple Developer Team ID.");
@@ -41,12 +46,13 @@ let project = await readFile(projectPath, "utf8");
 project = replaceExactly(project, /CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${build};`, 2);
 project = replaceExactly(project, /MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`, 2);
 project = project.replace(
-  /(CODE_SIGN_STYLE = Automatic;\r?\n)(\s*DEVELOPMENT_TEAM = [A-Z0-9]+;\r?\n)?/g,
+  /(CODE_SIGN_STYLE = (?:Automatic|Manual);\r?\n)(\s*DEVELOPMENT_TEAM = [A-Z0-9]+;\r?\n)?/g,
   `$1\t\t\t\tDEVELOPMENT_TEAM = ${teamId};\n`
 );
 if ((project.match(new RegExp(`DEVELOPMENT_TEAM = ${teamId};`, "g")) ?? []).length !== 2) {
   throw new Error("Expected to configure the Apple Team ID in two app build configurations.");
 }
+if (provisioningProfile) project = configureDistributionSigning(project, provisioningProfile);
 await writeFile(projectPath, project, "utf8");
 
 const associationDir = join(root, ".well-known");
@@ -78,7 +84,15 @@ const exportOptions = `<?xml version="1.0" encoding="UTF-8"?>
   <key>method</key>
   <string>app-store-connect</string>
   <key>signingStyle</key>
-  <string>automatic</string>
+  <string>${provisioningProfile ? "manual" : "automatic"}</string>
+${provisioningProfile ? `  <key>signingCertificate</key>
+  <string>Apple Distribution</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>com.sogrimhashbon.app</key>
+    <string>${provisioningProfile}</string>
+  </dict>
+` : ""}\
   <key>stripSwiftSymbols</key>
   <true/>
   <key>teamID</key>
@@ -91,6 +105,24 @@ const exportOptions = `<?xml version="1.0" encoding="UTF-8"?>
 await writeFile(join(root, "ios", "ExportOptions.generated.plist"), exportOptions, "utf8");
 
 console.log(`iOS release ${version} (${build}) is prepared for Apple Team ${teamId}.`);
+
+function configureDistributionSigning(source, profileName) {
+  let updated = 0;
+  const result = source.replace(
+    /\t\t[A-F0-9]+ \/\* Release \*\/ = \{[\s\S]*?\r?\n\t\t\};/g,
+    (configuration) => {
+      if (!/PRODUCT_BUNDLE_IDENTIFIER = com\.sogrimhashbon\.app;/.test(configuration)) return configuration;
+      updated += 1;
+      // Scope the profile to the application target. Frameworks and Debug retain their own signing settings.
+      let release = replaceExactly(configuration, /CODE_SIGN_STYLE = (?:Automatic|Manual);/g, "CODE_SIGN_STYLE = Manual;", 1);
+      release = release.replace(/^\s*(?:CODE_SIGN_IDENTITY|PROVISIONING_PROFILE_SPECIFIER) = [^;]+;\r?\n/gm, "");
+      return release.replace(/(DEVELOPMENT_TEAM = [A-Z0-9]+;)/,
+        `$1\n\t\t\t\tCODE_SIGN_IDENTITY = "Apple Distribution";\n\t\t\t\tPROVISIONING_PROFILE_SPECIFIER = "${profileName}";`);
+    }
+  );
+  if (updated !== 1) throw new Error("Expected exactly one app Release configuration for distribution signing.");
+  return result;
+}
 
 function requiredGoogleClientId(name) {
   const value = String(process.env[name] ?? "").trim();
