@@ -1,5 +1,5 @@
-const PWA_RELEASE = "483";
-const CACHE_NAME = "settle-friends-live-v483";
+const PWA_RELEASE = "484";
+const CACHE_NAME = "settle-friends-live-v484";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -190,8 +190,10 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/src/app.mjs",
   "/src/pwaBootstrap.mjs",
   "/src/platformCompatibility.mjs",
-  "/src/publicAccountAuthLayer.mjs"
+  "/src/publicAccountAuthLayer.mjs",
+  ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css)$/.test(path))
 ]);
+const PRECACHE_CONCURRENCY = 6;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -321,18 +323,33 @@ async function precacheFreshFiles(cache) {
     CRITICAL_PRECACHE_FILES.has(path)
   );
 
-  // Installing must stay short: Chromium can leave a replacement worker in
-  // `installing` while a large optional cache warm-up is still running. Cache
-  // the complete runnable shell here; all other same-origin assets are filled
-  // by the normal fetch handler as the current app loads them.
-  await Promise.all(criticalFiles.map((path) => precacheFreshFile(cache, path)));
+  // The first page can finish loading before this worker controls its requests.
+  // Cache every code dependency before activation, so its very first offline
+  // reload has a runnable app. Bound parallel downloads and keep optional media
+  // and secondary documents out of installation.
+  let nextIndex = 0;
+  let failed = false;
+  await Promise.all(Array.from(
+    { length: Math.min(PRECACHE_CONCURRENCY, criticalFiles.length) },
+    async () => {
+      while (!failed && nextIndex < criticalFiles.length) {
+        const path = criticalFiles[nextIndex++];
+        try {
+          await precacheFreshFile(cache, path);
+        } catch (error) {
+          failed = true;
+          throw error;
+        }
+      }
+    }
+  ));
 }
 
 async function precacheFreshFile(cache, path) {
   const url = new URL(path, self.location.origin);
   url.searchParams.set("pwa_release", PWA_RELEASE);
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok || !isExpectedAssetResponse(path, response)) {
+  const response = await fetchWithNetworkTimeout(url);
+  if (!response?.ok || !isExpectedAssetResponse(path, response)) {
     throw new Error(`Precache failed: ${path}`);
   }
   await cache.put(path, response);

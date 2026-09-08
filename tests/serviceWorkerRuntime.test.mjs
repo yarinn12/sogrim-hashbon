@@ -16,12 +16,14 @@ async function createWorker({
   const listeners = new Map();
   const fetchCalls = [];
   const cacheWrites = [];
+  const storedAssets = new Map();
   let skipWaitingCalls = 0;
   const cache = {
     async addAll() {},
     async put(request, response) {
       cacheWrites.push({ request, response });
-      return cachePut(request, response);
+      await cachePut(request, response);
+      storedAssets.set(String(request), response.clone());
     }
   };
   const caches = {
@@ -36,6 +38,7 @@ async function createWorker({
     },
     async match(request) {
       const url = typeof request === "string" ? request : new URL(request.url).pathname;
+      if (storedAssets.has(url)) return storedAssets.get(url).clone();
       return url === "/index.html" ? shell.clone() : undefined;
     }
   };
@@ -131,7 +134,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length >= 8);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "483" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "484" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -140,7 +143,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=483",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=484",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -222,7 +225,7 @@ test("an updated worker reloads open installed-app windows even when old page co
     }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v483"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v484"],
     windowClients: [staleWindow]
   });
 
@@ -234,7 +237,7 @@ test("an updated worker reloads open installed-app windows even when old page co
 test("a first service-worker install does not reload the open page", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v483"],
+    cacheNames: ["settle-friends-live-v484"],
     windowClients: [{
       url: "https://sogrim-hesbon-app.vercel.app/",
       async navigate(url) {
@@ -309,6 +312,72 @@ test("optional assets do not delay replacement worker installation", async () =>
   assert.equal(worker.skipWaitingCalls, 1);
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(!worker.cacheWrites.some(({ request }) => request === "/support.html"));
+});
+
+test("a first installation caches the complete actual browser module graph before going offline", async () => {
+  let offline = false;
+  const worker = await createWorker({ fetchImpl: async input => {
+    if (offline) throw new Error("offline");
+    const pathname = new URL(String(input)).pathname;
+    return assetResponse(input, await readFile(pathname === "/" ? "index.html" : pathname.slice(1), "utf8"));
+  } });
+  await worker.dispatchInstall();
+  assert.equal(worker.skipWaitingCalls, 1);
+  offline = true;
+  const html = await readFile("index.html", "utf8");
+  const pending = [...html.matchAll(/<script type="module" src="\.([^"?]+\.mjs)/g)].map(match => match[1]);
+  const checked = new Set();
+  while (pending.length) {
+    const pathname = pending.pop();
+    if (checked.has(pathname)) continue;
+    checked.add(pathname);
+    const expected = await readFile(pathname.slice(1), "utf8");
+    const response = await worker.dispatchFetch(new Request(`https://sogrim-hesbon-app.vercel.app${pathname}`));
+    assert.equal(response.status, 200, `${pathname} must work on the first offline reload`);
+    assert.equal(await response.text(), expected, `${pathname} must contain the actual cached source`);
+    for (const match of expected.matchAll(/(?:from\s+|import\s*\(?\s*)["'](\.[^"']+\.mjs)["']/g)) {
+      pending.push(new URL(match[1], `https://sogrim-hesbon-app.vercel.app${pathname}`).pathname);
+    }
+  }
+  assert.ok(checked.size > 100, "verify dependencies as well as top-level entry scripts");
+});
+
+test("installation limits concurrent essential downloads without omitting dependencies", async () => {
+  let active = 0, peak = 0;
+  const worker = await createWorker({ fetchImpl: async input => {
+    peak = Math.max(peak, ++active);
+    await new Promise(resolve => setTimeout(resolve, 1));
+    active--;
+    return assetResponse(input);
+  } });
+  await worker.dispatchInstall();
+  assert.ok(worker.cacheWrites.length > 100);
+  assert.ok(peak <= 6, `expected at most six concurrent downloads, got ${peak}`);
+  assert.equal(worker.skipWaitingCalls, 1);
+});
+
+for (const failure of ["response", "cache"]) {
+  test(`a missing module dependency prevents activation after a ${failure} failure`, async () => {
+    const path = "/src/domain/sharedStateMerge.mjs";
+    const worker = await createWorker({
+      fetchImpl: async input => new URL(String(input)).pathname === path && failure === "response"
+        ? new Response("Unavailable", { status: 503 }) : assetResponse(input),
+      cachePut: async request => { if (request === path && failure === "cache") throw new Error("quota exceeded"); }
+    });
+    await assert.rejects(worker.dispatchInstall(), /Precache failed|quota exceeded/);
+    assert.equal(worker.skipWaitingCalls, 0);
+  });
+}
+
+test("a stalled essential module download fails installation without activating an incomplete cache", async () => {
+  const worker = await createWorker({
+    fetchImpl: input => new URL(String(input)).pathname === "/src/domain/sharedStateMerge.mjs"
+      ? new Promise(() => {}) : Promise.resolve(assetResponse(input)),
+    setTimeoutImpl(callback) { queueMicrotask(callback); return 1; },
+    clearTimeoutImpl() {}
+  });
+  await assert.rejects(worker.dispatchInstall(), /Precache failed/);
+  assert.equal(worker.skipWaitingCalls, 0);
 });
 
 test("service worker never caches an HTML fallback under a JavaScript module URL", async () => {
