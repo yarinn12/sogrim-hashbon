@@ -532,14 +532,22 @@ async function connectAccountToApp(
   });
   let sharedState = startupState.state;
   let verifiedInvitedEventId = "";
-  const inviteCredentials = invitedEventId
-    ? await resolveEventInviteCredentials(
+  let inviteCredentials = null;
+  if (invitedEventId) {
+    try {
+      inviteCredentials = await resolveEventInviteCredentials(
         runtimeConfig,
         inviteUrl,
         globalThis.fetch,
         { timeoutMs: STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS }
-      )
-    : null;
+      );
+    } catch (error) {
+      // A temporary invite failure must not enter the terminal-invite branch
+      // that clears the login/registration handoff. Open the account normally;
+      // the retained URL is retried by the invite recovery layer after auth.
+      if (!error?.retryable) throw error;
+    }
+  }
   if (invitedEventId && inviteCredentials) {
     try {
       const remoteEvent = await readSharedEventState(

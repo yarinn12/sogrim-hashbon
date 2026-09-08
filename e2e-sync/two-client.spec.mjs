@@ -12,12 +12,14 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false} = {}) {
+async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
+  const accountLinkWriteHolds = new Map();
+  const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -40,13 +42,20 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       payers:[{participantId:guest.id,amount:9000}],sharedByParticipantIds:[participants[0].id,guest.id],
       createdByParticipantId:guest.id,updatedAt:version,kind:'shared'});
   }
+  if (withCompetingLinks) event.adminIds = ids.map(id => `account-${id}`);
+  if (joiningClient !== null) {
+    event.participantIds = participants.filter((_, i) => i !== joiningClient).map(p => p.id);
+    event.adminIds = [...event.participantIds];
+    event.createdByParticipantId = event.adminIds[0];
+  }
   const canonical = {id: sharedId, snapshot_kind: 'shared_event', updated_at: version,
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
       groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [],
       events: [{...structuredClone(event), sharedSpaceId: sharedId, sharedSpaceKey: key}]}}));
-  const sibling = withAccountLink ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
+  if (joiningClient !== null) personal[joiningClient].state.events = [];
+  const sibling = withAccountLink && !withCompetingLinks ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
     state:{currentParticipantId:'',participants:structuredClone(participants),groups:[],deletedParticipants:[],events:[{
       ...structuredClone(event),id:'unrelated-pending-event',name:'אירוע אחר שלא הסתנכרן',expenses:[],notes:[],transfers:[]}]}} : null;
   if (sibling) {
@@ -59,6 +68,8 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const close = async () => {
     barrier?.release();
     for(const hold of membershipReadHolds.values()) hold.release();
+    for(const hold of accountLinkWriteHolds.values()) hold.release();
+    for(const hold of inviteHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
     if(networkDiagnostics.length) console.log(JSON.stringify({kind:'expected-fixture-network-diagnostics',diagnostics:networkDiagnostics}));
@@ -70,6 +81,15 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
     const failedUrls=new Set();
+    // WebKit's context-level offline switch can reject a request before route()
+    // runs. Record only this client's deliberately disconnected requests so its
+    // native network diagnostic is handled by the existing exact-URL guard.
+    // Real error/unhandledrejection events remain unconditional test failures.
+    const rememberOfflineRequest=request=>{
+      if(blocked.has(i) && new URL(request.url()).origin===origin)failedUrls.add(request.url());
+    };
+    context.on('request',rememberOfflineRequest);
+    context.on('requestfailed',rememberOfflineRequest);
     await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls});
     const user = {id: ids[i], email: `qa-${i}@example.test`, app_metadata: {provider: 'google'},
       user_metadata: {full_name: participants[i].displayName, username: `two_client_${i}`,
@@ -78,8 +98,31 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       const request = route.request(), url = new URL(request.url());
       const reply = (json, status = 200) => route.fulfill({headers, json, status});
       if (url.origin === new URL(baseURL).origin) {
-        if (url.pathname === '/api/config') return reply({publicUrl: baseURL, launch: {cloudStorageReady: true},
+        if (url.pathname === '/api/config') return reply({publicUrl: baseURL, launch: {cloudStorageReady: true,authEmailDeliveryReady:true},
           storage: {mode: 'supabase', url: origin, anonKey: 'fixture-anon', table: 'app_snapshots'}});
+        if (joiningClient !== null && url.pathname === '/api/event-invites/redeem') {
+          const body=request.postDataJSON();
+          if(request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({code:'EVENT_INVITE_AUTH_REQUIRED'},401);
+          if(body.eventId !== eventId || body.token !== 'a'.repeat(64)) return reply({code:'EVENT_INVITE_REVOKED'},410);
+          inviteRequests.push({client:i,body});
+          const hold=inviteHolds.get(i);
+          if(hold){hold.arrived=true;await hold.ready;inviteHolds.delete(i);}
+          if(inviteFailures.has(i))return reply({code:'EVENT_MEMBERSHIP_INDEX_PENDING',retryable:true},503);
+          // Model the SQL transaction, verified independently in databaseIntegrity:
+          // canonical membership and personal discovery commit before the response.
+          const event=canonical.state.events[0], participantId=`account-${ids[i]}`;
+          if(!event.participantIds.includes(participantId)) {
+            event.participantIds.push(participantId);
+            event.membershipUpdatedAt=stamp();
+            event.membershipUpdatedAtByParticipant={...event.membershipUpdatedAtByParticipant,[participantId]:event.membershipUpdatedAt};
+            canonical.updated_at=stamp();
+          }
+          if(!personal[i].state.events.some(item=>item.id===eventId)) {
+            personal[i].state.events.push({...structuredClone(event),sharedSpaceId:sharedId,sharedSpaceKey:key});
+            personal[i].updated_at=stamp();
+          }
+          return reply({eventId,spaceId:sharedId,spaceKey:key,kind:'open',atomic:true});
+        }
         if (url.pathname.startsWith('/api/notifications/') || url.pathname === '/api/product-metrics') return reply({ok: true});
         if (url.pathname.startsWith('/api/') && !['/api/health'].includes(url.pathname)) {
           if (request.method() !== 'GET') unexpectedWrites.push({client: i, path: url.pathname});
@@ -95,14 +138,27 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       failedUrls.delete(request.url());
       if (request.method() === 'OPTIONS') return route.fulfill({status: 204, headers});
       requests.push({client: i, method: request.method(), path: url.pathname, at: performance.now()});
+      if(joiningClient !== null && url.pathname === '/auth/v1/settings')return reply({external:{email:true,google:false,apple:false}});
+      if(joiningClient !== null && url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'password') {
+        const body=request.postDataJSON();
+        if(body.email !== user.email || body.password !== 'Synthetic-password-123!')return reply({message:'Invalid login credentials'},400);
+        return reply({access_token:`fixture-token-${i}`,refresh_token:`fixture-refresh-${i}`,expires_in:3600,user});
+      }
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
       if (url.pathname === '/auth/v1/user') return reply(user);
       if (url.pathname.endsWith('/ensure_account_workspace')) return reply({status: 'existing', workspaceId: personal[i].id});
-      if (url.pathname.endsWith('/join_shared_event')) return reply(true);
+      if (url.pathname.endsWith('/join_shared_event')) return reply(canonical.state.events[0].participantIds.includes(`account-${ids[i]}`));
       // These auxiliary RPCs are outside the sync journey but are invoked at
       // startup/expense save. Explicit inert fixtures, not a blanket write allowlist.
       if (url.pathname.endsWith('/get_referral_program_status')) return reply({status: 'unavailable'});
       if (url.pathname.endsWith('/qualify_referral')) return reply({status: 'unavailable'});
+      // Opening an invitation exercises the slower authenticated bootstrap,
+      // which verifies the existing username in addition to normal sync RPCs.
+      if (joiningClient !== null && url.pathname.endsWith('/set_friend_username')) {
+        const body=request.postDataJSON();
+        if(body.p_username !== `two_client_${i}`) {unexpectedWrites.push({client:i,path:url.pathname,body});return reply({},400);}
+        return reply({user_id:ids[i],username:`two_client_${i}`});
+      }
       if (url.pathname.endsWith('/user_profiles')) {
         return reply(ids.map((id, index) => ({user_id: id, display_name: participants[index].displayName,
           username: `two_client_${index}`, username_customized: false, avatar_preset: 'avatar-1',
@@ -111,6 +167,12 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        const linkHold = accountLinkWriteHolds.get(i);
+        if (linkHold && body.p_snapshot_id === sharedId && body.p_state.events[0].participantAccountLinks?.length) {
+          linkHold.arrived = true;
+          await linkHold.ready;
+          accountLinkWriteHolds.delete(i);
+        }
         if (sibling && body.p_snapshot_id === sibling.id) {
           rejectedSiblingWrites++;
           return reply({code:'42501',message:'Synthetic unrelated event rejects its pending edit'},403);
@@ -129,8 +191,9 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
         if (request.method() === 'GET') {
-          const rows = url.searchParams.has('snapshot_kind') ? [canonical,...(sibling && i===0 ? [sibling] : [])]
-            : id === sharedId ? [canonical] : sibling && id === sibling.id && i===0 ? [sibling]
+          const readable=canonical.state.events[0].participantIds.includes(`account-${ids[i]}`);
+          const rows = url.searchParams.has('snapshot_kind') ? [...(readable?[canonical]:[]),...(sibling && i===0 ? [sibling] : [])]
+            : id === sharedId ? (readable?[canonical]:[]) : sibling && id === sibling.id && i===0 ? [sibling]
             : id === personal[i].id ? [personal[i]] : [];
           const fields = (url.searchParams.get('select') || 'id,state,updated_at').split(',');
           const responseRows = rows.map(row => Object.fromEntries(fields.map(field => [field, structuredClone(row[field])])));
@@ -170,7 +233,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         displayName: user.user_metadata.full_name, username: user.user_metadata.username, avatarPreset: 'avatar-1',
         authProvider: 'google', authSubject: user.id, email: user.email}));
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,appOrigin:new URL(baseURL).origin,seedPending:withAccountLink&&i===0,
+    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,appOrigin:new URL(baseURL).origin,seedPending:Boolean(sibling)&&i===0,
       seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
         targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
@@ -179,14 +242,25 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     });
     await page.goto('/');
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    if(i===joiningClient) {
+      await expect(page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+      continue;
+    }
     await expect(page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first()).toBeVisible();
     await page.screenshot({path: testInfo.outputPath(`startup-${i}.png`)});
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
-  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs,
+  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests,
+    failInvites(i, fail) {if(fail)inviteFailures.add(i);else inviteFailures.delete(i);},
+    holdNextInvite(i) {let release;const ready=new Promise(resolve=>{release=resolve;});
+      const hold={arrived:false,ready,release};inviteHolds.set(i,hold);return hold;},
     get conflicts() { return conflicts; },
     get rejectedSiblingWrites() { return rejectedSiblingWrites; },
+    holdNextAccountLinkWrite(i) {
+      let release; const ready = new Promise(resolve=>{release=resolve;});
+      const hold = {arrived:false,ready,release}; accountLinkWriteHolds.set(i,hold); return hold;
+    },
     holdNextMembershipRead(i) {
       let release; const ready = new Promise(resolve=>{release=resolve;});
       const hold = {arrived:false,ready,release}; membershipReadHolds.set(i,hold); return hold;
@@ -226,6 +300,115 @@ async function newExpense(page, name, amount) {
 async function storedEvent(page, spaceId) {
   return page.evaluate(({spaceId,eventId}) => JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(event => event.id === eventId), {spaceId,eventId});
 }
+
+for(const joiningClient of [0,1]) {
+  test(`a new member joins from ${joiningClient?'iPhone':'Android'}, writes offline and remains visible after restart`,async({},testInfo)=>{
+    const f=await fixture(testInfo,{joiningClient}),joiner=f.pages[joiningClient],host=f.pages[1-joiningClient];
+    try {
+      await joiner.waitForLoadState('networkidle');
+      await joiner.goto(`/i/${eventId}/t/${'a'.repeat(64)}`);
+      await expect(joiner.locator('[data-action="open-event-notes"]')).toBeVisible();
+      expect(f.errors,'join navigation must not raise application errors').toEqual([]);
+      expect(f.canonical.state.events[0].participantIds.filter(id=>id===`account-${ids[joiningClient]}`)).toHaveLength(1);
+      // This case disconnects after the join finishes; interrupted membership
+      // reads and late commits have separate recovery scenarios below.
+      await expect.poll(()=>joiner.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-joins')||'[]').length)).toBe(0);
+      await joiner.waitForLoadState('networkidle');
+      await f.offline(joiningClient,true);
+      await newExpense(joiner,'הוצאה אחרי הצטרפות ללא חיבור','17');
+      expect(f.errors,'offline expense must not raise application errors').toEqual([]);
+      await f.offline(joiningClient,false);
+      await expect(host.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
+      await expect.poll(()=>f.personal[joiningClient].state.events[0]?.expenses.length).toBe(1);
+      await joiner.waitForLoadState('networkidle');
+      expect(f.errors,'reconnection must not raise application errors').toEqual([]);
+      await joiner.reload();
+      // A cleaned invitation retains its event destination across reload.
+      await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
+      await joiner.waitForLoadState('networkidle');
+      expect(f.errors,'reload must not raise application errors').toEqual([]);
+      await joiner.goto('/');
+      await expect(joiner.locator('[data-screen-kind="home"]')).toBeVisible();
+      await joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
+      await expect.poll(()=>joiner.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-joins')||'[]').length)).toBe(0);
+      expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
+}
+
+for(const joiningClient of [0,1]) {
+  test(`a signed-out invite opens login and completes membership on ${joiningClient?'iPhone':'Android'}`,async({},testInfo)=>{
+    const f=await fixture(testInfo,{joiningClient}),joiner=f.pages[joiningClient];
+    try {
+      await joiner.evaluate(()=>localStorage.removeItem('settle-friends-account-session'));
+      await joiner.goto(`/i/${eventId}/t/${'a'.repeat(64)}`);
+      const gate=joiner.locator('#public-account-auth-gate');
+      await expect(gate).toBeVisible();
+      expect(f.inviteRequests).toHaveLength(0);
+      expect(f.canonical.state.events[0].participantIds).not.toContain(`account-${ids[joiningClient]}`);
+      await gate.locator('input[name="email"]').fill(`qa-${joiningClient}@example.test`);
+      await gate.locator('input[name="password"]').fill('Synthetic-password-123!');
+      await gate.locator('button[type="submit"]').click();
+      await expect(gate).toHaveCount(0);
+      await expect(joiner.locator('[data-action="open-event-notes"]')).toBeVisible();
+      expect(f.canonical.state.events[0].participantIds.filter(id=>id===`account-${ids[joiningClient]}`)).toHaveLength(1);
+      await expect.poll(()=>joiner.evaluate(()=>localStorage.getItem('sogrim-pending-invite-handoff-v1'))).toBe(null);
+      expect(f.personal[joiningClient].state.events).toHaveLength(1);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
+}
+
+test('an invitation survives a temporary membership-index failure during iPhone account login and joins automatically',async({},testInfo)=>{
+  const f=await fixture(testInfo,{joiningClient:1}),joiner=f.pages[1];
+  try {
+    f.failInvites(1,true);
+    await joiner.goto(`/i/${eventId}/t/${'a'.repeat(64)}`);
+    await expect(joiner.locator('#app .screen')).toBeVisible();
+    // Observe the completed login branch, not the handoff stored before login.
+    // Otherwise an early assertion can pass before the old code deletes it.
+    await expect(joiner.locator('html')).not.toHaveClass(/account-auth-pending|account-auth-locked/);
+    await expect.poll(()=>f.inviteRequests.length).toBeGreaterThan(0);
+    await expect.poll(()=>joiner.evaluate(()=>Boolean(localStorage.getItem('sogrim-pending-invite-handoff-v1')))).toBe(true);
+    expect(f.canonical.state.events[0].participantIds).not.toContain(`account-${ids[1]}`);
+    f.failInvites(1,false);
+    await joiner.evaluate(()=>window.dispatchEvent(new Event('online')));
+    await expect.poll(()=>f.canonical.state.events[0].participantIds).toContain(`account-${ids[1]}`);
+    await expect.poll(()=>joiner.evaluate(()=>localStorage.getItem('sogrim-pending-invite-handoff-v1'))).toBe(null);
+    await expect(joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"], [data-action="open-event-notes"]`).first()).toBeVisible();
+    await joiner.goto('/');
+    await expect(joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first()).toBeVisible();
+    expect(f.personal[1].state.events.filter(event=>event.id===eventId)).toHaveLength(1);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
+
+test('cancelling a manual join leaves home visible when the committed server response arrives later',async({},testInfo)=>{
+  const f=await fixture(testInfo,{joiningClient:1}),joiner=f.pages[1];
+  try {
+    const hold=f.holdNextInvite(1);
+    // The current home exposes link entry through external invitations. Exercise
+    // the retained manual handler with a synthetic launch control, then use its
+    // real form, submit and cancel controls (no application functions replaced).
+    await joiner.evaluate(()=>{
+      const launch=document.createElement('button');launch.dataset.action='join-event-screen';
+      launch.textContent='QA manual join entry';document.querySelector('#app').append(launch);
+    });
+    await joiner.locator('[data-action="join-event-screen"]').click();
+    await joiner.locator('[data-action="join-event-link"]').fill(`${testInfo.project.use.baseURL}/i/${eventId}/t/${'a'.repeat(64)}`);
+    await joiner.locator('[data-action="join-existing-event"]').click();
+    await expect.poll(()=>hold.arrived).toBe(true);
+    await joiner.locator('[data-action="cancel-join-event"]').click();
+    hold.release();
+    await expect.poll(()=>f.canonical.state.events[0].participantIds).toContain(`account-${ids[1]}`);
+    await expect.poll(()=>joiner.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-joins')||'[]').length)).toBe(0);
+    await expect(joiner.locator('[data-screen-kind="home"]')).toBeVisible();
+    await expect(joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first()).toBeVisible();
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
 
 test('a user can save an expense while interrupted-join recovery has an older membership read in flight',async ({},testInfo)=>{
   const f=await fixture(testInfo),[a,b]=f.pages;
@@ -464,6 +647,54 @@ test('an account link reaches the other device while an unrelated event remains 
   }finally{
     await f.close();
   }
+});
+
+test('two administrators cannot relink the same guest to different accounts during a write race', async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withAccountLink:true, withCompetingLinks:true});
+  const [a,b] = f.pages, guest = 'guest-existing-person', winner = `account-${ids[1]}`;
+  const winnerHold = f.holdNextAccountLinkWrite(0);
+  const hold = f.holdNextAccountLinkWrite(1);
+  const confirmLink = async (page,target) => {
+    await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await page.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
+    await page.locator('[data-action="open-event-participant-link"]').click();
+    await page.locator(`[data-action="link-offline-participant-account"][data-target-participant-id="${target}"]`).click();
+    await page.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+  };
+  try {
+    await confirmLink(a, winner);
+    await expect.poll(()=>winnerHold.arrived).toBe(true);
+    // Prepare the losing decision later, so its expense clock is newer even
+    // though the other administrator's link wins the canonical write.
+    await confirmLink(b, `account-${ids[0]}`);
+    await expect.poll(()=>hold.arrived).toBe(true);
+    winnerHold.release();
+    await expect.poll(()=>f.canonical.state.events[0].participantAccountLinks?.[0]?.targetParticipantId).toBe(winner);
+    hold.release();
+    await expect.poll(()=>f.conflicts).toBeGreaterThan(0);
+    await expect.poll(()=>b.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]').length)).toBe(0);
+    await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
+    for (const write of f.writes.filter(write=>write.event.participantAccountLinks?.length)) {
+      expect(write.event.participantAccountLinks[0].targetParticipantId).toBe(winner);
+      expect(write.event.expenses.find(expense=>expense.id==='guest-expense').payers[0].participantId).toBe(winner);
+    }
+    // Reload the rejected device and verify the accepted decision is what the
+    // participant sees, with no rejected identity or durable retry left behind.
+    await b.reload();
+    await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
+    await expect.poll(()=>b.evaluate(({spaceId,eventId})=>{
+      const event=JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`)).events.find(event=>event.id===eventId);
+      return {target:event.participantAccountLinks?.[0]?.targetParticipantId,payer:event.expenses[0].payers[0].participantId,total:event.expenses[0].total};
+    },{spaceId:f.personal[1].id,eventId})).toEqual({target:winner,payer:winner,total:9000});
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } catch (error) {
+    console.log(JSON.stringify({linkLogs:f.linkLogs,errors:f.errors,conflicts:f.conflicts,
+      canonicalLink:f.canonical.state.events[0].participantAccountLinks,
+      canonicalPayers:f.canonical.state.events[0].expenses.map(expense=>expense.payers)}));
+    throw error;
+  } finally { winnerHold.release(); hold.release(); await f.close(); }
 });
 
 test('Android-profile Chromium and iPhone-profile WebKit note UIs deliver create, peer edit, offline recovery and delete', async ({}, testInfo) => {

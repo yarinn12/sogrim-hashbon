@@ -506,6 +506,21 @@ export function applyCanonicalEventAccountLinks(state, canonicalState) {
         Number.isFinite(Date.parse(link.linkedAt)) &&
         !(canonical.participantIds ?? []).includes(link.sourceParticipantId));
       if (!links.length) return event;
+      // A second device may have already remapped its expenses to a different
+      // account. Replacing only its receipt would disguise that conflicting
+      // link as an ordinary expense edit. Reject before either hydration or a
+      // write retry can erase the evidence; the existing failed-save path keeps
+      // the committed decision and rolls back the rejected local operation.
+      for (const link of links) {
+        if ((event.participantAccountLinks ?? []).some(candidate =>
+          candidate?.sourceParticipantId === link.sourceParticipantId &&
+          candidate.targetParticipantId !== link.targetParticipantId)) {
+          const error = new Error("This participant was already linked to another account in this event");
+          error.code = "SHARED_EVENT_ACCOUNT_LINK_CONFLICT";
+          error.status = 409;
+          throw error;
+        }
+      }
       const redirects=new Map(links.map(link => [link.sourceParticipantId,link.targetParticipantId]));
       const next=remapEventParticipantReferences(event,redirects,new Set());
       // Retain the source removal clock; do not advance the target's membership
