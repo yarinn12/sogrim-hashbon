@@ -282,6 +282,8 @@ MARKETING_VERSION = 1.0;
         APPLE_TEAM_ID: "TEAMID1234",
         GOOGLE_CLIENT_ID: googleClientId,
         GOOGLE_IOS_CLIENT_ID: googleIosClientId,
+        // This fixture exercises the optional/default signing mode, independent of the CI profile.
+        IOS_PROVISIONING_PROFILE: "",
         IOS_VERSION: "4.26",
         IOS_BUILD: "154"
       }
@@ -298,6 +300,76 @@ MARKETING_VERSION = 1.0;
   assert.match(info, new RegExp(`<key>GIDServerClientID<\\/key>\\s*<string>${googleClientId}<\\/string>`));
   assert.match(info, /<string>com\.sogrimhashbon\.app<\/string>/);
   assert.doesNotMatch(info, /stale-client/);
+});
+
+test("TestFlight archive selects the installed distribution profile without altering Debug signing", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "sogrim-ios-distribution-"));
+  const appDirectory = join(directory, "ios", "App", "App");
+  const projectDirectory = join(directory, "ios", "App", "App.xcodeproj");
+  await Promise.all([
+    mkdir(join(directory, "docs", "store-submission"), { recursive: true }),
+    mkdir(appDirectory, { recursive: true }),
+    mkdir(projectDirectory, { recursive: true })
+  ]);
+  await writeFile(join(directory, "docs", "store-submission", "app-store-metadata-he.json"),
+    JSON.stringify({ version: { number: "4.43", build: "171" } }));
+  await writeFile(join(appDirectory, "Info.plist"),
+    '<plist><dict>\n<key>CFBundleURLSchemes</key><array><string>com.sogrimhashbon.app</string></array>\n</dict></plist>\n');
+  const fixtureProject = ["Debug", "Release"].map((name, index) => `
+\t\tAAAAAAAAAAAAAAAAAAAAAAA${index} /* ${name} */ = {
+\t\t\tisa = XCBuildConfiguration;
+\t\t\tbuildSettings = {
+\t\t\t\tCODE_SIGN_STYLE = Automatic;
+\t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tMARKETING_VERSION = 1.0;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.sogrimhashbon.app;
+\t\t\t};
+\t\t\tname = ${name};
+\t\t};`).join("\n");
+  await writeFile(join(projectDirectory, "project.pbxproj"), fixtureProject);
+  const env = {
+    ...process.env,
+    APPLE_TEAM_ID: "TEAMID1234",
+    GOOGLE_CLIENT_ID: "123456789012-webclientvalue1234567890.apps.googleusercontent.com",
+    GOOGLE_IOS_CLIENT_ID: "123456789012-iosclientvalue1234567890.apps.googleusercontent.com",
+    IOS_VERSION: "4.43", IOS_BUILD: "171",
+    IOS_PROVISIONING_PROFILE: "Synthetic App Store 2026"
+  };
+  for (let run = 0; run < 2; run++) {
+    const result = spawnSync(process.execPath, [resolve("scripts/prepare-ios-release.mjs")],
+      { cwd: directory, env, encoding: "utf8" });
+    assert.equal(result.status, 0, result.stderr);
+    const project = await readFile(join(projectDirectory, "project.pbxproj"), "utf8");
+    const debug = project.split("/* Debug */")[1].split("/* Release */")[0];
+    const release = project.split("/* Release */")[1];
+    assert.match(release, /CODE_SIGN_STYLE = Manual;/, "App Store-only CI must not request a development profile");
+    assert.match(release, /CODE_SIGN_IDENTITY = "Apple Distribution";/);
+    assert.match(release, /PROVISIONING_PROFILE_SPECIFIER = "Synthetic App Store 2026";/);
+    assert.match(debug, /CODE_SIGN_STYLE = Automatic;/);
+    assert.doesNotMatch(debug, /PROVISIONING_PROFILE_SPECIFIER|Apple Distribution/);
+    assert.equal(project.match(/DEVELOPMENT_TEAM = TEAMID1234;/g)?.length, 2);
+    assert.equal(project.match(/PROVISIONING_PROFILE_SPECIFIER/g)?.length, 1);
+    const options = await readFile(join(directory, "ios", "ExportOptions.generated.plist"), "utf8");
+    assert.match(options, /<key>signingStyle<\/key>\s*<string>manual<\/string>/);
+    assert.match(options, /<key>signingCertificate<\/key>\s*<string>Apple Distribution<\/string>/);
+    assert.match(options, /<key>provisioningProfiles<\/key>\s*<dict>\s*<key>com\.sogrimhashbon\.app<\/key>\s*<string>Synthetic App Store 2026<\/string>\s*<\/dict>/);
+    assert.match(options, /<key>method<\/key>\s*<string>app-store-connect<\/string>/);
+  }
+  const projectBeforeInvalidInput = await readFile(join(projectDirectory, "project.pbxproj"), "utf8");
+  const invalid = spawnSync(process.execPath, [resolve("scripts/prepare-ios-release.mjs")],
+    { cwd: directory, env: { ...env, IOS_PROVISIONING_PROFILE: 'Bad"; INJECT = YES;' }, encoding: "utf8" });
+  assert.notEqual(invalid.status, 0);
+  assert.match(invalid.stderr, /IOS_PROVISIONING_PROFILE/);
+  assert.equal(await readFile(join(projectDirectory, "project.pbxproj"), "utf8"), projectBeforeInvalidInput);
+});
+
+test("TestFlight workflow retains the prepared manual distribution signing configuration", async () => {
+  const workflow = await readFile(".github/workflows/ios-testflight.yml", "utf8");
+  assert.match(workflow, /IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"/);
+  const archiveStep = workflow.split("- name: Archive signed iOS app")[1].split("- name: Export IPA")[0];
+  assert.doesNotMatch(archiveStep, /CODE_SIGN_STYLE=Automatic/);
+  assert.doesNotMatch(archiveStep, /-allowProvisioningUpdates/);
+  assert.match(workflow, /profile-type: IOS_APP_STORE/);
 });
 
 test("Apple client secret generator creates a valid six-month ES256 token", async () => {
