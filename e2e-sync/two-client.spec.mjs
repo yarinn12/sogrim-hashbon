@@ -550,6 +550,16 @@ for (const author of [0,1]) {
   test(`a confirmed note survives a personal receipt failure without a false group warning on ${author?'iPhone':'Android'}`, async ({},testInfo)=>{
     const f=await fixture(testInfo), a=f.pages[author], b=f.pages[1-author];
     const title=`פתק שאושר בשרת ${author}`;
+    const restartCompletedDelivery = async () => {
+      // Freeze poll/retry timers only for this quiescent restart. Otherwise a
+      // new poll can start between networkidle and reload, and WebKit reports
+      // its intercepted fetch abort as a pageerror even when JS catches it.
+      // Mid-request recovery is exercised separately; error guards stay strict.
+      await a.clock.pauseAt(Date.now() + 50);
+      await a.waitForLoadState('networkidle');
+      await a.reload({waitUntil:'domcontentloaded'});
+      await a.clock.resume();
+    };
     try {
       for(const page of f.pages) await page.locator('[data-action="open-event-notes"]').click();
       f.failWorkspace(author,403);
@@ -569,8 +579,7 @@ for (const author of [0,1]) {
       // mid-request. WebKit reports CORS errors for intercepted cross-origin
       // fetches aborted by reload, even in an isolated page with caught fetches.
       // Keep strict page-error assertions; settle the current pass first.
-      await a.waitForLoadState('networkidle');
-      await a.reload();
+      await restartCompletedDelivery();
       await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
       await expect(a.locator('[data-inline-sync-status]:visible')).toHaveCount(1);
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -579,8 +588,7 @@ for (const author of [0,1]) {
       await expect(a.locator('[data-inline-sync-status]:visible')).toHaveCount(0);
       await a.screenshot({path:testInfo.outputPath('confirmed-group-personal-receipt-pending.png')});
       f.failWorkspace(author,0);
-      await a.waitForLoadState('networkidle');
-      await a.reload();
+      await restartCompletedDelivery();
       await expect.poll(()=>a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).toBe(null);
       expect(f.writes.filter(w=>w.client===author)).toHaveLength(writesBeforeRestart);
       expect(f.personal[author].state.events.find(e=>e.id===eventId).notes.filter(n=>n.id===noteId)).toHaveLength(1);
@@ -647,6 +655,70 @@ test('an account link reaches the other device while an unrelated event remains 
   }finally{
     await f.close();
   }
+});
+
+for (const author of [0, 1]) for (const dismiss of [false, true]) test(`account-link progress is immediate and finishes on both rosters from ${author ? 'iPhone' : 'Android'}${dismiss ? ' after dismissing progress' : ''}`, async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withAccountLink:true,withCompetingLinks:true});
+  const [a,b] = [f.pages[author],f.pages[1-author]];
+  const guest = 'guest-existing-person', target = `account-${ids[1-author]}`;
+  const hold = f.holdNextAccountLinkWrite(author);
+  try {
+    for (const page of f.pages) await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await a.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
+    await a.locator('[data-action="open-event-participant-link"]').click();
+    await a.locator(`[data-action="link-offline-participant-account"][data-target-participant-id="${target}"]`).click();
+    const confirmation = a.locator('.important-action-dialog[role="alertdialog"]');
+    await confirmation.locator('[data-action="confirm-important-action"]').click();
+    await expect(confirmation).toHaveAttribute('aria-busy', 'true');
+    await expect(confirmation.locator('[data-action="confirm-important-action"]')).toBeDisabled();
+    await expect(confirmation).toContainText('מקשרים את החשבון');
+    await expect(confirmation.locator('.important-action-impact')).toHaveCount(0);
+    await expect.poll(() => hold.arrived).toBe(true);
+    expect(f.canonical.state.events[0].participantIds).toContain(guest);
+    await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toBeVisible();
+    const originalViewport = a.viewportSize();
+    for (const viewport of [{width:320,height:800},{width:844,height:390},originalViewport]) {
+      await a.setViewportSize(viewport);
+      const box = await confirmation.boundingBox();
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height + 1);
+      const back = confirmation.getByRole('button', {name:'חזרה למשתתפים',exact:true});
+      await back.scrollIntoViewIfNeeded();
+      await expect(back).toBeEnabled();
+      await back.click({trial:true});
+    }
+    await a.screenshot({path:testInfo.outputPath('account-link-progress.png')});
+    if (dismiss) {
+      await confirmation.getByRole('button', {name:'חזרה למשתתפים',exact:true}).click();
+      await expect(confirmation).toHaveCount(0);
+      await expect(a.locator('.event-participant-roster-modal')).toBeVisible();
+      await expect(a.locator('.event-participant-roster-modal')).not.toContainText(/קישרנו|מופיע עכשיו/);
+    }
+    hold.release();
+    await expect(confirmation).toHaveCount(0);
+    await expect(a.locator('.event-participant-roster-modal')).toBeVisible();
+    await expect(a.locator('.event-participant-roster-modal')).toContainText(/קישרנו|מופיע עכשיו/);
+    const success = a.locator('.event-participant-notice.is-account-link-success');
+    await expect(success).toBeVisible();
+    await expect(success.locator('svg')).toHaveCount(1);
+    expect((await success.boundingBox()).height).toBeLessThan(100);
+    for (const page of f.pages) {
+      const roster = page.locator('.event-participant-roster-modal');
+      await expect(roster.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
+      await expect(roster.locator(`.event-participant-roster-row[data-participant-id="${target}"]`)).toHaveCount(1);
+      await expect(page.locator('body')).not.toContainText(/נשמר במכשיר|ממתין לסנכרון|מכינים חיבור מאובטח|מקשרים את החשבון/);
+    }
+    await expect.poll(() => a.evaluate(() => JSON.parse(localStorage.getItem('settle-friends-pending-account-links') || '[]').length)).toBe(0);
+    expect(f.canonical.state.events[0].participantAccountLinks).toHaveLength(1);
+    expect(f.canonical.state.events[0].expenses[0].payers).toEqual([{participantId:target,amount:9000}]);
+    expect(f.canonical.state.events[0].expenses[0].total).toBe(9000);
+    await a.screenshot({path:testInfo.outputPath('account-link-complete.png')});
+    await a.getByRole('button', {name:'חזרה לאירוע',exact:true}).click();
+    await expect(a.locator('.event-modal')).toHaveCount(0);
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } finally { hold.release(); await f.close(); }
 });
 
 test('two administrators cannot relink the same guest to different accounts during a write race', async ({}, testInfo) => {

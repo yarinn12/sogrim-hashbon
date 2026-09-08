@@ -58,6 +58,41 @@ test("confirmed note deletion stays closed after the real popstate handler resto
   assert.equal(h.replacements(), 1, "the restored entry must also be corrected");
 });
 
+test("account-link confirmation immediately shows progress and ignores repeated confirmation", async () => {
+  let finish, calls = 0;
+  const request = new Promise(resolve => { finish = resolve; });
+  const h = lifecycle({action:async () => {calls++; await request;}});
+  h.ctx.importantActionDialog = {kind:"merge-participants",payload:{mergeKind:"account-link",eventId:"event-a"}};
+  const running = h.confirm();
+  assert.equal(h.ctx.importantActionDialog?.processing, true);
+  await h.confirm();
+  assert.equal(calls, 1, "one user confirmation must start only one link");
+  finish(); await running;
+  assert.equal(h.ctx.importantActionDialog, null);
+});
+
+test("an unexpected account-link rejection releases its progress and keeps a recoverable error", async () => {
+  const h = lifecycle({action:async () => {throw new Error("Synthetic transport failure");}});
+  h.ctx.importantActionDialog = {kind:"merge-participants",payload:{mergeKind:"account-link",eventId:"event-a"}};
+  await h.confirm();
+  assert.equal(h.ctx.importantActionDialog, null);
+  assert.match(h.ctx.notice, /לא הושלמה/);
+  assert.equal(h.ctx.restoringBrowserHistory, false);
+});
+
+test("late account-link completion cannot close a newer confirmation", async () => {
+  let finish;
+  const request = new Promise(resolve => {finish = resolve;});
+  const h = lifecycle({action:() => request});
+  h.ctx.importantActionDialog = {kind:"merge-participants",payload:{mergeKind:"account-link",eventId:"event-a"}};
+  const running = h.confirm();
+  const newer = {kind:"delete-event-note",payload:{eventId:"event-a",noteId:"another-note"}};
+  h.ctx.importantActionDialog = newer;
+  finish(); await running;
+  assert.equal(h.ctx.importantActionDialog, newer);
+  assert.equal(h.rewinds(), 0);
+});
+
 test("a failed confirmed action retains the latest error instead of its stale history draft", async () => {
   const h = lifecycle({ action: async (ctx) => { ctx.eventDialog = { ...ctx.eventDialog, error: "Retry safely" }; } });
   await h.confirm();

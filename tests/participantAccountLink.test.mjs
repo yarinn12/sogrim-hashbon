@@ -121,7 +121,7 @@ test("an async link result can only update the event that started it", async () 
   );
   assert.match(
     mergeFlow,
-    /\["participant-profile", "participant-link"\][\s\S]*?eventDialog\.eventId === pendingMerge\.eventId/
+    /\["participants", "participant-identities", "participant-profile", "participant-link"\][\s\S]*?eventDialog\.eventId === pendingMerge\.eventId/
   );
   assert.match(
     asyncMessage,

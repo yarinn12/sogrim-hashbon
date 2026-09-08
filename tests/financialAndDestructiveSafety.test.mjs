@@ -255,17 +255,18 @@ test("every destructive action is gated behind an explicit confirmation", () => 
   assert.match(app, /data-action="cancel-important-action"/);
 });
 
-test("confirming clears the pending action before running it, so a double tap cannot repeat it", () => {
+test("confirming guards both ordinary actions and visible account-link progress against repeat taps", () => {
   const confirm = app.slice(
     app.indexOf("async function confirmImportantAction()"),
     app.indexOf("async function executeImportantAction")
   );
 
-  assert.match(confirm, /if \(!pendingAction\) return;/);
+  assert.match(confirm, /if \(!pendingAction \|\| pendingAction\.processing\) return;/);
+  assert.match(confirm, /importantActionDialog = showAccountLinkProgress \? pendingAction : null;/);
   assert.ok(
-    confirm.indexOf("importantActionDialog = null;") <
+    confirm.indexOf("pendingAction.processing = Boolean(showAccountLinkProgress);") <
       confirm.indexOf("await executeImportantAction(pendingAction)"),
-    "the dialog is cleared before the await, closing the double-tap window"
+    "the action is guarded before the await, closing the double-tap window"
   );
 });
 

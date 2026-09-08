@@ -5178,14 +5178,15 @@ function renderImportantActionDialog() {
         aria-labelledby="important-action-title"
         aria-describedby="important-action-description"
         data-important-action-kind="${escapeAttribute(importantActionDialog.kind)}"
+        ${importantActionDialog.processing ? 'aria-busy="true"' : ""}
         tabindex="-1"
       >
         <div class="important-action-copy">
           <span class="important-action-label">${escapeHtml(importantActionDialog.label ?? "פעולה חשובה")}</span>
-          <h2 id="important-action-title">${escapeHtml(importantActionDialog.title)}</h2>
-          <p id="important-action-description">${escapeHtml(importantActionDialog.description)}</p>
+          <h2 id="important-action-title">${escapeHtml(importantActionDialog.processing ? "מקשרים את החשבון" : importantActionDialog.title)}</h2>
+          <p id="important-action-description">${escapeHtml(importantActionDialog.processing ? "בסיום נחזור לרשימת המשתתפים המעודכנת. אפשר גם לחזור אליה עכשיו ולהמשיך באירוע." : importantActionDialog.description)}</p>
           ${
-            importantActionDialog.metrics?.length
+            !importantActionDialog.processing && importantActionDialog.metrics?.length
               ? `<dl class="important-action-impact" aria-label="השפעת הפעולה">
                   ${importantActionDialog.metrics
                     .map(
@@ -5207,7 +5208,7 @@ function renderImportantActionDialog() {
           }
         </div>
         <div class="important-action-dialog-actions ${importantActionDialog.alternateLabel ? "has-alternate" : ""}">
-          <button class="secondary-button" type="button" data-action="cancel-important-action">ביטול</button>
+          <button class="secondary-button" type="button" data-action="cancel-important-action">${importantActionDialog.processing ? "חזרה למשתתפים" : "ביטול"}</button>
           ${
             importantActionDialog.alternateLabel
               ? `<button
@@ -5223,9 +5224,10 @@ function renderImportantActionDialog() {
             class="important-action-confirm-button"
             type="button"
             data-action="confirm-important-action"
+            ${importantActionDialog.processing ? "disabled" : ""}
             ${importantActionDialog.kind === "merge-participants" ? 'data-allow-offline-mutation="true"' : ""}
           >
-            ${escapeHtml(importantActionDialog.confirmLabel)}
+            ${importantActionDialog.processing ? '<span class="account-link-progress-spinner" aria-hidden="true"></span>מקשרים…' : escapeHtml(importantActionDialog.confirmLabel)}
           </button>
         </div>
       </section>
@@ -5377,7 +5379,7 @@ function renderEventParticipantsDialog(event) {
     body: `
       ${
         participantMessage
-          ? `<p class="event-participant-notice" role="status">${escapeHtml(participantMessage)}</p>`
+          ? `<p class="event-participant-notice ${participantMessage === eventDialog.accountLinkSuccessMessage ? "is-account-link-success" : ""}" role="status">${participantMessage === eventDialog.accountLinkSuccessMessage ? iconSvg("check") : ""}${escapeHtml(participantMessage)}</p>`
           : ""
       }
       ${renderEventIdentityNotice(event)}
@@ -16996,6 +16998,17 @@ function openImportantActionDialog(config, trigger) {
 function closeImportantActionDialog() {
   if (!importantActionDialog) return;
 
+  const previousEventDialog = cloneNavigationValue(eventDialog);
+  const returnToParticipants = importantActionDialog.processing &&
+    eventDialog?.eventId === importantActionDialog.payload?.eventId;
+  if (returnToParticipants) {
+    eventDialog = {
+      eventId: eventDialog.eventId,
+      kind: "participants",
+      historyBaseDepth: eventDialog.historyBaseDepth,
+      message: ""
+    };
+  }
   const returnFocus = importantActionReturnFocus;
   const underlyingDialogSelector = expenseDraft
     ? ".expense-modal"
@@ -17022,6 +17035,7 @@ function closeImportantActionDialog() {
   }
 
   if (shouldRewindBrowserHistory) {
+    if (returnToParticipants) rememberConfirmedEventDialog(eventDialog, previousEventDialog);
     appHistoryDepth = Math.max(0, appHistoryDepth - 1);
     lastNavigationViewKey = navigationViewKey();
     window.history.back();
@@ -17035,7 +17049,7 @@ function closeImportantActionDialog() {
 async function confirmImportantAction() {
   const variant = arguments[0] === "alternate" ? "alternate" : "primary";
   let pendingAction = importantActionDialog;
-  if (!pendingAction) return;
+  if (!pendingAction || pendingAction.processing) return;
   const actionParticipantId = state.currentParticipantId;
   const actionScreen = screen;
   const actionHistoryDepth = appHistoryDepth;
@@ -17058,7 +17072,10 @@ async function confirmImportantAction() {
       ? ".event-modal"
       : "";
   const shouldRewindBrowserHistory = appHistoryDepth > 0 && window.history?.back;
-  importantActionDialog = null;
+  const showAccountLinkProgress = pendingAction.kind === "merge-participants" &&
+    pendingAction.payload?.mergeKind === "account-link" && pendingAction.payload?.eventId;
+  pendingAction.processing = Boolean(showAccountLinkProgress);
+  importantActionDialog = showAccountLinkProgress ? pendingAction : null;
   importantActionReturnFocus = null;
   clearDialogBackgroundInert();
   document.body.classList.remove("app-dialog-open");
@@ -17068,6 +17085,11 @@ async function confirmImportantAction() {
 
   restoringBrowserHistory = true;
   try {
+    if (showAccountLinkProgress) {
+      notice = "";
+      render();
+      activateDialog(".important-action-dialog");
+    }
     await executeImportantAction(pendingAction);
   } catch (error) {
     console.error("[important-action] Unexpected action failure", {
@@ -17084,11 +17106,12 @@ async function confirmImportantAction() {
       schedulePendingMutationRecovery({ resetBackoff: true });
     }
   } finally {
+    // Only release this action's progress. A user may have returned to the
+    // roster, switched accounts, or opened another confirmation meanwhile.
+    if (importantActionDialog === pendingAction) importantActionDialog = null;
     restoringBrowserHistory = false;
-    // The confirmation state is cleared before the async action to make a
-    // double tap harmless. Always repaint here as well: if an unexpected
-    // rejection happens before the action's own render, the stale modal
-    // backdrop would otherwise remain in the DOM and block the entire app.
+    // Always repaint, including unexpected rejection, so no stale blocking
+    // backdrop survives. The processing guard makes repeated taps harmless.
     render();
   }
 
@@ -17635,7 +17658,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
     if (eventDialog?.eventId === pendingMerge.eventId) {
       eventDialog = {
         ...eventDialog,
-        message: "מכינים חיבור מאובטח ושומרים אותו בענן…"
+        message: ""
       };
       render();
       reactivateDialogAfterRender(".event-modal");
@@ -17729,7 +17752,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
   if (pendingMerge.mergeKind === "account-link" && eventDialog?.eventId === pendingMerge.eventId) {
     eventDialog = {
       ...eventDialog,
-      message: `מקשרים את ${source.displayName} לחשבון של ${target.displayName}…`
+      message: ""
     };
     notice = "";
   } else if (pendingMerge.mergeKind !== "account-link") {
@@ -17761,7 +17784,9 @@ async function mergeParticipantsInStateNow(pendingMerge) {
       });
       if (eventDialog?.eventId === pendingMerge.eventId) {
         eventDialog = { ...eventDialog, message: failureMessage };
-        notice = "";
+        // The account picker has no inline notice surface. A real rejection
+        // must remain visible after its progress confirmation closes.
+        notice = eventDialog.kind === "participant-link" ? failureMessage : "";
       } else if (screen?.eventId === pendingMerge.eventId) {
         notice = failureMessage;
       }
@@ -17820,22 +17845,16 @@ async function mergeParticipantsInStateNow(pendingMerge) {
     });
   }
   if (
-    eventDialog?.kind === "participant-identities" &&
-    eventDialog.eventId === pendingMerge.eventId
-  ) {
-    eventDialog = {
-      ...eventDialog,
-      message: accountLinkMessage,
-      resolvedPairIds: []
-    };
-  } else if (
-    ["participant-profile", "participant-link"].includes(eventDialog?.kind) &&
-    eventDialog.eventId === pendingMerge.eventId
+    ["participants", "participant-identities", "participant-profile", "participant-link"].includes(eventDialog?.kind) &&
+    eventDialog.eventId === pendingMerge.eventId &&
+    (!["participant-profile", "participant-link"].includes(eventDialog.kind) ||
+      eventDialog.participantId === source.id)
   ) {
     eventDialog = {
       eventId: pendingMerge.eventId,
       kind: "participants",
       message: accountLinkMessage,
+      accountLinkSuccessMessage: accountLinkConfirmed ? accountLinkMessage : "",
       historyBaseDepth: eventDialog.historyBaseDepth
     };
   }
@@ -22774,6 +22793,12 @@ function completedSaveResult(saveRequest) {
 
 function reactivateDialogAfterRender(selector, focusSelector = "", scrollTop = 0) {
   if (!selector) return;
+  // An async update of the underlying route must not make the visible
+  // confirmation inert or steal its focus while account linking is running.
+  if (importantActionDialog?.processing && selector !== ".important-action-dialog") {
+    selector = ".important-action-dialog";
+    focusSelector = "";
+  }
   const renderedDialog = app.querySelector(selector);
   activateDialog(selector);
   requestAnimationFrame(() => {

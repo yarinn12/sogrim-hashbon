@@ -31,7 +31,7 @@ function harness(name = "") {
   render();
   const context = vm.createContext({ expenseDraft: draft, document, HTMLInputElement: Input,
     EXPENSE_TEMPLATES: ["אוכל", "שתייה"], CSS: { escape: value => value }, render,
-    window: {}, dialogReturnFocus: {}, setDialogBackgroundInert() {},
+    window: {}, importantActionDialog: null, dialogReturnFocus: {}, setDialogBackgroundInert() {},
     requestAnimationFrame: callback => frames.push(callback),
     app: { querySelector: selector => selector === ".expense-modal" ? dialog : dialog.input,
       querySelectorAll: () => dialog.buttons }
