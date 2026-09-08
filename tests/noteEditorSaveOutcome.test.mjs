@@ -8,6 +8,7 @@ const { addEventNote, updateEventNote, removeEventNote } = eventNotes;
 import { mergeSharedEventWriteState } from "../src/data/sharedEventStore.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
 import { rollbackNoteOnlyStateChange } from "../src/data/noteSaveRollback.mjs";
+import * as noteDraftMemory from "../src/domain/noteDraftMemory.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const start = source.indexOf("async function saveEventNoteFromDialog(");
@@ -18,6 +19,18 @@ const requestDeleteSource = source.slice(end, deleteStart);
 const deleteSource = source.slice(deleteStart, source.indexOf("\nfunction requestEventLeave(", deleteStart));
 const saveGuardsStart = source.indexOf("function stateSaveIsCurrent(");
 const saveGuards = source.slice(saveGuardsStart, source.indexOf("\nfunction recordEventActivity(", saveGuardsStart));
+const draftHelpers = source.slice(source.indexOf("function rememberEventNoteDraft()"), source.indexOf("function rememberExpenseDraft()"));
+
+function attachDraftStorage(h, values = new Map()) {
+  Object.assign(h.context, noteDraftMemory, { window: { localStorage: {
+    getItem: key => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key)
+  } } });
+  vm.runInContext(draftHelpers, h.context);
+  h.context.render = () => h.context.rememberEventNoteDraft();
+  h.context.renderReplacingBrowserHistory = h.context.render;
+  return values;
+}
 
 function initialState() {
   return addEventNote({
@@ -49,7 +62,7 @@ function harness({ remote = null, current = null, unchanged = false, replaceStat
   const confirmations = [];
   const context = vm.createContext({
     state: current ?? initial, eventDialog: dialog, structuredClone, saveFailureMessage,
-    ...eventNotes,
+    ...eventNotes, ...noteDraftMemory,
     mergeSharedStates, rollbackNoteOnlyStateChange, saveState: () => {}, emitOperationDeferred: () => {},
     loadState: () => context.state,
     getEvent: (id) => context.state.events.find((event) => event.id === id),
@@ -132,6 +145,55 @@ test("successful note edits close normally", async () => {
   assert.equal(h.closed(), 1);
   assert.equal(h.context.eventDialog, null);
 });
+
+for (const remoteChange of ["none", "body", "title", "delete", "not committed"]) {
+  test(`a restarted new-note save preserves its identity and checks the final receipt: ${remoteChange}`, async () => {
+    let release, committed;
+    const receipt = new Promise(resolve => { release = resolve; });
+    const before = harness({ result: ({saved}) => { committed = saved; return receipt; } });
+    before.dialog.noteId = "";
+    before.dialog.baseNote = null;
+    const values = attachDraftStorage(before);
+    before.context.render();
+    const interrupted = before.save();
+    const id = committed.events[0].notes.find(note => note.body === "Local draft").id;
+    let durable = structuredClone(committed);
+    if (["title", "body"].includes(remoteChange)) durable = updateEventNote(durable, "event-editor", id, {
+      [remoteChange]: "Remote change", updatedAt: "2099-01-01T00:00:00.000Z"
+    });
+    if (remoteChange === "delete") durable = removeEventNote(durable, "event-editor", id, {deletedAt:"2099-01-01T00:00:00.000Z"});
+    if (remoteChange === "not committed") durable = initialState();
+    let finalPayload;
+    const after = harness({current:durable, result: ({saved}) => {
+      finalPayload = saved;
+      return {ok:true, mode:"cloud", persistedState:saved};
+    }});
+    after.context.makeId = () => "different-after-restart";
+    attachDraftStorage(after, values);
+    after.context.eventDialog = after.context.restoreEventNoteDraft(durable.events[0]);
+    assert.ok(after.context.eventDialog, "the interrupted draft remains recoverable");
+    try {
+      const result = await after.save();
+      if (["body", "title", "delete"].includes(remoteChange)) {
+        assert.equal(result.conflict, true);
+        assert.equal(after.writes(), 0, "do not overwrite a peer or resurrect a deleted note");
+        assert.equal(after.context.eventDialog.bodyDraft, "Local draft");
+      } else {
+        assert.equal(result.ok, true);
+        assert.equal(after.writes(), 1, "an unchanged local value is not a remote acknowledgement");
+        assert.equal(finalPayload.events[0].notes.length, 2, "the fixture note and one created note, never a duplicate");
+        const saved = finalPayload.events[0].notes.find(note => note.id === id);
+        assert.ok(saved, "retry reuses the identity sent before restart");
+        assert.equal(saved.body, "Local draft");
+        assert.equal(values.size, 0, "successful acknowledgement clears the recovered draft and its old key");
+      }
+    } finally {
+      before.context.eventDialog = null; // the old page has been destroyed
+      release({ok:true,mode:"cloud",persistedState:committed});
+      await interrupted;
+    }
+  });
+}
 
 for (const change of ["add", "edit", "delete"]) {
   test(`adopting a note receipt preserves another tab's durable ${change} before its storage event arrives`, async () => {

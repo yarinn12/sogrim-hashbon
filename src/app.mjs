@@ -71,7 +71,7 @@ import {
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
-import { noteDraftMemoryKey, parseNoteDraftMemory, serializeNoteDraftMemory } from "./domain/noteDraftMemory.mjs";
+import { noteDraftMemoryKey, parseNoteDraftMemory, serializeNoteDraftMemory, recoverNoteDraftCreation } from "./domain/noteDraftMemory.mjs";
 import { validateExpense } from "./domain/validation.mjs";
 import {
   buildEventInviteSnapshot,
@@ -16657,6 +16657,7 @@ async function saveEventNoteFromDialog(eventId) {
     return;
   }
 
+  Object.assign(eventDialog, recoverNoteDraftCreation(eventDialog, event));
   if (
     eventDialog.noteId &&
     !event.notes?.some((note) => note.id === eventDialog.noteId)
@@ -16677,7 +16678,7 @@ async function saveEventNoteFromDialog(eventId) {
   }
 
   const previousState = cloneNavigationValue(state);
-  const noteId = eventDialog.noteId || makeId("note");
+  const noteId = eventDialog.noteId || eventDialog.pendingNoteCreation?.note.id || makeId("note");
   const edit = eventDialog.noteId
     ? prepareEventNoteEdit(
         eventDialog.baseNote,
@@ -16702,6 +16703,7 @@ async function saveEventNoteFromDialog(eventId) {
         title,
         body,
         pinned: eventDialog.pinned === true,
+        createdAt: eventDialog.pendingNoteCreation?.note.createdAt,
         participantId: state.currentParticipantId
       });
 
@@ -16726,6 +16728,9 @@ async function saveEventNoteFromDialog(eventId) {
     ...(activeDialog.pendingNoteFields ?? []),
     ...(edit ? Object.keys(edit.patch) : ["title", "body", "pinned"])
   ])];
+  if (!activeDialog.noteId) {
+    activeDialog.pendingNoteCreation = { note: requestedNote, fields: requestedFields };
+  }
   state = nextState;
   activeDialog.saving = true;
   activeDialog.error = "";
@@ -19539,9 +19544,21 @@ function restoreEventNoteDraft(event, noteId = "") {
     if (noteId && !event.notes?.some(note => note.id === noteId)) return null;
     const key = noteDraftMemoryKey(state.currentParticipantId, event.id, noteId);
     const raw = window.localStorage.getItem(key);
-    const draft = parseNoteDraftMemory(raw, { eventId: event.id, noteId });
+    let draft = parseNoteDraftMemory(raw, { eventId: event.id, noteId });
     if (raw && !draft) window.localStorage.removeItem(key);
-    return draft ? { ...draft, draftMemoryNoteId: noteId } : null;
+    let memoryNoteId = noteId;
+    if (!draft && noteId) {
+      // A create interrupted before its receipt still lives under the new-note
+      // key. Opening that published note must recover the same pending intent.
+      const pending = parseNoteDraftMemory(window.localStorage.getItem(
+        noteDraftMemoryKey(state.currentParticipantId, event.id, "")
+      ), { eventId: event.id });
+      if (pending?.pendingNoteCreation?.note.id === noteId) {
+        draft = pending;
+        memoryNoteId = "";
+      }
+    }
+    return draft ? { ...recoverNoteDraftCreation(draft, event), draftMemoryNoteId: memoryNoteId } : null;
   } catch {
     return null;
   }

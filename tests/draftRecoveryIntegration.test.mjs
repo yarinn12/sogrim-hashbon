@@ -62,6 +62,32 @@ test("note recovery respects changed account, permission and remote deletion", (
   assert.equal(context.restoreEventNoteDraft(event, "note-1"), null);
 });
 
+test("opening a published note recovers an interrupted create from its original key", () => {
+  const { context, event, draft, values } = setup();
+  context.eventDialog = { ...draft, pendingNoteCreation: {
+    note: { ...event.notes[0], title: draft.titleDraft, body: draft.bodyDraft },
+    fields: ["title", "body", "pinned"]
+  } };
+  context.rememberEventNoteDraft();
+  context.state.currentParticipantId = "other";
+  assert.equal(context.restoreEventNoteDraft(event, "note-1"), null);
+  context.state.currentParticipantId = "owner";
+  context.allowed = false;
+  assert.equal(context.restoreEventNoteDraft(event, "note-1"), null);
+  context.allowed = true;
+  const restored = context.restoreEventNoteDraft(event, "note-1");
+  assert.equal(restored.bodyDraft, "Unsaved");
+  assert.equal(restored.noteId, "note-1");
+  assert.equal(restored.pendingNoteSave, true);
+  assert.equal(restored.draftMemoryNoteId, "");
+  context.eventDialog = restored;
+  context.rememberEventNoteDraft();
+  assert.equal(context.restoreEventNoteDraft(event), null, "migration removes the new-note alias");
+  assert.equal(context.restoreEventNoteDraft(event, "note-1").bodyDraft, "Unsaved");
+  context.clearRememberedEventNoteDraft(restored);
+  assert.equal(values.size, 0);
+});
+
 test("unavailable draft storage cannot crash note entry, recovery or a successful save", () => {
   const { context, event, draft } = setup();
   context.eventDialog = draft;

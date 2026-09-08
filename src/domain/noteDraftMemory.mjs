@@ -19,7 +19,11 @@ export function serializeNoteDraftMemory(draft, savedAt = Date.now()) {
     // would let a restored editor silently overwrite a competing field edit.
     baseNote: draft.baseNote,
     pendingNoteSave: draft.pendingNoteSave === true,
-    pendingNoteFields: draft.pendingNoteFields
+    pendingNoteFields: draft.pendingNoteFields,
+    // The request can commit before its acknowledgement reaches this page.
+    // Remember its identity before sending, while leaving the live editor's
+    // new-note/rollback semantics unchanged.
+    pendingNoteCreation: draft.pendingNoteCreation
   } });
 }
 
@@ -33,6 +37,12 @@ export function parseNoteDraftMemory(raw, { eventId, noteId = "", now = Date.now
       typeof draft.titleDraft !== "string" || typeof draft.bodyDraft !== "string" ||
       draft.titleDraft.length > MAX_EVENT_NOTE_TITLE_LENGTH || draft.bodyDraft.length > MAX_EVENT_NOTE_BODY_LENGTH ||
       (noteId && draft.baseNote?.id !== noteId)) return null;
+    const creation = draft.pendingNoteCreation;
+    if (creation && (!/^[A-Za-z0-9_-]{1,128}$/.test(creation.note?.id ?? "") ||
+      (noteId && creation.note.id !== noteId) ||
+      typeof creation.note.title !== "string" || typeof creation.note.body !== "string" ||
+      creation.note.title.length > MAX_EVENT_NOTE_TITLE_LENGTH || creation.note.body.length > MAX_EVENT_NOTE_BODY_LENGTH ||
+      !Array.isArray(creation.fields))) return null;
     return {
       kind: "note-editor", eventId, noteId,
       titleDraft: draft.titleDraft, bodyDraft: draft.bodyDraft, pinned: draft.pinned === true,
@@ -40,9 +50,19 @@ export function parseNoteDraftMemory(raw, { eventId, noteId = "", now = Date.now
       pendingNoteSave: draft.pendingNoteSave === true,
       pendingNoteFields: Array.isArray(draft.pendingNoteFields)
         ? draft.pendingNoteFields.filter(field => ["title", "body", "pinned"].includes(field)) : [],
+      ...(creation ? { pendingNoteCreation: { note: creation.note,
+        fields: creation.fields.filter(field => ["title", "body", "pinned"].includes(field)) } } : {}),
       saving: false, error: "", restored: true
     };
   } catch {
     return null;
   }
+}
+
+export function recoverNoteDraftCreation(draft, event) {
+  const creation = draft?.pendingNoteCreation;
+  if (!creation || draft.noteId || (!event.notes?.some(note => note.id === creation.note.id) &&
+    !event.deletedNotes?.some(note => note.id === creation.note.id))) return draft;
+  return { ...draft, noteId: creation.note.id, baseNote: creation.note,
+    pendingNoteSave: true, pendingNoteFields: creation.fields };
 }

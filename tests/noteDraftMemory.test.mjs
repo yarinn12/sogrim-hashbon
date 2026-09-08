@@ -53,3 +53,17 @@ test("cleared fields and unconfirmed write intent survive an edit recovery", () 
   assert.equal(restored.pendingNoteSave, true);
   assert.deepEqual(restored.pendingNoteFields, ["body"]);
 });
+
+test("recovery rejects malformed or mismatched interrupted create identities", () => {
+  const valid = { note: baseNote, fields: ["title", "body", "pinned"] };
+  for (const creation of [
+    { ...valid, note: { ...baseNote, id: "" } },
+    { ...valid, note: { ...baseNote, id: "other-note" } },
+    { ...valid, note: { ...baseNote, body: "x".repeat(5001) } },
+    { ...valid, note: { ...baseNote, title: null } },
+    { ...valid, fields: "body" }, {}
+  ]) {
+    const raw = serializeNoteDraftMemory({ ...draft, noteId: baseNote.id, baseNote, pendingNoteCreation: creation });
+    assert.equal(parseNoteDraftMemory(raw, {eventId:draft.eventId, noteId:baseNote.id}), null);
+  }
+});

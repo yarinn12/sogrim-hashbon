@@ -19,6 +19,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
   const accountLinkWriteHolds = new Map();
+  const noteReceiptHolds = new Map();
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
@@ -69,6 +70,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     barrier?.release();
     for(const hold of membershipReadHolds.values()) hold.release();
     for(const hold of accountLinkWriteHolds.values()) hold.release();
+    for(const hold of noteReceiptHolds.values()) hold.release();
     for(const hold of inviteHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
@@ -186,7 +188,14 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         if (body.p_expected_updated_at !== canonical.updated_at) { conflicts++; return reply({status: 'conflict'}); }
         canonical.state = structuredClone(body.p_state); canonical.updated_at = stamp();
         writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0])});
-        return reply({status: 'updated', updatedAt: canonical.updated_at});
+        const receipt = {status: 'updated', updatedAt: canonical.updated_at};
+        const noteHold = noteReceiptHolds.get(i);
+        if (noteHold && canonical.state.events[0].notes.length) {
+          noteReceiptHolds.delete(i);
+          noteHold.arrived = true;
+          await noteHold.ready;
+        }
+        return reply(receipt);
       }
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
@@ -256,6 +265,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     holdNextInvite(i) {let release;const ready=new Promise(resolve=>{release=resolve;});
       const hold={arrived:false,ready,release};inviteHolds.set(i,hold);return hold;},
     get conflicts() { return conflicts; },
+    holdNextNoteReceipt(i) {
+      let release; const ready = new Promise(resolve => { release = resolve; });
+      const hold = {arrived:false,ready,release}; noteReceiptHolds.set(i,hold); return hold;
+    },
     get rejectedSiblingWrites() { return rejectedSiblingWrites; },
     holdNextAccountLinkWrite(i) {
       let release; const ready = new Promise(resolve=>{release=resolve;});
@@ -1060,6 +1073,68 @@ test('Android expense UI reaches iPhone and event closure reaches the member', a
     await f.close();
   }
 });
+
+for (const author of [0, 1]) {
+ for (const scenario of ['retry', 'open published', 'peer edit', 'peer delete']) {
+  test(`restarting before a new note receipt cannot publish a duplicate on ${author ? 'iPhone' : 'Android'}: ${scenario}`, async ({}, testInfo) => {
+    const f = await fixture(testInfo), a = f.pages[author], b = f.pages[1 - author];
+    const hold = f.holdNextNoteReceipt(author);
+    try {
+      for (const page of f.pages) await page.locator('[data-action="open-event-notes"]').click();
+      await newNote(a, 'פתק בזמן רענון', 'תוכן שנשלח לפני האישור');
+      await saveNote(a);
+      await expect.poll(() => hold.arrived).toBe(true);
+      const id = f.canonical.state.events[0].notes[0].id;
+      await expect(a.locator('.event-note-modal')).toBeVisible();
+      if (scenario.startsWith('peer')) {
+        await expect(noteCard(b,id)).toBeVisible();
+        await noteCard(b,id).click();
+        if (scenario === 'peer edit') {
+          await b.locator('[data-action="event-note-body"]').fill('עריכה במכשיר השני');
+          await saveNote(b);
+          await expect.poll(() => f.canonical.state.events[0].notes[0]?.body).toBe('עריכה במכשיר השני');
+        } else {
+          await b.locator('[data-action="request-delete-event-note"]').click();
+          await b.locator('[data-action="confirm-important-action"]').click();
+          await expect.poll(() => f.canonical.state.events[0].deletedNotes.some(note => note.id === id)).toBe(true);
+        }
+      }
+      // The server committed, but this page never receives its acknowledgement.
+      await a.reload();
+      hold.release();
+      await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+      await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await a.locator('[data-action="open-event-notes"]').click();
+      await (scenario === 'open published' ? noteCard(a,id) : a.locator('[data-action="new-event-note"]')).click();
+      await expect(a.locator('[data-action="event-note-body"]')).toHaveValue('תוכן שנשלח לפני האישור');
+      await a.locator('[data-action="event-note-body"]').fill('תוכן אחרי שחזור');
+      const writesBeforeRetry = f.writes.length;
+      await saveNote(a);
+      if (scenario.startsWith('peer')) {
+        await expect(a.locator('.event-note-modal')).toBeVisible();
+        await expect(a.locator('.event-note-modal')).toContainText(scenario === 'peer delete' ? 'נמחק במכשיר אחר' : 'אותו שדה בפתק השתנה');
+        await expect(a.locator('[data-action="event-note-body"]')).toHaveValue('תוכן אחרי שחזור');
+        expect(f.canonical.state.events[0].notes.map(note => ({id:note.id,body:note.body})))
+          .toEqual(scenario === 'peer delete' ? [] : [{id,body:'עריכה במכשיר השני'}]);
+        expect(f.writes.slice(writesBeforeRetry).every(write => !write.event.notes.some(note => note.body === 'תוכן אחרי שחזור'))).toBe(true);
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+        return;
+      }
+      await expect(a.locator('.event-note-modal')).toHaveCount(0);
+      await expect.poll(() => f.canonical.state.events[0].notes.map(note => ({id:note.id,body:note.body})))
+        .toEqual([{id,body:'תוכן אחרי שחזור'}]);
+      await expect(noteCard(b,id)).toContainText('תוכן אחרי שחזור');
+      expect(f.writes.every(write => write.event.notes.length <= 1)).toBe(true);
+      await a.reload();
+      await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await a.locator('[data-action="open-event-notes"]').click();
+      await a.locator('[data-action="new-event-note"]').click();
+      await expect(a.locator('[data-action="event-note-body"]')).toHaveValue('');
+      expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+    } finally { hold.release(); await f.close(); }
+  });
+ }
+}
 
 test('a durable outbox survives page restart during a cloud outage and reaches the peer once', async ({}, testInfo) => {
   const f = await fixture(testInfo), [a, b] = f.pages;
