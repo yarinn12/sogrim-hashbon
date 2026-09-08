@@ -9,10 +9,14 @@
 - User ID: `NSPrivacyCollectedDataTypeUserID`
 - Other Financial Info: `NSPrivacyCollectedDataTypeOtherFinancialInfo`
 - Other User Content: `NSPrivacyCollectedDataTypeOtherUserContent`
+- Photos or Videos: `NSPrivacyCollectedDataTypePhotosorVideos` — תמונות פרופיל, אירוע וקבלה/הוצאה שהמשתמש מעלה ושומר בענן.
+- Contacts: `NSPrivacyCollectedDataTypeContacts` — קשרי החברות וגרף המשתתפים בתוך האפליקציה; אין קריאה של ספר הטלפונים במכשיר.
+- Purchase History: `NSPrivacyCollectedDataTypePurchaseHistory` — הוצאות וקניות שהמשתמש מזין לצורך חלוקה; לא רכישות בתוך האפליקציה.
+- Customer Support: `NSPrivacyCollectedDataTypeCustomerSupport` — משוב ובקשות תמיכה שנשלחים מתוך חשבון.
 - Product Interaction: `NSPrivacyCollectedDataTypeProductInteraction` - פתיחת האפליקציה ואינטראקציות מוצר מצומצמות. מטרות: Analytics ו-App Functionality.
 - Other Diagnostic Data: `NSPrivacyCollectedDataTypeOtherDiagnosticData` - גרסת אפליקציה, מערכת הפעלה, שפה, גודל מסך, מסך מקור ושגיאות מצומצמות. מטרות: Analytics ו-App Functionality.
 
-Name, Email Address, User ID, Other Financial Info ו-Other User Content משמשים ל-App Functionality. אין לסמן את מדדי השימוש או האבחון כלא מקושרים: הם נשלחים בבקשה מאומתת, אף שרשומת המדד אינה שומרת שם, אימייל או מזהה משתמש.
+Name, Email Address, User ID, Other Financial Info, Other User Content, Photos or Videos, Contacts, Purchase History ו-Customer Support משמשים ל-App Functionality. אין לסמן את מדדי השימוש או האבחון כלא מקושרים: הם נשלחים בבקשה מאומתת, אף שרשומת המדד אינה שומרת שם, אימייל או מזהה משתמש.
 
 לא נאספים פרטי כרטיס או חשבון בנק. האפליקציה אינה מבצעת תשלומים, אינה מציגה פרסומות בגרסת iOS הראשונה ולא נעשה שימוש במידע למעקב בין אפליקציות או אתרים.
 

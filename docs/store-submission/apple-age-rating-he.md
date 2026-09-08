@@ -5,7 +5,9 @@
 - Parental Controls: לא.
 - Age Assurance: לא.
 - Unrestricted Web Access: לא.
-- Messaging or Chat: לא.
+- Messaging or Chat: כן — משתמשים יכולים לשתף טקסטים בפתקים בתוך האירוע. אין צ'אט פרטי או פיד ציבורי, אך יכולת התקשורת בין משתתפים נכללת בגילוי לפי הגדרת Apple.
+- Social Media: לא — אין פיד ציבורי, הפצת תוכן או מנגנון גילוי חברתי.
+- Social Media Disabled for Users Under 13: לא — אין יכולת Social Media ואין שימוש ב-Declared Age Range API.
 - User-Generated Content: כן. שמות אירועים והוצאות משותפים רק בתוך אירוע מוזמן, ללא פיד ציבורי.
 - Advertising: לא בגרסת iOS הראשונה.
 - Gambling, Contests, Loot Boxes: לא.
