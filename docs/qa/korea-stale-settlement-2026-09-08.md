@@ -67,7 +67,9 @@ own workspace. These are not signed-in phone sessions.
 Both deployed database guards were verified in the same read-only transaction:
 no-op note mirror protection and committed account-link preservation. The live
 Chrome UI showed one Liron, four expenses, the expected four transfer routes and
-no sync warning inside Korea. Notes and the new-expense form opened; the empty
+no sync warning inside Korea after synchronization completed. A pending badge was
+briefly visible during the first post-update synchronization and then cleared.
+Notes and the new-expense form opened; the empty
 form was cancelled without saving. A general account-wide warning from other
 pending work remains outside the Korea verification scope.
 
@@ -80,3 +82,24 @@ Release target: PWA 486 and Android 4.37 (165). Native Apple publication still
 requires the previously missing Apple signing/account configuration. Physical
 participant phones were not inspected; this verification does not establish that
 all devices have installed the update or that no other bugs exist.
+
+## CI deadline fixture correction
+
+GitHub QA run `34185561673` exposed a pre-existing timing race in
+`eventActivityNotifications.test.mjs`: its 25 ms shared deadline could expire
+before reaching the reserved notification/inbox stage under full-suite CPU load,
+so the intended stalled-inbox rejection was never exercised. This is a fixture
+correction, with no runtime change and no deadline increase. Following the
+existing reminder regression, the test now controls Date until the inbox request
+starts, then expires the shared deadline while keeping the real abort timer and
+500 ms hard limit. Reservation cleanup and no-FCM assertions remain, and an
+additional assertion checks that the inbox request was actually aborted.
+
+All 72 nearby activity/reminder tests and the full 2,810-test suite passed with
+zero failures or skips. The packaged 624-file runtime fingerprint was unchanged.
+An isolated mutation that removed
+only the production pre-FCM reservation cleanup failed on the retained cleanup
+assertion, proving the corrected fixture still detects the underlying bug.
+Evidence: `work/korea-notification-deadline-focused.log`,
+`work/korea-deadline-mutation-red.log`, and
+`work/korea-release-4.37-ci-failure.log`.

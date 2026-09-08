@@ -315,9 +315,18 @@ test("server activity deadline includes the authenticated-user response body", a
   assert.equal(requestSignal?.aborted, true);
 });
 
-test("a pre-FCM deadline releases a reservation created before a stalled inbox write", async () => {
+test("a pre-FCM deadline releases a reservation created before a stalled inbox write", async (t) => {
+  // Reach the reserved/inbox stage deterministically even under full-suite CPU
+  // load. Only then expire the shared deadline; the actual abort timer still runs.
+  const start = Date.parse("2026-09-08T04:00:00.000Z");
+  t.mock.timers.enable({ apis: ["Date"], now: start });
+  let inboxSignal;
   const { fetchImpl, requests } = createActivityFetch({
-    inboxHandler: () => new Promise(() => {})
+    inboxHandler: ({ options }) => {
+      inboxSignal = options.signal;
+      t.mock.timers.setTime(start + 26);
+      return new Promise(() => {});
+    }
   });
 
   await assert.rejects(
@@ -338,6 +347,7 @@ test("a pre-FCM deadline releases a reservation created before a stalled inbox w
     ]),
     (error) => error?.code === "NETWORK_TIMEOUT"
   );
+  assert.equal(inboxSignal?.aborted, true, "the stalled inbox request must be aborted");
   assert.equal(
     requests.some((request) =>
       request.url.includes("/rest/v1/event_activity_notifications?") &&
