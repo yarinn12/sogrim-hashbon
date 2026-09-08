@@ -12,12 +12,13 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false} = {}) {
+async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
+  const accountLinkWriteHolds = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -40,13 +41,14 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       payers:[{participantId:guest.id,amount:9000}],sharedByParticipantIds:[participants[0].id,guest.id],
       createdByParticipantId:guest.id,updatedAt:version,kind:'shared'});
   }
+  if (withCompetingLinks) event.adminIds = ids.map(id => `account-${id}`);
   const canonical = {id: sharedId, snapshot_kind: 'shared_event', updated_at: version,
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
       groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [],
       events: [{...structuredClone(event), sharedSpaceId: sharedId, sharedSpaceKey: key}]}}));
-  const sibling = withAccountLink ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
+  const sibling = withAccountLink && !withCompetingLinks ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
     state:{currentParticipantId:'',participants:structuredClone(participants),groups:[],deletedParticipants:[],events:[{
       ...structuredClone(event),id:'unrelated-pending-event',name:'אירוע אחר שלא הסתנכרן',expenses:[],notes:[],transfers:[]}]}} : null;
   if (sibling) {
@@ -59,6 +61,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const close = async () => {
     barrier?.release();
     for(const hold of membershipReadHolds.values()) hold.release();
+    for(const hold of accountLinkWriteHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
     if(networkDiagnostics.length) console.log(JSON.stringify({kind:'expected-fixture-network-diagnostics',diagnostics:networkDiagnostics}));
@@ -111,6 +114,12 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        const linkHold = accountLinkWriteHolds.get(i);
+        if (linkHold && body.p_snapshot_id === sharedId && body.p_state.events[0].participantAccountLinks?.length) {
+          linkHold.arrived = true;
+          await linkHold.ready;
+          accountLinkWriteHolds.delete(i);
+        }
         if (sibling && body.p_snapshot_id === sibling.id) {
           rejectedSiblingWrites++;
           return reply({code:'42501',message:'Synthetic unrelated event rejects its pending edit'},403);
@@ -170,7 +179,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         displayName: user.user_metadata.full_name, username: user.user_metadata.username, avatarPreset: 'avatar-1',
         authProvider: 'google', authSubject: user.id, email: user.email}));
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,appOrigin:new URL(baseURL).origin,seedPending:withAccountLink&&i===0,
+    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,appOrigin:new URL(baseURL).origin,seedPending:Boolean(sibling)&&i===0,
       seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
         targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
@@ -187,6 +196,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs,
     get conflicts() { return conflicts; },
     get rejectedSiblingWrites() { return rejectedSiblingWrites; },
+    holdNextAccountLinkWrite(i) {
+      let release; const ready = new Promise(resolve=>{release=resolve;});
+      const hold = {arrived:false,ready,release}; accountLinkWriteHolds.set(i,hold); return hold;
+    },
     holdNextMembershipRead(i) {
       let release; const ready = new Promise(resolve=>{release=resolve;});
       const hold = {arrived:false,ready,release}; membershipReadHolds.set(i,hold); return hold;
@@ -464,6 +477,54 @@ test('an account link reaches the other device while an unrelated event remains 
   }finally{
     await f.close();
   }
+});
+
+test('two administrators cannot relink the same guest to different accounts during a write race', async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withAccountLink:true, withCompetingLinks:true});
+  const [a,b] = f.pages, guest = 'guest-existing-person', winner = `account-${ids[1]}`;
+  const winnerHold = f.holdNextAccountLinkWrite(0);
+  const hold = f.holdNextAccountLinkWrite(1);
+  const confirmLink = async (page,target) => {
+    await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await page.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
+    await page.locator('[data-action="open-event-participant-link"]').click();
+    await page.locator(`[data-action="link-offline-participant-account"][data-target-participant-id="${target}"]`).click();
+    await page.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+  };
+  try {
+    await confirmLink(a, winner);
+    await expect.poll(()=>winnerHold.arrived).toBe(true);
+    // Prepare the losing decision later, so its expense clock is newer even
+    // though the other administrator's link wins the canonical write.
+    await confirmLink(b, `account-${ids[0]}`);
+    await expect.poll(()=>hold.arrived).toBe(true);
+    winnerHold.release();
+    await expect.poll(()=>f.canonical.state.events[0].participantAccountLinks?.[0]?.targetParticipantId).toBe(winner);
+    hold.release();
+    await expect.poll(()=>f.conflicts).toBeGreaterThan(0);
+    await expect.poll(()=>b.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]').length)).toBe(0);
+    await expect.poll(()=>b.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[1].id)).toBeNull();
+    for (const write of f.writes.filter(write=>write.event.participantAccountLinks?.length)) {
+      expect(write.event.participantAccountLinks[0].targetParticipantId).toBe(winner);
+      expect(write.event.expenses.find(expense=>expense.id==='guest-expense').payers[0].participantId).toBe(winner);
+    }
+    // Reload the rejected device and verify the accepted decision is what the
+    // participant sees, with no rejected identity or durable retry left behind.
+    await b.reload();
+    await b.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
+    await expect.poll(()=>b.evaluate(({spaceId,eventId})=>{
+      const event=JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`)).events.find(event=>event.id===eventId);
+      return {target:event.participantAccountLinks?.[0]?.targetParticipantId,payer:event.expenses[0].payers[0].participantId,total:event.expenses[0].total};
+    },{spaceId:f.personal[1].id,eventId})).toEqual({target:winner,payer:winner,total:9000});
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } catch (error) {
+    console.log(JSON.stringify({linkLogs:f.linkLogs,errors:f.errors,conflicts:f.conflicts,
+      canonicalLink:f.canonical.state.events[0].participantAccountLinks,
+      canonicalPayers:f.canonical.state.events[0].expenses.map(expense=>expense.payers)}));
+    throw error;
+  } finally { winnerHold.release(); hold.release(); await f.close(); }
 });
 
 test('Android-profile Chromium and iPhone-profile WebKit note UIs deliver create, peer edit, offline recovery and delete', async ({}, testInfo) => {

@@ -613,6 +613,120 @@ test("SQL stale client retry after a committed account link keeps the receipt an
   });
 });
 
+for (const [hasTransfer, commitTiming] of [
+  [false, "before read"], [false, "during CAS retry"],
+  [true, "before read"], [true, "during CAS retry"]
+]) {
+  test(`SQL competing account links cannot move debt to a different target ${commitTiming} (transfer=${hasTransfer})`, async () => {
+    const guest = "guest-competing-link";
+    await withSnapshot(ids.admin, async (previous, save) => {
+      const local = { ...structuredClone(previous), currentParticipantId: ids.admin };
+      local.events[0].sharedSpaceId = snapshotId;
+      local.events[0].sharedSpaceKey = spaceKey;
+      const winner = buildSharedEventState(linkParticipantAccountInEvent(local, "integrity-probe", guest, ids.sender), "integrity-probe");
+      const loser = linkParticipantAccountInEvent(local, "integrity-probe", guest, ids.other);
+      // The later local clock must not turn a conflicting identity decision
+      // into an ordinary expense edit after its receipt has been overwritten.
+      loser.events[0].expenses[0].updatedAt = new Date(Date.now() + 1000).toISOString();
+      let committed = false, writes = 0;
+      const commitWinner = async () => {
+        const receipt = await save(winner);
+        assert.equal(receipt.status, "updated");
+        committed = true;
+      };
+      if (commitTiming === "before read") await commitWinner();
+      let failure;
+      try {
+        await saveSharedEventState({ storage: { mode: "supabase", url: "https://competing-link.invalid",
+          table: "app_snapshots", anonKey: "synthetic", account: { userId: ids.admin.slice(8), accessToken: "synthetic" } } },
+        loser, "integrity-probe", async (url, options = {}) => {
+          const response = value => ({ ok: true, status: 200, json: async () => value });
+          if (url.includes("/rpc/update_shared_event_snapshot")) {
+            writes++;
+            const body = JSON.parse(options.body);
+            if (!committed) await commitWinner();
+            await db.exec("savepoint competing_link_request");
+            try {
+              const result = await save(body.p_state, body.p_expected_updated_at);
+              await db.exec("release savepoint competing_link_request");
+              return response(result);
+            } catch (error) {
+              await db.exec("rollback to savepoint competing_link_request");
+              await db.exec("release savepoint competing_link_request");
+              throw error;
+            }
+          }
+          assert.equal(options.method ?? "GET", "GET");
+          return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows);
+        });
+      } catch (error) { failure = error; }
+      const stored = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.equal(stored.events[0].expenses[0].payers[0].participantId, ids.sender,
+        "the committed guest-to-account decision must keep its debt owner");
+      assert.deepEqual(stored.events[0].participantAccountLinks, winner.events[0].participantAccountLinks);
+      assert.equal(stored.events[0].expenses[0].total, 200);
+      assert.equal(failure?.code, "SHARED_EVENT_ACCOUNT_LINK_CONFLICT");
+      assert.equal(failure.status, 409);
+      assert.equal(writes, commitTiming === "before read" ? 0 : 1,
+        "stop before sending any payload that disguises the conflicting link");
+    }, previous => {
+      previous.participants.push({ id: guest, kind: "guest", displayName: "Offline person" });
+      previous.events[0].participantIds.push(guest);
+      previous.events[0].expenses = [{ id: "competing-guest-expense", title: "Synthetic taxi", total: 200,
+        payers: [{ participantId: guest, amount: 200 }], sharedByParticipantIds: [guest, ids.recipient], createdByParticipantId: ids.admin }];
+      previous.events[0].transfers = hasTransfer ? [{ id: "competing-guest-debt", fromParticipantId: ids.recipient,
+        toParticipantId: guest, amount: 100, status: "pending" }] : [];
+      return previous;
+    });
+  });
+}
+
+for (const sameGuest of [false, true]) {
+  test(`SQL compatible simultaneous links keep all receipts and money (same guest=${sameGuest})`, async () => {
+    const guest = "guest-compatible-first", secondGuest = "guest-compatible-second";
+    await withSnapshot(ids.admin, async (previous, save) => {
+      const local = { ...structuredClone(previous), currentParticipantId: ids.admin };
+      Object.assign(local.events[0], { sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey });
+      const first = buildSharedEventState(linkParticipantAccountInEvent(local, "integrity-probe", guest, ids.sender), "integrity-probe");
+      const second = linkParticipantAccountInEvent(local, "integrity-probe", sameGuest ? guest : secondGuest, sameGuest ? ids.sender : ids.other);
+      // Both devices chose their links from the original roster, before either
+      // receipt existed. Only different decisions for the SAME guest conflict.
+      await save(first);
+      let writes = 0;
+      const result = await saveSharedEventState({ storage: { mode: "supabase", url: "https://compatible-link.invalid",
+        table: "app_snapshots", anonKey: "synthetic", account: { userId: ids.admin.slice(8), accessToken: "synthetic" } } },
+      second, "integrity-probe", async (url, options = {}) => {
+        const response = value => ({ ok: true, status: 200, json: async () => value });
+        if (url.includes("/rpc/update_shared_event_snapshot")) {
+          writes++;
+          const body = JSON.parse(options.body);
+          return response(await save(body.p_state, body.p_expected_updated_at));
+        }
+        assert.equal(options.method ?? "GET", "GET");
+        return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows);
+      });
+      const canonical = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.equal(writes, 1);
+      for (const event of [result.events[0], canonical.events[0]]) {
+        assert.equal(event.participantAccountLinks.length, sameGuest ? 1 : 2);
+        assert.deepEqual(event.participantAccountLinks.find(link => link.sourceParticipantId === guest), first.events[0].participantAccountLinks[0]);
+        assert.equal(event.expenses.reduce((sum, expense) => sum + expense.total, 0), 400);
+        assert.deepEqual(event.expenses.map(expense => expense.payers[0].participantId), [ids.sender, sameGuest ? secondGuest : ids.other]);
+        assert.equal(event.participantIds.includes(guest), false);
+        assert.equal(event.participantIds.includes(secondGuest), sameGuest);
+      }
+    }, previous => {
+      for (const id of [guest, secondGuest]) previous.participants.push({ id, kind: "guest", displayName: id });
+      previous.events[0].participantIds.push(guest, secondGuest);
+      previous.events[0].expenses = [guest, secondGuest].map((id, index) => ({ id: `compatible-expense-${index}`,
+        title: "Synthetic taxi", total: 200, payers: [{ participantId: id, amount: 200 }],
+        sharedByParticipantIds: [id, ids.recipient], createdByParticipantId: ids.admin }));
+      previous.events[0].transfers = [];
+      return previous;
+    });
+  });
+}
+
 test("SQL committed account links survive stale receipt arrays and reject guest resurrection", async () => {
   const guest = "guest-link-receipt";
   await withSnapshot(ids.admin, async (previous, save) => {
