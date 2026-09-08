@@ -7,6 +7,31 @@ test.use({ serviceWorkers: "block" });
 test.afterEach(async ({ page }, testInfo) => {
   if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await attachNoteEditorDiagnostics(page, testInfo);
 });
+
+async function assertQuietParticipantRoster(page, testInfo, phase) {
+  const roster = page.locator(".event-participant-roster-modal");
+  await expect(roster).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(animation =>
+    animation.playState === "running" && Number.isFinite(animation.effect?.getComputedTiming().endTime)
+  ).length)).toBe(0);
+  const previewSize = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
+  if (previewSize) await expect(page.locator("html")).toHaveCSS("font-size", `${previewSize}px`);
+  await expect(roster.locator("[data-route-sync-status]")).toBeHidden();
+  await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+  const geometry = await roster.evaluate(node => {
+    const header = node.querySelector(".event-modal-header").getBoundingClientRect();
+    const body = node.querySelector(".event-modal-body").getBoundingClientRect();
+    const status = node.querySelector("[data-route-sync-status]").getBoundingClientRect();
+    return { bodyGap: body.top - header.bottom, statusHeight: status.height };
+  });
+  expect(geometry.statusHeight, `${phase}: a hidden status must consume no height`).toBe(0);
+  expect(geometry.bodyGap, `${phase}: the roster must start directly below the header`).toBeLessThanOrEqual(24);
+  expect(geometry.bodyGap, `${phase}: the roster must not overlap the header`).toBeGreaterThanOrEqual(-1);
+  await expect(roster.locator(".event-participant-roster-row").first()).toBeInViewport();
+  await testInfo.attach(`participant-roster-${phase}`, { contentType: "application/json", body: JSON.stringify(geometry) });
+  await page.screenshot({ path: testInfo.outputPath(`participant-roster-${phase}.png`), animations: "disabled" });
+}
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
 for (const { status, restart = false, delayedDialogFrame = false, offline = false } of [
   ...[403, 503, "delayed-success", "transient-recovery", "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
@@ -220,7 +245,9 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
   }, { user, state: initialState, spaceId, spaceKey });
 
 
-  await page.goto("/");
+  const dynamicType = (offline || (restart && !partialRetry))
+    ? Number(testInfo.project.metadata?.dynamicTypePreview || 0) : 0;
+  await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
   if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await expect.poll(() => page.evaluate(() => typeof window.__qaNoteEditorState)).toBe("function");
   const eventButton = page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first();
   await expect(eventButton).toBeVisible();
@@ -355,6 +382,15 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
       await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     }
     await eventButton.click();
+    if (!partialRetry) {
+      // Exercise the participant route with the real outbox restored by boot,
+      // not just an injected status event. Navigation must preserve that intent.
+      await page.locator('[data-action="open-event-participants"]').click();
+      await assertQuietParticipantRoster(page, testInfo, "restored-outbox");
+      await assertLocalIntent();
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+      await eventButton.click();
+    }
     await page.locator('[data-action="open-event-notes"]').click();
     await assertLocalIntent();
     if (deleteRetry) await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toHaveCount(0);
@@ -441,6 +477,14 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
     expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.includes("pending-sync") && localStorage.getItem(key).includes("טיוטה שלא תאבד")))).toBe(true);
+    if (offline) {
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+      await eventButton.click();
+      await page.locator('[data-action="open-event-participants"]').click();
+      await assertQuietParticipantRoster(page, testInfo, "offline");
+      const outbox = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+      expect(outbox.events.find(event => event.id === eventId).notes.find(note => note.id === "cache-sync-note")?.body).toBe("טיוטה שלא תאבד");
+    }
     writeStatus = 200;
     if (offline) await page.context().setOffline(false);
     const outcome = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).flushPendingSharedState());
@@ -448,6 +492,12 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     expect(shared.state.events[0].notes.filter(note => note.id === "cache-sync-note")).toHaveLength(1);
     expect(shared.state.events[0].notes[0].body).toBe("טיוטה שלא תאבד");
+    if (offline) {
+      await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBeNull();
+      expect(personal.state.events[0].notes.filter(note => note.id === "cache-sync-note")).toHaveLength(1);
+      expect(personal.state.events[0].notes[0].body).toBe("טיוטה שלא תאבד");
+      await assertQuietParticipantRoster(page, testInfo, "reconnected");
+    }
   }
   if (reloadDiagnostics.length) await testInfo.attach("webkit-document-replacement-diagnostics", {
     contentType: "application/json", body: JSON.stringify(reloadDiagnostics)
