@@ -336,7 +336,7 @@ test("public profile save keeps Google identity fields when renaming the visitor
   assert.match(saveProfileFromDraft, /\[profileSaveResult, sharedStateResult\] = await Promise\.allSettled\([\s\S]*?saveSharedState\(state\)/);
   assert.match(saveProfileFromDraft, /const sharedProfileSaveResult = sharedStateResult\.status === "fulfilled"/);
   assert.match(saveProfileFromDraft, /sharedProfileSaveResult\?\.pending !== true/);
-  assert.match(saveProfileFromDraft, /הפרופיל נשמר במכשיר\. השלמת הסנכרון תתבצע אוטומטית/);
+  assert.match(saveProfileFromDraft, /\(!accountProfileSynced \|\| !sharedProfileSynced\)[\s\S]*?notice = "";/);
 });
 
 test("public invite profile setup previews the invited event before naming the visitor", async () => {

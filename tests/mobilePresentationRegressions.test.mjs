@@ -20,7 +20,7 @@ test("mobile route modals reserve the navigation area and keep one scroll owner"
   );
   assert.match(
     mobileModalLayer,
-    /\.event-modal-backdrop\[data-event-route-dialog="true"\][\s\S]*?\.event-task-modal \{[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) !important;/
+    /\.event-modal-backdrop\[data-event-route-dialog="true"\][\s\S]*?:is\(\.event-task-modal, \.event-participant-route-modal\) \{[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\) !important;/
   );
   assert.match(
     mobileModalLayer,

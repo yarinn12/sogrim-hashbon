@@ -754,6 +754,45 @@ test("offline mode keeps shared event changes local-first until sync access retu
   await expect(reconnectedAdminToggle).not.toBeChecked();
 });
 
+test("participant roster keeps pending work silent and never stretches a status across the page", async ({ page }, testInfo) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`).first().click();
+  const roster = page.locator(".event-participant-roster-modal");
+  await expect(roster).toBeVisible();
+  await settleCoherenceMotion(page);
+  await expect(roster.locator(".event-participant-roster-row")).toHaveCount(4);
+  const measurements = [];
+  for (const failureKind of ["", "server", "connection", "permission", ""]) {
+    await page.evaluate(({ eventId, failureKind }) => {
+      dispatchEvent(new CustomEvent("sogrim:sync-status", { detail: {
+        status: "reconnecting", pending: true, pendingEventIds: [eventId], failureKind
+      } }));
+    }, { eventId: EVENT_ID, failureKind });
+    const status = roster.locator("[data-route-sync-status]");
+    if (failureKind === "permission") await expect(status).toContainText("אין הרשאה");
+    else await expect(status).toBeHidden();
+    const geometry = await roster.evaluate(node => {
+      const header = node.querySelector(".event-modal-header").getBoundingClientRect();
+      const body = node.querySelector(".event-modal-body").getBoundingClientRect();
+      const status = node.querySelector("[data-route-sync-status]").getBoundingClientRect();
+      const text = node.querySelector("[data-inline-sync-status]").getBoundingClientRect();
+      return { headerTop: header.top, bodyGap: body.top - header.bottom, statusHeight: status.height, textHeight: text.height };
+    });
+    measurements.push({ failureKind, ...geometry });
+    expect(Math.abs(geometry.headerTop)).toBeLessThanOrEqual(2);
+    if (failureKind === "permission") {
+      expect(geometry.statusHeight).toBeLessThanOrEqual(Math.max(44, geometry.textHeight + 24));
+      expect(geometry.bodyGap).toBeLessThanOrEqual(geometry.statusHeight + 24);
+    } else {
+      expect(geometry.statusHeight).toBe(0);
+      expect(geometry.bodyGap).toBeLessThanOrEqual(24);
+    }
+    await expect(roster.locator(".event-participant-roster-row").first()).toBeInViewport();
+  }
+  await testInfo.attach("participant-status-layout", { contentType: "application/json", body: JSON.stringify(measurements) });
+  await page.screenshot({ path: testInfo.outputPath("participants-without-pending-notice.png") });
+});
+
 test("routine background sync never opens a sync surface", async ({ page }) => {
   await page
     .locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`)

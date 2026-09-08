@@ -219,7 +219,7 @@ const CSS = `
 
     html.ledger-workspace-v1 body #app
       .event-modal-backdrop[data-event-route-dialog="true"]
-      .event-task-modal {
+      :is(.event-task-modal, .event-participant-route-modal) {
       height: calc(
         100dvh - var(--event-route-nav-safe-height, 96px) -
           env(safe-area-inset-bottom)
@@ -243,11 +243,12 @@ const CSS = `
       .event-modal-backdrop[data-event-route-dialog="true"]
       .event-route-sync-status {
       grid-row: 2 !important;
+      align-self: start !important;
     }
 
     html.ledger-workspace-v1 body #app
       .event-modal-backdrop[data-event-route-dialog="true"]
-      .event-task-modal
+      :is(.event-task-modal, .event-participant-route-modal)
       > .event-modal-body {
       grid-row: 3 !important;
       min-height: 0 !important;

@@ -8,11 +8,12 @@ test.afterEach(async ({ page }, testInfo) => {
   if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await attachNoteEditorDiagnostics(page, testInfo);
 });
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const { status, restart = false, delayedDialogFrame = false } of [
+for (const { status, restart = false, delayedDialogFrame = false, offline = false } of [
   ...[403, 503, "delayed-success", "transient-recovery", "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
   ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status })),
-  { status: "pending-next-recovers", delayedDialogFrame: true }
+  { status: "pending-next-recovers", delayedDialogFrame: true },
+  { status: 503, offline: true }
 ]) {
 const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
@@ -20,7 +21,7 @@ const receiptConflict = String(status).startsWith("receipt-");
 const pendingFollowup = String(status).startsWith("pending-next-");
 const quietRecovery = ["delayed-success", "transient-recovery"].includes(status);
 const testName = pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
-test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
+test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
@@ -86,6 +87,13 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
   // rejections, including throughout the document-replacement interval.
   await page.exposeBinding("qaReportApplicationError", (_, message) => errors.push(message));
   await page.addInitScript(() => {
+    window.__qaPendingNotices = [];
+    new MutationObserver(() => {
+      const pendingCopy = /ממתינ[\u0590-\u05ff]* לסנכרון|נשמר[\u0590-\u05ff]* במכשיר|השלמת הסנכרון|השינויים ממתינים במכשיר|[יוות]סתנכר[\u0590-\u05ff]* אוטומטית/;
+      if (pendingCopy.test(document.body?.textContent || "") && pendingCopy.test(document.body.innerText)) {
+        window.__qaPendingNotices.push(document.body.innerText.match(pendingCopy)[0]);
+      }
+    }).observe(document, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["hidden", "class"] });
     addEventListener("error", event => {
       if (event.message) window.qaReportApplicationError(event.message).catch(() => {});
     });
@@ -254,9 +262,9 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     await testInfo.attach("quiet-sync-feedback", { contentType: "application/json", body: JSON.stringify(feedback) });
   } else if (pendingFollowup) {
     await expect(page.locator(".event-note-modal")).toHaveCount(0);
-    await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     await page.locator('[data-nav-destination="home"]').click();
-    await expect(page.locator("[data-sync-account-summary]")).toBeVisible();
+    await expect(page.locator("[data-sync-account-summary]")).toBeHidden();
     await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     await page.locator('[data-action="open-event-notes"]').click();
@@ -284,10 +292,10 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
       expect(shared.state.events[0].notes.find(note => note.id === "cache-sync-note")?.body).toBe("נשמר בענן");
       await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
       await page.locator('[data-nav-destination="home"]').click();
-      await expect(page.locator("[data-sync-account-summary]")).toBeVisible();
+      await expect(page.locator("[data-sync-account-summary]")).toBeHidden();
       await eventButton.click();
       await page.locator('[data-action="open-event-notes"]').click();
-      await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
       writeStatus = 200;
       await reloadPage();
     }
@@ -341,6 +349,11 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     // personal snapshot may discard the accepted local intent.
     await reloadPage();
     await expect(eventButton).toBeVisible();
+    if (!partialRetry) {
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+      await page.waitForTimeout(5_200);
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    }
     await eventButton.click();
     await page.locator('[data-action="open-event-notes"]').click();
     await assertLocalIntent();
@@ -348,9 +361,9 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     else await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toContainText("טיוטה שלא תאבד");
     // Partial fixtures now reject shared writes with HTTP 403; distinguish
     // that actionable permission failure from the transient HTTP 503 case.
-    await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText(
-      partialRetry ? "השינויים ממתינים במכשיר. אין הרשאה לסנכרן אותם" : "ממתין לסנכרון"
-    );
+    if (partialRetry) await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
+    else await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    expect(await page.evaluate(() => window.__qaPendingNotices)).toEqual([]);
     await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("save-feedback-pending-restart.png"), fullPage: true, animations: "disabled" });
     writeStatus = 200;
@@ -423,10 +436,13 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     expect(canonicalAttempts).toBeLessThanOrEqual(2);
   } else {
     await expect(page.locator(".event-note-modal")).toHaveCount(0);
-    await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
+    if (offline) await page.context().setOffline(true);
+    await page.waitForTimeout(5_200);
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
     expect(await page.evaluate(() => Object.keys(localStorage).some(key => key.includes("pending-sync") && localStorage.getItem(key).includes("טיוטה שלא תאבד")))).toBe(true);
     writeStatus = 200;
+    if (offline) await page.context().setOffline(false);
     const outcome = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).flushPendingSharedState());
     expect(outcome.ok).toBe(true);
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
@@ -437,6 +453,7 @@ test(`${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async (
     contentType: "application/json", body: JSON.stringify(reloadDiagnostics)
   });
   expect(errors).toEqual([]);
+  expect(await page.evaluate(() => window.__qaPendingNotices)).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("save-feedback.png"), fullPage: true, animations: "disabled" });
 });

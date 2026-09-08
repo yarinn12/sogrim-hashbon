@@ -8,8 +8,6 @@ import { pendingSaveMessage } from "./domain/userNoticePolicy.mjs";
 
 const STYLE_ID = "public-sync-status-layer-style";
 const STATUS_EVENT = "sogrim:sync-status";
-const PENDING_NOTICE_GRACE_MS = 5_000;
-const TRANSIENT_PENDING_FAILURES = new Set(["", "server", "connection"]);
 const ROUTINE_SYNC_STATUSES = new Set([
   "saving",
   "saved",
@@ -37,10 +35,6 @@ const initialPendingStatus = pendingSharedSyncStatus();
 let pendingSync = initialPendingStatus.pending;
 let pendingEventIds = initialPendingStatus.pendingEventIds;
 let pendingFailureKind = "";
-// A restored outbox is already undelivered work. Only newly queued, ordinary
-// saves get a short quiet window; retries must not restart that window.
-let pendingNoticeReady = initialPendingStatus.pending;
-let pendingNoticeTimer = null;
 let connectivityRevision = 0;
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
@@ -250,7 +244,7 @@ async function handleRetryClick(event) {
   try {
     await flushPendingSharedState();
   } catch {
-    // Preserve the pending indicator; a failed explicit retry is not proof of
+    // Preserve actionable feedback; a failed explicit retry is not proof of
     // offline connectivity and must not become an unhandled rejection.
     syncInlineStatusTargets();
   } finally {
@@ -333,26 +327,7 @@ function screenSignature() {
   return `${screen}:${screenKind}`;
 }
 
-function syncPendingNoticeTiming() {
-  if (!pendingSync || navigator.onLine === false ||
-      !TRANSIENT_PENDING_FAILURES.has(pendingFailureKind)) {
-    window.clearTimeout(pendingNoticeTimer);
-    pendingNoticeTimer = null;
-    pendingNoticeReady = pendingSync;
-    return;
-  }
-  if (pendingNoticeReady || pendingNoticeTimer !== null) return;
-  const timer = window.setTimeout(() => {
-    if (pendingNoticeTimer !== timer) return;
-    pendingNoticeTimer = null;
-    pendingNoticeReady = pendingSync;
-    syncInlineStatusTargets();
-  }, PENDING_NOTICE_GRACE_MS);
-  pendingNoticeTimer = timer;
-}
-
 function syncInlineStatusTargets() {
-  syncPendingNoticeTiming();
   const hasEventActionDock = Boolean(document.querySelector(".event-action-dock"));
   const hasEventRouteDialog = Boolean(
     document.querySelector('[data-event-route-dialog="true"]')
@@ -367,7 +342,7 @@ function syncInlineStatusTargets() {
       .join(" ")}`;
     const eventId = target.dataset.syncEventId;
     const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
-    const message = pendingHere && pendingNoticeReady ? pendingSaveMessage(pendingFailureKind) : "";
+    const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
     if (target.textContent !== message) target.textContent = message;
     target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");

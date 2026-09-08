@@ -56,16 +56,18 @@ async function selectAvatar(page, value) {
   await picker.locator(`label.profile-avatar-option:has([value="${value}"])`).click();
 }
 
-test("old avatar success does not erase the latest pending-sync feedback", async ({ page }, testInfo) => {
+test("old avatar success cannot announce success for a newer quietly queued avatar", async ({ page }, testInfo) => {
   await selectAvatar(page, "avatar-2");
   await expect.poll(() => page.evaluate(() => window.__profileSaveQA.pending.length)).toBe(1);
   await selectAvatar(page, "avatar-3");
   await expect.poll(() => page.evaluate(() => window.__profileSaveQA.pending.length)).toBe(2);
   await page.evaluate(() => window.__profileSaveQA.release(1, false));
-  await expect(page.locator(".notice")).toContainText("השלמת הסנכרון");
+  await expect.poll(() => page.evaluate(() => window.__profileSaveQA.snapshot().notice)).toBe("");
+  await expect(page.locator(".notice:visible")).toHaveCount(0);
   await page.evaluate(() => window.__profileSaveQA.release(0, true));
   await page.waitForTimeout(150);
-  await expect(page.locator(".notice")).toContainText("השלמת הסנכרון");
+  expect(await page.evaluate(() => window.__profileSaveQA.snapshot().notice)).toBe("");
+  await expect(page.locator(".notice:visible")).toHaveCount(0);
   expect(await page.evaluate(() => window.__profileSaveQA.snapshot().profile.avatarPreset)).toBe("avatar-3");
   await page.screenshot({ path: testInfo.outputPath("latest-avatar-pending.png"), fullPage: true });
 });

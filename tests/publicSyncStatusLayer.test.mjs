@@ -146,7 +146,7 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   assert.match(layer, /await flushPendingSharedState\(\)/);
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
-  assert.match(layer, /pendingHere && pendingNoticeReady \? pendingSaveMessage\(pendingFailureKind\) : ""/);
+  assert.match(layer, /pendingHere \? pendingSaveMessage\(pendingFailureKind\) : ""/);
   assert.match(layer, /pendingEventIds\.includes\(eventId\)/);
   assert.match(app, /data-sync-account-summary/);
   for (const match of app.matchAll(/<[^>]*data-inline-sync-status[^>]*>/g)) {

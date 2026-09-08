@@ -109,11 +109,12 @@ test("avatar completion cannot acknowledge another account or replace its notice
   assert.equal(h.ctx.notice, "Account B notice"); assert.equal(h.markers.size, 0);
 });
 
-test("old avatar success cannot replace a newer pending-sync notice or acknowledge its version", async () => {
+test("old avatar success cannot replace a newer quiet pending state or acknowledge its version", async () => {
   const h = harness(); const first = h.ctx.persistProfileAvatarDraft();
   h.ctx.profileAvatarImageDraft = "image-b"; const second = h.ctx.persistProfileAvatarDraft();
   h.writes[1].resolve({ ok: true, pending: true }); await second;
   const notice = h.ctx.notice;
+  assert.equal(notice, "");
   h.writes[0].resolve({ ok: true }); await first;
   assert.equal(h.ctx.notice, notice); assert.equal(h.markers.size, 0);
   assert.equal(h.ctx.localProfile.avatarImage, "image-b");
@@ -222,10 +223,10 @@ test("a same-account logout and login invalidates the previous session's avatar 
   assert.equal(h.ctx.notice, "New session"); assert.equal(h.markers.size, 0);
 });
 
-test("a failed shared profile write reports pending sync without throwing away the local profile", async () => {
+test("a failed shared profile write stays quiet without throwing away the local profile", async () => {
   const h = harness(); const request = h.ctx.saveProfileFromDraft(); await tick();
   h.writes[0].reject(new Error("Temporary outage")); await request;
-  assert.match(h.ctx.notice, /השלמת הסנכרון/); assert.equal(h.ctx.localProfile.displayName, "Saved Name");
+  assert.equal(h.ctx.notice, ""); assert.equal(h.ctx.localProfile.displayName, "Saved Name");
 });
 
 test("late profile failure cannot replace a new screen's notice", async () => {
@@ -274,7 +275,7 @@ for (const canonical of [null, { display_name: "Original Name", avatar_preset: "
     const request = h.ctx.persistProfileAvatarDraft();
     h.writes[0].resolve({ ok: true });
     assert.equal(await request, false);
-    assert.match(h.ctx.notice, /השלמת הסנכרון/);
+    assert.equal(h.ctx.notice, "");
     assert.equal(h.ctx.localProfile.avatarImage, "image-a");
   });
 }
@@ -395,7 +396,8 @@ for (const action of ["profile-name", "profile-username"]) {
       assert.equal(removed, 1); assert.equal(lifecycle, 1);
       assert.equal(h.ctx.lastCommittedScreenMarkup, "");
       assert.equal(inserted.length, 1);
-      assert.match(inserted[0].html, synced ? /תמונת הפרופיל נשמרה/ : /השלמת הסנכרון/);
+      if (synced) assert.match(inserted[0].html, /תמונת הפרופיל נשמרה/);
+      else { assert.equal(inserted[0].html, ""); assert.equal(h.ctx.notice, ""); }
     });
   }
 }

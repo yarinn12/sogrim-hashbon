@@ -1,0 +1,23 @@
+# Quiet background saves and participant roster layout
+
+The user explicitly requested removing every “saved on device / awaiting synchronization” announcement, including the restored queue banner displayed at startup. Their screenshot also showed this banner occupying most of the participant screen. This requested UI policy supersedes the earlier requirement to display passive pending status; persistence, acknowledgements, failure handling and retry assertions remain intact.
+
+## Causes and changes
+
+- The sync layer immediately exposed a restored outbox and revealed ordinary saves after a five-second timer. Ordinary pending, connection and server states now produce no text or timer. Authentication, permission, rejected changes and other actionable failures retain specific guidance without pending-sync copy.
+- Equivalent pending notices existed in group settings, account linking, invitations, profile and cover images, backup restore, leaving/deleting/reopening events, and notification preferences. These branches now remain quiet and do not claim cloud success. Existing confirmed-success branches are preserved. No storage, reconciliation, account-link or queue code was changed.
+- Participant routes inherited a two-row mobile grid while containing a header, optional status and body. Showing the status put it in the flexible row and moved the roster into an implicit row. The route now uses explicit header/status/content rows, the content owns the available scrolling space, and an actionable message keeps its natural height. A hidden status consumes no space.
+
+## Regression evidence
+
+- Fourteen behavioral tests added before changing application code failed on the original implementation (0 pass / 14 fail), specifically because pending messages were present. All fourteen passed after the fix. They cover online/offline delivery, a restored queue on home/affected/unaffected groups, and six settings with their actual queued payload and retained local value.
+- The participant browser regression failed before the CSS fix: a one-line status occupied 200 CSS pixels, exceeding its 44-pixel natural box. It passes after the fix on Android Chromium, iPhone WebKit, iPad WebKit, large text and 320px reflow. It checks hidden height zero, content gap, visible first participant, compact actionable errors, and return to a silent state.
+- Browser geometry and screenshots wait for fonts and finite animations before measuring. An early capture caught a transition frame; the final checks assert the header is at the top of the viewport rather than relying on that capture.
+- The three affected browser suites passed 46/46 scenarios on Android Chromium and iPhone WebKit. These include real durable outbox contents, HTTP 503, actual browser offline mode, restart during failure, automatic recovery, partial canonical/personal writes, competing note edits/deletions, and late profile completions. They retain assertions against data loss, duplicate notes and false acknowledgements.
+- Two notification tests preserve the stored preference after rejected/unacknowledged registration and verify it is sent successfully on recovery without a pending message.
+- The final `npm test` run passed all 2,869 unit/integration tests, with no skips or failures. The earlier release-preparation run also caught the missing 4.40 release-notes file and the old selector assertion; both were completed before this passing run.
+- A normal-suite client-copy guard prevents the removed phrases from reappearing in any client module. Initial full-suite execution found additional leave-event and notification-preference copies; those were removed rather than exempted.
+
+Fixtures are synthetic. No production financial or participant data was edited. These checks cover the reported failures; they do not establish that every possible device or application flow is bug-free.
+
+Local evidence: `work/quiet-pending-baseline.log`, `work/quiet-pending-fixed.log`, `work/quiet-pending-mobile.log`, `work/quiet-pending-layout-before.log`, `work/quiet-pending-layout-after.log`, `work/quiet-pending-notifications.log` and `work/release-4.40-unit-final.log`.
