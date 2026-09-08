@@ -78,6 +78,7 @@ test("avatar completion preserves a newly focused name field and typing", async 
   await field.fill("טיוטה חדשה");
   const before = await page.evaluate(() => {
     const element = document.querySelector('[data-action="profile-name"]');
+    window.__profileNameInputQA = element;
     const selection = { start: element.selectionStart, end: element.selectionEnd, value: element.value };
     window.__profileSaveQA.release(0, true);
     return selection;
@@ -87,9 +88,13 @@ test("avatar completion preserves a newly focused name field and typing", async 
   const trace = await page.evaluate(() => window.__profileCaretTrace);
   await testInfo.attach("caret-before-after", { body: JSON.stringify({ before, after, trace }), contentType: "application/json" });
   await expect(field).toBeFocused();
+  expect(await field.evaluate(element => element === window.__profileNameInputQA),
+    "background avatar completion must not replace an actively edited field").toBe(true);
   expect(after).toEqual(before);
+  await expect(page.locator(".notice")).toContainText("תמונת הפרופיל נשמרה.");
   await page.keyboard.insertText(" נשמרת");
   await expect(field).toHaveValue("טיוטה חדשה נשמרת");
+  await page.screenshot({ path: testInfo.outputPath("name-editor-after-avatar-save.png") });
 });
 
 test("avatar completion cannot navigate back or add stale feedback after leaving profile", async ({ page }, testInfo) => {

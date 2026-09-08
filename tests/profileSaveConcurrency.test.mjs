@@ -369,6 +369,37 @@ test("a slow old account cannot block or clear the next account's profile save",
   h.calls[1].resolve(); await second; assert.equal(h.ctx.profileSaveRequest, null);
 });
 
+for (const action of ["profile-name", "profile-username"]) {
+  for (const synced of [true, false]) {
+    test(`avatar completion preserves the live ${action} editor and updates ${synced ? "success" : "pending"} feedback`, async () => {
+      const h = harness(); const inserted = []; let removed = 0, lifecycle = 0;
+      const editor = { dataset: { action }, value: "New draft", selectionStart: 3, selectionEnd: 5 };
+      const profile = {
+        contains: node => node === editor,
+        querySelector: () => ({ remove: () => { removed++; } }),
+        insertAdjacentHTML: (position, html) => inserted.push({ position, html })
+      };
+      h.ctx.document.activeElement = editor;
+      h.ctx.app.querySelector = selector => selector === '[data-screen-kind="profile"]' ? profile : null;
+      h.ctx.renderNotice = () => h.ctx.notice;
+      h.ctx.syncNoticeLifecycleAfterRender = () => { lifecycle++; };
+      h.ctx.lastCommittedScreenMarkup = "old";
+      const request = h.ctx.finishProfileAvatarSave();
+      h.writes[0].resolve({ ok: true, pending: !synced });
+      await request;
+      assert.equal(h.renders.length, 0, "do not replace the live input to update a background-save toast");
+      assert.equal(h.frames.length, 0, "do not schedule stale avatar focus");
+      assert.equal(h.ctx.document.activeElement, editor);
+      assert.equal(editor.value, "New draft");
+      assert.equal(editor.selectionStart, 3); assert.equal(editor.selectionEnd, 5);
+      assert.equal(removed, 1); assert.equal(lifecycle, 1);
+      assert.equal(h.ctx.lastCommittedScreenMarkup, "");
+      assert.equal(inserted.length, 1);
+      assert.match(inserted[0].html, synced ? /תמונת הפרופיל נשמרה/ : /השלמת הסנכרון/);
+    });
+  }
+}
+
 for (const situation of ["normal", "already-focused", "replaced", "different-account", "newer-focus"]) {
   test(`profile edit focus respects ${situation}`, () => {
     const h = harness(); let focused = 0;

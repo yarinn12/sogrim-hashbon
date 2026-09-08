@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants } from "../src/domain/appActions.mjs";
-import { buildSharedEventState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
+import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 
@@ -447,6 +447,61 @@ test("SQL full member note write and conflict retry ignore a replica-only member
     value.events[0].expenses = [];
     value.events[0].transfers = [];
     return value;
+  });
+});
+
+test("SQL full account link retry moves guest debt and reaches the target personal index", async () => {
+  const guest = "guest-link-transport";
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const local = structuredClone(previous);
+    local.currentParticipantId = ids.admin;
+    local.groups = [{id:"unrelated-local-group",memberIds:[guest],adminIds:[ids.admin]}];
+    local.events[0].sharedSpaceId = snapshotId;
+    local.events[0].sharedSpaceKey = spaceKey;
+    const linked = linkParticipantAccountInEvent(local, "integrity-probe", guest, ids.sender);
+    let writes = 0;
+    const config = {storage:{mode:"supabase",url:"https://link-test.invalid",table:"app_snapshots",anonKey:"synthetic",
+      account:{userId:ids.admin.slice(8),accessToken:"synthetic-token"}}};
+    const result = await saveSharedEventState(config, linked, "integrity-probe", async (url,options={}) => {
+      const response = value => ({ok:true,status:200,json:async()=>value});
+      if(url.includes("/rpc/update_shared_event_snapshot")) {
+        writes++;
+        const body = JSON.parse(options.body), event = body.p_state.events[0];
+        assert.equal(event.participantIds.includes(guest),false);
+        assert.equal(event.expenses[0].payers[0].participantId,ids.sender);
+        assert.equal(event.expenses[0].total,200);
+        assert.equal(event.transfers[0].id,`opaque-debt-${guest}`,"record IDs are opaque, not participant references");
+        assert.equal(event.transfers[0].toParticipantId,ids.sender);
+        assert.equal(event.transfers[0].amount,100);
+        if(writes===1) return response({status:"conflict"});
+        return response(await save(body.p_state,body.p_expected_updated_at));
+      }
+      assert.equal(options.method??"GET","GET");
+      return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1",[snapshotId])).rows);
+    });
+    assert.equal(writes,2);
+    assert.equal(result.events[0].participantIds.includes(guest),false);
+    await db.exec("reset role");
+    const targetState=(await db.query("select state from public.app_snapshots where owner_user_id=$1::uuid and snapshot_kind='workspace'",[ids.sender.slice(8)])).rows[0].state;
+    const targetEvent=targetState.events.find(e=>e.id==="integrity-probe");
+    assert.ok(targetEvent,"the linked member can discover the event through their personal index");
+    assert.equal(targetEvent.participantIds.includes(ids.sender),true);
+    // The personal index discovers the event; its embedded copy is not eagerly
+    // replaced on every canonical edit. Exercise the recipient's authorized
+    // canonical read and real hydration before checking the visible membership.
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)",[ids.sender.slice(8)]);
+    await db.exec("set local role authenticated");
+    const readable=(await db.query("select state from public.app_snapshots where id=$1",[snapshotId])).rows;
+    assert.equal(readable.length,1);
+    const hydrated=mergeSharedEventIntoState(targetState,readable[0].state,{id:snapshotId,key:spaceKey});
+    assert.equal(hydrated.events.find(e=>e.id==="integrity-probe").participantIds.includes(guest),false);
+  }, previous => {
+    previous.participants.push({id:guest,kind:"guest",displayName:"Offline person"});
+    const event=previous.events[0];event.participantIds.push(guest);
+    event.expenses=[{id:"guest-expense",title:"Synthetic expense",total:200,payers:[{participantId:guest,amount:200}],
+      sharedByParticipantIds:[guest,ids.recipient],createdByParticipantId:guest}];
+    event.transfers=[{id:`opaque-debt-${guest}`,fromParticipantId:ids.recipient,toParticipantId:guest,amount:100,status:"pending"}];
+    return previous;
   });
 });
 

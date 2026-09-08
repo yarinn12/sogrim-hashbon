@@ -11,11 +11,11 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false} = {}) {
+async function fixture(testInfo, {withExpense = false, withAccountLink = false} = {}) {
   const browsers = [];
-  const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [];
+  const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
-  let barrier = null, conflicts = 0;
+  let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
   const version = new Date(clock).toISOString();
@@ -30,12 +30,28 @@ async function fixture(testInfo, {withExpense = false} = {}) {
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
+  if (withAccountLink) {
+    const guest = {id:'guest-existing-person',displayName:'אורח לפני חיבור',kind:'guest'};
+    participants.push(guest); event.participantIds.push(guest.id);
+    event.expenses.push({id:'guest-expense',name:'הוצאה של האורח',total:9000,
+      payers:[{participantId:guest.id,amount:9000}],sharedByParticipantIds:[participants[0].id,guest.id],
+      createdByParticipantId:guest.id,updatedAt:version,kind:'shared'});
+  }
   const canonical = {id: sharedId, snapshot_kind: 'shared_event', updated_at: version,
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
       groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [],
       events: [{...structuredClone(event), sharedSpaceId: sharedId, sharedSpaceKey: key}]}}));
+  const sibling = withAccountLink ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
+    state:{currentParticipantId:'',participants:structuredClone(participants),groups:[],deletedParticipants:[],events:[{
+      ...structuredClone(event),id:'unrelated-pending-event',name:'אירוע אחר שלא הסתנכרן',expenses:[],notes:[],transfers:[]}]}} : null;
+  if (sibling) {
+    const changed = {...structuredClone(sibling.state.events[0]),sharedSpaceId:sibling.id,sharedSpaceKey:key};
+    changed.notes=[{id:'keep-pending-note',title:'שינוי ישן שנשאר בתור',body:'לא למחוק',createdAt:stamp(),updatedAt:stamp(),
+      createdByParticipantId:participants[0].id,updatedByParticipantId:participants[0].id}];
+    personal[0].state.events.push(changed);
+  }
   const baseURL = testInfo.project.use.baseURL;
   const close = async () => {
     barrier?.release();
@@ -84,6 +100,10 @@ async function fixture(testInfo, {withExpense = false} = {}) {
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        if (sibling && body.p_snapshot_id === sibling.id) {
+          rejectedSiblingWrites++;
+          return reply({code:'42501',message:'Synthetic unrelated event rejects its pending edit'},403);
+        }
         if (barrier) {
           const current = barrier;
           if (++current.arrivals === 2) { barrier = null; current.release(); }
@@ -98,7 +118,8 @@ async function fixture(testInfo, {withExpense = false} = {}) {
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
         if (request.method() === 'GET') {
-          const rows = url.searchParams.has('snapshot_kind') || id === sharedId ? [canonical]
+          const rows = url.searchParams.has('snapshot_kind') ? [canonical,...(sibling && i===0 ? [sibling] : [])]
+            : id === sharedId ? [canonical] : sibling && id === sibling.id && i===0 ? [sibling]
             : id === personal[i].id ? [personal[i]] : [];
           const fields = (url.searchParams.get('select') || 'id,state,updated_at').split(',');
           return reply(rows.map(row => Object.fromEntries(fields.map(field => [field, structuredClone(row[field])]))));
@@ -114,7 +135,7 @@ async function fixture(testInfo, {withExpense = false} = {}) {
       unexpectedWrites.push({client: i, path: url.pathname});
       return reply({message: 'Unimplemented write'}, 501);
     });
-    await context.addInitScript(({user, initial, spaceId, key, i}) => {
+    await context.addInitScript(({user, initial, spaceId, key, i, seedPending}) => {
       if (localStorage.getItem('two-client-seeded')) return;
       localStorage.setItem('two-client-seeded', '1');
       localStorage.setItem('settle-friends-account-session', JSON.stringify({access_token: `fixture-token-${i}`,
@@ -122,14 +143,18 @@ async function fixture(testInfo, {withExpense = false} = {}) {
       localStorage.setItem('settle-friends-cloud-space', spaceId);
       localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, key);
       localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(initial));
+      if(seedPending) localStorage.setItem(`settle-friends-pending-sync:${spaceId}`,JSON.stringify(initial));
       localStorage.setItem(`settle-friends-current-participant:account:${user.id}`, `account-${user.id}`);
       localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({participantId: `account-${user.id}`,
         displayName: user.user_metadata.full_name, username: user.user_metadata.username, avatarPreset: 'avatar-1',
         authProvider: 'google', authSubject: user.id, email: user.email}));
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i});
+    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,seedPending:withAccountLink&&i===0});
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', error => errors.push({client: i, message: error.message}));
+    if(withAccountLink) page.on('console',message=>{
+      if(/account-link|sync\]|save failed/i.test(message.text())) linkLogs.push({client:i,type:message.type(),message:message.text().slice(0,600)});
+    });
     await page.goto('/');
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
     await expect(page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first()).toBeVisible();
@@ -137,8 +162,9 @@ async function fixture(testInfo, {withExpense = false} = {}) {
     await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
-  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites,
+  return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs,
     get conflicts() { return conflicts; },
+    get rejectedSiblingWrites() { return rejectedSiblingWrites; },
     collideNextWrites() {
       let release; const ready = new Promise(resolve => { release = resolve; });
       barrier = {arrivals:0, release, ready};
@@ -159,6 +185,42 @@ async function newNote(page, title, body) {
 }
 const saveNote = page => page.locator('[data-action="save-event-note"]').click();
 const noteCard = (page, id) => page.locator(`.event-note-open[data-note-id="${id}"]`);
+
+test('an account link reaches the other device while an unrelated event remains pending', async ({},testInfo)=>{
+  const f=await fixture(testInfo,{withAccountLink:true}),[a,b]=f.pages;
+  const guest='guest-existing-person',target=`account-${ids[1]}`;
+  try {
+    for(const page of f.pages) await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+    await a.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
+    await a.locator('[data-action="open-event-participant-link"]').click();
+    await a.locator(`[data-action="link-offline-participant-account"][data-source-participant-id="${guest}"][data-target-participant-id="${target}"]`).click();
+    const confirmation=a.locator('.important-action-dialog[role="alertdialog"]');
+    await expect(confirmation).toBeVisible();
+    const started=performance.now();await confirmation.locator('[data-action="confirm-important-action"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].participantIds.includes(guest),{timeout:12000}).toBe(false);
+    await expect.poll(()=>b.evaluate(({spaceId,eventId,guest,target})=>{
+      const event=JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(e=>e.id===eventId);
+      return {guestActive:event?.participantIds.includes(guest),targetActive:event?.participantIds.includes(target),
+        payer:event?.expenses?.[0]?.payers?.[0]?.participantId,total:event?.expenses?.[0]?.total};
+    },{spaceId:f.personal[1].id,eventId,guest,target}),{timeout:10000}).toEqual({guestActive:false,targetActive:true,payer:target,total:9000});
+    await expect(b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`)).toHaveCount(0);
+    await expect.poll(()=>a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]').length)).toBe(0);
+    const pending=await a.evaluate(spaceId=>JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)||'null'),f.personal[0].id);
+    expect(pending?.events.find(e=>e.id==='unrelated-pending-event')?.notes.some(n=>n.id==='keep-pending-note')).toBe(true);
+    expect(f.rejectedSiblingWrites).toBeGreaterThan(0);
+    expect(f.canonical.state.events[0].participantAccountLinks).toEqual(expect.arrayContaining([expect.objectContaining({sourceParticipantId:guest,targetParticipantId:target})]));
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    for(let i=0;i<2;i++)await f.pages[i].screenshot({path:testInfo.outputPath(`link-final-${i}.png`)});
+    console.log(JSON.stringify({kind:'two-browser-account-link-with-pending-sibling',deliveredMs:Math.round(performance.now()-started),rejectedSiblingWrites:f.rejectedSiblingWrites,unrelatedIntentRetained:true}));
+  }catch(error){
+      console.log(JSON.stringify({linkLogs:f.linkLogs,errors:f.errors,writeCount:f.writes.length,rejectedSiblingWrites:f.rejectedSiblingWrites,
+        visibleOwnerText:await a.locator('body').innerText().catch(()=>''),}));
+      await a.screenshot({path:testInfo.outputPath('link-failure.png')}).catch(()=>{});
+      throw error;
+  }finally{
+    await f.close();
+  }
+});
 
 test('Android-profile Chromium and iPhone-profile WebKit note UIs deliver create, peer edit, offline recovery and delete', async ({}, testInfo) => {
   const f = await fixture(testInfo), [a, b] = f.pages, timings = [];

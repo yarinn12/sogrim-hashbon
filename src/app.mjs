@@ -9854,6 +9854,19 @@ async function finishProfileAvatarSave() {
     originScreen === screen && revision === profileAvatarRevision;
   await request;
   if (!isCurrent()) return;
+  const activeInput = document.activeElement;
+  const profileScreen = app.querySelector('[data-screen-kind="profile"]');
+  if (profileScreen?.contains(activeInput) &&
+      ["profile-name", "profile-username"].includes(activeInput?.dataset?.action)) {
+    // This background completion only changes the notice. Replacing the form
+    // can reset WebKit's caret (or an active composition), even when focus is
+    // restored. Keep the live editor and its selection completely untouched.
+    profileScreen.querySelector(".app-toast")?.remove();
+    profileScreen.insertAdjacentHTML("afterbegin", renderNotice());
+    lastCommittedScreenMarkup = "";
+    syncNoticeLifecycleAfterRender();
+    return;
+  }
   render();
   requestAnimationFrame(() => {
     if (!isCurrent()) return;
@@ -17587,7 +17600,12 @@ async function mergeParticipantsInStateNow(pendingMerge) {
     }
     try {
       await prepareSharedEventForInvitation(pendingMerge.eventId, {
-        publishExisting: true
+        publishExisting: true,
+        // Prepare only this event. The actual link save below persists the
+        // local snapshot/outbox and checks its canonical receipt. Flushing the
+        // whole account here would let an unrelated rejection cancel the link
+        // before any durable linking intent has even been created.
+        persistAccountState: false
       });
     } catch (error) {
       clearMergeParticipantsDraftFor(pendingMerge);
@@ -18638,7 +18656,7 @@ function eventInviteAuthRefreshRequired(error) {
 
 async function prepareSharedEventForInvitation(
   eventId,
-  { publishExisting = false, awaitAccountCloud = true } = {}
+  { publishExisting = false, awaitAccountCloud = true, persistAccountState = true } = {}
 ) {
   const event = getEvent(eventId);
   if (!event) throw new Error("Event not found");
@@ -18660,6 +18678,7 @@ async function prepareSharedEventForInvitation(
       }
     }
   }
+  if (!persistAccountState) return shareRuntimeConfig;
   const accountSave = await saveSharedState(state, {
     awaitCloud: awaitAccountCloud
   });
