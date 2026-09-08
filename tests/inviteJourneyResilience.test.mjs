@@ -252,7 +252,7 @@ test("native sharing publishes new events without rewriting established shared e
   );
   assert.match(
     publishBeforeInvite,
-    /state = await saveSharedEventState\(shareRuntimeConfig, state, eventId\);/,
+    /const preparedState = await saveSharedEventState\(shareRuntimeConfig, state, eventId\);\s*assertPreparationIsCurrent\(\);\s*state = preparedState;/,
     "events without shared credentials are published before their first invitation"
   );
   assert.match(app, /delete event\[EVENT_SPACE_ID_FIELD\]/);

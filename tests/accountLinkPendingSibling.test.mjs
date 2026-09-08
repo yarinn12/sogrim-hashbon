@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
-import { linkParticipantAccountInEvent } from "../src/domain/appActions.mjs";
+import { linkParticipantAccountInEvent, mergeParticipants } from "../src/domain/appActions.mjs";
 import { createParticipantAccountLinkSnapshot, participantAccountLinkSnapshotMatches } from "../src/domain/participantAccountLink.mjs";
 import { accountLinkIsConfirmed } from "../src/data/pendingAccountLinks.mjs";
 
@@ -20,7 +20,7 @@ const guest = "guest-offline-person";
 
 // Execute the actual UI orchestration and domain action. Only the transport,
 // local storage acknowledgement and DOM rendering are controlled boundaries.
-function harness({ prepareError, accountResult, deliverLink = true, linkError, changeIdentity = false } = {}) {
+function harness({ prepareError, accountResult, deliverLink = true, linkError, changeIdentity = false, receiptStorageFails=false, switchDuringPreflight=false } = {}) {
   const unrelated = { id: "unrelated-conflict", name: "Unresolved old event", participantIds: [owner, guest],
     adminIds: [owner], expenses: [], transfers: [], pendingIntent: "keep exactly" };
   const initial = { currentParticipantId: owner, groups: [], deletedParticipants: [], participants: [
@@ -36,9 +36,11 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
   const pending = { mergeKind: "account-link", eventId: "link-event", sourceId: guest, targetId: target,
     identitySnapshot: createParticipantAccountLinkSnapshot({event:initial.events[0],source:initial.participants[1],target:initial.participants[2]}) };
   const calls = [], receipts = new Map(), messages = [];
+  let generation=0, switchedState;
   const ctx = vm.createContext({
     state: structuredClone(initial), runtimeConfig: config, eventDialog: {eventId:"link-event",kind:"participant-link"},
     screen:{eventId:"link-event"},notice:"",localProfile:null,console:{info(){},warn(){}},
+    versionedReadCacheSessionGeneration:()=>generation,
     getEvent:id=>ctx.state.events.find(e=>e.id===id),loadRuntimeConfig:async()=>config,
     reconcileEventInviteAccountBoundary(){},eventShareCredentials:e=>e.sharedSpaceId?{id:e.sharedSpaceId,key:e.sharedSpaceKey}:null,
     ensureEventShareCredentials(){},EVENT_SPACE_ID_FIELD:"sharedSpaceId",EVENT_SPACE_KEY_FIELD:"sharedSpaceKey",
@@ -46,6 +48,7 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
       calls.push({phase:"event-preflight",eventId:id});
       if(prepareError) throw prepareError;
       if(changeIdentity) state.participants.find(p=>p.id===target).displayName="Different identity";
+      if(switchDuringPreflight){generation++;switchedState={...structuredClone(initial),currentParticipantId:target};ctx.state=switchedState;}
       return state;
     },
     saveSharedState:async(state,options)=>{
@@ -59,7 +62,7 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
     participantAccountLinkSnapshotMatches,linkParticipantAccountInEvent,
     cloneNavigationValue:structuredClone,stateSaveCheckpoint:request=>({request}),rejectedStateSaveIsCurrent:()=>true,
     pendingAccountLinkReceipt:(state)=>{const link=state.events[0].participantAccountLinks[0];return {...link,eventId:"link-event",ownerUserId:owner.slice(8)};},
-    rememberPendingAccountLink:r=>receipts.set(r.eventId,r),forgetPendingAccountLink:r=>receipts.delete(r.eventId),
+    rememberPendingAccountLink:r=>{if(receiptStorageFails)return false;receipts.set(r.eventId,r);return true;},forgetPendingAccountLink:r=>receipts.delete(r.eventId),
     confirmPendingAccountLink:async receipt=>accountLinkIsConfirmed(canonical,receipt),
     participantAccountLinkCompletionMessage:(_source,_target,{pending})=>pending?"Waiting for link confirmation":"Link confirmed",
     clearMergeParticipantsDraftFor(){},emitOperationFailure(){},emitOperationDeferred(){},schedulePendingMutationRecovery(){},
@@ -67,7 +70,7 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
     render(){},reactivateDialogAfterRender(){}
   });
   vm.runInContext(preparation+mergeFlow,ctx);
-  return {ctx,initial,canonical,calls,receipts,messages,run:()=>ctx.mergeParticipantsInStateNow(pending)};
+  return {ctx,initial,canonical,calls,receipts,messages,get switchedState(){return switchedState;},run:()=>ctx.mergeParticipantsInStateNow(pending)};
 }
 
 test("account linking proceeds when an unrelated event remains durably pending", async () => {
@@ -80,6 +83,36 @@ test("account linking proceeds when an unrelated event remains durably pending",
   assert.deepEqual(h.ctx.state.events[1],h.initial.events[1],"unrelated pending intent must remain untouched");
   assert.deepEqual(h.calls.map(c=>c.phase),["event-preflight","link-save"]);
   assert.equal(h.receipts.size,0);
+});
+
+test("a late invitation preflight cannot replace the next account's state",async()=>{
+  const h=harness({switchDuringPreflight:true});await h.run();
+  assert.equal(h.ctx.state,h.switchedState);
+  assert.equal(h.calls.some(c=>c.phase==="link-save"),false);
+  assert.deepEqual(h.messages,[],"a stale action must not show an error in the next account");
+});
+
+test("a local self-merge may intentionally change the current participant without becoming stale",async()=>{
+  const initial={currentParticipantId:"guest-a",groups:[],participants:[
+    {id:"guest-a",displayName:"Same Person",kind:"guest"},{id:"guest-b",displayName:"Same Person",kind:"guest"}
+  ],events:[{id:"local-event",participantIds:["guest-a","guest-b"],adminIds:["guest-a"],expenses:[],transfers:[]}]};
+  const ctx=vm.createContext({state:initial,mergeParticipants,versionedReadCacheSessionGeneration:()=>0,
+    cloneNavigationValue:structuredClone,stateSaveCheckpoint:request=>({request}),persistState:async()=>({ok:true}),
+    render(){},reactivateDialogAfterRender(){},dropParticipantFromDrafts(){},clearMergeParticipantsDraftFor(){},
+    eventDialog:null,localProfile:null,notice:""});
+  vm.runInContext(mergeFlow,ctx);
+  const result=await ctx.mergeParticipantsInStateNow({mergeKind:"merge",sourceId:"guest-a",targetId:"guest-b"});
+  assert.equal(ctx.state.currentParticipantId,"guest-b");
+  assert.equal(result.confirmed,true);assert.match(ctx.notice,/אוחד/);
+});
+
+test("a link cannot start if its recovery intent cannot be stored durably",async()=>{
+  const h=harness({receiptStorageFails:true});const result=await h.run();
+  assert.equal(result.ok,false);
+  assert.equal(result.error.code,"LOCAL_STORAGE_UNAVAILABLE");
+  assert.deepEqual(h.ctx.state,h.initial);
+  assert.deepEqual(h.canonical,h.initial);
+  assert.equal(h.calls.some(c=>c.phase==="link-save"),false);
 });
 
 test("an unacknowledged link remains pending, never a false successful merge", async () => {

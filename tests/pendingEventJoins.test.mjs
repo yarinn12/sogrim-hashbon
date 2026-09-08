@@ -70,10 +70,16 @@ test("pending joins from another account cannot evict this account's recovery wo
     storage,
     "00000000-0000-4000-8000-000000000002"
   );
-  assert.equal(ownerA.length, 24);
+  assert.equal(ownerA.length, 25);
   assert.equal(ownerB.length, 24);
-  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), true);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
+test("event join storage cannot acknowledge unavailable or full storage",()=>{
+  for(const storage of [null,{}, {getItem:()=>null,removeItem(){},setItem(){throw new Error("QuotaExceededError");}}]) {
+    assert.equal(rememberPendingEventJoin(receipt,storage),false);
+  }
 });
 
 test("an interrupted redeemed invite is completed but a removed member is never resurrected", () => {

@@ -1,7 +1,6 @@
 export const PENDING_EVENT_JOINS_STORAGE_KEY =
   "settle-friends-pending-event-joins";
 
-const MAX_PENDING_EVENT_JOINS = 24;
 export const MAX_PENDING_EVENT_JOIN_ATTEMPTS = 20;
 const MAX_IDENTIFIER_LENGTH = 200;
 
@@ -52,14 +51,8 @@ export function rememberPendingEventJoin(entry, storage = globalThis.localStorag
     (item) => pendingEventJoinKey(item) !== pendingEventJoinKey(normalized)
   );
   entries.push(normalized);
-  return saveEntries(
-    retainNewestEntriesForOwner(
-      entries,
-      normalized.ownerUserId,
-      MAX_PENDING_EVENT_JOINS
-    ),
-    storage
-  );
+  // Keep every unacknowledged join; new work must not evict older recovery.
+  return saveEntries(entries, storage);
 }
 
 export function forgetPendingEventJoin(entry, storage = globalThis.localStorage) {
@@ -124,20 +117,12 @@ function pendingEventJoinKey(entry) {
   return `${entry.ownerUserId}\u0000${entry.eventId}`;
 }
 
-function retainNewestEntriesForOwner(entries, ownerUserId, limit) {
-  let retainedForOwner = 0;
-  return entries
-    .slice()
-    .reverse()
-    .filter((entry) => {
-      if (entry.ownerUserId !== ownerUserId) return true;
-      retainedForOwner += 1;
-      return retainedForOwner <= limit;
-    })
-    .reverse();
-}
-
 function saveEntries(entries, storage) {
+  if (
+    typeof storage?.getItem !== "function" ||
+    typeof storage?.setItem !== "function" ||
+    typeof storage?.removeItem !== "function"
+  ) return false;
   try {
     if (entries.length) {
       storage?.setItem?.(PENDING_EVENT_JOINS_STORAGE_KEY, JSON.stringify(entries));

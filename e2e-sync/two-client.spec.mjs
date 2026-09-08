@@ -11,7 +11,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withAccountLink = false} = {}) {
+async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -137,7 +137,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
       unexpectedWrites.push({client: i, path: url.pathname});
       return reply({message: 'Unimplemented write'}, 501);
     });
-    await context.addInitScript(({user, initial, spaceId, key, i, seedPending}) => {
+    await context.addInitScript(({user, initial, spaceId, key, i, seedPending, seedLink}) => {
       if (localStorage.getItem('two-client-seeded')) return;
       localStorage.setItem('two-client-seeded', '1');
       localStorage.setItem('settle-friends-account-session', JSON.stringify({access_token: `fixture-token-${i}`,
@@ -146,12 +146,15 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false} 
       localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, key);
       localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(initial));
       if(seedPending) localStorage.setItem(`settle-friends-pending-sync:${spaceId}`,JSON.stringify(initial));
+      if(seedLink) localStorage.setItem('settle-friends-pending-account-links',JSON.stringify([seedLink]));
       localStorage.setItem(`settle-friends-current-participant:account:${user.id}`, `account-${user.id}`);
       localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({participantId: `account-${user.id}`,
         displayName: user.user_metadata.full_name, username: user.user_metadata.username, avatarPreset: 'avatar-1',
         authProvider: 'google', authSubject: user.id, email: user.email}));
       sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,seedPending:withAccountLink&&i===0});
+    }, {user, initial: personal[i].state, spaceId: personal[i].id, key, i,seedPending:withAccountLink&&i===0,
+      seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
+        targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
     page.on('pageerror', error => errors.push({client: i, message: error.message, stack:error.stack}));
     if(withAccountLink) page.on('console',message=>{
@@ -188,6 +191,30 @@ async function newNote(page, title, body) {
 }
 const saveNote = page => page.locator('[data-action="save-event-note"]').click();
 const noteCard = (page, id) => page.locator(`.event-note-open[data-note-id="${id}"]`);
+
+test('an interrupted link recovers at a new time and is confirmed on both devices',async ({},testInfo)=>{
+  const f=await fixture(testInfo,{withAccountLink:true,withInterruptedLink:true});
+  const [a,b]=f.pages,guest='guest-existing-person',target=`account-${ids[1]}`;
+  try {
+    await expect.poll(()=>a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]').length)).toBe(0);
+    await expect.poll(()=>f.canonical.state.events[0].participantIds.includes(guest)).toBe(false);
+    expect(f.canonical.state.events[0].expenses[0].payers).toEqual([{participantId:target,amount:9000}]);
+    const proof=f.canonical.state.events[0].participantAccountLinks.find(link=>link.sourceParticipantId===guest);
+    expect(proof.linkedAt).not.toBe('2026-08-01T00:00:00.000Z');
+    for(const page of [a,b]) {
+      await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+      await expect(page.getByText('אורח לפני חיבור',{exact:true})).toHaveCount(0);
+      await expect(page.getByText('בודק אייפון',{exact:true})).toBeVisible();
+    }
+    await a.reload();
+    await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+    expect(await a.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-account-links')||'[]'))).toEqual([]);
+    const oldIntent=await a.evaluate(spaceId=>JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)),f.personal[0].id);
+    expect(oldIntent.events.find(e=>e.id==='unrelated-pending-event').notes[0].body).toBe('לא למחוק');
+    expect(f.canonical.state.events[0].participantAccountLinks.filter(link=>link.sourceParticipantId===guest)).toEqual([proof]);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
 
 for (const author of [0,1]) {
   test(`a confirmed note survives a personal receipt failure without a false group warning on ${author?'iPhone':'Android'}`, async ({},testInfo)=>{

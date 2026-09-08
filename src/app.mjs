@@ -17558,6 +17558,10 @@ function participantAccountLinkCompletionMessage(source, target, { pending = fal
 
 async function mergeParticipantsInStateNow(pendingMerge) {
   if (!pendingMerge) return { ok: false, invalid: true };
+  let mergeParticipantId = state.currentParticipantId;
+  const mergeGeneration = versionedReadCacheSessionGeneration();
+  const mergeRequestIsCurrent = () => state.currentParticipantId === mergeParticipantId &&
+    versionedReadCacheSessionGeneration() === mergeGeneration;
   let source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
   let target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
   if (!source || !target || source.id === target.id) return;
@@ -17608,6 +17612,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
         persistAccountState: false
       });
     } catch (error) {
+      if (!mergeRequestIsCurrent()) return { ok: false, stale: true };
       clearMergeParticipantsDraftFor(pendingMerge);
       emitOperationFailure("account_link", {
         screen: "event",
@@ -17618,6 +17623,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
       showAsyncEventParticipantMessage(pendingMerge.eventId, failureMessage);
       return { ok: false, error };
     }
+    if (!mergeRequestIsCurrent()) return { ok: false, stale: true };
     source = state.participants.find((participant) => participant.id === pendingMerge.sourceId);
     target = state.participants.find((participant) => participant.id === pendingMerge.targetId);
     event = getEvent(pendingMerge.eventId);
@@ -17667,8 +17673,21 @@ async function mergeParticipantsInStateNow(pendingMerge) {
   const accountLinkReceipt = pendingMerge.mergeKind === "account-link"
     ? pendingAccountLinkReceipt(nextState, pendingMerge)
     : null;
-  if (accountLinkReceipt) rememberPendingAccountLink(accountLinkReceipt);
+  if (accountLinkReceipt && !rememberPendingAccountLink(accountLinkReceipt)) {
+    const error = new Error("The account-link recovery intent could not be stored");
+    error.code = "LOCAL_STORAGE_UNAVAILABLE";
+    clearMergeParticipantsDraftFor(pendingMerge);
+    showAsyncEventParticipantMessage(
+      pendingMerge.eventId,
+      "לא הצלחנו לשמור את בקשת האיחוד במכשיר. לא בוצע איחוד; פנו מקום במכשיר ונסו שוב."
+    );
+    emitOperationFailure("account_link", { screen: "participants", error });
+    return { ok: false, error };
+  }
   state = nextState;
+  // A local self-merge deliberately changes the active participant. Only this
+  // synchronous, authorized mutation may advance the expected identity.
+  mergeParticipantId = state.currentParticipantId;
   if (pendingMerge.mergeKind === "account-link" && eventDialog?.eventId === pendingMerge.eventId) {
     eventDialog = {
       ...eventDialog,
@@ -17690,6 +17709,7 @@ async function mergeParticipantsInStateNow(pendingMerge) {
       : persistState()
   );
   const result = await saveCheckpoint.request;
+  if (!mergeRequestIsCurrent()) return { ok: false, stale: true };
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
@@ -17719,7 +17739,9 @@ async function mergeParticipantsInStateNow(pendingMerge) {
   if (accountLinkReceipt) {
     try {
       accountLinkConfirmed = await confirmPendingAccountLink(accountLinkReceipt);
+      if (!mergeRequestIsCurrent()) return { ok: false, stale: true };
     } catch (error) {
+      if (!mergeRequestIsCurrent()) return { ok: false, stale: true };
       emitOperationDeferred("account_link", {
         screen: "event",
         error
@@ -18660,7 +18682,18 @@ async function prepareSharedEventForInvitation(
 ) {
   const event = getEvent(eventId);
   if (!event) throw new Error("Event not found");
+  const participantId = state.currentParticipantId;
+  const generation = versionedReadCacheSessionGeneration();
+  const preparationIsCurrent = () => state.currentParticipantId === participantId &&
+    versionedReadCacheSessionGeneration() === generation;
+  const assertPreparationIsCurrent = () => {
+    if (preparationIsCurrent()) return;
+    throw Object.assign(new Error("The invitation's account session changed"), {
+      code: "CLOUD_STATE_AUTH_EXPIRED"
+    });
+  };
   const shareRuntimeConfig = await loadRuntimeConfig();
+  assertPreparationIsCurrent();
   runtimeConfig = shareRuntimeConfig;
   reconcileEventInviteAccountBoundary(shareRuntimeConfig);
   if (shareRuntimeConfig.storage?.mode === "supabase") {
@@ -18668,9 +18701,11 @@ async function prepareSharedEventForInvitation(
     ensureEventShareCredentials(event);
     if (!existingCredentials || publishExisting) {
       try {
-        state = await saveSharedEventState(shareRuntimeConfig, state, eventId);
+        const preparedState = await saveSharedEventState(shareRuntimeConfig, state, eventId);
+        assertPreparationIsCurrent();
+        state = preparedState;
       } catch (error) {
-        if (!existingCredentials) {
+        if (preparationIsCurrent() && !existingCredentials) {
           delete event[EVENT_SPACE_ID_FIELD];
           delete event[EVENT_SPACE_KEY_FIELD];
         }
@@ -18683,6 +18718,7 @@ async function prepareSharedEventForInvitation(
     awaitCloud: awaitAccountCloud,
     forceSharedEventIds: [eventId]
   });
+  assertPreparationIsCurrent();
   const eventAndIndexConfirmed = Boolean(
     accountSave?.personalWorkspacePersisted &&
     accountSave?.error?.partialSharedState?.succeededEventIds?.includes(eventId) &&
@@ -21681,6 +21717,7 @@ function pendingAccountLinkReceipt(candidateState, pendingMerge) {
 }
 
 async function confirmPendingAccountLink(receipt) {
+  const generation = versionedReadCacheSessionGeneration();
   if (!pendingMutationOwnerIsActive(receipt?.ownerUserId)) return false;
   const event = getEvent(receipt?.eventId);
   const credentials = eventShareCredentials(event);
@@ -21689,6 +21726,7 @@ async function confirmPendingAccountLink(receipt) {
   const config = await loadRuntimeConfig();
   if (
     !pendingMutationOwnerIsActive(receipt.ownerUserId) ||
+    generation !== versionedReadCacheSessionGeneration() ||
     String(config?.storage?.account?.userId ?? "").trim() !== receipt.ownerUserId
   ) {
     return false;
@@ -21700,7 +21738,8 @@ async function confirmPendingAccountLink(receipt) {
     credentials,
     receipt.eventId
   );
-  if (!pendingMutationOwnerIsActive(receipt.ownerUserId)) return false;
+  if (!pendingMutationOwnerIsActive(receipt.ownerUserId) ||
+    generation !== versionedReadCacheSessionGeneration()) return false;
   if (!accountLinkIsConfirmed(remoteState, receipt)) return false;
 
   state = mergeSharedEventIntoState(state, remoteState, credentials);
@@ -21718,6 +21757,9 @@ function retryPendingAccountLinks() {
   }
 
   const ownerUserId = pendingEventMembershipOwnerId();
+  const generation = versionedReadCacheSessionGeneration();
+  const recoveryIsCurrent = () => pendingMutationOwnerIsActive(ownerUserId) &&
+    generation === versionedReadCacheSessionGeneration();
   const pendingEntries = loadPendingAccountLinks(
     window.localStorage,
     ownerUserId
@@ -21726,12 +21768,14 @@ function retryPendingAccountLinks() {
 
   pendingAccountLinkRetryRequest = (async () => {
     await flushPendingSharedState().catch(() => null);
-    if (!pendingMutationOwnerIsActive(ownerUserId)) return;
+    if (!recoveryIsCurrent()) return;
     for (const entry of pendingEntries) {
-      if (!pendingMutationOwnerIsActive(ownerUserId)) return;
+      if (!recoveryIsCurrent()) return;
       markPendingAccountLinkAttempt(entry);
       try {
-        if (await confirmPendingAccountLink(entry)) {
+        const alreadyConfirmed = await confirmPendingAccountLink(entry);
+        if (!recoveryIsCurrent()) return;
+        if (alreadyConfirmed) {
           forgetPendingAccountLink(entry);
           continue;
         }
@@ -21778,9 +21822,14 @@ function retryPendingAccountLinks() {
           suppressRevertNotice: true,
           forceSharedEventIds: [entry.eventId]
         });
-        if (result?.ok && await confirmPendingAccountLink(entry)) {
-          forgetPendingAccountLink(entry);
-          continue;
+        if (!recoveryIsCurrent()) return;
+        if (result?.ok) {
+          const replayConfirmed = await confirmPendingAccountLink(entry);
+          if (!recoveryIsCurrent()) return;
+          if (replayConfirmed) {
+            forgetPendingAccountLink(entry);
+            continue;
+          }
         }
         if (result?.error && !isRetryablePendingSyncFailure(result.error)) {
           forgetPendingAccountLink(entry);
@@ -21795,6 +21844,7 @@ function retryPendingAccountLinks() {
           error: result?.error
         });
       } catch (error) {
+        if (!recoveryIsCurrent()) return;
         const retryable = isRetryablePendingSyncFailure(error);
         if (!retryable) forgetPendingAccountLink(entry);
         (retryable ? emitOperationDeferred : emitOperationFailure)("account_link", {

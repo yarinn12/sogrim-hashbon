@@ -1,7 +1,6 @@
 export const PENDING_ACCOUNT_LINKS_STORAGE_KEY =
   "settle-friends-pending-account-links";
 
-const MAX_PENDING_ACCOUNT_LINKS = 24;
 export const MAX_PENDING_ACCOUNT_LINK_ATTEMPTS = 20;
 const MAX_IDENTIFIER_LENGTH = 200;
 
@@ -17,20 +16,24 @@ export function accountLinkIsConfirmed(
   {
     eventId = "",
     sourceParticipantId = "",
-    targetParticipantId = "",
-    linkedAt = ""
+    targetParticipantId = ""
   } = {}
 ) {
   const event = sharedState?.events?.find((item) => item?.id === eventId);
   if (!event || !sourceParticipantId || !targetParticipantId) return false;
 
-  const link = (event.participantAccountLinks ?? []).find(
-    (item) =>
-      item?.sourceParticipantId === sourceParticipantId &&
-      item?.targetParticipantId === targetParticipantId &&
-      (!linkedAt || item?.linkedAt === linkedAt)
+  // The durable intent identifies an event/source/target, not the clock of a
+  // particular attempt. A replay or another administrator can commit the same
+  // immutable link at a different time. Confirm only a unique, dated canonical
+  // receipt for that mapping, followed by the complete reference checks below.
+  const links = (event.participantAccountLinks ?? []).filter(
+    (item) => item?.sourceParticipantId === sourceParticipantId
   );
-  if (!link) return false;
+  if (
+    links.length !== 1 ||
+    links[0].targetParticipantId !== targetParticipantId ||
+    !normalizeTimestamp(links[0].linkedAt)
+  ) return false;
   if (!(event.participantIds ?? []).includes(targetParticipantId)) return false;
   if ((event.participantIds ?? []).includes(sourceParticipantId)) return false;
   if ((event.inactiveParticipantIds ?? []).includes(targetParticipantId)) return false;
@@ -67,14 +70,9 @@ export function rememberPendingAccountLink(
     (item) => pendingAccountLinkKey(item) !== pendingAccountLinkKey(normalized)
   );
   entries.push(normalized);
-  return saveEntries(
-    retainNewestEntriesForOwner(
-      entries,
-      normalized.ownerUserId,
-      MAX_PENDING_ACCOUNT_LINKS
-    ),
-    storage
-  );
+  // This is durable user intent, not a cache. An older unacknowledged action
+  // must never be evicted when another one is queued.
+  return saveEntries(entries, storage);
 }
 
 export function forgetPendingAccountLink(
@@ -137,6 +135,15 @@ function eventReferencesParticipantOutsideLink(event, participantId) {
   for (const update of event.transferStatusUpdates ?? []) {
     if (update?.markedPaidByParticipantId === participantId) return true;
   }
+  for (const note of event.notes ?? []) {
+    if (
+      note?.createdByParticipantId === participantId ||
+      note?.updatedByParticipantId === participantId
+    ) return true;
+  }
+  for (const deletion of event.deletedNotes ?? []) {
+    if (deletion?.deletedByParticipantId === participantId) return true;
+  }
   for (const activity of event.activityLog ?? []) {
     if (
       activity?.actorParticipantId === participantId ||
@@ -195,20 +202,12 @@ function pendingAccountLinkKey(entry) {
   ].join("\u0000");
 }
 
-function retainNewestEntriesForOwner(entries, ownerUserId, limit) {
-  let retainedForOwner = 0;
-  return entries
-    .slice()
-    .reverse()
-    .filter((entry) => {
-      if (entry.ownerUserId !== ownerUserId) return true;
-      retainedForOwner += 1;
-      return retainedForOwner <= limit;
-    })
-    .reverse();
-}
-
 function saveEntries(entries, storage) {
+  if (
+    typeof storage?.getItem !== "function" ||
+    typeof storage?.setItem !== "function" ||
+    typeof storage?.removeItem !== "function"
+  ) return false;
   try {
     if (entries.length) {
       storage?.setItem?.(PENDING_ACCOUNT_LINKS_STORAGE_KEY, JSON.stringify(entries));

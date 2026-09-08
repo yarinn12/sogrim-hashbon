@@ -32,6 +32,25 @@ test("account link confirmation requires the durable marker and complete event r
   assert.equal(accountLinkIsConfirmed(sharedState, receipt), false);
 });
 
+for (const [collection,field] of [["notes","createdByParticipantId"],["notes","updatedByParticipantId"],["deletedNotes","deletedByParticipantId"]]) {
+  test(`account link confirmation rejects an unmapped ${collection}.${field}`,()=>{
+    const state=confirmedState();
+    state.events[0][collection]=[{id:"note-history",[field]:receipt.sourceParticipantId}];
+    assert.equal(accountLinkIsConfirmed(state,receipt),false);
+    state.events[0][collection][0][field]=receipt.targetParticipantId;
+    assert.equal(accountLinkIsConfirmed(state,receipt),true);
+  });
+}
+
+test("account link confirmation rejects ambiguous or undated canonical receipts",()=>{
+  const state=confirmedState();
+  const proof=state.events[0].participantAccountLinks[0];
+  state.events[0].participantAccountLinks.push({...proof,targetParticipantId:"another-account"});
+  assert.equal(accountLinkIsConfirmed(state,receipt),false);
+  state.events[0].participantAccountLinks=[{...proof,linkedAt:"invalid"}];
+  assert.equal(accountLinkIsConfirmed(state,{...receipt,linkedAt:""}),false);
+});
+
 test("pending account links are owner-scoped, deduplicated and survive retries", () => {
   const storage = memoryStorage();
   assert.equal(rememberPendingAccountLink(receipt, storage), true);
@@ -82,10 +101,16 @@ test("pending links from another account cannot evict this account's recovery wo
     storage,
     "00000000-0000-4000-8000-000000000002"
   );
-  assert.equal(ownerA.length, 24);
+  assert.equal(ownerA.length, 25);
   assert.equal(ownerB.length, 24);
-  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), false);
+  assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-0"), true);
   assert.equal(ownerA.some((entry) => entry.eventId === "owner-a-event-24"), true);
+});
+
+test("account link storage cannot acknowledge unavailable or full storage",()=>{
+  for(const storage of [null,{}, {getItem:()=>null,removeItem(){},setItem(){throw new Error("QuotaExceededError");}}]) {
+    assert.equal(rememberPendingAccountLink(receipt,storage),false);
+  }
 });
 
 test("a temporarily missing event keeps its account-link receipt until a bounded ceiling", () => {

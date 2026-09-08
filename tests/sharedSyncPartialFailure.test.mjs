@@ -156,6 +156,7 @@ for (const fresh of [false, true]) {
         const extract = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start) + start.length));
         let delivered = 0, forgotten = 0;
         const ctx = vm.createContext({
+          versionedReadCacheSessionGeneration:()=>0,
           state: store.loadState(), runtimeConfig: config, navigator: { onLine: true }, pendingMutationRecoveryRequest: null,
           getEvent: id => ctx.state.events.find(event => event.id === id), loadRuntimeConfig: async () => config,
           reconcileEventInviteAccountBoundary() {}, ensureEventShareCredentials() {},
