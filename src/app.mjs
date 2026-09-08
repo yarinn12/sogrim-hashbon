@@ -14901,7 +14901,13 @@ async function joinExistingEventFromDraft() {
   if (joinEventBusy) return;
   ensureJoinEventDraft();
   const activeJoinDraft = joinEventDraft;
-  const joinRequestIsCurrent = () => joinEventDraft === activeJoinDraft;
+  const activeJoinScreen = screen;
+  const generation = versionedReadCacheSessionGeneration();
+  const ownerUserId = pendingEventMembershipOwnerId();
+  const joinRequestIsCurrent = () => joinEventDraft === activeJoinDraft &&
+    screen === activeJoinScreen &&
+    generation === versionedReadCacheSessionGeneration() &&
+    (!ownerUserId || pendingMutationOwnerIsActive(ownerUserId));
   activeJoinDraft.link = activeJoinDraft.link.trim();
 
   if (!activeJoinDraft.link) {
@@ -14951,9 +14957,11 @@ async function joinExistingEventFromDraft() {
     state = mergeSharedEventIntoState(state, sharedEventState, inviteCredentials);
     let event = getEvent(eventId);
     if (!event) {
+      const latestState = await loadSharedState();
+      if (!joinRequestIsCurrent()) return;
       state = syncLocalProfile(
         mergeSharedEventIntoState(
-          await loadSharedState(),
+          latestState,
           sharedEventState,
           inviteCredentials
         )
@@ -15020,6 +15028,9 @@ async function joinExistingEventFromDraft() {
       ? "ההצטרפות אושרה והסנכרון יושלם אוטומטית כשהחיבור יתייצב."
       : "הצטרפת לאירוע.";
     emitProductMetric("invite_joined", { screen: "invite" });
+    // Clearing the draft ends this request, so the finally guard cannot paint
+    // its successful destination. Render it now without waiting for a poll.
+    render();
   } catch (error) {
     emitOperationFailure("event_invite", { screen: "invite", error });
     if (joinRequestIsCurrent()) {

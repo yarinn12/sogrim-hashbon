@@ -120,7 +120,7 @@ test("closing an invite screen cannot turn its late async result into an unhandl
   );
 
   assert.match(join, /const activeJoinDraft = joinEventDraft;/);
-  assert.match(join, /const joinRequestIsCurrent = \(\) => joinEventDraft === activeJoinDraft;/);
+  assert.match(join, /const joinRequestIsCurrent = \(\) => joinEventDraft === activeJoinDraft &&/);
   assert.match(join, /if \(!joinRequestIsCurrent\(\)\) return;/);
   assert.match(join, /if \(joinRequestIsCurrent\(\)\) \{\s*activeJoinDraft\.error = inviteJoinErrorMessage\(error\);/);
   assert.doesNotMatch(join, /catch \(error\) \{[\s\S]*?joinEventDraft\.error/);

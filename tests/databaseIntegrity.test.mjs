@@ -8,6 +8,7 @@ import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWrite
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
+import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -793,7 +794,7 @@ async function withOpenInvite(run, { workspace = true, expired = false, closed =
       await db.exec("set local role service_role");
       return { shared, members, personal, receipt };
     };
-    await run({ userId, participantId, redeem, inspect, save });
+    await run({ userId, participantId, inviteId, redeem, inspect, save });
   }, value => {
     value.events[0].locked = closed;
     return value;
@@ -838,6 +839,77 @@ test("SQL repeated invite redemption does not duplicate members, events or canon
     assert.equal(second.members.length, 1);
     assert.equal(second.personal.events.filter(event => event.id === "integrity-probe").length, 1);
     assert.equal((await db.query("select current_setting('request.jwt.claim.sub') as id")).rows[0].id, ids.admin.slice(8));
+  });
+});
+
+for (const denial of ["revoked", "private recipient mismatch", "removed member"]) {
+  test(`SQL ${denial} invitation cannot create or resurrect membership`, async () => {
+    await withOpenInvite(async ({userId, participantId, inviteId, redeem, inspect}) => {
+      await db.exec("reset role");
+      if (denial === "revoked") {
+        await db.query("update public.event_invite_tokens set revoked_at=now() where id=$1::uuid", [inviteId]);
+      } else if (denial === "private recipient mismatch") {
+        await db.query("update public.event_invite_tokens set kind='private',recipient_user_id=$2::uuid where id=$1::uuid", [inviteId,ids.other.slice(8)]);
+      } else {
+        await db.query(`insert into private.shared_snapshot_members(snapshot_id,user_id,participant_id,role,status,removed_at)
+          values ($1,$2::uuid,$3,'member','removed',now())`, [snapshotId,userId,participantId]);
+      }
+      await db.exec("set local role service_role");
+      const before=await inspect();
+      await db.exec("savepoint denied_invite");
+      await assert.rejects(redeem(),{code:"42501"});
+      await db.exec("rollback to savepoint denied_invite");
+      assert.deepEqual(await inspect(),before);
+    });
+  });
+}
+
+test("SQL a private invitation accepts only its canonical recipient without duplicating their money", async () => {
+  await withOpenInvite(async ({userId,inviteId,redeem,inspect}) => {
+    await redeem();
+    const before=await inspect();
+    await db.exec("reset role");
+    await db.query("update public.event_invite_tokens set kind='private',recipient_user_id=$2::uuid where id=$1::uuid",[inviteId,userId]);
+    await db.exec("set local role service_role");
+    assert.equal((await redeem()).status,"existing");
+    const after=await inspect();
+    assert.deepEqual(after.shared,before.shared);
+    assert.deepEqual(after.members,before.members);
+    assert.equal(after.personal.events.length,1);
+    assert.deepEqual(after.personal.events[0].expenses,before.personal.events[0].expenses);
+  });
+});
+
+test("SQL joining beside an offline namesake preserves that guest's expenses and separate identity", async () => {
+  await withOpenInvite(async ({participantId,redeem,inspect,save}) => {
+    const before=await inspect();
+    const guest="join-offline-namesake";
+    const seeded=structuredClone(before.shared.state);
+    seeded.participants.push({id:guest,kind:"guest",displayName:"Invite member"});
+    seeded.events[0].participantIds.push(guest);
+    seeded.events[0].expenses.push({id:"namesake-expense",name:"Offline guest expense",kind:"shared",total:1700,
+      payers:[{participantId:guest,amount:1700}],sharedByParticipantIds:[guest,ids.admin],createdByParticipantId:ids.admin,
+      createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    // Seed the same complete expense/settlement payload the real editor saves.
+    const settlement=reconcileSettlementTransfers(seeded.participants,seeded.events[0].expenses,
+      seeded.events[0].transfers,settlementOptionsForEvent(seeded.events[0]));
+    assert.deepEqual(settlement.issues,[]);
+    seeded.events[0].transfers=settlement.transfers;
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    assert.equal((await save(seeded,before.shared.version)).status,"updated");
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.role','service_role',true)");
+    await db.exec("set local role service_role");
+    await redeem();
+    const after=await inspect();
+    const event=after.shared.state.events[0];
+    assert.ok(event.participantIds.includes(guest));assert.ok(event.participantIds.includes(participantId));
+    assert.deepEqual(event.expenses,seeded.events[0].expenses);
+    assert.deepEqual(event.transfers,seeded.events[0].transfers);
+    assert.equal(after.shared.state.participants.filter(person=>person.id===participantId).length,1);
+    assert.deepEqual(after.personal.events[0].expenses,event.expenses);
   });
 });
 
