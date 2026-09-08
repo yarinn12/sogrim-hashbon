@@ -27,7 +27,7 @@ Scope: the participant page reported by the user, large text, navigation, event 
 
 - Final focused browser run: **35 passed, zero failed or skipped** (`work/visual-ux-complete.log`). Covers all five profiles, the four fixes, existing quiet participant status, and the full core journey including expense entry.
 - Final unit/integration suite: **2,870 passed, zero failed or skipped** (`work/visual-ux-final-unit-verified.log`).
-- Native Android release build, unit tests and lint succeeded. Both signed AAB and APK are checked against all 181 packaged web assets and the existing signing identity.
+- Native Android release build and lint succeeded. Both signed AAB and APK are checked against all 181 packaged web assets and the existing signing identity.
 - The complete 890-case mobile inventory, two-client synchronization and other CI lanes must pass on the exact PR revision before merge; the PR records that run. GitHub QA protects the covered paths, but the repository also has a direct Vercel Git deployment path, so this document does not claim every possible deployment path is gated.
 
 The permanent tests run in normal `qa:mobile` and GitHub QA, including Android Chromium, iPhone WebKit, iPad WebKit, large text, and 320px reflow. The long-title test requires a genuinely user-scrollable element, checks the visible navigation gap, and opens the last participant and the add-participant screen using unforced clicks. Chromium additionally verifies actual wheel input; Playwright mobile WebKit does not implement mouse.wheel, so it verifies scroll ownership and reachable controls instead. These are browser profiles, not physical-device certification.
