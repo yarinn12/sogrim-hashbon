@@ -36,6 +36,7 @@ import {
 } from "./fetchTimeout.mjs";
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 import { jsonValuesEqual } from "./localIdentity.mjs";
+import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../domain/settlement.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
 export const EVENT_SPACE_KEY_FIELD = "sharedSpaceKey";
@@ -345,6 +346,9 @@ async function findAccessibleSharedEvent(
 export function mergeSharedEventWriteState(remoteState, localState, runtimeConfig) {
   const merged = mergeSharedStates(remoteState, applyCanonicalEventAccountLinks(localState,remoteState));
   const remoteEvent = remoteState?.events?.[0];
+  merged.events = merged.events.map(event => event.id === remoteEvent?.id
+    ? preserveCanonicalSettlementPlan(event, remoteEvent, remoteState.participants)
+    : event);
   const configuredUserId = String(
     runtimeConfig?.storage?.account?.userId ?? ""
   ).trim();
@@ -477,11 +481,19 @@ function preserveUnchangedMemberClock(canonical, candidate) {
   // member content write must not republish that bookkeeping as a settings
   // edit. Keep real joins/leaves/guest additions and versioned membership
   // intent intact; admin writes never take this path.
-  if (["participantIds", "inactiveParticipantIds", "adminIds"].some((field) =>
-    !jsonValuesEqual(canonical[field] ?? [], candidate[field] ?? [])) ||
-    !jsonValuesEqual(canonical.membershipUpdatedAtByParticipant, candidate.membershipUpdatedAtByParticipant)) {
+  const membershipFields = ["participantIds", "inactiveParticipantIds", "adminIds"];
+  if (membershipFields.some(field =>
+    !jsonValuesEqual([...(canonical[field] ?? [])].sort(), [...(candidate[field] ?? [])].sort()))) {
     return candidate;
   }
+  // Personal replicas can list the same members in a different order. Keep the
+  // canonical representation at the final write so that a member's content save
+  // is not mistaken for an admin-only settings edit by the exact SQL guard.
+  for (const field of membershipFields) {
+    if (Object.hasOwn(canonical, field)) candidate[field] = clone(canonical[field]);
+    else delete candidate[field];
+  }
+  if (!jsonValuesEqual(canonical.membershipUpdatedAtByParticipant, candidate.membershipUpdatedAtByParticipant)) return candidate;
   if (Object.hasOwn(canonical, "membershipUpdatedAt")) {
     candidate.membershipUpdatedAt = canonical.membershipUpdatedAt;
   } else {
@@ -1044,7 +1056,7 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
     events: merged.events.map((event) =>
       event.id === eventId
         ? restoreAuthenticatedEventMembership({
-            ...event,
+            ...preserveCanonicalSettlementPlan(event, sharedEvent, sharedState.participants),
             ...mergeCanonicalEventNotes(sharedEvent, event),
             [EVENT_SPACE_ID_FIELD]: credentials.id,
             [EVENT_SPACE_KEY_FIELD]: credentials.key
@@ -1052,6 +1064,34 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
         : event
     )
   };
+}
+
+function preserveCanonicalSettlementPlan(event, canonical, participants) {
+  if (jsonValuesEqual(event.transfers, canonical?.transfers)) return event;
+  const byId = items => [...(items ?? [])].sort((left, right) => String(left.id).localeCompare(String(right.id)));
+  const memberIds = value => [...(value.participantIds ?? [])].sort();
+  // An obsolete replica contributes obsolete pending rows as well as expenses.
+  // Their union can invalidate an otherwise exact plan, causing a fresh rounded
+  // calculation to change routes/IDs even though no financial input changed.
+  // Preserve the authenticated canonical plan only when every relevant input
+  // agrees. New payments, reversals, expenses and settlement settings still merge.
+  if (!canonical ||
+      !jsonValuesEqual(memberIds(event), memberIds(canonical)) ||
+      !jsonValuesEqual(byId(event.expenses), byId(canonical.expenses)) ||
+      !jsonValuesEqual(settlementOptionsForEvent(event), settlementOptionsForEvent(canonical)) ||
+      !jsonValuesEqual(byId(event.transferStatusUpdates), byId(canonical.transferStatusUpdates)) ||
+      !jsonValuesEqual(byId(event.transfers?.filter(transfer => transfer.status === "paid")),
+        byId(canonical.transfers?.filter(transfer => transfer.status === "paid")))) return event;
+
+  const memberSet = new Set(canonical.participantIds ?? []);
+  const settlement = reconcileSettlementTransfers(
+    (participants ?? []).filter(participant => memberSet.has(participant.id)),
+    canonical.expenses,
+    canonical.transfers,
+    settlementOptionsForEvent(canonical)
+  );
+  // Validate rather than trusting a malformed or financially obsolete plan.
+  return settlement.issues.length ? event : {...event, transfers:settlement.transfers};
 }
 
 function restoreAuthenticatedEventMembership(

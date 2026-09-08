@@ -74,6 +74,19 @@ test("member clock normalization preserves a missing canonical global clock", ()
   assert.equal(Object.hasOwn(mergeSharedEventWriteState(canonical, local, config).events[0], "membershipUpdatedAt"), false);
 });
 
+test("member content saves retain canonical membership order and clock after stale roster reordering", () => {
+  const canonical = structuredClone(remote);
+  delete canonical.events[0].membershipUpdatedAtByParticipant;
+  const local = structuredClone(canonical);
+  local.events[0].participantIds.reverse();
+  local.events[0].membershipUpdatedAt = "2026-09-07T10:00:00.000Z";
+  for (let retry = 0; retry < 3; retry++) {
+    const merged = mergeSharedEventWriteState(canonical, local, config);
+    assert.deepEqual(protectedFields(merged.events[0]), protectedFields(canonical.events[0]));
+    local.events = merged.events;
+  }
+});
+
 test("member clock normalization does not discard actual membership intent or admin clocks", () => {
   const clock = "2026-09-07T10:00:00.000Z";
   for (const change of [

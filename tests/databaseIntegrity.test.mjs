@@ -7,6 +7,7 @@ import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipant
 import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
+import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -450,6 +451,44 @@ test("SQL full member note write and conflict retry ignore a replica-only member
     value.events[0].expenses = [];
     value.events[0].transfers = [];
     return value;
+  });
+});
+
+test("SQL stale settlement retry preserves the canonical transfer plan at the final write and acknowledgement", async () => {
+  const fixture=staleSettlementFixture({owner:ids.admin,peer:ids.sender,third:ids.recipient,fourth:ids.other});
+  await withSnapshot(ids.other,async (previous,save)=>{
+    const local=structuredClone(previous);
+    local.currentParticipantId=ids.other;
+    local.participants=fixture.stale.participants;
+    Object.assign(local.events[0],{expenses:fixture.stale.events[0].expenses,transfers:fixture.stale.events[0].transfers,
+      participantIds:fixture.stale.events[0].participantIds,sharedSpaceId:snapshotId,sharedSpaceKey:spaceKey});
+    const response=value=>({ok:true,status:200,json:async()=>value});
+    let writes=0;
+    const result=await saveSharedEventState({storage:{mode:'supabase',url:'https://stable-plan.invalid',table:'app_snapshots',anonKey:'synthetic',
+      account:{userId:ids.other.slice(8),accessToken:'synthetic-token'}}},local,'integrity-probe',async (url,options={})=>{
+      if(url.includes('/rpc/update_shared_event_snapshot')) {
+        writes++;
+        const body=JSON.parse(options.body);
+        assert.deepEqual(body.p_state.events[0].transfers,previous.events[0].transfers,'the final wire payload must not replace a valid canonical plan');
+        assert.equal(body.p_state.events[0].expenses.length,4);
+        if(writes===1)return response({status:'conflict'});
+        return response(await save(body.p_state,body.p_expected_updated_at));
+      }
+      assert.equal(options.method??'GET','GET');
+      return response((await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1',[snapshotId])).rows);
+    });
+    assert.equal(writes,2);
+    assert.deepEqual(result.events[0].transfers,previous.events[0].transfers);
+    const stored=(await db.query('select state from public.app_snapshots where id=$1',[snapshotId])).rows[0].state;
+    assert.deepEqual(stored.events[0].transfers,previous.events[0].transfers);
+    assert.equal(stored.events[0].expenses.length,4);
+  },previous=>{
+    // Shared-event transport omits the personal workspace's deletedEvents index.
+    // Match that actual canonical shape, as the other member wire tests do.
+    delete previous.deletedEvents;
+    previous.participants=fixture.canonical.participants;
+    previous.events[0]={...previous.events[0],...fixture.canonical.events[0],id:'integrity-probe'};
+    return previous;
   });
 });
 
