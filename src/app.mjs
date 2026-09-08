@@ -1515,7 +1515,7 @@ function captureRenderInteractionState() {
       ? document.activeElement
       : null;
   const dialog = app.querySelector(
-    ".important-action-dialog, .settlement-celebration-dialog, .event-status-menu, .expense-modal, .event-modal"
+    ".important-action-dialog, .settlement-close-confirmation, .settlement-celebration-dialog, .event-status-menu, .expense-modal, .event-modal"
   );
 
   return {
@@ -1545,6 +1545,9 @@ function captureRenderInteractionState() {
     ]
       .map((details) => details.closest(".transfer-row")?.dataset.transferId)
       .filter(Boolean),
+    openTransferRoutes: [
+      ...app.querySelectorAll(".transfer-explanation[open]")
+    ].map((details) => ({ ...details.closest(".transfer-row")?.dataset })),
     focus: activeElement ? focusIdentity(activeElement) : null
   };
 }
@@ -1605,13 +1608,20 @@ function restoreRenderInteractionState(snapshot, expectedRenderGeneration) {
     }
 
     for (const transferId of snapshot.openTransferIds ?? []) {
-      const row = app.querySelector(
+      let row = app.querySelector(
         `.transfer-row[data-transfer-id="${CSS.escape(transferId)}"]`
       );
-      const details = row?.querySelector(".transfer-explanation");
-      if (!(details instanceof HTMLDetailsElement)) continue;
-      details.open = true;
-      row.classList.add("is-explanation-open");
+      // Recalculation changes the transfer id when its amount changes. Keep
+      // the same person's open calculation, never a different payment route.
+      if (!row) {
+        const route = snapshot.openTransferRoutes?.find((item) => item.transferId === transferId);
+        if (route?.transferFrom && route?.transferTo && route?.transferStatus) {
+          row = app.querySelector(
+            `.transfer-row[data-transfer-from="${CSS.escape(route.transferFrom)}"][data-transfer-to="${CSS.escape(route.transferTo)}"][data-transfer-status="${CSS.escape(route.transferStatus)}"]`
+          );
+        }
+      }
+      setTransferExplanationOpen(row, true);
     }
 
     // This snapshot predates the new DOM. If the user already focused a live
@@ -1644,6 +1654,9 @@ function dialogRenderSelector(dialog) {
   if (dialog.classList.contains("important-action-dialog")) {
     return ".important-action-dialog";
   }
+  if (dialog.classList.contains("settlement-close-confirmation")) {
+    return ".settlement-close-confirmation";
+  }
   if (dialog.classList.contains("settlement-celebration-dialog")) {
     return ".settlement-celebration-dialog";
   }
@@ -1667,6 +1680,9 @@ function focusIdentity(element) {
         "expenseId",
         "participantId",
         "transferId",
+        "transferFrom",
+        "transferTo",
+        "transferStatus",
         "index",
         "section"
       ]
@@ -1693,6 +1709,15 @@ function findFocusReplacement(root, identity) {
     identityEntries.every(([key, value]) => candidate.dataset[key] === value)
   );
   if (exact) return exact;
+
+  if (identity.dataset.transferFrom && identity.dataset.transferTo && identity.dataset.transferStatus) {
+    const sameRoute = candidates.find((candidate) =>
+      ["transferFrom", "transferTo", "transferStatus"].every(
+        (key) => candidate.dataset[key] === identity.dataset[key]
+      )
+    );
+    if (sameRoute) return sameRoute;
+  }
 
   for (const fallbackKey of ["transferId", "participantId", "expenseId", "eventId"]) {
     const fallbackValue = identity.dataset[fallbackKey];
@@ -10463,6 +10488,7 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
       ? personalReceipts[0]
       : null;
   const isClosed = isEventClosed(event);
+  const canManage = canCurrentParticipantManage(event);
   const hasTransfers = transfers.length > 0;
   const isBalancedWithoutTransfers =
     hasExpenses && !needsReview && !hasTransfers;
@@ -10561,9 +10587,11 @@ function renderSettlementHero(event, transfers, pendingTotal, issues = []) {
               `
             : `
                 ${!isClosed
-                  ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : "בואו נסגור חשבון"}</button>`
+                  ? canManage
+                    ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : "בואו נסגור חשבון"}</button>`
+                    : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
                   : `<button class="${shareButtonClass}" data-action="share-whatsapp" data-event-id="${event.id}">שלח בוואטסאפ</button>
-                <button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>
+                ${canManage ? `<button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>` : ""}
                 <details class="settlement-more-actions">
                   <summary>עוד</summary>
                   <div>
@@ -10598,6 +10626,7 @@ function renderFeaturedSettlementHero(
     ? `${isClosed ? "עליך להעביר" : "יתרה זמנית להעברה"} ל־${otherParticipantName}`
     : `${isClosed ? "אמור להגיע אליך" : "יתרה זמנית לקבלה"} מ־${otherParticipantName}`;
   const completionLabel = isCurrentParticipantPaying ? "העברתי" : "קיבלתי";
+  const canManage = canCurrentParticipantManage(event);
 
   return `
     <section class="panel settlement-hero is-pending is-personal-pending is-explained">
@@ -10607,18 +10636,20 @@ function renderFeaturedSettlementHero(
         <strong class="settlement-featured-amount amount"><span class="font-num">${formatEventMoney(event, transfer.amount)}</span></strong>
         ${isClosed
           ? `<button class="primary-button settlement-featured-complete" data-action="mark-paid" data-transfer-id="${escapeAttribute(transfer.id)}">${completionLabel}</button>`
-          : `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>בואו נסגור חשבון</button>`
+          : canManage
+            ? `<button class="primary-button settlement-close-primary" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>בואו נסגור חשבון</button>`
+            : '<p class="muted settlement-manager-hint">סגירת החשבון זמינה למנהל האירוע.</p>'
         }
       </div>
 
       <div class="settlement-hero-actions settlement-featured-actions">
         <button class="secondary-button whatsapp-button" data-action="share-whatsapp" data-event-id="${event.id}">שלח בוואטסאפ</button>
-        ${isClosed ? `<button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>` : ""}
+        ${isClosed && canManage ? `<button class="secondary-button settlement-reopen-action" data-action="reopen-event" data-event-id="${event.id}">פתח אירוע מחדש</button>` : ""}
         <details class="settlement-more-actions">
           <summary>עוד</summary>
           <div>
             ${
-              isClosed
+              isClosed || !canManage
                 ? ""
                 : `<button class="secondary-button" data-action="close-event" data-event-id="${event.id}" ${needsReview ? "disabled" : ""}>${needsReview ? "תקן הוצאות לפני סגירה" : "סגור ונעל אירוע"}</button>`
             }
@@ -10862,6 +10893,9 @@ function renderTransferRow(
     <article
       class="transfer-row ${paid ? "is-paid" : "is-pending"} ${isPersonal ? "is-personal" : ""} ${personalRoleClass} ${explanationOpen ? "is-explanation-open" : ""}"
       data-transfer-id="${escapeAttribute(transfer.id)}"
+      data-transfer-from="${escapeAttribute(transfer.fromParticipantId)}"
+      data-transfer-to="${escapeAttribute(transfer.toParticipantId)}"
+      data-transfer-status="${paid ? "paid" : "pending"}"
       tabindex="0"
       aria-expanded="${explanationOpen ? "true" : "false"}"
       aria-controls="${escapeAttribute(explanationId)}"

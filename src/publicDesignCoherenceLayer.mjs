@@ -4259,6 +4259,18 @@ const CSS = `
     box-sizing: border-box !important;
   }
 
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .screen[data-event-view="summary"]
+    .settlement-hero .settlement-manager-hint {
+    margin: 0 !important;
+    color: var(--app-ink) !important;
+    opacity: 1 !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    line-height: 1.5 !important;
+    overflow-wrap: anywhere !important;
+  }
+
   /* Date dividers stay in the expense list flow instead of following the viewport. */
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .screen[data-screen-kind="event"]

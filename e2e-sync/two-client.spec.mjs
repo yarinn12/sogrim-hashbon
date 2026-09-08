@@ -294,12 +294,177 @@ async function newExpense(page, name, amount) {
   await page.locator('[data-action="expense-name"]').fill(name);
   for (let step = 0; step < 3; step++) await page.locator('[data-action="expense-step-next"]').click();
   await page.locator('[data-action="save-expense"]').click();
-  await expect(page.locator('.expense-row').filter({hasText:name})).toHaveCount(1);
+  try {
+    await expect(page.locator('.expense-row').filter({hasText:name})).toHaveCount(1);
+  } catch(error) {
+    await test.info().attach('expense-save-failure', {body:await page.screenshot(),contentType:'image/png'});
+    await test.info().attach('expense-save-state', {body:JSON.stringify(await page.evaluate(()=>{
+      const spaceId=localStorage.getItem('settle-friends-cloud-space');
+      return {screen:document.querySelector('#app')?.dataset.screen,
+        error:document.querySelector('#expense-form-error')?.textContent,
+        expenses:JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`)||'{}').events?.[0]?.expenses,
+        hasPending:Boolean(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`))};
+    })),contentType:'application/json'});
+    throw error;
+  }
 }
 
 async function storedEvent(page, spaceId) {
   return page.evaluate(({spaceId,eventId}) => JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`))?.events?.find(event => event.id === eventId), {spaceId,eventId});
 }
+
+test('live expense changes preserve close confirmation focus through payment and final closure', async ({},testInfo)=>{
+  const f=await fixture(testInfo,{withExpense:true}),[a,b]=f.pages;
+  try {
+    await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await a.locator('[data-action="close-event"]').first().click();
+    const confirm=a.locator('[data-action="confirm-close-event"]');
+    await expect(confirm).toBeFocused();
+    await newExpense(b,'מונית שנוספה לפני סגירה','20');
+    await expect.poll(()=>storedEvent(a,f.personal[0].id).then(event=>event.expenses.length)).toBe(2);
+    await expect(a.locator('.settlement-close-confirmation')).toContainText('50.00');
+    await expect(confirm).toBeFocused();
+    expect(await a.locator('.product-app-nav [data-action="home"]').first().evaluate(el=>Boolean(el.closest('[inert]')))).toBe(true);
+    await a.screenshot({path:testInfo.outputPath('live-close-confirmation.png')});
+    await confirm.click();
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.locked)).toBe(true);
+    await expect(a.locator('[data-app-dialog-inert], [data-app-dialog-inert-container]')).toHaveCount(0);
+    await b.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    const payment=b.locator('.settlement-transfer-board [data-action="mark-paid"]');
+    await expect(payment).toHaveCount(1);
+    await payment.click();
+    await expect(a.locator('.settlement-transfer-board [data-action="mark-pending"]')).toHaveCount(1);
+    await expect(b.locator('.settlement-celebration-dialog')).toBeVisible();
+    await b.locator('[data-action="dismiss-settlement-celebration"]').click();
+    await expect(b.locator('.settlement-celebration-dialog')).toHaveCount(0);
+    expect(f.canonical.state.events[0].expenses).toHaveLength(2);
+    expect(f.canonical.state.events[0].transfers[0]).toMatchObject({amount:5000,status:'paid'});
+    for(const page of f.pages){
+      await expect(page.getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
+      await expect(page.locator('[data-app-dialog-inert], [data-app-dialog-inert-container]')).toHaveCount(0);
+    }
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
+
+test('live expense changes preserve an open settlement calculation', async ({},testInfo)=>{
+  const f=await fixture(testInfo,{withExpense:true}),[a,b]=f.pages;
+  try {
+    await b.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    const transfer=b.locator('.transfer-row:has(.transfer-explanation)').first();
+    const calculation=transfer.locator('.transfer-explanation');
+    await transfer.focus();await transfer.press('Enter');
+    await expect(calculation).toHaveAttribute('open','');
+    await newExpense(a,'תוספת בזמן קריאת החישוב','40');
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.expenses.length)).toBe(2);
+    await expect(calculation).toHaveAttribute('open','');
+    await expect(calculation.locator('.transfer-debt-summary')).toContainText('80.00');
+    expect(f.canonical.state.events[0].expenses.map(expense=>expense.total).sort((x,y)=>x-y)).toEqual([4000,12000]);
+    await expect(transfer).toHaveAttribute('aria-expanded','true');
+    await expect(transfer).toBeFocused();
+    await b.screenshot({path:testInfo.outputPath('live-settlement-calculation.png')});
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
+
+for(const balanced of [false,true]) {
+test(`members see available settlement actions ${balanced?'with a balanced account':'with an outstanding payment'}`,async({},testInfo)=>{
+  const f=await fixture(testInfo,{withExpense:true}),[a,b]=f.pages;
+  try {
+    if(balanced)await newExpense(b,'איזון ההוצאות בין החברים','120');
+    for(const page of f.pages)await page.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await expect(b.locator('[data-action="close-event"]')).toHaveCount(0);
+    await expect(b.locator('.settlement-hero')).toContainText('סגירת החשבון זמינה למנהל האירוע');
+    const contrast=await b.locator('.settlement-manager-hint').evaluate(element=>{
+      const rgb=value=>(value.match(/[\d.]+/g)||[]).map(Number);
+      const style=getComputedStyle(element),foreground=rgb(style.color);
+      let background=[255,255,255];
+      for(let node=element;node;node=node.parentElement){
+        const color=rgb(getComputedStyle(node).backgroundColor);
+        if(color.length===3||color[3]===1){background=color;break;}
+      }
+      const alpha=(foreground[3]??1)*Number(style.opacity);
+      const effective=foreground.slice(0,3).map((channel,i)=>channel*alpha+background[i]*(1-alpha));
+      const luminance=color=>color.slice(0,3).map(channel=>{const s=channel/255;return s<=0.04045?s/12.92:((s+0.055)/1.055)**2.4;})
+        .reduce((sum,channel,i)=>sum+channel*[0.2126,0.7152,0.0722][i],0);
+      const light=luminance(effective),dark=luminance(background);
+      return (Math.max(light,dark)+0.05)/(Math.min(light,dark)+0.05);
+    });
+    expect(contrast,'member guidance remains readable on its actual background').toBeGreaterThanOrEqual(4.5);
+    await b.locator('.settlement-hero').scrollIntoViewIfNeeded();
+    await b.screenshot({path:testInfo.outputPath('member-settlement-actions.png')});
+    await a.locator('[data-action="close-event"]').first().click();
+    if(!balanced)await a.locator('[data-action="confirm-close-event"]').click();
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.locked)).toBe(true);
+    await expect(b.locator('[data-action="reopen-event"]')).toHaveCount(0);
+    await expect(a.locator('[data-action="reopen-event"]').first()).toBeVisible();
+    if(!balanced){
+      await b.locator('.settlement-transfer-board [data-action="mark-paid"]').click();
+      await expect(b.locator('.settlement-celebration-dialog')).toBeVisible();
+      await b.locator('[data-action="dismiss-settlement-celebration"]').click();
+      await expect(a.locator('.settlement-transfer-board [data-action="mark-pending"]')).toHaveCount(1);
+    }
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
+}
+
+test('peer closure and reopening preserve an unfinished expense without allowing a locked edit',async({},testInfo)=>{
+  const f=await fixture(testInfo,{withExpense:true}),[a,b]=f.pages;
+  try {
+    await b.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+    await b.locator('[data-action="expense-total"]').fill('31');
+    await b.locator('[data-action="expense-step-next"]').click();
+    const name=b.locator('[data-action="expense-name"]');
+    await name.fill('טיוטה בזמן סגירה');
+    await a.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await a.locator('[data-action="close-event"]').first().click();
+    await a.locator('[data-action="confirm-close-event"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].locked).toBe(true);
+    await b.evaluate(()=>window.dispatchEvent(new Event('online')));
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.locked)).toBe(true);
+    await expect(b.locator('[data-action="expense-step-next"]')).toBeDisabled();
+    await expect(b.locator('.expense-modal')).toContainText('האירוע נעול לעריכה');
+    await expect(name).toHaveValue('טיוטה בזמן סגירה');
+    expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+    await a.locator('[data-action="reopen-event"]').first().click();
+    await a.locator('[data-action="confirm-important-action"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].locked).toBe(false);
+    await b.evaluate(()=>window.dispatchEvent(new Event('online')));
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.locked)).toBe(false);
+    await expect(b.locator('[data-action="expense-step-next"]')).toBeEnabled();
+    await expect(name).toHaveValue('טיוטה בזמן סגירה');
+    for(let step=0;step<3;step++)await b.locator('[data-action="expense-step-next"]').click();
+    await b.locator('[data-action="save-expense"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].expenses.length).toBe(2);
+    expect(f.canonical.state.events[0].expenses.find(e=>e.name==='טיוטה בזמן סגירה')?.total).toBe(3100);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
+
+test('a foreground refresh preserves typed expense details and both users changes', async ({},testInfo)=>{
+  const f=await fixture(testInfo),[a,b]=f.pages;
+  try {
+    await b.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+    await b.locator('[data-action="expense-total"]').fill('31');
+    await b.locator('[data-action="expense-step-next"]').click();
+    const name=b.locator('[data-action="expense-name"]');
+    await name.fill('הוצאה באמצע הקלדה');
+    await name.evaluate(el=>el.setSelectionRange(4,9));
+    await newExpense(a,'הוצאה מהמכשיר השני','49');
+    await b.evaluate(()=>window.dispatchEvent(new Event('online')));
+    await expect.poll(()=>storedEvent(b,f.personal[1].id).then(event=>event.expenses.length)).toBe(1);
+    await expect(name).toHaveValue('הוצאה באמצע הקלדה');
+    await expect(name).toBeFocused();
+    expect(await name.evaluate(el=>[el.selectionStart,el.selectionEnd])).toEqual([4,9]);
+    for(let step=0;step<3;step++)await b.locator('[data-action="expense-step-next"]').click();
+    await b.locator('[data-action="save-expense"]').click();
+    await expect(a.locator('.expense-row')).toHaveCount(2);
+    await expect(b.locator('.expense-row')).toHaveCount(2);
+    expect(f.canonical.state.events[0].expenses.map(e=>e.total).sort((x,y)=>x-y)).toEqual([3100,4900]);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
 
 for(const joiningClient of [0,1]) {
   test(`a new member joins from ${joiningClient?'iPhone':'Android'}, writes offline and remains visible after restart`,async({},testInfo)=>{
