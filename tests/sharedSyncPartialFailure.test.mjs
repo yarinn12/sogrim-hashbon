@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSharedEventState, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+import { buildSharedEventState, saveSharedEventState, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
 import { setEventAdminsCanEditOnly, setEventRoundSettlementTransfers, setEventCurrency, setEventCoverImage } from "../src/domain/appActions.mjs";
 import { addEventNote, updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 
@@ -110,6 +112,83 @@ async function fixture(run, { allFail = false, status = 403, workspaceStatus = 2
     for (const [key, value] of Object.entries(globals)) {
       if (value === undefined) delete globalThis[key]; else globalThis[key] = value;
     }
+  }
+}
+
+for (const fresh of [false, true]) {
+  for (const workspaceStatus of [200, 503, "retry-receipt-failed"]) {
+    test(`a ${fresh ? "new" : "published"} group invitation depends on its own publication and personal receipt, not an old rejected group (workspace ${workspaceStatus})`, async () => {
+      await fixture(async ({ pending, storage, workspaceId, config, canonical, workspaceWrites }) => {
+        const eventId = fresh ? "new-group" : "healthy";
+        const spaceId = fresh ? "space-partial-new-group" : "space-partial-healthy";
+        pending.participants.push({ id: "account-peer", kind: "user", displayName: "Peer", accountLinked: true });
+        if (fresh) pending.events.push({ ...structuredClone(pending.events[0]), id: eventId,
+          name: "New group", notes: [], sharedSpaceId: spaceId });
+        pending.events.find(event => event.id === eventId).participantIds.push("account-peer");
+        // Seed normal empty schema fields so the full-record preservation
+        // assertion distinguishes user intent from harmless merge defaults.
+        Object.assign(pending.events.find(event => event.id === "failing"), {
+          inactiveParticipantIds: [], locked: false, closedAt: null, deletedNotes: [],
+          participantAliases: {}, distinctParticipantPairs: [], deletedExpenses: [], activityLog: []
+        });
+        const legacyIntent = structuredClone(pending.events.find(event => event.id === "failing"));
+        storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
+        storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));
+        let creates = 0;
+        const transport = globalThis.fetch;
+        globalThis.fetch = async (url, options = {}) => {
+          const address = new URL(String(url), location.href);
+          if (fresh && address.pathname.endsWith("/rpc/create_shared_event_snapshot")) {
+            const body = JSON.parse(options.body);
+            assert.equal(body.p_snapshot_id, spaceId);
+            assert.equal(body.p_state.events[0].id, eventId);
+            assert.ok(body.p_state.events[0].participantIds.includes("account-peer"));
+            assert.equal(canonical.has(spaceId), false, "create the new group only once");
+            canonical.set(spaceId, structuredClone(body.p_state)); creates++;
+            return response({ ok: true });
+          }
+          if (fresh && address.searchParams.get("id") === `eq.${spaceId}` && !canonical.has(spaceId)) return response([]);
+          if (fresh && !address.searchParams.has("id") && address.searchParams.has("snapshot_kind")) return response([]);
+          return transport(url, options);
+        };
+        const store = await import(`../src/data/localStore.mjs?invitation-sibling-${fresh}-${workspaceStatus}-${crypto.randomUUID()}`);
+        const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
+        const extract = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start) + start.length));
+        let delivered = 0, forgotten = 0;
+        const ctx = vm.createContext({
+          state: store.loadState(), runtimeConfig: config, navigator: { onLine: true }, pendingMutationRecoveryRequest: null,
+          getEvent: id => ctx.state.events.find(event => event.id === id), loadRuntimeConfig: async () => config,
+          reconcileEventInviteAccountBoundary() {}, ensureEventShareCredentials() {},
+          eventShareCredentials: event => ({ id: event.sharedSpaceId, key: event.sharedSpaceKey }),
+          saveSharedEventState, saveSharedState: store.saveSharedState,
+          accountUserIdFromParticipantId: id => id.startsWith("account-") ? id.slice(8) : "",
+          rememberPendingEventMembershipInvitation() {}, forgetPendingEventMembershipInvitation() { forgotten++; },
+          preparePrivateEventInvitation: id => ctx.prepareSharedEventForInvitation(id, { publishExisting: true }),
+          sendEventActivityNotificationWithAccountRecovery: async payload => {
+            assert.equal(payload.eventId, eventId);
+            assert.equal(workspaceStatus, 200, "do not send before the personal event index is acknowledged");
+            assert.ok(canonical.get(spaceId).events[0].participantIds.includes("account-peer"));
+            assert.ok(workspaceWrites.at(-1).events.some(event => event.id === eventId && event.participantIds.includes("account-peer")));
+            delivered++; return { ok: true, membershipRecipients: 1 };
+          },
+          updateParticipantInvitationMessage() {}, emitOperationFailure() {}, emitOperationDeferred() {},
+          isRetryablePendingSyncFailure: () => true, schedulePendingMutationRecovery() {}
+        });
+        vm.runInContext(extract("async function prepareSharedEventForInvitation(", "async function rotateCurrentEventInvite(") +
+          extract("async function publishEventInvitation(", "async function withNotificationAccountRecovery("), ctx);
+        const result = await ctx.publishEventInvitation(eventId, { id: "account-peer", displayName: "Peer" });
+        assert.equal(result.ok, workspaceStatus === 200, "old rejected group must not block an acknowledged invitation");
+        assert.equal(delivered, workspaceStatus === 200 ? 1 : 0);
+        assert.equal(forgotten, delivered);
+        assert.equal(creates, fresh ? 1 : 0);
+        const durable = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+        assert.deepEqual(durable.events.find(event => event.id === "failing"), legacyIntent);
+        assert.deepEqual(store.pendingSharedSyncStatus().pendingEventIds, ["failing"]);
+      }, {
+        workspaceStatus: workspaceStatus === "retry-receipt-failed" ? attempt => attempt === 1 ? 200 : 503 : workspaceStatus,
+        status: workspaceStatus === "retry-receipt-failed" ? 503 : 403
+      });
+    });
   }
 }
 

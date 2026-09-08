@@ -9,7 +9,7 @@ const headers = { "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
 
-for (const mode of ["slow", "rejected"]) {
+for (const mode of ["slow", "rejected", "old-rejected"]) {
 test(`connected event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
   const version = new Date().toISOString();
   const profiles = [owner, peer].map((id, index) => ({ user_id: id,
@@ -19,10 +19,20 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     id: `account-${profile.user_id}`, displayName: profile.display_name,
     avatarPreset: "avatar-1", kind: "user", accountLinked: true, profileUpdatedAt: version
   })), events: [], groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [] };
+  const oldEventId = "old-rejected-event", oldSpaceId = "old-rejected-space";
+  if (mode === "old-rejected") initial.events.push({
+    id: oldEventId, name: "קבוצה ישנה עם שינוי ממתין", eventType: "standard", currency: "ILS", createdAt: version,
+    participantIds: [`account-${owner}`], adminIds: [`account-${owner}`], createdByParticipantId: `account-${owner}`,
+    sharedSpaceId: oldSpaceId, sharedSpaceKey: "old-rejected-space-key-long-enough-123456", expenses: [], transfers: [],
+    notes: [{ id: "old-pending-note", body: "Keep old local intent", createdAt: version, updatedAt: version,
+      createdByParticipantId: `account-${owner}`, updatedByParticipantId: `account-${owner}` }]
+  });
   const user = { id: owner, email: "creation-qa@example.test", app_metadata: { provider: "google" },
     user_metadata: { full_name: profiles[0].display_name, username: "qa_owner", account_space_id: spaceId, account_space_key: spaceKey } };
   let personal = { id: spaceId, state: structuredClone(initial), updated_at: version };
   const canonical = new Map(); let creates = 0, notifications = 0;
+  if (mode === "old-rejected") canonical.set(oldSpaceId, { id: oldSpaceId,
+    state: { ...structuredClone(initial), events: [{ ...structuredClone(initial.events[0]), notes: [] }] }, updated_at: version });
   let release; const gate = new Promise(resolve => { release = resolve; });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(testInfo.project.use.baseURL).origin ? route.continue() : route.abort());
@@ -31,6 +41,9 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     publicUrl: testInfo.project.use.baseURL, storage: { mode: "supabase", url: origin, anonKey: "synthetic-anon", table: "app_snapshots" }
   } }));
   await page.route("**/api/notifications/event-activity", route => {
+    const payload = route.request().postDataJSON();
+    expect(personal.state.events.some(event => event.id === payload.eventId && event.participantIds.includes(`account-${peer}`))).toBe(true);
+    expect([...canonical.values()].some(row => row.state.events.some(event => event.id === payload.eventId && event.participantIds.includes(`account-${peer}`)))).toBe(true);
     notifications++;
     return route.fulfill({ json: { ok: true, membershipRecipients: 1 } });
   });
@@ -56,6 +69,7 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     }
     if (url.pathname.endsWith("/update_shared_event_snapshot")) {
       const payload = request.postDataJSON();
+      if (payload.p_snapshot_id === oldSpaceId) return reply({ code: "42501", message: "Synthetic old group remains rejected" }, 403);
       const row = { id: payload.p_snapshot_id, state: payload.p_state, updated_at: new Date().toISOString() };
       canonical.set(row.id, row); return reply({ status: "updated", updatedAt: row.updated_at });
     }
@@ -74,16 +88,17 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     }
     return request.method() === "GET" ? reply([]) : route.fulfill({ headers, status: 204 });
   });
-  await page.addInitScript(({ user, initial, spaceId, spaceKey }) => {
+  await page.addInitScript(({ user, initial, spaceId, spaceKey, mode }) => {
     localStorage.setItem("settle-friends-account-session", JSON.stringify({ access_token: "qa-token", refresh_token: "qa-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
     localStorage.setItem("settle-friends-cloud-space", spaceId);
     localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
     localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(initial));
+    if (mode === "old-rejected") localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(initial));
     localStorage.setItem(`settle-friends-current-participant:account:${user.id}`, `account-${user.id}`);
     localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({ participantId: `account-${user.id}`, displayName: user.user_metadata.full_name,
       username: "qa_owner", avatarPreset: "avatar-1", authProvider: "google", authSubject: user.id, email: user.email }));
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
-  }, { user, initial, spaceId, spaceKey });
+  }, { user, initial, spaceId, spaceKey, mode });
   try {
     await page.goto("/");
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -112,10 +127,11 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
       const eventId = await eventScreen.getAttribute("data-event-id");
       await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("ממתין לסנכרון");
       const outbox = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
-      expect(outbox.events[0].id).toBe(eventId);
-      expect(outbox.events[0].sharedSpaceId).toBeTruthy(); expect(outbox.events[0].sharedSpaceKey).toBeTruthy();
-      expect(outbox.events[0].participantIds).toContain(`account-${peer}`);
-      expect(notifications).toBe(0); expect(canonical.size).toBe(0);
+      const queuedEvent = outbox.events.find(event => event.id === eventId);
+      expect(queuedEvent).toBeTruthy();
+      expect(queuedEvent.sharedSpaceId).toBeTruthy(); expect(queuedEvent.sharedSpaceKey).toBeTruthy();
+      expect(queuedEvent.participantIds).toContain(`account-${peer}`);
+      expect(notifications).toBe(0); expect(canonical.size).toBe(mode === "old-rejected" ? 1 : 0);
       await page.screenshot({ path: testInfo.outputPath("created-with-sync-pending.png"), fullPage: true });
       // Usable navigation while the actual canonical request is still held.
       await page.locator('[data-nav-destination="home"]').click();
@@ -123,8 +139,16 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
       release();
       await expect.poll(() => personal.state.events.some(event => event.id === eventId)).toBe(true);
       await expect.poll(() => notifications).toBeGreaterThan(0);
-      expect(canonical.size).toBe(1); expect(creates).toBe(1);
+      expect(canonical.size).toBe(mode === "old-rejected" ? 2 : 1); expect(creates).toBe(1);
       await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+      if (mode === "old-rejected") {
+        const retained = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+        expect(retained.events.find(event => event.id === oldEventId).notes).toEqual(initial.events[0].notes);
+        expect(retained.__pendingSync.selection.eventIds).toEqual([oldEventId]);
+        expect(canonical.get(oldSpaceId).state.events[0].notes).toEqual([]);
+        await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+        await expect(page.locator('[data-inline-sync-status]:visible')).toHaveCount(0);
+      }
       console.log(JSON.stringify({ kind: "local-event-create-held-cloud", device: testInfo.project.name, displayedMs, creates, canonicalEvents: canonical.size }));
     }
     expect(errors).toEqual([]);

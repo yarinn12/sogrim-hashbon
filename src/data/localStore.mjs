@@ -211,6 +211,10 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
   syncedState = mergeSharedStates(initialSave.state, syncedState);
   if (deferredSharedFailure) {
     deferredSharedFailure.partialSharedState.state = syncedState;
+    // The personal event index was acknowledged in this attempt. This lets
+    // a confirmed group's invitation proceed while rejected siblings stay
+    // pending; it is not acknowledgement of those siblings' shared writes.
+    deferredSharedFailure.personalWorkspacePersisted = true;
     throw deferredSharedFailure;
   }
 
@@ -1409,6 +1413,9 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
               : {}),
             ...(error?.partialSharedState
               ? { failedEventIds: error.partialSharedState.failedEventIds }
+              : {}),
+            ...(error?.personalWorkspacePersisted
+              ? { personalWorkspacePersisted: true }
               : {}),
             ...(retryablePendingFailure && !partiallyPersistedState && pendingStateSaved
               ? { pending: true }

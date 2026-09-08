@@ -18680,9 +18680,16 @@ async function prepareSharedEventForInvitation(
   }
   if (!persistAccountState) return shareRuntimeConfig;
   const accountSave = await saveSharedState(state, {
-    awaitCloud: awaitAccountCloud
+    awaitCloud: awaitAccountCloud,
+    forceSharedEventIds: [eventId]
   });
-  if (!accountSave?.ok || (awaitAccountCloud && accountSave?.pending)) {
+  const eventAndIndexConfirmed = Boolean(
+    accountSave?.personalWorkspacePersisted &&
+    accountSave?.error?.partialSharedState?.succeededEventIds?.includes(eventId) &&
+    Array.isArray(accountSave?.failedEventIds) &&
+    !accountSave.failedEventIds.includes(eventId)
+  );
+  if (!accountSave?.ok || (awaitAccountCloud && accountSave?.pending && !eventAndIndexConfirmed)) {
     const error = new Error("האירוע עדיין מסתנכרן. כדאי לנסות שוב בעוד רגע.");
     error.code = "EVENT_INVITE_NOT_READY";
     error.retryable = true;
