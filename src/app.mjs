@@ -22050,6 +22050,10 @@ function retryPendingEventJoins() {
     // never replace it with this older projection or discard the join receipt.
     if (state !== recoveryState || sharedStateSaveRevision() !== recoverySaveRevision) return;
     state = syncLocalProfile(recoveredState);
+    // A cancelled join may still have committed on the server. Refresh the
+    // current view as soon as its membership arrives, without waiting for a
+    // save-status notice, the account write or an unrelated background poll.
+    if (hasSharedStateChanged(recoveryState, state)) render();
 
     for (const entry of pendingEntries) {
       if (!recoveryIsCurrent()) return;
@@ -22074,6 +22078,7 @@ function retryPendingEventJoins() {
             (item) => item.id === participantId
           );
           if (!participant) continue;
+          const beforeMembership = state;
           state = ensureNamedParticipant(
             state,
             { ...participant, id: participantId },
@@ -22082,6 +22087,7 @@ function retryPendingEventJoins() {
           );
           event = getEvent(entry.eventId);
           if (!isActiveEventParticipant(event, participantId)) continue;
+          if (hasSharedStateChanged(beforeMembership, state)) render();
         }
         const result = await saveSharedState(state, {
           awaitCloud: true,
