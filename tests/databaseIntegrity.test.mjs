@@ -16,6 +16,8 @@ const migration = readFileSync(new URL("../supabase/migrations/20260906090000_en
 const migrationMarker = "-- Mandatory payment parties and finite note envelopes (2026-09-06).";
 const attributionMarker = "-- Shared note and activity attribution (2026-09-06).";
 const profileVersionMarker = "-- Monotonic public profile versions (2026-09-07).";
+const accountLinkReceiptMarker = "-- An identity link is historical evidence.";
+const accountLinkReceiptMigration = readFileSync(new URL("../supabase/migrations/20260908015000_preserve_committed_event_account_links.sql", import.meta.url), "utf8");
 const profileVersionMigration = readFileSync(new URL("../supabase/migrations/20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const profileVersionVerification = readFileSync(new URL("../supabase/verification/verify_20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const attributionMigration = readFileSync(new URL("../supabase/migrations/20260906110000_shared_note_activity_attribution.sql", import.meta.url), "utf8");
@@ -52,6 +54,7 @@ before(async () => {
       await db.exec(attributionMigration);
       await db.exec(profileVersionMigration);
     } else { await db.exec(schema); }
+    await db.exec(accountLinkReceiptMigration);
   }
   catch (error) { throw new Error(`Local schema setup failed (${error.code}): ${error.message}`); }
 }, { timeout: 60_000 });
@@ -453,6 +456,13 @@ test("SQL full member note write and conflict retry ignore a replica-only member
 test("SQL full account link retry moves guest debt and reaches the target personal index", async () => {
   const guest = "guest-link-transport";
   await withSnapshot(ids.admin, async (previous, save) => {
+    // Established members already have canonical note projections. A roster-only
+    // link must not rewrite each entire workspace just to mirror identical notes.
+    await db.exec("reset role");
+    await db.query("select private.sync_shared_event_notes_to_workspaces($1,$2::jsonb,clock_timestamp())", [snapshotId, JSON.stringify(previous)]);
+    const workspaceVersionsBefore = (await db.query("select id,to_jsonb(updated_at) as version from public.app_snapshots where snapshot_kind='workspace' order by id")).rows;
+    assert.equal(workspaceVersionsBefore.length,4);
+    await db.exec("set local role authenticated");
     const local = structuredClone(previous);
     local.currentParticipantId = ids.admin;
     local.groups = [{id:"unrelated-local-group",memberIds:[guest],adminIds:[ids.admin]}];
@@ -482,6 +492,8 @@ test("SQL full account link retry moves guest debt and reaches the target person
     assert.equal(writes,2);
     assert.equal(result.events[0].participantIds.includes(guest),false);
     await db.exec("reset role");
+    const workspaceVersionsAfter = (await db.query("select id,to_jsonb(updated_at) as version from public.app_snapshots where snapshot_kind='workspace' order by id")).rows;
+    assert.deepEqual(workspaceVersionsAfter,workspaceVersionsBefore,"a guest link with unchanged notes must not rewrite personal workspaces");
     const targetState=(await db.query("select state from public.app_snapshots where owner_user_id=$1::uuid and snapshot_kind='workspace'",[ids.sender.slice(8)])).rows[0].state;
     const targetEvent=targetState.events.find(e=>e.id==="integrity-probe");
     assert.ok(targetEvent,"the linked member can discover the event through their personal index");
@@ -501,6 +513,35 @@ test("SQL full account link retry moves guest debt and reaches the target person
     event.expenses=[{id:"guest-expense",title:"Synthetic expense",total:200,payers:[{participantId:guest,amount:200}],
       sharedByParticipantIds:[guest,ids.recipient],createdByParticipantId:guest}];
     event.transfers=[{id:`opaque-debt-${guest}`,fromParticipantId:ids.recipient,toParticipantId:guest,amount:100,status:"pending"}];
+    return previous;
+  });
+});
+
+// The invite path has its own transactional boundary: membership, canonical
+test("SQL committed account links survive stale receipt arrays and reject guest resurrection", async () => {
+  const guest = "guest-link-receipt";
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const local = {...structuredClone(previous),currentParticipantId:ids.admin};
+    const linked = buildSharedEventState(linkParticipantAccountInEvent(local,"integrity-probe",guest,ids.sender),"integrity-probe");
+    let receipt = await save(linked);
+    const proof = linked.events[0].participantAccountLinks[0];
+    const stale = structuredClone(linked);
+    stale.events[0].participantAccountLinks = [];
+    receipt = await save(stale,receipt.updatedAt);
+    const row = (await db.query("select state from public.app_snapshots where id=$1",[snapshotId])).rows[0];
+    assert.deepEqual(row.state.events[0].participantAccountLinks,[proof],"an older client cannot erase a committed identity receipt");
+    for (const mutate of [
+      value => { value.events[0].participantIds.push(guest);value.participants.push(previous.participants.find(p=>p.id===guest)); },
+      value => { value.events[0].participantAccountLinks[0].targetParticipantId=ids.other; }
+    ]) {
+      const changed=structuredClone(row.state);mutate(changed);
+      await db.exec("savepoint invalid_link_write");
+      await assert.rejects(save(changed,receipt.updatedAt),{code:"42501"});
+      await db.exec("rollback to savepoint invalid_link_write");
+    }
+  }, previous => {
+    previous.participants.push({id:guest,kind:"guest",displayName:"Offline person"});
+    previous.events[0].participantIds.push(guest);
     return previous;
   });
 });
@@ -631,7 +672,8 @@ test("SQL authenticated RPC keeps CAS conflicts instead of overwriting newer dat
 test("SQL fresh schema and incremental migration install exactly the same definitions", () => {
   assert.equal(schema.slice(schema.indexOf(migrationMarker), schema.indexOf(attributionMarker)).trim(), migration.trim());
   assert.equal(schema.slice(schema.indexOf(attributionMarker), schema.indexOf(profileVersionMarker)).trim(), attributionMigration.trim());
-  assert.equal(schema.slice(schema.indexOf(profileVersionMarker)).trim(), profileVersionMigration.trim());
+  assert.equal(schema.slice(schema.indexOf(profileVersionMarker),schema.indexOf(accountLinkReceiptMarker)).trim(), profileVersionMigration.trim());
+  assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
 });
 test("SQL rollout checks preserve enabled triggers and function privileges", async () => {
   await db.exec(rolloutVerification);
