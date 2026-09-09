@@ -20393,11 +20393,15 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
 
   const previousState = cloneNavigationValue(state);
   if (resetPayments) {
-    const statusUpdatedAt = new Date().toISOString();
-    event.transfers = (event.transfers ?? []).map((transfer) => {
-      const { markedPaidAt, markedPaidByParticipantId, ...pendingTransfer } = transfer;
-      return { ...pendingTransfer, status: "pending", statusUpdatedAt };
-    });
+    const markedAt = new Date().toISOString();
+    // Reconciliation may replace these rows when several payments share a route.
+    // Keep a reversal for every old ID so a stale replica cannot revive it.
+    for (const transfer of event.transfers ?? []) {
+      state = updateTransferStatus(state, eventId, transfer.id, {
+        status: "pending",
+        markedAt
+      });
+    }
   }
   const reopenedAt = new Date().toISOString();
   state = reopenEvent(state, eventId, reopenedAt);

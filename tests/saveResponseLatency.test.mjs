@@ -96,6 +96,39 @@ async function fixture(run, { pauseConfig = false, pausePersonal = false, pauseC
   }
 }
 
+for(const path of ['save','flush','startup'])for(const collection of ['notes','expenses']) {
+  test(`late ${path} receipt retains a newer ${collection} snapshot in durable storage and the next write`,async()=>fixture(async h=>{
+    let request;
+    if(path!=='save') {
+      h.store.saveState(h.changed);
+      h.storage.setItem('settle-friends-pending-sync:latency-workspace',JSON.stringify(h.changed));
+      request=path==='flush'?h.store.flushPendingSharedState():h.store.loadSharedState();
+    }else request=h.store.saveSharedState(h.changed,{awaitCloud:true,forceSharedEventIds:['latency-event']});
+    await h.personalStarted.promise;
+    const fresh=structuredClone(h.changed);
+    if(collection==='notes')fresh.events[0].notes.push({id:'peer-note',title:'Peer',body:'Received while saving',
+      createdByParticipantId:'account-latency-a',updatedByParticipantId:'account-latency-a',
+      createdAt:'2026-09-09T00:00:00.000Z',updatedAt:'2026-09-09T00:00:00.000Z'});
+    else fresh.events[0].expenses.push({id:'peer-expense',name:'Peer expense',total:1200,
+      payers:[{participantId:'account-latency-a',amount:1200}],sharedByParticipantIds:['account-latency-a'],
+      createdByParticipantId:'account-latency-a',updatedAt:'2026-09-09T00:00:00.000Z'});
+    // The same durable boundary used by a confirmed foreground event read.
+    // This read does not create a new local mutation/outbox generation.
+    const revision=h.store.sharedStateSaveRevision();h.store.saveState(fresh);
+    assert.equal(h.store.sharedStateSaveRevision(),revision);
+    h.personalGate.resolve();const result=await request;
+    if(path==='startup')assert.equal(result.currentParticipantId,h.state.currentParticipantId);
+    else assert.equal(result.ok,true);
+    const durable=h.store.loadState();
+    assert.deepEqual(durable.events[0][collection],fresh.events[0][collection]);
+    assert.equal(h.storage.getItem('settle-friends-pending-sync:latency-workspace'),null);
+    const next=await h.store.saveSharedState(durable,{awaitCloud:true,forceSharedEventIds:['latency-event']});
+    assert.equal(next.ok,true);
+    assert.deepEqual(h.canonical().events[0][collection],fresh.events[0][collection]);
+    assert.deepEqual(h.personal().events[0][collection],fresh.events[0][collection]);
+  },{pausePersonal:true}));
+}
+
 for (const delayed of [false, true]) {
   test(`a ${delayed ? "background" : "foreground"} rejected save has exactly one feedback owner`, async () => fixture(async h => {
     const request = h.store.saveSharedState(h.changed, {
