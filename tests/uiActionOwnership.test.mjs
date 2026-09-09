@@ -26,6 +26,8 @@ function harness() {
     expenseDraftSaveStatus, prepareQuickExpenseRetry, updateExpense, rememberExpenseDraft: () => {},
     screen: { name: "settlement", eventId: event.id }, notice: "", settlementCelebration: null,
     transferStatusRequestVersions: new Map(), updateTransferStatus, rollbackTransferStatusChanges,
+    window: { localStorage: {} }, loadStoredAccountSession: () => null,
+    versionedReadCacheSessionGeneration: () => 0,
     getEvent: id => context.state.events.find(item => item.id === id),
     canCurrentParticipantEdit: () => true, canCurrentParticipantUpdateTransfer: () => true,
     syncExpenseSaveState: () => {}, render: () => notices.push(context.notice), reactivateDialogAfterRender: () => {},
@@ -44,7 +46,8 @@ function harness() {
     rejectedStateSaveIsCurrent: (_result, checkpoint) => checkpoint.participantId === context.state.currentParticipantId,
     formatCount: () => "1"
   });
-  for (const name of ["saveExpense", "saveQuickExpenses", "markTransferPaid", "markTransfersPending", "applyExpenseAttachmentImage"])
+  for (const name of ["captureFriendAccountContext", "beginTransferStatusRequest", "finishTransferStatusRequest",
+    "saveExpense", "saveQuickExpenses", "markTransferPaid", "markTransfersPending", "applyExpenseAttachmentImage"])
     vm.runInContext(functionSource(name), context);
   return { context, writes, closures, notices, draft };
 }
