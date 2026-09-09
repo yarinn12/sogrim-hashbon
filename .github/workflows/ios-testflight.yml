@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.48"
+        default: "4.49"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "177"
+        default: "178"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור אמינות פתיחה מחדש ואיפוס תשלומים: סימונים ישנים אינם חוזרים ממכשיר אחר, גם בחוב ששולם בכמה תשלומים. אישור שמירה מאוחר שומר מידע חדש שהתקבל בסנכרון. נוספו בדיקות רגרסיה, שחזור וסנכרון באנדרואיד ובאייפון."
+        default: "שיפור מחיקת אירועים ברצף: תשובה מאוחרת מהשרת לא משבשת את הפעולה הבאה, אירוע שמחיקתו נכשלה חוזר לרשימה בלי להעביר מסך, והניווט נשאר תקין בזמן השמירה. כולל שיפורי אמינות הסנכרון ובדיקות רגרסיה חדשות."
 
 permissions:
   contents: read
