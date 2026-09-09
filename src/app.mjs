@@ -247,6 +247,7 @@ import {
   participantEventDisplayName,
   participantHasConnectedAccount,
   participantPairIncludes,
+  participantAliasUpdate,
   sanitizeParticipantAlias,
   unresolvedDuplicateParticipantPairs
 } from "./domain/participantIdentity.mjs";
@@ -16604,16 +16605,24 @@ async function saveParticipantAlias(eventId, participantId) {
   const alias = sanitizeParticipantAlias(input.value);
   const dialogScrollTop = app.querySelector(".event-modal")?.scrollTop ?? 0;
   const previousAliases = { ...(event.participantAliases ?? {}) };
-  event.participantAliases = {
-    ...(event.participantAliases ?? {}),
-    [participantId]: alias
-  };
+  const previousAliasClocks = { ...(event.participantAliasUpdatedAtByParticipant ?? {}) };
+  const aliasUpdate = participantAliasUpdate(event, participantId, alias);
+  Object.assign(event, aliasUpdate);
   const result = await persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
   if (!result?.ok) {
-    event.participantAliases = previousAliases;
+    // Revert only this attempted alias, never another participant's edit or
+    // a newer save completed while this request was waiting for its receipt.
+    if (event.participantAliasUpdatedAtByParticipant?.[participantId] ===
+        aliasUpdate.participantAliasUpdatedAtByParticipant[participantId]) {
+      if (Object.hasOwn(previousAliases, participantId)) event.participantAliases[participantId] = previousAliases[participantId];
+      else delete event.participantAliases[participantId];
+      if (Object.hasOwn(previousAliasClocks, participantId)) event.participantAliasUpdatedAtByParticipant[participantId] = previousAliasClocks[participantId];
+      else delete event.participantAliasUpdatedAtByParticipant[participantId];
+      if (!Object.keys(event.participantAliasUpdatedAtByParticipant).length) delete event.participantAliasUpdatedAtByParticipant;
+    }
     notice = "לא הצלחנו לשמור את הכינוי. לא בוצע שינוי ואפשר לנסות שוב.";
   }
   render();

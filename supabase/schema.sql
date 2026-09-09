@@ -10809,8 +10809,15 @@ begin
 
   foreach map_name in array array[
     'membershipUpdatedAtByParticipant',
-    'settingsFieldUpdatedAt'
+    'settingsFieldUpdatedAt',
+    'participantAliasUpdatedAtByParticipant'
   ] loop
+    if map_name = 'participantAliasUpdatedAtByParticipant'
+      and new_event ? map_name
+      and new_event -> map_name is distinct from old_event -> map_name
+      and pg_catalog.jsonb_typeof(new_event -> map_name) <> 'object' then
+      raise exception 'Participant alias clocks must be an object' using errcode = '22023';
+    end if;
     if pg_catalog.jsonb_typeof(new_event -> map_name) <> 'object' then
       continue;
     end if;
@@ -10820,8 +10827,15 @@ begin
     loop
       old_value := old_event -> map_name ->> map_entry.key;
       new_value := map_entry.value;
-      if new_value is not distinct from old_value then
+      if new_value is not distinct from old_value and (
+        map_name <> 'participantAliasUpdatedAtByParticipant'
+        or new_event -> map_name -> map_entry.key is not distinct from old_event -> map_name -> map_entry.key
+      ) then
         continue;
+      end if;
+      if map_name = 'participantAliasUpdatedAtByParticipant'
+        and pg_catalog.jsonb_typeof(new_event -> map_name -> map_entry.key) <> 'string' then
+        raise exception 'Participant alias clocks must be timestamp strings' using errcode = '22023';
       end if;
       if map_entry.key !~ '^[A-Za-z0-9_-]{1,128}$' then
         raise exception 'Shared merge timestamp key is invalid'

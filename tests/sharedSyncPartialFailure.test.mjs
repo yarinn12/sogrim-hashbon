@@ -13,6 +13,52 @@ function note(id) {
 }
 const response = (payload) => ({ ok: true, status: 200, async json() { return structuredClone(payload); } });
 
+for (const path of ["save", "flush", "load"]) {
+  test(`peer event deletion reaches the final personal write and receipt during ${path}`, async () => fixture(async h => {
+    h.recover();
+    h.canonical.set("space-partial-healthy", { currentParticipantId: "", participants: [], groups: [], events: [],
+      deletedEvents: [{ id: "healthy", deletedAt: "2026-08-24T09:03:00.000Z" }] });
+    const store = await import(`../src/data/localStore.mjs?peer-delete-${path}=${Date.now()}`);
+    let result;
+    if (path === "save") result = await store.saveSharedState(h.pending, { awaitCloud: true });
+    else {
+      store.saveState(h.pending);
+      h.storage.setItem(`settle-friends-pending-sync:${h.workspaceId}`, JSON.stringify(h.pending));
+      result = path === "flush" ? await store.flushPendingSharedState() : await store.loadSharedState();
+    }
+    assert.ok(h.workspaceWrites.length, "the personal workspace must be acknowledged too");
+    const returnedSnapshots = path === "load" ? [result] : path === "save" ? [result.persistedState] : [];
+    for (const written of [...h.workspaceWrites, store.loadState(), ...returnedSnapshots]) {
+      assert.ok(written);
+      assert.equal(written.events.some(event => event.id === "healthy"), false, "an acknowledged deletion cannot return as a live personal event");
+      assert.ok(written.deletedEvents.some(event => event.id === "healthy"));
+      assert.ok(written.events.find(event => event.id === "failing").notes.some(note => note.id === "local-failing-note"));
+    }
+    if (path === "save") assert.equal(result.mode, "cloud");
+    if (path === "flush") assert.deepEqual(result, { ok: true });
+    assert.equal(h.storage.getItem(`settle-friends-pending-sync:${h.workspaceId}`), null);
+    assert.equal(h.canonicalWrites.includes("space-partial-healthy"), false, "only adopt the remote tombstone; do not write a deleted snapshot");
+  }));
+}
+
+test("peer event deletion survives a failing sibling and the subsequent outbox retry", async () => fixture(async h => {
+  h.canonical.set("space-partial-healthy", { currentParticipantId: "", participants: [], groups: [], events: [],
+    deletedEvents: [{ id: "healthy", deletedAt: "2026-08-24T09:03:00.000Z" }] });
+  const store = await import(`../src/data/localStore.mjs?peer-delete-partial=${Date.now()}`);
+  const first = await store.saveSharedState(h.pending, { awaitCloud: true });
+  assert.equal(first.pending, true);
+  const queued = JSON.parse(h.storage.getItem(`settle-friends-pending-sync:${h.workspaceId}`));
+  assert.equal(queued.events.some(event => event.id === "healthy"), false);
+  assert.ok(queued.deletedEvents.some(event => event.id === "healthy"));
+  assert.deepEqual(queued.__pendingSync.selection, { eventIds: ["failing"], deletedEventIds: [] });
+  h.recover();
+  const final = await store.flushPendingSharedState();
+  assert.deepEqual(final, { ok: true });
+  assert.equal(h.storage.getItem(`settle-friends-pending-sync:${h.workspaceId}`), null);
+  assert.equal(h.workspaceWrites.at(-1).events.some(event => event.id === "healthy"), false);
+  assert.ok(h.canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "local-failing-note"));
+}, { status: 503 }));
+
 function capturePendingRetryTimers() {
   let nextId = 0;
   const timers = new Map();
