@@ -644,6 +644,7 @@ function nativeBootstrapRuntimeConfig(nativeRuntime) {
 }
 
 function normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl = "") {
+  if (nativeRuntime) config = preserveBundledIosGoogleClient(config);
   const bootstrapPublicUrl = canonicalPublicOrigin(
     globalThis[NATIVE_RUNTIME_CONFIG_GLOBAL]?.publicUrl
   );
@@ -656,6 +657,30 @@ function normalizeRuntimeConfig(config, nativeRuntime, apiBaseUrl = "") {
     apiBaseUrl: nativeRuntime
       ? canonicalPublicOrigin(apiBaseUrl || config?.apiBaseUrl, runtimePublicOrigin(config))
       : ""
+  };
+}
+
+function preserveBundledIosGoogleClient(config) {
+  if (globalThis.Capacitor?.getPlatform?.() !== "ios") return config;
+  const bootstrap = globalThis[NATIVE_RUNTIME_CONFIG_GLOBAL];
+  const googleClientId = String(config?.auth?.googleClientId ?? "").trim();
+  const googleIosClientId = String(bootstrap?.auth?.googleIosClientId ?? "").trim();
+  if (
+    !googleClientId || !googleIosClientId ||
+    String(config?.auth?.googleIosClientId ?? "").trim() ||
+    config?.launch?.googleAuthReady === false ||
+    googleClientId !== String(bootstrap?.auth?.googleClientId ?? "").trim() ||
+    config?.storage?.mode !== "supabase" || bootstrap?.storage?.mode !== "supabase" ||
+    config?.storage?.url !== bootstrap?.storage?.url
+  ) return config;
+
+  // The iOS client is supplied when building the app and also registered in
+  // Info.plist. A web server may omit it. Keep that build-bound client during
+  // a refresh of the same project, while retaining all other server policy.
+  return {
+    ...config,
+    auth: { ...config.auth, googleIosClientId },
+    launch: { ...config.launch, googleIosAuthReady: true }
   };
 }
 

@@ -19060,7 +19060,8 @@ async function shareInviteOnWhatsApp(eventId) {
           render();
           return;
         }
-      } catch {
+      } catch (error) {
+        if (error?.name === "AbortError") return;
         // Continue to the WhatsApp fallback below.
       }
     }

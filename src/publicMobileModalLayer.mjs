@@ -333,6 +333,32 @@ const CSS = `
 
   }
 
+  /* Safari can leave 100dvh unchanged while the software keyboard covers it.
+     Use the visual viewport only during that state and return to the ordinary
+     route geometry when it closes. Navigation is already behind the keyboard. */
+  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      :is(.expense-modal-backdrop, .event-modal-backdrop) {
+      top: var(--app-keyboard-viewport-top) !important;
+      bottom: auto !important;
+      height: var(--app-keyboard-viewport-height) !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      :is(.expense-modal-backdrop, .event-modal-backdrop)
+      :is(.expense-modal, .event-modal) {
+      height: var(--app-keyboard-viewport-height) !important;
+      min-height: 0 !important;
+      max-height: var(--app-keyboard-viewport-height) !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      :is(.product-app-nav, .event-route-primary-nav) {
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  }
+
   /* Tablets use their available canvas instead of inheriting a narrow phone
      column. Keep a readable maximum width while respecting both landscape
      safe areas and the persistent navigation. */
@@ -387,6 +413,53 @@ const CSS = `
 syncResponsiveTabletShell();
 injectMobileModalStyles();
 window.addEventListener("resize", syncResponsiveTabletShell, { passive: true });
+setupKeyboardViewport();
+
+function setupKeyboardViewport() {
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+  const root = document.documentElement;
+  let frame = 0;
+  let keyboardOpen = false;
+
+  const sync = () => {
+    frame = 0;
+    const active = document.activeElement;
+    const editing = !active?.readOnly && !active?.disabled && active?.matches?.(
+      'textarea, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"])'
+    );
+    const visibleHeight = Number(viewport.height);
+    const offsetTop = Math.max(0, Number(viewport.offsetTop) || 0);
+    // Pinch zoom also shrinks the visual viewport. Never fight the user's zoom.
+    const unzoomed = Math.abs(Number(viewport.scale ?? 1) - 1) < 0.01;
+    const obscured = window.innerHeight - visibleHeight - offsetTop;
+    keyboardOpen = Boolean(
+      unzoomed && visibleHeight > 0 && obscured > 150 && (editing || keyboardOpen)
+    );
+    root.classList.toggle("app-software-keyboard-open", keyboardOpen);
+    if (keyboardOpen) {
+      const height = `${Math.round(visibleHeight)}px`;
+      const top = `${Math.round(offsetTop)}px`;
+      if (root.style.getPropertyValue("--app-keyboard-viewport-height") !== height) {
+        root.style.setProperty("--app-keyboard-viewport-height", height);
+      }
+      if (root.style.getPropertyValue("--app-keyboard-viewport-top") !== top) {
+        root.style.setProperty("--app-keyboard-viewport-top", top);
+      }
+    } else {
+      root.style.removeProperty("--app-keyboard-viewport-height");
+      root.style.removeProperty("--app-keyboard-viewport-top");
+    }
+  };
+  const schedule = () => {
+    if (!frame) frame = requestAnimationFrame(sync);
+  };
+  viewport.addEventListener("resize", schedule, { passive: true });
+  viewport.addEventListener("scroll", schedule, { passive: true });
+  window.addEventListener("resize", schedule, { passive: true });
+  document.addEventListener("focusin", schedule, { passive: true });
+  schedule();
+}
 
 function syncResponsiveTabletShell() {
   const isTabletViewport = window.innerWidth >= 721 && window.innerWidth <= 1366;
