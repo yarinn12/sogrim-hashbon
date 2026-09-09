@@ -6,6 +6,71 @@ export function expenseDraftMemoryKey(participantId, eventId, expenseId = "") {
   return `${EXPENSE_DRAFT_STORAGE_PREFIX}:${participantId}:${eventId}${expenseId ? `:edit:${expenseId}` : ""}`;
 }
 
+// A draft and the durable expense snapshot are separate writes. Retain the
+// identity and both revisions before persistence so a restarted editor can
+// distinguish its own unacknowledged write from another participant's change.
+export function expenseDraftSaveStatus(draft, event) {
+  const pending = draft?.pendingExpenseSave;
+  if (pending && (!validExpenseRevision(pending.expense) ||
+      typeof pending.created !== "boolean" ||
+      (draft.id && draft.id !== pending.expense.id) ||
+      (pending.beforeExpense != null && (!validExpenseRevision(pending.beforeExpense) ||
+        pending.beforeExpense.id !== pending.expense.id)) ||
+      (!pending.created && (!validExpenseRevision(pending.beforeExpense) ||
+        pending.beforeExpense.id !== pending.expense.id)))) return { conflict: true };
+  const expenseId = draft?.id || pending?.expense.id;
+  const existingExpense = event?.expenses?.find(expense => expense.id === expenseId);
+  const wasNewExpense = pending ? pending.created : !draft?.id;
+  const deleted = Boolean(expenseId && (event?.deletedExpenses?.some(expense => expense.id === expenseId) ||
+    (!existingExpense && !wasNewExpense)));
+  const conflict = deleted || Boolean(existingExpense && (pending
+    ? !sameExpenseRevision(existingExpense, pending.expense) &&
+      !sameExpenseRevision(existingExpense, pending.beforeExpense)
+    : (draft.baseExpenseUpdatedAt ?? "") !== (existingExpense.updatedAt ?? "")));
+  return { expenseId, existingExpense, wasNewExpense, deleted, conflict };
+}
+
+export function prepareQuickExpenseRetry(draft, event, expenses) {
+  const pending = draft?.pendingQuickExpenseSave;
+  if (!pending) return { expenses };
+  const attempted = pending.expenses;
+  if (!Array.isArray(attempted) || attempted.length !== expenses.length ||
+      !attempted.every(validExpenseRevision) || new Set(attempted.map(item => item.id)).size !== attempted.length ||
+      attempted.some((item, index) => expenseContentKey(item) !== expenseContentKey(expenses[index]))) {
+    return { conflict: true };
+  }
+  const conflict = attempted.some(item => {
+    const current = event.expenses?.find(expense => expense.id === item.id);
+    return event.deletedExpenses?.some(expense => expense.id === item.id) ||
+      (current && !sameExpenseRevision(current, item));
+  });
+  // Resend the exact original records. A retry must not invent identifiers or
+  // advance clocks over an independently changed/deleted restaurant item.
+  return conflict ? { conflict: true } : { expenses: attempted.map(item => ({ ...item })) };
+}
+
+function validExpenseRevision(expense) {
+  return Boolean(expense && typeof expense.id === "string" && expense.id &&
+    typeof expense.name === "string" && Number.isSafeInteger(expense.total) && expense.total > 0 &&
+    typeof expense.updatedAt === "string" && Number.isFinite(Date.parse(expense.updatedAt)) &&
+    Array.isArray(expense.payers) && expense.payers.length && expense.payers.every(payer =>
+      typeof payer?.participantId === "string" && Number.isSafeInteger(payer.amount) && payer.amount > 0) &&
+    Array.isArray(expense.sharedByParticipantIds) && expense.sharedByParticipantIds.length &&
+    expense.sharedByParticipantIds.every(id => typeof id === "string" && id));
+}
+
+function expenseContentKey(expense) {
+  return JSON.stringify([expense.name, expense.total,
+    expense.payers.map(payer => [payer.participantId, payer.amount]).sort(),
+    [...expense.sharedByParticipantIds].sort(), expense.createdByParticipantId ?? "",
+    expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? ""]);
+}
+
+function sameExpenseRevision(left, right) {
+  return Boolean(left && right && left.id === right.id && left.updatedAt === right.updatedAt &&
+    expenseContentKey(left) === expenseContentKey(right));
+}
+
 export function serializeExpenseDraftMemory(draft, savedAt = Date.now()) {
   if (!draft?.eventId || !hasMeaningfulExpenseDraft(draft)) return "";
 

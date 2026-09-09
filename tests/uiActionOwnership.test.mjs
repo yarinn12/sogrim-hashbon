@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 import { readFileSync } from "node:fs";
-import { updateTransferStatus, rollbackTransferStatusChanges } from "../src/domain/appActions.mjs";
+import { updateTransferStatus, rollbackTransferStatusChanges, updateExpense } from "../src/domain/appActions.mjs";
+import { expenseDraftSaveStatus, prepareQuickExpenseRetry } from "../src/domain/expenseDraftMemory.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 function functionSource(name) {
@@ -22,6 +23,7 @@ function harness() {
   const context = vm.createContext({
     state: { currentParticipantId: "account-a", participants: [], events: [event] },
     expenseDraft: draft, expenseSaveInProgress: false, expenseSaveRequest: null, saveFailureMessage,
+    expenseDraftSaveStatus, prepareQuickExpenseRetry, updateExpense, rememberExpenseDraft: () => {},
     screen: { name: "settlement", eventId: event.id }, notice: "", settlementCelebration: null,
     transferStatusRequestVersions: new Map(), updateTransferStatus, rollbackTransferStatusChanges,
     getEvent: id => context.state.events.find(item => item.id === id),
@@ -35,7 +37,9 @@ function harness() {
     expenseDialogRewindSteps: () => 1, closeDialogWithHistory: () => closures.push(true),
     cloneNavigationValue: structuredClone, activateDialog: () => {}, syncSettlementCloseConfirmation: () => {},
     rememberDialogReturnFocus: () => {}, requestAnimationFrame: callback => callback(), app: { querySelector: () => null },
-    buildQuickItemExpenses: () => ({ expenses: [{ id: "quick-a", name: "Quick", total: 100 }] }),
+    buildQuickItemExpenses: () => ({ expenses: [{ id: "quick-a", name: "Quick", total: 100,
+      payers: [{ participantId: "account-a", amount: 100 }], sharedByParticipantIds: ["account-a"],
+      updatedAt: "2026-09-09T00:00:00.000Z" }] }),
     stateSaveCheckpoint: request => ({ request, participantId: context.state.currentParticipantId }),
     rejectedStateSaveIsCurrent: (_result, checkpoint) => checkpoint.participantId === context.state.currentParticipantId,
     formatCount: () => "1"
@@ -68,6 +72,9 @@ for (const handler of ["saveExpense", "saveQuickExpenses"]) {
   test(`${handler} old completion cannot release another draft's in-flight save`, async () => {
     const h = harness(); const first = h.context[handler]("event-a");
     h.context.expenseDraft = { ...h.draft, name: "Second", payers: [...h.draft.payers] };
+    // This is a different newly opened editor, not a retry of the first one.
+    delete h.context.expenseDraft.pendingExpenseSave;
+    delete h.context.expenseDraft.pendingQuickExpenseSave;
     const second = h.context[handler]("event-a");
     const secondStarted = h.writes.length === 2;
     h.writes[0].resolve({ ok: true }); await first;
