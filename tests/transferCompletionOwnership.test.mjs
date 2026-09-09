@@ -56,10 +56,11 @@ function harness(status = "pending", count = 1) {
     transfer: (i = 0) => context.state.events[0].transfers[i],
     peerStatus(status, i = 0) {
       // A separately acknowledged peer revision arriving through synchronization.
+      const clock = Math.max(Date.now(), Date.parse(context.state.events[0].transfers[i].statusUpdatedAt));
       context.state = updateTransferStatus(context.state, "event-a", `transfer-${i}`, {
-        status: status === "paid" ? "pending" : "paid", markedAt: "2090-01-01T00:00:00.000Z", participantId: "account-b"});
+        status: status === "paid" ? "pending" : "paid", markedAt: new Date(clock + 1).toISOString(), participantId: "account-b"});
       context.state = updateTransferStatus(context.state, "event-a", `transfer-${i}`, {
-        status, markedAt: "2090-01-01T00:00:01.000Z", participantId: "account-b"});
+        status, markedAt: new Date(clock + 2).toISOString(), participantId: "account-b"});
     },
     newSession() {context.generation++; context.session = {user: {id: "a"}};
       context.state = clone(context.state); context.notice = "New session message";}
