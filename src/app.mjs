@@ -68,6 +68,8 @@ import {
 } from "./domain/quickExpenses.mjs";
 import {
   expenseDraftMemoryKey,
+  expenseDraftSaveStatus,
+  prepareQuickExpenseRetry,
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
@@ -19611,21 +19613,32 @@ function restoreExpenseDraft(event, expenseId = "") {
 
   try {
     const rawDraft = window.localStorage.getItem(key);
-    const restoredDraft = parseExpenseDraftMemory(rawDraft, {
+    const options = {
       eventId: event.id,
       expenseId,
       participantIds: activeEventParticipants(event).map(
         (participant) => participant.id
       ),
       fallbackParticipantId: state.currentParticipantId
-    });
+    };
+    let restoredDraft = parseExpenseDraftMemory(rawDraft, options);
+    let memoryExpenseId = expenseId;
+    if (!restoredDraft && expenseId) {
+      const pending = parseExpenseDraftMemory(window.localStorage.getItem(
+        expenseDraftMemoryKey(state.currentParticipantId, event.id)
+      ), { ...options, expenseId: "" });
+      if (pending?.pendingExpenseSave?.expense?.id === expenseId) {
+        restoredDraft = { ...pending, id: expenseId };
+        memoryExpenseId = "";
+      }
+    }
     if (restoredDraft && expenseId) {
       // An old editor must not silently replace a newer financial revision.
       // Compare again at save time, including changes arriving after recovery.
       restoredDraft.recoveredEdit = true;
     }
     if (!restoredDraft && rawDraft) window.localStorage.removeItem(key);
-    return restoredDraft;
+    return restoredDraft ? { ...restoredDraft, draftMemoryExpenseId: memoryExpenseId } : null;
   } catch {
     return null;
   }
@@ -19796,8 +19809,8 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     return;
   }
 
-  if (expenseDraft.recoveredEdit && expenseDraft.baseExpenseUpdatedAt !==
-    (event.expenses?.find(expense => expense.id === expenseDraft.id)?.updatedAt ?? "")) {
+  const recovery = expenseDraftSaveStatus(expenseDraft, event);
+  if (recovery.conflict) {
     expenseDraft.recoveryConflict = true;
     expenseDraft.error = "ההוצאה השתנתה מאז שהטיוטה נוצרה. הטיוטה נשארה כאן ולא דרסנו את העדכון. אפשר להעתיק את הטקסט, לסגור ולפתוח שוב את ההוצאה.";
     render();
@@ -19835,7 +19848,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     );
 
     const expense = {
-      id: expenseDraft.id ?? makeId("expense"),
+      id: recovery.expenseId || makeId("expense"),
       name: expenseDraft.name.trim(),
       total,
       payers,
@@ -19845,7 +19858,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       occurredOn: expenseDraft.occurredOn || todayInputValue(),
       notes: String(expenseDraft.notes ?? "").trim().slice(0, 500),
       attachmentImage: String(expenseDraft.attachmentImage ?? ""),
-      updatedAt: new Date().toISOString()
+      updatedAt: new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString()
     };
 
     const errors = validateExpense(expense, { participantIds: event.participantIds });
@@ -19856,9 +19869,12 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       return;
     }
 
-    const wasNewExpense = !expenseDraft.id;
+    const wasNewExpense = recovery.wasNewExpense;
+    activeDraft.pendingExpenseSave = { expense: cloneNavigationValue(expense), created: wasNewExpense,
+      beforeExpense: recovery.existingExpense ? cloneNavigationValue(recovery.existingExpense) : null };
+    rememberExpenseDraft();
     const previousTransfers = [...(event.transfers ?? [])];
-    if (!wasNewExpense) {
+    if (recovery.existingExpense) {
       state = updateExpense(state, eventId, expense);
     } else {
       event.expenses.unshift(expense);
@@ -19909,6 +19925,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     }
     if (!isCurrent()) return saveResult;
     clearRememberedExpenseDraft(eventId, activeDraft.id);
+    if (activeDraft.draftMemoryExpenseId !== undefined) clearRememberedExpenseDraft(eventId, activeDraft.draftMemoryExpenseId);
     if (wasNewExpense) clearRememberedExpenseDraft(eventId);
 
     if (continueAdding && wasNewExpense) {
@@ -20004,13 +20021,14 @@ async function saveQuickExpenses(eventId) {
   let saveCheckpoint = null;
   let saveAccepted = false;
   try {
-    const result = buildQuickItemExpenses({
+    let expenseIndex = 0;
+    let result = buildQuickItemExpenses({
       items: expenseDraft.quickItems,
       payerParticipantId: expenseDraft.quickPayerId,
       participantIds: event.participantIds,
       occurredOn: expenseDraft.occurredOn,
       createdByParticipantId: state.currentParticipantId,
-      makeExpenseId: () => makeId("expense")
+      makeExpenseId: () => expenseDraft.pendingQuickExpenseSave?.expenses?.[expenseIndex++]?.id || makeId("expense")
     });
 
     if (result.error) {
@@ -20030,9 +20048,21 @@ async function saveQuickExpenses(eventId) {
       return;
     }
 
+    const retry = prepareQuickExpenseRetry(activeDraft, event, result.expenses);
+    if (retry.conflict) {
+      expenseDraft.error = "יש ניסיון שמירה קודם לפריטים האלה והנתונים השתנו. הטיוטה נשארה כאן ולא הוספנו עותקים. בדוק את הפריטים שכבר נוספו לפני שינוי נוסף.";
+      render();
+      reactivateDialogAfterRender(".expense-modal", "#expense-form-error");
+      return { ok: false, conflict: true };
+    }
+    result = { ...result, expenses: retry.expenses };
+    activeDraft.pendingQuickExpenseSave = { expenses: cloneNavigationValue(result.expenses) };
+    rememberExpenseDraft();
+
     const previousTransfers = [...(event.transfers ?? [])];
-    event.expenses.unshift(...result.expenses);
-    for (const expense of result.expenses) {
+    const newExpenses = result.expenses.filter(expense => !event.expenses.some(current => current.id === expense.id));
+    event.expenses.unshift(...newExpenses);
+    for (const expense of newExpenses) {
       recordEventActivity(
         eventId,
         "expense-created",

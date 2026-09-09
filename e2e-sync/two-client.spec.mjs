@@ -12,7 +12,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -20,6 +20,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
   const membershipReadHolds = new Map();
   const accountLinkWriteHolds = new Map();
   const noteReceiptHolds = new Map();
+  const expenseReceiptHolds = new Map();
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
@@ -34,6 +35,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     statusUpdatedAt: version, settingsUpdatedAt: version, adminsCanEditOnly: false,
     locked: false, roundSettlementTransfers: false, directSettlementTransfers: false,
     notes: [], deletedNotes: [], expenses: [], transfers: [], activityLog: []};
+  if (restaurant) event.eventType = 'restaurant';
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
@@ -72,6 +74,7 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     for(const hold of membershipReadHolds.values()) hold.release();
     for(const hold of accountLinkWriteHolds.values()) hold.release();
     for(const hold of noteReceiptHolds.values()) hold.release();
+    for(const hold of expenseReceiptHolds.values()) hold.release();
     for(const hold of inviteHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
@@ -194,6 +197,15 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
         canonical.state = structuredClone(body.p_state); canonical.updated_at = stamp();
         writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0])});
         const receipt = {status: 'updated', updatedAt: canonical.updated_at};
+        const expenseHold = expenseReceiptHolds.get(i);
+        if (expenseHold && expenseHold.matches(canonical.state.events[0].expenses)) {
+          expenseReceiptHolds.delete(i);
+          expenseHold.arrived = true;
+          // Restart as soon as the server commits, before the bounded 350ms
+          // foreground wait acknowledges the durable save to this editor.
+          expenseHold.reloaded = pages[i].reload();
+          await expenseHold.ready;
+        }
         const noteHold = noteReceiptHolds.get(i);
         if (noteHold && canonical.state.events[0].notes.length) {
           noteReceiptHolds.delete(i);
@@ -266,6 +278,10 @@ async function fixture(testInfo, {withExpense = false, withAccountLink = false, 
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
+    restartBeforeExpenseReceipt(i, matches) {
+      let release; const ready = new Promise(resolve => { release = resolve; });
+      const hold = {arrived:false,ready,release,matches}; expenseReceiptHolds.set(i,hold); return hold;
+    },
     failSharedWrites(i,status) {if(status)sharedWriteFailures.set(i,status);else sharedWriteFailures.delete(i);},
     failInvites(i, fail) {if(fail)inviteFailures.add(i);else inviteFailures.delete(i);},
     holdNextInvite(i) {let release;const ready=new Promise(resolve=>{release=resolve;});
@@ -1198,6 +1214,101 @@ for (const author of [0, 1]) {
     } finally { hold?.release(); await f.close(); }
   });
  }
+}
+
+async function reviewExpenseDraft(page) {
+  for (let step = 0; step < 5 && !await page.locator('[data-action="save-expense"]').isVisible(); step++) {
+    await page.locator('[data-action="expense-step-next"]').click();
+  }
+  await expect(page.locator('[data-action="save-expense"]')).toBeVisible();
+}
+
+async function editExpenseName(page, id, name) {
+  const row = page.locator(`.expense-row[data-expense-id="${id}"]`);
+  await row.locator('.expense-row-actions-menu > summary').click();
+  await row.locator('[data-action="edit-expense"]').click();
+  await page.locator('[data-action="expense-step-edit"][data-step="name"]').click();
+  await page.locator('[data-action="expense-name"]').fill(name);
+  await reviewExpenseDraft(page);
+}
+
+for (const author of [0, 1]) {
+  for (const scenario of ['create', 'edit', 'live peer edit', 'restaurant']) {
+    test(`expense recovery prevents duplicate or stale writes on ${author ? 'iPhone' : 'Android'}: ${scenario}`, async ({}, testInfo) => {
+      const f = await fixture(testInfo, {withExpense: ['edit','live peer edit'].includes(scenario), restaurant: scenario === 'restaurant'});
+      const a = f.pages[author], b = f.pages[1-author];
+      let hold;
+      try {
+        if (scenario === 'live peer edit') {
+          await editExpenseName(a, 'seed-expense', 'הטיוטה הראשונה');
+          await editExpenseName(b, 'seed-expense', 'הגרסה של המשתתף השני');
+          await b.locator('[data-action="save-expense"]').click();
+          await expect(b.locator('.expense-modal')).toHaveCount(0);
+          await expect.poll(() => f.canonical.state.events[0].expenses[0].name).toBe('הגרסה של המשתתף השני');
+          // Background polling pauses while typing. A real network resume
+          // refreshes an open editor, which is the stale-save boundary here.
+          await a.evaluate(() => window.dispatchEvent(new Event('online')));
+          await expect.poll(() => storedEvent(a, f.personal[author].id).then(event => event.expenses[0].name))
+            .toBe('הגרסה של המשתתף השני');
+          await a.locator('[data-action="save-expense"]').click();
+          await expect(a.locator('#expense-form-error')).toContainText('ההוצאה השתנתה');
+          expect(f.canonical.state.events[0].expenses[0].name).toBe('הגרסה של המשתתף השני');
+        } else {
+          if (scenario === 'edit') await editExpenseName(a, 'seed-expense', 'הוצאה לפני רענון');
+          else {
+            await a.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+            if (scenario === 'restaurant') {
+              await a.locator('[data-action="restaurant-split-mode"][data-mode="items"]').click();
+              await a.locator('[data-action="quick-item-amount"][data-index="0"]').fill('12');
+              await a.locator('[data-action="quick-item-add"]').click();
+              await a.locator('[data-action="quick-item-amount"][data-index="1"]').fill('4');
+              await a.locator('[data-action="restaurant-quick-stage"][data-stage="review"]').click();
+              await a.locator('[data-action="restaurant-quick-stage"][data-stage="payer"]').click();
+            } else {
+              await a.locator('[data-action="expense-total"]').fill('12');
+              await a.locator('[data-action="expense-step-next"]').click();
+              await a.locator('[data-action="expense-name"]').fill('הוצאה לפני רענון');
+              await reviewExpenseDraft(a);
+            }
+          }
+          hold = f.restartBeforeExpenseReceipt(author, expenses => scenario === 'restaurant'
+            ? expenses.length === 2 : expenses.some(expense => expense.name === 'הוצאה לפני רענון'));
+          await a.locator(`[data-action="${scenario === 'restaurant' ? 'save-quick-expenses' : 'save-expense'}"]`).click();
+          await expect.poll(() => Boolean(hold.reloaded)).toBe(true);
+          await hold.reloaded;
+          hold.release();
+          const originalIds = f.canonical.state.events[0].expenses.map(expense => expense.id).sort();
+          await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+          await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+          if (scenario === 'edit') {
+            await editExpenseName(a, 'seed-expense', 'הוצאה אחרי שחזור');
+          } else {
+            await a.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+            await expect(a.locator('.expense-modal')).toContainText('טיוטה');
+            if (scenario !== 'restaurant') {
+              await a.locator('[data-action="expense-step-next"]').click();
+              await expect(a.locator('[data-action="expense-name"]')).toHaveValue('הוצאה לפני רענון');
+              await a.locator('[data-action="expense-name"]').fill('הוצאה אחרי שחזור');
+              await reviewExpenseDraft(a);
+            }
+          }
+          await a.locator(`[data-action="${scenario === 'restaurant' ? 'save-quick-expenses' : 'save-expense'}"]`).click();
+          await expect(a.locator('.expense-modal')).toHaveCount(0);
+          await expect.poll(() => f.canonical.state.events[0].expenses.map(expense => expense.id).sort()).toEqual(originalIds);
+          if (scenario !== 'restaurant') {
+            await expect.poll(() => f.canonical.state.events[0].expenses[0].name).toBe('הוצאה אחרי שחזור');
+            await expect(b.locator('.expense-row').filter({hasText:'הוצאה אחרי שחזור'})).toHaveCount(1);
+          } else {
+            await expect.poll(() => storedEvent(b, f.personal[1-author].id).then(event => event.expenses.length)).toBe(2);
+          }
+          expect(f.writes.every(write => write.event.expenses.length <= originalIds.length)).toBe(true);
+          const drafts = await a.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('settle-friends-expense-draft:')));
+          expect(drafts).toEqual([]);
+        }
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+      } finally { hold?.release(); await f.close(); }
+    });
+  }
 }
 
 test('a durable outbox survives page restart during a cloud outage and reaches the peer once', async ({}, testInfo) => {
