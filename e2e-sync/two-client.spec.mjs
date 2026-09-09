@@ -12,7 +12,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withPaidInstallments = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -40,6 +40,16 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
+  if (withPaidInstallments) {
+    // Two historical payments on one route, e.g. paying after each added expense.
+    event.adminIds = [participants[managingClient].id];
+    event.locked = true; event.closedAt = version;
+    event.transfers = [0,1].map(i => ({id:`installment-${i}`,fromParticipantId:participants[1].id,
+      toParticipantId:participants[0].id,amount:3000,status:'paid',statusUpdatedAt:version,
+      markedPaidAt:version,markedPaidByParticipantId:participants[1].id}));
+    event.transferStatusUpdates = event.transfers.map(t => ({id:t.id,status:'paid',updatedAt:version,
+      markedAt:version,markedPaidByParticipantId:participants[1].id}));
+  }
   if (withAccountLink) {
     const guest = {id:'guest-existing-person',displayName:'אורח לפני חיבור',kind:'guest'};
     participants.push(guest); event.participantIds.push(guest.id);
@@ -271,6 +281,14 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
       seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
         targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
+    if(withPaidInstallments)await page.addInitScript(()=>{
+      const original=Storage.prototype.setItem;
+      globalThis.__resetStorageWrites=[];
+      Storage.prototype.setItem=function(k,v){
+        if(String(k).startsWith('settle-friends-state:'))globalThis.__resetStorageWrites.push({key:k,state:JSON.parse(v),stack:new Error().stack});
+        return original.call(this,k,v);
+      };
+    });
     if(withAccountLink) page.on('console',message=>{
       if(/account-link|sync\]|save failed/i.test(message.text())) linkLogs.push({client:i,type:message.type(),message:message.text().slice(0,600)});
     });
@@ -391,6 +409,37 @@ test('live expense changes preserve close confirmation focus through payment and
       await expect(page.locator('[data-app-dialog-inert], [data-app-dialog-inert-container]')).toHaveCount(0);
     }
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }finally{await f.close();}
+});
+
+for (const actor of [0,1]) test(`reopen payment reset on ${actor ? 'iPhone' : 'Android'} survives an offline peer and refreshed settlement`,async({},testInfo)=>{
+  const f=await fixture(testInfo,{withExpense:true,withPaidInstallments:true,managingClient:actor});
+  const manager=f.pages[actor],peer=f.pages[1-actor];
+  try {
+    for(const page of f.pages)await page.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await expect(peer.locator('.settlement-transfer-board [data-action="mark-pending"]')).toHaveCount(2);
+    await f.offline(1-actor,true);
+    await manager.locator('[data-action="reopen-event"]').first().click();
+    await manager.locator('[data-action="select-reopen-payment-mode"][data-payment-mode="reset"]').click();
+    await manager.locator('[data-action="confirm-important-action"]').click();
+    await expect.poll(()=>manager.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[actor].id)).toBeNull();
+    await expect.poll(()=>f.canonical.state.events[0].locked).toBe(false);
+    await f.offline(1-actor,false);
+    await expect.poll(()=>storedEvent(peer,f.personal[1-actor].id).then(event=>event.locked)).toBe(false);
+    await expect.poll(()=>storedEvent(peer,f.personal[1-actor].id).then(event=>event.transfers.filter(t=>t.status==='paid').length)).toBe(0);
+    await manager.locator('[data-action="close-event"]').first().click();
+    await manager.locator('[data-action="confirm-close-event"]').click();
+    for(const page of f.pages) {
+      await expect(page.locator('.settlement-transfer-board [data-action="mark-paid"]')).toHaveCount(1);
+      await expect(page.locator('.settlement-transfer-board [data-action="mark-pending"]')).toHaveCount(0);
+    }
+    const final=f.canonical.state.events[0];
+    expect(final.transfers.map(t=>({amount:t.amount,status:t.status}))).toEqual([{amount:6000,status:'pending'}]);
+    expect(f.writes.filter(w=>w.client===actor).at(-1).event.transfers).toEqual(final.transfers);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  }catch(error){
+    await testInfo.attach('reset-sync-state',{body:JSON.stringify({canonical:f.canonical,writes:f.writes,requests:f.requests,peer:await storedEvent(peer,f.personal[1-actor].id),environment:await peer.evaluate(()=>({online:navigator.onLine,visibility:document.visibilityState,writes:globalThis.__resetStorageWrites})),errors:f.errors}),contentType:'application/json'});
+    throw error;
   }finally{await f.close();}
 });
 
