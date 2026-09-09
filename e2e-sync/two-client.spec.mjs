@@ -281,14 +281,6 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
       seedLink:withInterruptedLink&&i===0?{ownerUserId:ids[0],eventId,sourceParticipantId:'guest-existing-person',
         targetParticipantId:`account-${ids[1]}`,linkedAt:'2026-08-01T00:00:00.000Z'}:null});
     const page = await context.newPage(); pages.push(page);
-    if(withPaidInstallments)await page.addInitScript(()=>{
-      const original=Storage.prototype.setItem;
-      globalThis.__resetStorageWrites=[];
-      Storage.prototype.setItem=function(k,v){
-        if(String(k).startsWith('settle-friends-state:'))globalThis.__resetStorageWrites.push({key:k,state:JSON.parse(v),stack:new Error().stack});
-        return original.call(this,k,v);
-      };
-    });
     if(withAccountLink) page.on('console',message=>{
       if(/account-link|sync\]|save failed/i.test(message.text())) linkLogs.push({client:i,type:message.type(),message:message.text().slice(0,600)});
     });
@@ -438,7 +430,7 @@ for (const actor of [0,1]) test(`reopen payment reset on ${actor ? 'iPhone' : 'A
     expect(f.writes.filter(w=>w.client===actor).at(-1).event.transfers).toEqual(final.transfers);
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
   }catch(error){
-    await testInfo.attach('reset-sync-state',{body:JSON.stringify({canonical:f.canonical,writes:f.writes,requests:f.requests,peer:await storedEvent(peer,f.personal[1-actor].id),environment:await peer.evaluate(()=>({online:navigator.onLine,visibility:document.visibilityState,writes:globalThis.__resetStorageWrites})),errors:f.errors}),contentType:'application/json'});
+    await testInfo.attach('reset-sync-state',{body:JSON.stringify({canonical:f.canonical,writes:f.writes,requests:f.requests,peer:await storedEvent(peer,f.personal[1-actor].id),environment:await peer.evaluate(()=>({online:navigator.onLine,visibility:document.visibilityState})),errors:f.errors}),contentType:'application/json'});
     throw error;
   }finally{await f.close();}
 });

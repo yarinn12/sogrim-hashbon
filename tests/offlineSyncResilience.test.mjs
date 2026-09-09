@@ -1418,7 +1418,7 @@ test("a late cloud save cannot repopulate local data after sign out", () => {
   assert.match(localStore, /let requestAccountGeneration = accountStorageGeneration/);
   assert.match(
     localStore,
-    /requestAccountGeneration === accountStorageGeneration &&\s*requestSaveGeneration === sharedStateSaveGeneration &&\s*pendingPayload === pendingSharedStateRaw\(runtimeConfig\)\s*\) \{\s*Object\.assign\(state, syncedState\);\s*saveState\(syncedState\);/
+    /requestAccountGeneration === accountStorageGeneration &&\s*requestSaveGeneration === sharedStateSaveGeneration &&\s*pendingPayload === pendingSharedStateRaw\(runtimeConfig\)\s*\) \{\s*const visibleState = mergeConfirmedSaveWithCurrentLocal\(syncedState, stateSnapshot\);\s*Object\.assign\(state, visibleState\);\s*saveState\(visibleState\);/
   );
   assert.match(
     localStore,

@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, resolve, relative } from "node:path";
 
 function collectTestFiles(dir) {
   return readdirSync(dir)
@@ -54,9 +54,12 @@ if (testFiles.length === 0) {
 const result = spawnSync(process.execPath, [
   "--test",
   ...(withCoverage ? ["--experimental-test-coverage"] : []),
-  ...testFiles
+  // Absolute paths repeat the workspace prefix for every file and can exceed
+  // Windows' process command-line limit before any tests are launched.
+  ...testFiles.map((file) => relative(process.cwd(), file))
 ], {
   stdio: "inherit",
 });
 
+if (result.error) process.stderr.write(`${result.error.message}\n`);
 process.exit(result.status ?? 1);
