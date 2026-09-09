@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.49"
+        default: "4.50"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "178"
+        default: "179"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור מחיקת אירועים ברצף: תשובה מאוחרת מהשרת לא משבשת את הפעולה הבאה, אירוע שמחיקתו נכשלה חוזר לרשימה בלי להעביר מסך, והניווט נשאר תקין בזמן השמירה. כולל שיפורי אמינות הסנכרון ובדיקות רגרסיה חדשות."
+        default: "חדש: הצמדת אירועים לראש הרשימה בעיצוב המוכר מהפתקים. ההצמדה אישית ונשמרת במכשיר, עם תמיכה בביטול הצמדה, ארכיון וסינון. נוספו בדיקות לנעיצות ברצף, לרענון, לשתי לשוניות ולהתאוששות מכשל בשמירה."
 
 permissions:
   contents: read
