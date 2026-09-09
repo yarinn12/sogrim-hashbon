@@ -41,6 +41,7 @@ Playwright uses separate browser engines, contexts, identities, storage and synt
 - The alias SQL fixture now seeds the production `buildSharedEventState` envelope; an extra top-level deletion array had caused an unrelated metadata rejection.
 - The browser alias flow opens the participants dialog first. Resolving a duplicate pair already opens/focuses the nickname section; toggling the section again hid the editor. Final corrected scenarios were rerun against baseline and fixed code.
 - The old source-string assertion requiring whole-map alias rollback was replaced by real-handler rollback tests. Awaited persistence and authorization assertions remain. A rejected alias restores only its own previous value/version and cannot erase a concurrent edit.
+- The existing join/restart scenario passed its reload, storage and cloud assertions, then intermittently emitted WebKit's native CORS diagnostic during a second forced document navigation to `/`. It now returns through the application's home action after the same explicit reload. The browser error recorder, all error assertions and persisted-data checks remain unchanged.
 
 ## Deployment
 

@@ -685,7 +685,9 @@ for(const joiningClient of [0,1]) {
       await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
       await joiner.waitForLoadState('networkidle');
       expect(f.errors,'reload must not raise application errors').toEqual([]);
-      await joiner.goto('/');
+      // Reload was verified above. Return through the actual home action;
+      // a second forced document navigation can abort WebKit's poll/preflight.
+      await joiner.locator('.product-app-nav [data-action="home"]').first().click();
       await expect(joiner.locator('[data-screen-kind="home"]')).toBeVisible();
       await joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
