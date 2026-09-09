@@ -46,4 +46,3 @@ try {
 } finally {
   await sql.end({ timeout: 5 });
 }
-
