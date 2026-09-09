@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants } from "../src/domain/appActions.mjs";
-import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
+import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState, saveSharedEventDeletion, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
@@ -416,6 +416,155 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+for (const closed of [false, true]) {
+  for (const race of [false, true]) {
+    test(`SQL event deletion client removes ${closed ? "closed" : "open"} paid history with ${race ? "a real CAS conflict" : "one acknowledged write"}`, async () => {
+      await withSnapshot(ids.admin, async (previous, save) => {
+        const deletion = { id: "integrity-probe", sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey, deletedAt: new Date().toISOString() };
+        const config = { storage: { mode: "supabase", url: "https://deletion.example.invalid", table: "app_snapshots", anonKey: "synthetic",
+          account: { userId: ids.admin.slice(8), accessToken: "synthetic-token" } } };
+        const attempts = [], receipts = [];
+        const response = value => ({ ok: true, status: 200, json: async () => value });
+        const deleted = await saveSharedEventDeletion(config, deletion, async (url, options = {}) => {
+          if (url.includes("/rpc/update_shared_event_snapshot")) {
+            const body = JSON.parse(options.body);
+            attempts.push(body);
+            if (race && attempts.length === 1) assert.equal((await save(previous, body.p_expected_updated_at)).status, "updated");
+            const receipt = await save(body.p_state, body.p_expected_updated_at);
+            receipts.push(receipt.status);
+            return response(receipt);
+          }
+          assert.equal(options.method ?? "GET", "GET");
+          return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows);
+        });
+        assert.equal(deleted, true);
+        assert.deepEqual(receipts, race ? ["conflict", "updated"] : ["updated"]);
+        const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+        for (const payload of [...attempts.map(attempt => attempt.p_state), committed]) {
+          assert.deepEqual(payload.events, []);
+          assert.deepEqual(payload.participants, [], "the final deletion payload must satisfy the SQL history guard");
+          assert.deepEqual(payload.groups, []);
+          assert.deepEqual(payload.deletedEvents, [{ id: deletion.id, deletedAt: deletion.deletedAt }]);
+          assert.deepEqual(payload.deletedParticipants, previous.deletedParticipants, "preserve unrelated envelope metadata");
+        }
+      }, previous => {
+        const paid = markPaid(previous, ids.admin);
+        if (closed) Object.assign(paid.events[0], { locked: true, closedAt: new Date().toISOString(), statusUpdatedAt: new Date().toISOString() });
+        return paid;
+      });
+    });
+  }
+}
+
+test("SQL event deletion client still rejects a non-administrator", async () => {
+  await withSnapshot(ids.sender, async (_previous, save) => {
+    const deletion = { id: "integrity-probe", sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey, deletedAt: new Date().toISOString() };
+    await assert.rejects(saveSharedEventDeletion({ storage: { mode: "supabase", url: "https://deletion.example.invalid", table: "app_snapshots", anonKey: "synthetic",
+      account: { userId: ids.sender.slice(8), accessToken: "synthetic-token" } } }, deletion, async (url, options = {}) => {
+      if (url.includes("/rpc/update_shared_event_snapshot")) {
+        const body = JSON.parse(options.body);
+        const receipt = await save(body.p_state, body.p_expected_updated_at);
+        return { ok: true, status: 200, json: async () => receipt };
+      }
+      return { ok: true, status: 200, json: async () => (await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows };
+    }), { code: "42501" });
+  }, previous => markPaid(previous, ids.admin));
+});
+
+test("SQL a peer adopts an administrator's paid event deletion through the actual RLS read boundary", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const deletion = { id: "integrity-probe", deletedAt: new Date().toISOString() };
+    assert.equal((await save({ ...previous, currentParticipantId: "", participants: [], groups: [], events: [], deletedEvents: [deletion] })).status, "updated");
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [ids.sender.slice(8)]);
+    const rows = (await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows;
+    assert.equal(rows.length, 1, "a historical member must still be allowed to read the tombstone");
+    const local = structuredClone(previous);
+    local.currentParticipantId = ids.sender;
+    Object.assign(local.events[0], { sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey });
+    const result = await syncSharedEvents({ storage: { mode: "supabase", url: "https://peer-deletion-db.invalid", table: "app_snapshots", anonKey: "synthetic",
+      account: { userId: ids.sender.slice(8), accessToken: "synthetic-token" } } }, local, async (_url, options = {}) => {
+      assert.equal(options.method ?? "GET", "GET", "the member must adopt the deletion without recreating the snapshot");
+      return { ok: true, status: 200, json: async () => rows };
+    });
+    assert.deepEqual(result.events, []);
+    assert.equal(result.currentParticipantId, ids.sender);
+    assert.deepEqual(result.deletedEvents, [{ ...deletion, sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey }]);
+  }, previous => markPaid(previous, ids.admin));
+});
+
+test("SQL a member's stale alias snapshot preserves the administrator alias and saves the member note", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const local = structuredClone(previous), at = new Date().toISOString();
+    local.events[0].participantAliases[ids.recipient] = "Obsolete nickname";
+    delete local.events[0].participantAliasUpdatedAtByParticipant;
+    Object.assign(local.events[0], { sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey });
+    local.events[0].notes = [{ id: "alias-member-note", title: "Member note", body: "New member content", createdAt: at, updatedAt: at,
+      createdByParticipantId: ids.sender, updatedByParticipantId: ids.sender }];
+    const payloads = [];
+    const response = value => ({ ok: true, status: 200, json: async () => value });
+    const saved = await saveSharedEventState({ storage: { mode: "supabase", url: "https://alias-db.invalid", table: "app_snapshots", anonKey: "synthetic",
+      account: { userId: ids.sender.slice(8), accessToken: "synthetic-token" } } }, local, "integrity-probe", async (url, options = {}) => {
+      if (url.includes("/rpc/update_shared_event_snapshot")) {
+        const body = JSON.parse(options.body); payloads.push(body.p_state);
+        return response(await save(body.p_state, body.p_expected_updated_at));
+      }
+      return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows);
+    });
+    const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+    for (const value of [...payloads, saved, committed]) {
+      assert.equal(value.events[0].participantAliases[ids.recipient], "Current nickname");
+      assert.equal(value.events[0].notes[0].id, "alias-member-note");
+    }
+  }, previous => {
+    previous.events[0].participantAliases = { [ids.recipient]: "Current nickname" };
+    previous.events[0].participantAliasUpdatedAtByParticipant = { [ids.recipient]: new Date().toISOString() };
+    // Seed the same canonical envelope as the production event serializer.
+    return buildSharedEventState(previous, "integrity-probe");
+  });
+});
+
+for (const invalid of ["future", "null", "number", "array"]) {
+  test(`SQL participant alias clocks reject ${invalid} values at the actual write boundary`, async () => {
+    await withSnapshot(ids.admin, async (previous, save) => {
+      const candidate = structuredClone(previous);
+      const value = invalid === "future" ? new Date(Date.now() + 3600_000).toISOString() : invalid === "null" ? null : 42;
+      candidate.events[0].participantAliases = { [ids.recipient]: "Changed nickname" };
+      candidate.events[0].participantAliasUpdatedAtByParticipant = invalid === "array" ? [] : { [ids.recipient]: value };
+      await assert.rejects(save(candidate), { code: "22023" });
+    });
+  });
+}
+
+test("SQL participant alias migration upgrades the previous guard idempotently and preserves private execution", async () => {
+  const aliasMigration = readFileSync(new URL('../supabase/migrations/20260909060000_version_participant_aliases.sql', import.meta.url), 'utf8');
+  const verification = readFileSync(new URL('../supabase/verification/verify_20260909060000_participant_alias_versions.sql', import.meta.url), 'utf8');
+  const oldGuard = readFileSync(new URL('../supabase/migrations/20260903093000_strict_shared_merge_timestamp_maps.sql', import.meta.url), 'utf8');
+  const withoutTransaction = sql => sql.replace(/^begin;\s*/, '').replace(/commit;\s*$/, '');
+  const definition = sql => sql.slice(sql.indexOf('create or replace function private.guard_shared_event_future_merge_timestamps()'), sql.indexOf('\n$$;', sql.indexOf('create or replace function private.guard_shared_event_future_merge_timestamps()')) + 4);
+  assert.equal(definition(schema), definition(aliasMigration));
+  await withSnapshot(ids.admin, async (previous, save) => {
+    await db.exec('reset role');
+    await db.exec(withoutTransaction(oldGuard));
+    await db.exec(withoutTransaction(aliasMigration));
+    await db.exec(withoutTransaction(aliasMigration));
+    await db.exec(verification);
+    await db.exec('set local role authenticated');
+    const candidate = structuredClone(previous);
+    candidate.events[0].participantAliases = { [ids.sender]: 'Invalid future alias' };
+    candidate.events[0].participantAliasUpdatedAtByParticipant = { [ids.sender]: new Date(Date.now() + 3600_000).toISOString() };
+    await assert.rejects(save(candidate), { code: '22023' });
+  });
+});
+
+test("SQL a member cannot change another participant's versioned alias", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const candidate = structuredClone(previous);
+    candidate.events[0].participantAliases = { [ids.recipient]: 'Unauthorized nickname' };
+    candidate.events[0].participantAliasUpdatedAtByParticipant = { [ids.recipient]: new Date().toISOString() };
+    await assert.rejects(save(candidate), { code: '42501' });
+  });
+});
+
 test("SQL full member note write and conflict retry ignore a replica-only membership clock", async () => {
   await withSnapshot(ids.sender, async (previous, save) => {
     const local = structuredClone(previous), at = new Date().toISOString();
@@ -1485,6 +1634,26 @@ test("SQL global guest-account linking preserves legacy note and activity histor
     assert.equal(candidate.events[0].activityLog[0].actorParticipantId, ids.sender);
     assert.equal((await save(candidate)).status, "updated");
   }, previous => guestHistory(previous));
+});
+
+test("SQL account linking preserves versioned aliases and their historical clocks on a stale retry", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const local = structuredClone(previous); local.currentParticipantId = ids.admin;
+    const linked = buildSharedEventState(linkParticipantAccountInEvent(local, "integrity-probe", guestAuthor, ids.sender), "integrity-probe");
+    const receipt = await save(linked);
+    assert.equal(receipt.status, "updated");
+    const candidate = buildSharedEventState(mergeSharedEventWriteState(linked, previous, writeConfig), "integrity-probe");
+    assert.equal(candidate.events[0].participantAliases[ids.recipient], "Keep recipient nickname");
+    assert.equal(Object.hasOwn(candidate.events[0].participantAliases, guestAuthor), false);
+    assert.deepEqual(candidate.events[0].participantAliasUpdatedAtByParticipant, previous.events[0].participantAliasUpdatedAtByParticipant);
+    assert.equal(candidate.events[0].notes[0].createdByParticipantId, ids.sender);
+    assert.equal((await save(candidate, receipt.updatedAt)).status, "updated");
+  }, previous => {
+    guestHistory(previous);
+    previous.events[0].participantAliases = { [guestAuthor]: "Guest nickname", [ids.recipient]: "Keep recipient nickname" };
+    previous.events[0].participantAliasUpdatedAtByParticipant = { [guestAuthor]: new Date().toISOString(), [ids.recipient]: new Date().toISOString() };
+    return previous;
+  });
 });
 test("SQL duplicate guest matching retains Hebrew marks and Unicode name normalization", async () => {
   await withSnapshot(ids.admin, async (previous, save) => {

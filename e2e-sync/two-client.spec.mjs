@@ -12,7 +12,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withPaidInstallments = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -30,6 +30,7 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
   const version = new Date(clock).toISOString();
   const participants = ids.map((id, i) => ({id: `account-${id}`, displayName: i ? 'בודק אייפון' : 'בודק אנדרואיד',
     kind: 'user', accountLinked: true, avatarPreset: 'avatar-1', profileUpdatedAt: version}));
+  if(withAliases) participants.forEach(participant => {participant.displayName='בודק סנכרון';});
   const event = {id: eventId, name: 'בדיקה מבודדת בשני מכשירים', eventType: 'standard', currency: 'ILS',
     participantIds: participants.map(p => p.id), adminIds: [participants[0].id],
     createdByParticipantId: participants[0].id, createdAt: version, updatedAt: version,
@@ -37,13 +38,17 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
     locked: false, roundSettlementTransfers: false, directSettlementTransfers: false,
     notes: [], deletedNotes: [], expenses: [], transfers: [], activityLog: []};
   if (restaurant) event.eventType = 'restaurant';
+  if(withAliases) {
+    event.adminIds=[participants[managingClient].id];
+    event.participantAliases=Object.fromEntries(participants.map((participant,i)=>[participant.id,`כינוי קודם ${i}`]));
+  }
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
   if (withPaidInstallments) {
     // Two historical payments on one route, e.g. paying after each added expense.
     event.adminIds = [participants[managingClient].id];
-    event.locked = true; event.closedAt = version;
+    event.locked = !paidEventOpen; if(!paidEventOpen) event.closedAt = version;
     event.transfers = [0,1].map(i => ({id:`installment-${i}`,fromParticipantId:participants[1].id,
       toParticipantId:participants[0].id,amount:3000,status:'paid',statusUpdatedAt:version,
       markedPaidAt:version,markedPaidByParticipantId:participants[1].id}));
@@ -65,6 +70,9 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
   }
   const canonical = {id: sharedId, snapshot_kind: 'shared_event', updated_at: version,
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
+  let deletedEventMembers = new Set();
+  const canReadCanonical = i => canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) ||
+    (canonical.state.deletedEvents?.some(item=>item.id===eventId) && deletedEventMembers.has(`account-${ids[i]}`));
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
       groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [],
@@ -165,7 +173,7 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
       if (url.pathname === '/auth/v1/user') return reply(user);
       if (url.pathname.endsWith('/ensure_account_workspace')) return reply({status: 'existing', workspaceId: personal[i].id});
-      if (url.pathname.endsWith('/join_shared_event')) return reply(canonical.state.events[0].participantIds.includes(`account-${ids[i]}`));
+      if (url.pathname.endsWith('/join_shared_event')) return reply(Boolean(canReadCanonical(i)));
       // These auxiliary RPCs are outside the sync journey but are invoked at
       // startup/expense save. Explicit inert fixtures, not a blanket write allowlist.
       if (url.pathname.endsWith('/get_referral_program_status')) return reply({status: 'unavailable'});
@@ -206,8 +214,15 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
         }
         if (body.p_snapshot_id !== sharedId) return reply({message: 'Unexpected snapshot'}, 403);
         if (body.p_expected_updated_at !== canonical.updated_at) { conflicts++; return reply({status: 'conflict'}); }
+        if(body.p_state.deletedEvents?.some(item=>item.id===eventId) && body.p_state.events.length===0) {
+          // Real role/paid-history enforcement is covered by databaseIntegrity.
+          if(!canonical.state.events[0]?.adminIds.includes(`account-${ids[i]}`) || body.p_state.participants.length)
+            return reply({message:'Shared event deletion is not authorized'},403);
+          deletedEventMembers=new Set(canonical.state.events[0].participantIds);
+        }
         canonical.state = structuredClone(body.p_state); canonical.updated_at = stamp();
-        writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0])});
+        writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0]),
+          deletedEvents:structuredClone(canonical.state.deletedEvents ?? [])});
         const receipt = {status: 'updated', updatedAt: canonical.updated_at};
         const transferHold = transferReceiptHolds.get(i);
         if (transferHold && canonical.state.events[0].transfers.some(transfer => transfer.status === 'paid')) {
@@ -235,7 +250,7 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
       if (url.pathname.endsWith('/app_snapshots')) {
         const id = url.searchParams.get('id')?.replace(/^eq\./, '');
         if (request.method() === 'GET') {
-          const readable=canonical.state.events[0].participantIds.includes(`account-${ids[i]}`);
+          const readable=canReadCanonical(i);
           const rows = url.searchParams.has('snapshot_kind') ? [...(readable?[canonical]:[]),...(sibling && i===0 ? [sibling] : [])]
             : id === sharedId ? (readable?[canonical]:[]) : sibling && id === sibling.id && i===0 ? [sibling]
             : id === personal[i].id ? [personal[i]] : [];
@@ -340,6 +355,70 @@ async function newNote(page, title, body) {
   await page.locator('[data-action="new-event-note"]').click();
   await page.locator('[data-action="event-note-title"]').fill(title);
   await page.locator('[data-action="event-note-body"]').fill(body);
+}
+
+for(const manager of [0,1]) {
+  test(`paid event deletion on ${manager?'iPhone':'Android'} reaches an offline peer and clears its stale outbox`,async({},testInfo)=>{
+    const f=await fixture(testInfo,{withExpense:true,withPaidInstallments:true,paidEventOpen:true,managingClient:manager});
+    const owner=f.pages[manager],peer=f.pages[1-manager],peerIndex=1-manager;
+    try {
+      await peer.locator('[data-action="open-event-notes"]').click();
+      await f.offline(peerIndex,true);
+      await newNote(peer,'הערה לפני המחיקה','שינוי שהמתין בלי רשת');await saveNote(peer);
+      await expect.poll(()=>peer.evaluate(space=>localStorage.getItem(`settle-friends-pending-sync:${space}`),f.personal[peerIndex].id)).not.toBeNull();
+      await owner.locator('[data-action="open-event-settings"]').first().click();
+      await owner.locator('[data-settings-section="danger"]').click();
+      await owner.locator('[data-action="delete-event"]').click();
+      await owner.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+      await expect.poll(()=>f.canonical.state.events.length).toBe(0);
+      expect(f.canonical.state.participants).toEqual([]);
+      await expect(owner.locator('[data-screen-kind="home"]')).toBeVisible();
+      await f.offline(peerIndex,false);
+      await expect.poll(()=>peer.evaluate(space=>localStorage.getItem(`settle-friends-pending-sync:${space}`),f.personal[peerIndex].id),{timeout:12000}).toBeNull();
+      for(const i of [manager,peerIndex]) {
+        const page=f.pages[i];
+        await expect.poll(()=>page.evaluate(space=>JSON.parse(localStorage.getItem(`settle-friends-state:${space}`))?.events?.some(event=>event.id==='two-client-event'),f.personal[i].id)).toBe(false);
+        expect(f.personal[i].state.events.some(event=>event.id===eventId)).toBe(false);
+        expect(f.personal[i].state.deletedEvents.some(event=>event.id===eventId)).toBe(true);
+        await page.reload();
+        await expect(page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+      }
+      expect(f.writes.at(-1).deletedEvents.some(event=>event.id===eventId)).toBe(true);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
+
+  test(`participant alias on ${manager?'iPhone':'Android'} survives the other user's offline note`,async({},testInfo)=>{
+    const f=await fixture(testInfo,{withAliases:true,managingClient:manager});
+    const owner=f.pages[manager],peer=f.pages[1-manager],peerIndex=1-manager,participantId=`account-${ids[peerIndex]}`;
+    const alias='כינוי חדש שנשמר';
+    owner.setDefaultTimeout(15000);
+    try {
+      await peer.locator('[data-action="open-event-notes"]').click();
+      await f.offline(peerIndex,true);
+      await newNote(peer,'הערה בלי רשת','התוכן של המשתמש השני');await saveNote(peer);
+      await expect.poll(()=>peer.evaluate(space=>localStorage.getItem(`settle-friends-pending-sync:${space}`),f.personal[peerIndex].id)).not.toBeNull();
+      await owner.locator('[data-action="open-event-participants"]').click();
+      await owner.locator('[data-action="review-duplicate-participants"]').first().click();
+      await owner.locator('[data-action="keep-duplicate-participants"]').click();
+      // Resolving the pair opens the alias section and focuses its first field.
+      const input=owner.locator(`[data-action="participant-alias"][data-participant-id="${participantId}"]`);
+      await input.fill(alias);
+      await owner.locator(`[data-action="save-participant-alias"][data-participant-id="${participantId}"]`).click();
+      await expect.poll(()=>f.canonical.state.events[0].participantAliases[participantId]).toBe(alias);
+      await f.offline(peerIndex,false);
+      await expect.poll(()=>peer.evaluate(space=>localStorage.getItem(`settle-friends-pending-sync:${space}`),f.personal[peerIndex].id),{timeout:12000}).toBeNull();
+      expect(f.canonical.state.events[0].notes.some(note=>note.title==='הערה בלי רשת')).toBe(true);
+      expect(f.canonical.state.events[0].participantAliases[participantId]).toBe(alias);
+      await expect(input).toHaveValue(alias);
+      for(const i of [manager,peerIndex]) {
+        await expect.poll(()=>f.pages[i].evaluate(({space,id})=>JSON.parse(localStorage.getItem(`settle-friends-state:${space}`))?.events?.[0]?.participantAliases?.[id],
+          {space:f.personal[i].id,id:participantId})).toBe(alias);
+      }
+      expect(f.writes.filter(write=>write.client===peerIndex).at(-1).event.participantAliases[participantId]).toBe(alias);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
 }
 const saveNote = page => page.locator('[data-action="save-event-note"]').click();
 const noteCard = (page, id) => page.locator(`.event-note-open[data-note-id="${id}"]`);
@@ -606,7 +685,9 @@ for(const joiningClient of [0,1]) {
       await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');
       await joiner.waitForLoadState('networkidle');
       expect(f.errors,'reload must not raise application errors').toEqual([]);
-      await joiner.goto('/');
+      // Reload was verified above. Return through the actual home action;
+      // a second forced document navigation can abort WebKit's poll/preflight.
+      await joiner.locator('.product-app-nav [data-action="home"]').first().click();
       await expect(joiner.locator('[data-screen-kind="home"]')).toBeVisible();
       await joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await expect(joiner.locator('.expense-row')).toContainText('הוצאה אחרי הצטרפות ללא חיבור');

@@ -1,7 +1,37 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CloudStateConflictError, readCloudState, readCloudSnapshot, saveCloudState } from "../src/data/cloudStore.mjs";
-import { buildSharedEventState, saveSharedEventState, saveSharedEventDeletion } from "../src/data/sharedEventStore.mjs";
+import { buildSharedEventState, saveSharedEventState, saveSharedEventDeletion, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
+
+for (const batch of [false, true]) {
+  test(`peer event deletion during CAS is adopted by ${batch ? "the full event batch" : "the individual save"} without another write`, async () => {
+    const fixture = createFixture(`delete-conflict-${batch}`);
+    const local = structuredClone(fixture.state);
+    local.events[0].notes.push(item("notes", "offline-note", 1));
+    let canonical = buildSharedEventState(fixture.state, "event"), token = version(0);
+    const writes = [];
+    const transport = async (url, options = {}) => {
+      if (new URL(url).pathname.endsWith("/rpc/update_shared_event_snapshot")) {
+        const body = JSON.parse(options.body);
+        writes.push(body);
+        assert.equal(writes.length, 1, "a confirmed peer deletion must not be overwritten");
+        canonical = { currentParticipantId: "", participants: [], groups: [], events: [],
+          deletedEvents: [{ id: "event", deletedAt: version(3) }] };
+        token = version(3);
+        return json({ status: "conflict", updatedAt: token });
+      }
+      return json([{ state: structuredClone(canonical), updated_at: token }]);
+    };
+    const result = batch ? await syncSharedEvents(fixture.config, local, transport)
+      : await saveSharedEventState(fixture.config, local, "event", transport);
+    assert.deepEqual(result.events, []);
+    assert.equal(result.currentParticipantId, local.currentParticipantId);
+    assert.deepEqual(result.deletedEvents, [{ id: "event", deletedAt: version(3),
+      sharedSpaceId: fixture.sharedConfig.storage.spaceId, sharedSpaceKey: fixture.sharedConfig.storage.spaceKey }]);
+    assert.equal(writes.length, 1);
+    assert.deepEqual(canonical.events, []);
+  });
+}
 
 for (const collection of ["notes", "expenses"]) {
   for (const raceAtRead of [1, 2]) {

@@ -20,7 +20,8 @@ const ENTITY_COLLECTION_KEYS = [
 const SENSITIVE_KEY_FIELDS = new Set(["spaceKey", "sharedSpaceKey"]);
 const MERGE_TIMESTAMP_MAP_KEYS = new Set([
   "membershipUpdatedAtByParticipant",
-  "settingsFieldUpdatedAt"
+  "settingsFieldUpdatedAt",
+  "participantAliasUpdatedAtByParticipant"
 ]);
 
 export const EVENT_SETTING_FIELDS = Object.freeze([
@@ -456,10 +457,7 @@ function mergeEvent(remoteEvent, localEvent) {
       ? {participantAccountLinks:mergeAccountLinkReceipts(remoteEvent.participantAccountLinks,localEvent.participantAccountLinks)}
       : {}),
     ...mergeEventNotes(remoteEvent, localEvent),
-    participantAliases: {
-      ...cloneValue(objectOrEmpty(remoteEvent.participantAliases)),
-      ...cloneValue(objectOrEmpty(localEvent.participantAliases))
-    },
+    ...mergeEventParticipantAliases(remoteEvent, localEvent),
     distinctParticipantPairs: unionValues(
       localEvent.distinctParticipantPairs,
       remoteEvent.distinctParticipantPairs
@@ -490,6 +488,36 @@ function mergeEvent(remoteEvent, localEvent) {
   }
 
   return mergedEvent;
+}
+
+function mergeEventParticipantAliases(remoteEvent, localEvent) {
+  const aliases = {};
+  const clocks = {};
+  const clockField = "participantAliasUpdatedAtByParticipant";
+  const remoteClocks = objectOrEmpty(remoteEvent[clockField]);
+  const localClocks = objectOrEmpty(localEvent[clockField]);
+  const remoteAliases = objectOrEmpty(remoteEvent.participantAliases);
+  const localAliases = objectOrEmpty(localEvent.participantAliases);
+  for (const id of new Set([...Object.keys(remoteClocks), ...Object.keys(localClocks)])) {
+    clocks[id] = timestamp(remoteClocks[id]) > timestamp(localClocks[id]) ? remoteClocks[id] : localClocks[id];
+  }
+  for (const id of new Set([...Object.keys(remoteAliases), ...Object.keys(localAliases)])) {
+    const remoteTime = timestamp(remoteClocks[id]), localTime = timestamp(localClocks[id]);
+    const remoteValue = remoteAliases[id] ?? "", localValue = localAliases[id] ?? "";
+    // Unversioned legacy maps keep their existing merge behavior. Once an
+    // alias is edited or cleared, its own clock protects it from old replicas
+    // without replacing changes to any other participant's alias.
+    let value;
+    if (remoteTime > localTime) value = remoteValue;
+    else if (localTime > remoteTime) value = localValue;
+    else if (Number.isFinite(remoteTime)) value = String(remoteValue) < String(localValue) ? remoteValue : localValue;
+    else value = Object.hasOwn(localAliases, id) ? localValue : remoteValue;
+    aliases[id] = cloneValue(value);
+  }
+  return {
+    participantAliases: aliases,
+    ...(Object.hasOwn(remoteEvent, clockField) || Object.hasOwn(localEvent, clockField) ? { [clockField]: clocks } : {})
+  };
 }
 
 function mergeAccountLinkReceipts(canonical = [], replica = []) {
