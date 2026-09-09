@@ -19161,6 +19161,9 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row:has(.expense-row-actions-menu[open]) {
+    /* content-visibility:auto contains paint even for a visible row. Release
+       that containment while its menu extends outside the card. */
+    content-visibility: visible !important;
     position: relative !important;
     z-index: 60 !important;
   }
