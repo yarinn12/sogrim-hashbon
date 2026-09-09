@@ -73,7 +73,16 @@ function setupNativeBridge() {
     },
     async share(options) {
       if (!sharePlugin?.share) return false;
-      await sharePlugin.share(options);
+      try {
+        await sharePlugin.share(options);
+      } catch (error) {
+        // Capacitor iOS rejects when the user dismisses UIActivityViewController.
+        // Match the Web Share cancellation contract so callers respect Cancel.
+        if (nativePlatform === "ios" && error?.message === "Share canceled") {
+          throw new DOMException("Share canceled", "AbortError");
+        }
+        throw error;
+      }
       return true;
     },
     camera: createNativeCameraApi(cameraPlugin),

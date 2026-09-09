@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.46"
+        default: "4.47"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "175"
+        default: "176"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור אמינות סימון וביטול תשלומים. תשובה מאוחרת אינה דורסת פעולה חדשה או שינוי של משתתף אחר, ואינה מפריעה לאחר מעבר מסך או התחברות מחדש. נוספו בדיקות רגרסיה וסנכרון באנדרואיד ובאייפון."
+        default: "שיפור השימוש באייפון: כפתורי שמירה נשארים נגישים עם מקלדת פתוחה, ביטול שיתוף פועל כראוי, נשמרת הגדרת ההתחברות עם Google וכפתורי הוצאות זמינים גם באירועים גדולים. כולל שיפורי אמינות התשלומים של גרסה 4.46 ובדיקות רגרסיה חדשות."
 
 permissions:
   contents: read
