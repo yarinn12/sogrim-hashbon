@@ -9,7 +9,7 @@ test("home lists every event without a separate recent-event card", async () => 
   assert.ok(home);
   assert.match(home[0], /personalArchivedEventIds\(\)/);
   assert.match(home[0], /eventStatusFilter === "archive"/);
-  assert.match(home[0], /events\.map\(renderEventRow\)/);
+  assert.match(home[0], /events\.map\(event => renderEventRow\(event, pinnedEventIds\.has\(event\.id\)\)\)/);
   assert.doesNotMatch(home[0], /recentEvent|renderRecentEventShortcut|listEvents/);
 });
 
