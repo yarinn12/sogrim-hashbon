@@ -68,7 +68,8 @@ test("reopening asks whether to keep or reset recorded payments", async () => {
   assert.match(app, /לאפס את כל התשלומים/);
   assert.match(app, /paymentMode: "keep"/);
   assert.match(app, /resetPayments: action\.payload\.paymentMode === "reset"/);
-  assert.match(app, /event\.transfers = \(event\.transfers \?\? \[\]\)\.map/);
+  // The reset's persistence behavior is exercised in reopenPaymentReset.test.mjs.
+  assert.match(app, /for \(const transfer of event\.transfers \?\? \[\]\) \{\s*state = updateTransferStatus\(state, eventId, transfer\.id, \{\s*status: "pending"/);
 });
 
 test("settlement transfer identity and disclosure stay platform-neutral", async () => {

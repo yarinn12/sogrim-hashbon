@@ -994,10 +994,10 @@ async function loadSharedStateOnce(requestScope) {
             syncedState,
             recoveredStateResult.state
           );
-          const syncedStateWithIdentity = applyLocalParticipantId(
+          const syncedStateWithIdentity = mergeConfirmedSaveWithCurrentLocal(applyLocalParticipantId(
             cleanLegacyStarterData(visibleState, loadProtectedParticipantId()),
             loadLocalParticipantId()
-          );
+          ), localState);
           saveStateForScope(syncedStateWithIdentity, requestScope);
           return sharedStateLoadResult(
             syncedStateWithIdentity,
@@ -1300,8 +1300,9 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
             requestSaveGeneration === sharedStateSaveGeneration &&
             pendingPayload === pendingSharedStateRaw(runtimeConfig)
           ) {
-            Object.assign(state, syncedState);
-            saveState(syncedState);
+            const visibleState = mergeConfirmedSaveWithCurrentLocal(syncedState, stateSnapshot);
+            Object.assign(state, visibleState);
+            saveState(visibleState);
           }
           if (pendingPayload === pendingSharedStateRaw(runtimeConfig)) {
             clearPendingSharedState(runtimeConfig);
@@ -1528,6 +1529,7 @@ async function flushPendingSharedStateOnce() {
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountGeneration = accountStorageGeneration;
   const requestSaveGeneration = sharedStateSaveGeneration;
+  const localStateAtRequest = loadState();
   let runtimeConfig = activateClientSpace(await loadRuntimeConfig());
   if (runtimeConfigUsedFallback) {
     runtimeConfigPromise = null;
@@ -1593,10 +1595,10 @@ async function flushPendingSharedStateOnce() {
       const pending = reconcileCurrentPendingSync(runtimeConfig);
       return { ok: true, pending, superseded: true };
     }
-    const syncedStateWithIdentity = applyLocalParticipantId(
+    const syncedStateWithIdentity = mergeConfirmedSaveWithCurrentLocal(applyLocalParticipantId(
       cleanLegacyStarterData(saved.state, loadProtectedParticipantId()),
       loadLocalParticipantId()
-    );
+    ), localStateAtRequest);
     saveStateForScope(syncedStateWithIdentity, requestScope);
     clearPendingSharedState(runtimeConfig);
     resetPendingSharedStateRetry();
@@ -2540,6 +2542,16 @@ function staleAccountSaveResult() {
       code: "STALE_ACCOUNT"
     })
   };
+}
+
+function mergeConfirmedSaveWithCurrentLocal(savedState, initialLocalState) {
+  const currentLocalState = loadState();
+  // A foreground read can persist newer peer changes without advancing the
+  // local mutation generation. An older receipt must not erase that snapshot.
+  // Keep normal server reconciliation authoritative when no read intervened.
+  return hasCloudStateChanged(initialLocalState, currentLocalState)
+    ? mergeSharedStates(savedState, currentLocalState)
+    : savedState;
 }
 
 function mergeLoadedStateWithCurrentLocal(loadedState, requestScope) {
