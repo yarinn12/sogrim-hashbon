@@ -72,7 +72,12 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(workflow, /app-type: ios/);
   assert.match(workflow, /backend: appstore-api/);
   assert.doesNotMatch(workflow, /backend: AppStoreAPI/);
-  assert.match(workflow, /uses-non-exempt-encryption: "false"/);
+  assert.doesNotMatch(workflow, /^\s*uses-non-exempt-encryption:/m,
+    "Apple rejects a second encryption declaration after reading it from the signed app");
+  assert.match(info, /<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\s*\/>/);
+  assert.match(submissionCheck, /check\("Export compliance is declared"/);
+  assert.match(workflow, /wait-for-processing: "true"/,
+    "Removing the duplicate declaration must not skip Apple's processing result");
   assert.doesNotMatch(workflow, /push:/);
   assert.match(workflowEnv, /APPSTORE_CERTIFICATES_FILE_BASE64/);
   assert.match(workflowEnv, /GOOGLE_IOS_CLIENT_ID/);
