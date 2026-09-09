@@ -20590,6 +20590,38 @@ async function deleteCurrentEvent(eventId) {
   return result;
 }
 
+function beginTransferStatusRequest(eventId, transferIds) {
+  const account = captureFriendAccountContext();
+  const request = { account, screen, transfers: [] };
+  for (const id of transferIds) {
+    const transfer = getEvent(eventId)?.transfers?.find(item => item.id === id);
+    if (!transfer) continue;
+    const key = JSON.stringify([account.scope, eventId, id]);
+    // An object token cannot be reused after an intervening request completes.
+    // Each transfer is owned separately, including within a grouped undo.
+    transferStatusRequestVersions.set(key, request);
+    request.transfers.push({ key, id, eventId, expected: { ...transfer } });
+  }
+  return request;
+}
+
+function finishTransferStatusRequest(request) {
+  const ownedIds = new Set();
+  for (const { key, id, eventId, expected } of request.transfers) {
+    if (transferStatusRequestVersions.get(key) !== request) continue;
+    transferStatusRequestVersions.delete(key);
+    if (!request.account.isCurrent()) continue;
+    const current = getEvent(eventId)?.transfers?.find(item => item.id === id);
+    // A synchronized peer revision also supersedes this optimistic update,
+    // even when it has the same paid/pending value.
+    if (current && ["status", "statusUpdatedAt", "markedPaidAt", "markedPaidByParticipantId",
+      "amount", "fromParticipantId", "toParticipantId"].every(field => current[field] === expected[field])) {
+      ownedIds.add(id);
+    }
+  }
+  return ownedIds;
+}
+
 async function markTransferPaid(transferId, trigger) {
   const event = getEvent(screen.eventId);
   const transfer = event?.transfers.find((item) => item.id === transferId);
@@ -20601,9 +20633,6 @@ async function markTransferPaid(transferId, trigger) {
   }
 
   const previousState = cloneNavigationValue(state);
-  const requestKey = `${previousState.currentParticipantId}:${event.id}:${transfer.id}`;
-  const requestVersion = (transferStatusRequestVersions.get(requestKey) ?? 0) + 1;
-  transferStatusRequestVersions.set(requestKey, requestVersion);
   const hadPendingTransfers = event.transfers.some(
     (transfer) => transfer.status !== "paid"
   );
@@ -20618,19 +20647,19 @@ async function markTransferPaid(transferId, trigger) {
     fromParticipantId: transfer.fromParticipantId,
     toParticipantId: transfer.toParticipantId
   }, markedAt);
+  const request = beginTransferStatusRequest(event.id, [transferId]);
   syncSettlementCloseConfirmation(event.id);
   notice = "שומרים את סימון התשלום…";
   render();
   const saveRequest = persistState({
-      handlesSaveFailure: true,
+    handlesSaveFailure: true,
     awaitCloud: true,
     forceSharedEventIds: [event.id]
   });
   publishReferralActivityAfterSave(saveRequest, event.id, "transfer-paid");
   const result = await saveRequest;
-  if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return result;
-  transferStatusRequestVersions.delete(requestKey);
-  if (state.currentParticipantId !== previousState.currentParticipantId) return result;
+  const ownedIds = finishTransferStatusRequest(request);
+  if (!ownedIds.has(transferId)) return result;
   if (!result?.ok && !result?.pending) {
     state = rollbackTransferStatusChanges(
       state,
@@ -20644,13 +20673,16 @@ async function markTransferPaid(transferId, trigger) {
       forceSharedEventIds: [event.id],
       suppressRevertNotice: true
     }).catch(() => {});
-    settlementCelebration = null;
-    notice = saveFailureMessage(result, "סימון התשלום לא נשמר.");
+    if (request.screen === screen) {
+      settlementCelebration = null;
+      notice = saveFailureMessage(result, "סימון התשלום לא נשמר.");
+    }
     render();
     return result;
   }
 
   emitProductMetric("transfer_marked_paid", { screen: "settlement" });
+  if (request.screen !== screen) return result;
   const updatedEvent = getEvent(event.id);
   const completedAllTransfers = Boolean(
     hadPendingTransfers &&
@@ -20694,9 +20726,6 @@ async function markTransfersPending(transferIds) {
   }
 
   const previousState = cloneNavigationValue(state);
-  const requestKey = `${previousState.currentParticipantId}:${event.id}:${transfers.map((transfer) => transfer.id).sort().join(",")}`;
-  const requestVersion = (transferStatusRequestVersions.get(requestKey) ?? 0) + 1;
-  transferStatusRequestVersions.set(requestKey, requestVersion);
   const markedAt = new Date().toISOString();
   for (const transfer of transfers) {
     state = updateTransferStatus(state, event.id, transfer.id, {
@@ -20713,6 +20742,7 @@ async function markTransfersPending(transferIds) {
       toParticipantId: transfer.toParticipantId
     }, markedAt)
   );
+  const request = beginTransferStatusRequest(event.id, transfers.map(transfer => transfer.id));
   syncSettlementCloseConfirmation(event.id);
   notice = transfers.length === 1
     ? "מבטלים את סימון התשלום…"
@@ -20722,15 +20752,14 @@ async function markTransfersPending(transferIds) {
     awaitCloud: true,
     forceSharedEventIds: [event.id]
   });
-  if (transferStatusRequestVersions.get(requestKey) !== requestVersion) return;
-  transferStatusRequestVersions.delete(requestKey);
-  if (state.currentParticipantId !== previousState.currentParticipantId) return result;
+  const ownedIds = finishTransferStatusRequest(request);
+  if (!ownedIds.size) return result;
   if (!result?.ok && !result?.pending) {
     const previousEvent = previousState.events.find((item) => item.id === event.id);
     state = rollbackTransferStatusChanges(
       state,
       event.id,
-      transfers.map((transfer) =>
+      transfers.filter(transfer => ownedIds.has(transfer.id)).map((transfer) =>
         previousEvent?.transfers?.find((item) => item.id === transfer.id)
       ),
       "pending",
@@ -20740,10 +20769,13 @@ async function markTransfersPending(transferIds) {
       forceSharedEventIds: [event.id],
       suppressRevertNotice: true
     }).catch(() => {});
-    notice = "לא הצלחנו לבטל את סימון התשלום. המצב הקודם נשמר.";
+    if (request.screen === screen) {
+      notice = "לא הצלחנו לבטל את סימון התשלום. המצב הקודם נשמר.";
+    }
     render();
     return result;
   }
+  if (request.screen !== screen) return result;
   notice = result?.pending
     ? "סימון התשלום בוטל."
     : transfers.length === 1

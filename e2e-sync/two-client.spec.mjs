@@ -21,6 +21,7 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
   const accountLinkWriteHolds = new Map();
   const noteReceiptHolds = new Map();
   const expenseReceiptHolds = new Map();
+  const transferReceiptHolds = new Map();
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
@@ -75,6 +76,7 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
     for(const hold of accountLinkWriteHolds.values()) hold.release();
     for(const hold of noteReceiptHolds.values()) hold.release();
     for(const hold of expenseReceiptHolds.values()) hold.release();
+    for(const hold of transferReceiptHolds.values()) hold.release();
     for(const hold of inviteHolds.values()) hold.release();
     // Playwright Test already traces these contexts through the shared config.
     await Promise.all(browsers.map(browser => browser.close()));
@@ -197,6 +199,12 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
         canonical.state = structuredClone(body.p_state); canonical.updated_at = stamp();
         writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0])});
         const receipt = {status: 'updated', updatedAt: canonical.updated_at};
+        const transferHold = transferReceiptHolds.get(i);
+        if (transferHold && canonical.state.events[0].transfers.some(transfer => transfer.status === 'paid')) {
+          transferReceiptHolds.delete(i);
+          transferHold.arrived = true;
+          await transferHold.ready;
+        }
         const expenseHold = expenseReceiptHolds.get(i);
         if (expenseHold && expenseHold.matches(canonical.state.events[0].expenses)) {
           expenseReceiptHolds.delete(i);
@@ -278,6 +286,10 @@ async function fixture(testInfo, {withExpense = false, restaurant = false, withA
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
+    holdNextPaidReceipt(i) {
+      let release; const ready = new Promise(resolve => {release = resolve;});
+      const hold = {arrived:false,ready,release}; transferReceiptHolds.set(i,hold); return hold;
+    },
     restartBeforeExpenseReceipt(i, matches) {
       let release; const ready = new Promise(resolve => { release = resolve; });
       const hold = {arrived:false,ready,release,matches}; expenseReceiptHolds.set(i,hold); return hold;
@@ -380,6 +392,32 @@ test('live expense changes preserve close confirmation focus through payment and
     }
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
   }finally{await f.close();}
+});
+
+for (const actor of [0, 1]) test(`late payment receipt preserves navigation for ${actor ? 'iPhone' : 'Android'} and reaches the peer`, async ({},testInfo) => {
+  const f = await fixture(testInfo, {withExpense:true});
+  const payer = f.pages[actor], peer = f.pages[1 - actor];
+  try {
+    for (const page of f.pages) await page.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await f.pages[0].locator('[data-action="close-event"]').first().click();
+    await f.pages[0].locator('[data-action="confirm-close-event"]').click();
+    await expect(payer.locator('.settlement-transfer-board [data-action="mark-paid"]')).toHaveCount(1);
+    const hold = f.holdNextPaidReceipt(actor);
+    await payer.locator('.settlement-transfer-board [data-action="mark-paid"]').click();
+    await expect.poll(() => hold.arrived).toBe(true);
+    expect(f.canonical.state.events[0].transfers[0].status).toBe('paid');
+    await payer.locator('.product-app-nav [data-action="home"]').first().click();
+    await expect(payer.locator('[data-screen-kind="home"]')).toBeVisible();
+    hold.release();
+    // Acknowledgement is checked at the durable outbox, not with a fixed sleep.
+    await expect.poll(() => payer.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), f.personal[actor].id)).toBeNull();
+    await expect(peer.locator('.settlement-transfer-board [data-action="mark-pending"]')).toHaveCount(1);
+    await expect(payer.locator('.settlement-celebration-dialog')).toHaveCount(0);
+    await expect(payer.locator('[data-screen-kind="home"]')).toBeVisible();
+    expect(f.writes.filter(write => write.client === actor).at(-1).event.transfers[0]).toMatchObject({amount:6000,status:'paid'});
+    for (const page of f.pages) expect((await storedEvent(page,f.personal[f.pages.indexOf(page)].id)).transfers[0].status).toBe('paid');
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
 });
 
 test('live expense changes preserve an open settlement calculation', async ({},testInfo)=>{

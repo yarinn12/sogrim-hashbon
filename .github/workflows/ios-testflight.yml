@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.45"
+        default: "4.46"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "174"
+        default: "175"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "מניעת הוצאות ופריטי מסעדה כפולים אחרי רענון בזמן שמירה. שיפור שחזור עריכות והגנה מפני דריסת שינויים ומחיקות של משתתפים אחרים. נוספו בדיקות רגרסיה וסנכרון בין מכשירים."
+        default: "שיפור אמינות סימון וביטול תשלומים. תשובה מאוחרת אינה דורסת פעולה חדשה או שינוי של משתתף אחר, ואינה מפריעה לאחר מעבר מסך או התחברות מחדש. נוספו בדיקות רגרסיה וסנכרון באנדרואיד ובאייפון."
 
 permissions:
   contents: read
