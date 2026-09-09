@@ -17152,7 +17152,11 @@ async function confirmImportantAction() {
       render();
       activateDialog(".important-action-dialog");
     }
-    await executeImportantAction(pendingAction);
+    const actionRequest = executeImportantAction(pendingAction);
+    // Suppress only this action's immediate transition. Holding the global
+    // flag across network I/O drops the next event menu from browser history.
+    restoringBrowserHistory = false;
+    await actionRequest;
   } catch (error) {
     console.error("[important-action] Unexpected action failure", {
       kind: String(pendingAction.kind ?? "unknown"),
@@ -20574,10 +20578,14 @@ async function deleteCurrentEvent(eventId) {
     saveSharedState(state, { awaitCloud: true })
   );
   const result = await saveCheckpoint.request;
+  // Several removals can be accepted before the first cloud reply arrives.
+  // Only the latest save in this account owns its completion feedback.
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
-    screen = { name: "event", eventId };
+    // Restore the failed event in the list without interrupting the next
+    // removal confirmation or a screen the user has opened in the meantime.
     notice = "לא הצלחנו להשלים את מחיקת האירוע. האירוע נשאר שמור ואפשר לנסות שוב.";
     render();
     return result;
