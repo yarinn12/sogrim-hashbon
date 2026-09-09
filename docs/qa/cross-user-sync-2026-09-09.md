@@ -14,10 +14,11 @@ The alias SQL migration extends the existing timestamp guard. It rejects invalid
 ## Regression evidence
 
 - 11 deletion tests on baseline: **10 failed, 1 permission control passed**. The corrected code passes all 11.
+- An additional end-to-end SQL case verifies that the former member can read the administrator's paid-event tombstone through real RLS and that the member's batch adopts it without attempting a write. It fails on baseline and passes after the fix.
 - 5 alias reproduction/control tests on baseline: **4 failed, 1 unrelated-setting control passed**. Includes a real database-backed member write. All pass after the fix.
 - 4 independent-browser reproductions on baseline: **all failed for the intended persisted-data assertion**. All pass after the fix, with Android/Chromium and iPhone/WebKit each acting as administrator and offline peer.
-- 27 new tests in the normal suite and 4 new two-client browser cases. Additional controls cover invalid clocks, idempotent migration, same-millisecond edits, full participant identifiers, deterministic equal-version clearing, rejected receipts, concurrent edits and account linking.
-- Local normal suite on the fixed 4.48 base: **3,016 passed, 0 failed, 0 skipped**.
+- 28 new tests in the normal suite and 4 new two-client browser cases. Additional controls cover invalid clocks, idempotent migration, same-millisecond edits, full participant identifiers, deterministic equal-version clearing, rejected receipts, concurrent edits and account linking.
+- Local normal suite on the fixed 4.48 base passed without failures or skips; the final report contains the completed count including the additional RLS case.
 
 The database and transport tests inspect the final request, committed row/receipt and adopted state. Browser cases inspect the canonical event, independent personal storage, personal cloud snapshot, durable outbox and final peer write; the deletion case also reloads both clients. Browser errors and unexpected requests still fail the suite.
 

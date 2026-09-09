@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
 import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants } from "../src/domain/appActions.mjs";
-import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState, saveSharedEventDeletion } from "../src/data/sharedEventStore.mjs";
+import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState, saveSharedEventDeletion, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
@@ -468,6 +468,27 @@ test("SQL event deletion client still rejects a non-administrator", async () => 
       }
       return { ok: true, status: 200, json: async () => (await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows };
     }), { code: "42501" });
+  }, previous => markPaid(previous, ids.admin));
+});
+
+test("SQL a peer adopts an administrator's paid event deletion through the actual RLS read boundary", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const deletion = { id: "integrity-probe", deletedAt: new Date().toISOString() };
+    assert.equal((await save({ ...previous, currentParticipantId: "", participants: [], groups: [], events: [], deletedEvents: [deletion] })).status, "updated");
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [ids.sender.slice(8)]);
+    const rows = (await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows;
+    assert.equal(rows.length, 1, "a historical member must still be allowed to read the tombstone");
+    const local = structuredClone(previous);
+    local.currentParticipantId = ids.sender;
+    Object.assign(local.events[0], { sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey });
+    const result = await syncSharedEvents({ storage: { mode: "supabase", url: "https://peer-deletion-db.invalid", table: "app_snapshots", anonKey: "synthetic",
+      account: { userId: ids.sender.slice(8), accessToken: "synthetic-token" } } }, local, async (_url, options = {}) => {
+      assert.equal(options.method ?? "GET", "GET", "the member must adopt the deletion without recreating the snapshot");
+      return { ok: true, status: 200, json: async () => rows };
+    });
+    assert.deepEqual(result.events, []);
+    assert.equal(result.currentParticipantId, ids.sender);
+    assert.deepEqual(result.deletedEvents, [{ ...deletion, sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey }]);
   }, previous => markPaid(previous, ids.admin));
 });
 
