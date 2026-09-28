@@ -1,0 +1,131 @@
+name: Apple review status
+
+on:
+  push:
+    branches:
+      - codex/apple-review-status-20260928
+    paths:
+      - .github/workflows/apple-review-status.yml
+
+permissions: {}
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - name: Read App Store Connect review status
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { sign } from "node:crypto";
+
+          const appId = "6809952514";
+          const submissionId = "8b6da79a-4738-4884-b744-c04959b104da";
+          const issuerId = required("APPSTORE_ISSUER_ID");
+          const keyId = required("APPSTORE_API_KEY_ID");
+          const privateKey = required("APPSTORE_API_PRIVATE_KEY").replace(/\\n/g, "\n");
+          const now = Math.floor(Date.now() / 1000);
+          const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+          const unsigned = `${encode({ alg: "ES256", kid: keyId, typ: "JWT" })}.${encode({
+            iss: issuerId,
+            iat: now,
+            exp: now + 600,
+            aud: "appstoreconnect-v1"
+          })}`;
+          const signature = sign("sha256", Buffer.from(unsigned), {
+            key: privateKey,
+            dsaEncoding: "ieee-p1363"
+          }).toString("base64url");
+          const token = `${unsigned}.${signature}`;
+
+          const submission = await get(`/v1/reviewSubmissions/${submissionId}`);
+          const items = await get(`/v1/reviewSubmissions/${submissionId}/items`, {
+            include: "appStoreVersion",
+            limit: "200"
+          });
+          const builds = await get("/v1/builds", {
+            "filter[app]": appId,
+            "filter[preReleaseVersion.version]": "4.50",
+            "filter[preReleaseVersion.platform]": "IOS",
+            "filter[version]": "179",
+            "filter[processingState]": "VALID",
+            "filter[buildAudienceType]": "APP_STORE_ELIGIBLE",
+            include: "preReleaseVersion",
+            limit: "20"
+          });
+          const versions = await get(`/v1/apps/${appId}/appStoreVersions`, {
+            "filter[platform]": "IOS",
+            include: "build",
+            limit: "50"
+          });
+
+          const result = {
+            submission: resource(submission.data, ["platform", "submittedDate", "state"]),
+            items: (items.data || []).map(item => ({
+              ...resource(item, ["state"]),
+              appStoreVersionId: item.relationships?.appStoreVersion?.data?.id || null
+            })),
+            itemVersions: (items.included || [])
+              .filter(item => item.type === "appStoreVersions")
+              .map(item => ({
+                ...resource(item, ["platform", "versionString", "appStoreState"]),
+                buildId: item.relationships?.build?.data?.id || null
+              })),
+            eligibleBuilds450_179: (builds.data || []).map(item => ({
+              ...resource(item, ["version", "uploadedDate", "processingState", "buildAudienceType", "expired"]),
+              preReleaseVersionId: item.relationships?.preReleaseVersion?.data?.id || null
+            })),
+            preReleaseVersions: (builds.included || [])
+              .filter(item => item.type === "preReleaseVersions")
+              .map(item => resource(item, ["platform", "version"])),
+            appStoreVersions: (versions.data || []).map(item => ({
+              ...resource(item, ["platform", "versionString", "appStoreState", "createdDate"]),
+              buildId: item.relationships?.build?.data?.id || null
+            }))
+          };
+
+          const output = JSON.stringify(result, null, 2);
+          console.log(output);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Apple review status\n\n\`\`\`json\n${output}\n\`\`\`\n`);
+          }
+
+          function required(name) {
+            const value = String(process.env[name] || "").trim();
+            if (!value) throw new Error(`${name} is missing.`);
+            return value;
+          }
+
+          function resource(item, fields) {
+            if (!item) return null;
+            return {
+              type: item.type,
+              id: item.id,
+              attributes: Object.fromEntries(fields.map(field => [field, item.attributes?.[field] ?? null]))
+            };
+          }
+
+          async function get(path, query = {}) {
+            const url = new URL(`https://api.appstoreconnect.apple.com${path}`);
+            for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+            const response = await fetch(url, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              const errors = (body.errors || []).map(error => ({
+                status: error.status || null,
+                code: error.code || null,
+                title: error.title || null
+              }));
+              throw new Error(`App Store Connect GET ${path} failed (${response.status}): ${JSON.stringify(errors)}`);
+            }
+            return body;
+          }
+          NODE
