@@ -1,21 +1,26 @@
 name: iOS TestFlight
-run-name: iOS TestFlight ${{ inputs.version }} (${{ inputs.build }})
+run-name: iOS TestFlight ${{ inputs.version || '4.53' }} (${{ inputs.build || '182' }})
 
 on:
+  push:
+    branches:
+      - codex/apple-guideline-48-20260929
+    paths:
+      - .github/workflows/ios-testflight.yml
   workflow_dispatch:
     inputs:
       version:
         description: App Store version
         required: true
-        default: "4.51"
+        default: "4.53"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "180"
+        default: "182"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תיקון מעבר לקיזוז חכם: מסלול ההעברות מחושב מחדש בהתאם לבחירה, נשמר ומסתנכרן בין המשתתפים גם לאחר ניתוק וחיבור מחדש. הוצאות ותשלומים שכבר בוצעו נשמרים."
+        default: "שיפור אמינות הכניסה עם Apple והצגת אפשרויות ההתחברות."
 
 permissions:
   contents: read
@@ -35,9 +40,9 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
-      IOS_VERSION: ${{ inputs.version }}
-      IOS_BUILD: ${{ inputs.build }}
-      IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
+      IOS_VERSION: ${{ inputs.version || '4.53' }}
+      IOS_BUILD: ${{ inputs.build || '182' }}
+      IOS_RELEASE_NOTES: ${{ inputs.release_notes || 'שיפור אמינות הכניסה עם Apple והצגת אפשרויות ההתחברות.' }}
 
     steps:
       - name: Checkout
@@ -56,6 +61,9 @@ jobs:
           APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
+      - name: Verify public Apple login provider readiness
+        run: npm run qa:ios:providers
+
       - name: Select and verify Xcode 26.6
         run: |
           sudo xcode-select -s /Applications/Xcode_26.6.app
@@ -70,6 +78,11 @@ jobs:
           npm test
           npm run native:ios:flatten-icon
           npm run native:prepare
+
+      - name: Verify Apple login on iPhone and iPad WebKit
+        run: |
+          npx playwright install webkit
+          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs --project=iphone-webkit --project=ipad-webkit
 
       - name: Prepare Apple release settings
         run: node scripts/prepare-ios-release.mjs
@@ -133,7 +146,7 @@ jobs:
           issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          release-notes: ${{ inputs.release_notes }}
+          release-notes: ${{ env.IOS_RELEASE_NOTES }}
           # Info.plist already declares export compliance; Apple rejects re-setting it.
           wait-for-processing: "true"
           backend: appstore-api
@@ -142,10 +155,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-hashbon-ios-${{ inputs.version }}-${{ inputs.build }}
+          name: sogrim-hashbon-ios-${{ env.IOS_VERSION }}-${{ env.IOS_BUILD }}
           path: |
             build/ios/SogrimHashbon.ipa
             build/ios/release-manifest.json
             build/ios/*.log
+            test-results/
+            playwright-report/
           if-no-files-found: warn
           retention-days: 7

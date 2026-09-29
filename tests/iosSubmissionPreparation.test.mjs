@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("iOS release automation is safe, manual and TestFlight-ready", async () => {
+test("iOS release automation restricts candidate pushes and remains manually TestFlight-ready", async () => {
   const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
@@ -78,7 +78,17 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.match(submissionCheck, /check\("Export compliance is declared"/);
   assert.match(workflow, /wait-for-processing: "true"/,
     "Removing the duplicate declaration must not skip Apple's processing result");
-  assert.doesNotMatch(workflow, /push:/);
+  // The Apple 4.8 review candidate may build from this one branch when its
+  // workflow changes. Preserve manual dispatch and reject a general push gate.
+  const pushTrigger = workflow.match(/^  push:\n([\s\S]*?)(?=^  workflow_dispatch:)/m)?.[1];
+  assert.equal(pushTrigger, [
+    "    branches:",
+    "      - codex/apple-guideline-48-20260929",
+    "    paths:",
+    "      - .github/workflows/ios-testflight.yml",
+    ""
+  ].join("\n"), "automatic upload is restricted to the named review branch and workflow path");
+  assert.doesNotMatch(workflow, /^  (?:pull_request|pull_request_target|schedule):/m);
   assert.match(workflowEnv, /APPSTORE_CERTIFICATES_FILE_BASE64/);
   assert.match(workflowEnv, /GOOGLE_IOS_CLIENT_ID/);
   assert.match(workflowEnv, /BEGIN PRIVATE KEY/);
