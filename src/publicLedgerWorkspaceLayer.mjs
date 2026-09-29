@@ -79,17 +79,19 @@ const CSS = `
   html.ledger-workspace-v1 .skip-link {
     position: fixed !important;
     inset-block-start: 8px !important;
-    inset-inline-start: 50% !important;
+    inset-inline-start: 16px !important;
+    inset-inline-end: auto !important;
+    max-width: calc(100% - 32px) !important;
     z-index: 400 !important;
     padding: 10px 14px !important;
     border-radius: 7px !important;
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
-    transform: translate(-50%, -160%) !important;
+    transform: translateY(-160%) !important;
   }
 
   html.ledger-workspace-v1 .skip-link:focus {
-    transform: translate(-50%, 0) !important;
+    transform: translateY(0) !important;
   }
 
   html.ledger-workspace-v1 h1,
@@ -17329,7 +17331,7 @@ const CSS = `
       display: none !important;
     }
 
-    html.ledger-workspace-v1 .new-event-participant-footer {
+    html.ledger-workspace-v1 .new-event-participant-footer:not(.new-event-participant-subview-footer) {
       grid-template-columns: minmax(0, 1fr) minmax(96px, 0.44fr) !important;
     }
   }

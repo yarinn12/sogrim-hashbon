@@ -627,6 +627,12 @@ let accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
 let accountEventsHydrationRetryRequest = null;
 
 app.addEventListener("click", handleClickSafely);
+document.querySelector('.skip-link[href="#app"]')?.addEventListener("click", (event) => {
+  // The document's base URL can turn a fragment into a full navigation and
+  // discard an open draft. Skipping chrome only needs to move keyboard focus.
+  event.preventDefault();
+  app.focus();
+});
 app.addEventListener("submit", handleSubmitSafely);
 app.addEventListener("keydown", handleParticipantAvatarKeydown);
 app.addEventListener("input", handleInput);
@@ -7117,6 +7123,26 @@ function renderNewEventSelectedParticipant(participant) {
   `;
 }
 
+function renderNewEventSelectedParticipants(selectedParticipants = newEventDraft.participantIds
+    .map((participantId) => state.participants.find((participant) => participant.id === participantId))
+    .filter(Boolean)) {
+  return `
+    <section class="new-event-selected-participants" aria-labelledby="new-event-selected-title">
+      <div class="new-event-selected-participants-heading">
+        <h2 id="new-event-selected-title">משתתפים שנבחרו</h2>
+        <span data-new-event-participant-count aria-live="polite">${escapeHtml(newEventParticipantSelectionLabel(newEventDraft.participantIds))}</span>
+      </div>
+      <div class="new-event-selected-participant-list">
+        ${
+          selectedParticipants.length
+            ? selectedParticipants.map(renderNewEventSelectedParticipant).join("")
+            : '<p class="new-event-participants-empty">עדיין לא נבחרו משתתפים.</p>'
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderNewEventParticipantEditor() {
   if (newEventDraft.participantView === "friends") {
     return `
@@ -7138,7 +7164,7 @@ function renderNewEventParticipantEditor() {
           <p>לאדם שלא יתחבר לאפליקציה.</p>
         </header>
         <div class="inline-actions">
-          <input class="guest-input" data-action="new-event-guest-name" name="guestName" autocomplete="off" enterkeyhint="done" aria-label="שם אופליין חדש" placeholder="שם מלא" value="${escapeAttribute(newEventDraft.guestName)}" />
+          <input class="guest-input" data-action="new-event-guest-name" name="guestName" autocomplete="off" enterkeyhint="done" aria-label="שם המשתתף" placeholder="שם מלא" value="${escapeAttribute(newEventDraft.guestName)}" />
           <button class="secondary-button" type="button" data-action="new-event-add-guest">הוסף</button>
         </div>
       </section>
@@ -7168,6 +7194,7 @@ function renderNewEventParticipantSubview() {
 
       ${renderNotice()}
       ${renderNewEventParticipantEditor()}
+      ${isFriendsView ? "" : renderNewEventSelectedParticipants()}
 
       <div class="new-event-participant-footer new-event-participant-subview-footer">
         <button class="primary-button" type="button" data-action="close-new-event-participant-view">שמירה וחזרה</button>
@@ -7202,19 +7229,7 @@ function renderNewEventParticipants() {
       ${renderEventCreationProgress("participants")}
       ${renderNotice()}
 
-      <section class="new-event-selected-participants" aria-labelledby="new-event-selected-title">
-        <div class="new-event-selected-participants-heading">
-          <h2 id="new-event-selected-title">משתתפים שנבחרו</h2>
-          <span data-new-event-participant-count aria-live="polite">${escapeHtml(newEventParticipantSelectionLabel(newEventDraft.participantIds))}</span>
-        </div>
-        <div class="new-event-selected-participant-list">
-          ${
-            selectedParticipants.length
-              ? selectedParticipants.map(renderNewEventSelectedParticipant).join("")
-              : '<p class="new-event-participants-empty">עדיין לא נבחרו משתתפים.</p>'
-          }
-        </div>
-      </section>
+      ${renderNewEventSelectedParticipants(selectedParticipants)}
 
       <section class="new-event-participant-additions" aria-labelledby="new-event-additions-title">
         <h2 id="new-event-additions-title">הוספת משתתפים</h2>
@@ -12378,10 +12393,18 @@ async function handleClick(event) {
     newEventDraft.managementMode = EVENT_MANAGEMENT_COLLABORATIVE;
     screen = { name: "new-event" };
     render();
+    const selectedDraft = newEventDraft;
     requestAnimationFrame(() => {
-      document
-        .querySelector('[data-action="new-event-name"]')
-        ?.focus();
+      if (screen.name !== "new-event" || newEventDraft !== selectedDraft) return;
+      const input = app.querySelector('[data-action="new-event-name"]');
+      const focused = document.activeElement;
+      // A slow frame must not override a keyboard or pointer choice made since
+      // this screen opened, including the skip link outside the app container.
+      if (focused?.isConnected && ![
+        document.body, document.documentElement, app, input,
+        app.querySelector(".screen h1")
+      ].includes(focused)) return;
+      input?.focus();
     });
   }
 
@@ -12455,6 +12478,13 @@ async function handleClick(event) {
   if (action === "close-new-event-participant-view") {
     if (!newEventDraft) return;
     const previousView = newEventDraft.participantView;
+    if (previousView === "manual") {
+      const input = app.querySelector('[data-action="new-event-guest-name"]');
+      if (input instanceof HTMLInputElement) newEventDraft.guestName = input.value;
+      // The save action must commit the visible name before leaving the editor.
+      // Keep invalid input on screen so it can be corrected without losing the draft.
+      if (newEventDraft.guestName && !addGuestToDraft(newEventDraft)) return;
+    }
     participantSearchQueries.delete("new-event-participant");
     newEventDraft.participantView = "";
     renderHistoryFallback();
@@ -15192,7 +15222,7 @@ function addGuestToDraft(draft) {
   );
   if (!name.replace(/[\p{Cf}\s]/gu, "")) {
     showParticipantNameError(app.querySelector('[data-action="new-event-guest-name"]'));
-    return;
+    return false;
   }
   const { participant, created } = resolveOfflineParticipant(name, "guest");
   if (!draft.participantIds.includes(participant.id)) {
@@ -15208,6 +15238,7 @@ function addGuestToDraft(draft) {
   notice = created ? "" : `${participant.displayName} כבר קיים ונבחר.`;
   persistState();
   render();
+  return true;
 }
 
 function addMemberToGroupDraft() {
