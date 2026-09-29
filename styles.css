@@ -1675,23 +1675,8 @@ h3 {
   line-height: 1.2;
 }
 
-.participant-connection-dot {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  background: transparent;
-}
-
 .participant-connection-badge.is-connected {
   color: var(--accent-strong);
-}
-
-.participant-connection-badge.is-connected .participant-connection-dot {
-  border-color: var(--accent);
-  background: var(--accent);
-  box-shadow: 0 0 0 2px rgba(8, 123, 116, 0.12);
 }
 
 .participant-connection-badge.is-offline,

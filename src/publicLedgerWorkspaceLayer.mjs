@@ -3491,24 +3491,6 @@ const CSS = `
     color: var(--ledger-positive) !important;
   }
 
-  html.ledger-workspace-v1 .event-modal .participant-connection-dot {
-    width: 7px !important;
-    height: 7px !important;
-    flex: 0 0 auto !important;
-    border: 1px solid currentColor !important;
-    border-radius: 50% !important;
-    background: transparent !important;
-  }
-
-  html.ledger-workspace-v1
-    .event-modal
-    .participant-connection-badge.is-connected
-    .participant-connection-dot {
-    border-color: var(--ledger-positive) !important;
-    background: var(--ledger-positive) !important;
-    box-shadow: 0 0 0 2px rgba(22, 121, 91, 0.12) !important;
-  }
-
   @media (max-width: 720px) {
     html.ledger-workspace-v1 .event-modal .participant-grid {
       display: grid !important;
@@ -4994,23 +4976,6 @@ const CSS = `
     background: rgba(33, 170, 166, 0.11) !important;
   }
 
-  html.ledger-workspace-v1 .participant-connection-dot {
-    width: 7px !important;
-    height: 7px !important;
-    flex: 0 0 auto !important;
-    border: 1px solid currentColor !important;
-    border-radius: 50% !important;
-    background: transparent !important;
-  }
-
-  html.ledger-workspace-v1
-    .participant-connection-badge.is-connected
-    .participant-connection-dot {
-    border-color: var(--ledger-positive) !important;
-    background: var(--ledger-positive) !important;
-    box-shadow: 0 0 0 2px rgba(22, 121, 91, 0.12) !important;
-  }
-
   html.ledger-workspace-v1 .avatar {
     position: relative !important;
   }
@@ -5033,19 +4998,6 @@ const CSS = `
     border-color: rgba(14, 110, 101, 0.34) !important;
     color: #075d55 !important;
     background: #dff3ef !important;
-  }
-
-  html.ledger-workspace-v1 .avatar.is-account::after {
-    content: "" !important;
-    position: absolute !important;
-    inset-inline-start: -1px !important;
-    inset-block-end: -1px !important;
-    width: 8px !important;
-    height: 8px !important;
-    border: 2px solid var(--ledger-surface) !important;
-    border-radius: 50% !important;
-    background: var(--ledger-positive) !important;
-    box-sizing: border-box !important;
   }
 
   html.ledger-workspace-v1 .avatar.is-offline {
@@ -6142,12 +6094,6 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-row .avatar-stack .avatar:first-child {
     margin-inline-start: 0 !important;
-  }
-
-  html.ledger-workspace-v1 .event-row .avatar.is-account::after {
-    width: 7px !important;
-    height: 7px !important;
-    border-width: 1.5px !important;
   }
 
   html.ledger-workspace-v1 .event-row-main {
@@ -16436,10 +16382,6 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .event-action-total {
     display: grid !important;
     place-items: center !important;
-  }
-
-  html.ledger-workspace-v1 .new-event-participant-picker .participant-pill .avatar.is-account::after {
-    display: none !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-picker .new-event-selection-check {
