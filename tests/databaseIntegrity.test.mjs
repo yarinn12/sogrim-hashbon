@@ -494,11 +494,13 @@ test("SQL stale settlement retry preserves the canonical transfer plan at the fi
   });
 });
 
-for (const reselect of [false,true]) test(`SQL repayment mode commits the new plan after conflict retry (reselect=${reselect})`, async () => {
-  const fixture=repaymentModeFixture([ids.admin,ids.sender,ids.recipient,ids.other]);
-  if(reselect) fixture.events[0].directSettlementTransfers=false;
+for (const direct of [false,true])
+for (const reselect of [false,true]) test(`SQL repayment mode commits the new plan after conflict retry (direct=${direct}, reselect=${reselect})`, async () => {
+  const original=repaymentModeFixture([ids.admin,ids.sender,ids.recipient,ids.other]);
+  const fixture=direct?setEventDirectSettlementTransfers(original,'repayment-mode',false):original;
+  if(reselect) fixture.events[0].directSettlementTransfers=direct;
   await withSnapshot(ids.admin,async(previous,save)=>{
-    const local=setEventDirectSettlementTransfers(previous,'integrity-probe',false);
+    const local=setEventDirectSettlementTransfers(previous,'integrity-probe',direct);
     local.currentParticipantId=ids.admin;
     Object.assign(local.events[0],{sharedSpaceId:snapshotId,sharedSpaceKey:spaceKey});
     let writes=0;
@@ -509,8 +511,8 @@ for (const reselect of [false,true]) test(`SQL repayment mode commits the new pl
         if(url.includes('/rpc/update_shared_event_snapshot')) {
           writes++;
           const body=JSON.parse(options.body),event=body.p_state.events[0];
-          assert.equal(event.directSettlementTransfers,false);
-          assert.deepEqual(event.transfers.map(t=>t.amount),[10000,10000]);
+          assert.equal(event.directSettlementTransfers,direct);
+          assert.deepEqual(event.transfers.map(t=>t.amount),direct?[5000,5000,5000,5000]:[10000,10000]);
           if(writes===1)return response({status:'conflict'});
           const receipt=await save(body.p_state,body.p_expected_updated_at);
           assert.equal(receipt.status,'updated');
@@ -522,7 +524,8 @@ for (const reselect of [false,true]) test(`SQL repayment mode commits the new pl
     assert.equal(writes,2);
     const stored=(await db.query('select state from public.app_snapshots where id=$1',[snapshotId])).rows[0].state;
     assert.deepEqual(stored.events[0].transfers,saved.events[0].transfers);
-    assert.equal(stored.events[0].transfers.length,2);
+    assert.equal(stored.events[0].directSettlementTransfers,direct);
+    assert.equal(stored.events[0].transfers.length,direct?4:2);
     assert.deepEqual(stored.events[0].expenses,previous.events[0].expenses);
   },previous=>{
     delete previous.deletedEvents;
