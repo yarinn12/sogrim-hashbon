@@ -1156,15 +1156,23 @@ for (const actor of [0,1]) test(`repayment plan changes on ${actor ? 'iPhone' : 
     await f.offline(actor,false);
     await expect(rows(peer)).toHaveCount(4);
     await expect.poll(()=>f.canonical.state.events[0].transfers.length).toBe(4);
-    await choose('optimized');
-    await expect(rows(peer)).toHaveCount(2);
-    for(let i=0;i<2;i++) {
-      await f.pages[i].reload();
-      await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
-      await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
-      await expect(rows(f.pages[i])).toHaveCount(2);
-      await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
-      await f.pages[i].screenshot({path:testInfo.outputPath(`repayment-final-${i}.png`)});
+    // Reopen both independent clients after EACH direction, not only after the
+    // smart choice. A correct label alone is insufficient: inspect actual rows.
+    for(const [mode,count,amount] of [['optimized',2,10000],['direct',4,5000],['optimized',2,10000]]) {
+      await choose(mode);
+      await expect(rows(peer)).toHaveCount(count);
+      await expect.poll(()=>f.canonical.state.events[0].directSettlementTransfers).toBe(mode==='direct');
+      expect(f.canonical.state.events[0].transfers.map(t=>t.amount)).toEqual(Array(count).fill(amount));
+      for(let i=0;i<2;i++) {
+        await f.pages[i].reload();
+        await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+        await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+        await expect(rows(f.pages[i])).toHaveCount(count);
+        await expect(rows(f.pages[i]).first()).toContainText((amount/100).toFixed(2));
+        await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
+        await f.pages[i].screenshot({path:testInfo.outputPath(`repayment-${mode}-${i}.png`)});
+      }
+      expect(f.canonical.state.events[0].expenses).toEqual(repaymentModeFixture([...f.canonical.state.events[0].participantIds]).events[0].expenses);
     }
     expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
   } finally {await f.close();}

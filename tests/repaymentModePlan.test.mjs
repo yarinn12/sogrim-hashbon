@@ -71,9 +71,10 @@ test('a rejected repayment setting restores its previous payment plan', () => {
     attempted.events[0],'directSettlementTransfers'),true);
 });
 
-test('repayment save retries a concurrent expense and waits for the final payload acknowledgement', async () => {
-  const remote = repaymentModeFixture();
-  const local = setEventDirectSettlementTransfers(remote,'repayment-mode',false);
+for (const direct of [false,true]) test(`repayment save retries a concurrent expense and waits for the final payload acknowledgement (direct=${direct})`, async () => {
+  const fixture = repaymentModeFixture();
+  const remote = direct ? setEventDirectSettlementTransfers(fixture,'repayment-mode',false) : fixture;
+  const local = setEventDirectSettlementTransfers(remote,'repayment-mode',direct);
   Object.assign(local.events[0],{sharedSpaceId:credentials.id,sharedSpaceKey:credentials.key});
   const raced = structuredClone(remote);
   // A peer adds another identical expense while the mode change is being saved.
@@ -99,13 +100,13 @@ test('repayment save retries a concurrent expense and waits for the final payloa
     for(let i=0;i<100 && writes.length<2;i++) await new Promise(resolve=>setTimeout(resolve,5));
     assert.equal(writes.length,2);
     assert.equal(resolved,false,'success must wait for the server acknowledgement');
-    assertPlan(writes[0],false);
-    assert.equal(writes[1].events[0].directSettlementTransfers,false);
+    assertPlan(writes[0],direct);
+    assert.equal(writes[1].events[0].directSettlementTransfers,direct);
     assert.equal(writes[1].events[0].expenses.length,3);
     const event=writes[1].events[0], balances=Object.fromEntries(event.participantIds.map(id=>[id,0]));
     for(const t of event.transfers){balances[t.fromParticipantId]-=t.amount;balances[t.toParticipantId]+=t.amount;}
     assert.deepEqual(balances,{'account-owner':20000,'account-peer':10000,'guest-c':-15000,'guest-d':-15000});
-    assert.equal(event.transfers.length,3);
+    assert.equal(event.transfers.length,direct ? 4 : 3);
   } finally {releaseAck();}
   const saved=await saving;
   assert.deepEqual(saved.events[0].transfers,writes[1].events[0].transfers);
