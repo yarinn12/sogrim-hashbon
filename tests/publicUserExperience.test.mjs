@@ -185,7 +185,7 @@ test("public home screen focuses on event creation and the event list", async ()
   assert.ok(homeMatch);
   assert.match(homeMatch[0], /eventStatusFilter/);
   assert.match(homeMatch[0], /renderEventStatusFilter\(sortedEvents\)/);
-  assert.match(homeMatch[0], /events\.map\(renderEventRow\)/);
+  assert.match(homeMatch[0], /events\.map\(event => renderEventRow\(event, pinnedEventIds\.has\(event\.id\)\)\)/);
   assert.doesNotMatch(homeMatch[0], /renderPersonalDashboard|renderPersonalActionList/);
 });
 

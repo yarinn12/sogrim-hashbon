@@ -79,7 +79,7 @@ test("event rows render participants, a uniform text status, and a quiet options
   assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-details \{[\s\S]*?flex-wrap: nowrap !important;[\s\S]*?white-space: nowrap !important;/);
   assert.match(ledgerCss, /html\.ledger-workspace-v1 \.event-row-state \{[\s\S]*?border: 1px solid var\(--ledger-line\) !important;[\s\S]*?border-radius: 8px !important;[\s\S]*?background: var\(--ledger-surface\) !important;[\s\S]*?box-shadow: var\(--ledger-shadow-border\) !important;/);
   assert.doesNotMatch(
-    app.slice(app.indexOf("function renderEventRow(event)"), app.indexOf("function ensureNewEventDraft")),
+    app.slice(app.indexOf("function renderEventRow(event, pinned = false)"), app.indexOf("function ensureNewEventDraft")),
     /status-chip|event-status-indicator|isEventClosed\(event\) \? "סגור" : "פתוח"/
   );
 });

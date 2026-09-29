@@ -158,7 +158,7 @@ test("circle design layer creates a focused financial workspace", async () => {
 
 test("home keeps event selection calm while event actions remain available", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const row = sourceBetween(app, "function renderEventRow(event)", "function ensureNewEventDraft");
+  const row = sourceBetween(app, "function renderEventRow(event, pinned = false)", "function ensureNewEventDraft");
   const event = sourceBetween(app, "function renderEvent(event)", "function renderEventActionDock");
 
   assert.match(app, /pendingBalanceForParticipant/);
@@ -261,7 +261,7 @@ test("home uses one compact list for every event", async () => {
   const home = app.match(/function renderHome\(\) \{[\s\S]*?(?=\nfunction renderRecentEventShortcut)/);
 
   assert.ok(home);
-  assert.match(home[0], /events\.map\(renderEventRow\)/);
+  assert.match(home[0], /events\.map\(event => renderEventRow\(event, pinnedEventIds\.has\(event\.id\)\)\)/);
   assert.doesNotMatch(home[0], /recentEvent|listEvents|renderPersonalDashboard/);
   assert.match(layer, /font-family: var\(--font-hebrew\)/);
 });
