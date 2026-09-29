@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.51"
+        default: "4.52"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "180"
+        default: "181"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תיקון מעבר לקיזוז חכם: מסלול ההעברות מחושב מחדש בהתאם לבחירה, נשמר ומסתנכרן בין המשתתפים גם לאחר ניתוק וחיבור מחדש. הוצאות ותשלומים שכבר בוצעו נשמרים."
+        default: "שיפור קישור חשבון ושמירת טיוטות: המשלמים, הסכומים והפריטים נשמרים גם בזמן הקישור. שיפור הסנכרון בין המשתתפים, שמירת כינויים ומחיקת אירועים, גם לאחר ניתוק וחיבור מחדש או שינוי במכשיר אחר."
 
 permissions:
   contents: read
