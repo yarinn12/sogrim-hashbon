@@ -161,11 +161,7 @@ function openChoicePicker(select, trigger) {
 
   const searchable = isSearchableChoiceSelect(select);
   Array.from(select.options).forEach((option) => {
-    list.append(
-      renderChoiceOption(option, select.value, {
-        showStatusDot: !searchable
-      })
-    );
+    list.append(renderChoiceOption(option, select.value));
   });
 
   const optionsRegion = document.createElement("div");
@@ -204,11 +200,7 @@ function openChoicePicker(select, trigger) {
   (selectedOption ?? firstOption ?? closeButton).focus({ preventScroll: true });
 }
 
-function renderChoiceOption(
-  option,
-  selectedValue,
-  { showStatusDot = true } = {}
-) {
+function renderChoiceOption(option, selectedValue) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "app-choice-option";
@@ -232,14 +224,6 @@ function renderChoiceOption(
 
   const identity = document.createElement("span");
   identity.className = "app-choice-option-identity";
-  if (detailText && showStatusDot) {
-    const statusDot = document.createElement("span");
-    statusDot.className = `app-choice-status-dot ${
-      detailText.includes("אופליין") ? "is-offline" : "is-connected"
-    }`;
-    statusDot.setAttribute("aria-hidden", "true");
-    identity.append(statusDot);
-  }
 
   const copy = document.createElement("span");
   copy.className = "app-choice-option-copy";
@@ -885,21 +869,6 @@ function injectChoicePickerStyles() {
       display: flex;
       align-items: center;
       gap: 11px;
-    }
-
-    .app-choice-status-dot {
-      width: 10px;
-      min-width: 10px;
-      height: 10px;
-      border: 2px solid #ffffff;
-      border-radius: 50%;
-      background: #21b99c;
-      box-shadow: 0 0 0 2px rgba(33, 185, 156, 0.16);
-    }
-
-    .app-choice-status-dot.is-offline {
-      background: #9aa5a1;
-      box-shadow: 0 0 0 2px rgba(117, 130, 125, 0.14);
     }
 
     .app-choice-option-copy {

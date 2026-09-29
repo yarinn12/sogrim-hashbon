@@ -11491,7 +11491,6 @@ function renderParticipantConnectionBadge(participant, event = null) {
       title="${escapeAttribute(status.description)}"
       aria-label="${escapeAttribute(status.description)}"
     >
-      <span class="participant-connection-dot" aria-hidden="true"></span>
       ${status.label}
     </small>
   `;
