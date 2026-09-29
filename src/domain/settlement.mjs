@@ -31,7 +31,7 @@ export function reconcileSettlementTransfers(
   participants,
   expenses,
   previousTransfers = [],
-  { roundTransfers = false, directTransfers = false } = {}
+  { roundTransfers = false, directTransfers = false, preservePendingRoutes = true } = {}
 ) {
   const settlement = calculateSettlement(participants, expenses, {
     roundTransfers: directTransfers && roundTransfers,
@@ -129,7 +129,9 @@ export function reconcileSettlementTransfers(
   const pendingTransfers = buildOutstandingTransfers(
     pendingBalances,
     paidTransfers,
-    previousTransfers,
+    // An explicit repayment-method choice requests a new pending plan. Paid
+    // history still participates above, including protection from reverse routes.
+    preservePendingRoutes ? previousTransfers : [],
     directTransfers,
     directRoutePreferences,
     roundTransfers ? WHOLE_CURRENCY_UNIT : 1

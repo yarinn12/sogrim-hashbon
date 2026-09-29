@@ -1,6 +1,6 @@
 import "./platformCompatibility.mjs";
 
-const PWA_RELEASE = "498";
+const PWA_RELEASE = "499";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 

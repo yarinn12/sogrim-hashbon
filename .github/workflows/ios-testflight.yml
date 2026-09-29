@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.49"
+        default: "4.50"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "178"
+        default: "179"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור מחיקת אירועים ברצף: תשובה מאוחרת מהשרת לא משבשת את הפעולה הבאה, אירוע שמחיקתו נכשלה חוזר לרשימה בלי להעביר מסך, והניווט נשאר תקין בזמן השמירה. כולל שיפורי אמינות הסנכרון ובדיקות רגרסיה חדשות."
+        default: "תיקון מעבר לקיזוז חכם: מסלול ההעברות מחושב מחדש בהתאם לבחירה, נשמר ומסתנכרן בין המשתתפים גם לאחר ניתוק וחיבור מחדש. הוצאות ותשלומים שכבר בוצעו נשמרים."
 
 permissions:
   contents: read
