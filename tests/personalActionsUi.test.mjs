@@ -8,7 +8,7 @@ test("home screen keeps balances and personal next actions out of the event list
 
   assert.ok(home);
   assert.doesNotMatch(home[0], /renderPersonalDashboard|renderPersonalActionList|renderRecentEventShortcut/);
-  assert.match(home[0], /events\.map\(renderEventRow\)/);
+  assert.match(home[0], /events\.map\(event => renderEventRow\(event, pinnedEventIds\.has\(event\.id\)\)\)/);
   assert.doesNotMatch(home[0], /renderEventSearchPanel/);
   assert.doesNotMatch(home[0], /event-search/);
 });

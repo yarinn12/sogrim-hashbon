@@ -263,10 +263,12 @@ test("confirming guards both ordinary actions and visible account-link progress 
 
   assert.match(confirm, /if \(!pendingAction \|\| pendingAction\.processing\) return;/);
   assert.match(confirm, /importantActionDialog = showAccountLinkProgress \? pendingAction : null;/);
+  const executeIndex = confirm.indexOf("executeImportantAction(pendingAction)");
+  assert.ok(executeIndex >= 0, "the confirmed action is executed");
   assert.ok(
     confirm.indexOf("pendingAction.processing = Boolean(showAccountLinkProgress);") <
-      confirm.indexOf("await executeImportantAction(pendingAction)"),
-    "the action is guarded before the await, closing the double-tap window"
+      executeIndex,
+    "the action is guarded before execution, closing the double-tap window"
   );
 });
 

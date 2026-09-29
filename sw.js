@@ -1,5 +1,5 @@
-const PWA_RELEASE = "497";
-const CACHE_NAME = "settle-friends-live-v497";
+const PWA_RELEASE = "500";
+const CACHE_NAME = "settle-friends-live-v500";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -58,6 +58,7 @@ const CACHE_FILES = [
   "/src/data/demoData.mjs",
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
+  "/src/data/personalEventPins.mjs",
   "/src/data/noteSaveRollback.mjs",
   "/src/data/settingsSaveRollback.mjs",
   "/src/data/eventActivityNotifications.mjs",

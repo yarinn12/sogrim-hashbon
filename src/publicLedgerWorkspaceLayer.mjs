@@ -19971,6 +19971,11 @@ const CSS = `
     align-items: flex-start !important;
   }
 
+  /* Keep the same inline pin/title layout as notes, including narrow RTL rows. */
+  html.ledger-workspace-v1 .event-row-title:has(.event-note-pin) {
+    flex-wrap: nowrap !important;
+  }
+
   html.ledger-workspace-v1 .event-row-title strong {
     flex: 1 1 auto !important;
     display: -webkit-box !important;

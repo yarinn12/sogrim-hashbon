@@ -472,11 +472,7 @@ function mergeEvent(remoteEvent, localEvent) {
       remoteEvent.activityLog,
       localEvent.activityLog
     ),
-    transfers: mergeEntities(
-      remoteEvent.transfers,
-      localEvent.transfers,
-      mergeTransfer
-    )
+    transfers: mergeRepaymentPlanTransfers(remoteEvent, localEvent)
   };
 
   if (
@@ -518,6 +514,24 @@ function mergeEventParticipantAliases(remoteEvent, localEvent) {
     participantAliases: aliases,
     ...(Object.hasOwn(remoteEvent, clockField) || Object.hasOwn(localEvent, clockField) ? { [clockField]: clocks } : {})
   };
+}
+
+function mergeRepaymentPlanTransfers(remoteEvent, localEvent) {
+  const field = "directSettlementTransfers";
+  const remoteClock = remoteEvent.settingsFieldUpdatedAt?.[field] ?? remoteEvent.settingsUpdatedAt;
+  const localClock = localEvent.settingsFieldUpdatedAt?.[field] ?? localEvent.settingsUpdatedAt;
+  const merged = mergeEntities(remoteEvent.transfers, localEvent.transfers, mergeTransfer);
+  if (remoteClock === localClock && remoteEvent[field] === localEvent[field]) return merged;
+
+  // Pending routes belong to the selected method's revision, not to a union of
+  // old and new plans. Retain payments from BOTH replicas before reconciliation.
+  const source = !Object.hasOwn(localEvent, field) ||
+      (Object.hasOwn(remoteEvent, field) && timestamp(remoteClock) > timestamp(localClock))
+    ? remoteEvent : localEvent;
+  const selectedIds = new Set((source.transfers ?? []).map(transfer => transfer.id));
+  const paidIds = new Set([...remoteEvent.transfers ?? [], ...localEvent.transfers ?? []]
+    .filter(transfer => transfer.status === "paid").map(transfer => transfer.id));
+  return merged.filter(transfer => selectedIds.has(transfer.id) || paidIds.has(transfer.id));
 }
 
 function mergeAccountLinkReceipts(canonical = [], replica = []) {
