@@ -23,7 +23,7 @@ These tests are included automatically by npm test and npm run qa:sync in the ex
 
 The expanded 24-test round-trip file produces **13 failures and 11 passes** against an isolated pre-fix 4.49 source tree. Failures include the actual 2-versus-4 route count on the reverse switch, stale-plan revival, rapid switching and rollback. All 24 pass against 4.51.
 
-The full updated unit/database suite passed **3,039 tests**, with zero failures or skips. The focused settlement/SQL suite passed **186 tests**. Both extended independent-client browser scenarios passed.
+The full updated unit/database suite passed **3,039 tests**, with zero failures or skips. The focused settlement/SQL suite passed **186 tests**. Both extended independent-client browser scenarios passed. All **30 mobile settings/repayment tests** passed across Android, iPhone, iPad, large text and narrow reflow profiles.
 
 The balanced-event fixture includes the creator field used by real expenses, so expense-preservation assertions compare equivalent serialized records rather than treating a missing optional field versus undefined as a financial change.
 
@@ -41,4 +41,3 @@ At 12:38 UTC the canonical group had 39 expenses, four active members, smart mod
 Each result was also merged with all four personal workspace snapshots and checked for matching expense contents and payment routes. The read-only transaction verified that production state and its timestamp were unchanged. This verifies stored data and application behavior; it is not observation of the four participants' physical devices.
 
 The production web source and Android/iOS release 4.51 contain the existing fix. This follow-up adds tests only and does not require a new app binary.
-
