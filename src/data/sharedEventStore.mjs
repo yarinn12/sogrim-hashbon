@@ -1079,6 +1079,8 @@ function preserveCanonicalSettlementPlan(event, canonical, participants) {
       !jsonValuesEqual(memberIds(event), memberIds(canonical)) ||
       !jsonValuesEqual(byId(event.expenses), byId(canonical.expenses)) ||
       !jsonValuesEqual(settlementOptionsForEvent(event), settlementOptionsForEvent(canonical)) ||
+      (event.settingsFieldUpdatedAt?.directSettlementTransfers ?? event.settingsUpdatedAt) !==
+        (canonical.settingsFieldUpdatedAt?.directSettlementTransfers ?? canonical.settingsUpdatedAt) ||
       !jsonValuesEqual(byId(event.transferStatusUpdates), byId(canonical.transferStatusUpdates)) ||
       !jsonValuesEqual(byId(event.transfers?.filter(transfer => transfer.status === "paid")),
         byId(canonical.transfers?.filter(transfer => transfer.status === "paid")))) return event;

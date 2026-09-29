@@ -1,5 +1,6 @@
 import {test, expect, chromium, webkit, devices} from '@playwright/test';
 import {recordBrowserErrors} from './browser-error-recorder.mjs';
+import {repaymentModeFixture} from '../tests/helpers/repaymentModeFixture.mjs';
 
 // Two separate browser engines, cookies, storage, identities and caches.
 // All remote traffic is intercepted. The fake backend implements CAS and
@@ -12,7 +13,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withPaidInstallments = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withPaidInstallments = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -37,6 +38,13 @@ async function fixture(testInfo, {withExpense = false, withPaidInstallments = fa
     locked: false, roundSettlementTransfers: false, directSettlementTransfers: false,
     notes: [], deletedNotes: [], expenses: [], transfers: [], activityLog: []};
   if (restaurant) event.eventType = 'restaurant';
+  if (withRepaymentPlan) {
+    const repayment = repaymentModeFixture([...participants.map(p=>p.id),'guest-c','guest-d']);
+    participants.push(...repayment.participants.slice(2));
+    Object.assign(event,{participantIds:participants.map(p=>p.id),adminIds:[participants[managingClient].id],
+      expenses:repayment.events[0].expenses,transfers:repayment.events[0].transfers,
+      directSettlementTransfers:true,settingsFieldUpdatedAt:{directSettlementTransfers:version}});
+  }
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
@@ -1111,6 +1119,54 @@ test('concurrent note field edits converge after an actual compare-and-swap conf
     expect(f.canonical.state.events[0].notes).toHaveLength(1);
     expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
     console.log(JSON.stringify({kind:'two-browser-concurrent-note-fields',convergedMs:Math.round(performance.now()-started),conflicts:f.conflicts,notes:1}));
+  } finally {await f.close();}
+});
+
+for (const actor of [0,1]) test(`repayment plan changes on ${actor ? 'iPhone' : 'Android'} reach an offline peer and survive refresh`, async ({}, testInfo) => {
+  const f=await fixture(testInfo,{withRepaymentPlan:true,managingClient:actor});
+  const manager=f.pages[actor],peer=f.pages[1-actor];
+  const rows=page=>page.locator('.settlement-transfer-board .transfer-row');
+  const choose=async mode=>{
+    await manager.locator('[data-action="open-event-settings"]').first().click();
+    await manager.locator('[data-settings-section="repayment"]').click();
+    const option=manager.locator(`[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`);
+    await option.click();
+    await expect(option).toHaveAttribute('aria-checked','true');
+    await manager.locator('[data-action="event-settings-back"]').click();
+    await manager.locator('[data-action="close-event-dialog"]').click();
+    await manager.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+  };
+  try {
+    await peer.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+    await expect(rows(peer)).toHaveCount(4);
+    await f.offline(1-actor,true);
+    await choose('optimized');
+    await expect(rows(manager)).toHaveCount(2);
+    await expect.poll(()=>f.writes.some(w=>w.client===actor && w.event.directSettlementTransfers===false && w.event.transfers.length===2)).toBe(true);
+    expect(f.canonical.state.events[0].transfers.map(t=>t.amount)).toEqual([10000,10000]);
+    await expect(rows(peer)).toHaveCount(4);
+    await f.offline(1-actor,false);
+    await expect(rows(peer)).toHaveCount(2);
+    // The manager can also queue a change while offline. Reconnection must
+    // publish the four direct routes, not restore the previous smart plan.
+    await f.offline(actor,true);
+    await choose('direct');
+    await expect(rows(manager)).toHaveCount(4);
+    await expect(rows(peer)).toHaveCount(2);
+    await f.offline(actor,false);
+    await expect(rows(peer)).toHaveCount(4);
+    await expect.poll(()=>f.canonical.state.events[0].transfers.length).toBe(4);
+    await choose('optimized');
+    await expect(rows(peer)).toHaveCount(2);
+    for(let i=0;i<2;i++) {
+      await f.pages[i].reload();
+      await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+      await expect(rows(f.pages[i])).toHaveCount(2);
+      await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
+      await f.pages[i].screenshot({path:testInfo.outputPath(`repayment-final-${i}.png`)});
+    }
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
   } finally {await f.close();}
 });
 

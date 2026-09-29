@@ -134,7 +134,7 @@ test("home screen stays focused on event actions and the event list", async () =
     "function renderRecentEventShortcut"
   );
 
-  assert.match(home, /events\.map\(renderEventRow\)/);
+  assert.match(home, /events\.map\(event => renderEventRow\(event, pinnedEventIds\.has\(event\.id\)\)\)/);
   assert.doesNotMatch(home, /renderHomeEventTools/);
   assert.doesNotMatch(home, /renderPersonalDashboard|renderRecentEventShortcut|renderPersonalActionList|renderBackupPanel/);
   assert.doesNotMatch(home, /renderEventSearchPanel/);
@@ -1535,7 +1535,7 @@ test("event screen uses one focused start action instead of a repeated command g
 
 test("home event rows prioritize selection details, participants, and one quiet options chevron", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const row = sourceBetween(app, "function renderEventRow(event)", "function ensureNewEventDraft");
+  const row = sourceBetween(app, "function renderEventRow(event, pinned = false)", "function ensureNewEventDraft");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
 
   assert.doesNotMatch(row, /event-row-attention|attentionLabel/);

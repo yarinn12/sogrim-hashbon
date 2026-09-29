@@ -1,5 +1,6 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
@@ -639,6 +640,12 @@ app.addEventListener("pointerup", handleEventWorkspaceSwipeEnd);
 app.addEventListener("pointercancel", cancelEventWorkspaceSwipe);
 app.addEventListener("contextmenu", handleEventContextMenu);
 window.addEventListener("popstate", handleBrowserHistoryBack);
+window.addEventListener("storage", (event) => {
+  if (screen.name === "home" &&
+      (event.key === null || event.key === personalEventPinsKey(state.currentParticipantId))) {
+    render();
+  }
+});
 window.addEventListener(NATIVE_BACK_EVENT, handleNativeBackRequest);
 window.addEventListener(NATIVE_DESTINATION_EVENT, handleNativeDestinationRequest);
 // Android can resume without a matching browser visibilitychange. A request
@@ -2390,13 +2397,14 @@ function renderHomeEventHydrationState() {
 }
 
 function renderHome() {
-  const sortedEvents = visibleEventsForParticipant(state, state.currentParticipantId)
+  const pinnedEventIds = loadPersonalEventPins(state.currentParticipantId);
+  const sortedEvents = pinnedEventsFirst(visibleEventsForParticipant(state, state.currentParticipantId)
     .sort(
       (a, b) =>
         eventRelevanceTimestamp(b, state.currentParticipantId) -
           eventRelevanceTimestamp(a, state.currentParticipantId) ||
         creationTimestamp(b.createdAt, b.id) - creationTimestamp(a.createdAt, a.id)
-    );
+    ), pinnedEventIds);
   const homeDialogEvent =
     eventDialog?.kind === "share" ? getEvent(eventDialog.eventId) : null;
   const archivedEventIds = personalArchivedEventIds();
@@ -2462,7 +2470,9 @@ function renderHome() {
               <div class="event-list">
                 ${
                   events.length
-                    ? events.map(renderEventRow).join("")
+                    ? `${events.some(event => pinnedEventIds.has(event.id))
+                      ? `<div class="event-notes-section-label"><span aria-hidden="true">${iconSvg("pin")}</span><strong>מוצמד</strong></div>`
+                      : ""}${events.map(event => renderEventRow(event, pinnedEventIds.has(event.id))).join("")}`
                     : `<div class="empty-state">${eventStatusFilter === "archive" ? "אין אירועים בארכיון" : "אין אירועים להצגה"}</div>`
                 }
               </div>
@@ -4180,13 +4190,13 @@ function renderEventRowMeta(event, participants) {
   `;
 }
 
-function renderEventRow(event) {
+function renderEventRow(event, pinned = false) {
   const participants = activeEventParticipants(event);
-  const optionsLabel = `אפשרויות לאירוע ${event.name}: שיתוף או הסרה`;
+  const optionsLabel = `אפשרויות לאירוע ${event.name}: הצמדה, שיתוף או הסרה`;
 
   return `
     <article
-      class="event-row"
+      class="event-row${pinned ? " is-pinned" : ""}"
       data-event-id="${event.id}"
       data-long-press-event="true"
       aria-haspopup="dialog"
@@ -4203,6 +4213,7 @@ function renderEventRow(event) {
         <span class="event-row-main">
           <span class="event-row-title">
             <strong>${escapeHtml(eventRowDisplayName(event))}</strong>
+            ${pinned ? `<span class="event-note-pin" aria-label="אירוע מוצמד">${iconSvg("pin")}</span>` : ""}
           </span>
           ${renderEventRowMeta(event, participants)}
         </span>
@@ -4219,7 +4230,7 @@ function renderEventRow(event) {
       >
         <span class="event-row-options-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
       </button>
-      <span class="visually-hidden">לחיצה ארוכה פותחת את אפשרויות האירוע: שיתוף או הסרה.</span>
+      <span class="visually-hidden">לחיצה ארוכה פותחת את אפשרויות האירוע: הצמדה, שיתוף או הסרה.</span>
     </article>
   `;
 }
@@ -5126,6 +5137,7 @@ function renderEventStatusMenu() {
       ? "כדי להזמין משתתפים צריך לפתוח את האירוע מחדש"
       : "רק מנהל יכול להזמין משתתפים במצב הנוכחי";
   const isPersonallyArchived = isEventPersonallyArchived(event.id);
+  const isPersonallyPinned = loadPersonalEventPins(state.currentParticipantId).has(event.id);
 
   return `
     <section class="event-status-menu-backdrop" aria-label="אפשרויות לאירוע ${escapeAttribute(event.name)}">
@@ -5145,6 +5157,14 @@ function renderEventStatusMenu() {
           <p id="event-status-menu-description">בחרו פעולה לאירוע.</p>
         </div>
         <div class="event-home-menu-actions" aria-label="פעולות לאירוע">
+          <button class="event-note-pin-toggle${isPersonallyPinned ? " is-active" : ""}"
+            type="button" data-action="toggle-personal-event-pin" data-event-id="${escapeAttribute(event.id)}"
+            aria-pressed="${isPersonallyPinned}" aria-describedby="event-pin-description">
+            ${iconSvg("pin")}
+            <span>${isPersonallyPinned ? "האירוע מוצמד" : "הצמד לראש הרשימה"}</span>
+          </button>
+          <small id="event-pin-description" class="muted">${isPersonallyPinned ? "לחיצה נוספת מבטלת את ההצמדה. " : ""}ברשימה שלך במכשיר הזה בלבד.</small>
+          ${eventStatusMenu.pinError ? `<p class="field-error" role="alert">${escapeHtml(eventStatusMenu.pinError)}</p>` : ""}
           <button
             class="event-share-option"
             type="button"
@@ -11929,7 +11949,7 @@ function openEventStatusMenu(eventId, trigger) {
   requestAnimationFrame(() => {
     app
       .querySelector(
-        ".event-share-option:not(:disabled), .event-removal-option:not(:disabled), .event-status-menu-cancel"
+        ".event-note-pin-toggle, .event-share-option:not(:disabled), .event-removal-option:not(:disabled), .event-status-menu-cancel"
       )
       ?.focus({ preventScroll: true });
   });
@@ -12092,6 +12112,26 @@ async function handleClick(event) {
 
   if (action === "share-event-from-list") {
     openEventParticipantAddFromHomeMenu(target.dataset.eventId);
+    return;
+  }
+
+  if (action === "toggle-personal-event-pin") {
+    const selectedEvent = visibleEventsForParticipant(state, state.currentParticipantId)
+      .find(candidate => candidate.id === target.dataset.eventId);
+    if (!selectedEvent || eventStatusMenu?.eventId !== selectedEvent.id) return;
+    const pinned = !loadPersonalEventPins(state.currentParticipantId).has(selectedEvent.id);
+    try {
+      setPersonalEventPin(state.currentParticipantId, selectedEvent.id, pinned);
+    } catch {
+      eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה במכשיר. אפשר לנסות שוב.";
+      // Validation feedback is the same menu, not another navigation step.
+      renderReplacingBrowserHistory();
+      activateDialog(".event-status-menu");
+      return;
+    }
+    eventStatusMenu = null;
+    notice = pinned ? `"${selectedEvent.name}" הוצמד לראש הרשימה.` : `ההצמדה של "${selectedEvent.name}" בוטלה.`;
+    closeDialogWithHistory();
     return;
   }
 

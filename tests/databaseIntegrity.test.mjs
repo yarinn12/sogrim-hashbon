@@ -3,11 +3,12 @@ import { after, before, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants } from "../src/domain/appActions.mjs";
+import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants, setEventDirectSettlementTransfers } from "../src/domain/appActions.mjs";
 import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
+import { repaymentModeFixture } from "./helpers/repaymentModeFixture.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
@@ -489,6 +490,43 @@ test("SQL stale settlement retry preserves the canonical transfer plan at the fi
     delete previous.deletedEvents;
     previous.participants=fixture.canonical.participants;
     previous.events[0]={...previous.events[0],...fixture.canonical.events[0],id:'integrity-probe'};
+    return previous;
+  });
+});
+
+for (const reselect of [false,true]) test(`SQL repayment mode commits the new plan after conflict retry (reselect=${reselect})`, async () => {
+  const fixture=repaymentModeFixture([ids.admin,ids.sender,ids.recipient,ids.other]);
+  if(reselect) fixture.events[0].directSettlementTransfers=false;
+  await withSnapshot(ids.admin,async(previous,save)=>{
+    const local=setEventDirectSettlementTransfers(previous,'integrity-probe',false);
+    local.currentParticipantId=ids.admin;
+    Object.assign(local.events[0],{sharedSpaceId:snapshotId,sharedSpaceKey:spaceKey});
+    let writes=0;
+    const response=value=>({ok:true,status:200,json:async()=>value});
+    const saved=await saveSharedEventState({storage:{mode:'supabase',url:'https://repayment.invalid',
+      table:'app_snapshots',anonKey:'synthetic',account:{userId:ids.admin.slice(8),accessToken:'synthetic'}}},
+      local,'integrity-probe',async(url,options={})=>{
+        if(url.includes('/rpc/update_shared_event_snapshot')) {
+          writes++;
+          const body=JSON.parse(options.body),event=body.p_state.events[0];
+          assert.equal(event.directSettlementTransfers,false);
+          assert.deepEqual(event.transfers.map(t=>t.amount),[10000,10000]);
+          if(writes===1)return response({status:'conflict'});
+          const receipt=await save(body.p_state,body.p_expected_updated_at);
+          assert.equal(receipt.status,'updated');
+          return response(receipt);
+        }
+        assert.equal(options.method??'GET','GET');
+        return response((await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1',[snapshotId])).rows);
+      });
+    assert.equal(writes,2);
+    const stored=(await db.query('select state from public.app_snapshots where id=$1',[snapshotId])).rows[0].state;
+    assert.deepEqual(stored.events[0].transfers,saved.events[0].transfers);
+    assert.equal(stored.events[0].transfers.length,2);
+    assert.deepEqual(stored.events[0].expenses,previous.events[0].expenses);
+  },previous=>{
+    delete previous.deletedEvents;
+    previous.events[0]={...previous.events[0],...fixture.events[0],id:'integrity-probe'};
     return previous;
   });
 });

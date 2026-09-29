@@ -190,7 +190,8 @@ export function rollbackEventSettingChange(state, eventId, previousEvent, attemp
       if (!["directSettlementTransfers", "roundSettlementTransfers"].includes(field)) return nextEvent;
       const participants = (state.participants ?? []).filter((participant) => event.participantIds.includes(participant.id));
       const settlement = reconcileSettlementTransfers(
-        participants, event.expenses, event.transfers, settlementOptionsForEvent(nextEvent)
+        participants, event.expenses, event.transfers,
+        { ...settlementOptionsForEvent(nextEvent), preservePendingRoutes: false }
       );
       return settlement.issues.length ? nextEvent : { ...nextEvent, transfers: settlement.transfers };
     })
@@ -264,7 +265,7 @@ export function setEventDirectSettlementTransfers(
         eventParticipants,
         event.expenses,
         event.transfers,
-        settlementOptionsForEvent(nextEvent)
+        { ...settlementOptionsForEvent(nextEvent), preservePendingRoutes: false }
       );
       return settlement.issues.length
         ? nextEvent
