@@ -19,7 +19,7 @@ The current provider-discovery implementation in 4.52 (181) could reproduce that
 - Provider-discovery regression: the original implementation failed nine behavioral cases; the fixed implementation passed all 13 cases. Two Android/web controls passed on the original code and remain covered.
 - `npm run qa:ios:providers`: all nine live public-provider checks passed, without authenticating a user.
 - Six new iPhone/iPad WebKit scenarios are registered in the normal mobile suite. Local execution is blocked by unavailable browser binaries: package-system dependencies could not be installed in this environment and the browser download did not produce a valid archive. The TestFlight workflow runs these scenarios and the nearby auth suites before archiving/uploading, and saves screenshots/reports.
-- Candidate source targets **4.53 (182)**. This is prepared source, not an uploaded binary or an App Review approval.
+- Candidate source targets **4.53 (183)**. This is prepared source, not an uploaded binary or an App Review approval.
 
 ## Current continuation blocker
 
@@ -39,3 +39,7 @@ Update at 17:59 Israel time: the user explicitly approved uploading the prepared
 - [ ] Select the verified new build in App Store Connect, add the prepared review notes and send the prepared reply, then resubmit for review.
 
 Prepared text: `apple-review-notes-en.txt` and `apple-guideline-48-reply-draft-en.txt`. No review reply or resubmission is implied by preparing these files.
+
+## Integrated candidate
+
+The final candidate includes current main `db4cb4679e63308942f41ccf12c299e8c6d15dd6`: the 4.52 account-link/synchronization fixes and PWA 502 presentation updates. Build **183** distinguishes this integrated candidate from the initial 182 workflow snapshot. The iOS workflow runs the complete unit/integration suite and focused WebKit auth checks again on the combined source before upload.

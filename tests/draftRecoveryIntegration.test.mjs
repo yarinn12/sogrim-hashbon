@@ -14,6 +14,7 @@ function setup() {
   const context = vm.createContext({ ...notes, ...expenses, state: { currentParticipantId: "owner" },
     eventDialog: null, expenseDraft: null, allowed: true,
     getEvent: () => event, canCurrentParticipantEdit: () => context.allowed,
+    loadPendingAccountLinks: () => [], pendingEventMembershipOwnerId: () => "owner",
     activeEventParticipants: () => [{ id: "owner" }],
     window: { localStorage: { getItem: key => values.get(key) ?? null,
       setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } }

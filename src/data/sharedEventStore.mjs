@@ -229,9 +229,11 @@ export async function saveSharedEventState(
   if (!config || !payload) return state;
 
   let expectedVersion = "";
+  let confirmedDeletion = false;
   const readLatestForWrite = async () => {
     const snapshot = await readCloudSnapshot(config, fetchImpl);
     expectedVersion = snapshot.version;
+    confirmedDeletion = Boolean(snapshot.state?.deletedEvents?.some(item => item?.id === eventId));
     return snapshot.state;
   };
   let remote = await readLatestForWrite();
@@ -303,7 +305,9 @@ export async function saveSharedEventState(
   }
 
   const mergeForWrite = (latest, candidate) =>
-    mergeSharedEventWriteState(latest, candidate, runtimeConfig);
+    latest?.deletedEvents?.some(item => item?.id === eventId)
+      ? latest
+      : mergeSharedEventWriteState(latest, candidate, runtimeConfig);
   const mergedPayload = requireSharedEventPayload(
     mergeForWrite(remote, payload),
     eventId
@@ -312,7 +316,9 @@ export async function saveSharedEventState(
     state: mergedPayload,
     loadLatest: readLatestForWrite,
     mergeStates: mergeForWrite,
-    save: (candidate) =>
+    // A conflict read can confirm that another administrator deleted the
+    // event. Adopt that canonical result without attempting to recreate it.
+    save: (candidate) => confirmedDeletion ? undefined :
       saveCloudState(
         config,
         requireSharedEventPayload(candidate, eventId),
@@ -581,6 +587,13 @@ export async function syncSharedEvents(
   for (const result of eventResults) {
     if (result.status === "fulfilled") {
       const eventId = result.item;
+      const deletion = result.value?.deletedEvents?.find(item => item.id === eventId);
+      if (deletion) {
+        const credentials = eventShareCredentials(deletion) ??
+          eventShareCredentials(state.events.find(event => event.id === eventId));
+        nextState = mergeSharedEventIntoState(nextState, { deletedEvents: [deletion] }, credentials);
+        continue;
+      }
       const revokedEvent = result.value?.events?.find(
         (event) => event.id === eventId && !eventShareCredentials(event)
       );
@@ -654,17 +667,32 @@ export async function saveSharedEventDeletion(
     ]
   };
   let expectedVersion = "";
+  let confirmedDeletion = false;
   const readLatestForWrite = async () => {
     const snapshot = await readCloudSnapshot(config, fetchImpl);
     expectedVersion = snapshot.version;
+    confirmedDeletion = Boolean(snapshot.state?.deletedEvents?.some(item => item?.id === deletedEvent.id));
     return snapshot.state;
   };
   const remote = await readLatestForWrite();
-  const mergedPayload = remote ? mergeSharedStates(remote, payload) : payload;
+  if (confirmedDeletion) return true;
+  // Deletion replaces the event envelope instead of unioning live members
+  // back into it. Preserve all other canonical metadata exactly as required
+  // by the database's administrator-only paid-history deletion guard.
+  const mergeForDeletion = latest => ({
+    ...clone(latest ?? {}),
+    ...payload,
+    deletedEvents: [
+      ...(latest?.deletedEvents ?? []).filter(item => item.id !== deletedEvent.id),
+      ...payload.deletedEvents
+    ]
+  });
   await saveCloudStateWithConflictRetry({
-    state: mergedPayload,
+    state: mergeForDeletion(remote),
     loadLatest: readLatestForWrite,
-    save: (candidate) => saveCloudState(config, candidate, fetchImpl, { expectedVersion })
+    mergeStates: mergeForDeletion,
+    save: (candidate) => confirmedDeletion ? undefined :
+      saveCloudState(config, candidate, fetchImpl, { expectedVersion })
   });
 
   return true;

@@ -296,10 +296,7 @@ test("new event participant choices show selection without artificial status bad
     ledgerStyles,
     /\.new-event-participant-picker \.participant-pill:has\(input:checked\)/
   );
-  assert.match(
-    ledgerStyles,
-    /\.new-event-participant-picker \.participant-pill \.avatar\.is-account::after\s*\{[\s\S]*?display: none !important;/
-  );
+  assert.doesNotMatch(ledgerStyles, /\.avatar\.is-account::after/);
   assert.match(
     ledgerStyles,
     /\.new-event-participant-picker \.participant-pill input:checked ~ \.new-event-selection-check[\s\S]*?background: #08745d !important;/

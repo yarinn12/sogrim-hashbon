@@ -1,5 +1,5 @@
 name: iOS TestFlight
-run-name: iOS TestFlight ${{ inputs.version || '4.53' }} (${{ inputs.build || '182' }})
+run-name: iOS TestFlight ${{ inputs.version || '4.53' }} (${{ inputs.build || '183' }})
 
 on:
   push:
@@ -16,7 +16,7 @@ on:
       build:
         description: Unique TestFlight build number
         required: true
-        default: "182"
+        default: "183"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
@@ -41,7 +41,7 @@ jobs:
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: ${{ inputs.version || '4.53' }}
-      IOS_BUILD: ${{ inputs.build || '182' }}
+      IOS_BUILD: ${{ inputs.build || '183' }}
       IOS_RELEASE_NOTES: ${{ inputs.release_notes || 'שיפור אמינות הכניסה עם Apple והצגת אפשרויות ההתחברות.' }}
 
     steps:

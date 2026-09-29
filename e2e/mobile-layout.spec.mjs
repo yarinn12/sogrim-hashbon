@@ -413,6 +413,60 @@ test("an event without expenses presents one clear empty summary card", async ({
   await assertLayoutHealth(page, "empty summary card");
 });
 
+test("participant identity uses colored or grayscale pictures without status dots", async ({ page }, testInfo) => {
+  const assertNoIdentityDots = async (surface) => {
+    await expect.soft(surface.locator(".participant-connection-dot, .app-choice-status-dot")).toHaveCount(0);
+    const markers = await surface.locator(".avatar").evaluateAll((avatars) =>
+      avatars.filter((avatar) => {
+        const style = getComputedStyle(avatar, "::after");
+        return !["none", "normal"].includes(style.content) && style.display !== "none";
+      }).map((avatar) => avatar.className)
+    );
+    expect.soft(markers, "participant pictures must not generate a status marker").toEqual([]);
+  };
+
+  const home = page.locator('[data-screen-kind="home"]');
+  await expect(home.locator(".avatar.is-account").first()).toBeVisible();
+  await assertNoIdentityDots(home);
+  await home.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-participants"]').first().click();
+  const roster = page.locator(".event-participant-roster-modal");
+  await expect(roster).toBeVisible();
+  const connectedImage = roster.locator(".avatar.is-account > img").first();
+  const offlineImage = roster.locator(".avatar.is-offline > img").first();
+  await expect(connectedImage).toBeVisible();
+  await expect(offlineImage).toBeVisible();
+  await expect(connectedImage).toHaveCSS("filter", "none");
+  await expect(connectedImage).toHaveCSS("opacity", "1");
+  await expect(offlineImage).toHaveCSS("filter", "grayscale(1) saturate(0) contrast(0.86)");
+  await expect(offlineImage).toHaveCSS("opacity", "0.46");
+  await assertNoIdentityDots(roster);
+  await settleCoherenceMotion(page);
+  await page.screenshot({ path: testInfo.outputPath("participant-avatar-identity.png") });
+  await assertLayoutHealth(page, "participant identity without status dots");
+  await page.goBack();
+
+  const expense = page.locator('[data-expense-id="expense-taxi"]');
+  await expense.locator(".expense-row-actions-menu > summary").click();
+  await expense.locator('[data-action="edit-expense"]').click();
+  const editor = page.locator(".expense-modal");
+  await expect(editor).toHaveAttribute("data-expense-step", "review");
+  await editor.locator('[data-action="expense-step-edit"][data-step="payer"]').click();
+  await editor.locator('[data-choice-select-action="expense-payer-id"]').first().click();
+  const picker = page.locator(".app-choice-picker");
+  await expect(picker).toBeVisible();
+  const accountOption = picker.locator(`[data-choice-value="${MAOR_ID}"]`);
+  const offlineOption = picker.locator('[data-choice-value="person-ariel"]');
+  await expect(accountOption).toContainText("חבר באפליקציה");
+  await expect(offlineOption).toContainText("שם אופליין");
+  await expect(accountOption).toHaveAttribute("aria-selected", "true");
+  await expect(accountOption.locator(".app-choice-option-check")).toBeVisible();
+  await assertNoIdentityDots(picker);
+  await offlineOption.click();
+  await expect(picker).toHaveCount(0);
+  await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
+});
+
 test("another person's picture alone opens shared statistics while editable text stays selectable", async ({
   page
 }) => {
@@ -446,8 +500,7 @@ test("another person's picture alone opens shared statistics while editable text
       imageVisibility: imageStyle?.visibility,
       interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
       interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
-      statusMarkerWidth: statusMarkerStyle.width,
-      statusMarkerHeight: statusMarkerStyle.height
+      statusMarkerContent: statusMarkerStyle.content
     };
   });
   expect(currentParticipantAvatarRendering).toEqual(
@@ -459,8 +512,7 @@ test("another person's picture alone opens shared statistics while editable text
   );
   expect(currentParticipantAvatarRendering.interactionTargetWidth).toBeGreaterThanOrEqual(44);
   expect(currentParticipantAvatarRendering.interactionTargetHeight).toBeGreaterThanOrEqual(44);
-  expect(currentParticipantAvatarRendering.statusMarkerWidth).not.toBe("44px");
-  expect(currentParticipantAvatarRendering.statusMarkerHeight).not.toBe("44px");
+  expect(currentParticipantAvatarRendering.statusMarkerContent).toBe("none");
   await currentParticipantRow.locator(".event-participant-person-copy").click();
   await expect(page.locator('.event-settings-modal[role="region"]')).toBeVisible();
   await page.goBack();

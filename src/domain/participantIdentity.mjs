@@ -79,6 +79,17 @@ export function sanitizeParticipantAlias(value) {
     .slice(0, PARTICIPANT_ALIAS_MAX_LENGTH);
 }
 
+export function participantAliasUpdate(event, participantId, value, updatedAt = new Date().toISOString()) {
+  const previousTime = Date.parse(event.participantAliasUpdatedAtByParticipant?.[participantId]);
+  const requestedTime = Date.parse(updatedAt);
+  const resolvedAt = new Date(Math.max(Number.isFinite(previousTime) ? previousTime + 1 : 0,
+    Number.isFinite(requestedTime) ? requestedTime : Date.now())).toISOString();
+  return {
+    participantAliases: { ...event.participantAliases, [participantId]: sanitizeParticipantAlias(value) },
+    participantAliasUpdatedAtByParticipant: { ...event.participantAliasUpdatedAtByParticipant, [participantId]: resolvedAt }
+  };
+}
+
 export function duplicateParticipantNameGroups(participants) {
   const groupsByName = new Map();
 
