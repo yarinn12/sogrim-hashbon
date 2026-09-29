@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { linkParticipantAccountInEvent, mergeParticipants } from "../src/domain/appActions.mjs";
 import { createParticipantAccountLinkSnapshot, participantAccountLinkSnapshotMatches } from "../src/domain/participantAccountLink.mjs";
 import { accountLinkIsConfirmed } from "../src/data/pendingAccountLinks.mjs";
+import { remapExpenseDraftAccountLinks } from "../src/domain/expenseDraftMemory.mjs";
 
 const appSource = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 function section(start, end) {
@@ -40,7 +41,7 @@ function harness({ prepareError, accountResult, deliverLink = true, linkError, c
   let generation=0, switchedState;
   const ctx = vm.createContext({
     state: structuredClone(initial), runtimeConfig: config, eventDialog: {eventId:"link-event",kind:"participant-link",participantId:guest},
-    screen:{eventId:"link-event"},notice:"",localProfile:null,console:{info(){},warn(){}},
+    screen:{eventId:"link-event"},notice:"",localProfile:null,expenseDraft:null,remapExpenseDraftAccountLinks,console:{info(){},warn(){}},
     versionedReadCacheSessionGeneration:()=>generation,
     getEvent:id=>ctx.state.events.find(e=>e.id===id),loadRuntimeConfig:async()=>config,
     reconcileEventInviteAccountBoundary(){},eventShareCredentials:e=>e.sharedSpaceId?{id:e.sharedSpaceId,key:e.sharedSpaceKey}:null,
@@ -177,3 +178,19 @@ test("a hard rejection of the actual link restores the previous state and receip
   assert.equal(h.calls.some(c=>c.phase==="link-save"),true);
   assert.match(h.ctx.notice,/לא הצלחנו לקשר את החשבון/,"the link picker must show the rejection, not silently return unchanged");
 });
+
+for(const outcome of ["confirmed","pending","rejected"]) {
+  test(`an account link ${outcome} completion preserves an expense draft opened while linking`,async()=>{
+    const h=harness({deliverLink:outcome!=="pending",...(outcome==="rejected"
+      ? {linkError:Object.assign(new Error("Permission denied"),{code:"42501"})}: {})});
+    const running=h.run();
+    h.ctx.expenseDraft={eventId:"link-event",name:"Still typing",total:"12.34",
+      payers:[{participantId:guest,amount:"12.34",amountTouched:true}],sharedByParticipantIds:[owner,guest]};
+    await running;
+    const expected=outcome==="confirmed"?target:guest;
+    assert.equal(h.ctx.expenseDraft.name,"Still typing");
+    assert.equal(h.ctx.expenseDraft.total,"12.34");
+    assert.deepEqual(h.ctx.expenseDraft.payers,[{participantId:expected,amount:"12.34",amountTouched:true}]);
+    assert.deepEqual(h.ctx.expenseDraft.sharedByParticipantIds,[owner,expected]);
+  });
+}

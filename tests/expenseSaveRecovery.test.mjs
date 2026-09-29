@@ -38,6 +38,7 @@ function harness({ values = new Map(), state, edit = false, quick = false } = {}
     window: { localStorage: { getItem: key => values.get(key) ?? null,
       setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) } },
     getEvent: id => context.state.events.find(event => event.id === id),
+    loadPendingAccountLinks: () => [], pendingEventMembershipOwnerId: () => "owner",
     canCurrentParticipantEdit: () => context.state.currentParticipantId === "owner",
     editBlockedMessage: () => "No permission", activeEventParticipants: () => [{ id: "owner" }, { id: "peer" }],
     render: () => context.rememberExpenseDraft(), syncExpenseSaveState: () => {},
@@ -52,7 +53,7 @@ function harness({ values = new Map(), state, edit = false, quick = false } = {}
     expenseDialogRewindSteps: () => 1, closeDialogWithHistory: () => closures.push(true),
     formatCount: count => String(count), notice: ""
   });
-  for (const name of ["rememberExpenseDraft", "restoreExpenseDraft", "clearRememberedExpenseDraft", "saveExpense", "saveQuickExpenses"])
+  for (const name of ["expenseDraftAccountLinkOptions", "rememberExpenseDraft", "restoreExpenseDraft", "clearRememberedExpenseDraft", "saveExpense", "saveQuickExpenses"])
     vm.runInContext(functionSource(name), context);
   context.rememberExpenseDraft();
   return { context, values, writes, closures, event: () => context.getEvent("event") };

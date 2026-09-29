@@ -879,12 +879,13 @@ test("account linking waits for a confirmed cloud save before reporting success"
   assert.match(mergeFlow, /state = previousState/);
   assert.match(mergeFlow, /emitOperationFailure\("account_link"/);
   assert.ok(
-    mergeFlow.indexOf("await saveSharedState") <
-      mergeFlow.indexOf("dropParticipantFromDrafts(")
+    mergeFlow.indexOf("const result = await saveCheckpoint.request") >= 0 &&
+    mergeFlow.indexOf("const result = await saveCheckpoint.request") <
+      mergeFlow.indexOf("if (accountLinkConfirmed) remapExpenseDraftAccountLinks(")
   );
   assert.match(
     mergeFlow,
-    /dropParticipantFromDrafts\([\s\S]*?eventScoped: true, eventId: pendingMerge\.eventId/
+    /if \(accountLinkConfirmed\) remapExpenseDraftAccountLinks\(expenseDraft, getEvent\(pendingMerge\.eventId\)\)/
   );
 });
 

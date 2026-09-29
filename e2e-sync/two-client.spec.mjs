@@ -1447,6 +1447,52 @@ async function reviewExpenseDraft(page) {
   await expect(page.locator('[data-action="save-expense"]')).toBeVisible();
 }
 
+for (const author of [0,1]) for (const restaurant of [false,true]) {
+  test(`account link preserves a restarted ${restaurant?'restaurant':'standard'} expense draft on ${author?'iPhone':'Android'}`,async({},testInfo)=>{
+    const f=await fixture(testInfo,{withAccountLink:true,withCompetingLinks:true,restaurant});
+    const a=f.pages[author],b=f.pages[1-author],guest='guest-existing-person',target=`account-${ids[1-author]}`;
+    try {
+      // The user's unsaved draft predates the link and survives a closed page.
+      await a.evaluate(({owner,eventId,guest,target,restaurant})=>localStorage.setItem(
+        `settle-friends-expense-draft:${owner}:${eventId}`,JSON.stringify({version:1,savedAt:Date.now(),draft:{
+          eventId,mode:restaurant?'items':'single',name:'טיוטה לפני קישור',total:'12',occurredOn:'2026-09-29',
+          payers:[{participantId:guest,amount:'5.25',amountTouched:true},{participantId:target,amount:'6.75',amountTouched:true}],
+          sharedByParticipantIds:[owner,guest],
+          quickPurpose:'split',quickStage:'payer',quickPayerId:guest,
+          quickItems:[{name:'טיוטה לפני קישור',amount:'12',sharedBy:guest}]
+        }})),{owner:`account-${ids[author]}`,eventId,guest,target,restaurant});
+      await b.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
+      await b.locator(`[data-action="open-event-participant-profile"][data-participant-id="${guest}"]`).click();
+      await b.locator('[data-action="open-event-participant-link"]').click();
+      await b.locator(`[data-action="link-offline-participant-account"][data-target-participant-id="${target}"]`).click();
+      await b.locator('[data-action="confirm-important-action"]').click();
+      await expect(b.locator('.event-participant-notice.is-account-link-success')).toBeVisible();
+      await expect.poll(()=>storedEvent(a,f.personal[author].id).then(event=>event.participantIds.includes(guest))).toBe(false);
+      await a.reload();
+      await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
+      await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await a.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
+      if(restaurant) await expect(a.locator('[data-action="quick-expense-payer"]')).toHaveValue(target);
+      else {
+        await a.locator('[data-action="expense-step-next"]').click();
+        await a.locator('[data-action="expense-step-next"]').click();
+        await expect(a.locator('[data-action="expense-payer-id"][data-index="0"]')).toHaveValue(target);
+        await expect(a.locator('[data-action="expense-payer-amount"][data-index="0"]')).toHaveValue('12');
+        await reviewExpenseDraft(a);
+      }
+      await a.locator(`[data-action="${restaurant?'save-quick-expenses':'save-expense'}"]`).click();
+      await expect(a.locator('.expense-modal')).toHaveCount(0);
+      const saved=()=>f.canonical.state.events[0].expenses.find(expense=>expense.name==='טיוטה לפני קישור');
+      await expect.poll(()=>saved()?.payers).toEqual([{participantId:target,amount:1200}]);
+      expect(saved().sharedByParticipantIds).toEqual(restaurant?[target]:[`account-${ids[author]}`,target]);
+      await expect.poll(()=>storedEvent(b,f.personal[1-author].id).then(event=>event.expenses.find(e=>e.id===saved().id)?.payers))
+        .toEqual([{participantId:target,amount:1200}]);
+      expect(f.canonical.state.events[0].expenses).toHaveLength(2);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+    } finally {await f.close();}
+  });
+}
+
 async function editExpenseName(page, id, name) {
   const row = page.locator(`.expense-row[data-expense-id="${id}"]`);
   await row.locator('.expense-row-actions-menu > summary').click();

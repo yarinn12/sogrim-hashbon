@@ -71,6 +71,7 @@ import {
   expenseDraftMemoryKey,
   expenseDraftSaveStatus,
   prepareQuickExpenseRetry,
+  remapExpenseDraftAccountLinks,
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
@@ -17973,12 +17974,12 @@ async function mergeParticipantsInStateNow(pendingMerge) {
       historyBaseDepth: eventDialog.historyBaseDepth
     };
   }
-  dropParticipantFromDrafts(
-    source.id,
-    pendingMerge.mergeKind === "account-link"
-      ? { eventScoped: true, eventId: pendingMerge.eventId }
-      : undefined
-  );
+  if (pendingMerge.mergeKind === "account-link") {
+    // A pending/rejected link must not delete or redirect unsaved input.
+    if (accountLinkConfirmed) remapExpenseDraftAccountLinks(expenseDraft, getEvent(pendingMerge.eventId));
+  } else {
+    dropParticipantFromDrafts(source.id);
+  }
   clearMergeParticipantsDraftFor(pendingMerge);
   if (pendingMerge.mergeKind === "account-link") {
     if (
@@ -19640,7 +19641,15 @@ function clearRememberedEventNoteDraft(dialog) {
   }
 }
 
+function expenseDraftAccountLinkOptions(event) {
+  return { event, pendingAccountLinks: loadPendingAccountLinks(undefined, pendingEventMembershipOwnerId()) };
+}
+
 function rememberExpenseDraft() {
+  if (expenseDraft) {
+    const event = getEvent(expenseDraft.eventId);
+    remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
+  }
   const key = expenseDraftMemoryKey(state?.currentParticipantId, expenseDraft?.eventId, expenseDraft?.id);
   const serializedDraft = serializeExpenseDraftMemory(expenseDraft);
   if (!key) return;
@@ -19668,6 +19677,7 @@ function restoreExpenseDraft(event, expenseId = "") {
   try {
     const rawDraft = window.localStorage.getItem(key);
     const options = {
+      ...expenseDraftAccountLinkOptions(event),
       eventId: event.id,
       expenseId,
       participantIds: activeEventParticipants(event).map(
@@ -19863,6 +19873,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     return;
   }
 
+  remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
   const recovery = expenseDraftSaveStatus(expenseDraft, event);
   if (recovery.conflict) {
     expenseDraft.recoveryConflict = true;
@@ -20064,6 +20075,7 @@ async function saveQuickExpenses(eventId) {
     return;
   }
 
+  remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
   const activeDraft = expenseDraft;
   const participantId = state.currentParticipantId;
   const request = { draft: activeDraft, participantId };

@@ -129,7 +129,7 @@ test("an async link result can only update the event that started it", async () 
   );
   assert.match(
     mergeFlow,
-    /dropParticipantFromDrafts\([\s\S]*?eventScoped: true, eventId: pendingMerge\.eventId/
+    /if \(accountLinkConfirmed\) remapExpenseDraftAccountLinks\(expenseDraft, getEvent\(pendingMerge\.eventId\)\)/
   );
   assert.match(
     app,
