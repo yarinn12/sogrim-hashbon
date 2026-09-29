@@ -71,6 +71,7 @@ import {
   expenseDraftMemoryKey,
   expenseDraftSaveStatus,
   prepareQuickExpenseRetry,
+  remapExpenseDraftAccountLinks,
   parseExpenseDraftMemory,
   serializeExpenseDraftMemory
 } from "./domain/expenseDraftMemory.mjs";
@@ -248,6 +249,7 @@ import {
   participantEventDisplayName,
   participantHasConnectedAccount,
   participantPairIncludes,
+  participantAliasUpdate,
   sanitizeParticipantAlias,
   unresolvedDuplicateParticipantPairs
 } from "./domain/participantIdentity.mjs";
@@ -16675,16 +16677,24 @@ async function saveParticipantAlias(eventId, participantId) {
   const alias = sanitizeParticipantAlias(input.value);
   const dialogScrollTop = app.querySelector(".event-modal")?.scrollTop ?? 0;
   const previousAliases = { ...(event.participantAliases ?? {}) };
-  event.participantAliases = {
-    ...(event.participantAliases ?? {}),
-    [participantId]: alias
-  };
+  const previousAliasClocks = { ...(event.participantAliasUpdatedAtByParticipant ?? {}) };
+  const aliasUpdate = participantAliasUpdate(event, participantId, alias);
+  Object.assign(event, aliasUpdate);
   const result = await persistState({
     awaitCloud: true,
     forceSharedEventIds: [eventId]
   });
   if (!result?.ok) {
-    event.participantAliases = previousAliases;
+    // Revert only this attempted alias, never another participant's edit or
+    // a newer save completed while this request was waiting for its receipt.
+    if (event.participantAliasUpdatedAtByParticipant?.[participantId] ===
+        aliasUpdate.participantAliasUpdatedAtByParticipant[participantId]) {
+      if (Object.hasOwn(previousAliases, participantId)) event.participantAliases[participantId] = previousAliases[participantId];
+      else delete event.participantAliases[participantId];
+      if (Object.hasOwn(previousAliasClocks, participantId)) event.participantAliasUpdatedAtByParticipant[participantId] = previousAliasClocks[participantId];
+      else delete event.participantAliasUpdatedAtByParticipant[participantId];
+      if (!Object.keys(event.participantAliasUpdatedAtByParticipant).length) delete event.participantAliasUpdatedAtByParticipant;
+    }
     notice = "לא הצלחנו לשמור את הכינוי. לא בוצע שינוי ואפשר לנסות שוב.";
   }
   render();
@@ -17995,12 +18005,12 @@ async function mergeParticipantsInStateNow(pendingMerge) {
       historyBaseDepth: eventDialog.historyBaseDepth
     };
   }
-  dropParticipantFromDrafts(
-    source.id,
-    pendingMerge.mergeKind === "account-link"
-      ? { eventScoped: true, eventId: pendingMerge.eventId }
-      : undefined
-  );
+  if (pendingMerge.mergeKind === "account-link") {
+    // A pending/rejected link must not delete or redirect unsaved input.
+    if (accountLinkConfirmed) remapExpenseDraftAccountLinks(expenseDraft, getEvent(pendingMerge.eventId));
+  } else {
+    dropParticipantFromDrafts(source.id);
+  }
   clearMergeParticipantsDraftFor(pendingMerge);
   if (pendingMerge.mergeKind === "account-link") {
     if (
@@ -19662,7 +19672,15 @@ function clearRememberedEventNoteDraft(dialog) {
   }
 }
 
+function expenseDraftAccountLinkOptions(event) {
+  return { event, pendingAccountLinks: loadPendingAccountLinks(undefined, pendingEventMembershipOwnerId()) };
+}
+
 function rememberExpenseDraft() {
+  if (expenseDraft) {
+    const event = getEvent(expenseDraft.eventId);
+    remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
+  }
   const key = expenseDraftMemoryKey(state?.currentParticipantId, expenseDraft?.eventId, expenseDraft?.id);
   const serializedDraft = serializeExpenseDraftMemory(expenseDraft);
   if (!key) return;
@@ -19690,6 +19708,7 @@ function restoreExpenseDraft(event, expenseId = "") {
   try {
     const rawDraft = window.localStorage.getItem(key);
     const options = {
+      ...expenseDraftAccountLinkOptions(event),
       eventId: event.id,
       expenseId,
       participantIds: activeEventParticipants(event).map(
@@ -19885,6 +19904,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     return;
   }
 
+  remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
   const recovery = expenseDraftSaveStatus(expenseDraft, event);
   if (recovery.conflict) {
     expenseDraft.recoveryConflict = true;
@@ -20086,6 +20106,7 @@ async function saveQuickExpenses(eventId) {
     return;
   }
 
+  remapExpenseDraftAccountLinks(expenseDraft, event, expenseDraftAccountLinkOptions(event));
   const activeDraft = expenseDraft;
   const participantId = state.currentParticipantId;
   const request = { draft: activeDraft, participantId };

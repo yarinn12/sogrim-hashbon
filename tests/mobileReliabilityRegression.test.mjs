@@ -129,7 +129,8 @@ test("legacy permission and participant alias actions await cloud persistence", 
   );
 
   assert.match(alias, /const result = await persistState\(\{[\s\S]*?awaitCloud: true/);
-  assert.match(alias, /event\.participantAliases = previousAliases/);
+  // Rollback is exercised with the real handler in participantAliasSync.test.mjs:
+  // restore the rejected field and clock while retaining concurrent edits.
   assert.match(app, /await saveParticipantAlias\(/);
   assert.match(permission, /return setEventManagementMode\(/);
   assert.match(app, /await toggleAdminEditMode\(target\.dataset\.eventId\)/);

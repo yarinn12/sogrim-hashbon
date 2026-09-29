@@ -1,5 +1,59 @@
+import { parseMoneyInput, formatMoney, sumMoneyAmounts } from "./money.mjs";
+
 export const EXPENSE_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const EXPENSE_DRAFT_STORAGE_PREFIX = "settle-friends-expense-draft";
+
+// Redirect input only through an event's completed guest-to-account link.
+// Keep amount strings (including unfinished input) and save-revision evidence
+// intact. Combine complete payer amounts so the wizard remains navigable.
+export function remapExpenseDraftAccountLinks(draft, event, { pendingAccountLinks = [] } = {}) {
+  if (!draft || !event || draft.eventId !== event.id) return draft;
+  const members = new Set(event.participantIds ?? []);
+  const inactive = new Set(event.inactiveParticipantIds ?? []);
+  const pending = new Set(pendingAccountLinks.filter(link => link.eventId === event.id).map(link => link.sourceParticipantId));
+  const links = Array.isArray(event.participantAccountLinks) ? event.participantAccountLinks : [];
+  const counts = new Map();
+  for (const link of links) counts.set(link?.sourceParticipantId, (counts.get(link?.sourceParticipantId) ?? 0) + 1);
+  const redirects = new Map();
+  for (const link of links) {
+    const source = link?.sourceParticipantId, target = link?.targetParticipantId;
+    if (typeof source !== "string" || !source || source.startsWith("account-") || pending.has(source) ||
+        members.has(source) || !members.has(target) || inactive.has(target) ||
+        !/^account-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(target) ||
+        !Number.isFinite(Date.parse(link.linkedAt)) ||
+        counts.get(source) !== 1) continue;
+    redirects.set(source, target);
+  }
+  if (!redirects.size) return draft;
+  const redirect = id => redirects.get(id) ?? id;
+  const redirectIds = ids => [...new Set(ids.map(redirect))];
+  if (Array.isArray(draft.payers)) {
+    const groups = new Map();
+    for (const payer of draft.payers) {
+      const id = redirect(payer.participantId);
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push({...payer,participantId:id});
+    }
+    draft.payers = [...groups.values()].flatMap(payers => {
+      if (payers.length === 1 || ![...redirects.values()].includes(payers[0].participantId)) return payers;
+      try {
+        const amount = sumMoneyAmounts(payers.map(payer => parseMoneyInput(payer.amount)));
+        return [{...payers[0],amount:formatMoney(amount).replace(/\.00$/, ""),amountTouched:true,autoAmount:false}];
+      } catch {
+        // Never discard unfinished/invalid input or silently round an amount.
+        return payers;
+      }
+    });
+  }
+  if (Array.isArray(draft.sharedByParticipantIds)) draft.sharedByParticipantIds = redirectIds(draft.sharedByParticipantIds);
+  if (draft.createdByParticipantId) draft.createdByParticipantId = redirect(draft.createdByParticipantId);
+  if (draft.quickPayerId) draft.quickPayerId = redirect(draft.quickPayerId);
+  if (Array.isArray(draft.quickItems)) draft.quickItems = draft.quickItems.map(item => ({...item,
+    sharedBy:redirect(item.sharedBy),
+    ...(Array.isArray(item.sharedByParticipantIds) ? {sharedByParticipantIds:redirectIds(item.sharedByParticipantIds)} : {})
+  }));
+  return draft;
+}
 
 export function expenseDraftMemoryKey(participantId, eventId, expenseId = "") {
   if (!participantId || !eventId) return "";
@@ -92,6 +146,8 @@ export function parseExpenseDraftMemory(
     expenseId = "",
     participantIds = [],
     fallbackParticipantId = participantIds[0],
+    event,
+    pendingAccountLinks = [],
     now = Date.now(),
     maxAgeMs = EXPENSE_DRAFT_MAX_AGE_MS
   } = {}
@@ -114,7 +170,12 @@ export function parseExpenseDraftMemory(
       return null;
     }
 
-    const knownParticipantIds = [...new Set(participantIds.filter(Boolean))];
+    remapExpenseDraftAccountLinks(draft, event, { pendingAccountLinks });
+    // An optimistic link can still be rejected. Preserve its original input
+    // until confirmation instead of falling back to a different payer.
+    const pendingSources = pendingAccountLinks.filter(link => link.eventId === eventId)
+      .map(link => link.sourceParticipantId);
+    const knownParticipantIds = [...new Set([...participantIds, ...pendingSources].filter(Boolean))];
     const knownParticipantIdSet = new Set(knownParticipantIds);
     const safeFallbackParticipantId = knownParticipantIdSet.has(fallbackParticipantId)
       ? fallbackParticipantId

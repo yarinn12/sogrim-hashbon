@@ -4,7 +4,7 @@ import vm from "node:vm";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 import { readFileSync } from "node:fs";
 import { updateTransferStatus, rollbackTransferStatusChanges, updateExpense } from "../src/domain/appActions.mjs";
-import { expenseDraftSaveStatus, prepareQuickExpenseRetry } from "../src/domain/expenseDraftMemory.mjs";
+import { expenseDraftSaveStatus, prepareQuickExpenseRetry, remapExpenseDraftAccountLinks } from "../src/domain/expenseDraftMemory.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 function functionSource(name) {
@@ -23,7 +23,8 @@ function harness() {
   const context = vm.createContext({
     state: { currentParticipantId: "account-a", participants: [], events: [event] },
     expenseDraft: draft, expenseSaveInProgress: false, expenseSaveRequest: null, saveFailureMessage,
-    expenseDraftSaveStatus, prepareQuickExpenseRetry, updateExpense, rememberExpenseDraft: () => {},
+    expenseDraftSaveStatus, prepareQuickExpenseRetry, remapExpenseDraftAccountLinks,
+    expenseDraftAccountLinkOptions: event => ({event,pendingAccountLinks:[]}), updateExpense, rememberExpenseDraft: () => {},
     screen: { name: "settlement", eventId: event.id }, notice: "", settlementCelebration: null,
     transferStatusRequestVersions: new Map(), updateTransferStatus, rollbackTransferStatusChanges,
     window: { localStorage: {} }, loadStoredAccountSession: () => null,
