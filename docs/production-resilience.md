@@ -107,4 +107,17 @@ Activation still requires an explicit Render account action:
 4. Wait for `/api/health` to report `ok: true`, `cloudStorageReady: true`, `googleAuthReady: true`, `accountDeletionReady: true`, `pushDeliveryReady: true` and `shareLinksReady: true`.
 5. Run the production gate against the backup host, followed by a two-account invite and settlement journey.
 
+`AUTH_EMAIL_DELIVERY_READY` and `PUSH_DELIVERY_ENABLED` are service-managed values,
+alongside the existing provider credentials. Set them to match the verified
+production backend: email readiness requires working Supabase email delivery,
+and push requires the existing Firebase configuration. Do not enable either flag
+as a substitute for configuring its provider. The Blueprint uses `sync: false`
+so a later sync cannot reset a verified service to disabled delivery. Render
+[preserves these manually managed values on Blueprint updates](https://render.com/docs/blueprint-spec#prompting-for-secret-values).
+For an existing service, add missing values in its Environment page and redeploy;
+Render only prompts for `sync: false` values when first creating a Blueprint.
+Then run both `qa:recovery:strict` with `PRODUCTION_BASE_URL` set to the recovery
+host and `qa:failover` with `RECOVERY_PRODUCTION_ORIGIN` set to that host. These
+checks detect configuration drift; they do not confirm device push or inbox delivery.
+
 Do not send normal user traffic to the recovery host merely because the container started. A healthy API response and a complete invitation journey are both required before it can be used during an incident, and its cold-start behavior must be accepted explicitly.

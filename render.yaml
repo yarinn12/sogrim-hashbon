@@ -30,7 +30,9 @@ services:
       - key: FIREBASE_SERVICE_ACCOUNT_JSON_BASE64
         sync: false
       - key: PUSH_DELIVERY_ENABLED
-        value: "false"
+        sync: false
+      - key: AUTH_EMAIL_DELIVERY_READY
+        sync: false
       - key: ADMOB_ENABLED
         value: "false"
       - key: ANDROID_MIN_SUPPORTED_BUILD
