@@ -127,7 +127,7 @@ test("the app shows one branded splash only while the first real screen loads", 
   assert.match(accountAuthLayer, /function markAccountAuthReady\(\)/);
   assert.match(accountAuthLayer, /lockAccountGate\(\)/);
   assert.match(accountAuthLayer, /ACCOUNT_SETUP_TIMEOUT_MS = 12_000/);
-  assert.match(accountAuthLayer, /function renderAccountRecoveryGate\(\)/);
+  assert.match(accountAuthLayer, /function renderAccountRecoveryGate\(\{ connecting = false \} = \{\}\)/);
   assert.match(accountAuthLayer, /data-account-retry/);
   assert.doesNotMatch(accountAuthLayer, /renderAccountBootGate|account-auth-boot/);
   assert.match(accountAuthLayer, /classList\.remove\("account-auth-pending"\)/);

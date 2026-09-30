@@ -149,7 +149,7 @@ test("account entry keeps an event invitation visible through authentication", a
   const accountGate = sourceBetween(
     layer,
     "function renderAccountGate(",
-    "function renderAccountRecoveryGate()"
+    "function renderAccountRecoveryGate("
   );
   const inviteContext = sourceBetween(
     layer,
