@@ -160,10 +160,23 @@ jobs:
             return assigned;
           }
           async function verifyNoOtherExternalAudience(groupId) {
-            const appGroups = list(await request("GET", "/v1/betaGroups", { "filter[app]": appId, "filter[isInternalGroup]": "false", limit: "200" }));
-            ensure(appGroups.every(item => item.id === groupId || item.attributes?.hasAccessToAllBuilds !== true), "Another external group has access to all builds; stop to avoid notifications.");
-            const groups = list(await request("GET", "/v1/betaGroups", { "filter[app]": appId, "filter[builds]": buildId, "filter[isInternalGroup]": "false", limit: "200" }));
-            ensure(groups.every(item => item.id === groupId), "Target build already has another external group; stop to avoid notifications.");
+            // Use the audited app query; Apple rejects the external-group filter.
+            const appGroups = list(await request("GET", "/v1/betaGroups", {
+              "filter[app]": appId, include: "builds", "limit[builds]": "1000", limit: "200"
+            }));
+            ensure(appGroups.every(item => typeof item.attributes?.isInternalGroup === "boolean"), "Group audience type is unknown; stop.");
+            const externalGroups = appGroups.filter(item => item.attributes.isInternalGroup === false);
+            ensure(externalGroups.every(item => item.id === groupId || item.attributes?.hasAccessToAllBuilds !== true), "Another external group has access to all builds; stop to avoid notifications.");
+            for (const group of externalGroups) {
+              const relationship = group.relationships?.builds;
+              const assigned = relationship?.data;
+              const total = relationship?.meta?.paging?.total;
+              ensure(Array.isArray(assigned) && !relationship.links?.next &&
+                (total == null ? assigned.length < 1000 : Number.isInteger(total) && total === assigned.length),
+                "Incomplete external group build relationship; stop.");
+              ensure(assigned.every(item => item.type === "builds" && typeof item.id === "string"), "Invalid external group build relationship; stop.");
+              ensure(group.id === groupId || !assigned.some(item => item.id === buildId), "Target build already has another external group; stop to avoid notifications.");
+            }
             const testers = await request("GET", `/v1/builds/${buildId}/individualTesters`, { "fields[betaTesters]": "state", limit: "1" });
             ensure(Array.isArray(testers.data) && testers.data.length === 0 && !testers.links?.next, "Target build already has individual testers; stop to avoid notifications.");
           }
