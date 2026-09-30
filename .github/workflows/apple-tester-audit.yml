@@ -1,0 +1,162 @@
+name: Apple TestFlight external tester readiness audit
+
+on:
+  push:
+    branches:
+      - codex/apple-tester-audit-20260930
+    paths:
+      - .github/workflows/apple-tester-audit.yml
+
+permissions: {}
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - name: Read TestFlight readiness without changing accounts or sending invitations
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { sign } from "node:crypto";
+
+          const appId = "6809952514";
+          const targetVersion = "4.53";
+          const targetBuild = "183";
+          const issuerId = required("APPSTORE_ISSUER_ID");
+          const keyId = required("APPSTORE_API_KEY_ID");
+          const privateKey = required("APPSTORE_API_PRIVATE_KEY").replace(/\\n/g, "\n");
+
+          const builds = await get("/v1/builds", {
+            "filter[app]": appId,
+            "filter[preReleaseVersion.version]": targetVersion,
+            "filter[preReleaseVersion.platform]": "IOS",
+            "filter[version]": targetBuild,
+            include: "preReleaseVersion,buildBetaDetail,betaAppReviewSubmission",
+            limit: "20"
+          });
+          const groups = await get("/v1/betaGroups", {
+            "filter[app]": appId,
+            include: "builds",
+            "limit[builds]": "1000",
+            limit: "200"
+          });
+          const review = await get(`/v1/apps/${appId}/betaAppReviewDetail`, {}, true);
+          const localizations = await get(`/v1/apps/${appId}/betaAppLocalizations`, { limit: "200" });
+          const reviewAttributes = review.data?.attributes || {};
+          const hasText = value => typeof value === "string" && value.trim().length > 0;
+          const presence = (attributes, fields) => Object.fromEntries(fields.map(field => [field + "Provided", hasText(attributes?.[field])]));
+          const matchingBuilds = builds.data || [];
+          const result = {
+            checkedAt: new Date().toISOString(),
+            scope: "Read-only TestFlight readiness; no testers, invitations, review submissions or account roles changed.",
+            target: { appId, version: targetVersion, build: targetBuild },
+            matchingBuildCount: matchingBuilds.length,
+            builds: matchingBuilds.map(item => ({
+              ...resource(item, ["version", "uploadedDate", "processingState", "buildAudienceType", "expired"]),
+              preReleaseVersionId: item.relationships?.preReleaseVersion?.data?.id || null,
+              buildBetaDetailId: item.relationships?.buildBetaDetail?.data?.id || null,
+              betaAppReviewSubmissionId: item.relationships?.betaAppReviewSubmission?.data?.id || null
+            })),
+            preReleaseVersions: (builds.included || [])
+              .filter(item => item.type === "preReleaseVersions")
+              .map(item => resource(item, ["platform", "version"])),
+            buildBetaDetails: (builds.included || [])
+              .filter(item => item.type === "buildBetaDetails")
+              .map(item => resource(item, ["autoNotifyEnabled", "internalBuildState", "externalBuildState"])),
+            betaAppReviewSubmissions: (builds.included || [])
+              .filter(item => item.type === "betaAppReviewSubmissions")
+              .map(item => resource(item, ["betaReviewState", "submittedDate"])),
+            betaGroups: (groups.data || []).map(item => ({
+              ...resource(item, ["isInternalGroup", "hasAccessToAllBuilds", "publicLinkEnabled"]),
+              buildIds: (item.relationships?.builds?.data || []).map(build => build.id),
+              buildsTotal: item.relationships?.builds?.meta?.paging?.total ?? null
+            })),
+            betaAppReviewDetail: {
+              exists: Boolean(review.data),
+              id: review.data?.id || null,
+              demoAccountRequired: reviewAttributes.demoAccountRequired ?? null,
+              ...presence(reviewAttributes, ["contactFirstName", "contactLastName", "contactPhone", "contactEmail", "demoAccountName", "demoAccountPassword", "notes"])
+            },
+            betaAppLocalizations: (localizations.data || []).map(item => ({
+              id: item.id,
+              locale: item.attributes?.locale || null,
+              ...presence(item.attributes, ["description", "feedbackEmail", "privacyPolicyUrl", "marketingUrl"])
+            })),
+            morePages: {
+              builds: Boolean(builds.links?.next),
+              groups: Boolean(groups.links?.next),
+              localizations: Boolean(localizations.links?.next)
+            }
+          };
+
+          const output = JSON.stringify(result, null, 2);
+          console.log(output);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## TestFlight external tester readiness audit\n\n\`\`\`json\n${output}\n\`\`\`\n`);
+          }
+
+          function required(name) {
+            const value = String(process.env[name] || "").trim();
+            if (!value) throw new Error(`${name} is missing.`);
+            return value;
+          }
+
+          function resource(item, fields) {
+            if (!item) return null;
+            return {
+              type: item.type,
+              id: item.id,
+              attributes: Object.fromEntries(fields.map(field => [field, item.attributes?.[field] ?? null]))
+            };
+          }
+
+          function freshToken() {
+            const now = Math.floor(Date.now() / 1000);
+            const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+            const unsigned = `${encode({ alg: "ES256", kid: keyId, typ: "JWT" })}.${encode({
+              iss: issuerId, iat: now, exp: now + 600, aud: "appstoreconnect-v1"
+            })}`;
+            try {
+              const signature = sign("sha256", Buffer.from(unsigned), {
+                key: privateKey,
+                dsaEncoding: "ieee-p1363"
+              }).toString("base64url");
+              return `${unsigned}.${signature}`;
+            } catch {
+              throw new Error("Could not sign App Store Connect status request.");
+            }
+          }
+
+          async function get(path, query = {}, allowMissing = false) {
+            const url = new URL(`https://api.appstoreconnect.apple.com${path}`);
+            for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+            let response;
+            let body;
+            try {
+              response = await fetch(url, {
+                method: "GET",
+                headers: { Authorization: `Bearer ${freshToken()}` },
+                redirect: "manual",
+                signal: AbortSignal.timeout(15_000)
+              });
+              body = await response.json().catch(() => null);
+            } catch {
+              throw new Error(`App Store Connect GET ${path} failed before a complete response.`);
+            }
+            if (allowMissing && response.status === 404) return { data: null };
+            if (!response.ok) {
+              // Never log tokens, headers, full URLs or server error payloads.
+              throw new Error(`App Store Connect GET ${path} failed (HTTP ${response.status}).`);
+            }
+            if (!body || typeof body !== "object" || !("data" in body)) {
+              throw new Error(`App Store Connect GET ${path} returned an invalid response.`);
+            }
+            return body;
+          }
+          NODE
