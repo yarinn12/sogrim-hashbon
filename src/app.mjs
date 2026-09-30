@@ -9714,7 +9714,19 @@ function renderExpenseRow(event, expense) {
         aria-controls="expense-participants-${escapeAttribute(expense.id)}"
       >
         <strong>${escapeHtml(expense.name)}</strong>
-        <small>שילמו: ${escapeHtml(payers)}</small>
+        <span class="expense-paid-by">
+          <span class="expense-paid-by-label">${expense.payers.length === 1 ? "שילם:" : "שילמו:"}</span>
+          <span class="expense-paid-by-list">
+            ${expense.payers.map((payer) => `
+              <span class="expense-paid-by-entry">
+                <span class="expense-paid-by-name">${escapeHtml(participantName(payer.participantId, event))}</span>
+                ${Number.isSafeInteger(payer.amount)
+                  ? `<bdi class="expense-paid-by-amount" dir="ltr"><span class="font-num">${formatEventMoney(event, payer.amount)}</span></bdi>`
+                  : '<span class="expense-paid-by-amount">סכום לא תקין</span>'}
+              </span>
+            `).join("")}
+          </span>
+        </span>
         ${
           needsReview
             ? '<span class="expense-review-badge" role="status">צריך תיקון · לא נכנסה לחישוב</span>'

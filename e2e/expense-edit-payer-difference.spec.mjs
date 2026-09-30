@@ -77,6 +77,42 @@ test.beforeEach(async ({ page, request }) => {
   await page.goto("/");
 });
 
+test("expense rows show each payer's amount before expanding or editing", async ({ page }, testInfo) => {
+  const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
+  if (dynamicType) await page.goto(`/?dynamic-type-preview=${dynamicType}`);
+  if (testInfo.project.metadata?.reflowScale) {
+    await page.evaluate(scale => { document.documentElement.style.fontSize = `${scale * 100}%`; }, testInfo.project.metadata.reflowScale);
+  }
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+
+  const sharedRow = page.locator('[data-expense-id="expense-shared-payment"]');
+  const entries = sharedRow.locator(".expense-paid-by-entry");
+  await expect(entries).toHaveCount(2);
+  await expect(entries.nth(0)).toHaveText(/ירין יצחק\s+₪50\.00/);
+  await expect(entries.nth(1)).toHaveText(/דני כהן\s+₪70\.00/);
+  for (const entry of await entries.all()) {
+    await expect(entry.locator(".expense-paid-by-name")).toBeVisible();
+    await expect(entry.locator(".expense-paid-by-amount")).toBeVisible();
+  }
+  await expect(sharedRow.locator(".expense-actions .amount")).toHaveText("₪120.00");
+  await expect(sharedRow.locator(".expense-participants-details")).not.toHaveAttribute("open", "");
+
+  const singleRow = page.locator('[data-expense-id="expense-single-payment"]');
+  await expect(singleRow.locator(".expense-paid-by-entry")).toHaveText(/ירין יצחק\s+₪100\.00/);
+  await expect(singleRow.locator(".expense-paid-by-label")).toHaveText("שילם:");
+
+  // Every payer must fit without the one-line truncation used for secondary metadata.
+  await expect.poll(() => sharedRow.locator(".expense-paid-by").evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return element.scrollWidth <= element.clientWidth + 1 && rect.left >= -1 && rect.right <= innerWidth + 1;
+  })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("expense-payer-breakdown.png"), fullPage: true });
+
+  await sharedRow.locator(".expense-row-main").click();
+  await expect(sharedRow.locator(".expense-participants-details")).toHaveAttribute("open", "");
+  await expect(entries.nth(1)).toBeVisible();
+});
+
 test("editing a multi-payer expense asks who owns the added amount", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
 
