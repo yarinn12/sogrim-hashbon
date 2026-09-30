@@ -18,7 +18,7 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
       - name: Observe offline and document replacement with unchanged application code
-        run: npx playwright test --config playwright.sync.config.mjs e2e-sync/browser-error-recorder.spec.mjs --grep 'caught version polls' --repeat-each=2 --retries=0
+        run: npx playwright test --config playwright.sync.config.mjs e2e-sync/browser-error-recorder.spec.mjs e2e-sync/two-client.spec.mjs --grep 'diagnostic|network|unplanned CORS|application error|repayment plan changes' --repeat-each=2 --retries=0
       - uses: actions/upload-artifact@v6
         if: always()
         with:

@@ -17,6 +17,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
+  const reloadingPages = new WeakSet();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
   const accountLinkWriteHolds = new Map();
@@ -124,7 +125,8 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     };
     context.on('request',rememberOfflineRequest);
     context.on('requestfailed',rememberOfflineRequest);
-    await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls});
+    await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls,
+      origin,isReloading:page=>reloadingPages.has(page)});
     const user = {id: ids[i], email: `qa-${i}@example.test`, app_metadata: {provider: 'google'},
       user_metadata: {full_name: participants[i].displayName, username: `two_client_${i}`,
         account_space_id: personal[i].id, account_space_key: key}};
@@ -350,6 +352,15 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       barrier = {arrivals:0, release, ready};
     },
     async offline(i, value) { if(value) blocked.add(i); else blocked.delete(i); await contexts[i].setOffline(value); },
+    async reload(i) {
+      const page=pages[i];
+      // Only cancellation of the departing document is expected. New-document
+      // requests and real error/unhandledrejection events remain strict failures.
+      reloadingPages.add(page);
+      try {await page.reload({waitUntil:'commit'});}
+      finally {reloadingPages.delete(page);}
+      await page.waitForLoadState('load');
+    },
     cloudUnavailable(i, value) { if (value) blocked.add(i); else blocked.delete(i); },
     failWorkspace(i, status) { if (status) workspaceFailures.set(i,status); else workspaceFailures.delete(i); },
     close };
@@ -1245,7 +1256,7 @@ for (const actor of [0,1]) test(`repayment plan changes on ${actor ? 'iPhone' : 
       await expect.poll(()=>f.canonical.state.events[0].directSettlementTransfers).toBe(mode==='direct');
       expect(f.canonical.state.events[0].transfers.map(t=>t.amount)).toEqual(Array(count).fill(amount));
       for(let i=0;i<2;i++) {
-        await f.pages[i].reload();
+        await f.reload(i);
         await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
         await expect(rows(f.pages[i])).toHaveCount(count);

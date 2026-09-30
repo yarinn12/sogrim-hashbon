@@ -4,19 +4,22 @@ import {readFileSync} from 'node:fs';
 
 const pageUrl = 'https://transport-monitor.example.test/';
 const failedUrl = 'https://network-fixture.example.test/rejected';
+const reloadOrigin = 'https://reload-fixture.example.test';
+const reloadUrl = `${reloadOrigin}/rest/v1/app_snapshots`;
 
 async function probe(run) {
   const browser = await webkit.launch();
   try {
     const context = await browser.newContext();
-    const errors=[], diagnostics=[], failedUrls=new Set();
-    await recordBrowserErrors(context,{client:1,errors,diagnostics,failedUrls});
+    const errors=[], diagnostics=[], failedUrls=new Set(), reloadingPages=new WeakSet();
+    await recordBrowserErrors(context,{client:1,errors,diagnostics,failedUrls,
+      origin:reloadOrigin,isReloading:page=>reloadingPages.has(page)});
     await context.route('**/*', route => route.request().url() === pageUrl
       ? route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated error monitor</title>'})
       : route.fulfill({headers:{'access-control-allow-origin':'https://wrong-origin.example.test'},json:{ok:true}}));
     const page=await context.newPage();
     await page.goto(pageUrl);
-    await run({page,errors,diagnostics,failedUrls});
+    await run({page,context,errors,diagnostics,failedUrls,reloadingPages});
   } finally {await browser.close();}
 }
 
@@ -50,6 +53,37 @@ test('a thrown application error cannot be classified as expected network noise'
     failedUrls.add(failedUrl);
     await page.evaluate(()=>{setTimeout(()=>{throw new Error('synthetic application fault');},0);});
     await expect.poll(()=>errors.some(error=>error.kind==='error'&&error.message==='synthetic application fault')).toBe(true);
+  });
+});
+
+test('reload diagnostics stop at commit and cannot exempt another page or backend',async()=>{
+  await probe(async({page,context,errors,diagnostics,reloadingPages})=>{
+    const caughtFetch=(target,url)=>target.evaluate(async url=>{try {await fetch(url);} catch {}},url);
+    reloadingPages.add(page);
+    await caughtFetch(page,reloadUrl);
+    await expect.poll(()=>diagnostics.length).toBe(1);
+    expect(errors).toEqual([]);
+    await caughtFetch(page,failedUrl);
+    await expect.poll(()=>errors.length).toBe(1);
+    const other=await context.newPage();
+    await other.goto(pageUrl);
+    await caughtFetch(other,reloadUrl);
+    await expect.poll(()=>errors.length).toBe(2);
+    reloadingPages.delete(page);
+    await caughtFetch(page,reloadUrl);
+    await expect.poll(()=>errors.length).toBe(3);
+    expect(diagnostics).toHaveLength(1);
+  });
+});
+
+test('real rejections and exceptions still fail during the reload diagnostic window',async()=>{
+  await probe(async({page,errors,diagnostics,reloadingPages})=>{
+    reloadingPages.add(page);
+    await page.evaluate(url=>{void fetch(url);},reloadUrl);
+    await expect.poll(()=>errors.some(error=>error.kind==='unhandledrejection')).toBe(true);
+    await expect.poll(()=>diagnostics.length).toBe(1);
+    await page.evaluate(()=>{setTimeout(()=>{throw new Error('fault during reload');},0);});
+    await expect.poll(()=>errors.some(error=>error.kind==='error'&&error.message==='fault during reload')).toBe(true);
   });
 });
 
@@ -90,9 +124,9 @@ test('caught version polls canceled during document replacement remain diagnosti
       finally {reloadingPages.delete(page);}
       await page.waitForLoadState('load');
     }
-    expect(caught.length,'old-document request rejection must reach its catch').toBeGreaterThan(0);
-    expect(errors).toEqual([]);
     await testInfo.attach('handled-reload-network-results',{contentType:'application/json',
       body:JSON.stringify({caught,diagnostics,errors},null,2)});
+    expect(caught.length,'old-document request rejection must reach its catch').toBeGreaterThan(0);
+    expect(errors).toEqual([]);
   } finally {await browser.close();}
 });
