@@ -96,7 +96,6 @@ test("the recovery host keeps the Android ad rollout in test-only mode", async (
   assert.match(blueprint, /key: ADMOB_TEST_MODE\s+value: "true"/);
   assert.match(blueprint, /key: ADMOB_MIN_ANDROID_BUILD\s+value: "70"/);
   assert.match(blueprint, /key: ADMOB_ROLLOUT_PERCENT\s+value: "0"/);
-  assert.match(blueprint, /key: PUSH_DELIVERY_ENABLED\s+value: "false"/);
 });
 
 test("the backup image is published from main without embedding secrets", async () => {
@@ -108,6 +107,22 @@ test("the backup image is published from main without embedding secrets", async 
   assert.match(workflow, /sogrim-hashbon-server:latest/);
   assert.match(workflow, /secrets\.GITHUB_TOKEN/);
   assert.doesNotMatch(workflow, /SUPABASE_SERVICE_ROLE_KEY/);
+});
+
+test("Blueprint updates preserve verified recovery email and push readiness", async () => {
+  const blueprint = await readFile("render.yaml", "utf8");
+  const managedFlags = ["AUTH_EMAIL_DELIVERY_READY", "PUSH_DELIVERY_ENABLED"];
+  const entries = [...blueprint.matchAll(/- key: ([A-Z_]+)\r?\n([\s\S]*?)(?=\r?\n[ \t]*- key:|$)/g)];
+  const actual = Object.fromEntries(managedFlags.map((key) => {
+    const entry = entries.find((match) => match[1] === key)?.[2] ?? "";
+    return [key, /\bsync: false\b/.test(entry) && !/\bvalue:/.test(entry)];
+  }));
+  // Render ignores sync:false entries on later Blueprint updates. A fixed
+  // false value would overwrite a working service's verified delivery flag.
+  assert.deepEqual(actual, {
+    AUTH_EMAIL_DELIVERY_READY: true,
+    PUSH_DELIVERY_ENABLED: true
+  });
 });
 
 test("the non-Apple release gate blocks continuity and delivery regressions", async () => {
