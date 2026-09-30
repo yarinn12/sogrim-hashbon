@@ -31,6 +31,13 @@ remain an error on the form; they never display success or persist a session.
 - All five final focused Chromium Android cases passed: immediate progress,
   temporary user failure, temporary workspace failure, offline/reconnect with
   repeated wake-up events, and a held snapshot write acknowledgement.
+- A wider run caught an intermittent false-empty event screen. It reproduced
+  twice in six runs with the baseline auth module as well. The branding layer
+  rewrote the account-loading/recovery message as a confirmed empty account.
+  Both deterministic branding regressions failed before the guard was added.
+  A separate deterministic test also caught startup marking a discarded cloud
+  response as authoritative after a newer local save. The fix preserves the
+  loading guard and schedules a fresh read without overwriting local edits.
 
 The tests use the real application, form submit, storage, fetch and reload paths
 with isolated synthetic Supabase responses. The cloud fixture only exposes the
@@ -44,10 +51,14 @@ response and requires the gate to remain locked until that response is released.
 - `e2e/email-login-completion.spec.mjs` runs in the normal mobile QA matrix.
 - `e2e/account-auth-feedback.spec.mjs` also verifies that rejected credentials
   produce neither a saved session nor an accepted-login heading.
+- `tests/accountHydrationCompletion.test.mjs` executes the real hydration and
+  branding functions with controlled completion ordering and DOM doubles.
+  It checks loading/recovery copy, stale responses, newer local edits and a
+  genuinely empty account. The existing browser hydration regression is retained.
 - Existing source-test boundaries were updated for the recovery function's new
   optional parameter and the explicit sign-in reload condition; their behavioral
   assertions were preserved.
-- `npm test`: 3,089 tests passed, no skips (including database integration tests).
+- `npm test`: 3,094 tests passed, no skips (including database integration tests).
 - The final mobile run includes login completion, auth feedback and returning
   account event hydration on Android Chromium, iPhone/iPad WebKit, large text and
   narrow reflow. Full repository mobile and two-client suites run in PR CI.
