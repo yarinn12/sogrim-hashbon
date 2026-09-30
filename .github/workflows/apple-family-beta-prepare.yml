@@ -1,0 +1,225 @@
+name: Prepare private family TestFlight beta 4.53 (183)
+
+on:
+  push:
+    branches:
+      - codex/apple-family-beta-20260930
+    paths:
+      - .github/workflows/apple-family-beta-prepare.yml
+
+permissions: {}
+
+concurrency:
+  group: apple-family-beta-453-183
+  cancel-in-progress: false
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - name: Prepare empty private group and submit only the exact TestFlight beta build
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from "node:fs";
+          import { sign } from "node:crypto";
+
+          const appId = "6809952514";
+          const buildId = "f8bc5a12-a8b6-4d2d-87ec-5cce28051eba";
+          const groupName = "Family iOS QA 4.53";
+          const targetVersion = "4.53";
+          const targetBuild = "183";
+          const issuerId = required("APPSTORE_ISSUER_ID");
+          const keyId = required("APPSTORE_API_KEY_ID");
+          const privateKey = required("APPSTORE_API_PRIVATE_KEY").replace(/\\n/g, "\n");
+
+          const allowedStates = new Set(["READY_FOR_BETA_SUBMISSION", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"]);
+          const actions = { groupCreated: false, buildAssociated: false, betaReviewSubmitted: false };
+          await readTarget();
+          await verifyReviewMetadata();
+          let review = await readReview();
+          ensure(review?.attributes?.betaReviewState !== "REJECTED", "Existing beta review is rejected; stop for review.");
+          let group = await findGroup();
+          await verifyNoOtherExternalAudience(group?.id);
+          if (group) await verifyGroup(group.id);
+          if (!group) {
+            // A failed POST may have succeeded remotely. Read back; never retry it.
+            let uncertain = false;
+            try {
+              await request("POST", "/v1/betaGroups", {}, { data: {
+                type: "betaGroups",
+                attributes: { name: groupName, isInternalGroup: false, hasAccessToAllBuilds: false, publicLinkEnabled: false },
+                relationships: { app: { data: { type: "apps", id: appId } } }
+              } });
+            } catch { uncertain = true; }
+            group = await findGroup();
+            ensure(group, uncertain ? "Group creation outcome is unconfirmed; inspect before retrying." : "Created group was not found on readback.");
+            actions.groupCreated = true;
+          }
+          let groupBuilds = await verifyGroup(group.id);
+          if (!groupBuilds.length) {
+            let uncertain = false;
+            try {
+              await request("POST", `/v1/betaGroups/${group.id}/relationships/builds`, {}, { data: [{ type: "builds", id: buildId }] });
+            } catch { uncertain = true; }
+            groupBuilds = await verifyGroup(group.id);
+            ensure(groupBuilds.length === 1 && groupBuilds[0].id === buildId,
+              uncertain ? "Build association outcome is unconfirmed; inspect before retrying." : "Build association was not found on readback.");
+            actions.buildAssociated = true;
+          }
+          await verifyNoOtherExternalAudience(group.id);
+          const beforeSubmit = await readTarget();
+          review = await readReview();
+          if (!review) {
+            ensure(beforeSubmit.externalState === "READY_FOR_BETA_SUBMISSION", "Build is not ready for a new beta review submission.");
+            // Confirm the group is still empty immediately before beta review.
+            await verifyGroup(group.id);
+            let uncertain = false;
+            try {
+              await request("POST", "/v1/betaAppReviewSubmissions", {}, { data: {
+                type: "betaAppReviewSubmissions",
+                relationships: { build: { data: { type: "builds", id: buildId } } }
+              } });
+            } catch { uncertain = true; }
+            review = await readReview();
+            ensure(review, uncertain ? "Beta submission outcome is unconfirmed; inspect before retrying." : "Beta submission was not found on readback.");
+            actions.betaReviewSubmitted = true;
+          }
+          ensure(["WAITING_FOR_REVIEW", "IN_REVIEW", "APPROVED"].includes(review.attributes?.betaReviewState), "Beta review returned an unexpected state.");
+          const finalTarget = await readTarget();
+          const finalGroupBuilds = await verifyGroup(group.id);
+          await verifyNoOtherExternalAudience(group.id);
+          const output = JSON.stringify({
+            checkedAt: new Date().toISOString(),
+            appId, buildId, version: targetVersion, build: targetBuild,
+            groupId: group.id, groupBuildIds: finalGroupBuilds.map(item => item.id),
+            groupHasTesters: false, publicLinkEnabled: false,
+            processingState: finalTarget.build.attributes.processingState,
+            externalBuildState: finalTarget.externalState,
+            betaReviewSubmissionId: review.id,
+            betaReviewState: review.attributes.betaReviewState,
+            actions,
+            scope: "Only an empty private external group, its exact build association, and TestFlight beta review. No invitations, account roles, public links, or App Store review submission."
+          }, null, 2);
+          console.log(output);
+          if (process.env.GITHUB_STEP_SUMMARY) {
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, `## Family TestFlight preparation\n\n\`\`\`json\n${output}\n\`\`\`\n`);
+          }
+
+          function ensure(ok, message) { if (!ok) throw new Error(message); }
+          function list(body) {
+            ensure(Array.isArray(body?.data) && !body.links?.next, "Incomplete or invalid list response; stop.");
+            return body.data;
+          }
+          async function readTarget() {
+            const body = await request("GET", "/v1/builds", {
+              "filter[app]": appId, "filter[preReleaseVersion.version]": targetVersion,
+              "filter[preReleaseVersion.platform]": "IOS", "filter[version]": targetBuild,
+              include: "preReleaseVersion,buildBetaDetail", limit: "20"
+            });
+            const matches = list(body);
+            ensure(matches.length === 1 && matches[0].id === buildId, "Exact target build identity did not match.");
+            const build = matches[0];
+            const preId = build.relationships?.preReleaseVersion?.data?.id;
+            const pre = (body.included || []).find(item => item.type === "preReleaseVersions" && item.id === preId);
+            ensure(pre?.attributes?.version === targetVersion && pre.attributes.platform === "IOS" && build.attributes?.version === targetBuild, "Target version or platform did not match.");
+            ensure(build.attributes.processingState === "VALID" && build.attributes.expired === false && Date.parse(build.attributes.expirationDate) > Date.now(), "Target build must be valid and unexpired.");
+            ensure(build.attributes.buildAudienceType === "APP_STORE_ELIGIBLE", "Internal-only build is not eligible for external testing.");
+            const detailId = build.relationships?.buildBetaDetail?.data?.id;
+            const detail = (body.included || []).find(item => item.type === "buildBetaDetails" && item.id === detailId);
+            const externalState = detail?.attributes?.externalBuildState;
+            ensure(allowedStates.has(externalState), "Build external-testing state requires separate attention.");
+            return { build, externalState };
+          }
+          async function verifyReviewMetadata() {
+            const detail = (await request("GET", `/v1/apps/${appId}/betaAppReviewDetail`)).data?.attributes;
+            const text = value => typeof value === "string" && Boolean(value.trim());
+            ensure(detail && ["contactFirstName", "contactLastName", "contactPhone", "contactEmail"].every(field => text(detail[field])), "Required beta review contact information is incomplete.");
+            ensure(typeof detail.demoAccountRequired === "boolean", "Beta demo account requirement is not configured.");
+            ensure(!detail.demoAccountRequired || ["demoAccountName", "demoAccountPassword"].every(field => text(detail[field])), "Required beta demo account information is incomplete.");
+            const localizations = list(await request("GET", `/v1/apps/${appId}/betaAppLocalizations`, { limit: "200" }));
+            ensure(localizations.length > 0 && localizations.every(item => ["description", "feedbackEmail", "privacyPolicyUrl"].every(field => text(item.attributes?.[field]))), "Beta app localization metadata is incomplete.");
+          }
+          async function findGroup() {
+            const matches = list(await request("GET", "/v1/betaGroups", { "filter[app]": appId, "filter[name]": groupName, limit: "200" })).filter(item => item.attributes?.name === groupName);
+            ensure(matches.length <= 1, "Dedicated group name is ambiguous.");
+            return matches[0] || null;
+          }
+          async function verifyGroup(id) {
+            const group = await findGroup();
+            ensure(group?.id === id && group.attributes.isInternalGroup === false && group.attributes.publicLinkEnabled === false && group.attributes.hasAccessToAllBuilds === false, "Dedicated group must be private, external, and restricted to assigned builds.");
+            const testers = await request("GET", `/v1/betaGroups/${id}/betaTesters`, { "fields[betaTesters]": "state", limit: "1" });
+            ensure(Array.isArray(testers.data) && testers.data.length === 0 && !testers.links?.next, "Dedicated group already has testers; no further changes allowed.");
+            const assigned = list(await request("GET", `/v1/betaGroups/${id}/relationships/builds`, { limit: "200" }));
+            ensure(assigned.length <= 1 && assigned.every(item => item.type === "builds" && item.id === buildId), "Dedicated group contains another build; no further changes allowed.");
+            return assigned;
+          }
+          async function verifyNoOtherExternalAudience(groupId) {
+            const appGroups = list(await request("GET", "/v1/betaGroups", { "filter[app]": appId, "filter[isInternalGroup]": "false", limit: "200" }));
+            ensure(appGroups.every(item => item.id === groupId || item.attributes?.hasAccessToAllBuilds !== true), "Another external group has access to all builds; stop to avoid notifications.");
+            const groups = list(await request("GET", "/v1/betaGroups", { "filter[app]": appId, "filter[builds]": buildId, "filter[isInternalGroup]": "false", limit: "200" }));
+            ensure(groups.every(item => item.id === groupId), "Target build already has another external group; stop to avoid notifications.");
+            const testers = await request("GET", `/v1/builds/${buildId}/individualTesters`, { "fields[betaTesters]": "state", limit: "1" });
+            ensure(Array.isArray(testers.data) && testers.data.length === 0 && !testers.links?.next, "Target build already has individual testers; stop to avoid notifications.");
+          }
+          async function readReview() {
+            const matches = list(await request("GET", "/v1/betaAppReviewSubmissions", { "filter[build]": buildId, limit: "20" }));
+            ensure(matches.length <= 1, "Beta review submission is ambiguous.");
+            return matches[0] || null;
+          }
+
+          function required(name) {
+            const value = String(process.env[name] || "").trim();
+            if (!value) throw new Error(`${name} is missing.`);
+            return value;
+          }
+
+          function freshToken() {
+            const now = Math.floor(Date.now() / 1000);
+            const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
+            const unsigned = `${encode({ alg: "ES256", kid: keyId, typ: "JWT" })}.${encode({
+              iss: issuerId, iat: now, exp: now + 600, aud: "appstoreconnect-v1"
+            })}`;
+            try {
+              const signature = sign("sha256", Buffer.from(unsigned), {
+                key: privateKey,
+                dsaEncoding: "ieee-p1363"
+              }).toString("base64url");
+              return `${unsigned}.${signature}`;
+            } catch {
+              throw new Error("Could not sign App Store Connect status request.");
+            }
+          }
+
+          async function request(method, path, query = {}, payload) {
+            const url = new URL(`https://api.appstoreconnect.apple.com${path}`);
+            for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+            let response;
+            let body;
+            try {
+              response = await fetch(url, {
+                method,
+                headers: { Authorization: `Bearer ${freshToken()}`, ...(payload ? { "Content-Type": "application/json" } : {}) },
+                ...(payload ? { body: JSON.stringify(payload) } : {}),
+                redirect: "manual",
+                signal: AbortSignal.timeout(15_000)
+              });
+              body = response.status === 204 ? { data: null } : await response.json().catch(() => null);
+            } catch {
+              throw new Error(`App Store Connect ${method} ${path} failed before a complete response.`);
+            }
+            if (!response.ok) {
+              // Never log tokens, headers, full URLs or server error payloads.
+              throw new Error(`App Store Connect ${method} ${path} failed (HTTP ${response.status}).`);
+            }
+            if (!body || typeof body !== "object" || !("data" in body)) {
+              throw new Error(`App Store Connect ${method} ${path} returned an invalid response.`);
+            }
+            return body;
+          }
+          NODE
