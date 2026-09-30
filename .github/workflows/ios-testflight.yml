@@ -27,7 +27,7 @@ concurrency:
 jobs:
   build-and-upload:
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
@@ -133,10 +133,15 @@ jobs:
           issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          release-notes: ${{ inputs.release_notes }}
-          # Info.plist already declares export compliance; Apple rejects re-setting it.
-          wait-for-processing: "true"
+          # The action retains a ten-minute token throughout polling. Upload only;
+          # the next required step renews authentication and verifies VALID + notes.
+          wait-for-processing: "false"
           backend: appstore-api
+
+      - name: Verify Apple processing and complete TestFlight notes
+        run: node scripts/complete-ios-testflight.mjs
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
       - name: Keep IPA and diagnostics for seven days
         if: always()
@@ -146,6 +151,7 @@ jobs:
           path: |
             build/ios/SogrimHashbon.ipa
             build/ios/release-manifest.json
+            build/ios/testflight-completion.json
             build/ios/*.log
           if-no-files-found: warn
           retention-days: 7

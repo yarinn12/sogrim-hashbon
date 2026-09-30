@@ -1,0 +1,50 @@
+name: Complete existing TestFlight upload
+run-name: Complete TestFlight ${{ inputs.version }} (${{ inputs.build }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version of an already uploaded iOS build
+        required: true
+      build:
+        description: Build number already uploaded to Apple
+        required: true
+      release_notes:
+        description: Hebrew notes (optional only for the current repository version)
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-testflight-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  complete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify completion regression tests
+        run: node --test tests/appStoreRelease.test.mjs
+      - name: Verify Apple processing and complete TestFlight notes
+        run: node scripts/complete-ios-testflight.mjs
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          IOS_VERSION: ${{ inputs.version }}
+          IOS_BUILD: ${{ inputs.build }}
+          IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
+      - name: Preserve verified completion
+        uses: actions/upload-artifact@v6
+        with:
+          name: testflight-completion-${{ inputs.version }}-${{ inputs.build }}
+          path: build/ios/testflight-completion.json
+          if-no-files-found: error
+          retention-days: 14
