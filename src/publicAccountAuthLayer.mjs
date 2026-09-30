@@ -118,6 +118,8 @@ let runtimeConfig = null;
 let accountSession = null;
 let googleEnabled = false;
 let appleEnabled = false;
+let providerDiscoveryState = "loading";
+let providerDiscoveryPromise = null;
 let authBusy = false;
 let accountDeleteBusy = false;
 let emailAuthExpanded = false;
@@ -401,8 +403,11 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   removeSessionValue(AUTH_CHANGED_MARKER);
   const accountDeleted = sessionValue(ACCOUNT_DELETED_MARKER) === "1";
   removeSessionValue(ACCOUNT_DELETED_MARKER);
-  googleEnabled = googleAuthConfiguredForCurrentPlatform();
+  // Native iOS must offer an equivalent Apple option alongside Google. Until
+  // the shared provider settings arrive, email remains immediately usable.
+  googleEnabled = googleAuthConfiguredForCurrentPlatform() && !isNativeIos();
   appleEnabled = false;
+  providerDiscoveryState = "loading";
   emailAuthExpanded = !googleEnabled && !appleEnabled;
   // Start preparing Google before the gate is painted. On slower phones the
   // old flow could consume the first tap merely loading the provider SDK, so
@@ -1573,6 +1578,7 @@ async function handleAccountClick(event) {
     // The browser uses Google's official rendered control. Only a native app
     // button is handled here, so a browser tap can never be spent just
     // replacing a fallback with the real Google button.
+    if (!googleEnabled || (isNativeIos() && !appleEnabled)) return;
     if (authBusy || !isNativeGooglePlatform()) return;
     setAuthBusy(true);
     try {
@@ -1596,6 +1602,12 @@ async function handleAccountClick(event) {
     } finally {
       setAuthBusy(false);
     }
+    return;
+  }
+
+  if (action === "retry-providers") {
+    if (authBusy) return;
+    await refreshProviderOptions();
     return;
   }
 
@@ -2727,7 +2739,7 @@ function watchAccountControls() {
   observer.observe(app, { childList: true, subtree: true });
 }
 
-async function providerEnabled(provider) {
+async function readAccountProviderSettings() {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 2500);
   try {
@@ -2735,38 +2747,68 @@ async function providerEnabled(provider) {
       headers: { apikey: runtimeConfig.storage.anonKey },
       signal: controller.signal
     });
-    if (!response.ok) return false;
+    if (!response.ok) return null;
     const settings = await response.json();
-    return Boolean(settings.external?.[provider]);
+    // A missing/failed response is unknown, not an explicit provider disable.
+    if (typeof settings.external?.apple !== "boolean" ||
+        typeof settings.external?.google !== "boolean") return null;
+    return settings.external;
   } catch {
-    return false;
+    return null;
   } finally {
     window.clearTimeout(timeoutId);
   }
 }
 
 async function refreshProviderOptions() {
-  const [googleAvailable, appleAvailable] = await Promise.all([
-    providerEnabled("google"),
-    providerEnabled("apple")
-  ]);
-  const nextGoogleEnabled =
-    googleAuthConfiguredForCurrentPlatform() &&
-    (googleEnabled || googleAvailable);
-  if (
-    nextGoogleEnabled === googleEnabled &&
-    appleAvailable === appleEnabled
-  ) {
-    return;
-  }
-  googleEnabled = nextGoogleEnabled;
-  appleEnabled = appleAvailable;
+  if (providerDiscoveryPromise) return providerDiscoveryPromise;
+  const requestConfig = runtimeConfig;
+  providerDiscoveryState = "loading";
   enableProviderOptions();
+  providerDiscoveryPromise = (async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const providers = await readAccountProviderSettings();
+      if (runtimeConfig !== requestConfig) return;
+      if (providers) {
+        appleEnabled = providers.apple;
+        googleEnabled = googleAuthConfiguredForCurrentPlatform() &&
+          (googleEnabled || providers.google) && (!isNativeIos() || appleEnabled);
+        providerDiscoveryState = "ready";
+        enableProviderOptions();
+        if (googleEnabled && isNativeGooglePlatform()) {
+          prepareNativeGoogleSignIn().catch(() => {});
+        }
+        return;
+      }
+      // Preserve already-confirmed providers through transient failures.
+      // A fresh native session still has email rather than Google alone.
+      if (attempt < 2 && document.querySelector("[data-google-auth-slot]")) {
+        await new Promise(resolve => window.setTimeout(resolve, 750 * (attempt + 1)));
+      } else {
+        providerDiscoveryState = "unavailable";
+        enableProviderOptions();
+        return;
+      }
+    }
+  })();
+  try {
+    await providerDiscoveryPromise;
+  } finally {
+    providerDiscoveryPromise = null;
+  }
 }
 
 function enableProviderOptions() {
   const slot = document.querySelector("[data-google-auth-slot]");
   if (!slot) return;
+  if (!googleEnabled && !appleEnabled) {
+    // Reveal the existing email form without losing an entered password/draft.
+    emailAuthExpanded = true;
+    const emailForm = document.getElementById("account-email-auth");
+    if (emailForm) emailForm.hidden = false;
+    const emailToggle = document.querySelector('[data-account-action="toggle-email"]');
+    if (emailToggle) emailToggle.hidden = true;
+  }
   const googleSelector = isNativeGooglePlatform()
     ? '[data-account-action="google"]'
     : "[data-account-google-control]";
@@ -2787,6 +2829,8 @@ function enableProviderOptions() {
   } else if (!appleEnabled) {
     existingApple?.remove();
   }
+  slot.querySelector("[data-account-provider-status]")?.remove();
+  slot.insertAdjacentHTML("beforeend", providerDiscoveryMarkup());
 
   if (
     !isNativeGooglePlatform() &&
@@ -2800,6 +2844,15 @@ function appleProviderMarkup() {
   return `<button class="account-google-button account-apple-button" type="button" data-account-action="apple" aria-label="המשך עם Apple">
     <img class="account-apple-button-art" src="./assets/sign-in-with-apple-iw.png" alt="" width="375" height="56" />
   </button>`;
+}
+
+function providerDiscoveryMarkup() {
+  if (!isNativeIos() || appleEnabled) return "";
+  const loading = providerDiscoveryState === "loading";
+  return `<div data-account-provider-status role="status" aria-live="polite">
+    <p>${loading ? "טוענים אפשרויות כניסה נוספות…" : "אפשר להתחבר או להירשם עם אימייל, או לנסות שוב את אפשרויות הכניסה הנוספות."}</p>
+    ${loading ? "" : '<button class="account-email-toggle" type="button" data-account-action="retry-providers">נסה שוב</button>'}
+  </div>`;
 }
 
 function providerOptionsMarkup() {
@@ -2821,7 +2874,7 @@ function providerOptionsMarkup() {
       : "",
     appleEnabled ? appleProviderMarkup() : ""
   ].filter(Boolean).join("");
-  return buttons;
+  return buttons + providerDiscoveryMarkup();
 }
 
 function canResumeOffline(session, error) {

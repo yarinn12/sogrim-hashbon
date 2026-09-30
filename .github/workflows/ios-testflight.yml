@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.52"
+        default: "4.53"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "182"
+        default: "183"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור קישור חשבון ושמירת טיוטות: המשלמים, הסכומים והפריטים נשמרים גם בזמן הקישור. שיפור הסנכרון בין המשתתפים, שמירת כינויים ומחיקת אירועים, גם לאחר ניתוק וחיבור מחדש או שינוי במכשיר אחר. שיפור הוספת משתתפים וניווט עם מקלדת תוך שמירת הטיוטה."
+        default: "שיפור אמינות הכניסה עם Apple והצגת אפשרויות ההתחברות."
 
 permissions:
   contents: read
@@ -56,6 +56,9 @@ jobs:
           APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
+      - name: Verify public Apple login provider readiness
+        run: npm run qa:ios:providers
+
       - name: Select and verify Xcode 26.6
         run: |
           sudo xcode-select -s /Applications/Xcode_26.6.app
@@ -70,6 +73,11 @@ jobs:
           npm test
           npm run native:ios:flatten-icon
           npm run native:prepare
+
+      - name: Verify Apple login on iPhone and iPad WebKit
+        run: |
+          npx playwright install webkit
+          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs --project=iphone-webkit --project=ipad-webkit
 
       - name: Prepare Apple release settings
         run: node scripts/prepare-ios-release.mjs
@@ -147,11 +155,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-hashbon-ios-${{ inputs.version }}-${{ inputs.build }}
+          name: sogrim-hashbon-ios-${{ env.IOS_VERSION }}-${{ env.IOS_BUILD }}
           path: |
             build/ios/SogrimHashbon.ipa
             build/ios/release-manifest.json
             build/ios/testflight-completion.json
             build/ios/*.log
+            test-results/
+            playwright-report/
           if-no-files-found: warn
           retention-days: 7
