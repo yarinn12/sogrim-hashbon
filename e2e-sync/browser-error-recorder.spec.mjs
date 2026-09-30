@@ -1,5 +1,6 @@
 import {test, expect, webkit} from '@playwright/test';
 import {recordBrowserErrors} from './browser-error-recorder.mjs';
+import {readFileSync} from 'node:fs';
 
 const pageUrl = 'https://transport-monitor.example.test/';
 const failedUrl = 'https://network-fixture.example.test/rejected';
@@ -50,4 +51,48 @@ test('a thrown application error cannot be classified as expected network noise'
     await page.evaluate(()=>{setTimeout(()=>{throw new Error('synthetic application fault');},0);});
     await expect.poll(()=>errors.some(error=>error.kind==='error'&&error.message==='synthetic application fault')).toBe(true);
   });
+});
+
+test('caught version polls canceled during document replacement remain diagnostics',async({},testInfo)=>{
+  const browser=await webkit.launch();
+  const context=await browser.newContext();
+  const errors=[],diagnostics=[],reloadingPages=new WeakSet(),caught=[];
+  const backend='https://reload-fixture.example.test';
+  const source=readFileSync(new URL('../src/data/fetchTimeout.mjs',import.meta.url),'utf8');
+  await recordBrowserErrors(context,{client:1,errors,diagnostics,failedUrls:new Set(),
+    origin:backend,isReloading:page=>reloadingPages.has(page)});
+  await context.exposeBinding('reportCaughtVersionPoll',(_,detail)=>caught.push(detail));
+  await context.route('**/*',route=>{
+    const url=new URL(route.request().url());
+    if(url.origin===new URL(pageUrl).origin)return route.fulfill(url.pathname==='/fetchTimeout.mjs'
+      ?{contentType:'text/javascript',body:source}
+      :{contentType:'text/html',body:'<!doctype html><title>Version poll reload</title>'});
+    return route.fulfill({headers:{'access-control-allow-origin':'*',
+      'access-control-allow-headers':'authorization,apikey,x-space-key'},json:[{updated_at:'2026-09-30T00:00:00Z'}]});
+  });
+  const page=await context.newPage();
+  try {
+    await page.goto(pageUrl);
+    for(let i=0;i<3;i++){
+      await page.evaluate(async backend=>{
+        const {fetchWithTimeout}=await import('/fetchTimeout.mjs');
+        const poll=()=>{
+          for(const id of ['shared','personal'])void fetchWithTimeout(fetch,
+            `${backend}/rest/v1/app_snapshots?id=eq.${id}&select=updated_at`,
+            {headers:{authorization:'Bearer synthetic-probe',apikey:'synthetic-probe','x-space-key':'synthetic-probe'}},
+            12000,response=>response.json())
+            .catch(error=>window.reportCaughtVersionPoll({name:error.name,message:error.message}));
+        };
+        poll();setInterval(poll,2);
+      },backend);
+      reloadingPages.add(page);
+      try {await page.reload({waitUntil:'commit'});}
+      finally {reloadingPages.delete(page);}
+      await page.waitForLoadState('load');
+    }
+    expect(caught.length,'old-document request rejection must reach its catch').toBeGreaterThan(0);
+    expect(errors).toEqual([]);
+    await testInfo.attach('handled-reload-network-results',{contentType:'application/json',
+      body:JSON.stringify({caught,diagnostics,errors},null,2)});
+  } finally {await browser.close();}
 });
