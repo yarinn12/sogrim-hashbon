@@ -58,30 +58,38 @@ test('a thrown application error cannot be classified as expected network noise'
 
 test('reload diagnostics stop at commit and cannot exempt another page or backend',async()=>{
   await probe(async({page,context,errors,diagnostics,reloadingPages})=>{
-    const caughtFetch=(target,url)=>target.evaluate(async url=>{try {await fetch(url);} catch {}},url);
+    // Replay the native event shape captured by the real cancellation test below.
+    // Ordinary CORS failures from page.evaluate have an empty stack and must stay
+    // strict; they cannot exercise this narrower old-document classifier.
+    const emitNative=(target,url)=>{
+      const nativeText=`Fetch API cannot load ${url} due to access control checks.`;
+      const error=new Error();
+      const colon=nativeText.indexOf(':');
+      Object.assign(error,{name:nativeText.slice(0,colon),message:nativeText.slice(colon+2),
+        stack:`${nativeText}\n    at unknown (fetchTimeout.mjs:40:23)`});
+      target.emit('pageerror',error);
+    };
     reloadingPages.add(page);
-    await caughtFetch(page,reloadUrl);
-    await expect.poll(()=>diagnostics.length).toBe(1);
+    emitNative(page,reloadUrl);
+    expect(diagnostics).toHaveLength(1);
     expect(errors).toEqual([]);
-    await caughtFetch(page,failedUrl);
-    await expect.poll(()=>errors.length).toBe(1);
+    emitNative(page,failedUrl);
+    expect(errors).toHaveLength(1);
     const other=await context.newPage();
-    await other.goto(pageUrl);
-    await caughtFetch(other,reloadUrl);
-    await expect.poll(()=>errors.length).toBe(2);
+    emitNative(other,reloadUrl);
+    expect(errors).toHaveLength(2);
     reloadingPages.delete(page);
-    await caughtFetch(page,reloadUrl);
-    await expect.poll(()=>errors.length).toBe(3);
+    emitNative(page,reloadUrl);
+    expect(errors).toHaveLength(3);
     expect(diagnostics).toHaveLength(1);
   });
 });
 
 test('real rejections and exceptions still fail during the reload diagnostic window',async()=>{
-  await probe(async({page,errors,diagnostics,reloadingPages})=>{
+  await probe(async({page,errors,reloadingPages})=>{
     reloadingPages.add(page);
     await page.evaluate(url=>{void fetch(url);},reloadUrl);
     await expect.poll(()=>errors.some(error=>error.kind==='unhandledrejection')).toBe(true);
-    await expect.poll(()=>diagnostics.length).toBe(1);
     await page.evaluate(()=>{setTimeout(()=>{throw new Error('fault during reload');},0);});
     await expect.poll(()=>errors.some(error=>error.kind==='error'&&error.message==='fault during reload')).toBe(true);
   });
