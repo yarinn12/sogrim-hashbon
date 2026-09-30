@@ -76,8 +76,13 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
     "Apple rejects a second encryption declaration after reading it from the signed app");
   assert.match(info, /<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\s*\/>/);
   assert.match(submissionCheck, /check\("Export compliance is declared"/);
-  assert.match(workflow, /wait-for-processing: "true"/,
-    "Removing the duplicate declaration must not skip Apple's processing result");
+  assert.match(workflow, /wait-for-processing: "false"/,
+    "The upload action must not retain its expired token during processing");
+  assert.match(workflow, /run: node scripts\/complete-ios-testflight\.mjs/,
+    "A required completion step must still verify Apple's processing result and notes");
+  assert.ok(workflow.indexOf("Verify Apple processing and complete TestFlight notes") > workflow.indexOf("Upload app to TestFlight"));
+  assert.doesNotMatch(workflow, /continue-on-error/,
+    "Failed processing or unsaved notes must fail the release");
   assert.doesNotMatch(workflow, /push:/);
   assert.match(workflowEnv, /APPSTORE_CERTIFICATES_FILE_BASE64/);
   assert.match(workflowEnv, /GOOGLE_IOS_CLIENT_ID/);
