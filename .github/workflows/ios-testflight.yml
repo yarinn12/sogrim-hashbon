@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.53"
+        default: "4.54"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "183"
+        default: "184"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "שיפור אמינות הכניסה עם Apple והצגת אפשרויות ההתחברות."
+        default: "תוקנה לחיצה שלא פתחה לפעמים את רשימת המשלמים באייפון ובאייפד. שופרה השלמת הכניסה באימייל ושמירת מסך הטעינה עד להצגת האירועים. נשמרו שיפורי הכניסה עם Apple, קישור החשבונות והסנכרון בין המשתתפים."
 
 permissions:
   contents: read
