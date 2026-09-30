@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=502"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=503"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -255,7 +255,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /STARTUP_ACCOUNT_REQUEST_TIMEOUT_MS = 2_500/);
   assert.match(
     layer,
-    /!callbackSession && accountSession\.user && navigator\.onLine === false[\s\S]*?resumeAccountLocally\(accountSession\)/
+    /!accountSignInPending && !callbackSession &&\s*accountSession\.user && navigator\.onLine === false[\s\S]*?resumeAccountLocally\(accountSession\)/
   );
   assert.match(
     restoreSession,
@@ -550,7 +550,7 @@ test("a failed event invite never signs out the connected account", async () => 
   );
   const inviteFailureBranch = accountCatch.slice(
     accountCatch.indexOf("isEventInviteError(error)"),
-    accountCatch.indexOf("if (canResumeOffline")
+    accountCatch.indexOf("if (!accountSignInPending && canResumeOffline")
   );
 
   assert.ok(accountCatch.indexOf("isEventInviteError(error)") >= 0);
@@ -755,7 +755,7 @@ test("a restored account does not reload the app a second time on cold start", a
 
   assert.match(
     layer,
-    /await connectAccountToApp\(accountSession, \{\s*forceReload: Boolean\(callbackSession\)\s*\}\)/
+    /await connectAccountToApp\(accountSession, \{\s*forceReload: accountSignInPending \|\| Boolean\(callbackSession\)\s*\}\)/
   );
   assert.doesNotMatch(
     layer,

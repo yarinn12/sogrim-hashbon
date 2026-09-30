@@ -134,6 +134,10 @@ let accountRefreshGeneration = 0;
 let accountProfileUpdateQueue = null;
 let accountConfigRetryTimer = null;
 let accountConfigRetryPromise = null;
+// The app may already be hydrated behind the credentials form. Until the
+// accepted sign-in finishes, retries must connect and reload that app rather
+// than taking the cold-start cache shortcut and revealing the previous screen.
+let accountSignInPending = false;
 let accountSyncReloadScheduled = false;
 let nativeGoogleLoginPromise = null;
 let webGoogleScriptPromise = null;
@@ -267,6 +271,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
       pendingInviteUrl(window.location.href)
     );
     if (
+      !accountSignInPending &&
       !callbackSession &&
       !callbackCode &&
       !callbackType &&
@@ -281,7 +286,10 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
       reconcileResumedAccountSession(resumedSession).catch(() => {});
       return;
     }
-    if (!callbackSession && accountSession.user && navigator.onLine === false) {
+    if (
+      !accountSignInPending && !callbackSession &&
+      accountSession.user && navigator.onLine === false
+    ) {
       resumeAccountLocally(accountSession);
       watchAccountControls();
       enhanceAccountControls();
@@ -304,7 +312,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         return;
       }
       await connectAccountToApp(accountSession, {
-        forceReload: Boolean(callbackSession)
+        forceReload: accountSignInPending || Boolean(callbackSession)
       });
       watchAccountControls();
       enhanceAccountControls();
@@ -325,14 +333,14 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         rememberAccountNotice(error?.message);
         discardFailedInviteContext();
         await connectAccountToApp(accountSession, {
-          forceReload: Boolean(callbackSession),
+          forceReload: accountSignInPending || Boolean(callbackSession),
           ignoreInvite: true
         });
         watchAccountControls();
         enhanceAccountControls();
         return;
       }
-      if (canResumeOffline(accountSession, error)) {
+      if (!accountSignInPending && canResumeOffline(accountSession, error)) {
         resumeAccountLocally(accountSession);
         watchAccountControls();
         enhanceAccountControls();
@@ -357,7 +365,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
           accountSession = saveAccountSession(accountSession);
           scheduleAccountSessionRefresh();
           await connectAccountToApp(accountSession, {
-            forceReload: Boolean(callbackSession)
+            forceReload: accountSignInPending || Boolean(callbackSession)
           });
           watchAccountControls();
           enhanceAccountControls();
@@ -386,6 +394,7 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
       clearAccountSession();
       clearAccountRecoverySession();
       accountSession = null;
+      accountSignInPending = false;
     }
   }
 
@@ -1147,7 +1156,7 @@ function renderAccountGate({
   if (showEmailAuth) focusAccountInput(gate);
 }
 
-function renderAccountRecoveryGate() {
+function renderAccountRecoveryGate({ connecting = false } = {}) {
   document.querySelector(".public-profile-gate")?.remove();
   document.getElementById(GATE_ID)?.remove();
   document.querySelector("#app")?.setAttribute("inert", "");
@@ -1156,6 +1165,7 @@ function renderAccountRecoveryGate() {
   gate.id = GATE_ID;
   gate.className = "account-auth-gate";
   gate.setAttribute("role", "main");
+  gate.setAttribute("aria-busy", String(connecting));
   gate.innerHTML = `
     <div class="account-auth-shell account-auth-shell-compact">
       <section class="account-auth-brand">
@@ -1163,23 +1173,23 @@ function renderAccountRecoveryGate() {
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
           <h1>המידע שלך נשאר מוגן</h1>
-          <p>לא נציג את האירועים לפני שהחיבור לחשבון הושלם.</p>
+          <p>${accountSignInPending ? "עוד רגע והאירועים שלך כאן." : "לא נציג את האירועים לפני שהחיבור לחשבון הושלם."}</p>
         </div>
       </section>
       <section class="account-auth-form-panel">
         <div class="account-auth-heading">
-          <h2>החיבור מתעכב</h2>
-          <p>כדאי לבדוק את החיבור לאינטרנט ולנסות שוב.</p>
+          <h2>${accountSignInPending ? "נכנסת בהצלחה" : "החיבור מתעכב"}</h2>
+          <p role="status" aria-live="polite">${connecting ? "פותחים את החשבון שלך…" : accountSignInPending ? "ההתחברות הצליחה. ננסה שוב לפתוח את החשבון בעוד רגע." : "כדאי לבדוק את החיבור לאינטרנט ולנסות שוב."}</p>
         </div>
-        <button class="primary-button account-auth-submit" type="button" data-account-retry>
+        ${connecting ? "" : `<button class="primary-button account-auth-submit" type="button" data-account-retry>
           נסה שוב
-        </button>
+        </button>`}
       </section>
     </div>
   `;
   document.body.append(gate);
   gate.querySelector("[data-account-retry]")?.addEventListener("click", retryAccountSetup);
-  scheduleAccountSetupRetry();
+  if (!connecting) scheduleAccountSetupRetry();
   markAccountAuthReady();
 }
 
@@ -1194,11 +1204,17 @@ function scheduleAccountSetupRetry() {
 
 function retryAccountSetup() {
   if (accountConfigRetryPromise) return accountConfigRetryPromise;
+  if (authBusy || accountSyncReloadScheduled) return Promise.resolve();
+  const completingSignIn = accountSignInPending;
   window.clearTimeout(accountConfigRetryTimer);
   const gate = document.getElementById(GATE_ID);
   const retryButton = gate?.querySelector("[data-account-retry]");
   retryButton?.setAttribute("aria-busy", "true");
   if (retryButton) retryButton.disabled = true;
+  if (accountSignInPending) {
+    renderAccountRecoveryGate({ connecting: true });
+    setAuthBusy(true);
+  }
 
   accountConfigRetryPromise = setupAccountAuth({ retryConfig: true })
     .catch(() => {
@@ -1206,6 +1222,7 @@ function retryAccountSetup() {
     })
     .finally(() => {
       accountConfigRetryPromise = null;
+      if (completingSignIn) setAuthBusy(false);
       if (!document.querySelector("[data-account-retry]")) {
         window.clearTimeout(accountConfigRetryTimer);
       }
@@ -1313,6 +1330,7 @@ async function handleAccountSubmit(event) {
     return;
   }
 
+  let credentialsAccepted = false;
   setAuthBusy(true);
   try {
     if (mode === "reset-password") {
@@ -1370,11 +1388,24 @@ async function handleAccountSubmit(event) {
       });
     }
 
-    accountSession = await restoreAccountSession(accountSession);
-    scheduleAccountSessionRefresh();
-    await connectAccountToApp(accountSession, { forceReload: true });
+    // Password acceptance and account loading are separate phases. Preserve
+    // accepted credentials before any metadata/workspace request can fail, and
+    // share startup's recovery path without asking for the password again.
+    accountSession = saveAccountSession(accountSession);
+    // Reconnect listeners must never pair the new token with the pre-login
+    // anonymous workspace while metadata verification is still in flight.
+    const accountWorkspace = accountWorkspaceFromUser(accountSession?.user);
+    if (accountWorkspace) activateAccountWorkspace(accountWorkspace);
+    credentialsAccepted = true;
+    accountSignInPending = true;
+    renderAccountRecoveryGate({ connecting: true });
+    await setupAccountAuth();
   } catch (error) {
     emitOperationFailure("auth", { screen: "auth", error });
+    if (credentialsAccepted && accountSession) {
+      renderAccountRecoveryGate();
+      return;
+    }
     if (accountSession?.user && accountProfileNeedsCompletion(error)) {
       const accountProfile = accountProfileFromUser(accountSession.user);
       renderAccountNameCompletionGate({
@@ -2992,6 +3023,10 @@ function scheduleAccountSessionRefresh(delayOverride = null) {
 }
 
 function refreshAccountSessionIfNeeded() {
+  if (accountSignInPending && document.querySelector("[data-account-retry]")) {
+    retryAccountSetup();
+    return;
+  }
   if (
     accountSession?.expires_at >
     Math.floor(Date.now() / 1000) + ACCOUNT_REFRESH_MARGIN_SECONDS

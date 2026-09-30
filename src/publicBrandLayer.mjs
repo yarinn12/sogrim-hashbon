@@ -392,6 +392,9 @@ function detectBrandScreenKind(screen) {
 function simplifyEmptyHome() {
   const screen = document.querySelector("#app .screen");
   if (!screen || !screen.querySelector('[data-action="new-event"]')) return;
+  // Loading/recovery owns its message until the cloud confirms the event list.
+  // An empty DOM during hydration is not evidence of an empty account.
+  if (screen.querySelector(".home-event-hydration")) return;
 
   const hasEventRows = Boolean(screen.querySelector(".event-row"));
   const hasRecentEvent = Boolean(screen.querySelector(".recent-event-shortcut"));

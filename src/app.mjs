@@ -23904,16 +23904,23 @@ function refreshStartupSharedState(refreshRequest) {
         }
         return;
       }
-      const hydrationStatusChanged =
-        accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY;
-      accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
       // A user save that began after this refresh makes its payload stale.
       // This is especially important after returning from a camera or gallery,
       // where the native resume refresh can finish after the new image is saved.
       if (saveRevisionAtRequest !== sharedStateSaveRevision()) {
-        if (hydrationStatusChanged) render();
+        // A discarded response cannot confirm that the account has no events.
+        // Retry after this completion (and any current retry's finally) settles.
+        if (
+          accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY &&
+          visibleEventsForParticipant(state, state.currentParticipantId).length === 0
+        ) {
+          window.setTimeout(() => retryAccountEventHydration().catch(() => {}), 0);
+        }
         return;
       }
+      const hydrationStatusChanged =
+        accountEventsHydrationStatus !== ACCOUNT_EVENT_HYDRATION_READY;
+      accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
       const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) {
         if (hydrationStatusChanged) render();
