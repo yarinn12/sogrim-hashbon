@@ -9720,7 +9720,9 @@ function renderExpenseRow(event, expense) {
             ${expense.payers.map((payer) => `
               <span class="expense-paid-by-entry">
                 <span class="expense-paid-by-name">${escapeHtml(participantName(payer.participantId, event))}</span>
-                <bdi class="expense-paid-by-amount" dir="ltr"><span class="font-num">${formatEventMoney(event, payer.amount)}</span></bdi>
+                ${Number.isSafeInteger(payer.amount)
+                  ? `<bdi class="expense-paid-by-amount" dir="ltr"><span class="font-num">${formatEventMoney(event, payer.amount)}</span></bdi>`
+                  : '<span class="expense-paid-by-amount">סכום לא תקין</span>'}
               </span>
             `).join("")}
           </span>

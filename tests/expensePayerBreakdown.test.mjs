@@ -14,7 +14,7 @@ function functionSource(name) {
   return source.slice(start, end === -1 ? undefined : end);
 }
 
-function renderRow(currency, payers, names = ["ירין יצחק", "לירון אברהם"]) {
+function renderRow(currency, payers, names = ["ירין יצחק", "לירון אברהם"], totalOverride) {
   const participants = names.map((displayName, index) => ({ id: `person-${index}`, displayName }));
   const event = { id: "event-payer-breakdown", currency, participantIds: participants.map(p => p.id) };
   const context = vm.createContext({
@@ -28,7 +28,7 @@ function renderRow(currency, payers, names = ["ירין יצחק", "לירון �
     vm.runInContext(functionSource(name), context);
   }
   return context.renderExpenseRow(event, {
-    id: "expense-payer-breakdown", name: "ארוחה", total: payers.reduce((sum, payer) => sum + payer.amount, 0),
+    id: "expense-payer-breakdown", name: "ארוחה", total: totalOverride ?? payers.reduce((sum, payer) => sum + payer.amount, 0),
     payers, sharedByParticipantIds: event.participantIds
   });
 }
@@ -59,4 +59,12 @@ test("payer display names remain escaped in the visible breakdown and searchable
   assert.ok(visibleSummary(html).includes("&lt;img src=x onerror=&quot;alert(1)&quot;&gt; ₪25.00"));
   assert.doesNotMatch(html, /<img src=x/);
   assert.match(html, /data-expense-search="ארוחה ירין &lt;img/);
+});
+
+test("an invalid saved payer amount keeps the expense visible with its review warning", () => {
+  for (const amount of [undefined, NaN, "5000", 50.5]) {
+    const html = renderRow("ILS", [{ participantId: "person-0", amount }], ["ירין יצחק"], 5000);
+    assert.ok(visibleSummary(html).includes("ירין יצחק סכום לא תקין"));
+    assert.match(html, /צריך תיקון · לא נכנסה לחישוב/);
+  }
 });
