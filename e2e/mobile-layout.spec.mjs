@@ -467,6 +467,26 @@ test("participant identity uses colored or grayscale pictures without status dot
   await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
 });
 
+test("payer choices open after a normal held pointer press", async ({ page }) => {
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  const expense = page.locator('[data-expense-id="expense-taxi"]');
+  await expense.locator(".expense-row-actions-menu > summary").click();
+  await expense.locator('[data-action="edit-expense"]').click();
+  const editor = page.locator(".expense-modal");
+  await expect(editor).toHaveAttribute("data-expense-step", "review");
+  await editor.locator('[data-action="expense-step-edit"][data-step="payer"]').click();
+
+  // Keep the press down across animation frames, as a person's tap can be.
+  // WebKit loses the click when an observer replaces the label's text node
+  // between pointerdown and pointerup, even if its text remains identical.
+  await editor.locator('[data-choice-select-action="expense-payer-id"]').first().click({ delay: 120 });
+  const picker = page.locator(".app-choice-picker");
+  await expect(picker).toBeVisible();
+  await picker.locator('[data-choice-value="person-ariel"]').click();
+  await expect(picker).toHaveCount(0);
+  await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
+});
+
 test("another person's picture alone opens shared statistics while editable text stays selectable", async ({
   page
 }) => {

@@ -543,9 +543,12 @@ function syncChoiceTrigger(select, trigger) {
   const selectedOption = select.selectedOptions[0] ?? select.options[0];
   const copy = trigger.querySelector(".app-choice-trigger-copy");
   if (copy) {
-    copy.textContent =
+    const label =
       selectedOption?.textContent?.replace(/\s+/g, " ").trim() ||
       "בחרו אפשרות";
+    // Replacing an identical text node during a press makes WebKit drop the
+    // click. It also feeds our child-list observer into another refresh.
+    if (copy.textContent !== label) copy.textContent = label;
   }
   trigger.classList.toggle(
     "is-placeholder",
