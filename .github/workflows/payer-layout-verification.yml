@@ -1,0 +1,36 @@
+name: Expense payer layout verification
+
+on:
+  push:
+    branches: [codex/expense-payer-reflow-qa]
+
+permissions:
+  contents: read
+
+jobs:
+  payer-layout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [android-mobile, iphone-webkit, ipad-webkit, iphone-large-text, reflow-200]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Verify payer display and existing editing
+        run: npm run qa:mobile -- e2e/expense-edit-payer-difference.spec.mjs --project=${{ matrix.project }}
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: expense-payer-layout-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
