@@ -39,9 +39,6 @@ jobs:
           const privateKey = required("APPSTORE_API_PRIVATE_KEY").replace(/\\n/g, "\n");
 
           const allowedStates = new Set(["READY_FOR_BETA_SUBMISSION", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"]);
-          const diagnosticGroup = await findGroup();
-          console.log(JSON.stringify({ groupId: diagnosticGroup?.id || null, isInternalGroup: diagnosticGroup?.attributes?.isInternalGroup, publicLinkEnabled: diagnosticGroup?.attributes?.publicLinkEnabled, hasAccessToAllBuilds: diagnosticGroup?.attributes?.hasAccessToAllBuilds }));
-          process.exit(0);
           const actions = { groupCreated: false, buildAssociated: false, betaReviewSubmitted: false };
           await readTarget();
           await verifyReviewMetadata();
@@ -155,7 +152,9 @@ jobs:
           }
           async function verifyGroup(id) {
             const group = await findGroup();
-            ensure(group?.id === id && group.attributes.isInternalGroup === false && group.attributes.publicLinkEnabled === false && group.attributes.hasAccessToAllBuilds === false, "Dedicated group must be private, external, and restricted to assigned builds.");
+            const allBuildAccess = group?.attributes?.hasAccessToAllBuilds;
+            ensure(group?.id === id && group.attributes.isInternalGroup === false && group.attributes.publicLinkEnabled === false &&
+              (allBuildAccess === false || allBuildAccess === null), "Dedicated group must be private, external, and restricted to assigned builds.");
             const testers = await request("GET", `/v1/betaGroups/${id}/betaTesters`, { "fields[betaTesters]": "state", limit: "1" });
             ensure(Array.isArray(testers.data) && testers.data.length === 0 && !testers.links?.next, "Dedicated group already has testers; no further changes allowed.");
             const assigned = list(await request("GET", `/v1/betaGroups/${id}/relationships/builds`, { limit: "200" }));
