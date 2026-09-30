@@ -39,6 +39,9 @@ jobs:
           const privateKey = required("APPSTORE_API_PRIVATE_KEY").replace(/\\n/g, "\n");
 
           const allowedStates = new Set(["READY_FOR_BETA_SUBMISSION", "WAITING_FOR_BETA_REVIEW", "IN_BETA_REVIEW", "BETA_APPROVED", "READY_FOR_BETA_TESTING", "IN_BETA_TESTING"]);
+          const diagnosticGroup = await findGroup();
+          console.log(JSON.stringify({ groupId: diagnosticGroup?.id || null, isInternalGroup: diagnosticGroup?.attributes?.isInternalGroup, publicLinkEnabled: diagnosticGroup?.attributes?.publicLinkEnabled, hasAccessToAllBuilds: diagnosticGroup?.attributes?.hasAccessToAllBuilds }));
+          process.exit(0);
           const actions = { groupCreated: false, buildAssociated: false, betaReviewSubmitted: false };
           await readTarget();
           await verifyReviewMetadata();
