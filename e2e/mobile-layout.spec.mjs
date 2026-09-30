@@ -1250,7 +1250,17 @@ test(`close-event confirmation stays readable and scrollable in ${orientation}`,
     const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
     return hit === el || el.contains(hit);
   })).toBe(true);
-  await summaryTab.click();
+  if (orientation === "landscape") {
+    // Exercise the one-pixel movement observed while WebKit settles hover.
+    // The click must wait for stability without undoing the user's scroll.
+    await summaryTab.evaluate(el => el.animate(
+      [{ translate: "0 0" }, { translate: "0 -1px" }, { translate: "0 0" }],
+      { duration: 250 }
+    ));
+  }
+  // Keep the verified position on stability retries. Playwright's alternate
+  // scroll alignments can otherwise move this tab back under the route controls.
+  await summaryTab.click({ scroll: "none" });
   await page.locator(".settlement-close-primary").first().click();
   const dialog = page.locator(".settlement-close-confirmation");
   await expect(dialog).toBeVisible();
