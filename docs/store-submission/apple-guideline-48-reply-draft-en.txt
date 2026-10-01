@@ -1,0 +1,15 @@
+DRAFT — send only after the candidate build passes the real-device checklist.
+
+Hello App Review,
+
+Thank you for the feedback on submission 8b6da79a-4738-4884-b744-c04959b104da, version 4.49 (178).
+
+We have addressed Guideline 4.8 in the updated iOS candidate. Sign in with Apple is available on the same sign-in screen as Google, under the button "המשך עם Apple" (Continue with Apple).
+
+This option requests only name and email, supports Apple's Hide My Email/private-relay addresses, and does not collect app interactions for advertising. The iOS app contains no advertising SDK or advertising tracking.
+
+We also corrected provider discovery so a temporary network failure cannot leave Google as the only social sign-in option on iOS. Discovery is retried, and email/password sign-in remains available.
+
+To locate the option, launch the app signed out, or open Profile and tap "התנתק" (Sign out). Then tap "המשך עם Apple" and complete Apple's authorization.
+
+Thank you for reviewing the updated version.

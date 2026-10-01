@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { resolveAndroidJavaHome } from "./androidJava.mjs";
-import { readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
+import { ANDROID_SIGNING_RECOVERY_MESSAGE, readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
 import { fingerprintAndroidReleaseSource } from "./release-source-fingerprint.mjs";
 
 const root = process.cwd();
@@ -68,7 +68,7 @@ if (!Number.isSafeInteger(versionCode) || versionCode < 1 || !versionName) {
 }
 
 const signing = readAndroidSigningConfiguration({ workspaceRoot: root });
-if (!signing.ready) throw new Error("Android upload key is not configured outside the project workspace. Run npm run native:android:key first.");
+if (!signing.ready) throw new Error(ANDROID_SIGNING_RECOVERY_MESSAGE);
 
 const env = { ...process.env };
 env.SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE = signing.propertiesPath;

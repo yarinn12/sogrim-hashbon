@@ -52,8 +52,8 @@ android {
         applicationId "com.sogrimhashbon.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 182
-        versionName "4.52"
+        versionCode 185
+        versionName "4.55"
         buildConfigField "boolean", "FIREBASE_PUSH_CONFIGURED", firebasePushConfigured.toString()
         buildConfigField "boolean", "NATIVE_QA_WEBVIEW", "false"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -106,7 +106,7 @@ android {
 tasks.configureEach { task ->
     if (task.name in ['bundleRelease', 'assembleRelease'] && !releaseSigningReady) {
         task.doFirst {
-            throw new GradleException('Release signing is not configured outside the project workspace. Run npm run native:android:key first.')
+            throw new GradleException('Release upload signing material is not configured outside the project workspace. Restore the original upload key and matching credentials for an existing app. Use native:android:key only for a new app without a recorded signing identity; see docs/android-upload-key-recovery-he.md.')
         }
     }
 }

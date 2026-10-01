@@ -1,5 +1,15 @@
 Sogrim Hashbon is a Hebrew group-expense calculator for friends. It does not hold funds, connect to bank accounts, or process money transfers.
 
+Guideline 4.8 - Login Services:
+Sign in with Apple is offered on the same sign-in screen as Google and email/password. The Apple button is labelled "המשך עם Apple" (Continue with Apple).
+
+To review Sign in with Apple:
+1. Launch the app signed out. If an account is already signed in, open Profile and tap "התנתק" (Sign out).
+2. Tap "המשך עם Apple" on the sign-in screen.
+3. Complete Apple's authorization, choosing Hide My Email if desired, and return to the app.
+
+Apple authorization requests only the name and email scopes. Apple private-relay email addresses are supported. The iOS app contains no advertising SDK and does not track app interactions for advertising. If provider discovery temporarily fails, the app retries and retains confirmed Apple availability; iOS does not present Google as the sole social sign-in option. Email/password remains available.
+
 Review flow:
 1. Sign in with the review account supplied in App Review Information.
 2. Tap "אירוע חדש" and choose "יציאה רגילה".
@@ -9,4 +19,4 @@ Review flow:
 6. Open the sharing screen to inspect the invitation link and QR code.
 7. Account deletion is available under Profile > "מחיקת חשבון".
 
-The first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release. Do not submit these notes until the production readiness check confirms that Sign in with Apple is visible and completes successfully. Once verified, Sign in with Apple is available alongside Google and email authentication.
+The first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release.

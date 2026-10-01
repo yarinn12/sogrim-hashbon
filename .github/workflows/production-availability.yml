@@ -102,6 +102,15 @@ jobs:
             }
             const classification = incidentState.classifyIncident(incident.body, boundaries);
             if (classification === 'unchanged') {
+              const resetBody = incidentState.resetRecoveryCheck(incident.body);
+              if (resetBody !== incident.body) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: incident.number,
+                  body: resetBody
+                });
+              }
               core.info('Incident #' + incident.number + ' is unchanged; keeping this run quiet.');
               return 'unchanged';
             }

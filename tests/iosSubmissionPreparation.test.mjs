@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("iOS release automation is safe, manual and TestFlight-ready", async () => {
+test("iOS release automation restricts candidate pushes and remains manually TestFlight-ready", async () => {
   const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
@@ -84,6 +84,7 @@ test("iOS release automation is safe, manual and TestFlight-ready", async () => 
   assert.doesNotMatch(workflow, /continue-on-error/,
     "Failed processing or unsaved notes must fail the release");
   assert.doesNotMatch(workflow, /push:/);
+  assert.doesNotMatch(workflow, /^  (?:pull_request|pull_request_target|schedule):/m);
   assert.match(workflowEnv, /APPSTORE_CERTIFICATES_FILE_BASE64/);
   assert.match(workflowEnv, /GOOGLE_IOS_CLIENT_ID/);
   assert.match(workflowEnv, /BEGIN PRIVATE KEY/);
