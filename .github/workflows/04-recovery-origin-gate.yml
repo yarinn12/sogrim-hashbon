@@ -1,0 +1,33 @@
+name: Read-only recovery origin gate
+
+on:
+  push:
+    branches: [work/04-launch-readiness-live-20261001]
+    paths: [.github/workflows/04-recovery-origin-gate.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  documented-recovery-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Checkout pinned current main source
+        uses: actions/checkout@v6
+        with:
+          ref: d675cd0f84e969de20f9bd858bbc5db196841df5
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Record timestamp and source identity
+        run: |
+          date --utc --iso-8601=seconds
+          git rev-parse HEAD HEAD^{tree}
+      - name: Verify documented strict recovery policy
+        run: npm run qa:recovery:strict
+        env:
+          PRODUCTION_BASE_URL: https://sogrim-hashbon-recovery.onrender.com
