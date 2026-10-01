@@ -35,7 +35,7 @@ jobs:
           import {execFileSync, spawnSync} from 'node:child_process';
           const path = 'e2e-sync/two-client.spec.mjs';
           const candidate = readFileSync(path, 'utf8');
-          const baseline = execFileSync('git', ['show', '3bf5bda5749408e205421cb153d436ed0716f6e6:' + path], {encoding:'utf8'});
+          const baseline = execFileSync('git', ['-c', 'safe.directory=' + process.cwd(), 'show', '3bf5bda5749408e205421cb153d436ed0716f6e6:' + path], {encoding:'utf8'});
           const dir = 'artifacts/selector-regression';
           mkdirSync(dir, {recursive:true});
           const focused = '^an interrupted link recovers at a new time and is confirmed on both devices$';
