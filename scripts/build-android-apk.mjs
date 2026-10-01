@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveAndroidJavaHome } from "./androidJava.mjs";
-import { readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
+import { ANDROID_SIGNING_RECOVERY_MESSAGE, readAndroidSigningConfiguration } from "./androidSigningConfig.mjs";
 
 const root = process.cwd();
 const androidRoot = join(root, "android");
@@ -14,7 +14,7 @@ const gradle = process.platform === "win32"
 const apk = join(androidRoot, "app", "build", "outputs", "apk", "release", "app-release.apk");
 
 const signing = readAndroidSigningConfiguration({ workspaceRoot: root });
-if (!signing.ready) throw new Error("Android upload key is not configured outside the project workspace. Run npm run native:android:key first.");
+if (!signing.ready) throw new Error(ANDROID_SIGNING_RECOVERY_MESSAGE);
 
 const env = { ...process.env };
 env.SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE = signing.propertiesPath;

@@ -17,7 +17,6 @@ const assetLinksPath = join(associationDir, "assetlinks.json");
 const certificatePath = join(root, "docs", "store-submission", "android-upload-certificate-sha256.txt");
 const playCertificatePath = join(root, "docs", "store-submission", "android-play-signing-certificate-sha256.txt");
 const alias = "sogrim-upload";
-const keytool = resolveKeytool();
 
 let password;
 if (existsSync(legacyKeystorePath) || existsSync(legacyPropertiesPath)) {
@@ -26,6 +25,16 @@ if (existsSync(legacyKeystorePath) || existsSync(legacyPropertiesPath)) {
 if (existsSync(keystorePath) !== existsSync(propertiesPath)) {
   throw new Error("Android signing material is incomplete. Restore the matching key and credentials; a replacement upload key will not be generated.");
 }
+const documentedUploadFingerprint = existsSync(certificatePath)
+  ? (await readFile(certificatePath, "utf8")).trim().toUpperCase()
+  : "";
+const playFingerprint = existsSync(playCertificatePath)
+  ? (await readFile(playCertificatePath, "utf8")).trim().toUpperCase()
+  : "";
+if (!existsSync(keystorePath) && (documentedUploadFingerprint || playFingerprint)) {
+  throw new Error("An existing Android signing identity is recorded, but its external signing material is missing. Restore the original upload key and matching credentials. Refusing to generate a replacement key or change the recorded certificates. Verify Play Console before considering an upload-key reset; see docs/android-upload-key-recovery-he.md.");
+}
+const keytool = resolveKeytool();
 if (existsSync(keystorePath) && existsSync(propertiesPath)) {
   const properties = parseProperties(await readFile(propertiesPath, "utf8"));
   password = properties.storePassword;
@@ -80,9 +89,9 @@ if (certificate.status !== 0) {
 
 const fingerprint = certificate.stdout.match(/SHA256:\s*([A-F0-9:]+)/i)?.[1]?.toUpperCase();
 if (!fingerprint) throw new Error("Unable to read the Android SHA-256 certificate fingerprint.");
-const playFingerprint = existsSync(playCertificatePath)
-  ? (await readFile(playCertificatePath, "utf8")).trim().toUpperCase()
-  : "";
+if (documentedUploadFingerprint && fingerprint !== documentedUploadFingerprint) {
+  throw new Error("Android upload key does not match the documented upload certificate. Restore the original upload key and matching credentials. Refusing to replace the recorded signing identity; see docs/android-upload-key-recovery-he.md.");
+}
 const associationFingerprints = [...new Set([fingerprint, playFingerprint].filter(Boolean))];
 
 await mkdir(associationDir, { recursive: true });
