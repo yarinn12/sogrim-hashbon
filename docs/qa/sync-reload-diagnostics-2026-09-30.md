@@ -50,9 +50,10 @@ incorrect intermediate test expectation, corrected without broadening the guard.
 - Initial Linux fix run 36755812781: actual cancellation regression **2/2 passed**,
   repayment journeys **4/4 passed**. Overall run had four failures from the two
   incorrect intermediate positive-CORS fixture expectations described above.
-- Final focused Linux verification: run 36757037693, attempt 2, pending at handoff
-  preparation. Attempt 1 was canceled during browser dependency installation,
-  before test execution. Update this line with the verified result before release.
+- Final focused Linux verification: run 36757037693, attempt 2, **16/16 passed**
+  in two minutes, retries disabled (job 110330078371, artifact 11156040287).
+  This includes two runs of each recorder case and both repayment directions.
+  Attempt 1 was canceled during browser dependency installation, before tests.
 
 Browser device profiles and intercepted backend traffic are synthetic, not real
 device or production synchronization proof. Diagnostic-only copied tests and
