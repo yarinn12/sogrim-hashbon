@@ -1,0 +1,40 @@
+name: iOS sync restart verification
+run-name: iOS sync restart ${{ github.ref_name }}
+
+on:
+  push:
+    branches:
+      - work/01-ios-webkit-reload-baseline-20261001
+      - work/01-ios-webkit-fixture-20261001
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install test browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Exercise repayment restarts and strict browser error guards
+        run: >-
+          npm run qa:sync --
+          --grep 'repayment plan changes on|caught fixture network failures|an unplanned CORS failure|a thrown application error'
+          --repeat-each=5 --retries=0
+      - name: Preserve reproduction evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-sync-restart-${{ github.sha }}
+          path: |
+            playwright-report-sync/
+            test-results-sync/
+          retention-days: 7
