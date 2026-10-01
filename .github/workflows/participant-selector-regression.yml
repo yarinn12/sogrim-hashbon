@@ -38,7 +38,7 @@ jobs:
           const baseline = execFileSync('git', ['-c', 'safe.directory=' + process.cwd(), 'show', '3bf5bda5749408e205421cb153d436ed0716f6e6:' + path], {encoding:'utf8'});
           const dir = 'artifacts/selector-regression';
           mkdirSync(dir, {recursive:true});
-          const focused = '^an interrupted link recovers at a new time and is confirmed on both devices$';
+          const focused = 'an interrupted link recovers at a new time and is confirmed on both devices$';
           const run = (label, grep) => {
             const result = spawnSync('npm', ['run','qa:sync','--',path,'--grep',grep], {encoding:'utf8', timeout:600_000, maxBuffer:10*1024*1024});
             const log = (result.stdout || '') + (result.stderr || '');
