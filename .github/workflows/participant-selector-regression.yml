@@ -1,0 +1,77 @@
+name: Participant selector regression verification
+
+on:
+  push:
+    branches: [work/03-selector-regression-qa-20261001]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --ipc=host
+    timeout-minutes: 15
+    env:
+      CI: "true"
+      PW_SYNC_QA_PORT: "4293"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 9e30b61c12e22645f011b4db3d47c9cc8a9f7251
+          fetch-depth: 2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Reproduce the original selector and verify the scoped selector plus adjacent account-link cases
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync, writeFileSync, mkdirSync} from 'node:fs';
+          import {execFileSync, spawnSync} from 'node:child_process';
+          const path = 'e2e-sync/two-client.spec.mjs';
+          const candidate = readFileSync(path, 'utf8');
+          const baseline = execFileSync('git', ['show', '3bf5bda5749408e205421cb153d436ed0716f6e6:' + path], {encoding:'utf8'});
+          const dir = 'artifacts/selector-regression';
+          mkdirSync(dir, {recursive:true});
+          const focused = '^an interrupted link recovers at a new time and is confirmed on both devices$';
+          const run = (label, grep) => {
+            const result = spawnSync('npm', ['run','qa:sync','--',path,'--grep',grep], {encoding:'utf8', timeout:600_000, maxBuffer:10*1024*1024});
+            const log = (result.stdout || '') + (result.stderr || '');
+            writeFileSync(dir + '/' + label + '.log', log);
+            console.log(log);
+            if (result.error) throw result.error;
+            writeFileSync(dir + '/' + label + '-results.json', readFileSync('test-results-sync/results.json'));
+            return {status:result.status, log};
+          };
+          let before;
+          try {
+            writeFileSync(path, baseline);
+            before = run('before', focused);
+          } finally {
+            writeFileSync(path, candidate);
+          }
+          if (before.status !== 1 || !before.log.includes('strict mode violation') || !before.log.includes('resolved to 2 elements') || !before.log.includes('expense-paid-by-name')) {
+            throw new Error('The baseline must fail specifically because the roster and payer breakdown both render the name.');
+          }
+          console.log('BASELINE VERIFIED: the original assertion fails for the exact duplicate-name selector.');
+          const after = run('after', 'an interrupted link|account[- ]link|cannot relink|participant alias');
+          if (after.status !== 0) throw new Error('The scoped assertion or an adjacent account-link case failed.');
+          const report = JSON.parse(readFileSync(dir + '/after-results.json', 'utf8'));
+          if (report.stats.unexpected || report.stats.skipped || !report.stats.expected) throw new Error('The after run must pass without skips.');
+          console.log('AFTER VERIFIED: ' + JSON.stringify(report.stats));
+          NODE
+      - name: Upload regression evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: participant-selector-regression
+          path: |
+            artifacts/selector-regression/
+            test-results-sync/
+            playwright-report-sync/
+          retention-days: 7
