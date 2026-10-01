@@ -902,7 +902,9 @@ test('an interrupted link recovers at a new time and is confirmed on both device
     for(const page of [a,b]) {
       await page.locator(`[data-action="open-event-participants"][data-event-id="${eventId}"]`).click();
       await expect(page.getByText('אורח לפני חיבור',{exact:true})).toHaveCount(0);
-      await expect(page.getByText('בודק אייפון',{exact:true})).toBeVisible();
+      // The expense ledger also renders payer names behind the participant roster.
+      await expect(page.locator(`.event-participant-roster-modal .event-participant-roster-row[data-participant-id="${target}"]`)
+        .getByText('בודק אייפון',{exact:true})).toBeVisible();
     }
     await a.reload();
     await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
