@@ -1,0 +1,40 @@
+name: Read-only iOS store status
+
+on:
+  push:
+    branches: [work/01-apple-store-status-readonly-20261001]
+
+permissions:
+  contents: read
+
+jobs:
+  read-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify GET-only boundary and sanitized report
+        run: node --test tests/appStoreStatusReadOnly.test.mjs tests/appStoreRelease.test.mjs
+      - name: Read Apple status without store changes
+        run: node scripts/read-ios-store-status.mjs
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_STATUS_TESTER_EMAIL: ${{ secrets.APPSTORE_STATUS_TESTER_EMAIL }}
+      - name: Verify live public iOS provider configuration
+        if: ${{ !cancelled() }}
+        run: npm run qa:ios:providers
+      - name: Preserve sanitized read-only status
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-store-status-readonly
+          path: build/ios-status/status.json
+          if-no-files-found: error
+          retention-days: 7
