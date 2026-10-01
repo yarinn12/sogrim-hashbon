@@ -152,3 +152,21 @@ test("missing private tester input does not enumerate unrelated testers", async 
   assert.deepEqual(report.tester, { status: "blocked", code: "missing_private_tester_input" });
   assert.equal(f.calls.some(url => url.pathname === "/v1/betaTesters"), false);
 });
+
+test("submission state requires an explicitly included app linkage instead of an unexpanded relationship", async () => {
+  const f = fixture({ [`/v1/reviewSubmissions/${submissionId}`]: url => ({
+    data: {
+      type: "reviewSubmissions", id: submissionId, attributes: { platform: "IOS", state: "UNRESOLVED_ISSUES" },
+      relationships: {
+        app: url.searchParams.get("include")?.split(",").includes("app")
+          ? { data: { id: appId } }
+          : { links: { related: `${origin}/v1/reviewSubmissions/${submissionId}/app` } }
+      }
+    }
+  }) });
+  const report = await readIosStoreStatus({ request: f.request });
+  assert.equal(report.submission.status, "read");
+  assert.equal(report.submission.state, "UNRESOLVED_ISSUES");
+  const submissionQuery = f.calls.find(url => url.pathname === `/v1/reviewSubmissions/${submissionId}`);
+  assert.equal(submissionQuery.searchParams.get("fields[apps]"), "bundleId");
+});

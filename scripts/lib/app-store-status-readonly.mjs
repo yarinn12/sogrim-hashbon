@@ -141,7 +141,8 @@ export async function readIosStoreStatus({ request, testerEmail = "" }) {
   report.submission = await capture(async () => {
     const response = await request(query(`/v1/reviewSubmissions/${SUBMISSION_ID}`, {
       "fields[reviewSubmissions]": "platform,state,app,appStoreVersionForReview",
-      "fields[appStoreVersions]": "versionString,platform,appStoreState,appVersionState", include: "appStoreVersionForReview"
+      "fields[apps]": "bundleId",
+      "fields[appStoreVersions]": "versionString,platform,appStoreState,appVersionState", include: "app,appStoreVersionForReview"
     }));
     const submission = response?.data;
     if (submission?.type !== "reviewSubmissions" || submission.id !== SUBMISSION_ID ||
