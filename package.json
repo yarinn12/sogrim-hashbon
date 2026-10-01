@@ -50,6 +50,7 @@
     "qa:ios": "node scripts/verify-ios-submission.mjs",
     "qa:ios:artifact": "node scripts/verify-ios-artifact.mjs",
     "qa:ios:review": "node scripts/verify-ios-review-live.mjs",
+    "qa:ios:providers": "node scripts/verify-ios-login-providers.mjs",
     "qa:android-native": "node scripts/verify-android-native-smoke.mjs",
     "qa:android-journey": "node scripts/verify-android-user-journey.mjs",
     "qa:android-font-scale": "node scripts/verify-android-font-scale.mjs",

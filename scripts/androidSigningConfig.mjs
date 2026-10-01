@@ -4,6 +4,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 
 import { assertOutsideWorkspace } from "./privateMaterial.mjs";
 
+export const ANDROID_SIGNING_RECOVERY_MESSAGE = "Android upload signing material is missing or incomplete outside the project workspace. Restore the original upload key and matching credentials for an existing app. Only for a new app without a recorded signing identity, run npm run native:android:key. See docs/android-upload-key-recovery-he.md.";
+
 export function resolveAndroidSigningPaths({
   env = process.env,
   workspaceRoot = process.cwd()

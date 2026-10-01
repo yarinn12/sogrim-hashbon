@@ -59,16 +59,20 @@ export function buildIncidentBody(boundaries, detectedAt = new Date()) {
   ].join("\n");
 }
 
+export function resetRecoveryCheck(body) {
+  return String(body ?? "")
+    .replace(RECOVERY_STREAK_PATTERN, "")
+    .replace(RECOVERY_STATUS_PATTERN, "")
+    .trimEnd();
+}
+
 export function markRecoveryCheck(body, requiredChecks = 2) {
   const safeRequiredChecks = Math.max(2, Number(requiredChecks) || 2);
   const previousStreak = Number(
     String(body ?? "").match(RECOVERY_STREAK_PATTERN)?.[1] ?? 0
   );
   const streak = Math.min(previousStreak + 1, safeRequiredChecks);
-  const cleanedBody = String(body ?? "")
-    .replace(RECOVERY_STREAK_PATTERN, "")
-    .replace(RECOVERY_STATUS_PATTERN, "")
-    .trimEnd();
+  const cleanedBody = resetRecoveryCheck(body);
   return {
     streak,
     complete: streak >= safeRequiredChecks,
