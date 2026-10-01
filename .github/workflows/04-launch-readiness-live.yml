@@ -1,0 +1,87 @@
+name: Read-only launch readiness
+
+on:
+  push:
+    branches: [work/04-launch-readiness-live-20261001]
+    paths: [.github/workflows/04-launch-readiness-live.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  strict-availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: primary
+            origin: https://sogrim-hesbon-app.vercel.app
+          - label: recovery
+            origin: https://sogrim-hashbon-recovery.onrender.com
+    steps:
+      - name: Checkout pinned current main source
+        uses: actions/checkout@v6
+        with:
+          ref: d675cd0f84e969de20f9bd858bbc5db196841df5
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Record timestamp and source identity
+        run: |
+          date --utc --iso-8601=seconds
+          git rev-parse HEAD HEAD^{tree}
+      - name: Verify strict availability
+        run: node scripts/verify-production-availability.mjs --strict
+        env:
+          PRODUCTION_BASE_URL: ${{ matrix.origin }}
+
+  failover-and-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout pinned current main source
+        uses: actions/checkout@v6
+        with:
+          ref: d675cd0f84e969de20f9bd858bbc5db196841df5
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Record timestamp and source identity
+        run: |
+          date --utc --iso-8601=seconds
+          git rev-parse HEAD HEAD^{tree}
+      - name: Verify failover parity
+        run: node scripts/verify-production-failover.mjs
+        env:
+          RECOVERY_PRODUCTION_ORIGIN: https://sogrim-hashbon-recovery.onrender.com
+      - name: Verify PWA and app auth choice payer sources
+        if: always()
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { readFile } from 'node:fs/promises';
+          const hash = v => createHash('sha256').update(v.toString().replace(/\r\n/g, '\n')).digest('hex').toUpperCase();
+          const paths = ['src/app.mjs','src/publicAccountAuthLayer.mjs','src/data/accountAuth.mjs','src/publicGoogleAuthLayer.mjs','src/publicChoicePickerLayer.mjs','src/publicInlinePayerLayer.mjs','src/publicExpensePayerSummaryLayer.mjs'];
+          const origins = {primary:'https://sogrim-hesbon-app.vercel.app',recovery:'https://sogrim-hashbon-recovery.onrender.com'};
+          const expected = Object.fromEntries(await Promise.all(paths.map(async path => [path, hash(await readFile(path))])));
+          const expectedPwa = (await readFile('index.html','utf8')).match(/data-pwa-release="(\d+)"/)?.[1];
+          console.log(JSON.stringify({checkedAt:new Date().toISOString(),releaseCommit:'d675cd0f84e969de20f9bd858bbc5db196841df5',releaseTree:'18bc6ccf225753e54f75d117492ff7f06551f133',expectedPwa,expected}));
+          await Promise.all(Object.entries(origins).map(async ([origin,url]) => {
+            const shell = await fetch(`${url}/?release_probe=505`, {cache:'no-store',signal:AbortSignal.timeout(30000)});
+            const text = await shell.text();
+            const pwaRelease = text.match(/data-pwa-release="(\d+)"/)?.[1] ?? null;
+            const files = await Promise.all(paths.map(async path => {
+              const res = await fetch(`${url}/${path}?release_probe=505`, {cache:'no-store',signal:AbortSignal.timeout(30000)});
+              const sha256 = hash(await res.text());
+              return {path,status:res.status,sha256,matchesRelease:res.ok && sha256 === expected[path]};
+            }));
+            const matches = files.filter(x => x.matchesRelease).length;
+            console.log(JSON.stringify({checkedAt:new Date().toISOString(),origin,pwaRelease,matchesPwaRelease:pwaRelease === expectedPwa,shellNoStore:(shell.headers.get('cache-control') ?? '').includes('no-store'),files,matches,total:files.length}));
+            if (!shell.ok || pwaRelease !== expectedPwa || matches !== files.length) process.exitCode = 1;
+          }));
+          NODE
