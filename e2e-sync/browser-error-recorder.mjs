@@ -1,7 +1,10 @@
+import {isWebKitReloadDiagnostic} from '../e2e/helpers/reloadDiagnostics.mjs';
+
 // WebKit also sends native CORS diagnostics through Playwright's pageerror.
 // Keep these separate from actual error/unhandledrejection events. A diagnostic
-// is expected only for an exact URL deliberately failed by this client's fixture.
-export async function recordBrowserErrors(context, {client, errors, diagnostics, failedUrls}) {
+// must belong to this client's deliberate outage or old-document reload window.
+export async function recordBrowserErrors(context, {client, errors, diagnostics, failedUrls,
+  origin, isReloading = () => false}) {
   await context.exposeBinding('__syncQaRuntimeError', (_source, detail) => {
     errors.push({client, source:'runtime', ...detail});
   });
@@ -22,6 +25,9 @@ export async function recordBrowserErrors(context, {client, errors, diagnostics,
       const colon=nativeText.indexOf(':');
       return error.name===nativeText.slice(0,colon)&&error.message===nativeText.slice(colon+2);
     });
-    (expectedNativeDiagnostic ? diagnostics : errors).push(detail);
+    const expectedReloadDiagnostic=isWebKitReloadDiagnostic(error,{
+      browserName:context.browser().browserType().name(), reloading:isReloading(page), origin
+    });
+    (expectedNativeDiagnostic || expectedReloadDiagnostic ? diagnostics : errors).push(detail);
   }));
 }
