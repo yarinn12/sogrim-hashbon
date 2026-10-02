@@ -37,6 +37,7 @@ import {
 import { loadStoredAccountSession } from "./accountAuth.mjs";
 import { jsonValuesEqual } from "./localIdentity.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../domain/settlement.mjs";
+import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "../domain/settlementPlanMemory.mjs";
 
 export const EVENT_SPACE_ID_FIELD = "sharedSpaceId";
 export const EVENT_SPACE_KEY_FIELD = "sharedSpaceKey";
@@ -1104,6 +1105,15 @@ export function mergeSharedEventIntoState(state, sharedState, credentials) {
 }
 
 function preserveCanonicalSettlementPlan(event, canonical, participants) {
+  // Generic merges can receive the personal replica first. At this authenticated
+  // boundary the shared snapshot owns both remembered methods and their rows.
+  if (canonical) event = {...event, ...mergeSettlementPlanMemory(canonical, event, event)};
+  const memberSet = new Set(event.participantIds ?? []);
+  const remembered = restoreRememberedSettlementPlan(
+    event,
+    (participants ?? []).filter(participant => memberSet.has(participant.id))
+  );
+  if (remembered) return {...event, transfers: remembered.transfers};
   if (jsonValuesEqual(event.transfers, canonical?.transfers)) return event;
   const byId = items => [...(items ?? [])].sort((left, right) => String(left.id).localeCompare(String(right.id)));
   const memberIds = value => [...(value.participantIds ?? [])].sort();
@@ -1122,9 +1132,9 @@ function preserveCanonicalSettlementPlan(event, canonical, participants) {
       !jsonValuesEqual(byId(event.transfers?.filter(transfer => transfer.status === "paid")),
         byId(canonical.transfers?.filter(transfer => transfer.status === "paid")))) return event;
 
-  const memberSet = new Set(canonical.participantIds ?? []);
+  const canonicalMemberSet = new Set(canonical.participantIds ?? []);
   const settlement = reconcileSettlementTransfers(
-    (participants ?? []).filter(participant => memberSet.has(participant.id)),
+    (participants ?? []).filter(participant => canonicalMemberSet.has(participant.id)),
     canonical.expenses,
     canonical.transfers,
     settlementOptionsForEvent(canonical)

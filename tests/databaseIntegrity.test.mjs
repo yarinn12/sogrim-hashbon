@@ -689,7 +689,15 @@ test("SQL exact remembered routes survive method changes, conflict retries and f
     const smartPlan = structuredClone(initial.events[0].transfers);
     let canonical = initial, directPlan;
     for (const direct of [true, false, true, false]) {
-      const local = setEventDirectSettlementTransfers(canonical, 'integrity-probe', direct);
+      // Another device can select smart using a newer clock but an old replica
+      // that never learned the canonical first plan. Exercise the final RPC,
+      // not just the settings action, against that different valid greedy plan.
+      const selectionBase = direct ? canonical : structuredClone(initial);
+      if (!direct) selectionBase.events[0].transfers = reconcileSettlementTransfers(
+        selectionBase.participants, selectionBase.events[0].expenses, [],
+        {...settlementOptionsForEvent(selectionBase.events[0]), preservePendingRoutes:false}
+      ).transfers;
+      const local = setEventDirectSettlementTransfers(selectionBase, 'integrity-probe', direct);
       local.currentParticipantId = ids.admin;
       Object.assign(local.events[0], {sharedSpaceId:snapshotId, sharedSpaceKey:spaceKey});
       const expected = direct ? (directPlan ??= structuredClone(local.events[0].transfers)) : smartPlan;

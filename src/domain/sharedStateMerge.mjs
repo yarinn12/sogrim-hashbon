@@ -7,7 +7,7 @@ import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
-import { mergeSettlementPlanMemory } from "./settlementPlanMemory.mjs";
+import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const ENTITY_COLLECTION_KEYS = [
@@ -136,7 +136,9 @@ function reconcileMergedEventTransfers(event, participants) {
     event.transfers,
     event.transferStatusUpdates
   );
-  const settlement = reconcileSettlementTransfers(
+  const settlement = restoreRememberedSettlementPlan(
+    {...event, transfers: transfersWithStatusUpdates}, eventParticipants
+  ) ?? reconcileSettlementTransfers(
     eventParticipants,
     event.expenses,
     transfersWithStatusUpdates,

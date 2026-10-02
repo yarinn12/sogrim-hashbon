@@ -1294,8 +1294,11 @@ for (const actor of [0,1]) test(`first published 998 smart route stays identical
         await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
         await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
         await expect(rows(f.pages[i])).toHaveCount(expected.length);
-        await expect(rows(f.pages[i]).filter({hasText:'998.00'})).toHaveCount(1);
-        await expect(rows(f.pages[i]).filter({hasText:'2,462.00'})).toHaveCount(0);
+        // The explanation also contains each participant's total 2,462 balance.
+        // Assert the actual amount to transfer, not hidden explanation text.
+        const amounts = rows(f.pages[i]).locator('.transfer-amount > .amount');
+        await expect(amounts.filter({hasText:'998.00'})).toHaveCount(1);
+        await expect(amounts.filter({hasText:'2,462.00'})).toHaveCount(0);
         await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
       }
       expect(f.canonical.state.events[0].settlementPlans.smart.transfers).toEqual(smartPlan);

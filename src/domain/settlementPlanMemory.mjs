@@ -43,6 +43,17 @@ function validatedPlan(event, participants, direct, transfers) {
     ? result : null;
 }
 
+// Used after status reconciliation on reads and final writes as well as on a
+// settings click. A stale client may publish a newer setting clock with a
+// different valid plan; the first canonical plan still owns that financial key.
+export function restoreRememberedSettlementPlan(event, participants, direct = modeOf(event) === 'direct') {
+  const entry = event.settlementPlans?.[direct ? 'direct' : 'smart'];
+  if (!validEntry(entry)) return null;
+  const inputKey = settlementPlanInputKey(event, participants, direct);
+  return inputKey && entry.inputKey === inputKey
+    ? validatedPlan(event, participants, direct, entry.transfers) : null;
+}
+
 function rememberCurrentPlan(event, participants, plans) {
   const mode = modeOf(event), direct = mode === 'direct';
   const inputKey = settlementPlanInputKey(event, participants, direct);
@@ -67,9 +78,7 @@ export function selectRememberedSettlementPlan(event, participants, direct) {
   rememberCurrentPlan(event, participants, plans);
   const mode = direct ? 'direct' : 'smart';
   const inputKey = settlementPlanInputKey(event, participants, direct);
-  const remembered = plans[mode];
-  const restored = inputKey && remembered?.inputKey === inputKey
-    ? validatedPlan(event, participants, direct, remembered.transfers) : null;
+  const restored = restoreRememberedSettlementPlan({...event, settlementPlans: plans}, participants, direct);
   const result = restored ?? reconcileSettlementTransfers(participants, event.expenses, paid(event.transfers),
     {...settlementOptionsForEvent(event), directTransfers: direct, preservePendingRoutes: false});
   if (result.issues.length || !inputKey) return result;

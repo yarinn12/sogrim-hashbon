@@ -85,6 +85,23 @@ test('smart -> direct -> smart restores the exact first plan rather than changin
   assert.deepEqual(eventOf(choose(returned, true)).transfers, eventOf(direct).transfers);
 });
 
+test('a newer stale replica cannot replace the canonical first smart plan with another valid plan', () => {
+  const initial = stableRepaymentFixture();
+  const canonical = mergeSharedEventWriteState(initial, choose(initial, true), config);
+  const stale = structuredClone(initial);
+  const fresh = reconcileSettlementTransfers(stale.participants, eventOf(stale).expenses, [],
+    {...settlementOptionsForEvent(eventOf(stale)), preservePendingRoutes:false});
+  eventOf(stale).transfers = fresh.transfers;
+  const selected = choose(stale, false);
+  const saved = mergeSharedEventWriteState(canonical, selected, config);
+  assert.deepEqual(eventOf(saved).transfers, eventOf(initial).transfers);
+  assert.deepEqual(eventOf(saved).settlementPlans.smart.transfers, eventOf(initial).transfers);
+  const hydrated = mergeSharedEventIntoState(selected, saved, credentials);
+  assert.deepEqual(eventOf(hydrated).transfers, eventOf(initial).transfers);
+  assert.deepEqual(eventOf(hydrated).settlementPlans.smart.transfers, eventOf(initial).transfers);
+  assert.deepEqual(eventOf(choose(choose(hydrated, true), false)).transfers, eventOf(initial).transfers);
+});
+
 test('each first plan survives 30 switches, reordered replicas, final writes and JSON reloads', () => {
   const initial = stableRepaymentFixture(), smartPlan = structuredClone(eventOf(initial).transfers);
   let canonical = mergeSharedEventWriteState(initial, choose(initial, true), config);
