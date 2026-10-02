@@ -1,0 +1,29 @@
+name: Windows unit and integration QA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-unit:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run complete unit and database integration suite
+        run: npm test

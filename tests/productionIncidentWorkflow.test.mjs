@@ -58,8 +58,8 @@ function incidentHarness() {
   };
 }
 
-function workflowScript(stepName) {
-  const lines = workflow.split("\n");
+function workflowScript(stepName, source = workflow) {
+  const lines = source.split(/\r?\n/u);
   const start = lines.indexOf(`      - name: ${stepName}`);
   assert.notEqual(start, -1, `workflow step exists: ${stepName}`);
   let end = start + 1;
@@ -70,7 +70,7 @@ function workflowScript(stepName) {
   return step.slice(scriptStart + 1).map((line) => line.slice(12)).join("\n");
 }
 
-async function runStep(stepName, harness) {
+async function runStep(stepName, harness, source = workflow) {
   const saved = Object.fromEntries(
     ["GITHUB_WORKSPACE", "VERIFY_OUTCOME", "PARITY_OUTCOME"].map((name) => [name, process.env[name]])
   );
@@ -84,7 +84,7 @@ async function runStep(stepName, harness) {
     readFileSync: () => failureLog
   } : require(name);
   try {
-    return await new AsyncFunction("require", "github", "context", "core", workflowScript(stepName))(
+    return await new AsyncFunction("require", "github", "context", "core", workflowScript(stepName, source))(
       workflowRequire,
       harness.github,
       { repo: { owner: "test-owner", repo: "test-repo" } },
@@ -98,10 +98,13 @@ async function runStep(stepName, harness) {
   }
 }
 
-const pass = (harness) => runStep("Close recovered incident issue", harness);
-const fail = (harness) => runStep("Open or update one incident issue", harness);
+for (const lineEnding of ["LF", "CRLF"]) {
+  const lfSource = workflow.replace(/\r\n/gu, "\n");
+  const source = lineEnding === "CRLF" ? lfSource.replace(/\n/gu, "\r\n") : lfSource;
+  const pass = (harness) => runStep("Close recovered incident issue", harness, source);
+  const fail = (harness) => runStep("Open or update one incident issue", harness, source);
 
-test("an unchanged failure resets recovery before the next successful check", async () => {
+test(`an unchanged failure resets recovery before the next successful check (${lineEnding})`, async () => {
   const harness = incidentHarness();
   const originalBody = harness.issue.body;
 
@@ -117,7 +120,7 @@ test("an unchanged failure resets recovery before the next successful check", as
   assert.equal(harness.comments.length, 0, "failure deduplication must not add another alert");
 });
 
-test("two consecutive successful workflow checks close the incident", async () => {
+test(`two consecutive successful workflow checks close the incident (${lineEnding})`, async () => {
   const harness = incidentHarness();
   await pass(harness);
   assert.equal(harness.issue.state, "open");
@@ -127,7 +130,7 @@ test("two consecutive successful workflow checks close the incident", async () =
   assert.match(harness.comments[0].body, /^Recovered automatically at /u);
 });
 
-test("an unchanged failure without recovery progress remains quiet", async () => {
+test(`an unchanged failure without recovery progress remains quiet (${lineEnding})`, async () => {
   const harness = incidentHarness();
   const originalBody = harness.issue.body;
   assert.equal(await fail(harness), "unchanged");
@@ -135,3 +138,5 @@ test("an unchanged failure without recovery progress remains quiet", async () =>
   assert.equal(harness.updates.length, 0);
   assert.equal(harness.comments.length, 0);
 });
+
+}

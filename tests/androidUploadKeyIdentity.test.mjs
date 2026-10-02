@@ -5,6 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 
 const UPLOAD_CERTIFICATE = Array(32).fill("A1").join(":");
 const PLAY_CERTIFICATE = Array(32).fill("B2").join(":");
@@ -206,7 +207,7 @@ function runScript(fixture, script) {
   const env = Object.fromEntries(["PATH", "SystemRoot", "WINDIR", "TMPDIR", "TEMP", "TMP"]
     .filter((name) => process.env[name])
     .map((name) => [name, process.env[name]]));
-  return spawnSync(process.execPath, ["--import", fixture.preload, join(fixture.projectRoot, "scripts", script)], {
+  return spawnSync(process.execPath, ["--import", pathToFileURL(fixture.preload).href, join(fixture.projectRoot, "scripts", script)], {
     cwd: fixture.projectRoot,
     env: {
       ...env,
