@@ -1,0 +1,35 @@
+name: Read-only next Apple build availability
+on:
+  push:
+    branches: [work/apple-next-build-readonly-20261002]
+    paths:
+      - .github/workflows/ios-next-build-readonly.yml
+      - scripts/read-ios-next-build.mjs
+permissions:
+  contents: read
+jobs:
+  read-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify GET-only boundary and complete scoped build reader
+        run: node --test tests/appStoreStatusReadOnly.test.mjs tests/appStoreRelease.test.mjs
+      - name: Read complete build-number collection and store status
+        run: node scripts/read-ios-next-build.mjs
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Preserve sanitized result
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-next-build-readonly
+          path: build/ios-next-build/status.json
+          if-no-files-found: error
+          retention-days: 7
