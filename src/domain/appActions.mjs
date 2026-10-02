@@ -18,6 +18,7 @@ import {
   usesRoundedSettlementTransfers
 } from "./settlement.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { selectRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 import { EVENT_SETTING_FIELDS } from "./sharedStateMerge.mjs";
 
 export function createGroup(
@@ -189,11 +190,14 @@ export function rollbackEventSettingChange(state, eventId, previousEvent, attemp
       }
       if (!["directSettlementTransfers", "roundSettlementTransfers"].includes(field)) return nextEvent;
       const participants = (state.participants ?? []).filter((participant) => event.participantIds.includes(participant.id));
-      const settlement = reconcileSettlementTransfers(
-        participants, event.expenses, event.transfers,
-        { ...settlementOptionsForEvent(nextEvent), preservePendingRoutes: false }
-      );
-      return settlement.issues.length ? nextEvent : { ...nextEvent, transfers: settlement.transfers };
+      const settlement = selectRememberedSettlementPlan({
+        ...nextEvent,
+        transfers: [...event.transfers.filter(transfer => transfer.status === "paid"),
+          ...previousEvent.transfers.filter(transfer => transfer.status !== "paid")]
+      }, participants, nextEvent.directSettlementTransfers === true);
+      return settlement.issues.length ? nextEvent : {
+        ...nextEvent, transfers: settlement.transfers, settlementPlans: settlement.settlementPlans
+      };
     })
   };
 }
@@ -261,15 +265,10 @@ export function setEventDirectSettlementTransfers(
       const eventParticipants = (state.participants ?? []).filter((participant) =>
         event.participantIds.includes(participant.id)
       );
-      const settlement = reconcileSettlementTransfers(
-        eventParticipants,
-        event.expenses,
-        event.transfers,
-        { ...settlementOptionsForEvent(nextEvent), preservePendingRoutes: false }
-      );
+      const settlement = selectRememberedSettlementPlan(event, eventParticipants, enabled);
       return settlement.issues.length
         ? nextEvent
-        : { ...nextEvent, transfers: settlement.transfers };
+        : { ...nextEvent, transfers: settlement.transfers, settlementPlans: settlement.settlementPlans };
     })
   };
 }

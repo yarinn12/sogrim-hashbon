@@ -8,7 +8,7 @@ import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWrite
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
-import { repaymentModeFixture } from "./helpers/repaymentModeFixture.mjs";
+import { repaymentModeFixture, stableRepaymentFixture } from "./helpers/repaymentModeFixture.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
@@ -680,6 +680,84 @@ for (const reselect of [false,true]) test(`SQL repayment mode commits the new pl
     delete previous.deletedEvents;
     previous.events[0]={...previous.events[0],...fixture.events[0],id:'integrity-probe'};
     return previous;
+  });
+});
+
+test("SQL exact remembered routes survive method changes, conflict retries and final acknowledgements", async () => {
+  const fixture = stableRepaymentFixture([ids.admin, ids.sender, ids.recipient, ids.other]);
+  await withSnapshot(ids.admin, async (initial, save) => {
+    const smartPlan = structuredClone(initial.events[0].transfers);
+    let canonical = initial, directPlan;
+    for (const direct of [true, false, true, false]) {
+      // Another device can select smart using a newer clock but an old replica
+      // that never learned the canonical first plan. Exercise the final RPC,
+      // not just the settings action, against that different valid greedy plan.
+      const selectionBase = direct ? canonical : structuredClone(initial);
+      if (!direct) selectionBase.events[0].transfers = reconcileSettlementTransfers(
+        selectionBase.participants, selectionBase.events[0].expenses, [],
+        {...settlementOptionsForEvent(selectionBase.events[0]), preservePendingRoutes:false}
+      ).transfers;
+      const local = setEventDirectSettlementTransfers(selectionBase, 'integrity-probe', direct);
+      local.currentParticipantId = ids.admin;
+      Object.assign(local.events[0], {sharedSpaceId:snapshotId, sharedSpaceKey:spaceKey});
+      const expected = direct ? (directPlan ??= structuredClone(local.events[0].transfers)) : smartPlan;
+      let writes = 0;
+      const response = value => ({ok:true, status:200, json:async()=>value});
+      const saved = await saveSharedEventState({storage:{mode:'supabase',url:'https://remembered.invalid',
+        table:'app_snapshots',anonKey:'synthetic',account:{userId:ids.admin.slice(8),accessToken:'synthetic'}}},
+        JSON.parse(JSON.stringify(local)), 'integrity-probe', async (url, options={}) => {
+          if (url.includes('/rpc/update_shared_event_snapshot')) {
+            writes++;
+            const body = JSON.parse(options.body);
+            assert.deepEqual(body.p_state.events[0].transfers, expected, 'assert actual final routes and IDs');
+            assert.ok(body.p_state.events[0].settlementPlans.smart);
+            assert.ok(body.p_state.events[0].settlementPlans.direct);
+            if (writes === 1) return response({status:'conflict'});
+            const ack = await save(body.p_state, body.p_expected_updated_at);
+            assert.equal(ack.status, 'updated');
+            return response(ack);
+          }
+          assert.equal(options.method ?? 'GET', 'GET');
+          return response((await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1', [snapshotId])).rows);
+        });
+      assert.equal(writes, 2);
+      canonical = (await db.query('select state from public.app_snapshots where id=$1', [snapshotId])).rows[0].state;
+      assert.deepEqual(canonical.events[0].transfers, expected);
+      assert.deepEqual(saved.events[0].transfers, expected);
+      assert.deepEqual(canonical.events[0].expenses, initial.events[0].expenses);
+    }
+  }, previous => {
+    delete previous.deletedEvents;
+    previous.events[0] = {...previous.events[0], ...fixture.events[0], id:'integrity-probe'};
+    return previous;
+  });
+});
+
+test("SQL a member content write preserves admin-owned remembered plans without widening permissions", async () => {
+  const fixture = stableRepaymentFixture([ids.admin, ids.sender, ids.recipient, ids.other]);
+  const chosen = setEventDirectSettlementTransfers(fixture, 'repayment-mode', true);
+  await withSnapshot(ids.other, async (previous, save) => {
+    const local = structuredClone(previous);
+    delete local.events[0].settlementPlans;
+    local.events[0].expenses.push({id:'member-new-expense',name:'Synthetic member expense',total:100,
+      payers:[{participantId:ids.other,amount:100}],sharedByParticipantIds:[ids.other],createdByParticipantId:ids.other});
+    const wire = buildSharedEventState(mergeSharedEventWriteState(previous, local,
+      {storage:{account:{userId:ids.other.slice(8)}}}), 'integrity-probe');
+    assert.deepEqual(wire.events[0].settlementPlans, previous.events[0].settlementPlans);
+    assert.equal((await save(wire)).status, 'updated');
+    const stored = (await db.query('select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1', [snapshotId])).rows[0];
+    assert.deepEqual(stored.state.events[0].settlementPlans, previous.events[0].settlementPlans);
+    const forged = structuredClone(stored.state);
+    delete forged.events[0].settlementPlans.smart;
+    await assert.rejects(save(forged, stored.version), error =>
+      error.code === '42501' && /Only an event admin can change event settings/.test(error.message));
+  }, previous => {
+    delete previous.deletedEvents;
+    previous.events[0] = {...previous.events[0], ...chosen.events[0], id:'integrity-probe'};
+    // Match the actual shared transport envelope, including sanitized profiles.
+    // A personal workspace envelope correctly fails the SQL metadata guard.
+    return buildSharedEventState(mergeSharedEventWriteState(previous, previous,
+      {storage:{account:{userId:ids.admin.slice(8)}}}), 'integrity-probe');
   });
 });
 

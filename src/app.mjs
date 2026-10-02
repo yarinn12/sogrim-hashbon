@@ -29,6 +29,7 @@ import {
   usesDirectSettlementTransfers,
   usesRoundedSettlementTransfers
 } from "./domain/settlement.mjs";
+import { restoreRememberedSettlementPlan } from "./domain/settlementPlanMemory.mjs";
 import { buildEventInsights } from "./domain/eventInsights.mjs";
 import {
   appendEventActivity,
@@ -23513,7 +23514,7 @@ function expenseParticipantsForCurrentDraft(event) {
 }
 
 function eventSettlementTransfers(event, participants = eventParticipants(event)) {
-  const settlement = reconcileSettlementTransfers(
+  const settlement = restoreRememberedSettlementPlan(event, participants) ?? reconcileSettlementTransfers(
     participants,
     event.expenses,
     event.transfers,
@@ -23843,8 +23844,10 @@ async function setEventRepaymentMode(eventId, mode) {
       ? "החזר לפי מי ששילם הופעל וההעברות עודכנו."
       : "החזר לפי מי ששילם הופעל. במקרה הזה סכומי ההעברות כבר היו זהים."
     : transferPlanChanged
-      ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
-      : "קיזוז חכם הופעל. במקרה הזה כבר לא ניתן לצמצם עוד העברות.";
+      ? nextTransfers.length < previousTransfers.length
+        ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
+        : "קיזוז חכם הופעל וההעברות עודכנו."
+      : "קיזוז חכם פעיל והמסלול נשמר.";
   notice = "שומרים את אופן ההחזר...";
   render();
   reactivateDialogAfterRender(

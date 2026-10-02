@@ -1,5 +1,5 @@
-const PWA_RELEASE = "505";
-const CACHE_NAME = "settle-friends-live-v505";
+const PWA_RELEASE = "506";
+const CACHE_NAME = "settle-friends-live-v506";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -116,6 +116,7 @@ const CACHE_FILES = [
   "/src/domain/publicOrigin.mjs",
   "/src/domain/qrCode.mjs",
   "/src/domain/settlement.mjs",
+  "/src/domain/settlementPlanMemory.mjs",
   "/src/domain/settlementSummary.mjs",
   "/src/domain/sharedStateMerge.mjs",
   "/src/domain/stateBackup.mjs",
