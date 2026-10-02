@@ -11,11 +11,11 @@ on:
       build:
         description: Unique TestFlight build number
         required: true
-        default: "185"
+        default: "186"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו לחיצות על בחירת המשלמים באייפון ובאייפד. שופרו ההתחברות עם Apple והשלמת הכניסה באימייל."
+        default: "תכניות ההחזר נשמרות באופן עקבי במעבר בין שיטות הקיזוז וברענון. נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו בחירת המשלמים באייפון ובאייפד, וההתחברות עם Apple ובאימייל."
 
 permissions:
   contents: read
