@@ -1,0 +1,201 @@
+name: One-shot iOS TestFlight 4.55 (186)
+run-name: One-shot iOS TestFlight 4.55 (186) from abbba4fc
+
+on:
+  push:
+    branches: [work/ios-testflight-186-20261002]
+    paths: [.github/workflows/ios-testflight-186-once.yml]
+
+permissions:
+  contents: read
+  actions: read
+  checks: read
+
+concurrency:
+  group: ios-testflight-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-upload:
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+      IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
+      IOS_VERSION: "4.55"
+      IOS_BUILD: "186"
+      IOS_RELEASE_NOTES: "תכניות ההחזר נשמרות באופן עקבי במעבר בין שיטות הקיזוז וברענון. נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו בחירת המשלמים באייפון ובאייפד, וההתחברות עם Apple ובאימייל."
+
+    steps:
+      - name: Checkout pinned release source
+        uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+
+      - name: Checkout isolated one-shot helpers
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .ios-release-helper
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Validate Apple configuration
+        run: node scripts/verify-ios-workflow-env.mjs
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Verify GET-only and one-shot release guards
+        run: node --test .ios-release-helper/tests/appStoreStatusReadOnly.test.mjs .ios-release-helper/tests/appStoreRelease.test.mjs .ios-release-helper/tests/iosTestflightOneShot.test.mjs
+
+      - name: One-shot GET readiness before building 4.55 (186)
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs before_build
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Verify public Apple login provider readiness
+        run: npm run qa:ios:providers
+
+      - name: Select and verify Xcode 26.6
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release checks
+        run: |
+          npm test
+          npm run native:ios:flatten-icon
+          npm run native:prepare
+
+      - name: Verify Apple login on iPhone and iPad WebKit
+        run: |
+          npx playwright install webkit
+          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs --project=iphone-webkit --project=ipad-webkit
+
+      - name: Prepare Apple release settings
+        run: node scripts/prepare-ios-release.mjs
+
+      - name: Verify prepared iOS release
+        run: npm run qa:ios
+
+      - name: Import Apple Distribution certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Download App Store provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: com.sogrimhashbon.app
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
+
+      - name: Archive signed iOS app
+        run: |
+          mkdir -p build/ios
+          set -o pipefail
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath build/ios/SogrimHashbon.xcarchive \
+            clean archive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            | tee build/ios/archive.log
+
+      - name: Export IPA
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/ios/SogrimHashbon.xcarchive \
+            -exportOptionsPlist ios/ExportOptions.generated.plist \
+            -exportPath build/ios/export \
+            | tee build/ios/export.log
+          ipa_path="$(find build/ios/export -maxdepth 2 -name '*.ipa' -print -quit)"
+          test -n "$ipa_path"
+          cp "$ipa_path" build/ios/SogrimHashbon.ipa
+
+      - name: Verify signed iOS artifact
+        run: npm run qa:ios:artifact
+
+      - name: Record pinned source in signed artifact evidence
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs record_artifact
+
+      - name: Require successful full QA for the exact merged source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PINNED_SOURCE_SHA: abbba4fc8d581f5720200169a59c88d7410f7277
+        run: |
+          qa_run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow qa.yml --commit "$PINNED_SOURCE_SHA" --branch main --event push --limit 1 --json databaseId --jq '.[0].databaseId')"
+          [[ "$qa_run_id" =~ ^[0-9]+$ ]]
+          gh run watch "$qa_run_id" --repo "$GITHUB_REPOSITORY" --compact --exit-status --interval 30
+          confirmed_sha="$(gh run view "$qa_run_id" --repo "$GITHUB_REPOSITORY" --json headSha,conclusion,headBranch,event --jq 'select(.conclusion == "success" and .headBranch == "main" and .event == "push") | .headSha')"
+          test "$confirmed_sha" = "$PINNED_SOURCE_SHA"
+          printf '%s\n' "$qa_run_id" > build/ios/source-qa-run.txt
+
+      - name: Recheck GET readiness immediately before the single upload
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs before_upload
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Upload app to TestFlight
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: build/ios/SogrimHashbon.ipa
+          app-type: ios
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          # The action retains a ten-minute token throughout polling. Upload only;
+          # the next required step renews authentication and verifies VALID + notes.
+          wait-for-processing: "false"
+          backend: appstore-api
+
+      - name: Verify Apple processing and complete TestFlight notes
+        run: node scripts/complete-ios-testflight.mjs
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Record pinned source in TestFlight completion evidence
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs record_completion
+
+      - name: Keep IPA and diagnostics for seven days
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sogrim-hashbon-ios-${{ env.IOS_VERSION }}-${{ env.IOS_BUILD }}
+          path: |
+            build/ios/SogrimHashbon.ipa
+            build/ios/release-manifest.json
+            build/ios/source-qa-run.txt
+            build/ios/testflight-completion.json
+            build/ios/testflight-one-shot-*.json
+            build/ios/*.log
+            test-results/
+            playwright-report/
+          if-no-files-found: warn
+          retention-days: 7
