@@ -2,7 +2,7 @@
 
 ## Report and cause
 
-The user reported that Korea's previously published smart transfer to Maor changed from ILS 998 to ILS 2,462 after repayment-setting changes. The requirement is to retain each method's first published plan while its financial inputs remain unchanged.
+The reported failure is that a previously published smart transfer changes after repayment-setting changes. The synthetic reproduction uses ILS 998 and ILS 2,462 with anonymous identities. The requirement is to retain each method's first published plan while its financial inputs remain unchanged.
 
 Every repayment-setting selection previously called reconciliation with `preservePendingRoutes: false`. The event retained only the currently selected plan. Returning to smart mode therefore generated a new greedy plan, even when the previously published alternative was financially valid. Earlier round-trip fixtures checked balanced totals and route counts but did not contain a different valid historical smart route.
 
@@ -18,7 +18,7 @@ Every repayment-setting selection previously called reconciliation with `preserv
 
 ## Regression evidence
 
-`tests/repaymentRouteStability.test.mjs` uses synthetic identities and an alternative valid published smart plan. Its first transfer is 99,800 agorot; a fresh greedy plan changes that route to 246,200 agorot without changing expenses. This is a reproduction of the mechanism and reported amounts, not a reconstruction of Korea's historical complete plan.
+`tests/repaymentRouteStability.test.mjs` uses synthetic identities and an alternative valid published smart plan. Its first transfer is 99,800 agorot; a fresh greedy plan changes that route to 246,200 agorot without changing expenses. This reproduces the mechanism, rather than reconstructing any live group's historical complete plan.
 
 Before the fix, all three initial behavioral regressions failed: same-mode reselection, smart/direct/smart restoration, and 30 switches through actual shared-event write and read merging. Each observed the 998-to-2,462 change. An additional regression reproduced a newer setting sent by a stale replica remembering the different valid greedy plan; it also failed before enforcing memory at the authenticated read/write boundary. Another failed regression reproduced equal-remainder whole-currency rounding with reordered participants (998 became 2,463); retaining the first order prevents it. With the fix all nine focused cases pass, additionally covering rollback, changed expenses, actual paid transfers and corrupt remembered data.
 
@@ -32,4 +32,4 @@ The first GitHub synchronization run passed 72 existing cases and failed both ne
 
 ## Live restoration
 
-The live app still displays its sign-in page after the secure authentication attempt. There is no authenticated Korea snapshot or historical full plan available in this workspace, and no production data has been changed. Restoring only the known 998 transfer would be insufficient: obtain the full original plan, reconcile it against current expenses and confirmed receipts, apply only valid pending transfers, and verify the final canonical acknowledgement and refresh on both devices. Never infer that a synthetic route is Korea's original route.
+The live app still displays its sign-in page after the secure authentication attempt. There is no authenticated snapshot or historical full plan available in this workspace, and no production data has been changed. Restoring a single recalled transfer would be insufficient: obtain the full original plan, reconcile it against current expenses and confirmed receipts, apply only valid pending transfers, and verify the final canonical acknowledgement and refresh on both devices. Never infer that a synthetic route is a live group's original route.
