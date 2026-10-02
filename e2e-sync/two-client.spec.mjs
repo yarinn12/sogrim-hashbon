@@ -1,6 +1,6 @@
 import {test, expect, chromium, webkit, devices} from '@playwright/test';
 import {recordBrowserErrors} from './browser-error-recorder.mjs';
-import {repaymentModeFixture, stableRepaymentFixture} from '../tests/helpers/repaymentModeFixture.mjs';
+import {repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture, reverseObjectKeys} from '../tests/helpers/repaymentModeFixture.mjs';
 import {selectRememberedSettlementPlan} from '../src/domain/settlementPlanMemory.mjs';
 
 // Two separate browser engines, cookies, storage, identities and caches.
@@ -14,7 +14,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -44,12 +44,21 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     event.adminIds=[participants[managingClient].id];
     event.participantAliases=Object.fromEntries(participants.map((participant,i)=>[participant.id,`כינוי קודם ${i}`]));
   }
-  if (withRepaymentPlan || withStableRepaymentPlan) {
-    const repayment = (withStableRepaymentPlan ? stableRepaymentFixture : repaymentModeFixture)([...participants.map(p=>p.id),'guest-c','guest-d']);
+  if (withRepaymentPlan || withStableRepaymentPlan || withReversePaymentPlan) {
+    const repayment = (withReversePaymentPlan ? reversePaymentFixture : withStableRepaymentPlan ? stableRepaymentFixture : repaymentModeFixture)([...participants.map(p=>p.id),'guest-c','guest-d']);
     participants.push(...repayment.participants.slice(2));
     Object.assign(event,{participantIds:participants.map(p=>p.id),adminIds:[participants[managingClient].id],
       expenses:repayment.events[0].expenses,transfers:repayment.events[0].transfers,
       directSettlementTransfers:repayment.events[0].directSettlementTransfers,settingsFieldUpdatedAt:{directSettlementTransfers:version}});
+    if (withReversePaymentPlan) {
+      event.transferStatusUpdates = repayment.events[0].transferStatusUpdates;
+      for (const direct of [false, true]) {
+        const chosen = selectRememberedSettlementPlan(event, participants, direct);
+        expect(chosen.issues).toEqual([]);
+        Object.assign(event, {transfers:chosen.transfers, settlementPlans:chosen.settlementPlans,
+          directSettlementTransfers:direct});
+      }
+    }
   }
   if (withStableRepaymentPlan && withRoundedStablePlan) {
     event.roundSettlementTransfers = true;
@@ -88,6 +97,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   }
   const canonical = {id: sharedId, snapshot_kind: 'shared_event', updated_at: version,
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
+  if (withReversePaymentPlan) canonical.state = reverseObjectKeys(canonical.state);
   let deletedEventMembers = new Set();
   const canReadCanonical = i => canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) ||
     (canonical.state.deletedEvents?.some(item=>item.id===eventId) && deletedEventMembers.has(`account-${ids[i]}`));
@@ -242,7 +252,8 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
             return reply({message:'Shared event deletion is not authorized'},403);
           deletedEventMembers=new Set(canonical.state.events[0].participantIds);
         }
-        canonical.state = structuredClone(body.p_state); canonical.updated_at = stamp();
+        canonical.state = withReversePaymentPlan ? reverseObjectKeys(body.p_state) : structuredClone(body.p_state);
+        canonical.updated_at = stamp();
         writes.push({client: i, at: performance.now(), version: canonical.updated_at, event: structuredClone(canonical.state.events[0]),
           deletedEvents:structuredClone(canonical.state.deletedEvents ?? [])});
         const receipt = {status: 'updated', updatedAt: canonical.updated_at};
@@ -1331,6 +1342,51 @@ for (const actor of [0,1]) test(`first published 998 smart route stays identical
     }
     expect(f.errors).toEqual([]);
     expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
+
+test('reordered wire keys preserve remembered reverse plans and the paid 998 receipt across offline Android and iPhone reloads', async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withReversePaymentPlan:true});
+  const [manager] = f.pages, initial = structuredClone(f.canonical.state.events[0]);
+  const assertRemembered = async (page, index) => {
+    await expect.poll(() => page.evaluate(async ({spaceId, eventId}) => {
+      const {restoreRememberedSettlementPlan} = await import('/src/domain/settlementPlanMemory.mjs');
+      const state = JSON.parse(localStorage.getItem(`settle-friends-state:${spaceId}`));
+      const event = state?.events?.find(event => event.id === eventId);
+      if (!event) return null;
+      return [false, true].map(direct => restoreRememberedSettlementPlan(event, state.participants, direct)?.transfers ?? null);
+    }, {spaceId:f.personal[index].id, eventId})).toEqual([initial.transfers, initial.transfers]);
+  };
+  try {
+    for (let i = 0; i < 2; i++) await assertRemembered(f.pages[i], i);
+    await f.offline(1, true);
+    for (const mode of ['optimized', 'direct', 'optimized']) {
+      await manager.locator('[data-action="open-event-settings"]').first().click();
+      await manager.locator('[data-settings-section="repayment"]').click();
+      await manager.locator(`[data-action="set-event-repayment-mode"][data-repayment-mode="${mode}"]`).click();
+      await expect.poll(() => f.canonical.state.events[0].directSettlementTransfers).toBe(mode === 'direct');
+      await manager.locator('[data-action="event-settings-back"]').click();
+      await manager.locator('[data-action="close-event-dialog"]').click();
+      await f.offline(1, false);
+      for (let i = 0; i < 2; i++) {
+        await expect.poll(() => f.pages[i].evaluate(spaceId => JSON.parse(localStorage.getItem(
+          `settle-friends-state:${spaceId}`))?.events?.[0]?.directSettlementTransfers, f.personal[i].id)).toBe(mode === 'direct');
+        await f.pages[i].reload();
+        await f.pages[i].locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+        await f.pages[i].locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
+        await assertRemembered(f.pages[i], i);
+        const pending = initial.transfers.find(t => t.status === 'pending');
+        const row = f.pages[i].locator(`.settlement-transfer-board .transfer-row[data-transfer-id="${pending.id}"]`);
+        await expect(row.locator('.transfer-amount > .amount')).toContainText('1,198.00');
+        await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
+      }
+      expect(f.canonical.state.events[0].transfers).toEqual(initial.transfers);
+      expect(f.canonical.state.events[0].expenses).toEqual(initial.expenses);
+      expect(f.canonical.state.events[0].transferStatusUpdates).toEqual(initial.transferStatusUpdates);
+    }
+    expect(f.writes.length).toBeGreaterThanOrEqual(3);
+    for (const write of f.writes) expect(write.event.transfers).toEqual(initial.transfers);
+    expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
   } finally {await f.close();}
 });
 

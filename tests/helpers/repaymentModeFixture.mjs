@@ -41,3 +41,28 @@ export function stableRepaymentFixture(ids = ['account-owner', 'account-peer', '
   }));
   return state;
 }
+
+// A completed payment followed by an expense in the opposite direction. The
+// outstanding reverse route must be regenerated during plan validation, exposing
+// comparisons that incorrectly depend on the JSON object's property order.
+export function reversePaymentFixture(ids = ['account-owner', 'account-peer', 'guest-c', 'guest-d']) {
+  const [owner, peer] = ids;
+  const state = repaymentModeFixture(ids), event = state.events[0];
+  event.expenses = [{id: 'reverse-expense', name: 'Synthetic later expense', total: 20000,
+    payers: [{participantId: owner, amount: 20000}], sharedByParticipantIds: [peer],
+    createdByParticipantId: owner, updatedAt: event.createdAt}];
+  event.transfers = [{id: 'completed-payment', fromParticipantId: owner, toParticipantId: peer,
+    amount: 99800, status: 'paid', markedPaidAt: event.createdAt,
+    statusUpdatedAt: event.createdAt, markedPaidByParticipantId: owner}];
+  event.transferStatusUpdates = [{id: 'completed-payment', status: 'paid',
+    updatedAt: event.createdAt, markedAt: event.createdAt, markedPaidByParticipantId: owner}];
+  return state;
+}
+
+// Deliberately vary wire-object ordering; arrays and values remain unchanged.
+// Real PostgreSQL JSONB serialization is covered in databaseIntegrity.test.mjs.
+export function reverseObjectKeys(value) {
+  if (Array.isArray(value)) return value.map(reverseObjectKeys);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).reverse().map(key => [key, reverseObjectKeys(value[key])]));
+}
