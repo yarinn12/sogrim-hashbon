@@ -8,8 +8,9 @@ import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWrite
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
 import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
-import { repaymentModeFixture, stableRepaymentFixture } from "./helpers/repaymentModeFixture.mjs";
+import { repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture } from "./helpers/repaymentModeFixture.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
+import { restoreRememberedSettlementPlan } from "../src/domain/settlementPlanMemory.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -730,6 +731,66 @@ test("SQL exact remembered routes survive method changes, conflict retries and f
     delete previous.deletedEvents;
     previous.events[0] = {...previous.events[0], ...fixture.events[0], id:'integrity-probe'};
     return previous;
+  });
+});
+
+test("SQL JSONB remembered plans survive real CAS retries and preserve the paid 998 receipt", async () => {
+  const fixture = reversePaymentFixture([ids.admin, ids.sender, ids.recipient, ids.other]);
+  const chosen = setEventDirectSettlementTransfers(
+    setEventDirectSettlementTransfers(fixture, 'repayment-mode', false), 'repayment-mode', true);
+  await withSnapshot(ids.admin, async (initial, save) => {
+    const receipts = structuredClone(initial.events[0].transfers.filter(t => t.status === 'paid'));
+    const history = structuredClone(initial.events[0].transferStatusUpdates);
+    const assertRestorable = value => {
+      for (const direct of [false, true]) {
+        const restored = restoreRememberedSettlementPlan(value.events[0], value.participants, direct);
+        assert.ok(restored, `${direct ? 'direct' : 'smart'} must restore after a real JSONB read`);
+        assert.deepEqual(restored.transfers.filter(t => t.status === 'paid'), receipts);
+        assert.deepEqual(restored.transfers.filter(t => t.status === 'pending'),
+          chosen.events[0].settlementPlans[direct ? 'direct' : 'smart'].transfers);
+      }
+    };
+    assertRestorable(initial);
+    let canonical = initial;
+    for (const direct of [false, true, false, true]) {
+      const local = setEventDirectSettlementTransfers(canonical, 'integrity-probe', direct);
+      local.currentParticipantId = ids.admin;
+      Object.assign(local.events[0], {sharedSpaceId:snapshotId, sharedSpaceKey:spaceKey});
+      const acknowledgements = [], payloads = [];
+      const response = value => ({ok:true, status:200, json:async()=>value});
+      const saved = await saveSharedEventState({storage:{mode:'supabase',url:'https://jsonb-test.invalid',
+        table:'app_snapshots',anonKey:'synthetic',account:{userId:ids.admin.slice(8),accessToken:'synthetic'}}},
+        local, 'integrity-probe', async (url, options={}) => {
+          if (url.includes('/rpc/update_shared_event_snapshot')) {
+            const body = JSON.parse(options.body);
+            payloads.push(body.p_state);
+            // Advance the actual database version between the client's read and
+            // write; let the real RPC reject its stale CAS token and retry.
+            if (payloads.length === 1) {
+              assert.equal((await save(canonical, body.p_expected_updated_at)).status, 'updated');
+            }
+            const ack = await save(body.p_state, body.p_expected_updated_at);
+            acknowledgements.push(ack.status);
+            return response(ack);
+          }
+          assert.equal(options.method ?? 'GET', 'GET');
+          return response((await db.query('select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1', [snapshotId])).rows);
+        });
+      assert.deepEqual(acknowledgements, ['conflict', 'updated']);
+      canonical = (await db.query('select state from public.app_snapshots where id=$1', [snapshotId])).rows[0].state;
+      for (const value of [...payloads, saved, canonical]) {
+        assertRestorable(value);
+        assert.equal(value.events[0].directSettlementTransfers, direct);
+        assert.deepEqual(value.events[0].transfers, local.events[0].transfers);
+        assert.deepEqual(value.events[0].expenses, initial.events[0].expenses);
+        assert.deepEqual(value.events[0].transferStatusUpdates, history);
+      }
+    }
+  }, previous => {
+    delete previous.deletedEvents;
+    previous.events[0] = {...previous.events[0], ...chosen.events[0], id:'integrity-probe'};
+    return buildSharedEventState(mergeSharedEventWriteState(previous, previous,
+      {storage:{account:{userId:ids.admin.slice(8)}}}), 'integrity-probe');
   });
 });
 

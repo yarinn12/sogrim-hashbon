@@ -3,12 +3,40 @@ import assert from 'node:assert/strict';
 import {setEventDirectSettlementTransfers, rollbackEventSettingChange, updateTransferStatus} from '../src/domain/appActions.mjs';
 import {reconcileSettlementTransfers, settlementOptionsForEvent} from '../src/domain/settlement.mjs';
 import {mergeSharedEventWriteState, mergeSharedEventIntoState} from '../src/data/sharedEventStore.mjs';
-import {stableRepaymentFixture} from './helpers/repaymentModeFixture.mjs';
+import {restoreRememberedSettlementPlan} from '../src/domain/settlementPlanMemory.mjs';
+import {stableRepaymentFixture, reversePaymentFixture, reverseObjectKeys} from './helpers/repaymentModeFixture.mjs';
 
 const config = {storage:{account:{userId:'owner'}}};
 const credentials = {id:'synthetic-stable-space',key:'synthetic_stability_key_1234567890'};
 const eventOf = state => state.events[0];
 const choose = (state, direct) => setEventDirectSettlementTransfers(state, eventOf(state).id, direct);
+
+for (const direct of [false, true]) {
+  test(`${direct ? 'direct' : 'smart'} remembered reverse route survives reordered JSON keys and retains the 998 receipt`, () => {
+    const selected = choose(reversePaymentFixture(), direct);
+    const reordered = reverseObjectKeys(selected), event = eventOf(reordered);
+    const restored = restoreRememberedSettlementPlan(event, reordered.participants, direct);
+    assert.ok(restored, 'a valid persisted plan must be restored, not silently recomputed');
+    assert.deepEqual(restored.transfers, eventOf(selected).transfers);
+    assert.deepEqual(restored.transfers.filter(t => t.status === 'paid').map(t => t.amount), [99800]);
+    assert.deepEqual(restored.transfers.filter(t => t.status === 'pending').map(t => t.amount), [119800]);
+  });
+
+  test(`${direct ? 'direct' : 'smart'} reordered JSON still rejects altered routes, amounts and paid statuses`, () => {
+    for (const corrupt of [entry => {entry.transfers[0].amount += 100;},
+      entry => {entry.transfers[0].status = 'paid';},
+      entry => {entry.transfers[0].toParticipantId = 'guest-c';},
+      entry => {entry.transfers[0].id = 'different-receipt-id';}]) {
+      const state = reverseObjectKeys(choose(reversePaymentFixture(), direct));
+      corrupt(eventOf(state).settlementPlans[direct ? 'direct' : 'smart']);
+      assert.equal(restoreRememberedSettlementPlan(eventOf(state), state.participants, direct), null);
+      const recovered = choose(state, direct);
+      assert.deepEqual(eventOf(recovered).transfers.filter(t => t.status === 'paid'),
+        eventOf(state).transfers.filter(t => t.status === 'paid'));
+      assert.equal(eventOf(recovered).transfers.filter(t => t.status === 'pending').reduce((sum, t) => sum + t.amount, 0), 119800);
+    }
+  });
+}
 
 test('reselecting smart keeps the first published 998 route, amounts and IDs', () => {
   const initial = stableRepaymentFixture();
@@ -100,6 +128,44 @@ test('a newer stale replica cannot replace the canonical first smart plan with a
   assert.deepEqual(eventOf(hydrated).transfers, eventOf(initial).transfers);
   assert.deepEqual(eventOf(hydrated).settlementPlans.smart.transfers, eventOf(initial).transfers);
   assert.deepEqual(eventOf(choose(choose(hydrated, true), false)).transfers, eventOf(initial).transfers);
+});
+
+test('a stale paid 2462 replica cannot undo a correction to the actual paid 998 receipt', () => {
+  const initial = stableRepaymentFixture(), at = Date.now() - 10_000;
+  let stale = structuredClone(initial);
+  eventOf(stale).transfers = reconcileSettlementTransfers(stale.participants, eventOf(stale).expenses, [],
+    {...settlementOptionsForEvent(eventOf(stale)), preservePendingRoutes:false}).transfers;
+  const wrong = eventOf(stale).transfers.find(t => t.fromParticipantId === 'account-owner' &&
+    t.toParticipantId === 'account-peer');
+  assert.equal(wrong.amount, 246200);
+  stale = updateTransferStatus(stale, eventOf(stale).id, wrong.id,
+    {status:'paid', markedAt:new Date(at).toISOString(), participantId:'account-owner'});
+  let corrected = updateTransferStatus(stale, eventOf(stale).id, wrong.id,
+    {status:'pending', markedAt:new Date(at + 1000).toISOString()});
+  eventOf(corrected).transfers = structuredClone(eventOf(initial).transfers);
+  const actual = eventOf(corrected).transfers.find(t => t.amount === 99800);
+  corrected = updateTransferStatus(corrected, eventOf(corrected).id, actual.id,
+    {status:'paid', markedAt:new Date(at + 2000).toISOString(), participantId:'account-owner'});
+  corrected = choose(choose(corrected, true), false);
+  const receipts = structuredClone(eventOf(corrected).transfers.filter(t => t.status === 'paid'));
+  const expenses = structuredClone(eventOf(corrected).expenses);
+  for (const direct of [true, false, true, false]) {
+    corrected = choose(corrected, direct);
+    // Exercise both the write merge and the other device's subsequent read.
+    corrected = reverseObjectKeys(mergeSharedEventWriteState(corrected, stale, config));
+    const hydrated = mergeSharedEventIntoState(stale, corrected, credentials);
+    for (const state of [corrected, hydrated]) {
+      assert.deepEqual(eventOf(state).transfers.filter(t => t.status === 'paid'), receipts);
+      assert.equal(receipts[0].amount, 99800);
+      assert.equal(eventOf(state).transferStatusUpdates.find(t => t.id === wrong.id).status, 'pending');
+      assert.deepEqual(eventOf(state).expenses, expenses);
+      const result = reconcileSettlementTransfers(state.participants, eventOf(state).expenses,
+        eventOf(state).transfers, settlementOptionsForEvent(eventOf(state)));
+      assert.deepEqual(result.issues, []);
+      assert.deepEqual(result.outstandingBalances,
+        {'account-owner':-146400,'account-peer':146400,'guest-c':146400,'guest-d':-146400});
+    }
+  }
 });
 
 test('tied whole-currency rounding keeps the first plans when participant order changes', () => {

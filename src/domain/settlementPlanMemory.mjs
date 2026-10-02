@@ -1,4 +1,5 @@
 import {calculateSettlement, reconcileSettlementTransfers, settlementOptionsForEvent} from './settlement.mjs';
+import {jsonValuesEqual} from '../data/localIdentity.mjs';
 
 const MODES = ['smart', 'direct'];
 const modeOf = event => event.directSettlementTransfers === true ? 'direct' : 'smart';
@@ -46,8 +47,10 @@ function validatedPlan(event, participants, direct, transfers, participantOrder)
   const options = {...settlementOptionsForEvent(event), directTransfers: direct};
   const previous = [...paid(event.transfers), ...pending(transfers)];
   const result = reconcileSettlementTransfers(participants, event.expenses, previous, options);
+  // JSONB may reorder object fields. Compare every value (and array order),
+  // without rejecting an otherwise identical persisted plan for its key order.
   return !result.issues.length &&
-    JSON.stringify(pending(result.transfers)) === JSON.stringify(pending(transfers))
+    jsonValuesEqual(pending(result.transfers), pending(transfers))
     ? result : null;
 }
 
