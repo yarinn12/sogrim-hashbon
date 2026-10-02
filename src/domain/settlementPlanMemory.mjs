@@ -28,13 +28,21 @@ export function settlementPlanInputKey(event, participants, direct) {
 
 function validEntry(entry) {
   return entry && typeof entry.inputKey === 'string' && entry.inputKey.length <= 262144 &&
+    (entry.participantOrder === undefined || (Array.isArray(entry.participantOrder) &&
+      entry.participantOrder.length <= 2000 && new Set(entry.participantOrder).size === entry.participantOrder.length &&
+      entry.participantOrder.every(id => typeof id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(id)))) &&
     Array.isArray(entry.transfers) && entry.transfers.length <= 2000 &&
     entry.transfers.every(transfer => transfer && transfer.status === 'pending' &&
       typeof transfer.id === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(transfer.id) &&
       Number.isSafeInteger(transfer.amount) && transfer.amount > 0);
 }
 
-function validatedPlan(event, participants, direct, transfers) {
+function validatedPlan(event, participants, direct, transfers, participantOrder) {
+  if (participantOrder) {
+    const byId = new Map(participants.map(participant => [participant.id, participant]));
+    if (participantOrder.length !== byId.size || participantOrder.some(id => !byId.has(id))) return null;
+    participants = participantOrder.map(id => byId.get(id));
+  }
   const options = {...settlementOptionsForEvent(event), directTransfers: direct};
   const previous = [...paid(event.transfers), ...pending(transfers)];
   const result = reconcileSettlementTransfers(participants, event.expenses, previous, options);
@@ -51,14 +59,14 @@ export function restoreRememberedSettlementPlan(event, participants, direct = mo
   if (!validEntry(entry)) return null;
   const inputKey = settlementPlanInputKey(event, participants, direct);
   return inputKey && entry.inputKey === inputKey
-    ? validatedPlan(event, participants, direct, entry.transfers) : null;
+    ? validatedPlan(event, participants, direct, entry.transfers, entry.participantOrder) : null;
 }
 
 function rememberCurrentPlan(event, participants, plans) {
   const mode = modeOf(event), direct = mode === 'direct';
   const inputKey = settlementPlanInputKey(event, participants, direct);
   if (!inputKey || (plans[mode]?.inputKey === inputKey &&
-    validatedPlan(event, participants, direct, plans[mode].transfers))) return;
+    validatedPlan(event, participants, direct, plans[mode].transfers, plans[mode].participantOrder))) return;
   const valid = validatedPlan(event, participants, direct, event.transfers);
   if (!valid) return;
   const fresh = reconcileSettlementTransfers(participants, event.expenses, paid(event.transfers),
@@ -69,7 +77,8 @@ function rememberCurrentPlan(event, participants, plans) {
   const compatible = direct
     ? JSON.stringify(routes(pending(valid.transfers))) === JSON.stringify(routes(pending(fresh.transfers)))
     : pending(valid.transfers).length <= pending(fresh.transfers).length + 1;
-  if (compatible) plans[mode] = {inputKey, transfers: clone(pending(valid.transfers))};
+  if (compatible) plans[mode] = {inputKey, participantOrder: participants.map(participant => participant.id),
+    transfers: clone(pending(valid.transfers))};
 }
 
 export function selectRememberedSettlementPlan(event, participants, direct) {
@@ -82,7 +91,11 @@ export function selectRememberedSettlementPlan(event, participants, direct) {
   const result = restored ?? reconcileSettlementTransfers(participants, event.expenses, paid(event.transfers),
     {...settlementOptionsForEvent(event), directTransfers: direct, preservePendingRoutes: false});
   if (result.issues.length || !inputKey) return result;
-  plans[mode] = {inputKey, transfers: clone(pending(result.transfers))};
+  // Whole-currency rounding breaks equal-remainder ties by participant order.
+  // Retain the order that produced this first plan, including after restoring it.
+  const participantOrder = restored && plans[mode]?.participantOrder
+    ? [...plans[mode].participantOrder] : participants.map(participant => participant.id);
+  plans[mode] = {inputKey, participantOrder, transfers: clone(pending(result.transfers))};
   return {...result, settlementPlans: plans};
 }
 

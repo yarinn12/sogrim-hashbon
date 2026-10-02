@@ -1,6 +1,7 @@
 import {test, expect, chromium, webkit, devices} from '@playwright/test';
 import {recordBrowserErrors} from './browser-error-recorder.mjs';
 import {repaymentModeFixture, stableRepaymentFixture} from '../tests/helpers/repaymentModeFixture.mjs';
+import {selectRememberedSettlementPlan} from '../src/domain/settlementPlanMemory.mjs';
 
 // Two separate browser engines, cookies, storage, identities and caches.
 // All remote traffic is intercepted. The fake backend implements CAS and
@@ -13,7 +14,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -50,6 +51,15 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       expenses:repayment.events[0].expenses,transfers:repayment.events[0].transfers,
       directSettlementTransfers:repayment.events[0].directSettlementTransfers,settingsFieldUpdatedAt:{directSettlementTransfers:version}});
   }
+  if (withStableRepaymentPlan && withRoundedStablePlan) {
+    event.roundSettlementTransfers = true;
+    event.expenses[0].total += 50;
+    event.expenses[0].payers[0].amount += 50;
+    const first = selectRememberedSettlementPlan(event, participants, false);
+    expect(first.issues).toEqual([]);
+    event.settlementPlans = first.settlementPlans;
+    event.transfers = first.transfers;
+  }
   if (withExpense) event.expenses.push({id:'seed-expense',name:'הוצאה לבדיקת הגדרות',total:12000,
     payers:[{participantId:participants[0].id,amount:12000}], sharedByParticipantIds:participants.map(p=>p.id),
     createdByParticipantId:participants[0].id,updatedAt:version,kind:'shared'});
@@ -85,6 +95,10 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
       groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [],
       events: [{...structuredClone(event), sharedSpaceId: sharedId, sharedSpaceKey: key}]}}));
+  if (withRoundedStablePlan) {
+    personal[managingClient].state.participants.reverse();
+    personal[managingClient].state.events[0].participantIds.reverse();
+  }
   if (joiningClient !== null) personal[joiningClient].state.events = [];
   const sibling = withAccountLink && !withCompetingLinks ? {id:'unrelated-pending-space',snapshot_kind:'shared_event',updated_at:version,
     state:{currentParticipantId:'',participants:structuredClone(participants),groups:[],deletedParticipants:[],events:[{
@@ -1261,8 +1275,8 @@ for (const actor of [0,1]) test(`repayment plan changes on ${actor ? 'iPhone' : 
   } finally {await f.close();}
 });
 
-for (const actor of [0,1]) test(`first published 998 smart route stays identical after ${actor ? 'iPhone' : 'Android'} method switches and offline reloads`, async ({}, testInfo) => {
-  const f = await fixture(testInfo, {withStableRepaymentPlan:true, managingClient:actor});
+for (const actor of [0,1]) test(`first published 998 smart route stays identical after ${actor ? 'iPhone rounding and reordered participants' : 'Android'} method switches and offline reloads`, async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withStableRepaymentPlan:true, withRoundedStablePlan:actor === 1, managingClient:actor});
   const manager = f.pages[actor], peer = f.pages[1-actor];
   const smartPlan = structuredClone(f.canonical.state.events[0].transfers);
   const rows = page => page.locator('.settlement-transfer-board .transfer-row');
@@ -1297,8 +1311,19 @@ for (const actor of [0,1]) test(`first published 998 smart route stays identical
         // The explanation also contains each participant's total 2,462 balance.
         // Assert the actual amount to transfer, not hidden explanation text.
         const amounts = rows(f.pages[i]).locator('.transfer-amount > .amount');
-        await expect(amounts.filter({hasText:'998.00'})).toHaveCount(1);
-        await expect(amounts.filter({hasText:'2,462.00'})).toHaveCount(0);
+        await expect(amounts).toHaveCount(expected.length);
+        for (const transfer of expected) {
+          const row = f.pages[i].locator(`.settlement-transfer-board .transfer-row[data-transfer-id="${transfer.id}"]`);
+          await expect(row).toHaveCount(1);
+          await expect(row).toHaveAttribute('data-transfer-from', transfer.fromParticipantId);
+          await expect(row).toHaveAttribute('data-transfer-to', transfer.toParticipantId);
+          await expect(row.locator('.transfer-amount > .amount')).toContainText((transfer.amount / 100)
+            .toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}));
+        }
+        if (mode === 'optimized') {
+          await expect(amounts.filter({hasText:'998.00'})).toHaveCount(1);
+          await expect(amounts.filter({hasText:'2,462.00'})).toHaveCount(0);
+        }
         await expect(f.pages[i].getByText(/נשמר במכשיר|ממתין לסנכרון/)).toHaveCount(0);
       }
       expect(f.canonical.state.events[0].settlementPlans.smart.transfers).toEqual(smartPlan);

@@ -102,6 +102,22 @@ test('a newer stale replica cannot replace the canonical first smart plan with a
   assert.deepEqual(eventOf(choose(choose(hydrated, true), false)).transfers, eventOf(initial).transfers);
 });
 
+test('tied whole-currency rounding keeps the first plans when participant order changes', () => {
+  const initial = stableRepaymentFixture();
+  eventOf(initial).roundSettlementTransfers = true;
+  eventOf(initial).expenses[0].total += 50;
+  eventOf(initial).expenses[0].payers[0].amount += 50;
+  let state = choose(initial, true);
+  const directPlan = structuredClone(eventOf(state).transfers);
+  state.participants.reverse();
+  eventOf(state).participantIds.reverse();
+  state = choose(state, false);
+  assert.deepEqual(eventOf(state).transfers, eventOf(initial).transfers);
+  assert.deepEqual(eventOf(choose(state, true)).transfers, directPlan);
+  const saved = mergeSharedEventWriteState(initial, state, config);
+  assert.deepEqual(eventOf(saved).transfers, eventOf(initial).transfers);
+});
+
 test('each first plan survives 30 switches, reordered replicas, final writes and JSON reloads', () => {
   const initial = stableRepaymentFixture(), smartPlan = structuredClone(eventOf(initial).transfers);
   let canonical = mergeSharedEventWriteState(initial, choose(initial, true), config);

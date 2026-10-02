@@ -29,6 +29,7 @@ import {
   usesDirectSettlementTransfers,
   usesRoundedSettlementTransfers
 } from "./domain/settlement.mjs";
+import { restoreRememberedSettlementPlan } from "./domain/settlementPlanMemory.mjs";
 import { buildEventInsights } from "./domain/eventInsights.mjs";
 import {
   appendEventActivity,
@@ -23513,7 +23514,7 @@ function expenseParticipantsForCurrentDraft(event) {
 }
 
 function eventSettlementTransfers(event, participants = eventParticipants(event)) {
-  const settlement = reconcileSettlementTransfers(
+  const settlement = restoreRememberedSettlementPlan(event, participants) ?? reconcileSettlementTransfers(
     participants,
     event.expenses,
     event.transfers,
