@@ -1,0 +1,39 @@
+name: Read-only Apple 4.55 (185) status
+on:
+  push:
+    branches: [work/apple-status-185-readonly-20261002]
+    paths:
+      - .github/workflows/ios185-status-readonly.yml
+      - scripts/read-ios-185-status.mjs
+permissions:
+  contents: read
+jobs:
+  read-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify existing GET-only boundary and sanitized reporting
+        run: node --test tests/appStoreStatusReadOnly.test.mjs tests/appStoreRelease.test.mjs
+      - name: Read exact iOS 4.55 (185) status without changes
+        run: node scripts/read-ios-185-status.mjs
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Verify public iOS provider configuration
+        if: ${{ !cancelled() }}
+        run: npm run qa:ios:providers
+      - name: Preserve sanitized status
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios185-status-readonly
+          path: build/ios185-status/status.json
+          if-no-files-found: error
+          retention-days: 7
