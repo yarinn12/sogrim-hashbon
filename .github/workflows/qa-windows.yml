@@ -2,7 +2,7 @@ name: Windows unit and integration QA
 
 on:
   push:
-    branches: [main, 'fix/windows-signing-qa-20261002']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
