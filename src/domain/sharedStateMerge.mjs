@@ -7,6 +7,7 @@ import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { mergeSettlementPlanMemory } from "./settlementPlanMemory.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 const ENTITY_COLLECTION_KEYS = [
@@ -483,7 +484,7 @@ function mergeEvent(remoteEvent, localEvent) {
     mergedEvent.transferStatusUpdates = transferStatusUpdates;
   }
 
-  return mergedEvent;
+  return {...mergedEvent, ...mergeSettlementPlanMemory(remoteEvent, localEvent, mergedEvent)};
 }
 
 function mergeEventParticipantAliases(remoteEvent, localEvent) {

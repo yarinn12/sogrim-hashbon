@@ -390,6 +390,15 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     return merged;
   }
 
+  // Remembered payment methods are admin-owned settings. Preserve the exact
+  // canonical value on member writes; do not loosen the SQL settings guard or
+  // let an old client erase the inactive method's plan while saving content.
+  for (const event of merged.events) {
+    if (event.id !== remoteEvent?.id) continue;
+    if (Object.hasOwn(remoteEvent, "settlementPlans")) event.settlementPlans = clone(remoteEvent.settlementPlans);
+    else delete event.settlementPlans;
+  }
+
   merged.events = merged.events.map((event) => remoteEvent?.id === event.id
     ? preserveUnchangedMemberClock(remoteEvent, event)
     : event);

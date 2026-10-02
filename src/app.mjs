@@ -23843,8 +23843,10 @@ async function setEventRepaymentMode(eventId, mode) {
       ? "החזר לפי מי ששילם הופעל וההעברות עודכנו."
       : "החזר לפי מי ששילם הופעל. במקרה הזה סכומי ההעברות כבר היו זהים."
     : transferPlanChanged
-      ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
-      : "קיזוז חכם הופעל. במקרה הזה כבר לא ניתן לצמצם עוד העברות.";
+      ? nextTransfers.length < previousTransfers.length
+        ? "קיזוז חכם הופעל ומספר ההעברות צומצם."
+        : "קיזוז חכם הופעל וההעברות עודכנו."
+      : "קיזוז חכם פעיל והמסלול נשמר.";
   notice = "שומרים את אופן ההחזר...";
   render();
   reactivateDialogAfterRender(

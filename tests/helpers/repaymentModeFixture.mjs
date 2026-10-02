@@ -22,3 +22,22 @@ export function repaymentModeFixture(ids = ['account-owner', 'account-peer', 'gu
     }]
   };
 }
+
+// A previously published, valid smart plan need not be the plan a fresh greedy
+// calculation chooses. Mirrors the reported 998 -> 2462 route change with
+// synthetic identities and preserves the same net balances in either plan.
+export function stableRepaymentFixture(ids = ['account-owner', 'account-peer', 'guest-c', 'guest-d']) {
+  const [owner, peer, third, fourth] = ids;
+  const state = repaymentModeFixture(ids), event = state.events[0];
+  event.directSettlementTransfers = false;
+  const routes = [[owner, peer, 99800], [owner, third, 146400], [fourth, peer, 146400]];
+  event.expenses = routes.map(([from, to, amount], i) => ({
+    id: `stable-expense-${i}`, name: `Synthetic expense ${i}`, total: amount,
+    payers: [{participantId: to, amount}], sharedByParticipantIds: [from],
+    createdByParticipantId: owner, updatedAt: event.createdAt
+  }));
+  event.transfers = routes.map(([fromParticipantId, toParticipantId, amount], i) => ({
+    id: `published-smart-${i}`, fromParticipantId, toParticipantId, amount, status: 'pending'
+  }));
+  return state;
+}
