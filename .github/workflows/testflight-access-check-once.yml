@@ -1,0 +1,73 @@
+name: Check requested TestFlight tester access
+on:
+  push:
+    branches: [work/app-store-preflight-20261003]
+    paths: [.github/workflows/testflight-access-check-once.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read and summarize only requested tester access
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {writeFile} from 'node:fs/promises';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const APP='6809952514', BUILD='3d5a4910-6bb0-4304-889f-676c1be1d176', TARGET='004ec2efff572434a5fd20635e1d32b406e494a5a9ea932d539734b248143a85';
+          const report={checkedAt:new Date().toISOString(),readOnly:true,errors:[]};
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const match=email=>createHash('sha256').update(String(email??'').trim().toLowerCase()).digest('hex')===TARGET;
+          async function all(path){const items=[];let next=path;for(let n=0;next&&n<60;n++){const r=await api(next);if(!Array.isArray(r.data))throw new Error('Expected a collection');items.push(...r.data);next=r.links?.next;}if(next)throw new Error('Incomplete collection');return items;}
+          async function attempt(label,task){try{return await task();}catch(error){report.errors.push({section:label,status:error.status??null,message:error.message});return null;}}
+          try{
+           const app=(await api('/v1/apps/'+APP)).data;if(app.attributes.bundleId!=='com.sogrimhashbon.app')throw new Error('Unexpected app');
+           const br=await api('/v1/builds/'+BUILD+'?include=app,preReleaseVersion');
+           const pre=br.included?.find(x=>x.type==='preReleaseVersions');
+           if(br.data.attributes.version!=='186'||br.data.attributes.processingState!=='VALID'||br.data.attributes.expired||pre?.attributes.version!=='4.55'||!br.included?.some(x=>x.type==='apps'&&x.id===APP))throw new Error('Unexpected build');
+           report.build={id:BUILD,version:'4.55',build:'186',minOsVersion:br.data.attributes.minOsVersion};
+           const [users,testers,groups]=await Promise.all([
+           attempt('users',()=>all('/v1/users?limit=200&include=visibleApps')),
+           attempt('betaTesters',()=>all('/v1/betaTesters?limit=200')),
+           attempt('betaGroups',()=>all('/v1/apps/'+APP+'/betaGroups?limit=200'))
+           ]);
+           report.users=users?.filter(x=>match(x.attributes.username)).map(x=>({id:x.id,roles:x.attributes.roles,allAppsVisible:x.attributes.allAppsVisible,visibleAppIds:x.relationships?.visibleApps?.data?.map(a=>a.id)}));
+           report.testers=[];
+           for(const t of testers?.filter(x=>match(x.attributes.email))??[]){
+            const [apps,groupRefs,builds]=await Promise.all([
+             attempt('testerApps',()=>all('/v1/betaTesters/'+t.id+'/apps?limit=200')),
+             attempt('testerGroups',()=>all('/v1/betaTesters/'+t.id+'/betaGroups?limit=200')),
+             attempt('testerBuilds',()=>all('/v1/betaTesters/'+t.id+'/builds?limit=200'))
+            ]);
+            report.testers.push({id:t.id,state:t.attributes.state,inviteType:t.attributes.inviteType,appIds:apps?.map(x=>x.id),groups:groupRefs?.map(x=>({id:x.id,name:x.attributes.name,internal:x.attributes.isInternalGroup})),individualBuilds:builds?.map(x=>({id:x.id,build:x.attributes.version}))});
+           }
+           report.groups=[];
+           for(const g of groups??[]){
+            const builds=await attempt('groupBuilds:'+g.id,()=>all('/v1/betaGroups/'+g.id+'/builds?limit=200'));
+            const groupTesters=await attempt('groupTesters:'+g.id,()=>all('/v1/betaGroups/'+g.id+'/betaTesters?limit=200'));
+            report.groups.push({id:g.id,name:g.attributes.name,internal:g.attributes.isInternalGroup,allBuilds:g.attributes.hasAccessToAllBuilds,targetBuildPresent:builds?.some(x=>x.id===BUILD),targetTesterPresent:groupTesters?.some(x=>match(x.attributes.email)),testerCount:groupTesters?.length});
+           }
+           report.betaDetail=(await api('/v1/builds/'+BUILD+'/buildBetaDetail')).data.attributes;
+          }catch(error){report.errors.push({section:'fatal',status:error.status??null,message:error.message});process.exitCode=1;}
+          finally{await writeFile('testflight-access-check.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));}
+          
+          NODE
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: testflight-requested-tester-access
+          path: testflight-access-check.json
+          retention-days: 1
