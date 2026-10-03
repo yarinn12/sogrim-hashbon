@@ -1,0 +1,135 @@
+name: iPad native Apple login probe
+on:
+  push:
+    branches: [work/ipad-apple-login-probe-20261003]
+    paths: [.github/workflows/ipad-apple-login-probe-once.yml]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+      IOS_VERSION: "4.55"
+      IOS_BUILD: "186"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Prepare isolated simulator app
+        run: |
+          npm ci
+          npm run native:prepare
+          node scripts/prepare-ios-release.mjs
+      - name: Install safe simulator-only instrumentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("ios/App/App/AppDelegate.swift")
+          source = p.read_text()
+          probe = r'''
+                  var probeCount = 0
+                  Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+                      probeCount += 1
+                      if probeCount > 30 { timer.invalidate(); return }
+                      guard let controller = self?.window?.rootViewController as? CAPBridgeViewController,
+                            let webView = controller.webView else {
+                          print("PROBE_NATIVE:no-webview")
+                          return
+                      }
+                      let nativePresentation = controller.presentedViewController.map { String(describing: type(of: $0)) } ?? "none"
+                      print("PROBE_NATIVE_PRESENTATION:" + nativePresentation)
+                      let script = #"""
+                      (() => {
+                        const button = document.querySelector('[data-account-action="apple"]');
+                        const rect = button?.getBoundingClientRect();
+                        const hit = rect ? document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2) : null;
+                        const state = {
+                          protocol: location.protocol,
+                          secure: window.isSecureContext,
+                          random: typeof crypto?.getRandomValues,
+                          subtle: typeof crypto?.subtle,
+                          browser: typeof window.Capacitor?.Plugins?.Browser?.open,
+                          gate: !!document.getElementById('public-account-auth-gate'),
+                          button: !!button,
+                          disabled: button?.disabled,
+                          hitAction: hit?.closest('[data-account-action]')?.getAttribute('data-account-action') || '',
+                          hitTag: hit?.tagName || '',
+                          hitClass: typeof hit?.className === 'string' ? hit.className : '',
+                          clicked: !!window.__appleProbeClicked,
+                          feedback: document.getElementById('account-auth-feedback')?.textContent || '',
+                          status: document.querySelector('[data-account-auth-status]')?.textContent || ''
+                        };
+                        if (button && !button.disabled && !window.__appleProbeClicked) {
+                          window.__appleProbeClicked = true;
+                          const native = window.Capacitor?.Plugins?.Browser;
+                          if (native?.open) {
+                            const open = native.open.bind(native);
+                            native.open = async options => {
+                              window.__appleProbeOpenCalled = true;
+                              try { await open(options); window.__appleProbeOpenResult = 'resolved'; }
+                              catch (error) { window.__appleProbeOpenResult = 'rejected'; throw error; }
+                            };
+                          }
+                          button.click();
+                        }
+                        state.openCalled = !!window.__appleProbeOpenCalled;
+                        state.openResult = window.__appleProbeOpenResult || '';
+                        return JSON.stringify(state);
+                      })()
+                      """#
+                      webView.evaluateJavaScript(script) { value, error in
+                          if let value = value as? String { print("PROBE_JS:" + value) }
+                          if let error = error as NSError { print("PROBE_EVAL_ERROR:" + error.domain + ":" + String(error.code)) }
+                      }
+                  }
+          '''
+          needle = "        return true\n"
+          assert source.count(needle) >= 1
+          p.write_text(source.replace(needle, probe + needle, 1))
+          PY
+      - name: Build unsigned iPad simulator app
+        run: |
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/probe CODE_SIGNING_ALLOWED=NO build > build-probe.log 2>&1 || { tail -100 build-probe.log; exit 1; }
+      - name: Run actual native Apple-button path
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, time
+          from pathlib import Path
+          listing=json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","--json"]))
+          devices=[d for entries in listing["devices"].values() for d in entries if "iPad" in d["name"]]
+          assert devices, "No available iPad simulator"
+          device=devices[0]["udid"]
+          subprocess.run(["xcrun","simctl","boot",device],check=False)
+          subprocess.run(["xcrun","simctl","bootstatus",device,"-b"],check=True)
+          app=Path("build/probe/Build/Products/Debug-iphonesimulator/App.app")
+          subprocess.run(["xcrun","simctl","install",device,str(app)],check=True)
+          with Path("probe-console.log").open("w") as output:
+              child=subprocess.Popen(["xcrun","simctl","launch","--console",device,"com.sogrimhashbon.app"],stdout=output,stderr=subprocess.STDOUT)
+              time.sleep(70)
+              subprocess.run(["xcrun","simctl","io",device,"screenshot","probe-ipad.png"],check=False)
+              child.terminate()
+              try: child.wait(timeout=5)
+              except subprocess.TimeoutExpired: child.kill()
+          lines=[line for line in Path("probe-console.log").read_text(errors="replace").splitlines() if "PROBE_" in line]
+          Path("probe-sanitized.log").write_text("\n".join(lines)+"\n")
+          print("\n".join(lines))
+          assert any("PROBE_JS:" in line for line in lines), "No native WebView observation"
+          PY
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ipad-native-apple-probe
+          path: |
+            probe-sanitized.log
+            probe-ipad.png
+          if-no-files-found: ignore
+          retention-days: 7
