@@ -2909,7 +2909,9 @@ function clearAccountReturnUrl() {
 
 function accountReturnPath() {
   const inviteUrl = pendingInviteUrl(window.location.href);
-  const returnUrl = new URL(inviteUrl || window.location.href, window.location.origin);
+  // Capacitor can launch at capacitor://localhost without a pathname. Keep
+  // the saved OAuth return path valid even on that initial native page.
+  const returnUrl = new URL(inviteUrl || window.location.href, window.location.href);
   for (const key of [
     "code",
     "error",
@@ -2919,7 +2921,7 @@ function accountReturnPath() {
   ]) {
     returnUrl.searchParams.delete(key);
   }
-  return `${returnUrl.pathname}${returnUrl.search}`;
+  return `${returnUrl.pathname || "/"}${returnUrl.search}`;
 }
 
 function accountInviteContext() {
@@ -2991,7 +2993,7 @@ function authRedirectUrl(flowId = "") {
   const baseUrl = globalThis.SogrimNative?.authCallbackUrl ||
     `${window.location.origin}${window.location.pathname}`;
   if (!flowId) return baseUrl;
-  const redirectUrl = new URL(baseUrl, window.location.origin);
+  const redirectUrl = new URL(baseUrl, window.location.href);
   redirectUrl.searchParams.set(ACCOUNT_OAUTH_FLOW_QUERY_PARAM, flowId);
   return redirectUrl.toString();
 }
