@@ -1034,7 +1034,7 @@ test("participant membership changes protect creators and admins while preservin
     /const saveCheckpoint = stateSaveCheckpoint\([\s\S]*?persistState\(\{[\s\S]*?awaitCloud: true,[\s\S]*?forceSharedEventIds: \[eventId\][\s\S]*?render\(\);\s*reactivateDialogAfterRender\("\.event-modal"\);\s*const result = await saveCheckpoint\.request;/
   );
   assert.match(remove, /rejectedStateSaveIsCurrent\(result, saveCheckpoint\)/);
-  assert.match(remove, /state = previousState/);
+  assert.match(remove, /state = rollbackEventControlStateChange\(state, previousState, attemptedState\) \?\? previousState/);
   assert.match(remove, /ההיסטוריה הכספית נשמרה/);
   assert.match(remove, /notice = ""/);
   assert.match(restore, /event\.inactiveParticipantIds = \(event\.inactiveParticipantIds \?\? \[\]\)\.filter/);

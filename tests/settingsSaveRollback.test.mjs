@@ -62,7 +62,7 @@ for (const field of ["participantIds", "expenses"]) {
   }
 }
 
-for (const helper of ["rollbackNoteOnlyStateChange", "rollbackSettingsOnlyStateChange"]) {
+for (const helper of ["rollbackNoteOnlyStateChange", "rollbackSettingsOnlyStateChange", "rollbackEventControlStateChange"]) {
   test(`an unexpected ${helper} failure cannot interrupt the durable revert and notice`, () => {
     const source = readFileSync(new URL("../src/data/localStore.mjs", import.meta.url), "utf8");
     const start = source.indexOf("const latestState = loadState();");
@@ -72,6 +72,7 @@ for (const helper of ["rollbackNoteOnlyStateChange", "rollbackSettingsOnlyStateC
     const previousState = initial();
     const context = vm.createContext({ previousState, stateSnapshot: {}, loadState: () => ({}),
       rollbackNoteOnlyStateChange: () => null, rollbackSettingsOnlyStateChange: () => null,
+      rollbackEventControlStateChange: () => null,
       saveState: value => calls.push({ kind: "save", value }),
       emitOperationDeferred: () => {}, suppressRevertNotice: false, syncSelection: {},
       error: new Error("Original write failure"), foregroundMutation: true, mayNotifyFailure: () => true, requestStartedAt: 1,

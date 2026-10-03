@@ -548,7 +548,7 @@ test("a failed shared-event write restores the last durable state instead of div
 
   assert.match(save, /const hasSharedEventMutation = Boolean\(/);
   assert.match(save, /requestSaveGeneration === sharedStateSaveGeneration/);
-  assert.match(save, /rollbackNoteOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\?\s*rollbackSettingsOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\? previousState/);
+  assert.match(save, /rollbackNoteOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\?\s*rollbackSettingsOnlyStateChange\(latestState, previousState, stateSnapshot\) \?\?\s*rollbackEventControlStateChange\(latestState, previousState, stateSnapshot\) \?\? previousState/);
   assert.match(save, /saveState\(revertedState\);/);
   assert.match(
     save,

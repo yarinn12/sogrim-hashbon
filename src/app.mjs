@@ -1,5 +1,6 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
 import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
@@ -20431,6 +20432,7 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
   const closedAt = new Date().toISOString();
   state = closeEvent(state, eventId, closedAt);
   const activityId = recordEventActivity(eventId, "event-closed", {}, closedAt);
+  const attemptedState = cloneNavigationValue(state);
   settlementCloseConfirmation = null;
   expenseDraft = null;
   eventDialog = null;
@@ -20452,9 +20454,10 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
   } catch (error) {
     result = { ok: false, error };
   }
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "אין לחשבון הרשאה לסגור את האירוע. רעננו את המסך."
       : "לא הצלחנו לסגור את האירוע. לא בוצע שינוי ואפשר לנסות שוב.";
@@ -20514,6 +20517,7 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
   const reopenedAt = new Date().toISOString();
   state = reopenEvent(state, eventId, reopenedAt);
   recordEventActivity(eventId, "event-reopened", {}, reopenedAt);
+  const attemptedState = cloneNavigationValue(state);
   settlementCloseConfirmation = null;
   notice = "פותח את האירוע ושומר…";
   render();
@@ -20524,9 +20528,10 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
   } else if (result?.pending) {
     notice = "";
@@ -20575,6 +20580,7 @@ async function toggleEventLock(eventId) {
     recordEventActivity(eventId, "event-closed", {}, statusUpdatedAt);
     expenseDraft = null;
   }
+  const attemptedState = cloneNavigationValue(state);
   notice = opening ? "שומרים את פתיחת האירוע..." : "שומרים את נעילת האירוע...";
   render();
   reactivateDialogAfterRender(".event-modal", '[data-action="toggle-lock"]');
@@ -20588,7 +20594,7 @@ async function toggleEventLock(eventId) {
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
       : opening
@@ -20639,6 +20645,7 @@ async function leaveCurrentEvent(eventId) {
   recordEventActivity(eventId, "participant-left", {
     subjectParticipantId: state.currentParticipantId
   });
+  const attemptedState = cloneNavigationValue(state);
   expenseDraft = null;
   eventDialog = null;
   screen = { name: "home" };
@@ -20654,7 +20661,7 @@ async function leaveCurrentEvent(eventId) {
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     screen = previousScreen;
     notice = "לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.";
     render();
@@ -21599,6 +21606,7 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
 
   const previousState = cloneNavigationValue(state);
   state = nextState;
+  const attemptedState = cloneNavigationValue(state);
   const participantLabel = participantName(participantId, event);
   const confirmedMessage = enabled
     ? `${participantLabel} הוגדר כמנהל אירוע.`
@@ -21619,9 +21627,10 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     const failureMessage = "לא הצלחנו לשנות את הרשאת הניהול. לא בוצע שינוי.";
     eventDialog = eventDialog?.eventId === eventId
       ? { ...eventDialog, message: failureMessage }
@@ -21853,6 +21862,7 @@ async function removeEventParticipant(eventId, participantId) {
   recordEventActivity(eventId, "participant-removed", {
     subjectParticipantId: participantId
   });
+  const attemptedState = cloneNavigationValue(state);
   eventDialog = removedFromProfile
     ? {
         eventId,
@@ -21875,9 +21885,10 @@ async function removeEventParticipant(eventId, participantId) {
   render();
   reactivateDialogAfterRender(".event-modal");
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = eventDialog && eventDialog.eventId === eventId
       ? {
           ...eventDialog,
@@ -21948,6 +21959,7 @@ async function restoreEventParticipant(eventId, participantId) {
   recordEventActivity(eventId, "participant-restored", {
     subjectParticipantId: participantId
   });
+  const attemptedState = cloneNavigationValue(state);
   eventDialog = isEventParticipantsDialog(eventId)
     ? {
         ...eventDialog,
@@ -21962,9 +21974,10 @@ async function restoreEventParticipant(eventId, participantId) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
           ...eventDialog,
@@ -22035,6 +22048,7 @@ async function toggleEventParticipant(eventId, participantId, checked) {
       subjectParticipantId: participantId
     });
   }
+  const attemptedState = cloneNavigationValue(state);
   render();
   reactivateDialogAfterRender(
     ".event-modal",
@@ -22049,9 +22063,10 @@ async function toggleEventParticipant(eventId, participantId, checked) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
           ...eventDialog,
@@ -22064,6 +22079,7 @@ async function toggleEventParticipant(eventId, participantId, checked) {
     return;
   }
   await publishEventInvitation(eventId, participant);
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (returnsToParticipantRoster) {
     // Adding from the focused picker creates one optimistic roster history
     // entry. Rewind both that entry and the picker route so the user lands on

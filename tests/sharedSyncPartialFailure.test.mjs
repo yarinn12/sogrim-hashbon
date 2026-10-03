@@ -3,7 +3,8 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import { buildSharedEventState, saveSharedEventState, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
-import { setEventAdminsCanEditOnly, setEventRoundSettlementTransfers, setEventCurrency, setEventCoverImage } from "../src/domain/appActions.mjs";
+import { setEventAdminsCanEditOnly, setEventRoundSettlementTransfers, setEventCurrency, setEventCoverImage,
+  closeEvent, reopenEvent, leaveEvent, deactivateEventParticipant, setEventParticipantAdmin } from "../src/domain/appActions.mjs";
 import { addEventNote, updateEventNote, removeEventNote } from "../src/domain/eventNotes.mjs";
 
 const stamp = "2026-08-24T09:00:00.000Z";
@@ -537,6 +538,59 @@ for (const [field, change] of [
       assert.ok(durable.events[0].notes.some(note => note.id === "incoming-setting-note"));
       assert.equal(durable.events[1].name, "Other device rename");
       assert.deepEqual(atNotice, durable);
+    }, { allFail: true, beforeCanonicalResponse: () => duringWrite() });
+  });
+}
+
+for (const [name, prepare, change] of [
+  ["lock", () => {}, state => closeEvent(state, "healthy")],
+  ["reopen", event => { event.locked = true; event.closedAt = stamp; event.statusUpdatedAt = stamp; }, state => reopenEvent(state, "healthy")],
+  ["grant-admin", () => {}, state => setEventParticipantAdmin(state, "healthy", "account-partial-b", true)],
+  ["remove-member", () => {}, state => deactivateEventParticipant(state, "healthy", "account-partial-b")],
+  ["self-leave", event => { event.adminIds = ["account-partial-b"]; }, state => leaveEvent(state, "healthy", "account-partial-a")]
+]) {
+  test(`a rejected ${name} final RPC preserves incoming content in durable storage and permits a clean retry`, async () => {
+    let duringWrite = () => {};
+    await fixture(async h => {
+      const store = await import(`../src/data/localStore.mjs?control-rollback-${name}=${Date.now()}`);
+      const before = structuredClone(h.state);
+      before.participants.push({ id: "account-partial-b", displayName: "B", kind: "user", accountLinked: true });
+      Object.assign(before.events[0], { participantIds: ["account-partial-a", "account-partial-b"], locked: false });
+      prepare(before.events[0]);
+      h.canonical.set("space-partial-healthy", buildSharedEventState(before, "healthy"));
+      store.saveState(before);
+      const attempted = change(before);
+      // A committed peer note can arrive while a lock/leave write is waiting.
+      // Create it in the still-open, active snapshot, then deliver that receipt.
+      const openSnapshot = structuredClone(before);
+      openSnapshot.events[0].locked = false; openSnapshot.events[0].closedAt = null;
+      const incoming = addEventNote(openSnapshot, "healthy", { id: "incoming-control-note", body: "Other device" });
+      const latest = structuredClone(attempted);
+      latest.events[0].notes = incoming.events[0].notes;
+      latest.events[1].name = "Other device rename";
+      duringWrite = () => store.saveState(latest);
+      let atNotice;
+      window.dispatchEvent = event => { if (event.type === "sogrim:shared-save-reverted") atNotice = store.loadState(); };
+      const result = await store.saveSharedState(attempted, { awaitCloud: true, foregroundMutation: true, forceSharedEventIds: ["healthy"] });
+      assert.equal(result.ok, false); assert.equal(result.reverted, true);
+      const durable = store.loadState();
+      const event = durable.events[0];
+      assert.equal(event.locked, before.events[0].locked);
+      assert.deepEqual([...event.participantIds].sort(), [...before.events[0].participantIds].sort());
+      assert.deepEqual(event.adminIds, before.events[0].adminIds);
+      assert.ok(event.notes.some(note => note.id === "incoming-control-note"));
+      assert.equal(durable.events[1].name, "Other device rename");
+      assert.deepEqual(atNotice, durable, "the UI reload sees the same corrected durable snapshot");
+      assert.equal(h.storage.getItem(`settle-friends-pending-sync:${h.workspaceId}`), null);
+      duringWrite = () => {}; h.recover();
+      const retry = await store.saveSharedState(change(durable), { awaitCloud: true, forceSharedEventIds: ["healthy"] });
+      assert.equal(retry.ok, true); assert.equal(retry.pending, undefined);
+      const committed = h.canonical.get("space-partial-healthy").events[0];
+      assert.ok(committed.notes.some(note => note.id === "incoming-control-note"));
+      const expected = change(durable).events[0];
+      assert.equal(committed.locked, expected.locked);
+      assert.deepEqual([...committed.participantIds].sort(), [...expected.participantIds].sort());
+      assert.deepEqual(committed.adminIds, expected.adminIds);
     }, { allFail: true, beforeCanonicalResponse: () => duringWrite() });
   });
 }

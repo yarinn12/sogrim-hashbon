@@ -38,7 +38,7 @@ function harness({legacy=false, split=false, queued=false, conflict=false, allow
   const ctx=vm.createContext({state:structuredClone(initial),notice:'',settlementCloseConfirmation:null,
     getEvent:id=>ctx.state.events.find(e=>e.id===id),canCurrentParticipantManage:()=>allowed,
     cloneNavigationValue:structuredClone,reopenEvent,updateTransferStatus,render(){},recordEventActivity(){},
-    stateSaveCheckpoint:request=>({request}),rejectedStateSaveIsCurrent:()=>true,
+    stateSaveCheckpoint:request=>({request}),stateSaveIsCurrent:()=>true,rejectedStateSaveIsCurrent:()=>true,
     persistState:async options=>{
       assert.deepEqual(Array.from(options.forceSharedEventIds),[eventId]);
       if(queued){queue.push(structuredClone(ctx.state));return{ok:false,pending:true};}

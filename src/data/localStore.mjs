@@ -36,6 +36,7 @@ import {
 import { mergeSharedStates } from "../domain/sharedStateMerge.mjs";
 import { rollbackNoteOnlyStateChange } from "./noteSaveRollback.mjs";
 import { rollbackSettingsOnlyStateChange } from "./settingsSaveRollback.mjs";
+import { rollbackEventControlStateChange } from "./eventControlRollback.mjs";
 import { saveFailureKind } from "../domain/userNoticePolicy.mjs";
 import {
   emitOperationDeferred,
@@ -1360,7 +1361,8 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
               let revertedState = previousState;
               try {
                 revertedState = rollbackNoteOnlyStateChange(latestState, previousState, stateSnapshot) ??
-                  rollbackSettingsOnlyStateChange(latestState, previousState, stateSnapshot) ?? previousState;
+                  rollbackSettingsOnlyStateChange(latestState, previousState, stateSnapshot) ??
+                  rollbackEventControlStateChange(latestState, previousState, stateSnapshot) ?? previousState;
               } catch (rollbackError) {
                 // Recovery must still finish and report the original failure
                 // even if an incomplete legacy snapshot defeats a narrow undo.
