@@ -14,7 +14,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -99,7 +99,8 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
   if (withReversePaymentPlan) canonical.state = reverseObjectKeys(canonical.state);
   let deletedEventMembers = new Set();
-  const canReadCanonical = i => canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) ||
+  const canReadCanonical = i => (canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) &&
+    (!withSelfLeave || !canonical.state.events[0]?.inactiveParticipantIds?.includes(`account-${ids[i]}`))) ||
     (canonical.state.deletedEvents?.some(item=>item.id===eventId) && deletedEventMembers.has(`account-${ids[i]}`));
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
@@ -225,6 +226,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        if (withSelfLeave && !canReadCanonical(i)) return reply({code:'42501',message:'Shared event update is not authorized'},403);
         if (body.p_snapshot_id === sharedId && sharedWriteFailures.has(i)) {
           rejectedSharedWrites.push({client:i,body});
           return reply({code:'42501',message:'Synthetic shared write denied'},sharedWriteFailures.get(i));
@@ -389,6 +391,83 @@ async function newNote(page, title, body) {
   await page.locator('[data-action="event-note-title"]').fill(title);
   await page.locator('[data-action="event-note-body"]').fill(body);
 }
+
+for (const leavingClient of [0, 1]) {
+  for (const offline of [false, true]) {
+    test(`self-leave on ${leavingClient ? 'iPhone' : 'Android'} survives ${offline ? 'an offline restart' : 'reload'} and reaches the other client`, async ({}, testInfo) => {
+      const f = await fixture(testInfo, {withExpense:true, withAliases:true, managingClient:1-leavingClient, withSelfLeave:true});
+      const member = f.pages[leavingClient], manager = f.pages[1-leavingClient];
+      const actor = `account-${ids[leavingClient]}`;
+      const pending = () => member.evaluate(space => localStorage.getItem(`settle-friends-pending-sync:${space}`), f.personal[leavingClient].id);
+      const active = event => event?.participantIds.includes(actor) && !event.inactiveParticipantIds?.includes(actor);
+      const originalExpenses = structuredClone(f.canonical.state.events[0].expenses);
+      try {
+        await member.locator('[data-action="open-event-settings"]').first().click();
+        await member.locator('[data-settings-section="danger"]').click();
+        await expect(member.locator('[data-action="delete-event"]')).toBeDisabled();
+        await member.locator('[data-action="leave-event"]').click();
+        const confirmation = member.locator('.important-action-dialog');
+        await expect(confirmation).toContainText('יישארו בהיסטוריה');
+        await confirmation.locator('[data-action="cancel-important-action"]').click();
+        expect(active(f.canonical.state.events[0])).toBe(true);
+        if (offline) f.cloudUnavailable(leavingClient, true);
+        await member.locator('[data-action="leave-event"]').click();
+        await confirmation.locator('[data-action="confirm-important-action"]').click();
+        await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+        await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+        if (offline) {
+          await expect.poll(pending).not.toBeNull();
+          expect(active(f.canonical.state.events[0])).toBe(true);
+          await member.reload();
+          await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+          await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+          f.cloudUnavailable(leavingClient, false);
+          await member.evaluate(() => window.dispatchEvent(new Event('online')));
+        }
+        await expect.poll(() => active(f.canonical.state.events[0]), {timeout:12000}).toBe(false);
+        await expect.poll(pending, {timeout:12000}).toBeNull();
+        expect(f.canonical.state.events[0].expenses).toEqual(originalExpenses);
+        expect(f.canonical.state.events[0].activityLog.filter(entry => entry.kind === 'participant-left')).toHaveLength(1);
+        await manager.reload();
+        await manager.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+        await expect.poll(() => storedEvent(manager, f.personal[1-leavingClient].id).then(active)).toBe(false);
+        await member.reload();
+        await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+        await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+      } finally { await f.close(); }
+    });
+  }
+}
+
+test('self-leave reports repeated rejected requests and a later retry commits once', async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withExpense:true, withSelfLeave:true});
+  const member = f.pages[1], actor = `account-${ids[1]}`;
+  const original = structuredClone(f.canonical.state);
+  try {
+    f.failSharedWrites(1,403);
+    for (let attempt=0;attempt<3;attempt++) {
+      await member.locator('[data-action="open-event-settings"]').first().click();
+      await member.locator('[data-settings-section="danger"]').click();
+      await member.locator('[data-action="leave-event"]').click();
+      await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+      await expect(member.getByText('לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.',{exact:true})).toBeVisible();
+      expect(f.canonical.state).toEqual(original);
+      await expect.poll(()=>storedEvent(member,f.personal[1].id).then(event=>
+        event.participantIds.includes(actor)&&!event.inactiveParticipantIds?.includes(actor))).toBe(true);
+    }
+    f.failSharedWrites(1,null);
+    await member.locator('[data-action="open-event-settings"]').first().click();
+    await member.locator('[data-settings-section="danger"]').click();
+    await member.locator('[data-action="leave-event"]').click();
+    await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].inactiveParticipantIds?.includes(actor)).toBe(true);
+    expect(f.canonical.state.events[0].activityLog.filter(entry=>entry.kind==='participant-left')).toHaveLength(1);
+    await member.reload();
+    await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
 
 for(const manager of [0,1]) {
   test(`paid event deletion on ${manager?'iPhone':'Android'} reaches an offline peer and clears its stale outbox`,async({},testInfo)=>{

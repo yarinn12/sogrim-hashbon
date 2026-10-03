@@ -141,6 +141,22 @@ test("event manager can delete an event and the deletion survives reload", async
   ).toHaveCount(0);
 });
 
+test("the only manager must hand over management before leaving", async ({ page }) => {
+  await page.locator('[data-settings-section="danger"]').click();
+  await expect(page.locator('[data-action="leave-event"]')).toBeDisabled();
+  await expect(page.getByRole("region", { name: "עזיבה ומחיקה" })).toContainText("מנהל יחיד צריך קודם להעביר ניהול");
+});
+
+test("activity history opens from settings and returns to its card", async ({ page }) => {
+  const card = page.locator('[data-settings-section="activity"]');
+  await card.click();
+  const history = page.getByRole("region", { name: "פעילות באירוע" });
+  await expect(history).toBeVisible();
+  await expect(history).toContainText("ירין יצחק");
+  await page.locator('[data-action="event-settings-back"]').click();
+  await expect(card).toBeFocused();
+});
+
 test("event cover upload previews the exact wide crop before saving", async ({ page }) => {
   await page
     .locator('.event-cover-settings [data-action="event-cover-image"]')
@@ -163,6 +179,16 @@ test("event cover upload previews the exact wide crop before saving", async ({ p
     return state.events?.find((event) => event.id === eventId)?.coverImage || "";
   }, EVENT_ID);
   expect(storedCover).toMatch(/^data:image\/jpeg;base64,/);
+  await page.reload();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-settings"]').first().click();
+  await expect(page.locator(".event-cover-settings > img")).toBeVisible();
+  await page.locator('.event-cover-settings [data-action="remove-event-cover"]').click();
+  await expect(page.locator(".event-cover-settings > img")).toHaveCount(0);
+  await page.reload();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-settings"]').first().click();
+  await expect(page.locator(".event-cover-settings > img")).toHaveCount(0);
 });
 
 test("event settings save smoothly, return focus and survive reload", async ({ page }) => {
@@ -237,6 +263,10 @@ test("event settings save smoothly, return focus and survive reload", async ({ p
   await expect(page.getByText("האירוע נעול לעריכה", { exact: true })).toBeVisible();
   await expect(lock).toHaveText("פתח עריכה");
   await expect(lock).toBeFocused();
+  await lock.click();
+  await expect(lock).toHaveText("נעל עריכה");
+  await lock.click();
+  await expect(lock).toHaveText("פתח עריכה");
 
   const saved = await page.evaluate((eventId) => {
     const state = JSON.parse(localStorage.getItem("settle-friends-state") || "{}");

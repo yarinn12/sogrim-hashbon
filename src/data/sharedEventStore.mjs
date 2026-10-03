@@ -27,7 +27,7 @@ import { normalizeProfileUpdatedAt } from "../domain/userProfile.mjs";
 import { markParticipantMembershipChanges } from "../domain/eventMembership.mjs";
 import { mergeCanonicalEventNotes } from "../domain/eventNotes.mjs";
 import { mergeEventActivityLogs } from "../domain/eventActivityLog.mjs";
-import { normalizeParticipantDisplayName, participantHasConnectedAccount } from "../domain/participantIdentity.mjs";
+import { normalizeParticipantDisplayName, participantHasConnectedAccount, participantPairIncludes } from "../domain/participantIdentity.mjs";
 import { EVENT_OPEN_INVITE_TOKEN_FIELD } from "./eventInvites.mjs";
 import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
@@ -370,6 +370,17 @@ export function mergeSharedEventWriteState(remoteState, localState, runtimeConfi
     throw new CloudStateAuthError("Cloud account identity is unavailable");
   }
   const actorParticipantId = `account-${actorUserId}`;
+  // Generic union merging retains aliases and duplicate-name pairs. An actual
+  // self-leave without financial history removes the member entirely, so those
+  // references must be cleaned again after merging, including on CAS retries.
+  for (const event of merged.events ?? []) {
+    if (event.id !== remoteEvent?.id || !remoteEvent.participantIds?.includes(actorParticipantId)
+      || remoteEvent.inactiveParticipantIds?.includes(actorParticipantId)
+      || event.participantIds?.includes(actorParticipantId)) continue;
+    if (event.participantAliases) delete event.participantAliases[actorParticipantId];
+    if (event.distinctParticipantPairs) event.distinctParticipantPairs = event.distinctParticipantPairs
+      .filter(pair => !participantPairIncludes(pair, actorParticipantId));
+  }
   const attributionBaseline = attributionBaselineForParticipantMerge(remoteState, merged, actorParticipantId);
   // This runs before every write, including each optimistic-conflict retry.
   merged.events = (merged.events ?? []).map((event) =>
@@ -529,6 +540,8 @@ function preserveSparseEventDefaults(canonical, candidate) {
     inactiveParticipantIds: [],
     participantAliases: {},
     distinctParticipantPairs: [],
+    deletedExpenses: [],
+    activityLog: [],
     locked: false,
     closedAt: null
   };

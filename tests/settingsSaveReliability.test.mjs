@@ -87,7 +87,7 @@ function harness() {
     ...actions, ...permissions, ...settings, ...currencies, isEventClosed, saveFailureMessage,
     currencySelectLabel: (value) => value,
     managementModeRequiresAdmin: (mode) => mode === "centralized",
-    state: initialState(), notice: "", expenseDraft: null,
+    state: initialState(), notice: "", expenseDraft: null, eventDialog: null, screen: { name: "event", eventId: "settings" },
     eventRepaymentModeRequestVersions: new Map(), revision: 0, console, structuredClone,
     sharedStateSaveRevision: () => context.revision,
     getEvent: (id) => context.state.events.find((event) => event.id === id),
@@ -107,12 +107,26 @@ function harness() {
   });
   for (const name of ["stateSaveCheckpoint", "rejectedStateSaveIsCurrent", "settlementTransferPlanKey", "eventCurrency",
     "updateEventCoverImage", "setEventRepaymentMode", "setEventManagementMode", "toggleEventLock",
-    "applyEventCurrencyChange", "setEventRoundingMode"]) {
+    "applyEventCurrencyChange", "setEventRoundingMode", "leaveCurrentEvent"]) {
     vm.runInContext(functionSource(name), context);
   }
   if (source.includes("function stateSaveIsCurrent(")) vm.runInContext(functionSource("stateSaveIsCurrent"), context);
   return { context, requests, renders };
 }
+
+test("a self-leave receipt arriving after an account switch cannot change the new screen", async () => {
+  const h = harness();
+  h.context.state.events[0].participantIds.push("account-b");
+  h.context.state.events[0].adminIds = ["account-b"];
+  const request = h.context.leaveCurrentEvent("settings");
+  const nextAccount = initialState(); nextAccount.currentParticipantId = "account-b";
+  h.context.state = nextAccount; h.context.notice = "Account B screen";
+  const renders = h.renders.length;
+  h.requests[0].resolve({ ok: true }); await request;
+  assert.equal(h.context.state, nextAccount);
+  assert.equal(h.context.notice, "Account B screen");
+  assert.equal(h.renders.length, renders);
+});
 
 test("changing a legacy event cover cannot overwrite newer remote settings", async () => {
   const h = harness();

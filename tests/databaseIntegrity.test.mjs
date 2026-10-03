@@ -3,7 +3,7 @@ import { after, before, test } from "node:test";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { pgcrypto } from "@electric-sql/pglite/contrib/pgcrypto";
-import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants, setEventDirectSettlementTransfers } from "../src/domain/appActions.mjs";
+import { linkParticipantAccountInEvent, linkParticipantAccount, mergeParticipants, setEventDirectSettlementTransfers, leaveEvent } from "../src/domain/appActions.mjs";
 import { buildSharedEventState, mergeSharedEventIntoState, mergeSharedEventWriteState, saveSharedEventState, saveSharedEventDeletion, syncSharedEvents } from "../src/data/sharedEventStore.mjs";
 import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { syncFriendProfile } from "../src/data/friendsStore.mjs";
@@ -27,6 +27,9 @@ const profileVersionVerification = readFileSync(new URL("../supabase/verificatio
 const attributionMigration = readFileSync(new URL("../supabase/migrations/20260906110000_shared_note_activity_attribution.sql", import.meta.url), "utf8");
 const rolloutVerification = readFileSync(new URL("../supabase/verification/verify_20260906090000_payment_parties_and_note_timestamps.sql", import.meta.url), "utf8");
 const attributionVerification = readFileSync(new URL("../supabase/verification/verify_20260906110000_shared_note_activity_attribution.sql", import.meta.url), "utf8");
+const selfLeaveMigration = readFileSync(new URL("../supabase/migrations/20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
+const selfLeaveMarker = "-- Guarded self-leave receipt (2026-10-03).";
+const selfLeaveVerification = readFileSync(new URL("../supabase/verification/verify_20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
 before(async () => {
   db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
@@ -59,6 +62,8 @@ before(async () => {
       await db.exec(profileVersionMigration);
     } else { await db.exec(schema); }
     await db.exec(accountLinkReceiptMigration);
+    await db.exec(selfLeaveMigration);
+    await db.exec(selfLeaveVerification);
   }
   catch (error) { throw new Error(`Local schema setup failed (${error.code}): ${error.message}`); }
 }, { timeout: 60_000 });
@@ -371,6 +376,140 @@ test("SQL deletion normalization does not launder negative infinity", async () =
 // canonical membership, CAS, and every installed trigger (none are disabled).
 const snapshotId = "integrity-probe-space";
 const spaceKey = "synthetic-test-only-space-key-0001";
+for (const scenario of [
+  { name: "without activity", activity: false },
+  { name: "with its activity receipt", activity: true },
+  { name: "from a closed event with paid history", closed: true },
+  { name: "without financial history and with an alias", empty: true },
+  { name: "after the creator transfers management", creator: true },
+  { name: "as an admin while another admin remains", admin: true },
+  { name: "with a full 100-entry activity log", fullLog: true },
+  { name: "after a real CAS conflict and another client's expense", race: true },
+  { name: "after offline recovery and another client's note", offline: true }
+]) {
+  const actor = scenario.creator ? ids.admin : ids.sender;
+  test(`SQL self-leave saves the actual client payload ${scenario.name}`, async () => {
+    await withSnapshot(actor, async (previous, save) => {
+      const local = { ...structuredClone(previous), currentParticipantId: actor };
+      Object.assign(local.events[0], { sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey });
+      const leaving = leaveEvent(local, previous.events[0].id, actor);
+      assert.notEqual(leaving, local);
+      if (scenario.activity !== false) leaving.events[0] = appendEventActivity(leaving.events[0], {
+        id: "activity-self-leave", kind: "participant-left", occurredAt: new Date().toISOString(),
+        actorParticipantId: actor, subjectParticipantId: actor
+      });
+      const config = { storage: { mode: "supabase", url: "https://self-leave.example.invalid", table: "app_snapshots", anonKey: "synthetic",
+        account: { userId: actor.slice(8), accessToken: "synthetic-token" } } };
+      const attempts = [], receipts = [];
+      const response = value => ({ ok: true, status: 200, json: async () => value });
+      let latest = structuredClone(previous);
+      const concurrentSave = async () => {
+        await db.exec("reset role");
+        const manager = latest.events[0].adminIds[0];
+        await db.query("select set_config('request.jwt.claim.sub',$1,true)", [manager.slice(8)]);
+        await db.exec("set local role authenticated");
+        latest.events[0].notes.push({ id: "concurrent-note", title: "Concurrent note", body: "Another device's note", createdByParticipantId: manager,
+          updatedByParticipantId: manager, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+        if (scenario.race) latest.events[0].expenses.push({ id: "concurrent-expense", name: "Another device's expense", total: 80,
+          payers: [{ participantId: manager, amount: 80 }], sharedByParticipantIds: [manager, ids.recipient], createdByParticipantId: manager });
+        const version = (await db.query("select to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0].version;
+        assert.equal((await save(latest, version)).status, "updated");
+        await db.exec("reset role");
+        await db.query("select set_config('request.jwt.claim.sub',$1,true)", [actor.slice(8)]);
+        await db.exec("set local role authenticated");
+      };
+      const fetchSnapshot = async (url, options = {}) => {
+        if (url.includes("/rpc/update_shared_event_snapshot")) {
+          const body = JSON.parse(options.body);
+          attempts.push(body.p_state);
+          if (scenario.race && attempts.length === 1) await concurrentSave();
+          const receipt = await save(body.p_state, body.p_expected_updated_at);
+          receipts.push(receipt.status);
+          return response(receipt);
+        }
+        assert.equal(options.method ?? "GET", "GET");
+        return response((await db.query("select state,to_jsonb(updated_at) as updated_at from public.app_snapshots where id=$1", [snapshotId])).rows);
+      };
+      if (scenario.offline) {
+        await assert.rejects(saveSharedEventState(config, leaving, previous.events[0].id,
+          async () => { throw new TypeError("Synthetic offline network"); }), /offline network/);
+        assert.ok(leaving.events[0].inactiveParticipantIds.includes(actor));
+        await concurrentSave();
+      }
+      const result = await saveSharedEventState(config, leaving, previous.events[0].id, fetchSnapshot);
+      assert.deepEqual(receipts, scenario.race ? ["conflict", "updated"] : ["updated"]);
+      const active = event => event.participantIds.includes(actor) && !event.inactiveParticipantIds?.includes(actor);
+      assert.equal(active(attempts.at(-1).events[0]), false);
+      assert.equal(active(result.events[0]), false);
+      await db.exec("reset role");
+      const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.equal(active(committed.events[0]), false);
+      assert.deepEqual(committed.events[0].expenses, latest.events[0].expenses);
+      assert.deepEqual(committed.events[0].transfers, latest.events[0].transfers);
+      assert.deepEqual(committed.events[0].notes, latest.events[0].notes);
+      assert.deepEqual(committed.events[0].adminIds, latest.events[0].adminIds.filter(id => id !== actor));
+      const membership = (await db.query("select status from private.shared_snapshot_members where snapshot_id=$1 and participant_id=$2", [snapshotId, actor])).rows[0];
+      assert.equal(membership.status, "removed");
+      if (scenario.activity !== false) assert.equal(committed.events[0].activityLog[0].kind, "participant-left");
+      if (scenario.fullLog) assert.equal(committed.events[0].activityLog.length, 100);
+      if (scenario.empty) assert.equal(committed.events[0].participantAliases[actor], undefined);
+      // A second authenticated client sees the committed removal on a fresh read.
+      const remaining = committed.events[0].adminIds[0];
+      await db.query("select set_config('request.jwt.claim.sub',$1,true)", [remaining.slice(8)]);
+      await db.exec("set local role authenticated");
+      const refreshed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.equal(active(refreshed.events[0]), false);
+    }, baseline => {
+      const event = baseline.events[0];
+      if (scenario.closed) { event.locked = true; event.closedAt = new Date().toISOString();
+        Object.assign(event.transfers[0], { status: "paid", markedPaidByParticipantId: ids.admin,
+          statusUpdatedAt: new Date().toISOString(), markedPaidAt: new Date().toISOString() }); }
+      if (scenario.empty) { event.expenses = []; event.transfers = [];
+        event.participantAliases = { [actor]: "Leaving alias", [ids.recipient]: "Remaining alias" };
+        event.distinctParticipantPairs = [`${actor}~${ids.recipient}`, `${ids.admin}~${ids.recipient}`].sort(); }
+      if (scenario.creator) event.adminIds = [ids.recipient];
+      if (scenario.admin) event.adminIds.push(actor);
+      if (scenario.fullLog) event.activityLog = Array.from({ length: 100 }, (_, i) => ({ id: `old-activity-${i}`,
+        kind: "expense-created", occurredAt: new Date(Date.now() - (100 + i) * 1000).toISOString(), actorParticipantId: ids.admin }));
+      return buildSharedEventState(baseline, event.id);
+    });
+  });
+}
+
+for (const [name, mutate] of [
+  ["another participant's leave receipt", event => { event.activityLog[0].subjectParticipantId = ids.other; }],
+  ["an unrelated activity kind", event => { event.activityLog[0].kind = "expense-deleted"; }],
+  ["a forged activity actor", event => { event.activityLog[0].actorParticipantId = ids.admin; }],
+  ["a leave receipt missing its subject", event => { delete event.activityLog[0].subjectParticipantId; }],
+  ["two new leave receipts", event => { event.activityLog.push({ ...event.activityLog[0], id: "extra-receipt" }); }],
+  ["a changed expense", event => { event.expenses[0].title = "Changed expense"; }],
+  ["a changed currency", event => { event.currency = "USD"; }],
+  ["a new note", event => { event.notes.push({ id: "forbidden-note", title: "Forbidden note", body: "Not a leave", createdByParticipantId: ids.sender,
+    updatedByParticipantId: ids.sender, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }); }],
+  ["a second member removal", event => { event.inactiveParticipantIds.push(ids.other); }],
+  ["an edited previous receipt", event => { event.activityLog[1].kind = "expense-deleted"; }]
+]) {
+  test(`SQL self-leave still rejects ${name}`, async () => {
+    await withSnapshot(ids.sender, async (previous, save) => {
+      const local = { ...structuredClone(previous), currentParticipantId: ids.sender };
+      const leaving = leaveEvent(local, previous.events[0].id, ids.sender);
+      leaving.events[0] = appendEventActivity(leaving.events[0], { id: "activity-self-leave", kind: "participant-left",
+        occurredAt: new Date().toISOString(), actorParticipantId: ids.sender, subjectParticipantId: ids.sender });
+      const config = { storage: { account: { userId: ids.sender.slice(8) } } };
+      const candidate = mergeSharedEventWriteState(previous, buildSharedEventState(leaving, previous.events[0].id), config);
+      mutate(candidate.events[0]);
+      await db.exec("savepoint rejected_leave");
+      await assert.rejects(save(candidate), error => error.code === "42501");
+      await db.exec("rollback to savepoint rejected_leave");
+      const unchanged = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.deepEqual(unchanged, previous);
+    }, baseline => {
+      baseline.events[0].activityLog = [{ id: "previous-receipt", kind: "expense-created",
+        occurredAt: new Date(Date.now() - 60_000).toISOString(), actorParticipantId: ids.admin }];
+      return buildSharedEventState(baseline, baseline.events[0].id);
+    });
+  });
+}
 async function withSnapshot(actor, run, prepare = value => value) {
   await db.exec("begin");
   try {
@@ -1283,11 +1422,19 @@ test("SQL fresh schema and incremental migration install exactly the same defini
   assert.equal(schema.slice(schema.indexOf(migrationMarker), schema.indexOf(attributionMarker)).trim(), migration.trim());
   assert.equal(schema.slice(schema.indexOf(attributionMarker), schema.indexOf(profileVersionMarker)).trim(), attributionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(profileVersionMarker),schema.indexOf(accountLinkReceiptMarker)).trim(), profileVersionMigration.trim());
-  assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
+  assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker), schema.indexOf(selfLeaveMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
+  assert.equal(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length).trim(), selfLeaveMigration.trim());
 });
 test("SQL rollout checks preserve enabled triggers and function privileges", async () => {
   await db.exec(rolloutVerification);
   await db.exec(attributionVerification);
+  await db.exec(selfLeaveVerification);
+});
+
+test("SQL self-leave migration can be reapplied without changing authorization", async () => {
+  await db.exec(selfLeaveMigration);
+  await db.exec(selfLeaveMigration);
+  await db.exec(selfLeaveVerification);
 });
 test("SQL integrity migration can be reapplied without dropping guards or privileges", async () => {
   await db.exec(migration);

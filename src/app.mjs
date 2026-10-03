@@ -20651,6 +20651,7 @@ async function leaveCurrentEvent(eventId) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
     state = previousState;
