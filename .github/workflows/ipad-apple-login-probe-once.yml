@@ -33,7 +33,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path("ios/App/App/AppDelegate.swift")
-          source = p.read_text()
+          source = p.read_text().replace("import GoogleSignIn", "import GoogleSignIn\nimport WebKit")
           probe = r'''
                   var probeCount = 0
                   Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
@@ -98,7 +98,7 @@ jobs:
       - name: Build unsigned iPad simulator app
         run: |
           xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/probe CODE_SIGNING_ALLOWED=NO build > build-probe.log 2>&1 || { tail -100 build-probe.log; exit 1; }
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/probe CODE_SIGNING_ALLOWED=NO build > build-probe.log 2>&1 || { grep -n -A 8 "error:" build-probe.log || true; tail -30 build-probe.log; exit 1; }
       - name: Run actual native Apple-button path
         run: |
           python3 - <<'PY'
