@@ -1,0 +1,107 @@
+name: Upload saved iOS TestFlight 4.55 (186) once
+run-name: Upload verified saved IPA 4.55 (186) from abbba4fc
+
+on:
+  push:
+    branches: [work/ios-testflight-186-20261002]
+    paths: [.github/workflows/ios-testflight-186-upload-saved-once.yml]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ios-testflight-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  upload-saved:
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      IOS_VERSION: "4.55"
+      IOS_BUILD: "186"
+      IOS_RELEASE_NOTES: "תכניות ההחזר נשמרות באופן עקבי במעבר בין שיטות הקיזוז וברענון. נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו בחירת המשלמים באייפון ובאייפד, וההתחברות עם Apple ובאימייל."
+
+    steps:
+      - name: Checkout the exact signed source
+        uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - name: Checkout isolated release helpers
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .ios-release-helper
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Download the immutable original signed artifact
+        uses: actions/download-artifact@v5
+        with:
+          artifact-ids: "11237732515"
+          run-id: "37029026029"
+          github-token: ${{ github.token }}
+          path: .saved-ipa
+      - name: Read original upload evidence and merged-source QA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/ios .ios-release-helper/fixtures
+          cp .saved-ipa/build/ios/SogrimHashbon.ipa build/ios/SogrimHashbon.ipa
+          cp .saved-ipa/build/ios/release-manifest.json build/ios/release-manifest.json
+          cp .saved-ipa/build/ios/testflight-one-shot-before-build.json build/ios/testflight-one-shot-before-build.json
+          cp build/ios/release-manifest.json .ios-release-helper/fixtures/saved-ios186-manifest.json
+          cp build/ios/testflight-one-shot-before-build.json .ios-release-helper/fixtures/saved-ios186-readiness.json
+          cp build/ios/SogrimHashbon.ipa .ios-release-helper/fixtures/SogrimHashbon.ipa
+          gh api repos/yarinn12/sogrim-hashbon/actions/runs/37029026029 > build/ios/saved-build-run.json
+          gh api repos/yarinn12/sogrim-hashbon/actions/jobs/110910890202 > build/ios/saved-build-job.json
+          gh api repos/yarinn12/sogrim-hashbon/actions/runs/37028291135 > build/ios/merged-source-qa.json
+      - name: Test preservation and duplicate-upload guards
+        run: node --test .ios-release-helper/tests/iosTestflightSavedArtifact.test.mjs .ios-release-helper/tests/iosTestflightOneShot.test.mjs .ios-release-helper/tests/appStoreStatusReadOnly.test.mjs .ios-release-helper/tests/appStoreRelease.test.mjs
+      - name: Require the exact saved IPA and successful merged-source QA
+        run: node .ios-release-helper/scripts/verify-saved-ios186.mjs
+      - name: Check build 186 is still absent
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs before_build
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Select Xcode 26.6
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Reverify the saved IPA signature and Apple entitlements
+        run: node scripts/verify-ios-artifact.mjs
+      - name: Record the verified source for the saved IPA
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs record_artifact
+      - name: Recheck build 186 immediately before the only upload
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs before_upload
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Upload the saved app to TestFlight
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: build/ios/SogrimHashbon.ipa
+          app-type: ios
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          wait-for-processing: "false"
+          backend: appstore-api
+      - name: Verify Apple processing and Hebrew TestFlight notes
+        run: node scripts/complete-ios-testflight.mjs
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      - name: Record source and upload completion evidence
+        run: node .ios-release-helper/scripts/guard-ios-testflight-one-shot.mjs record_completion
+      - name: Keep upload evidence for seven days
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: sogrim-hashbon-ios-4.55-186-saved-upload
+          path: build/ios/
+          if-no-files-found: error
+          retention-days: 7
