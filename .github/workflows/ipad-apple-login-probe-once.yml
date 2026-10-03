@@ -26,6 +26,24 @@ jobs:
       - name: Prepare isolated simulator app
         run: |
           npm ci
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("src/publicAccountAuthLayer.mjs")
+          source = p.read_text()
+          changes = [
+              ('new URL(inviteUrl || window.location.href, window.location.origin)', 'new URL(inviteUrl || window.location.href, window.location.href)'),
+              ('new URL(baseUrl, window.location.origin)', 'new URL(baseUrl, window.location.href)'),
+              ('return `${returnUrl.pathname}${returnUrl.search}`;', 'return `${returnUrl.pathname || "/"}${returnUrl.search}`;')
+          ]
+          for before, after in changes:
+              assert source.count(before) == 1, before
+              source = source.replace(before, after, 1)
+          start = source.index('if (action === "apple")')
+          end = source.index('if (action === "forgot-password")', start)
+          apple = source[start:end].replace('} catch (error) {', '} catch (error) {\n      console.log("PROBE_APPLE_FAILURE:" + JSON.stringify({ name: error?.name, message: error?.message }));', 1)
+          source = source[:start] + apple + source[end:]
+          p.write_text(source)
+          PY
           npm run native:prepare
           node scripts/prepare-ios-release.mjs
       - name: Install safe simulator-only instrumentation
@@ -54,6 +72,8 @@ jobs:
                         const state = {
                           protocol: location.protocol,
                           origin: location.origin,
+                          pathname: location.pathname,
+                          parsedPathname: new URL(location.href).pathname,
                           baseValid: (() => { try { new URL(location.href, location.origin); return true; } catch { return false; } })(),
                           secure: window.isSecureContext,
                           random: typeof crypto?.getRandomValues,
@@ -125,6 +145,7 @@ jobs:
           Path("probe-sanitized.log").write_text("\n".join(lines)+"\n")
           print("\n".join(lines))
           assert any("PROBE_JS:" in line for line in lines), "No native WebView observation"
+          assert any("PROBE_NATIVE_PRESENTATION:SFSafariViewController" in line for line in lines), "Apple authentication browser did not present"
           PY
       - uses: actions/upload-artifact@v6
         if: always()
