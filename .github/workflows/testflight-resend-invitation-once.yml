@@ -1,0 +1,67 @@
+name: Resend requested TestFlight invitation
+on:
+  push:
+    branches: [work/app-store-preflight-20261003]
+    paths: [.github/workflows/testflight-resend-invitation-once.yml]
+permissions:
+  contents: read
+jobs:
+  invite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Resend one invitation to the confirmed existing tester
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {writeFile} from 'node:fs/promises';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const APP='6809952514', BUILD='3d5a4910-6bb0-4304-889f-676c1be1d176';
+          const GROUP='4646e3de-7401-4e70-ac32-9a00072e1376', TESTER='5d2040f0-3af9-4d98-a188-fd6eeb5547db', TARGET='004ec2efff572434a5fd20635e1d32b406e494a5a9ea932d539734b248143a85';
+          const report={checkedAt:new Date().toISOString(),appId:APP,version:'4.55',build:'186',invitationRequestAccepted:false};
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const check=(ok,label)=>{if(!ok)throw new Error(label);};
+          async function collection(p){const r=await api(p);check(Array.isArray(r.data)&&!r.links?.next,'Incomplete Apple collection');return r.data;}
+          try{
+           const app=(await api('/v1/apps/'+APP)).data;check(app.id===APP&&app.attributes.bundleId==='com.sogrimhashbon.app','Unexpected app');
+           const tester=(await api('/v1/betaTesters/'+TESTER)).data;
+           check(tester.id===TESTER&&createHash('sha256').update(String(tester.attributes.email??'').trim().toLowerCase()).digest('hex')===TARGET,'Tester identity mismatch');
+           check(tester.attributes.inviteType==='EMAIL','Unexpected tester invitation type');
+           const apps=await collection('/v1/betaTesters/'+TESTER+'/apps?limit=200');check(apps.some(x=>x.id===APP),'Tester has no access to app');
+           const groups=await collection('/v1/apps/'+APP+'/betaGroups?limit=200');
+           const group=groups.find(x=>x.id===GROUP);check(group?.attributes.isInternalGroup===true,'Expected internal group missing');
+           const members=await collection('/v1/betaGroups/'+GROUP+'/betaTesters?limit=200');check(members.some(x=>x.id===TESTER),'Tester is no longer a member of the internal group');
+           const builds=await collection('/v1/betaGroups/'+GROUP+'/builds?limit=200');check(builds.some(x=>x.id===BUILD),'Build 186 is missing from the internal group');
+           const br=await api('/v1/builds/'+BUILD+'?include=app,preReleaseVersion');
+           const pre=br.included?.find(x=>x.type==='preReleaseVersions');
+           check(br.data.attributes.version==='186'&&br.data.attributes.processingState==='VALID'&&!br.data.attributes.expired&&pre?.attributes.version==='4.55'&&pre.attributes.platform==='IOS'&&br.included?.some(x=>x.type==='apps'&&x.id===APP),'Build identity or readiness mismatch');
+           const beta=(await api('/v1/builds/'+BUILD+'/buildBetaDetail')).data;
+           check(beta.attributes.internalBuildState==='IN_BETA_TESTING','Internal testing is unavailable');
+           const result=await api('/v1/betaTesterInvitations',{method:'POST',body:{data:{type:'betaTesterInvitations',relationships:{app:{data:{type:'apps',id:APP}},betaTester:{data:{type:'betaTesters',id:TESTER}}}}}});
+           check(result?.data?.type==='betaTesterInvitations'&&Boolean(result.data.id),'Apple did not confirm a tester invitation');
+           report.invitationRequestAccepted=true;
+           report.invitationId=result.data.id;
+           report.sentAt=new Date().toISOString();
+           report.accessVerified=true;
+           report.deliveryVerified=false;
+          }catch(error){report.error={status:error.status??null,message:error.message};process.exitCode=1;}
+          finally{await writeFile('testflight-invitation-result.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));}
+          
+          NODE
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: testflight-requested-invitation-result
+          path: testflight-invitation-result.json
+          retention-days: 1
