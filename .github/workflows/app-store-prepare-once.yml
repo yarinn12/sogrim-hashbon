@@ -1,0 +1,122 @@
+name: Prepare App Store 4.55 build 186
+on:
+  push:
+    branches: [work/app-store-preflight-20261003]
+    paths: [.github/workflows/app-store-prepare-once.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Prepare and verify the App Store version without resubmitting
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFile,writeFile} from 'node:fs/promises';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const APP='6809952514', VERSION='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a';
+          const BUILD='3d5a4910-6bb0-4304-889f-676c1be1d176';
+          const SUBMISSION='8b6da79a-4738-4884-b744-c04959b104da';
+          const ITEM='OGI2ZGE3OWEtNDczOC00ODg0LWI3NDQtYzA0OTU5YjEwNGRhfDZ8ODkxMDQyODYw';
+          const LOCALIZATION='c3cec718-83fe-4db7-82ab-58a7387113b7';
+          const REVIEW='9c74b362-c7bf-4198-9e36-cf8f350931fd';
+          const report={checkedAt:new Date().toISOString(),submittedForReview:false,changes:[],verified:false};
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const get=p=>api(p,{method:'GET'});
+          const patch=(path,type,id,attributes,relationships)=>api(path,{method:'PATCH',body:{data:{type,id,...(attributes?{attributes}:{}),...(relationships?{relationships}:{})}}});
+          const check=(condition,label)=>{if(!condition)throw new Error(label);};
+          async function collection(path){
+           const result=await get(path);check(Array.isArray(result?.data)&&!result.links?.next,'Incomplete Apple collection');return result;
+          }
+          async function reviewItems(){
+           const r=await collection('/v1/reviewSubmissions/'+SUBMISSION+'/items?include=appStoreVersion&limit=200');
+           return r.data.map(x=>({id:x.id,state:x.attributes.state,appStoreVersionId:x.relationships?.appStoreVersion?.data?.id??null}));
+          }
+          try{
+           const metadata=JSON.parse(await readFile('docs/store-submission/app-store-metadata-he.json','utf8'));
+           const notes='Updated submission candidate: iOS 4.55 (186).\n\n'+(await readFile('docs/store-submission/apple-review-notes-en.txt','utf8')).trim();
+           check(metadata.app.bundleId==='com.sogrimhashbon.app'&&metadata.version.number==='4.55'&&metadata.version.build==='186','Unexpected pinned release metadata');
+           check(notes.length<=4000,'Review notes exceed Apple limit');
+           const app=(await get('/v1/apps/'+APP)).data;
+           check(app?.id===APP&&app.attributes.bundleId===metadata.app.bundleId,'Unexpected Apple app');
+           const versions=await collection('/v1/apps/'+APP+'/appStoreVersions?limit=200');
+           const ios=versions.data.filter(x=>x.attributes.platform==='IOS');
+           check(ios.length===1&&ios[0].id===VERSION,'Unexpected iOS version records');
+           const version=ios[0], state=version.attributes.appStoreState;
+           check(['REJECTED','PREPARE_FOR_SUBMISSION','DEVELOPER_REJECTED','METADATA_REJECTED'].includes(state),'App Store version is no longer editable');
+           check(['4.52','4.55'].includes(version.attributes.versionString),'Unexpected editable version');
+           const br=await get('/v1/builds/'+BUILD+'?include=app,preReleaseVersion');
+           const build=br.data;
+           check(build?.id===BUILD&&build.attributes.version==='186'&&build.attributes.processingState==='VALID'&&!build.attributes.expired&&build.attributes.buildAudienceType==='APP_STORE_ELIGIBLE'&&build.attributes.usesNonExemptEncryption===false,'Build 186 is not eligible');
+           const buildApp=br.included?.find(x=>x.type==='apps'&&x.id===APP);
+           const pre=br.included?.find(x=>x.type==='preReleaseVersions');
+           check(Boolean(buildApp)&&pre?.attributes.version==='4.55'&&pre.attributes.platform==='IOS','Unexpected build app or version');
+           const submission=(await get('/v1/reviewSubmissions/'+SUBMISSION)).data;
+           check(submission?.id===SUBMISSION&&submission.attributes.state==='UNRESOLVED_ISSUES'&&submission.attributes.platform==='IOS','Review submission state changed');
+           report.reviewItemsBefore=await reviewItems();
+           check(report.reviewItemsBefore.length===1&&report.reviewItemsBefore[0].id===ITEM&&report.reviewItemsBefore[0].appStoreVersionId===VERSION&&report.reviewItemsBefore[0].state==='REJECTED','Unexpected rejected review item');
+           const localizations=await collection('/v1/appStoreVersions/'+VERSION+'/appStoreVersionLocalizations?limit=200');
+           check(localizations.data.length===1&&localizations.data[0].id===LOCALIZATION&&localizations.data[0].attributes.locale==='he','Unexpected store localization');
+           const oldReview=(await get('/v1/appStoreVersions/'+VERSION+'/appStoreReviewDetail')).data;
+           check(oldReview?.id===REVIEW,'Unexpected review details');
+           const protectedFields=['contactFirstName','contactLastName','contactPhone','contactEmail','demoAccountName','demoAccountPassword','demoAccountRequired'];
+           check(oldReview.attributes.demoAccountRequired===true&&protectedFields.every(k=>Boolean(oldReview.attributes[k])),'Review account or contact data missing');
+           const oldBuild=(await get('/v1/appStoreVersions/'+VERSION+'/build')).data;
+           check(oldBuild&&[BUILD,'c6e4701c-3172-471d-af70-b8b2b45c8222'].includes(oldBuild.id),'Unexpected previously selected build');
+           report.before={version:version.attributes.versionString,build:oldBuild.attributes.version,state,releaseType:version.attributes.releaseType};
+           if(version.attributes.versionString!=='4.55'||oldBuild.id!==BUILD){
+            await patch('/v1/appStoreVersions/'+VERSION,'appStoreVersions',VERSION,{versionString:'4.55'},{build:{data:{type:'builds',id:BUILD}}});
+            report.changes.push('Store version changed to 4.55 and build 186 selected');
+           }
+           const desired={description:metadata.version.description,keywords:metadata.version.keywords,supportUrl:metadata.version.supportUrl,marketingUrl:metadata.version.marketingUrl,promotionalText:metadata.version.promotionalText};
+           if(Object.entries(desired).some(([k,v])=>localizations.data[0].attributes[k]!==v)){
+            await patch('/v1/appStoreVersionLocalizations/'+LOCALIZATION,'appStoreVersionLocalizations',LOCALIZATION,desired);
+            report.changes.push('Hebrew store metadata updated');
+           }
+           if(oldReview.attributes.notes!==notes){
+            await patch('/v1/appStoreReviewDetails/'+REVIEW,'appStoreReviewDetails',REVIEW,{notes});
+            report.changes.push('Review notes updated with the Apple sign-in instructions');
+           }
+           const fresh=(await get('/v1/appStoreVersions/'+VERSION)).data;
+           const selected=(await get('/v1/appStoreVersions/'+VERSION+'/build')).data;
+           const localization=(await get('/v1/appStoreVersionLocalizations/'+LOCALIZATION)).data;
+           const review=(await get('/v1/appStoreReviewDetails/'+REVIEW)).data;
+           check(fresh.attributes.versionString==='4.55'&&selected.id===BUILD,'Version/build read-back mismatch');
+           check(fresh.attributes.releaseType===version.attributes.releaseType,'Release timing changed unexpectedly');
+           check(Object.entries(desired).every(([k,v])=>localization.attributes[k]===v),'Hebrew metadata read-back mismatch');
+           check(review.attributes.notes===notes&&protectedFields.every(k=>review.attributes[k]===oldReview.attributes[k]),'Review notes or protected account data mismatch');
+           const sets=await collection('/v1/appStoreVersionLocalizations/'+LOCALIZATION+'/appScreenshotSets?limit=200');
+           report.screenshots=[];
+           for(const set of sets.data){
+            const screenshots=(await collection('/v1/appScreenshotSets/'+set.id+'/appScreenshots?limit=200')).data;
+            report.screenshots.push({displayType:set.attributes.screenshotDisplayType,count:screenshots.length,complete:screenshots.every(x=>x.attributes.assetDeliveryState?.state==='COMPLETE')});
+           }
+           check(report.screenshots.some(x=>x.count>=3&&x.complete),'Expected complete screenshots missing');
+           report.after={appId:APP,versionId:VERSION,version:fresh.attributes.versionString,buildId:selected.id,build:selected.attributes.version,state:fresh.attributes.appStoreState,releaseType:fresh.attributes.releaseType,hebrewMetadataVerified:true,reviewNotesVerified:true,reviewAccountAndContactPreserved:true};
+           report.reviewItemsAfter=await reviewItems();
+           report.submissionState=(await get('/v1/reviewSubmissions/'+SUBMISSION)).data.attributes.state;
+           report.verified=true;
+          }catch(error){report.error={message:error.message,status:error.status??null};process.exitCode=1;}
+          finally{await writeFile('app-store-prepared.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));}
+          
+          NODE
+      - name: Save the sanitized preparation report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-store-4.55-prepared
+          path: app-store-prepared.json
+          if-no-files-found: warn
+          retention-days: 7
