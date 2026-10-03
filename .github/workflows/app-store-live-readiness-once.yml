@@ -1,0 +1,84 @@
+name: App Store live readiness 4.55
+on:
+  push:
+    branches: [work/app-store-preflight-20261003]
+    paths: [.github/workflows/app-store-live-readiness-once.yml]
+permissions:
+  contents: read
+jobs:
+  readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify live review account and Apple login configuration
+        run: |
+          node --input-type=module <<'NODE'
+          import {writeFile} from 'node:fs/promises';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const APP='6809952514', VERSION='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a', BUILD='3d5a4910-6bb0-4304-889f-676c1be1d176';
+          const PUBLIC='https://sogrim-hesbon-app.vercel.app', AUTH='https://isdaozthehplneapkfwd.supabase.co';
+          const report={checkedAt:new Date().toISOString(),checks:[],nativeAppleLoginVerified:false};
+          const check=(name,ok)=>{report.checks.push({name,ok:Boolean(ok)});if(!ok)process.exitCode=1;};
+          async function readJson(url,options={}){
+           const r=await fetch(url,{redirect:'error',signal:AbortSignal.timeout(30000),...options});
+           if(!r.ok)throw new Error('Readiness request returned '+r.status);return r.json();
+          }
+          try{
+           const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+           const app=(await api('/v1/apps/'+APP)).data;
+           check('Expected Apple app',app?.id===APP&&app.attributes.bundleId==='com.sogrimhashbon.app');
+           const version=(await api('/v1/appStoreVersions/'+VERSION)).data;
+           const build=(await api('/v1/appStoreVersions/'+VERSION+'/build')).data;
+           check('Store candidate is 4.55 build 186',version.attributes.versionString==='4.55'&&build.id===BUILD&&build.attributes.version==='186'&&build.attributes.processingState==='VALID');
+           const config=await readJson(PUBLIC+'/api/config');
+           if(config.storage?.mode!=='supabase'||new URL(config.storage.url).origin!==AUTH)throw new Error('Unexpected production authentication destination');
+           const publicKey=config.storage.anonKey||config.storage.publishableKey;
+           if(typeof publicKey!=='string'||!publicKey)throw new Error('Public authentication key missing');
+           const headers={apikey:publicKey};
+           const settings=await readJson(AUTH+'/auth/v1/settings',{headers});
+           check('Apple sign-in provider is enabled',settings.external?.apple===true);
+           check('Google and email login are enabled',settings.external?.google===true&&settings.external?.email===true);
+           const association=await readJson(PUBLIC+'/.well-known/apple-app-site-association');
+           const entry=association.applinks?.details?.find(x=>x.appID==='MA9S4L7WKS.com.sogrimhashbon.app');
+           check('Apple deep links include invitations and auth callback',Boolean(entry)&&['/i/*','/r/*','/auth/callback'].every(p=>entry.paths?.includes(p)));
+           for(const [name,path,needle] of [['Privacy page','/privacy','Apple'],['Support page','/support','Apple'],['Accessibility page','/accessibility','הצהרת נגישות'],['Account deletion page','/account-deletion','מחיקת חשבון']]){
+            const r=await fetch(PUBLIC+path,{redirect:'error',signal:AbortSignal.timeout(30000)});
+            const text=await r.text();check(name+' is available',r.ok&&text.includes(needle));
+           }
+           const review=(await api('/v1/appStoreVersions/'+VERSION+'/appStoreReviewDetail')).data;
+           if(!review?.attributes.demoAccountRequired||!review.attributes.demoAccountName||!review.attributes.demoAccountPassword)throw new Error('Review account is missing');
+           const email=review.attributes.demoAccountName,password=review.attributes.demoAccountPassword;
+           const r=await fetch(AUTH+'/auth/v1/token?grant_type=password',{method:'POST',redirect:'error',signal:AbortSignal.timeout(30000),headers:{...headers,'content-type':'application/json'},body:JSON.stringify({email,password})});
+           const session=await r.json();
+           check('The App Review account can sign in',r.ok&&Boolean(session.access_token&&session.user?.id)&&session.user?.email?.toLowerCase()===email.toLowerCase());
+           if(session.access_token){
+            const logout=await fetch(AUTH+'/auth/v1/logout?scope=local',{method:'POST',redirect:'error',signal:AbortSignal.timeout(30000),headers:{...headers,Authorization:'Bearer '+session.access_token}});
+            check('Temporary review test session was signed out',logout.ok);
+           }
+           const oauth=await fetch(AUTH+'/auth/v1/authorize?'+new URLSearchParams({provider:'apple',redirect_to:PUBLIC+'/auth/callback'}),{headers,redirect:'manual',signal:AbortSignal.timeout(30000)});
+           const location=oauth.headers.get('location');const target=location?new URL(location):null;
+           check('Apple OAuth starts on the Apple authorization service',oauth.status===302&&target?.origin==='https://appleid.apple.com'&&target?.pathname==='/auth/authorize');
+           check('Apple OAuth requests name and email only',target?.searchParams.get('scope')?.split(/\s+/).sort().join(' ')==='email name');
+           report.readyForNativeCheck=report.checks.every(x=>x.ok);
+          }catch(error){report.error={message:error.message,status:error.status??null};process.exitCode=1;}
+          finally{await writeFile('app-store-live-readiness.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));}
+          
+          NODE
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: app-store-4.55-live-readiness
+          path: app-store-live-readiness.json
+          if-no-files-found: warn
+          retention-days: 7
