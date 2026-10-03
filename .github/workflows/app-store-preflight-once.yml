@@ -1,0 +1,103 @@
+name: App Store 4.55 preflight (read only)
+on:
+  push:
+    branches: [work/app-store-preflight-20261003]
+    paths: [.github/workflows/app-store-preflight-once.yml]
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: abbba4fc8d581f5720200169a59c88d7410f7277
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read current App Store metadata and submission state
+        run: |
+          node --input-type=module <<'NODE'
+          import {writeFile} from 'node:fs/promises';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const APP='6809952514', BUNDLE='com.sogrimhashbon.app';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const report={checkedAt:new Date().toISOString(),readOnly:true,errors:[]};
+          const get=path=>api(path,{method:'GET'});
+          async function all(path){
+            const items=[];let next=path;
+            for(let page=0;next&&page<20;page++){
+              const result=await get(next);
+              if(!Array.isArray(result?.data))throw new Error('Expected an Apple collection');
+              items.push(...result.data);next=result.links?.next;
+            }
+            if(next)throw new Error('Incomplete Apple collection');
+            return items;
+          }
+          async function optional(label,path,project=x=>x){
+            try{return project(await get(path));}
+            catch(error){report.errors.push({section:label,status:error.status??null});return null;}
+          }
+          const app=(await get('/v1/apps/'+APP)).data;
+          if(app?.id!==APP||app.attributes?.bundleId!==BUNDLE)throw new Error('Unexpected Apple app');
+          report.app={id:app.id,name:app.attributes.name,bundleId:app.attributes.bundleId};
+          const bq=new URLSearchParams({'filter[app]':APP,'filter[version]':'186',include:'preReleaseVersion',limit:'200'});
+          const br=await get('/v1/builds?'+bq);
+          if(br.links?.next||br.data?.length!==1)throw new Error('Expected one build 186');
+          const build=br.data[0];
+          const pre=br.included?.find(x=>x.type==='preReleaseVersions'&&x.id===build.relationships?.preReleaseVersion?.data?.id);
+          if(pre?.attributes?.version!=='4.55'||pre.attributes.platform!=='IOS')throw new Error('Unexpected build platform/version');
+          report.targetBuild={id:build.id,build:build.attributes.version,version:pre.attributes.version,processingState:build.attributes.processingState,expired:build.attributes.expired,usesNonExemptEncryption:build.attributes.usesNonExemptEncryption,audience:build.attributes.buildAudienceType};
+          report.targetBuild.beta=await optional('buildBetaDetail','/v1/builds/'+build.id+'/buildBetaDetail',r=>({internalState:r.data?.attributes?.internalBuildState,externalState:r.data?.attributes?.externalBuildState}));
+          const versions=await all('/v1/apps/'+APP+'/appStoreVersions?limit=200');
+          report.versions=[];
+          for(const v of versions.filter(v=>v.attributes.platform==='IOS').slice(0,10)){
+            const item={id:v.id,version:v.attributes.versionString,state:v.attributes.appStoreState,releaseType:v.attributes.releaseType,copyright:v.attributes.copyright};
+            item.selectedBuild=await optional('selectedBuild:'+v.id,'/v1/appStoreVersions/'+v.id+'/build',r=>r.data?{id:r.data.id,build:r.data.attributes.version,processingState:r.data.attributes.processingState}:null);
+            item.localizations=[];
+            for(const l of await all('/v1/appStoreVersions/'+v.id+'/appStoreVersionLocalizations?limit=200')){
+              const a=l.attributes;
+              const loc={id:l.id,locale:a.locale,descriptionLength:a.description?.length??0,keywords:a.keywords,supportUrl:a.supportUrl,marketingUrl:a.marketingUrl,whatsNew:a.whatsNew,promotionalText:a.promotionalText};
+              loc.screenshotSets=[];
+              for(const s of await all('/v1/appStoreVersionLocalizations/'+l.id+'/appScreenshotSets?limit=200')){
+                const shots=await all('/v1/appScreenshotSets/'+s.id+'/appScreenshots?limit=200');
+                loc.screenshotSets.push({id:s.id,displayType:s.attributes.screenshotDisplayType,count:shots.length,screenshots:shots.map(p=>({id:p.id,state:p.attributes.assetDeliveryState?.state,fileSize:p.attributes.fileSize}))});
+              }
+              item.localizations.push(loc);
+            }
+            item.reviewDetail=await optional('reviewDetail:'+v.id,'/v1/appStoreVersions/'+v.id+'/appStoreReviewDetail',r=>{
+              const a=r.data?.attributes;if(!a)return null;
+              return {id:r.data.id,demoAccountRequired:a.demoAccountRequired,demoAccountNameProvided:Boolean(a.demoAccountName),demoAccountPasswordProvided:Boolean(a.demoAccountPassword),contactNameProvided:Boolean(a.contactFirstName&&a.contactLastName),contactEmailProvided:Boolean(a.contactEmail),contactPhoneProvided:Boolean(a.contactPhone),notesLength:a.notes?.length??0,notesMentionApple:/sign in with apple/i.test(a.notes||''),notesMentionHideMyEmail:/hide my email/i.test(a.notes||'')};
+            });
+            report.versions.push(item);
+          }
+          report.appInfos=[];
+          for(const info of await all('/v1/apps/'+APP+'/appInfos?limit=200')){
+            const i={id:info.id,state:info.attributes.appStoreState,primaryCategoryId:info.relationships?.primaryCategory?.data?.id};
+            i.localizations=(await all('/v1/appInfos/'+info.id+'/appInfoLocalizations?limit=200')).map(l=>({id:l.id,locale:l.attributes.locale,name:l.attributes.name,subtitle:l.attributes.subtitle,privacyPolicyUrl:l.attributes.privacyPolicyUrl}));
+            i.ageRating=await optional('ageRating:'+info.id,'/v1/appInfos/'+info.id+'/ageRatingDeclaration',r=>({id:r.data?.id,present:Boolean(r.data),attributes:r.data?.attributes}));
+            report.appInfos.push(i);
+          }
+          report.submissions=[];
+          for(const s of await all('/v1/reviewSubmissions?'+new URLSearchParams({'filter[app]':APP,limit:'200'}))){
+            const item={id:s.id,state:s.attributes.state,platform:s.attributes.platform,submittedDate:s.attributes.submittedDate};
+            item.items=await optional('reviewItems:'+s.id,'/v1/reviewSubmissions/'+s.id+'/items?limit=200',r=>({items:r.data?.map(x=>({id:x.id,state:x.attributes.state,resolved:x.attributes.resolved,appStoreVersion:x.relationships?.appStoreVersion?.data})),hasMore:Boolean(r.links?.next)}));
+            report.submissions.push(item);
+          }
+          await writeFile('app-store-preflight.json',JSON.stringify(report,null,2)+'\n');
+          console.log(JSON.stringify(report,null,2));
+          NODE
+      - name: Save the sanitized preflight report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: app-store-4.55-read-only-preflight
+          path: app-store-preflight.json
+          if-no-files-found: warn
+          retention-days: 7
