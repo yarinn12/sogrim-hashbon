@@ -103,6 +103,7 @@ function createActivityFetch({
   acceptedFriend = true,
   canonicalMembership = true,
   canonicalInvitation = true,
+  completedReservation = { status: "delivered" },
   inboxHandler = null,
   pushHandler = null,
   reservation = {
@@ -217,11 +218,45 @@ function createActivityFetch({
     ) {
       return new Response(null, { status: 204 });
     }
+    if (address.includes("/rest/v1/event_activity_notifications?") && !options.method) {
+      return jsonResponse(completedReservation ? [completedReservation] : []);
+    }
     throw new Error(`Unexpected request: ${options.method ?? "GET"} ${address}`);
   };
 
   return { fetchImpl, requests };
 }
+
+const sendExpense = (fetchImpl, extras = {}) => sendEventActivityNotification({
+  runtimeConfig: runtimeConfig(), env: { SUPABASE_SERVICE_ROLE_KEY: "service-role" },
+  authorization: "Bearer account-access-token", eventId: EVENT_ID,
+  activityId: EXPENSE_ID, kind: "expense-created", fetchImpl,
+  accessTokenProvider: async () => ({ accessToken: "firebase-access-token", projectId: "sogrim-demo" }),
+  ...extras
+});
+
+test("a lost activity response is acknowledged on retry without a second push", async () => {
+  const { fetchImpl, requests } = createActivityFetch({ reservation: { allowed: false, reason: "duplicate" } });
+  const result = await sendExpense(fetchImpl);
+  assert.equal(result.payload.ok, true, "an already completed reservation must provide an idempotent acknowledgement");
+  assert.equal(result.payload.alreadyDeliveredRecipients, 1);
+  assert.equal(requests.some(request => request.url.includes("fcm.googleapis.com/")), false);
+});
+
+test("a failed canonical-membership read is retryable rather than an empty success", async () => {
+  const mock = createActivityFetch();
+  const fetchImpl = async (url, options) => String(url).endsWith("/rpc/verify_shared_event_notification_parties")
+    ? jsonResponse({ error: "temporary database outage" }, 503) : mock.fetchImpl(url, options);
+  await assert.rejects(sendExpense(fetchImpl), error => error.retryable === true);
+  assert.equal(mock.requests.some(request => request.url.includes("fcm.googleapis.com/")), false);
+});
+
+test("a rejected inbox write cannot consume the reservation or send a push", async () => {
+  const mock = createActivityFetch({ inboxHandler: () => jsonResponse({ error: "temporary write failure" }, 503) });
+  await assert.rejects(sendExpense(mock.fetchImpl), error => error.retryable === true);
+  assert.equal(mock.requests.some(request => request.url.includes("fcm.googleapis.com/")), false);
+  assert.equal(mock.requests.some(request => request.url.includes("event_activity_notifications?") && request.options.method === "DELETE"), true);
+});
 
 test("server sends a private event update only to a verified connected participant", async () => {
   const { fetchImpl, requests } = createActivityFetch();

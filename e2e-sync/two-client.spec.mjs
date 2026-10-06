@@ -14,7 +14,7 @@ const headers = {'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, apikey, content-type, prefer, x-space-key',
   'access-control-allow-methods': 'GET, POST, PATCH, OPTIONS'};
 
-async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null} = {}) {
+async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
   const browsers = [];
   const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
@@ -26,6 +26,8 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   const transferReceiptHolds = new Map();
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
+  const activityFailures = new Set(), activityRequests = [], activityInbox = new Map();
+  const secondaryHolds = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -99,7 +101,8 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     state: {currentParticipantId: '', participants, groups: [], events: [structuredClone(event)], deletedParticipants: []}};
   if (withReversePaymentPlan) canonical.state = reverseObjectKeys(canonical.state);
   let deletedEventMembers = new Set();
-  const canReadCanonical = i => canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) ||
+  const canReadCanonical = i => (canonical.state.events[0]?.participantIds.includes(`account-${ids[i]}`) &&
+    (!withSelfLeave || !canonical.state.events[0]?.inactiveParticipantIds?.includes(`account-${ids[i]}`))) ||
     (canonical.state.deletedEvents?.some(item=>item.id===eventId) && deletedEventMembers.has(`account-${ids[i]}`));
   const personal = ids.map((id, i) => ({id: `two-client-workspace-${i}`, updated_at: version,
     state: {currentParticipantId: `account-${id}`, participants: structuredClone(participants),
@@ -138,17 +141,16 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
-    const failedUrls=new Set();
+    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics});
     // WebKit's context-level offline switch can reject a request before route()
     // runs. Record only this client's deliberately disconnected requests so its
-    // native network diagnostic is handled by the existing exact-URL guard.
+    // native diagnostic consumes one receipt for that exact aborted request.
     // Real error/unhandledrejection events remain unconditional test failures.
     const rememberOfflineRequest=request=>{
-      if(blocked.has(i) && new URL(request.url()).origin===origin)failedUrls.add(request.url());
+      if(blocked.has(i) && new URL(request.url()).origin===origin)errorRecorder.recordExpectedFailure(request);
     };
     context.on('request',rememberOfflineRequest);
     context.on('requestfailed',rememberOfflineRequest);
-    await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls});
     const user = {id: ids[i], email: `qa-${i}@example.test`, app_metadata: {provider: 'google'},
       user_metadata: {full_name: participants[i].displayName, username: `two_client_${i}`,
         account_space_id: personal[i].id, account_space_key: key}};
@@ -181,6 +183,23 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
           }
           return reply({eventId,spaceId:sharedId,spaceKey:key,kind:'open',atomic:true});
         }
+        if (url.pathname === '/api/notifications/event-activity' && activityFailures.has(i)) {
+          activityRequests.push({client:i,body:request.postDataJSON(),accepted:false});
+          return reply({ok:false,code:'PUSH_UNAVAILABLE',retryable:true},503);
+        }
+        if (url.pathname === '/api/notifications/event-activity' && activityInbox.enabled) {
+          const body=request.postDataJSON(), event=canonical.state.events[0];
+          activityRequests.push({client:i,body,accepted:true});
+          if(request.headers().authorization!==`Bearer fixture-token-${i}` || body.eventId!==event.id ||
+             !event.expenses.some(expense=>expense.id===body.activityId && expense.createdByParticipantId===`account-${ids[i]}`)) {
+            return reply({ok:false,code:'EVENT_ACTIVITY_NOT_ALLOWED'},403);
+          }
+          const recipient=1-i, itemKey=`${recipient}:${body.activityId}`;
+          if(!activityInbox.has(itemKey))activityInbox.set(itemKey,{recipient,id:`inbox-${body.activityId}`,event_id:event.id,
+            activity_id:body.activityId,kind:body.kind,title:'הוצאה חדשה באירוע',body:'בדיקת התראה לאחר שמירה',view:'event',
+            created_at:new Date().toISOString(),read_at:null,action_url:''});
+          return reply({ok:true,inboxRecipients:1,delivered:0,reason:'in-app-only'});
+        }
         if (url.pathname.startsWith('/api/notifications/') || url.pathname === '/api/product-metrics') return reply({ok: true});
         if (url.pathname.startsWith('/api/') && !['/api/health'].includes(url.pathname)) {
           if (request.method() !== 'GET') unexpectedWrites.push({client: i, path: url.pathname});
@@ -190,10 +209,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       }
       if (url.origin !== origin) return route.abort('blockedbyclient');
       if (blocked.has(i)) {
-        failedUrls.add(request.url());
+        errorRecorder.recordExpectedFailure(request);
         return route.abort('internetdisconnected');
       }
-      failedUrls.delete(request.url());
       if (request.method() === 'OPTIONS') return route.fulfill({status: 204, headers});
       requests.push({client: i, method: request.method(), path: url.pathname, at: performance.now()});
       if(joiningClient !== null && url.pathname === '/auth/v1/settings')return reply({external:{email:true,google:false,apple:false}});
@@ -203,7 +221,16 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
         return reply({access_token:`fixture-token-${i}`,refresh_token:`fixture-refresh-${i}`,expires_in:3600,user});
       }
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
+      const secondaryKey=`${i}:${url.pathname.split('/').at(-1)}`;
+      const secondaryHold=secondaryHolds.get(secondaryKey);
+      if(secondaryHold && request.method()==='GET') {
+        secondaryHolds.delete(secondaryKey); secondaryHold.arrived=true;
+        await secondaryHold.ready;
+      }
       if (url.pathname === '/auth/v1/user') return reply(user);
+      if (url.pathname.endsWith('/notification_inbox') && activityInbox.enabled) {
+        return reply([...activityInbox.values()].filter(item=>item.recipient===i));
+      }
       if (url.pathname.endsWith('/ensure_account_workspace')) return reply({status: 'existing', workspaceId: personal[i].id});
       if (url.pathname.endsWith('/join_shared_event')) return reply(Boolean(canReadCanonical(i)));
       // These auxiliary RPCs are outside the sync journey but are invoked at
@@ -225,6 +252,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       }
       if (url.pathname.endsWith('/update_shared_event_snapshot')) {
         const body = request.postDataJSON();
+        if (withSelfLeave && !canReadCanonical(i)) return reply({code:'42501',message:'Shared event update is not authorized'},403);
         if (body.p_snapshot_id === sharedId && sharedWriteFailures.has(i)) {
           rejectedSharedWrites.push({client:i,body});
           return reply({code:'42501',message:'Synthetic shared write denied'},sharedWriteFailures.get(i));
@@ -344,6 +372,13 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
+    activityRequests, activityInbox,
+    holdNextSecondary(i,table) {
+      let release; const ready=new Promise(resolve=>{release=resolve;});
+      const hold={arrived:false,ready,release};secondaryHolds.set(`${i}:${table}`,hold);return hold;
+    },
+    enableActivityInbox() {activityInbox.enabled=true;},
+    failActivity(i,value) {if(value)activityFailures.add(i);else activityFailures.delete(i);},
     holdNextPaidReceipt(i) {
       let release; const ready = new Promise(resolve => {release = resolve;});
       const hold = {arrived:false,ready,release}; transferReceiptHolds.set(i,hold); return hold;
@@ -389,6 +424,83 @@ async function newNote(page, title, body) {
   await page.locator('[data-action="event-note-title"]').fill(title);
   await page.locator('[data-action="event-note-body"]').fill(body);
 }
+
+for (const leavingClient of [0, 1]) {
+  for (const offline of [false, true]) {
+    test(`self-leave on ${leavingClient ? 'iPhone' : 'Android'} survives ${offline ? 'an offline restart' : 'reload'} and reaches the other client`, async ({}, testInfo) => {
+      const f = await fixture(testInfo, {withExpense:true, withAliases:true, managingClient:1-leavingClient, withSelfLeave:true});
+      const member = f.pages[leavingClient], manager = f.pages[1-leavingClient];
+      const actor = `account-${ids[leavingClient]}`;
+      const pending = () => member.evaluate(space => localStorage.getItem(`settle-friends-pending-sync:${space}`), f.personal[leavingClient].id);
+      const active = event => event?.participantIds.includes(actor) && !event.inactiveParticipantIds?.includes(actor);
+      const originalExpenses = structuredClone(f.canonical.state.events[0].expenses);
+      try {
+        await member.locator('[data-action="open-event-settings"]').first().click();
+        await member.locator('[data-settings-section="danger"]').click();
+        await expect(member.locator('[data-action="delete-event"]')).toBeDisabled();
+        await member.locator('[data-action="leave-event"]').click();
+        const confirmation = member.locator('.important-action-dialog');
+        await expect(confirmation).toContainText('יישארו בהיסטוריה');
+        await confirmation.locator('[data-action="cancel-important-action"]').click();
+        expect(active(f.canonical.state.events[0])).toBe(true);
+        if (offline) f.cloudUnavailable(leavingClient, true);
+        await member.locator('[data-action="leave-event"]').click();
+        await confirmation.locator('[data-action="confirm-important-action"]').click();
+        await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+        await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+        if (offline) {
+          await expect.poll(pending).not.toBeNull();
+          expect(active(f.canonical.state.events[0])).toBe(true);
+          await member.reload();
+          await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+          await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+          f.cloudUnavailable(leavingClient, false);
+          await member.evaluate(() => window.dispatchEvent(new Event('online')));
+        }
+        await expect.poll(() => active(f.canonical.state.events[0]), {timeout:12000}).toBe(false);
+        await expect.poll(pending, {timeout:12000}).toBeNull();
+        expect(f.canonical.state.events[0].expenses).toEqual(originalExpenses);
+        expect(f.canonical.state.events[0].activityLog.filter(entry => entry.kind === 'participant-left')).toHaveLength(1);
+        await manager.reload();
+        await manager.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+        await expect.poll(() => storedEvent(manager, f.personal[1-leavingClient].id).then(active)).toBe(false);
+        await member.reload();
+        await expect(member.locator('[data-screen-kind="home"]')).toBeVisible();
+        await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+      } finally { await f.close(); }
+    });
+  }
+}
+
+test('self-leave reports repeated rejected requests and a later retry commits once', async ({}, testInfo) => {
+  const f = await fixture(testInfo, {withExpense:true, withSelfLeave:true});
+  const member = f.pages[1], actor = `account-${ids[1]}`;
+  const original = structuredClone(f.canonical.state);
+  try {
+    f.failSharedWrites(1,403);
+    for (let attempt=0;attempt<3;attempt++) {
+      await member.locator('[data-action="open-event-settings"]').first().click();
+      await member.locator('[data-settings-section="danger"]').click();
+      await member.locator('[data-action="leave-event"]').click();
+      await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+      await expect(member.getByText('לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.',{exact:true})).toBeVisible();
+      expect(f.canonical.state).toEqual(original);
+      await expect.poll(()=>storedEvent(member,f.personal[1].id).then(event=>
+        event.participantIds.includes(actor)&&!event.inactiveParticipantIds?.includes(actor))).toBe(true);
+    }
+    f.failSharedWrites(1,null);
+    await member.locator('[data-action="open-event-settings"]').first().click();
+    await member.locator('[data-settings-section="danger"]').click();
+    await member.locator('[data-action="leave-event"]').click();
+    await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
+    await expect.poll(()=>f.canonical.state.events[0].inactiveParticipantIds?.includes(actor)).toBe(true);
+    expect(f.canonical.state.events[0].activityLog.filter(entry=>entry.kind==='participant-left')).toHaveLength(1);
+    await member.reload();
+    await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
+    expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+  } finally {await f.close();}
+});
 
 for(const manager of [0,1]) {
   test(`paid event deletion on ${manager?'iPhone':'Android'} reaches an offline peer and clears its stale outbox`,async({},testInfo)=>{
@@ -476,6 +588,72 @@ async function newExpense(page, name, amount) {
     })),contentType:'application/json'});
     throw error;
   }
+}
+
+for (const sender of [0,1]) {
+  for (const failure of ['delivery','offline-save']) {
+    test(`notification survives ${failure} and sender ${sender} restart before reaching the other account once`, async ({},testInfo)=>{
+      const f=await fixture(testInfo), sending=f.pages[sender], receiving=f.pages[1-sender];
+      const pending=()=>sending.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-notifications')||'[]'));
+      try {
+        f.enableActivityInbox(); f.failActivity(sender,true);
+        if(failure==='offline-save')f.cloudUnavailable(sender,true);
+        await newExpense(sending,`הוצאה להתראה ${sender}`, '29');
+        await expect.poll(pending).toHaveLength(1);
+        if(failure==='delivery') {
+          await expect.poll(()=>f.activityRequests.length).toBeGreaterThan(0);
+          expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+        } else {
+          expect(f.canonical.state.events[0].expenses).toHaveLength(0);
+          expect(f.activityRequests).toHaveLength(0);
+        }
+        await sending.reload();
+        await expect(sending.locator('#app .screen')).toBeVisible();
+        await expect.poll(pending).toHaveLength(1);
+        f.cloudUnavailable(sender,false); f.failActivity(sender,false);
+        await sending.evaluate(()=>window.dispatchEvent(new Event('online')));
+        await expect.poll(pending,{timeout:15000}).toHaveLength(0);
+        expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+        const expense=f.canonical.state.events[0].expenses[0];
+        expect([...f.activityInbox.values()]).toHaveLength(1);
+        expect(f.activityRequests.filter(item=>item.accepted)).toHaveLength(1);
+        expect(f.activityRequests.at(-1).body.activityId).toBe(expense.id);
+        expect(f.activityRequests.at(-1).client).toBe(sender);
+        await receiving.locator('[data-nav-destination="notifications"]').click();
+        await expect(receiving.locator('.notification-inbox-item')).toHaveCount(1,{timeout:16000});
+        await expect(receiving.locator('.notification-inbox-item')).toContainText('הוצאה חדשה באירוע');
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+      } finally {await f.close();}
+    });
+  }
+}
+
+for (const recipient of [0,1]) for (const table of ['friendships','notification_inbox']) {
+  test(`a held ${table} read does not delay financial changes on recipient ${recipient}`, async ({},testInfo)=>{
+    const f=await fixture(testInfo), receiving=f.pages[recipient],sending=f.pages[1-recipient];
+    let hold;
+    try {
+      await receiving.locator('[data-nav-destination="home"]').click();
+      await expect(receiving.locator('[data-screen-kind="home"]')).toBeVisible();
+      hold=f.holdNextSecondary(recipient,table);
+      await receiving.evaluate(()=>window.dispatchEvent(new Event('settle-friends:native-resume')));
+      await expect.poll(()=>hold.arrived).toBe(true);
+      await newExpense(sending,`הוצאה ללא המתנה ${recipient}`, '37');
+      const expense=f.canonical.state.events[0].expenses[0];
+      const started=performance.now();
+      await receiving.evaluate(()=>window.dispatchEvent(new Event('settle-friends:native-resume')));
+      await expect.poll(async()=> (await storedEvent(receiving,f.personal[recipient].id))?.expenses?.some(item=>item.id===expense.id),
+        {timeout:2500,intervals:[50,100]}).toBe(true);
+      const refreshedMs=Math.round(performance.now()-started);
+      await receiving.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await expect(receiving.locator('.expense-row').filter({hasText:`הוצאה ללא המתנה ${recipient}`})).toHaveCount(1);
+      // The held secondary read is still outstanding at the financial/UI ACK.
+      expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+      console.log(JSON.stringify({kind:'two-browser-independent-financial-refresh',recipient,held:table,refreshedMs,
+        scope:'synthetic backend and lifecycle signal; actual financial wire write, stored receipt and visible expense'}));
+    } finally {hold?.release();await f.close();}
+  });
 }
 
 async function storedEvent(page, spaceId) {

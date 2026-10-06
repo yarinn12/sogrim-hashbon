@@ -264,6 +264,54 @@ test("an old event joined today appears first on home", async ({ page, request }
   );
 });
 
+test("home status labels and counts fit their touch targets at narrow widths", async ({ page, request }, testInfo) => {
+  await request.put("/api/state", { data: populatedAccountState });
+  await page.addInitScript(state => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+  }, populatedAccountState);
+
+  const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
+  for (const width of [320, 375, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
+    await waitForHomePresentation(page);
+    const filters = page.locator('.event-lifecycle-filter [data-action="event-lifecycle-filter"]');
+    await expect(filters).toHaveCount(4);
+    const layout = await filters.evaluateAll(buttons => buttons.map(button => {
+      const bounds = button.getBoundingClientRect();
+      const content = button.querySelector(".event-lifecycle-option-content");
+      const label = content.firstElementChild;
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const textRects = [...range.getClientRects()];
+      const count = content.querySelector(".font-num").getBoundingClientRect();
+      return {
+        label: label.textContent,
+        width: bounds.width,
+        height: bounds.height,
+        overflow: button.scrollWidth - button.clientWidth,
+        textFits: textRects.every(rect => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1),
+        countFits: count.left >= bounds.left && count.right <= bounds.right && count.top >= bounds.top && count.bottom <= bounds.bottom,
+        countBottom: count.bottom,
+        columns: getComputedStyle(button.parentElement).gridTemplateColumns,
+        fontSize: getComputedStyle(label).fontSize
+      };
+    }));
+    for (const item of layout) {
+      expect(item.overflow, `${width}px: ${JSON.stringify(item)}`).toBeLessThanOrEqual(1);
+      expect(item.textFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
+      expect(item.countFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
+      expect(item.width).toBeGreaterThanOrEqual(44);
+      expect(item.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(Math.max(...layout.map(item => item.countBottom)) - Math.min(...layout.map(item => item.countBottom))).toBeLessThanOrEqual(1);
+    await filters.filter({ hasText: "מוסיפים הוצאות" }).click();
+    await expect(page.locator('.event-lifecycle-filter [data-filter="adding"]')).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".event-row")).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath(`home-status-labels-${width}.png`) });
+  }
+});
+
 async function homeCreateActionPresentation(page) {
   await waitForHomePresentation(page);
   const action = page.locator(".home-create-event-action");

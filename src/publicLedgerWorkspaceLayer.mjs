@@ -5986,7 +5986,10 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-lifecycle-option-content {
-    grid-template-rows: auto 12px !important;
+    width: 100% !important;
+    height: 100% !important;
+    white-space: normal !important;
+    grid-template-rows: 1fr 12px !important;
     row-gap: 0 !important;
   }
 

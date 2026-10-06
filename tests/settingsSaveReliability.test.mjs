@@ -9,6 +9,8 @@ import * as settings from "../src/domain/settlement.mjs";
 import { isEventClosed } from "../src/domain/eventFilters.mjs";
 import * as currencies from "../src/domain/currencies.mjs";
 import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+import { markParticipantMembershipChanges } from "../src/domain/eventMembership.mjs";
+import { rollbackEventControlStateChange } from "../src/data/eventControlRollback.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 function functionSource(name) {
@@ -87,7 +89,7 @@ function harness() {
     ...actions, ...permissions, ...settings, ...currencies, isEventClosed, saveFailureMessage,
     currencySelectLabel: (value) => value,
     managementModeRequiresAdmin: (mode) => mode === "centralized",
-    state: initialState(), notice: "", expenseDraft: null,
+    state: initialState(), notice: "", expenseDraft: null, eventDialog: null, screen: { name: "event", eventId: "settings" },
     eventRepaymentModeRequestVersions: new Map(), revision: 0, console, structuredClone,
     sharedStateSaveRevision: () => context.revision,
     getEvent: (id) => context.state.events.find((event) => event.id === id),
@@ -95,6 +97,23 @@ function harness() {
     cloneNavigationValue: structuredClone,
     eventSettlementTransfers: (event) => event.transfers ?? [],
     recordEventActivity: () => {}, prepareEventTransfers: () => {},
+    markParticipantMembershipChanges,
+    rollbackEventControlStateChange,
+    eventParticipants: event => context.state.participants.filter(person => event.participantIds.includes(person.id)),
+    settlementCloseConfirmation: null,
+    publishEventActivityAfterSave: () => { context.activityNotifications += 1; }, activityNotifications: 0,
+    eventParticipantHasMoneyHistory: () => false,
+    showEventParticipantMessage: () => {},
+    isEventParticipantInactive: (event, id) => (event.inactiveParticipantIds ?? []).includes(id),
+    eventAdminIds: (_state, event) => event.adminIds ?? [],
+    participantConnectionStatus: () => ({ connected: true }),
+    participantName: id => id,
+    isEventParticipantsDialog: id => context.eventDialog?.eventId === id,
+    canCurrentParticipantAddEventMember: () => true,
+    canCurrentParticipantChangeEventMembership: () => true,
+    publishEventInvitation: async () => { context.invitations += 1; }, invitations: 0,
+    syncEventParticipantDialog: () => false,
+    renderHistoryFallback: () => { context.historyRewinds += 1; }, historyRewinds: 0,
     render: () => renders.push({ state: structuredClone(context.state), notice: context.notice }),
     reactivateDialogAfterRender: () => {},
     requestAnimationFrame: (callback) => callback(),
@@ -107,12 +126,90 @@ function harness() {
   });
   for (const name of ["stateSaveCheckpoint", "rejectedStateSaveIsCurrent", "settlementTransferPlanKey", "eventCurrency",
     "updateEventCoverImage", "setEventRepaymentMode", "setEventManagementMode", "toggleEventLock",
-    "applyEventCurrencyChange", "setEventRoundingMode"]) {
+    "applyEventCurrencyChange", "setEventRoundingMode", "leaveCurrentEvent",
+    "toggleEventParticipantAdmin", "restoreEventParticipant", "toggleEventParticipant", "activateParticipantForEvent",
+    "closeCurrentEventNow", "reopenCurrentEvent", "removeEventParticipant"]) {
     vm.runInContext(functionSource(name), context);
   }
   if (source.includes("function stateSaveIsCurrent(")) vm.runInContext(functionSource("stateSaveIsCurrent"), context);
   return { context, requests, renders };
 }
+
+const rosterCases = [
+  ["toggleEventParticipantAdmin", ["settings", "account-b", true], () => {}],
+  ["restoreEventParticipant", ["settings", "account-b"], event => { event.inactiveParticipantIds = ["account-b"]; }],
+  ["toggleEventParticipant", ["settings", "account-b", true], event => { event.participantIds = ["account-a"]; }],
+  ["closeCurrentEventNow", ["settings"], () => {}],
+  ["reopenCurrentEvent", ["settings"], event => { event.locked = true; event.closedAt = baseTime; }]
+];
+for (const [handler, args, prepare] of rosterCases) {
+  test(`${handler} ignores a late success after switching accounts or starting another save`, async () => {
+    for (const switchAccount of [true, false]) {
+      const h = harness();
+      h.context.state.participants.push({ id: "account-b", displayName: "B", kind: "user" });
+      h.context.state.events[0].participantIds.push("account-b");
+      prepare(h.context.state.events[0]);
+      const request = h.context[handler](...args);
+      assert.equal(h.requests.length, 1);
+      if (switchAccount) h.context.state.currentParticipantId = "account-b";
+      else h.context.revision += 1;
+      h.context.eventDialog = { eventId: "settings", kind: "participants", message: "Newer screen" };
+      h.context.notice = "Newer screen";
+      const renders = h.renders.length;
+      h.requests[0].resolve({ ok: true }); await request;
+      assert.equal(h.context.notice, "Newer screen");
+      assert.equal(h.context.eventDialog.message, "Newer screen");
+      assert.equal(h.renders.length, renders);
+      assert.equal(h.context.invitations, 0, "the old account cannot send a new invitation");
+      assert.equal(h.context.historyRewinds, 0);
+      assert.equal(h.context.activityNotifications, 0);
+    }
+  });
+}
+
+for (const [handler, args, prepare] of [
+  ["toggleEventLock", ["settings"], () => {}],
+  ["leaveCurrentEvent", ["settings"], event => { event.adminIds = ["account-b"]; }],
+  ["removeEventParticipant", ["settings", "account-b"], () => {}],
+  ...rosterCases
+]) {
+  test(`${handler} rejection undoes only its change and retains concurrent remote content`, async () => {
+    const h = harness();
+    h.context.state.participants.push({ id: "account-b", displayName: "B", kind: "user" });
+    h.context.state.events[0].participantIds.push("account-b");
+    prepare(h.context.state.events[0]);
+    const before = structuredClone(h.context.state);
+    const request = h.context[handler](...args);
+    h.context.state = structuredClone(h.context.state);
+    const event = h.context.state.events[0];
+    event.notes.push({ id: "incoming-note" });
+    event.expenses.push({ id: "incoming-expense" });
+    event.currency = "USD";
+    h.requests[0].resolve({ ok: false }); await request;
+    const restored = h.context.state.events[0];
+    assert.equal(restored.locked, before.events[0].locked);
+    assert.deepEqual([...restored.participantIds].sort(), [...before.events[0].participantIds].sort());
+    assert.deepEqual([...(restored.inactiveParticipantIds ?? [])], [...(before.events[0].inactiveParticipantIds ?? [])]);
+    assert.deepEqual([...restored.adminIds], [...before.events[0].adminIds]);
+    assert.equal(restored.notes[0]?.id, "incoming-note");
+    assert.equal(restored.expenses[0]?.id, "incoming-expense");
+    assert.equal(restored.currency, "USD");
+  });
+}
+
+test("a self-leave receipt arriving after an account switch cannot change the new screen", async () => {
+  const h = harness();
+  h.context.state.events[0].participantIds.push("account-b");
+  h.context.state.events[0].adminIds = ["account-b"];
+  const request = h.context.leaveCurrentEvent("settings");
+  const nextAccount = initialState(); nextAccount.currentParticipantId = "account-b";
+  h.context.state = nextAccount; h.context.notice = "Account B screen";
+  const renders = h.renders.length;
+  h.requests[0].resolve({ ok: true }); await request;
+  assert.equal(h.context.state, nextAccount);
+  assert.equal(h.context.notice, "Account B screen");
+  assert.equal(h.renders.length, renders);
+});
 
 test("changing a legacy event cover cannot overwrite newer remote settings", async () => {
   const h = harness();

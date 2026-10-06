@@ -9,10 +9,13 @@ async function probe(run) {
   try {
     const context = await browser.newContext();
     const errors=[], diagnostics=[], failedUrls=new Set();
-    await recordBrowserErrors(context,{client:1,errors,diagnostics,failedUrls});
-    await context.route('**/*', route => route.request().url() === pageUrl
+    const recorder=await recordBrowserErrors(context,{client:1,errors,diagnostics});
+    await context.route('**/*', route => {
+      if(failedUrls.has(route.request().url()))recorder.recordExpectedFailure(route.request());
+      return route.request().url() === pageUrl
       ? route.fulfill({contentType:'text/html',body:'<!doctype html><title>Isolated error monitor</title>'})
-      : route.fulfill({headers:{'access-control-allow-origin':'https://wrong-origin.example.test'},json:{ok:true}}));
+      : route.fulfill({headers:{'access-control-allow-origin':'https://wrong-origin.example.test'},json:{ok:true}});
+    });
     const page=await context.newPage();
     await page.goto(pageUrl);
     await run({page,errors,diagnostics,failedUrls});

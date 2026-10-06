@@ -1,5 +1,6 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
+import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
 import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
@@ -153,6 +154,10 @@ import {
 import { markStartupMilestone } from "./data/startupMetrics.mjs";
 import { sendPaymentReminder } from "./data/paymentReminders.mjs";
 import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
+import {
+  loadPendingEventNotifications, rememberPendingEventNotification,
+  forgetPendingEventNotification, pendingEventNotificationKey
+} from "./data/pendingEventNotifications.mjs";
 import {
   attachOpenInviteToken,
   ensureOpenEventInvite,
@@ -614,6 +619,8 @@ let resumeSyncFollowUpIncludeSecondary = false;
 let visibleEventSyncRequest = null;
 let visibleEventSyncScope = "";
 let pendingEventMembershipRetryRequest = null;
+let pendingEventNotificationRetryRequest = null;
+const pendingEventNotificationRequests = new Map();
 let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
 let pendingMutationRecoveryRequest = null;
@@ -20431,6 +20438,7 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
   const closedAt = new Date().toISOString();
   state = closeEvent(state, eventId, closedAt);
   const activityId = recordEventActivity(eventId, "event-closed", {}, closedAt);
+  const attemptedState = cloneNavigationValue(state);
   settlementCloseConfirmation = null;
   expenseDraft = null;
   eventDialog = null;
@@ -20452,9 +20460,10 @@ async function closeCurrentEventNow(eventId, { destination = "settlement" } = {}
   } catch (error) {
     result = { ok: false, error };
   }
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "אין לחשבון הרשאה לסגור את האירוע. רעננו את המסך."
       : "לא הצלחנו לסגור את האירוע. לא בוצע שינוי ואפשר לנסות שוב.";
@@ -20514,6 +20523,7 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
   const reopenedAt = new Date().toISOString();
   state = reopenEvent(state, eventId, reopenedAt);
   recordEventActivity(eventId, "event-reopened", {}, reopenedAt);
+  const attemptedState = cloneNavigationValue(state);
   settlementCloseConfirmation = null;
   notice = "פותח את האירוע ושומר…";
   render();
@@ -20524,9 +20534,10 @@ async function reopenCurrentEvent(eventId, { resetPayments = false } = {}) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = "האירוע לא נפתח כי הסנכרון לא זמין. לא בוצע שינוי.";
   } else if (result?.pending) {
     notice = "";
@@ -20575,6 +20586,7 @@ async function toggleEventLock(eventId) {
     recordEventActivity(eventId, "event-closed", {}, statusUpdatedAt);
     expenseDraft = null;
   }
+  const attemptedState = cloneNavigationValue(state);
   notice = opening ? "שומרים את פתיחת האירוע..." : "שומרים את נעילת האירוע...";
   render();
   reactivateDialogAfterRender(".event-modal", '[data-action="toggle-lock"]');
@@ -20588,7 +20600,7 @@ async function toggleEventLock(eventId) {
   if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     notice = result?.error?.code === "SHARED_EVENT_MEMBERSHIP_REVOKED"
       ? "הגישה שלך לאירוע בוטלה. רעננו את המסך."
       : opening
@@ -20639,6 +20651,7 @@ async function leaveCurrentEvent(eventId) {
   recordEventActivity(eventId, "participant-left", {
     subjectParticipantId: state.currentParticipantId
   });
+  const attemptedState = cloneNavigationValue(state);
   expenseDraft = null;
   eventDialog = null;
   screen = { name: "home" };
@@ -20651,9 +20664,10 @@ async function leaveCurrentEvent(eventId) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     screen = previousScreen;
     notice = "לא הצלחנו להשלים את העזיבה. לא בוצע שינוי ואפשר לנסות שוב.";
     render();
@@ -21598,6 +21612,7 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
 
   const previousState = cloneNavigationValue(state);
   state = nextState;
+  const attemptedState = cloneNavigationValue(state);
   const participantLabel = participantName(participantId, event);
   const confirmedMessage = enabled
     ? `${participantLabel} הוגדר כמנהל אירוע.`
@@ -21618,9 +21633,10 @@ async function toggleEventParticipantAdmin(eventId, participantId, enabled) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     const failureMessage = "לא הצלחנו לשנות את הרשאת הניהול. לא בוצע שינוי.";
     eventDialog = eventDialog?.eventId === eventId
       ? { ...eventDialog, message: failureMessage }
@@ -21852,6 +21868,7 @@ async function removeEventParticipant(eventId, participantId) {
   recordEventActivity(eventId, "participant-removed", {
     subjectParticipantId: participantId
   });
+  const attemptedState = cloneNavigationValue(state);
   eventDialog = removedFromProfile
     ? {
         eventId,
@@ -21874,9 +21891,10 @@ async function removeEventParticipant(eventId, participantId) {
   render();
   reactivateDialogAfterRender(".event-modal");
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = eventDialog && eventDialog.eventId === eventId
       ? {
           ...eventDialog,
@@ -21947,6 +21965,7 @@ async function restoreEventParticipant(eventId, participantId) {
   recordEventActivity(eventId, "participant-restored", {
     subjectParticipantId: participantId
   });
+  const attemptedState = cloneNavigationValue(state);
   eventDialog = isEventParticipantsDialog(eventId)
     ? {
         ...eventDialog,
@@ -21961,9 +21980,10 @@ async function restoreEventParticipant(eventId, participantId) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
           ...eventDialog,
@@ -22034,6 +22054,7 @@ async function toggleEventParticipant(eventId, participantId, checked) {
       subjectParticipantId: participantId
     });
   }
+  const attemptedState = cloneNavigationValue(state);
   render();
   reactivateDialogAfterRender(
     ".event-modal",
@@ -22048,9 +22069,10 @@ async function toggleEventParticipant(eventId, participantId, checked) {
     })
   );
   const result = await saveCheckpoint.request;
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (!result?.ok && !result?.pending) {
     if (!rejectedStateSaveIsCurrent(result, saveCheckpoint)) return result;
-    state = previousState;
+    state = rollbackEventControlStateChange(state, previousState, attemptedState) ?? previousState;
     eventDialog = isEventParticipantsDialog(eventId)
       ? {
           ...eventDialog,
@@ -22063,6 +22085,7 @@ async function toggleEventParticipant(eventId, participantId, checked) {
     return;
   }
   await publishEventInvitation(eventId, participant);
+  if (!stateSaveIsCurrent(saveCheckpoint)) return result;
   if (returnsToParticipantRoster) {
     // Adding from the focused picker creates one optimistic roster history
     // entry. Rewind both that entry and the picker route so the user lands on
@@ -22645,7 +22668,8 @@ function pendingMutationRecoveryCount() {
   return (
     pendingMembershipInvitations +
     loadPendingEventJoins(window.localStorage, ownerUserId).length +
-    loadPendingAccountLinks(window.localStorage, ownerUserId).length
+    loadPendingAccountLinks(window.localStorage, ownerUserId).length +
+    loadPendingEventNotifications(window.localStorage, ownerUserId).length
   );
 }
 
@@ -22689,7 +22713,8 @@ function recoverPendingMutations({ resetBackoff = false } = {}) {
   pendingMutationRecoveryRequest = Promise.allSettled([
     retryPendingEventMembershipInvitations(),
     retryPendingEventJoins(),
-    retryPendingAccountLinks()
+    retryPendingAccountLinks(),
+    retryPendingEventNotifications()
   ]).finally(() => {
     pendingMutationRecoveryRequest = null;
     if (pendingMutationRecoveryCount() > 0) {
@@ -23088,20 +23113,97 @@ function publishEventActivityAfterSave(
 ) {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
   const generation = versionedReadCacheSessionGeneration();
-  completedSaveResult(saveRequest)
-    .then(async (result) => {
-      if (generation !== versionedReadCacheSessionGeneration() ||
-          !pendingMutationOwnerIsActive(ownerId) || state.currentParticipantId !== `account-${ownerId}`) return;
-      if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
-        return;
-      }
-      await sendEventActivityNotificationWithAccountRecovery({
-        eventId,
-        activityId,
-        kind
+  const entry = { ownerUserId: ownerId, eventId, activityId, kind };
+  const isCurrent = () => generation === versionedReadCacheSessionGeneration() &&
+    pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
+  return Promise.resolve(saveRequest).then(async accepted => {
+    if (!isCurrent() || !eventId || !activityId || (!accepted?.ok && !accepted?.pending)) return;
+    if (accepted.mode !== "cloud" && !accepted.pending && !accepted.completion) return;
+    // The financial outbox is already durable. Retain its notification before
+    // awaiting a slow cloud completion, including an offline queued save.
+    entry.confirmed = accepted.mode === "cloud" && !accepted.pending;
+    rememberEventNotificationIntent(entry);
+    const result = await completedSaveResult(saveRequest);
+    if (!isCurrent()) return;
+    if (!result?.ok && !result?.pending) {
+      forgetPendingEventNotification(entry, window.localStorage);
+      return;
+    }
+    if (result?.mode === "cloud" && !result.pending) {
+      entry.confirmed = true;
+      rememberEventNotificationIntent(entry);
+      await deliverPendingEventNotification(entry, generation);
+    } else {
+      schedulePendingMutationRecovery();
+    }
+  }).catch(error => {
+    if (!isCurrent()) return;
+    emitOperationDeferred("event_notification", { error });
+    schedulePendingMutationRecovery();
+  });
+}
+
+function rememberEventNotificationIntent(entry) {
+  if (!rememberPendingEventNotification(entry, window.localStorage)) {
+    emitOperationFailure("event_notification", {
+      error: Object.assign(new Error("Notification outbox is unavailable"), { code: "LOCAL_STORAGE_UNAVAILABLE" })
+    });
+  }
+}
+
+function deliverPendingEventNotification(entry, generation) {
+  const key = `${generation}:${pendingEventNotificationKey(entry)}`;
+  if (pendingEventNotificationRequests.has(key)) return pendingEventNotificationRequests.get(key);
+  const isCurrent = () => generation === versionedReadCacheSessionGeneration() &&
+    pendingMutationOwnerIsActive(entry.ownerUserId) && state.currentParticipantId === `account-${entry.ownerUserId}`;
+  const request = (async () => {
+    if (!isCurrent()) return;
+    try {
+      const result = await sendEventActivityNotificationWithAccountRecovery({
+        eventId: entry.eventId, activityId: entry.activityId, kind: entry.kind
       });
-    })
-    .catch(() => {});
+      if (!isCurrent()) return;
+      if (result?.ok || result?.reason === "no-eligible-recipients") {
+        forgetPendingEventNotification(entry, window.localStorage);
+      } else {
+        schedulePendingMutationRecovery();
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      const retryable = error?.retryable === true || navigator.onLine === false || isRetryablePendingSyncFailure(error);
+      if (!retryable) forgetPendingEventNotification(entry, window.localStorage);
+      (retryable ? emitOperationDeferred : emitOperationFailure)("event_notification", { error });
+      if (retryable) schedulePendingMutationRecovery();
+    }
+  })().finally(() => { pendingEventNotificationRequests.delete(key); });
+  pendingEventNotificationRequests.set(key, request);
+  return request;
+}
+
+function retryPendingEventNotifications() {
+  if (pendingEventNotificationRetryRequest || !appBootHydrated || navigator.onLine === false) {
+    return pendingEventNotificationRetryRequest ?? Promise.resolve();
+  }
+  const ownerUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const generation = versionedReadCacheSessionGeneration();
+  const entries = loadPendingEventNotifications(window.localStorage, ownerUserId);
+  if (!ownerUserId || !entries.length) return Promise.resolve();
+  pendingEventNotificationRetryRequest = (async () => {
+    const publication = await flushPendingSharedState();
+    const pending = pendingSharedSyncStatus();
+    for (const entry of entries) {
+      if (generation !== versionedReadCacheSessionGeneration() || !pendingMutationOwnerIsActive(ownerUserId)) return;
+      // Never announce an offline expense before the ordered financial outbox
+      // has acknowledged that event. A failure in a different event may coexist.
+      if (pending.pendingEventIds.includes(entry.eventId)) continue;
+      if ((!publication?.ok || publication.pending) && !pending.pendingEventIds.length) continue;
+      // The normal outbox may already have flushed before this worker runs.
+      // Its empty acknowledgement is valid too; the server then verifies the
+      // exact committed activity and current canonical membership again.
+      await deliverPendingEventNotification(entry, generation);
+    }
+  })().finally(() => { pendingEventNotificationRetryRequest = null; });
+  return pendingEventNotificationRetryRequest;
 }
 
 function completedSaveResult(saveRequest) {
@@ -24061,12 +24163,18 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
       state = nextState;
       render();
     })
-    .then(() => isCurrentAccount() && includeSecondary
-      ? Promise.all([
-          refreshFriendNetwork(),
-          refreshNotificationInbox({ force: true })
-        ])
-      : undefined)
+    .then(() => {
+      if (!isCurrentAccount() || !includeSecondary) return;
+      // Financial refresh owns this queue. A slow friend/inbox request must
+      // not hold the next fresh expense snapshot behind its network timeout.
+      // Both background readers retain their own account and request guards.
+      void Promise.all([
+        refreshFriendNetwork(),
+        refreshNotificationInbox({ force: true })
+      ]).catch(error => {
+        if (isCurrentAccount()) emitOperationDeferred("state_load", { error });
+      });
+    })
     .catch((error) => {
       if (!isCurrentAccount()) return;
       // Foreground refresh is intentionally non-blocking, but a swallowed
