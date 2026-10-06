@@ -493,7 +493,7 @@ function renderHomeArtwork() {
             <stop offset="1" stop-color="#06413d" />
           </linearGradient>
           <linearGradient id="home-art-aqua" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stop-color="#a8ecee" />
+            <stop offset="0" stop-color="#e4dac8" />
             <stop offset="1" stop-color="#2bb8c2" />
           </linearGradient>
         </defs>
@@ -790,7 +790,7 @@ function injectBrandStyle() {
     }
 
     .brand-symbol-coin {
-      fill: #a8ecee;
+      fill: #e4dac8;
       stroke: rgba(255, 255, 255, 0.72);
       stroke-width: 2.3;
     }
@@ -801,7 +801,7 @@ function injectBrandStyle() {
     }
 
     .brand-symbol-bridge {
-      stroke: #71d9de;
+      stroke: #e4dac8;
       stroke-width: 4.4;
     }
 
@@ -941,7 +941,7 @@ function injectBrandStyle() {
     }
 
     .art-dot {
-      fill: #71d9de;
+      fill: #e4dac8;
     }
 
     .art-dot-two {
@@ -950,13 +950,13 @@ function injectBrandStyle() {
 
     .home-art-loop {
       fill: none;
-      stroke: rgba(113, 217, 222, 0.82);
+      stroke: rgba(228, 218, 200, 0.82);
       stroke-width: 10;
       stroke-linecap: round;
     }
 
     .home-art-orbit {
-      fill: #71d9de;
+      fill: #e4dac8;
     }
 
     .home-art-face {
@@ -1214,7 +1214,7 @@ function injectBrandStyle() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #2bb8c2, #71d9de, #f46f61);
+      background: linear-gradient(90deg, #b9c9c2, #e4dac8, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -1229,7 +1229,7 @@ function injectBrandStyle() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #71d9de !important;
+      color: #e4dac8 !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }

@@ -17,6 +17,8 @@ const CSS = `
     --ledger-brand-hover: #033a34;
     --ledger-accent: #21aaa6;
     --ledger-accent-soft: #dcf3ef;
+    --ledger-on-dark-kicker: #e4dac8;
+    --ledger-positive-on-dark: #c5d5c7;
     --ledger-positive: #187158;
     --ledger-negative: #b94739;
     --ledger-warning: #8b5d25;
@@ -642,7 +644,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .recent-event-eyebrow {
-    color: #8be0df !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 13px !important;
     font-weight: 650 !important;
   }
@@ -676,7 +678,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .recent-event-balance.is-credit strong {
-    color: #83ddb8 !important;
+    color: var(--ledger-positive-on-dark) !important;
   }
 
   html.ledger-workspace-v1 .recent-event-balance.is-debt strong {
@@ -1323,7 +1325,7 @@ const CSS = `
     > .summary-item.summary-personal
     .summary-personal-value.is-credit
     .amount {
-    color: #9fe4d2 !important;
+    color: var(--ledger-positive-on-dark) !important;
   }
 
   html.ledger-workspace-v1
@@ -1550,7 +1552,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .quick-split-summary .eyebrow {
-    color: #8be0df !important;
+    color: var(--ledger-on-dark-kicker) !important;
   }
 
   html.ledger-workspace-v1 .quick-split-summary h3,
@@ -2918,7 +2920,7 @@ const CSS = `
     z-index: 0 !important;
     height: 3px !important;
     display: block !important;
-    background: linear-gradient(90deg, #22b7b2 0%, #8ce3d8 48%, rgba(140, 227, 216, 0) 100%) !important;
+    background: linear-gradient(90deg, #b9c9c2 0%, #e4dac8 48%, rgba(228, 218, 200, 0) 100%) !important;
   }
 
   html.ledger-workspace-v1.circle-design-v1
@@ -2949,7 +2951,7 @@ const CSS = `
     .screen[data-screen-kind="home"]
     > .top
     .eyebrow {
-    color: #8ce3d8 !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 14px !important;
     font-weight: 700 !important;
   }
@@ -2983,7 +2985,7 @@ const CSS = `
     .screen:not([data-screen-kind="home"]):not([data-product-screen="home"]):not(.product-home-screen)
     > .top
     .eyebrow {
-    color: #8ce3d8 !important;
+    color: var(--ledger-on-dark-kicker) !important;
   }
 
   html.ledger-workspace-v1.circle-design-v1
@@ -4389,7 +4391,7 @@ const CSS = `
     margin: 0 !important;
     border: 1px solid rgba(255, 255, 255, 0.2) !important;
     border-radius: 8px !important;
-    color: #9de4dd !important;
+    color: var(--ledger-on-dark-kicker) !important;
     background: rgba(255, 255, 255, 0.08) !important;
   }
 
@@ -4407,7 +4409,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-invite-pass-copy small {
-    color: #83d8cf !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 10.5px !important;
     font-weight: 750 !important;
     line-height: 1.25 !important;
@@ -4455,7 +4457,7 @@ const CSS = `
     align-items: center !important;
     gap: 0 !important;
     margin: 0 !important;
-    color: #a5eee5 !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 11px !important;
     font-weight: 650 !important;
   }
@@ -6378,7 +6380,7 @@ const CSS = `
     > .top
     .eyebrow {
     margin: 0 0 7px !important;
-    color: #8de3cf !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 12px !important;
     font-weight: 800 !important;
   }
@@ -6950,7 +6952,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .expense-modal-header .eyebrow,
   html.ledger-workspace-v1 .event-modal-header .eyebrow {
-    color: #8de3cf !important;
+    color: var(--ledger-on-dark-kicker) !important;
   }
 
   html.ledger-workspace-v1 .expense-modal-header .muted,
@@ -14547,7 +14549,7 @@ const CSS = `
   html.ledger-workspace-v1 .relationship-comparison-values small {
     max-width: 100% !important;
     overflow: hidden !important;
-    color: #73d8b8 !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 10px !important;
     font-weight: 760 !important;
     text-overflow: ellipsis !important;
@@ -14561,9 +14563,9 @@ const CSS = `
     direction: rtl !important;
     border: 0 !important;
     border-radius: 999px !important;
-    color: #63d4b0 !important;
+    color: var(--ledger-positive-on-dark) !important;
     background: rgba(255, 255, 255, 0.88) !important;
-    accent-color: #63d4b0 !important;
+    accent-color: var(--ledger-positive-on-dark) !important;
     appearance: none !important;
   }
 
@@ -14574,12 +14576,12 @@ const CSS = `
 
   html.ledger-workspace-v1 .relationship-comparison progress::-webkit-progress-value {
     border-radius: 999px !important;
-    background: #63d4b0 !important;
+    background: var(--ledger-positive-on-dark) !important;
   }
 
   html.ledger-workspace-v1 .relationship-comparison progress::-moz-progress-bar {
     border-radius: 999px !important;
-    background: #63d4b0 !important;
+    background: var(--ledger-positive-on-dark) !important;
   }
 
   html.ledger-workspace-v1 .relationship-comparison-leader {
@@ -17936,7 +17938,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .referral-benefit-label {
-    color: #9ce2d7 !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 12px !important;
     font-weight: 850 !important;
   }
@@ -20226,7 +20228,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-notes-hero-copy .eyebrow {
     margin: 0 !important;
-    color: #8ee0c9 !important;
+    color: var(--ledger-on-dark-kicker) !important;
     font-size: 14px !important;
     font-weight: 780 !important;
     line-height: 1.35 !important;

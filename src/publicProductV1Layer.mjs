@@ -321,7 +321,7 @@ const PRODUCT_V1_CSS = `
   }
 
   html.product-v1 .screen > .top .eyebrow {
-    color: #71d9de;
+    color: #e4dac8;
   }
 
   html.product-v1 .muted,

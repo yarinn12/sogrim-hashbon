@@ -1216,7 +1216,7 @@ function injectReferralStyles() {
     }
 
     .referral-benefit-label {
-      color: #9ce2d7;
+      color: #e4dac8;
       font-size: 0.74rem;
       font-weight: 850;
     }
