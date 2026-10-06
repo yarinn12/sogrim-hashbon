@@ -1,0 +1,120 @@
+name: Finalize existing TestFlight 189 group
+on:
+  push:
+    branches: [work/ios-google-auth-testflight-189-20261006]
+    paths: [.github/workflows/testflight-189-finalize-existing-group-once.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: f031475c8c8fa5d91e4d074040a8f66527bdf1ef
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify signed build and add only the existing tester group
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const repo='yarinn12/sogrim-hashbon';
+          async function gh(path) {
+            const response=await fetch('https://api.github.com/repos/'+repo+path,{redirect:'error',signal:AbortSignal.timeout(30000),headers:{Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'}});
+            assert(response.ok,'Required source evidence could not be read');
+            return response.json();
+          }
+          for(const runId of [37478728056,37478728007,37480363385,37480777533,37480777536]) {
+            const run=await gh('/actions/runs/'+runId);
+            assert.equal(run.status,'completed');
+            assert.equal(run.conclusion,'success');
+          }
+          const original=await gh('/actions/runs/37480995853');
+          assert.equal(original.head_sha,'4c1a527407c7d44eb402c16257f9136d44551957');
+          assert.equal(original.status,'completed');
+          assert.equal(original.conclusion,'failure');
+          const originalJobs=await gh('/actions/runs/37480995853/jobs?per_page=100');
+          assert.equal(originalJobs.total_count,1);
+          const steps=originalJobs.jobs[0].steps;
+          const failed=steps.filter(s=>s.conclusion==='failure');
+          assert.deepEqual(failed.map(s=>s.name),['Add verified build to the existing internal testing group']);
+          for(const name of ['Run release checks','Verify Google native nonce, Apple and email on iPhone and iPad WebKit','Verify prepared iOS release','Archive signed iOS app','Export IPA','Verify signed iOS artifact','Require successful source QA and an unused Apple build number','Upload app to TestFlight','Verify Apple processing and complete TestFlight notes']) {
+            assert.equal(steps.find(s=>s.name===name)?.conclusion,'success',name);
+          }
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const groupId='4646e3de-7401-4e70-ac32-9a00072e1376';
+          const testerId='5d2040f0-3af9-4d98-a188-fd6eeb5547db';
+          const testerHash='004ec2efff572434a5fd20635e1d32b406e494a5a9ea932d539734b248143a85';
+          const buildId='1b06d9e2-caee-4309-bce7-18c65d13f363';
+          const appId='6809952514';
+          const appStoreVersionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a';
+          const expectedSelected='3d5a4910-6bb0-4304-889f-676c1be1d176';
+          const notes='תוקן ערך האימות שנשלח לשרת בהתחברות עם Google באייפון ובאייפד. הוסר המעבר האוטומטי להתחברות נוספת בחלון חיצוני אחרי כשל בכניסה. נשמרה אפשרות לניסיון חוזר מתוך האפליקציה.';
+          function collection(value) {
+            assert(Array.isArray(value?.data)&&!value.links?.next,'Incomplete Apple response');
+            return value.data;
+          }
+          async function verifyGroup() {
+            const group=(await api('/v1/betaGroups/'+groupId)).data;
+            assert.equal(group.id,groupId);
+            assert.equal(group.attributes?.name,'Yarin Internal Testing');
+            assert.equal(group.attributes?.isInternalGroup,true);
+            const testers=collection(await api('/v1/betaGroups/'+groupId+'/betaTesters?limit=200'));
+            assert.equal(testers.length,1,'Unexpected tester membership');
+            assert.equal(testers[0].id,testerId,'Unexpected tester identity');
+            assert.equal(createHash('sha256').update(String(testers[0].attributes?.email||'').trim().toLowerCase()).digest('hex'),testerHash,'Unexpected tester email');
+          }
+          await verifyGroup();
+          const app=(await api('/v1/apps/'+appId)).data;
+          assert.equal(app.attributes?.bundleId,'com.sogrimhashbon.app');
+          const builds=await api('/v1/builds?'+new URLSearchParams({'filter[app]':appId,'filter[version]':'189',include:'preReleaseVersion',limit:'200'}));
+          const matches=collection(builds);
+          assert.equal(matches.length,1);
+          const build=matches[0];
+          const preRelease=builds.included?.find(v=>v.type==='preReleaseVersions'&&v.id===build.relationships?.preReleaseVersion?.data?.id);
+          assert.equal(build.id,buildId);
+          assert.equal(build.attributes?.version,'189');
+          assert.equal(build.attributes?.processingState,'VALID');
+          assert.equal(build.attributes?.usesNonExemptEncryption,false);
+          assert.equal(preRelease?.attributes?.version,'4.55');
+          assert.equal(preRelease?.attributes?.platform,'IOS');
+          const locales=collection(await api('/v1/builds/'+buildId+'/betaBuildLocalizations?limit=200'));
+          const hebrew=locales.filter(l=>l.attributes?.locale==='he');
+          assert.equal(hebrew.length,1);
+          assert.equal(hebrew[0].attributes?.whatsNew,notes);
+          const selectedBefore=(await api('/v1/appStoreVersions/'+appStoreVersionId+'/build')).data;
+          assert.equal(selectedBefore.id,expectedSelected);
+          assert.equal(selectedBefore.attributes?.version,'186');
+          const assignedBefore=collection(await api('/v1/betaGroups/'+groupId+'/builds?limit=200'));
+          if(!assignedBefore.some(b=>b.id===buildId)) {
+            await api('/v1/betaGroups/'+groupId+'/relationships/builds',{method:'POST',body:{data:[{type:'builds',id:buildId}]}});
+          }
+          const assignedAfter=collection(await api('/v1/betaGroups/'+groupId+'/builds?limit=200'));
+          assert(assignedAfter.some(b=>b.id===buildId&&b.attributes?.version==='189'),'Build assignment was not confirmed');
+          await verifyGroup();
+          const selectedAfter=(await api('/v1/appStoreVersions/'+appStoreVersionId+'/build')).data;
+          assert.equal(selectedAfter.id,expectedSelected);
+          assert.equal(selectedAfter.attributes?.version,'186');
+          const report={checkedAt:new Date().toISOString(),appId,buildId,version:'4.55',build:'189',processingState:'VALID',hebrewReleaseNotesVerified:true,groupId,existingTesterIdentityVerified:true,assignedBuildVerified:true,selectedAppStoreBuild:'186',signedUploadRun:37480995853,sourceCommit:'f031475c8c8fa5d91e4d074040a8f66527bdf1ef'};
+          writeFileSync('testflight-189-group-finalization.json',JSON.stringify(report,null,2)+'\n');
+          console.log('TESTFLIGHT_189_READY:'+JSON.stringify(report));
+          NODE
+      - name: Keep finalization evidence
+        uses: actions/upload-artifact@v6
+        with:
+          name: testflight-189-group-finalization
+          path: testflight-189-group-finalization.json
+          if-no-files-found: error
+          retention-days: 7
