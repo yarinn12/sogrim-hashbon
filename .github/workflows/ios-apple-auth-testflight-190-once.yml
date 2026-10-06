@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ios-testflight-${{ github.repository }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-and-upload:
@@ -33,7 +33,7 @@ jobs:
       - name: Checkout verified authentication source
         uses: actions/checkout@v6
         with:
-          ref: 6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686
+          ref: 6e3c8e6de572d086dc497a3b69133ebe86b3a67f
           persist-credentials: false
 
       - name: Set up Node.js
@@ -133,7 +133,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
-          for (const [id,expected] of [[37518547333,"6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686"],[37518547379,"6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686"],[37519237184,"1db36693e1c1033e2320dfae8a30cc532a2ee264"],[37519237008,"1db36693e1c1033e2320dfae8a30cc532a2ee264"]]) {
+          for (const [id,expected] of [[37522261357,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37522261206,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37522534582,"3a2f8107872ff5a2981b4499bcc3f99dfe3c3160"],[37522534428,"3a2f8107872ff5a2981b4499bcc3f99dfe3c3160"]]) {
             let accepted=false;
             for(let attempt=0;attempt<60;attempt++){
               const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+id,{
@@ -210,7 +210,7 @@ jobs:
           if(readBack.links?.next||!readBack.data?.some(x=>x.id===b.id&&x.attributes?.version===process.env.IOS_BUILD))throw new Error('Build assignment not confirmed');
           const selected=await api('/v1/appStoreVersions/3a69b968-9121-43b6-b9b5-4ea3ddf42d3a/build');
           if(selected.data?.attributes?.version!=='186')throw new Error('Unexpected App Store draft selection');
-          const report={checkedAt:new Date().toISOString(),buildId:b.id,version:process.env.IOS_VERSION,build:process.env.IOS_BUILD,processingState:'VALID',assignedBuildVerified:true,existingTesterIdentityVerified:true,selectedAppStoreBuild:'186',sourceCommit:'6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686'};
+          const report={checkedAt:new Date().toISOString(),buildId:b.id,version:process.env.IOS_VERSION,build:process.env.IOS_BUILD,processingState:'VALID',assignedBuildVerified:true,existingTesterIdentityVerified:true,selectedAppStoreBuild:'186',sourceCommit:'6e3c8e6de572d086dc497a3b69133ebe86b3a67f'};
           writeFileSync('build/ios/testflight-group-finalization.json',JSON.stringify(report,null,2)+'\n');
           console.log('TESTFLIGHT_190_READY:'+JSON.stringify(report));
           console.log('TestFlight '+process.env.IOS_VERSION+' ('+process.env.IOS_BUILD+') is VALID and assigned to the existing internal group.');
