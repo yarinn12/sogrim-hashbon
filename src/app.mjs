@@ -155,6 +155,10 @@ import { markStartupMilestone } from "./data/startupMetrics.mjs";
 import { sendPaymentReminder } from "./data/paymentReminders.mjs";
 import { sendEventActivityNotification } from "./data/eventActivityNotifications.mjs";
 import {
+  loadPendingEventNotifications, rememberPendingEventNotification,
+  forgetPendingEventNotification, pendingEventNotificationKey
+} from "./data/pendingEventNotifications.mjs";
+import {
   attachOpenInviteToken,
   ensureOpenEventInvite,
   eventOpenInviteToken,
@@ -615,6 +619,8 @@ let resumeSyncFollowUpIncludeSecondary = false;
 let visibleEventSyncRequest = null;
 let visibleEventSyncScope = "";
 let pendingEventMembershipRetryRequest = null;
+let pendingEventNotificationRetryRequest = null;
+const pendingEventNotificationRequests = new Map();
 let pendingEventJoinRetryRequest = null;
 let pendingAccountLinkRetryRequest = null;
 let pendingMutationRecoveryRequest = null;
@@ -22662,7 +22668,8 @@ function pendingMutationRecoveryCount() {
   return (
     pendingMembershipInvitations +
     loadPendingEventJoins(window.localStorage, ownerUserId).length +
-    loadPendingAccountLinks(window.localStorage, ownerUserId).length
+    loadPendingAccountLinks(window.localStorage, ownerUserId).length +
+    loadPendingEventNotifications(window.localStorage, ownerUserId).length
   );
 }
 
@@ -22706,7 +22713,8 @@ function recoverPendingMutations({ resetBackoff = false } = {}) {
   pendingMutationRecoveryRequest = Promise.allSettled([
     retryPendingEventMembershipInvitations(),
     retryPendingEventJoins(),
-    retryPendingAccountLinks()
+    retryPendingAccountLinks(),
+    retryPendingEventNotifications()
   ]).finally(() => {
     pendingMutationRecoveryRequest = null;
     if (pendingMutationRecoveryCount() > 0) {
@@ -23105,20 +23113,97 @@ function publishEventActivityAfterSave(
 ) {
   const ownerId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
   const generation = versionedReadCacheSessionGeneration();
-  completedSaveResult(saveRequest)
-    .then(async (result) => {
-      if (generation !== versionedReadCacheSessionGeneration() ||
-          !pendingMutationOwnerIsActive(ownerId) || state.currentParticipantId !== `account-${ownerId}`) return;
-      if (!result?.ok || result.mode !== "cloud" || !eventId || !activityId) {
-        return;
-      }
-      await sendEventActivityNotificationWithAccountRecovery({
-        eventId,
-        activityId,
-        kind
+  const entry = { ownerUserId: ownerId, eventId, activityId, kind };
+  const isCurrent = () => generation === versionedReadCacheSessionGeneration() &&
+    pendingMutationOwnerIsActive(ownerId) && state.currentParticipantId === `account-${ownerId}`;
+  return Promise.resolve(saveRequest).then(async accepted => {
+    if (!isCurrent() || !eventId || !activityId || (!accepted?.ok && !accepted?.pending)) return;
+    if (accepted.mode !== "cloud" && !accepted.pending && !accepted.completion) return;
+    // The financial outbox is already durable. Retain its notification before
+    // awaiting a slow cloud completion, including an offline queued save.
+    entry.confirmed = accepted.mode === "cloud" && !accepted.pending;
+    rememberEventNotificationIntent(entry);
+    const result = await completedSaveResult(saveRequest);
+    if (!isCurrent()) return;
+    if (!result?.ok && !result?.pending) {
+      forgetPendingEventNotification(entry, window.localStorage);
+      return;
+    }
+    if (result?.mode === "cloud" && !result.pending) {
+      entry.confirmed = true;
+      rememberEventNotificationIntent(entry);
+      await deliverPendingEventNotification(entry, generation);
+    } else {
+      schedulePendingMutationRecovery();
+    }
+  }).catch(error => {
+    if (!isCurrent()) return;
+    emitOperationDeferred("event_notification", { error });
+    schedulePendingMutationRecovery();
+  });
+}
+
+function rememberEventNotificationIntent(entry) {
+  if (!rememberPendingEventNotification(entry, window.localStorage)) {
+    emitOperationFailure("event_notification", {
+      error: Object.assign(new Error("Notification outbox is unavailable"), { code: "LOCAL_STORAGE_UNAVAILABLE" })
+    });
+  }
+}
+
+function deliverPendingEventNotification(entry, generation) {
+  const key = `${generation}:${pendingEventNotificationKey(entry)}`;
+  if (pendingEventNotificationRequests.has(key)) return pendingEventNotificationRequests.get(key);
+  const isCurrent = () => generation === versionedReadCacheSessionGeneration() &&
+    pendingMutationOwnerIsActive(entry.ownerUserId) && state.currentParticipantId === `account-${entry.ownerUserId}`;
+  const request = (async () => {
+    if (!isCurrent()) return;
+    try {
+      const result = await sendEventActivityNotificationWithAccountRecovery({
+        eventId: entry.eventId, activityId: entry.activityId, kind: entry.kind
       });
-    })
-    .catch(() => {});
+      if (!isCurrent()) return;
+      if (result?.ok || result?.reason === "no-eligible-recipients") {
+        forgetPendingEventNotification(entry, window.localStorage);
+      } else {
+        schedulePendingMutationRecovery();
+      }
+    } catch (error) {
+      if (!isCurrent()) return;
+      const retryable = error?.retryable === true || navigator.onLine === false || isRetryablePendingSyncFailure(error);
+      if (!retryable) forgetPendingEventNotification(entry, window.localStorage);
+      (retryable ? emitOperationDeferred : emitOperationFailure)("event_notification", { error });
+      if (retryable) schedulePendingMutationRecovery();
+    }
+  })().finally(() => { pendingEventNotificationRequests.delete(key); });
+  pendingEventNotificationRequests.set(key, request);
+  return request;
+}
+
+function retryPendingEventNotifications() {
+  if (pendingEventNotificationRetryRequest || !appBootHydrated || navigator.onLine === false) {
+    return pendingEventNotificationRetryRequest ?? Promise.resolve();
+  }
+  const ownerUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const generation = versionedReadCacheSessionGeneration();
+  const entries = loadPendingEventNotifications(window.localStorage, ownerUserId);
+  if (!ownerUserId || !entries.length) return Promise.resolve();
+  pendingEventNotificationRetryRequest = (async () => {
+    const publication = await flushPendingSharedState();
+    const pending = pendingSharedSyncStatus();
+    for (const entry of entries) {
+      if (generation !== versionedReadCacheSessionGeneration() || !pendingMutationOwnerIsActive(ownerUserId)) return;
+      // Never announce an offline expense before the ordered financial outbox
+      // has acknowledged that event. A failure in a different event may coexist.
+      if (pending.pendingEventIds.includes(entry.eventId)) continue;
+      if ((!publication?.ok || publication.pending) && !pending.pendingEventIds.length) continue;
+      // The normal outbox may already have flushed before this worker runs.
+      // Its empty acknowledgement is valid too; the server then verifies the
+      // exact committed activity and current canonical membership again.
+      await deliverPendingEventNotification(entry, generation);
+    }
+  })().finally(() => { pendingEventNotificationRetryRequest = null; });
+  return pendingEventNotificationRetryRequest;
 }
 
 function completedSaveResult(saveRequest) {

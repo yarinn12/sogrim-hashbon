@@ -11,6 +11,7 @@ import { staleSettlementFixture } from "./helpers/staleSettlementFixture.mjs";
 import { repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture } from "./helpers/repaymentModeFixture.mjs";
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 import { restoreRememberedSettlementPlan } from "../src/domain/settlementPlanMemory.mjs";
+import { sendEventActivityNotification } from "../src/server/eventActivityNotifications.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -557,6 +558,80 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+
+test("SQL notification retry acknowledges real committed inbox receipts without creating duplicates", async () => {
+  await withSnapshot(ids.admin, async baseline => {
+    await db.exec("reset role");
+    await db.exec("set local role service_role");
+    const event = { ...baseline.events[0], sharedSpaceId: snapshotId, sharedSpaceKey: spaceKey };
+    const workspace = { ...baseline, events: [event] };
+    const requests = [];
+    const json = (payload, status = 200) => new Response(JSON.stringify(payload), { status, headers: { "content-type": "application/json" } });
+    const fetchImpl = async (address, options = {}) => {
+      const url = new URL(address), body = options.body ? JSON.parse(options.body) : {};
+      requests.push({ path: url.pathname, method: options.method || "GET", body });
+      if (url.pathname === "/auth/v1/user") return json({ id: ids.admin.slice(8) });
+      if (url.pathname.endsWith("/app_snapshots")) {
+        if (url.searchParams.get("owner_user_id") !== "is.null") return json([{ state: workspace }]);
+        // Supabase's host-owned service grants on app_snapshots are absent
+        // from the minimal Auth shim. Read that existing fixture as its owner;
+        // notification RPCs, writes and RLS still use the real service role.
+        await db.exec("reset role");
+        const rows = (await db.query("select state,access_key_hash from public.app_snapshots where id=$1", [snapshotId])).rows;
+        await db.exec("set local role service_role");
+        return json(rows);
+      }
+      if (url.pathname.endsWith("/verify_shared_event_notification_parties")) {
+        return json((await db.query("select public.verify_shared_event_notification_parties($1,$2::uuid,$3::uuid) as value",
+          [body.p_snapshot_id, body.p_sender_user_id, body.p_recipient_user_id])).rows[0].value);
+      }
+      if (url.pathname.endsWith("/reserve_event_activity_notification")) {
+        return json((await db.query("select public.reserve_event_activity_notification($1,$2,$3,$4::uuid,$5::uuid,$6) as value",
+          [body.p_event_id, body.p_activity_id, body.p_kind, body.p_sender_user_id, body.p_recipient_user_id, body.p_min_interval_seconds])).rows[0].value);
+      }
+      if (url.pathname.endsWith("/notification_inbox")) {
+        await db.query(`insert into public.notification_inbox (recipient_user_id,sender_user_id,event_id,activity_id,kind,title,body,view,action_url)
+          values ($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9)
+          on conflict (recipient_user_id,event_id,activity_id,kind) do update set body=excluded.body`,
+          [body.recipient_user_id,body.sender_user_id,body.event_id,body.activity_id,body.kind,body.title,body.body,body.view,body.action_url]);
+        return new Response(null, { status: 201 });
+      }
+      if (url.pathname.endsWith("/push_devices")) return json([]);
+      if (url.pathname.endsWith("/event_activity_notifications")) {
+        if (options.method === "PATCH") {
+          await db.query("update public.event_activity_notifications set status=$1,delivered_devices=$2,delivered_at=$3::timestamptz where id=$4::uuid",
+            [body.status,body.delivered_devices,body.delivered_at,url.searchParams.get("id").slice(3)]);
+          return new Response(null, { status: 204 });
+        }
+        assert.equal(options.method, undefined);
+        return json((await db.query(`select status from public.event_activity_notifications
+          where event_id=$1 and activity_id=$2 and kind=$3 and recipient_user_id=$4::uuid and sender_user_id=$5::uuid`,
+          [url.searchParams.get("event_id").slice(3),url.searchParams.get("activity_id").slice(3),url.searchParams.get("kind").slice(3),
+            url.searchParams.get("recipient_user_id").slice(3),url.searchParams.get("sender_user_id").slice(3)])).rows);
+      }
+      throw new Error(`Unexpected isolated notification request: ${url.pathname}`);
+    };
+    const send = () => sendEventActivityNotification({ runtimeConfig: { storage: {
+      url: "https://notification.example.invalid", anonKey: "synthetic" }, launch: { pushDeliveryReady: true } },
+      env: { SUPABASE_SERVICE_ROLE_KEY: "synthetic" }, authorization: "Bearer synthetic-token",
+      eventId: event.id, activityId: event.expenses[0].id, kind: "expense-created", fetchImpl });
+    const recipients = event.participantIds.length - 1;
+    const first = await send();
+    assert.equal(first.payload.ok, true);
+    assert.equal(first.payload.inboxRecipients, recipients);
+    const retry = await send();
+    assert.equal(retry.payload.ok, true);
+    assert.equal(retry.payload.alreadyDeliveredRecipients, recipients);
+    assert.equal((await db.query("select count(*)::int as count from public.notification_inbox")).rows[0].count, recipients);
+    assert.equal((await db.query("select count(*)::int as count from public.event_activity_notifications where status='delivered'")).rows[0].count, recipients);
+    assert.equal(requests.some(request => request.path.includes("fcm")), false);
+    // Actual SQL privileges continue to reject a caller reserving delivery itself.
+    await db.exec("set local role authenticated; savepoint notification_permission");
+    await assert.rejects(db.query("select public.reserve_event_activity_notification($1,$2,$3,$4::uuid,$5::uuid,0)",
+      [event.id, "forged-receipt", "expense-created", ids.admin.slice(8), ids.recipient.slice(8)]), { code: "42501" });
+    await db.exec("rollback to savepoint notification_permission; reset role");
+  });
+});
 for (const closed of [false, true]) {
   for (const race of [false, true]) {
     test(`SQL event deletion client removes ${closed ? "closed" : "open"} paid history with ${race ? "a real CAS conflict" : "one acknowledged write"}`, async () => {

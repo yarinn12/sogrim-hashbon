@@ -26,6 +26,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   const transferReceiptHolds = new Map();
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
+  const activityFailures = new Set(), activityRequests = [], activityInbox = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -182,6 +183,23 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
           }
           return reply({eventId,spaceId:sharedId,spaceKey:key,kind:'open',atomic:true});
         }
+        if (url.pathname === '/api/notifications/event-activity' && activityFailures.has(i)) {
+          activityRequests.push({client:i,body:request.postDataJSON(),accepted:false});
+          return reply({ok:false,code:'PUSH_UNAVAILABLE',retryable:true},503);
+        }
+        if (url.pathname === '/api/notifications/event-activity' && activityInbox.enabled) {
+          const body=request.postDataJSON(), event=canonical.state.events[0];
+          activityRequests.push({client:i,body,accepted:true});
+          if(request.headers().authorization!==`Bearer fixture-token-${i}` || body.eventId!==event.id ||
+             !event.expenses.some(expense=>expense.id===body.activityId && expense.createdByParticipantId===`account-${ids[i]}`)) {
+            return reply({ok:false,code:'EVENT_ACTIVITY_NOT_ALLOWED'},403);
+          }
+          const recipient=1-i, itemKey=`${recipient}:${body.activityId}`;
+          if(!activityInbox.has(itemKey))activityInbox.set(itemKey,{recipient,id:`inbox-${body.activityId}`,event_id:event.id,
+            activity_id:body.activityId,kind:body.kind,title:'הוצאה חדשה באירוע',body:'בדיקת התראה לאחר שמירה',view:'event',
+            created_at:new Date().toISOString(),read_at:null,action_url:''});
+          return reply({ok:true,inboxRecipients:1,delivered:0,reason:'in-app-only'});
+        }
         if (url.pathname.startsWith('/api/notifications/') || url.pathname === '/api/product-metrics') return reply({ok: true});
         if (url.pathname.startsWith('/api/') && !['/api/health'].includes(url.pathname)) {
           if (request.method() !== 'GET') unexpectedWrites.push({client: i, path: url.pathname});
@@ -205,6 +223,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       }
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
       if (url.pathname === '/auth/v1/user') return reply(user);
+      if (url.pathname.endsWith('/notification_inbox') && activityInbox.enabled) {
+        return reply([...activityInbox.values()].filter(item=>item.recipient===i));
+      }
       if (url.pathname.endsWith('/ensure_account_workspace')) return reply({status: 'existing', workspaceId: personal[i].id});
       if (url.pathname.endsWith('/join_shared_event')) return reply(Boolean(canReadCanonical(i)));
       // These auxiliary RPCs are outside the sync journey but are invoked at
@@ -346,6 +367,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     await expect(page.locator('[data-action="open-event-notes"]')).toBeVisible();
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
+    activityRequests, activityInbox,
+    enableActivityInbox() {activityInbox.enabled=true;},
+    failActivity(i,value) {if(value)activityFailures.add(i);else activityFailures.delete(i);},
     holdNextPaidReceipt(i) {
       let release; const ready = new Promise(resolve => {release = resolve;});
       const hold = {arrived:false,ready,release}; transferReceiptHolds.set(i,hold); return hold;
@@ -554,6 +578,44 @@ async function newExpense(page, name, amount) {
         hasPending:Boolean(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`))};
     })),contentType:'application/json'});
     throw error;
+  }
+}
+
+for (const sender of [0,1]) {
+  for (const failure of ['delivery','offline-save']) {
+    test(`notification survives ${failure} and sender ${sender} restart before reaching the other account once`, async ({},testInfo)=>{
+      const f=await fixture(testInfo), sending=f.pages[sender], receiving=f.pages[1-sender];
+      const pending=()=>sending.evaluate(()=>JSON.parse(localStorage.getItem('settle-friends-pending-event-notifications')||'[]'));
+      try {
+        f.enableActivityInbox(); f.failActivity(sender,true);
+        if(failure==='offline-save')f.cloudUnavailable(sender,true);
+        await newExpense(sending,`הוצאה להתראה ${sender}`, '29');
+        await expect.poll(pending).toHaveLength(1);
+        if(failure==='delivery') {
+          await expect.poll(()=>f.activityRequests.length).toBeGreaterThan(0);
+          expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+        } else {
+          expect(f.canonical.state.events[0].expenses).toHaveLength(0);
+          expect(f.activityRequests).toHaveLength(0);
+        }
+        await sending.reload();
+        await expect(sending.locator('#app .screen')).toBeVisible();
+        await expect.poll(pending).toHaveLength(1);
+        f.cloudUnavailable(sender,false); f.failActivity(sender,false);
+        await sending.evaluate(()=>window.dispatchEvent(new Event('online')));
+        await expect.poll(pending,{timeout:15000}).toHaveLength(0);
+        expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+        const expense=f.canonical.state.events[0].expenses[0];
+        expect([...f.activityInbox.values()]).toHaveLength(1);
+        expect(f.activityRequests.filter(item=>item.accepted)).toHaveLength(1);
+        expect(f.activityRequests.at(-1).body.activityId).toBe(expense.id);
+        expect(f.activityRequests.at(-1).client).toBe(sender);
+        await receiving.locator('[data-nav-destination="notifications"]').click();
+        await expect(receiving.locator('.notification-inbox-item')).toHaveCount(1,{timeout:16000});
+        await expect(receiving.locator('.notification-inbox-item')).toContainText('הוצאה חדשה באירוע');
+        expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
+      } finally {await f.close();}
+    });
   }
 }
 

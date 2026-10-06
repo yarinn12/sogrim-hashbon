@@ -63,6 +63,7 @@ const CACHE_FILES = [
   "/src/data/settingsSaveRollback.mjs",
   "/src/data/eventControlRollback.mjs",
   "/src/data/eventActivityNotifications.mjs",
+  "/src/data/pendingEventNotifications.mjs",
   "/src/data/eventInvites.mjs",
   "/src/data/openInviteTokenStore.mjs",
   "/src/data/pendingAccountLinks.mjs",

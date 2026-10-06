@@ -141,6 +141,7 @@ export async function sendEventActivityNotification({
   const reservedRecipients = [];
   let inboxRecipients = 0;
   let membershipRecipients = 0;
+  let alreadyDeliveredRecipients = 0;
   try {
     for (const recipientUserId of recipientUserIds) {
       const canonicallyActive = await (
@@ -205,13 +206,32 @@ export async function sendEventActivityNotification({
           normalizedKind === "expense-created" ? EXPENSE_COOLDOWN_SECONDS : 0,
         fetchImpl
       });
+      if (reservation?.reason === "duplicate") {
+        const params = new URLSearchParams({
+          event_id: `eq.${normalizedEventId}`, activity_id: `eq.${normalizedActivityId}`,
+          kind: `eq.${normalizedKind}`, recipient_user_id: `eq.${recipientUserId}`,
+          sender_user_id: `eq.${sender.id}`, select: "status", limit: "1"
+        });
+        const { response, payload } = await fetchJsonResponse(fetchImpl,
+          `${supabaseUrl}/rest/v1/event_activity_notifications?${params}`,
+          { headers: serviceHeaders(serviceRoleKey) }, []);
+        requireNotificationRead(response);
+        const status = Array.isArray(payload) ? payload[0]?.status : "";
+        // A reserved request may still be delivering. Only a completed receipt
+        // can acknowledge a lost HTTP response; never repeat an ambiguous push.
+        if (status === "delivered") {
+          alreadyDeliveredRecipients += 1;
+        } else if (status !== "suppressed") throw notificationStorageError("Notification delivery is still pending");
+        // A suppressed push still needs its durable inbox row. Upsert is safe
+        // when the previous response or inbox acknowledgement was lost.
+      }
       if (reservation?.allowed) {
         reservedRecipients.push({
           notificationId: reservation.notification_id
         });
       }
       const shouldStoreInInbox = Boolean(
-        reservation?.allowed || reservation?.reason === "rate-limited"
+        reservation?.allowed || reservation?.reason === "rate-limited" || reservation?.reason === "duplicate"
       );
       if (!shouldStoreInInbox) continue;
 
@@ -256,7 +276,12 @@ export async function sendEventActivityNotification({
         publicUrl: runtimeConfig?.publicUrl,
         fetchImpl
       });
-      if (storedInInbox) inboxRecipients += 1;
+      if (!storedInInbox) {
+        const error = notificationStorageError("Notification inbox could not be saved");
+        if (fetchImpl[DEADLINE_REMAINING_MS]() <= 0) error.code = "NETWORK_TIMEOUT";
+        throw error;
+      }
+      inboxRecipients += 1;
       if (!reservation?.allowed) continue;
 
       if (!pushDeliveryReady) {
@@ -311,15 +336,18 @@ export async function sendEventActivityNotification({
       ok: true,
       status: 200,
       payload: {
-        ok: membershipRecipients > 0 || inboxRecipients > 0,
+        ok: membershipRecipients > 0 || inboxRecipients > 0 || alreadyDeliveredRecipients > 0,
         delivered: 0,
         recipients: 0,
         inboxRecipients,
         ...(membershipRecipients > 0 ? { membershipRecipients } : {}),
+        ...(alreadyDeliveredRecipients > 0 ? { alreadyDeliveredRecipients } : {}),
         reason: inboxRecipients > 0
           ? "in-app-only"
           : membershipRecipients > 0
             ? "access-granted"
+            : alreadyDeliveredRecipients > 0
+              ? "already-delivered"
             : "no-eligible-recipients"
       }
     };
@@ -521,7 +549,8 @@ export async function sendEventActivityNotification({
       delivered,
       recipients: deliveredRecipients,
       inboxRecipients,
-      ...(membershipRecipients > 0 ? { membershipRecipients } : {})
+      ...(membershipRecipients > 0 ? { membershipRecipients } : {}),
+      ...(alreadyDeliveredRecipients > 0 ? { alreadyDeliveredRecipients } : {})
     }
   };
 }
@@ -767,6 +796,7 @@ async function loadAuthenticatedUser({
     },
     null
   );
+  if (!response.ok && response.status !== 401 && response.status !== 403) requireNotificationRead(response);
   if (!response.ok) return null;
   return payload;
 }
@@ -790,7 +820,7 @@ async function loadAccountState({
     { headers: serviceHeaders(serviceRoleKey) },
     []
   );
-  if (!response.ok) return null;
+  requireNotificationRead(response);
   const rows = payload;
   return (Array.isArray(rows) ? rows : [])
     .map((row) => row?.state)
@@ -844,7 +874,7 @@ async function loadAuthoritativeSharedEvent({
     { headers: serviceHeaders(serviceRoleKey) },
     []
   );
-  if (!response.ok) return null;
+  requireNotificationRead(response);
 
   const rows = payload;
   const snapshot = Array.isArray(rows) ? rows[0] ?? null : null;
@@ -876,7 +906,7 @@ async function loadEventUpdateDevices({
     { headers: serviceHeaders(serviceRoleKey) },
     []
   );
-  if (!response.ok) return [];
+  requireNotificationRead(response);
   const rows = payload;
   return (Array.isArray(rows) ? rows : []).filter(
     (row) =>
@@ -913,7 +943,10 @@ async function reserveActivityNotification({
     },
     null
   );
-  if (!response.ok) return null;
+  requireNotificationRead(response);
+  if (!payload || (payload.allowed !== true && typeof payload.reason !== "string")) {
+    throw notificationStorageError("Notification reservation was not acknowledged");
+  }
   return payload;
 }
 
@@ -1056,7 +1089,7 @@ async function verifyCanonicalNotificationMembership({
     },
     false
   );
-  if (!response.ok) return false;
+  requireNotificationRead(response);
   return payload === true;
 }
 
@@ -1088,7 +1121,7 @@ async function verifyCanonicalInvitationTarget({
     },
     false
   );
-  if (!response.ok) return false;
+  requireNotificationRead(response);
   return payload === true;
 }
 
@@ -1098,6 +1131,14 @@ function serviceHeaders(serviceRoleKey) {
     authorization: `Bearer ${serviceRoleKey}`,
     "content-type": "application/json"
   };
+}
+
+function notificationStorageError(message) {
+  return Object.assign(new Error(message), { code: "NOTIFICATION_STORAGE_UNAVAILABLE", status: 503, retryable: true });
+}
+
+function requireNotificationRead(response) {
+  if (!response.ok) throw notificationStorageError("Notification database request was not acknowledged");
 }
 
 function bearerToken(value) {

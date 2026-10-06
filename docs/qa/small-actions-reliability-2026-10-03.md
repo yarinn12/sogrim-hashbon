@@ -36,3 +36,11 @@ Two existing source-shape assertions were updated to require the new narrow reco
 - The prior broad CI run for `69fb5ec...` passed unit, two-client sync and four mobile lanes. Its Android lane failed the flaky-test gate after a single `socket hang up` reading the local test server in `pinned-events.spec.mjs`. The test and gate remain enabled; a retry pass was not counted as a successful run.
 
 Final candidate CI and browser results are recorded with their exact source SHA in the task's evidence directory. The checks protect these scenarios and do not certify that every possible application defect is absent.
+
+## Minor visual follow-up — 2026-10-04
+
+The requested visual review preserves the existing design. A 36-screen audit covers home, profile, event, participants, settings, currency, notes, summary and expense entry in Android Chromium, iPhone WebKit, 320px Chromium and iPad WebKit. Equal settings-row and navigation-item widths, viewport containment and runtime errors are recorded alongside before/after screenshots. The accessibility-only `visually-hidden` notes heading is intentionally excluded from visible clipping findings.
+
+At 320px the home status label `מוסיפים הוצאות` extends beyond its button and is clipped by the existing overflow policy. The new normal Playwright regression fails on the unchanged presentation with `textFits: false`. Only the home lifecycle content rule changes: its width and height fill the existing button, the label may wrap, and the count occupies the final fixed grid row. This keeps the existing typography, colors, button widths and touch targets, while aligning counts below both one-line and two-line labels.
+
+The regression checks actual text rectangles and count containment, a common count baseline, 44px touch targets and a functioning filter at 320, 375, 390 and 768px. It also uses the configured large-text preview in that project. The focused run passes all five projects; the repeated 36-screen audit has zero visible clipped labels, horizontal overflow, out-of-viewport controls or page errors.

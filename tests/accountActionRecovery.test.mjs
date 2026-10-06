@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import vm from "node:vm";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 import { readFileSync } from "node:fs";
+import {
+  loadPendingEventNotifications, rememberPendingEventNotification,
+  forgetPendingEventNotification, pendingEventNotificationKey
+} from "../src/data/pendingEventNotifications.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const A = "11111111-1111-4111-8111-111111111111";
@@ -18,11 +22,22 @@ const inbox = extract("async function refreshNotificationInbox(", "function open
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { resolve, reject, promise }; }
 function harness({ config, refresh, send, load, markAll, markOne } = {}) {
   const calls = [], renders = [], refreshes = [];
+  const stored = new Map();
   const context = vm.createContext({
     session: { user: { id: A } }, generation: 0,
     versionedReadCacheSessionGeneration: () => context.generation,
     state: { currentParticipantId: `account-${A}` }, saveFailureMessage,
-    window: { localStorage: {} }, loadStoredAccountSession: () => context.session,
+    window: { localStorage: {
+      getItem: key => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key)
+    } }, loadStoredAccountSession: () => context.session,
+    navigator: { onLine: true }, appBootHydrated: true,
+    loadPendingEventNotifications, rememberPendingEventNotification, forgetPendingEventNotification, pendingEventNotificationKey,
+    pendingEventNotificationRequests: new Map(), pendingEventNotificationRetryRequest: null,
+    schedulePendingMutationRecovery: () => { calls.push({ action: "schedule" }); },
+    flushPendingSharedState: async () => ({ ok: true, mode: "cloud" }),
+    pendingSharedSyncStatus: () => ({ pending: false, pendingEventIds: [] }),
+    isRetryablePendingSyncFailure: error => error?.status === 401 || error?.status >= 500 || error?.code === "NETWORK_TIMEOUT",
+    emitOperationFailure: () => {},
     pendingMutationOwnerIsActive: id => context.session?.user?.id === id,
     runtimeConfig: configFor(A),
     loadRuntimeConfig: () => config ? config(context) : Promise.resolve(configFor(context.session?.user?.id)),
@@ -50,7 +65,7 @@ function harness({ config, refresh, send, load, markAll, markOne } = {}) {
   vm.runInContext(helper + activity + inbox, context);
   context.completedSaveResult = request => Promise.resolve(request).then(result => result?.completion ?? result);
   vm.runInContext(extract("function publishEventActivityAfterSave(", "function completedSaveResult("), context);
-  return { context, calls, renders, refreshes,
+  return { context, calls, renders, refreshes, stored,
     switchToB() { context.generation++; context.session = { user: { id: B } }; context.state.currentParticipantId = `account-${B}`; },
     send: () => context.sendEventActivityNotificationWithAccountRecovery({ eventId: "event-a", activityId: "expense-a", kind: "expense-created" }) };
 }
@@ -186,6 +201,107 @@ test("deferred expense activity cannot be sent by a different account after the 
   h.switchToB(); gate.resolve({ ok: true, mode: "cloud" });
   for (let i = 0; i < 20; i++) await Promise.resolve();
   assert.equal(h.calls.length, 0);
+});
+
+test("a committed expense notification survives a temporary delivery failure and retry", async () => {
+  let attempts = 0;
+  const stored = new Map();
+  const h = harness({ send: async () => {
+    if (++attempts === 1) throw Object.assign(new Error("Temporary notification outage"), { status: 503, retryable: true });
+    return { ok: true, inboxRecipients: 1, delivered: 1 };
+  } });
+  h.context.window.localStorage = {
+    getItem: key => stored.get(key) ?? null,
+    setItem: (key, value) => stored.set(key, value),
+    removeItem: key => stored.delete(key)
+  };
+  h.context.publishEventActivityAfterSave({ ok: true, mode: "cloud" }, "event-a", "expense-created", "expense-a");
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+  assert.equal(attempts, 1);
+  assert.ok([...stored.values()].some(value => value.includes("expense-a")), "a failed delivery must retain the committed expense's notification in durable storage");
+  await h.context.retryPendingEventNotifications();
+  assert.equal(attempts, 2);
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 0, "only the acknowledged activity is removed");
+  assert.deepEqual(h.calls.filter(call => call.action === "send").map(call => call.payload.activityId), ["expense-a", "expense-a"]);
+});
+
+test("offline activity waits for the event's actual cloud acknowledgement", async () => {
+  const h = harness();
+  h.context.navigator.onLine = false;
+  await h.context.publishEventActivityAfterSave({ ok: true, mode: "local", pending: true }, "event-a", "expense-created", "expense-a");
+  assert.equal(h.calls.filter(call => call.action === "send").length, 0);
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 1);
+  h.context.navigator.onLine = true;
+  h.context.pendingSharedSyncStatus = () => ({ pending: true, pendingEventIds: ["event-a"] });
+  h.context.flushPendingSharedState = async () => ({ ok: false, pending: true });
+  await h.context.retryPendingEventNotifications();
+  assert.equal(h.calls.filter(call => call.action === "send").length, 0);
+  h.context.pendingSharedSyncStatus = () => ({ pending: false, pendingEventIds: [] });
+  h.context.flushPendingSharedState = async () => ({ ok: true, mode: "cloud" });
+  await h.context.retryPendingEventNotifications();
+  assert.equal(h.calls.filter(call => call.action === "send").length, 1);
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 0);
+});
+
+test("an accepted notification intent survives reload and is sent only by its owner", async () => {
+  const first = harness();
+  const gate = deferred();
+  const publishing = first.context.publishEventActivityAfterSave({ ok: true, mode: "queued", pending: true, completion: gate.promise }, "event-a", "event-closed", "close-a");
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  const durable = first.context.window.localStorage;
+  assert.equal(loadPendingEventNotifications(durable, A).length, 1);
+  first.switchToB(); gate.resolve({ ok: true, mode: "cloud" }); await publishing;
+  assert.equal(first.calls.filter(call => call.action === "send").length, 0);
+  const reloaded = harness(); reloaded.context.window.localStorage = durable;
+  reloaded.switchToB(); await reloaded.context.retryPendingEventNotifications();
+  assert.equal(reloaded.calls.filter(call => call.action === "send").length, 0);
+  reloaded.context.generation++; reloaded.context.session = { user: { id: A } };
+  reloaded.context.state.currentParticipantId = `account-${A}`;
+  await reloaded.context.retryPendingEventNotifications();
+  assert.equal(reloaded.calls.filter(call => call.action === "send")[0].userId, A);
+  assert.equal(loadPendingEventNotifications(durable, A).length, 0);
+});
+
+test("a rejected financial save removes the intent without notifying anyone", async () => {
+  const h = harness(), gate = deferred();
+  const request = h.context.publishEventActivityAfterSave({ ok: true, pending: true, completion: gate.promise }, "event-a", "expense-created", "expense-a");
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 1);
+  gate.resolve({ ok: false, error: { status: 403 } }); await request;
+  await h.context.retryPendingEventNotifications();
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 0);
+  assert.equal(h.calls.filter(call => call.action === "send").length, 0);
+});
+
+test("notification acknowledgement cannot erase another pending activity or account", async () => {
+  const h = harness(), gate = deferred(), started = deferred();
+  h.context.sendEventActivityNotification = async () => { started.resolve(); return gate.promise; };
+  const request = h.context.publishEventActivityAfterSave({ ok: true, mode: "cloud" }, "event-a", "expense-created", "expense-a");
+  await started.promise;
+  rememberPendingEventNotification({ ownerUserId: A, eventId: "event-a", activityId: "expense-newer", kind: "expense-created" }, h.context.window.localStorage);
+  rememberPendingEventNotification({ ownerUserId: B, eventId: "event-b", activityId: "expense-b", kind: "expense-created" }, h.context.window.localStorage);
+  gate.resolve({ ok: true }); await request;
+  assert.deepEqual(loadPendingEventNotifications(h.context.window.localStorage).map(entry => entry.activityId).sort(), ["expense-b", "expense-newer"]);
+});
+
+test("notification recovery does not send a second copy while the same activity is in flight", async () => {
+  const gate = deferred(), started = deferred();
+  const h = harness({ send: async () => { started.resolve(); return gate.promise; } });
+  const first = h.context.publishEventActivityAfterSave({ ok: true, mode: "cloud" }, "event-a", "expense-created", "expense-a");
+  await started.promise;
+  const second = h.context.retryPendingEventNotifications();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.equal(h.calls.filter(call => call.action === "send").length, 1);
+  gate.resolve({ ok: true }); await Promise.all([first, second]);
+});
+
+test("offline notification can recover after another worker already emptied the financial outbox", async () => {
+  const h = harness();
+  await h.context.publishEventActivityAfterSave({ ok: true, mode: "local", pending: true }, "event-a", "expense-created", "expense-a");
+  h.context.flushPendingSharedState = async () => ({ ok: true, empty: true });
+  await h.context.retryPendingEventNotifications();
+  assert.equal(h.calls.filter(call => call.action === "send").length, 1);
+  assert.equal(loadPendingEventNotifications(h.context.window.localStorage, A).length, 0);
 });
 
 test("device-local friend-request read markers reset with the inbox account owner", async () => {
