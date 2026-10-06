@@ -42,6 +42,21 @@ a rendered mobile gate case checks the loaded asset before/after signup rerender
 and page reload. PWA 508 refreshes cached modules and precaches the new callback
 helper, preserving the already merged browser color updates.
 
+Broad synchronization QA exposed a separate stale-outbox race after self-leave:
+the departed member's RLS-filtered empty snapshot was treated as a new event,
+causing an unnecessary create_shared_event_snapshot request. The save now checks
+the existing explicit server revocation contract before creation, retaining local
+financial history and removing only the revoked event's sync credentials. Empty
+reads, transport failures and generic denial alone do not establish revocation.
+The new normal-suite behavioral regression fails before with the exact unwanted
+create payload and passes after without any write. Existing new-event creation,
+concurrent creation, expired-session and membership tests pass.
+
+The two-client self-leave fixture previously answered join_shared_event with
+200 false after departure. It now models SQL's explicit 42501/403 response and
+message in the self-leave scenarios. Unexpected writes, rejection/retry checks,
+single committed leave and final cross-client state assertions remain intact.
+
 Physical Apple authorization, account acceptance and relaunch on the replacement
 TestFlight build remain required. Simulator callback/SDK checks do not authorize
 an actual Apple account or replace that acceptance test.
