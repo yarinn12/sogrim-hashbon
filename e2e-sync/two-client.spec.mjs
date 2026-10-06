@@ -141,17 +141,16 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
-    const failedUrls=new Set();
+    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics});
     // WebKit's context-level offline switch can reject a request before route()
     // runs. Record only this client's deliberately disconnected requests so its
-    // native network diagnostic is handled by the existing exact-URL guard.
+    // native diagnostic consumes one receipt for that exact aborted request.
     // Real error/unhandledrejection events remain unconditional test failures.
     const rememberOfflineRequest=request=>{
-      if(blocked.has(i) && new URL(request.url()).origin===origin)failedUrls.add(request.url());
+      if(blocked.has(i) && new URL(request.url()).origin===origin)errorRecorder.recordExpectedFailure(request);
     };
     context.on('request',rememberOfflineRequest);
     context.on('requestfailed',rememberOfflineRequest);
-    await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,failedUrls});
     const user = {id: ids[i], email: `qa-${i}@example.test`, app_metadata: {provider: 'google'},
       user_metadata: {full_name: participants[i].displayName, username: `two_client_${i}`,
         account_space_id: personal[i].id, account_space_key: key}};
@@ -210,10 +209,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
       }
       if (url.origin !== origin) return route.abort('blockedbyclient');
       if (blocked.has(i)) {
-        failedUrls.add(request.url());
+        errorRecorder.recordExpectedFailure(request);
         return route.abort('internetdisconnected');
       }
-      failedUrls.delete(request.url());
       if (request.method() === 'OPTIONS') return route.fulfill({status: 204, headers});
       requests.push({client: i, method: request.method(), path: url.pathname, at: performance.now()});
       if(joiningClient !== null && url.pathname === '/auth/v1/settings')return reply({external:{email:true,google:false,apple:false}});
