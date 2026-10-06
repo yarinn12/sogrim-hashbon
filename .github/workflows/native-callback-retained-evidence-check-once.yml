@@ -1,0 +1,63 @@
+name: Verify retained real SDK callback observations
+on:
+  push:
+    branches: [work/ios-apple-callback-evidence-20261006]
+    paths: [.github/workflows/native-callback-retained-evidence-check-once.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: "11442839895"
+          path: native-before
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: "37528025064"
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: "11442889035"
+          path: native-fixed
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: "37528025064"
+      - name: Bind retained observations to exact native source and artifact identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const get=async path=>{const r=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/'+path,{headers:{Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'}});assert(r.ok,'Native evidence identity unavailable');return r.json();};
+          const run=await get('actions/runs/37528025064');
+          assert.equal(run.head_sha,'8aca8cead2db2b6c0cf5254590c8c8e4bb59543e');
+          assert.equal(run.status,'completed');assert.equal(run.conclusion,'failure');
+          const source=await get('contents/.github/workflows/ipad-apple-callback-replay-probe-once.yml?ref=8aca8cead2db2b6c0cf5254590c8c8e4bb59543e');
+          const yaml=Buffer.from(source.content,'base64').toString();
+          assert(yaml.includes('source: f031475c8c8fa5d91e4d074040a8f66527bdf1ef'));
+          assert(yaml.includes('source: 6e3c8e6de572d086dc497a3b69133ebe86b3a67f'));
+          assert(yaml.includes('elapsed >= 90'),'The stalled control observation follows the full native deadline');
+          for(const [id,name,digest] of [[11442839895,'ipad-native-apple-callback-before','sha256:a44a149473672cb7e0e4dd7e309a31b354501c958c5ccd80d75757019bcf036c'],[11442889035,'ipad-native-apple-callback-fixed','sha256:cf12e763adeaf9d49b6147c262b72e92b6d71e809c0c91aaceda4d48340ba00c']]){
+            const a=await get('actions/artifacts/'+id);assert.equal(a.expired,false);assert.equal(a.name,name);assert.equal(a.digest,digest);assert.equal(a.workflow_run.id,37528025064);
+          }
+          console.log('Immutable native source and before/fixed artifacts verified.');
+          NODE
+      - name: Verify rendered stalled control and fully usable fixed callback
+        run: node scripts/verify-native-callback-retained-evidence.mjs native-before/probe-sanitized.log native-fixed/probe-sanitized.log
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: verified-native-callback-retained-evidence
+          path: |
+            native-before/
+            native-fixed/
+          retention-days: 7
