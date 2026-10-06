@@ -22,7 +22,6 @@ import {
   deleteAccount,
   ensureAccountWorkspace,
   exchangeOAuthCode,
-  googleOAuthUrl,
   loadAccountOAuthFlow,
   loadAccountRecoverySession,
   loadAccountUser,
@@ -2124,10 +2123,16 @@ function prepareNativeGoogleSignIn() {
 
 async function signInWithNativeGoogle() {
   const socialLogin = await prepareNativeGoogleSignIn();
+  // AppAuth generates its own nonce when iOS receives none. Supabase requires
+  // the original value whose SHA-256 hex digest Google echoes in the ID token.
+  // Keep this pair local to the attempt; forcePrompt avoids restoring a token
+  // issued for a previous nonce.
+  const nonce = isNativeIos() ? await createWebGoogleNonce() : null;
   const options = isNativeIos()
     ? {
         scopes: ["openid", "email", "profile"],
-        forcePrompt: true
+        forcePrompt: true,
+        nonce: nonce.hashed
       }
     : {
         // The bottom credential sheet can first fail with NoCredentialException
@@ -2146,26 +2151,7 @@ async function signInWithNativeGoogle() {
   const accessToken = String(result?.accessToken?.token ?? "").trim();
   if (!idToken) throw new Error("Google identity token is unavailable");
 
-  try {
-    await completeGoogleIdTokenSignIn({ idToken, accessToken });
-  } catch (error) {
-    // iOS identity-token rejection is separate from cancellation, rate limits
-    // and account hydration. A fresh PKCE authorization uses the configured
-    // server OAuth client without accepting the rejected native credential.
-    if (!isNativeIos() || accountSession || Number(error?.status) !== 400) {
-      throw error;
-    }
-    renderAccountGate({
-      mode: "login",
-      error: accountAuthErrorMessage(error, "google"),
-      providerFeedback: true
-    });
-    try {
-      await openOAuthUrl(await secureOAuthUrl(googleOAuthUrl));
-    } catch {
-      throw error;
-    }
-  }
+  await completeGoogleIdTokenSignIn({ idToken, accessToken, nonce: nonce?.raw ?? "" });
 }
 
 async function completeGoogleIdTokenSignIn({
