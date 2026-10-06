@@ -26,7 +26,8 @@ function recovery({ platform = 'ios', status = 400, acceptedAccount = false, ope
   rejection.status = status;
   const context = vm.createContext({
     URL,
-    window: { location: { href: 'capacitor://localhost', pathname: '', origin: 'capacitor://localhost' } },
+    window: { crypto: webcrypto, location: { href: 'capacitor://localhost', pathname: '', origin: 'capacitor://localhost' } },
+    Uint8Array, TextEncoder, btoa,
     location: { assign: () => assert.fail('iOS recovery must use the native authentication browser') },
     accountSession: acceptedAccount ? { user: { id: 'already-accepted-account' } } : null,
     runtimeConfig: config, isNativeIos: () => platform === 'ios', pendingInviteUrl: () => '',
@@ -45,27 +46,18 @@ function recovery({ platform = 'ios', status = 400, acceptedAccount = false, ope
     },
     SogrimNative: { authCallbackUrl: 'https://sogrim-hesbon-app.vercel.app/auth/callback', openAuth: async url => { opened.push(url); if (openFailure) throw new Error('Native browser unavailable'); return true; } }
   });
-  vm.runInContext(['accountReturnPath', 'authRedirectUrl', 'secureOAuthUrl', 'openOAuthUrl', 'signInWithNativeGoogle'].map(declaration).join('\n'), context);
+  vm.runInContext(['createWebGoogleNonce', 'accountReturnPath', 'authRedirectUrl', 'secureOAuthUrl', 'openOAuthUrl', 'signInWithNativeGoogle'].map(declaration).join('\n'), context);
   return { context, opened, calls, gates, storage };
 }
 
-test('a rejected native iOS Google identity token starts a fresh bound PKCE authorization rather than leaving login stuck', async () => {
+test('a rejected native iOS Google identity stays signed out and returns its error without external authorization', async () => {
   const fixture = recovery();
-  await vm.runInContext('signInWithNativeGoogle()', fixture.context);
+  await assert.rejects(vm.runInContext('signInWithNativeGoogle()', fixture.context), error => error.status === 400 && error.message.includes('Unacceptable audience'));
   assert.equal(fixture.calls.length, 1);
   assert.equal(fixture.calls[0].body.provider, 'google');
-  assert.equal(fixture.opened.length, 1, 'the native browser must receive the recovery request');
+  assert.equal(fixture.opened.length, 0, 'a failed native attempt must not open a second sign-in');
   assert.equal(fixture.context.accountSession, null, 'a rejected identity token must never establish an account');
-  assert.equal(fixture.gates.length, 1);
-  assert.equal(fixture.gates[0].providerFeedback, true);
-  const authorization = new URL(fixture.opened[0]);
-  assert.equal(authorization.searchParams.get('provider'), 'google');
-  assert.equal(authorization.searchParams.get('code_challenge_method'), 's256');
-  const callback = new URL(authorization.searchParams.get('redirect_to'));
-  const flow = loadAccountOAuthFlow(callback.searchParams.get(ACCOUNT_OAUTH_FLOW_QUERY_PARAM), fixture.storage);
-  assert.ok(flow);
-  assert.equal(flow.returnPath, '/');
-  assert.equal(authorization.searchParams.get('code_challenge'), await createOAuthPkceChallenge(flow.verifier, webcrypto));
+  assert.equal(fixture.gates.length, 0, 'the existing click handler owns visible error feedback');
 });
 
 for (const options of [{ platform: 'android' }, { status: 401 }, { status: 403 }, { status: 429 }, { status: 503 }, { acceptedAccount: true }]) {
@@ -77,10 +69,12 @@ for (const options of [{ platform: 'android' }, { status: 401 }, { status: 403 }
   });
 }
 
-test('failure to open Google recovery keeps the original provider rejection available for visible feedback', async () => {
+test('a subsequent native retry preserves the original rejection without opening a browser', async () => {
   const fixture = recovery({ openFailure: true });
   await assert.rejects(vm.runInContext('signInWithNativeGoogle()', fixture.context), error => error.status === 400 && error.message.includes('Unacceptable audience'));
-  assert.equal(fixture.opened.length, 1);
+  await assert.rejects(vm.runInContext('signInWithNativeGoogle()', fixture.context), error => error.status === 400 && error.message.includes('Unacceptable audience'));
+  assert.equal(fixture.calls.length, 2);
+  assert.equal(fixture.opened.length, 0);
   assert.equal(fixture.context.accountSession, null);
 });
 

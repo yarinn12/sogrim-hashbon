@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
 
 test.use({ serviceWorkers: "block" });
 const AUTH = "https://native-auth-roundtrip.supabase.co";
@@ -27,6 +28,7 @@ const state = {
 
 async function prepare(page, { googleError = "", userFailureOnce = false, pkceError = false } = {}) {
   const counts = { token: 0, pkce: 0, refresh: 0, logout: 0, user: 0, writes: 0, recovery: 0 };
+  const tokenBodies = [];
   let expectedVerifier = "";
   let recoveryRedirect = "";
   const config = {
@@ -60,7 +62,11 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
         localStorage.setItem("roundtrip-google-options", JSON.stringify(options));
         const count = Number(localStorage.getItem("roundtrip-chooser-count") || 0);
         localStorage.setItem("roundtrip-chooser-count", String(count + 1));
-        return { result: { idToken: "fixture-google-id", accessToken: { token: "fixture-google-access" } } };
+        // Real AppAuth always requests a nonce, even when none was supplied.
+        // Google echoes it; Supabase verifies SHA-256(raw nonce) against it.
+        const claims = { nonce: options.options.nonce || "fixture-appauth-generated-nonce" };
+        const token = `fixture.${btoa(JSON.stringify(claims)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")}.synthetic`;
+        return { result: { idToken: token, accessToken: { token: "fixture-google-access" } } };
       }
     };
     globalThis.Capacitor = {
@@ -99,7 +105,11 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
       } else {
         expect(url.searchParams.get("grant_type")).toBe("id_token");
         counts.token += 1;
-        expect(body).toEqual({ provider: "google", id_token: "fixture-google-id", access_token: "fixture-google-access" });
+        tokenBodies.push(body);
+        const nonce = JSON.parse(Buffer.from(body.id_token.split(".")[1], "base64url").toString()).nonce;
+        if (!body.nonce) return route.fulfill({ status: 400, json: { message: "Passed nonce and nonce in id_token should either both exist or not." } });
+        if (createHash("sha256").update(body.nonce).digest("hex") !== nonce) return route.fulfill({ status: 400, json: { message: "Nonces mismatch" } });
+        expect(body).toEqual({ provider: "google", id_token: expect.stringMatching(/^fixture\..+\.synthetic$/), access_token: "fixture-google-access", nonce: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/) });
         if (googleError && counts.token === 1) return route.fulfill({ status: 400, json: { message: googleError } });
       }
       return route.fulfill({ json: { access_token: "fixture-access", refresh_token: "fixture-refresh", expires_in: 3600, user } });
@@ -135,7 +145,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
   await page.goto("/");
   await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeVisible();
   return {
-    counts,
+    counts, tokenBodies,
     getRecoveryRedirect: () => recoveryRedirect,
     async providerCallback(provider, { providerRejected = false, alreadyOpened = false } = {}) {
       if (!alreadyOpened) await page.getByRole("button", { name: provider === "google" ? "המשך עם Google" : "המשך עם Apple", exact: true }).click();
@@ -176,9 +186,8 @@ test("native Google returns to the account and retains the session after relaunc
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("roundtrip-google-config")))).toEqual({
     google: { webClientId: "fixture-web.apps.googleusercontent.com", mode: "online", iOSClientId: "fixture-ios.apps.googleusercontent.com", iOSServerClientId: "fixture-web.apps.googleusercontent.com" }
   });
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("roundtrip-google-options")))).toEqual({
-    provider: "google", options: { scopes: ["openid", "email", "profile"], forcePrompt: true }
-  });
+  const options = await page.evaluate(() => JSON.parse(localStorage.getItem("roundtrip-google-options")));
+  expect(options).toEqual({ provider: "google", options: { scopes: ["openid", "email", "profile"], forcePrompt: true, nonce: expect.stringMatching(/^[a-f0-9]{64}$/) } });
 });
 
 for (const googleError of ["JWT expired", "Invalid audience"]) {
@@ -205,36 +214,39 @@ test("Apple callback closes the native browser, exchanges the bound code and ope
   expect(new URL(page.url()).searchParams.has("code")).toBe(false);
 });
 
-test("rejected native Google identity uses fresh PKCE recovery and persists the verified account", async ({ page }) => {
+test("rejected Google identity stays in the app and a fresh native retry persists the verified account", async ({ page }) => {
   const fixture = await prepare(page, { googleError: "Unacceptable audience in id_token" });
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
-  const id = await fixture.providerCallback("google", { alreadyOpened: true });
+  await expect(page.locator("#account-auth-feedback")).toContainText("Google");
+  await expect(page.locator("#account-auth-feedback")).toBeInViewport();
+  expect(await page.evaluate(() => globalThis.__roundtripOpened.length)).toBe(0);
+  expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
+  await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
   await expectAccount(page);
-  expect(fixture.counts.token).toBe(1);
-  expect(fixture.counts.pkce).toBe(1);
+  expect(fixture.counts.token).toBe(2);
+  expect(fixture.counts.pkce).toBe(0);
   expect(fixture.counts.writes).toBeGreaterThan(0);
-  expect(await page.evaluate(() => localStorage.getItem("roundtrip-chooser-count"))).toBe("1");
-  expect(await page.evaluate(id => localStorage.getItem(`settle-friends-account-oauth-flow:${id}`), id)).toBeNull();
-  expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-closed"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("roundtrip-chooser-count"))).toBe("2");
+  expect(fixture.tokenBodies[1].nonce).not.toBe(fixture.tokenBodies[0].nonce);
+  await page.reload();
+  await expectAccount(page);
+  expect(fixture.counts.token).toBe(2);
 });
 
-test("a failed Google recovery callback stays signed out and cannot reuse its spent authorization code", async ({ page }) => {
+test("a rejected native Google identity remains signed out after reload without repeated token exchanges", async ({ page }) => {
   const fixture = await prepare(page, { googleError: "Unacceptable audience in id_token", pkceError: true });
   await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
-  const id = await fixture.providerCallback("google", { alreadyOpened: true });
-  // A native callback reloads the document. Wait for its actual exchange before
-  // inspecting the rejected result, using the same startup budget as success.
-  await expect.poll(() => fixture.counts.pkce, { timeout: 20_000 }).toBe(1);
-  await expect(page.locator("#account-auth-feedback")).toContainText("ההתחברות לא הושלמה");
+  await expect(page.locator("#account-auth-feedback")).toContainText("Google");
   await expect(page.locator("#account-auth-feedback")).toBeInViewport();
   await expect(page.getByRole("button", { name: "המשך עם Google", exact: true })).toBeEnabled();
   expect(fixture.counts.token).toBe(1);
-  expect(fixture.counts.pkce).toBe(1);
+  expect(fixture.counts.pkce).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
-  expect(await page.evaluate(id => localStorage.getItem(`settle-friends-account-oauth-flow:${id}`), id)).toBeNull();
+  expect(await page.evaluate(() => globalThis.__roundtripOpened.length)).toBe(0);
   await page.reload();
   await expect(page.getByRole("button", { name: "המשך עם Google", exact: true })).toBeEnabled();
-  expect(fixture.counts.pkce).toBe(1);
+  expect(fixture.counts.pkce).toBe(0);
+  expect(fixture.counts.token).toBe(1);
 });
 
 test("failed Apple callback clears the spent code and remains ready for a new login", async ({ page }) => {
