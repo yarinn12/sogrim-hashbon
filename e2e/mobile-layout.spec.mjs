@@ -1384,6 +1384,45 @@ test("close-event action and its floating feedback stay polished on every mobile
   await expect(toast).toHaveCount(0);
 });
 
+test("partially clipped workspace navigation probes visible controls and rejects unexpected blockers", async ({ page }) => {
+  // Reproduce the Pixel 5 CI scroll position in both browser engines. The
+  // other device profiles still exercise their own font/media preferences.
+  await page.setViewportSize({width:393,height:727});
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  const navigation=page.locator('.event-workspace-nav');
+  await expect(navigation).toBeVisible();
+  await page.evaluate(()=>{
+    const navigation=document.querySelector('.event-workspace-nav').getBoundingClientRect();
+    const route=document.querySelector('.product-route-controls').getBoundingClientRect();
+    window.scrollBy(0,navigation.top-route.bottom+Math.ceil(navigation.height*0.64));
+  });
+  await expect.poll(()=>navigation.evaluate(element=>{
+    const clip=Number.parseFloat(getComputedStyle(element).getPropertyValue('--event-nav-route-occlusion'));
+    const button=element.querySelector('.event-workspace-summary').getBoundingClientRect();
+    const paintedTop=element.getBoundingClientRect().top+clip;
+    return Number.isFinite(clip) && paintedTop>button.top+button.height/2 && paintedTop<button.bottom-3;
+  })).toBe(true);
+  await assertLayoutHealth(page,'partially clipped workspace navigation');
+
+  const visiblePoint=await navigation.locator('.event-workspace-summary').evaluate(button=>{
+    const navigation=button.closest('.event-workspace-nav'), rect=button.getBoundingClientRect();
+    const paintedTop=navigation.getBoundingClientRect().top+Number.parseFloat(
+      getComputedStyle(navigation).getPropertyValue('--event-nav-route-occlusion'));
+    const point={x:rect.left+rect.width/2,y:(Math.max(paintedTop,rect.top,0)+Math.min(rect.bottom,innerHeight))/2};
+    return {...point,reachable:button.contains(document.elementFromPoint(point.x,point.y))};
+  });
+  expect(visiblePoint.reachable).toBe(true);
+  await page.evaluate(({x,y})=>{
+    const blocker=document.createElement('div');blocker.id='unexpected-hit-blocker';
+    Object.assign(blocker.style,{position:'fixed',left:`${x-12}px`,top:`${y-8}px`,width:'24px',height:'16px',zIndex:'2147483647'});
+    document.body.append(blocker);
+  },visiblePoint);
+  await expect(assertLayoutHealth(page,'unexpected workspace blocker')).rejects.toThrow('every visible control must remain tappable');
+  await page.locator('#unexpected-hit-blocker').evaluate(element=>element.remove());
+  await page.mouse.click(visiblePoint.x,visiblePoint.y);
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+});
+
 test("core mobile journey remains readable, reachable and correctly layered", async ({ page }) => {
   await assertDocumentDirection(page);
   await assertLayoutHealth(page, "home");
@@ -2051,6 +2090,9 @@ async function assertLayoutHealth(page, label) {
     const bottomNavigationTop = bottomNavigation?.getBoundingClientRect().top ?? innerHeight;
     const eventWorkspaceNavigation = document.querySelector(".event-workspace-nav");
     const eventWorkspaceNavigationRect = eventWorkspaceNavigation?.getBoundingClientRect();
+    const navigationTopInset = eventWorkspaceNavigation
+      ? getComputedStyle(eventWorkspaceNavigation).clipPath.match(/^inset\(([\d.]+)px(?:\s|\))/)
+      : null;
     const routeControls = document.querySelector(".product-route-controls");
     const routeControlsBottom = routeControls?.getBoundingClientRect().bottom ?? 0;
     const activeDialog = document.querySelector('[role="dialog"][aria-modal="true"]');
@@ -2077,7 +2119,15 @@ async function assertLayoutHealth(page, label) {
         return null;
       }
       const x = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
-      const y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+      let y = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+      if (hitTarget.closest(".event-workspace-nav") && eventWorkspaceNavigationRect && navigationTopInset) {
+        // Scrolling intentionally clips navigation beneath the route controls.
+        // Check its painted portion, not the masked center of the original box.
+        const visibleTop = Math.max(0, rect.top, eventWorkspaceNavigationRect.top + Number(navigationTopInset[1]));
+        const visibleBottom = Math.min(innerHeight, rect.bottom, eventWorkspaceNavigationRect.bottom);
+        if (visibleBottom <= visibleTop) return null;
+        y = (visibleTop + visibleBottom) / 2;
+      }
       const blocker = document.elementFromPoint(x, y);
       if (
         blocker?.closest(".event-workspace-nav") &&
