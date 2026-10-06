@@ -232,7 +232,14 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
         return reply([...activityInbox.values()].filter(item=>item.recipient===i));
       }
       if (url.pathname.endsWith('/ensure_account_workspace')) return reply({status: 'existing', workspaceId: personal[i].id});
-      if (url.pathname.endsWith('/join_shared_event')) return reply(Boolean(canReadCanonical(i)));
+      if (url.pathname.endsWith('/join_shared_event')) {
+        // Match join_shared_event's explicit SQL 42501 response after self-leave.
+        // A 200 false response concealed the distinction from a missing row.
+        if (withSelfLeave && !canReadCanonical(i)) {
+          return reply({code:'42501',message:'You are no longer a member of this event'},403);
+        }
+        return reply(Boolean(canReadCanonical(i)));
+      }
       // These auxiliary RPCs are outside the sync journey but are invoked at
       // startup/expense save. Explicit inert fixtures, not a blanket write allowlist.
       if (url.pathname.endsWith('/get_referral_program_status')) return reply({status: 'unavailable'});

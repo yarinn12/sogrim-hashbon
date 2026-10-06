@@ -259,6 +259,12 @@ export async function saveSharedEventState(
       remote = recovered.state;
       expectedVersion = recovered.updated_at ?? "";
     } else {
+      // An RLS-filtered read can mean the member already left while a stale
+      // outbox save was in flight. Only an explicit server revocation confirms
+      // that case; a missing row or transport error alone must retain intent.
+      if (await sharedEventMembershipWasRevoked(runtimeConfig, credentials, fetchImpl)) {
+        return revokeSharedEventAccess(workingState, eventId, runtimeConfig);
+      }
       try {
         await createSharedEventSnapshot(
           runtimeConfig,

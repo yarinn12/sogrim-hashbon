@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=507"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=508"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -428,7 +428,8 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   );
   assert.match(layer, /class="account-danger-copy"/);
   assert.match(layer, /\.account-danger-zone[\s\S]*?border-top:/);
-  assert.match(layer, /icon-192\.png/);
+  assert.match(layer, /account-auth-mark[^\n]+src="\.\/app-icon-exterior-192\.png"/);
+  assert.doesNotMatch(layer, /account-auth-mark[^\n]+src="\.\/icon-192\.png"/);
   assert.doesNotMatch(layer, /sogrim-logo-lockup\.png/);
   assert.match(
     layer,
