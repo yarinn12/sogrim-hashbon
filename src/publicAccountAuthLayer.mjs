@@ -431,7 +431,8 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
   renderAccountGate({
     message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : "",
-    error: callbackError
+    error: callbackError,
+    providerFeedback: Boolean(callbackError)
   });
   if (callbackError) removeSessionValue(ACCOUNT_NOTICE_MARKER);
   refreshProviderOptions().catch(() => {});
@@ -1026,6 +1027,7 @@ function renderAccountGate({
   mode = "login",
   message = "",
   error = "",
+  providerFeedback = false,
   errorFieldName = "",
   showVerificationResend = false,
   values = {}
@@ -1089,6 +1091,8 @@ function renderAccountGate({
           <p>${headingDescription}</p>
         </div>
 
+        ${providerFeedback && error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+
         <div class="account-google-slot" data-google-auth-slot>
           ${providerOptionsMarkup()}
         </div>
@@ -1142,7 +1146,7 @@ function renderAccountGate({
                 : ""
             }
             ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
-            ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+            ${error && !providerFeedback ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
             ${
               showVerificationResend && emailDeliveryReady
                 ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
@@ -1634,7 +1638,8 @@ async function handleAccountClick(event) {
       emitOperationFailure("auth", { screen: "auth", error });
       renderAccountGate({
         mode: "login",
-        error: accountAuthErrorMessage(error, "apple")
+        error: accountAuthErrorMessage(error, "apple"),
+        providerFeedback: true
       });
     } finally {
       setAuthBusy(false);
@@ -2080,7 +2085,8 @@ function handleGoogleSignInError(error) {
   emitOperationFailure("auth", { screen: "auth", error });
   renderAccountGate({
     mode: "login",
-    error: accountAuthErrorMessage(error, "google")
+    error: accountAuthErrorMessage(error, "google"),
+    providerFeedback: true
   });
 }
 
