@@ -173,7 +173,10 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /nonce: nonce\.hashed/);
   assert.match(layer, /nonce: webGoogleNonce/);
   assert.doesNotMatch(layer, /accounts\.id\.prompt\(\)/);
-  assert.doesNotMatch(layer, /secureOAuthUrl\(googleOAuthUrl\)/);
+  // iOS can recover a rejected native identity token through bound PKCE;
+  // normal native SDK sign-in, Android and the official web button remain.
+  assert.match(layer, /!isNativeIos\(\) \|\| accountSession \|\| Number\(error\?\.status\) !== 400/);
+  assert.match(layer, /secureOAuthUrl\(googleOAuthUrl\)/);
   assert.match(layer, /scopes: \["openid", "email", "profile"\]/);
   assert.match(layer, /iOSClientId/);
   assert.match(layer, /iOSServerClientId = webClientId/);

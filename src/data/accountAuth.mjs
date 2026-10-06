@@ -920,7 +920,7 @@ export function accountAuthErrorMessage(error, mode = "login") {
       message.includes("invalid audience") ||
       message.includes("google client")
     ) {
-      return "הכניסה עם Google לא הושלמה. כדאי לעדכן את האפליקציה, לבחור את החשבון שוב ולנסות.";
+      return "הכניסה עם Google לא הושלמה. בחר את החשבון שוב ונסה.";
     }
     return "לא הצלחנו להתחבר עם Google כרגע. כדאי לנסות שוב.";
   }

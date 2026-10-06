@@ -834,7 +834,7 @@ test("account auth errors stay helpful without exposing account existence", () =
   googleConfigurationError.status = 400;
   assert.equal(
     accountAuthErrorMessage(googleConfigurationError, "google"),
-    "הכניסה עם Google לא הושלמה. כדאי לעדכן את האפליקציה, לבחור את החשבון שוב ולנסות."
+    "הכניסה עם Google לא הושלמה. בחר את החשבון שוב ונסה."
   );
   assert.equal(
     accountAuthErrorMessage(new Error("Failed to fetch"), "google"),
