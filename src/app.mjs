@@ -24163,12 +24163,18 @@ function requestResumeSync({ force = false, includeSecondary = true } = {}) {
       state = nextState;
       render();
     })
-    .then(() => isCurrentAccount() && includeSecondary
-      ? Promise.all([
-          refreshFriendNetwork(),
-          refreshNotificationInbox({ force: true })
-        ])
-      : undefined)
+    .then(() => {
+      if (!isCurrentAccount() || !includeSecondary) return;
+      // Financial refresh owns this queue. A slow friend/inbox request must
+      // not hold the next fresh expense snapshot behind its network timeout.
+      // Both background readers retain their own account and request guards.
+      void Promise.all([
+        refreshFriendNetwork(),
+        refreshNotificationInbox({ force: true })
+      ]).catch(error => {
+        if (isCurrentAccount()) emitOperationDeferred("state_load", { error });
+      });
+    })
     .catch((error) => {
       if (!isCurrentAccount()) return;
       // Foreground refresh is intentionally non-blocking, but a swallowed

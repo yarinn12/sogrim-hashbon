@@ -27,6 +27,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   const sharedWriteFailures = new Map(), rejectedSharedWrites = [];
   const inviteFailures = new Set(), inviteHolds = new Map(), inviteRequests = [];
   const activityFailures = new Set(), activityRequests = [], activityInbox = new Map();
+  const secondaryHolds = new Map();
   let barrier = null, conflicts = 0, rejectedSiblingWrites = 0;
   let clock = Date.now() - 60_000;
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
@@ -222,6 +223,12 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
         return reply({access_token:`fixture-token-${i}`,refresh_token:`fixture-refresh-${i}`,expires_in:3600,user});
       }
       if (request.headers().authorization !== `Bearer fixture-token-${i}`) return reply({message: 'Authentication required'}, 401);
+      const secondaryKey=`${i}:${url.pathname.split('/').at(-1)}`;
+      const secondaryHold=secondaryHolds.get(secondaryKey);
+      if(secondaryHold && request.method()==='GET') {
+        secondaryHolds.delete(secondaryKey); secondaryHold.arrived=true;
+        await secondaryHold.ready;
+      }
       if (url.pathname === '/auth/v1/user') return reply(user);
       if (url.pathname.endsWith('/notification_inbox') && activityInbox.enabled) {
         return reply([...activityInbox.values()].filter(item=>item.recipient===i));
@@ -368,6 +375,10 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
     activityRequests, activityInbox,
+    holdNextSecondary(i,table) {
+      let release; const ready=new Promise(resolve=>{release=resolve;});
+      const hold={arrived:false,ready,release};secondaryHolds.set(`${i}:${table}`,hold);return hold;
+    },
     enableActivityInbox() {activityInbox.enabled=true;},
     failActivity(i,value) {if(value)activityFailures.add(i);else activityFailures.delete(i);},
     holdNextPaidReceipt(i) {
@@ -617,6 +628,34 @@ for (const sender of [0,1]) {
       } finally {await f.close();}
     });
   }
+}
+
+for (const recipient of [0,1]) for (const table of ['friendships','notification_inbox']) {
+  test(`a held ${table} read does not delay financial changes on recipient ${recipient}`, async ({},testInfo)=>{
+    const f=await fixture(testInfo), receiving=f.pages[recipient],sending=f.pages[1-recipient];
+    let hold;
+    try {
+      await receiving.locator('[data-nav-destination="home"]').click();
+      await expect(receiving.locator('[data-screen-kind="home"]')).toBeVisible();
+      hold=f.holdNextSecondary(recipient,table);
+      await receiving.evaluate(()=>window.dispatchEvent(new Event('settle-friends:native-resume')));
+      await expect.poll(()=>hold.arrived).toBe(true);
+      await newExpense(sending,`הוצאה ללא המתנה ${recipient}`, '37');
+      const expense=f.canonical.state.events[0].expenses[0];
+      const started=performance.now();
+      await receiving.evaluate(()=>window.dispatchEvent(new Event('settle-friends:native-resume')));
+      await expect.poll(async()=> (await storedEvent(receiving,f.personal[recipient].id))?.expenses?.some(item=>item.id===expense.id),
+        {timeout:2500,intervals:[50,100]}).toBe(true);
+      const refreshedMs=Math.round(performance.now()-started);
+      await receiving.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await expect(receiving.locator('.expense-row').filter({hasText:`הוצאה ללא המתנה ${recipient}`})).toHaveCount(1);
+      // The held secondary read is still outstanding at the financial/UI ACK.
+      expect(f.canonical.state.events[0].expenses).toHaveLength(1);
+      expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
+      console.log(JSON.stringify({kind:'two-browser-independent-financial-refresh',recipient,held:table,refreshedMs,
+        scope:'synthetic backend and lifecycle signal; actual financial wire write, stored receipt and visible expense'}));
+    } finally {hold?.release();await f.close();}
+  });
 }
 
 async function storedEvent(page, spaceId) {

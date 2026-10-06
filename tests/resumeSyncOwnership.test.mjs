@@ -100,6 +100,27 @@ test("same-session force requests coalesce into one follow-up and preserve peer 
   assert.deepEqual(h.secondary, ["friends", "inbox"]);
 });
 
+for (const delayed of ["friends", "inbox"]) {
+  test(`a slow ${delayed} refresh cannot hold a fresh financial snapshot behind it`, async () => {
+    const secondaryGate = deferred(), secondaryStarted = deferred();
+    let reads = 0;
+    const h = harness(() => Promise.resolve(++reads === 1 ? accountState("a") : stateWithPeerExpense()));
+    const name = delayed === "friends" ? "refreshFriendNetwork" : "refreshNotificationInbox";
+    h.context[name] = () => { secondaryStarted.resolve(); return secondaryGate.promise; };
+    const first = h.context.requestResumeSync();
+    await secondaryStarted.promise;
+    const next = h.context.requestResumeSync({ force: true, includeSecondary: false });
+    try {
+      for (let turn = 0; turn < 50; turn++) await Promise.resolve();
+      assert.equal(reads, 2, "the current financial read must not wait for an unrelated network timeout");
+      assert.equal(h.context.state.events[0].expenses[0]?.id, "peer-expense");
+      assert.equal(h.context.resumeSyncRequest, null);
+    } finally {
+      secondaryGate.resolve(); await Promise.all([first, next]);
+    }
+  });
+}
+
 test("resume sync waits for the visible account to match the signed-in account", async () => {
   const h = harness(() => Promise.resolve(accountState("b")));
   h.context.session = { user: { id: "b" } };
