@@ -1,0 +1,41 @@
+name: TestFlight 189 group diagnostic
+on:
+  push:
+    branches: [work/ios-google-auth-testflight-189-20261006]
+    paths: [.github/workflows/testflight-189-group-diagnostic-once.yml]
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: f031475c8c8fa5d91e4d074040a8f66527bdf1ef
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read current group and build without changes
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {createHash} from 'node:crypto';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const group='4646e3de-7401-4e70-ac32-9a00072e1376';
+          const g=(await api('/v1/betaGroups/'+group)).data;
+          const testers=await api('/v1/betaGroups/'+group+'/betaTesters?limit=200');
+          const builds=await api('/v1/builds?'+new URLSearchParams({'filter[app]':'6809952514','filter[version]':'189',include:'preReleaseVersion',limit:'200'}));
+          const assigned=await api('/v1/betaGroups/'+group+'/builds?limit=200');
+          const selected=await api('/v1/appStoreVersions/3a69b968-9121-43b6-b9b5-4ea3ddf42d3a/build');
+          const report={group:{id:g.id,name:g.attributes?.name,internal:g.attributes?.isInternalGroup},paginated:!!testers.links?.next,
+            testers:(testers.data||[]).map(t=>({id:t.id,knownPrimary:t.id==='5d2040f0-3af9-4d98-a188-fd6eeb5547db',emailHash:createHash('sha256').update(String(t.attributes?.email||'').trim().toLowerCase()).digest('hex'),state:t.attributes?.state})),
+            builds:(builds.data||[]).map(b=>({id:b.id,build:b.attributes?.version,state:b.attributes?.processingState})),
+            assignedBuild189:(assigned.data||[]).some(b=>b.attributes?.version==='189'),selectedBuild:selected.data?.attributes?.version};
+          console.log('GROUP_DIAGNOSTIC:'+JSON.stringify(report));
+          NODE
