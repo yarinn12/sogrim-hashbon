@@ -1,5 +1,5 @@
-name: iOS Google recovery TestFlight 188
-run-name: iOS Google recovery 4.55 (188)
+name: iOS Google recovery verified upload 188
+run-name: Verified Google recovery 4.55 (188)
 
 on:
   push:
@@ -42,89 +42,63 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Validate Apple configuration
-        run: node scripts/verify-ios-workflow-env.mjs
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
-
-      - name: Verify public Apple login provider readiness
-        run: npm run qa:ios:providers
-
       - name: Select and verify Xcode 26.6
         run: |
           sudo xcode-select -s /Applications/Xcode_26.6.app
           xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run release checks
+      - name: Verify the existing signed build provenance and successful Mac checks
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          npm test
-          npm run native:ios:flatten-icon
-          npm run native:prepare
+          node --input-type=module <<'NODE'
+          const get=async path=>{
+            const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon'+path,{headers:{Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'}});
+            if(!response.ok)throw new Error('Signed build provenance is unavailable');
+            return response.json();
+          };
+          const run=await get('/actions/runs/37467886875');
+          if(run.head_sha!=='6cb04278228aac65a960d4ed770a65702158ad08'||run.status!=='completed'||run.conclusion!=='failure')throw new Error('Unexpected original build run');
+          const jobs=await get('/actions/runs/37467886875/jobs?per_page=100');
+          if(jobs.jobs?.length!==1)throw new Error('Unexpected original build jobs');
+          const steps=jobs.jobs[0].steps;
+          function requireStep(name, conclusion){
+            const matching=steps.filter(s=>s.name===name);
+            if(matching.length!==1||matching[0].conclusion!==conclusion)throw new Error('Original build step was not verified: '+name);
+          }
+          for(const name of ['Checkout verified authentication source','Run release checks','Verify Google recovery, Apple and email on iPhone and iPad WebKit','Prepare Apple release settings','Verify prepared iOS release','Archive signed iOS app','Export IPA','Verify signed iOS artifact'])requireStep(name,'success');
+          requireStep('Require successful source QA and an unused Apple build number','failure');
+          for(const name of ['Upload app to TestFlight','Verify Apple processing and complete TestFlight notes','Add verified build to the existing internal testing group'])requireStep(name,'skipped');
+          const artifact=await get('/actions/artifacts/11415519328');
+          if(artifact.id!==11415519328||artifact.name!=='sogrim-hashbon-ios-4.55-188'||artifact.expired||artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==run.head_sha||artifact.digest!=='sha256:3a759109535e33cbcbeb40c6dbda9aa237b03ca65d30961b17afc6c5170b451e')throw new Error('Unexpected signed build artifact');
+          console.log('Verified signed build provenance and successful original Mac checks; original upload was skipped.');
+          NODE
 
-      - name: Verify Google recovery, Apple and email on iPhone and iPad WebKit
-        run: |
-          npx playwright install webkit
-          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs e2e/native-auth-roundtrip.spec.mjs e2e/email-login-completion.spec.mjs --project=iphone-webkit --project=ipad-webkit
-
-      - name: Prepare Apple release settings
-        run: node scripts/prepare-ios-release.mjs
-
-      - name: Verify prepared iOS release
-        run: npm run qa:ios
-
-      - name: Import Apple Distribution certificate
-        uses: apple-actions/import-codesign-certs@v7
+      - name: Retrieve the immutable signed build
+        uses: actions/download-artifact@v6
         with:
-          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+          artifact-ids: '11415519328'
+          github-token: ${{ github.token }}
+          repository: yarinn12/sogrim-hashbon
+          run-id: '37467886875'
+          path: .
+          merge-multiple: true
 
-      - name: Download App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v6
-        with:
-          bundle-id: com.sogrimhashbon.app
-          profile-type: IOS_APP_STORE
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-
-      - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-
-      - name: Archive signed iOS app
+      - name: Verify the exact signed IPA checksum and manifest
         run: |
-          mkdir -p build/ios
-          set -o pipefail
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            clean archive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            | tee build/ios/archive.log
+          node --input-type=module <<'NODE'
+          import {readFile} from 'node:fs/promises';
+          import {createHash} from 'node:crypto';
+          const bytes=await readFile('build/ios/SogrimHashbon.ipa');
+          const sha256=createHash('sha256').update(bytes).digest('hex').toUpperCase();
+          const manifest=JSON.parse(await readFile('build/ios/release-manifest.json','utf8'));
+          if(sha256!=='B8731FE1EE10DF163E332FDBAD4ADFD22A24F46F6D872C6CEC077A9699095F60'||manifest.sha256!==sha256||bytes.length!==12134471||manifest.bytes!==bytes.length||manifest.bundleId!=='com.sogrimhashbon.app'||manifest.version!=='4.55'||manifest.build!=='188'||manifest.teamId!=='MA9S4L7WKS')throw new Error('Signed IPA checksum or manifest mismatch');
+          console.log('Exact signed IPA checksum and manifest verified.');
+          NODE
 
-      - name: Export IPA
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.generated.plist \
-            -exportPath build/ios/export \
-            | tee build/ios/export.log
-          ipa_path="$(find build/ios/export -maxdepth 2 -name '*.ipa' -print -quit)"
-          test -n "$ipa_path"
-          cp "$ipa_path" build/ios/SogrimHashbon.ipa
+      - name: Reverify the signed iOS artifact before upload
+        run: node scripts/verify-ios-artifact.mjs
 
-      - name: Verify signed iOS artifact
-        run: npm run qa:ios:artifact
 
       - name: Require successful source QA and an unused Apple build number
         env:
@@ -133,7 +107,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
-          for (const [id,expected] of [[37458278976,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37458278979,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37467348496,'c4508043203909e1dbf6952204fabc33006c2a89'],[37468560278,'7bf4f6848d0fdbadaa3518920835864093ceb026'],[37467348757,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348614,'c4508043203909e1dbf6952204fabc33006c2a89']]) {
+          for (const [id,expected] of [[37458278976,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37458278979,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37467348496,'c4508043203909e1dbf6952204fabc33006c2a89'],[37470528479,'d2962f98e09a1996b9327c0d3a94466cbe4e228d'],[37467348757,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348614,'c4508043203909e1dbf6952204fabc33006c2a89']]) {
             let accepted=false;
             for(let attempt=0;attempt<60;attempt++){
               const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+id,{
@@ -220,5 +194,4 @@ jobs:
             playwright-report/
           if-no-files-found: warn
           retention-days: 7
-
 
