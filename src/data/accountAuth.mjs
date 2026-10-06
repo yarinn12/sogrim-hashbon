@@ -23,6 +23,7 @@ export const ACCOUNT_RECOVERY_SESSION_TTL_MS = 15 * 60 * 1000;
 const SIGNUP_WORKSPACE_CLAIM_PREFIX = "settle-friends-signup-workspace-claimed:";
 export const LEGACY_STATE_CLAIM_PREFIX = "settle-friends-legacy-state-claim:";
 const LEGACY_STATE_STORAGE_KEY = "settle-friends-state";
+const pendingAccountRefreshes = new WeakMap();
 
 export function normalizeAccountEmail(value) {
   const email = String(value ?? "").trim().normalize("NFKC").toLowerCase();
@@ -350,12 +351,22 @@ export async function refreshAccountSession(
   requestOptions = {}
 ) {
   if (!session?.refresh_token) return null;
-  const response = await authRequest(config, "/token?grant_type=refresh_token", {
+  // Startup reconciliation and a cloud request can discover the same expired
+  // token together. Share that rotation, keeping accounts and backends separate.
+  let pending = pendingAccountRefreshes.get(fetchImpl);
+  if (!pending) {
+    pending = new Map();
+    pendingAccountRefreshes.set(fetchImpl, pending);
+  }
+  const key = JSON.stringify([authBaseUrl(config), config.storage.anonKey, session.refresh_token]);
+  if (pending.has(key)) return pending.get(key);
+  const request = authRequest(config, "/token?grant_type=refresh_token", {
     method: "POST",
     body: { refresh_token: session.refresh_token },
     timeoutMs: requestOptions.timeoutMs
-  }, fetchImpl);
-  return sessionFromAuthResponse(response);
+  }, fetchImpl).then(sessionFromAuthResponse).finally(() => pending.delete(key));
+  pending.set(key, request);
+  return request;
 }
 
 export async function loadAccountUser(

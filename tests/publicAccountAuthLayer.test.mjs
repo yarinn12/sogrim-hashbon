@@ -187,7 +187,7 @@ test("account gate offers email registration, Google, Apple, sign out and deleti
   assert.match(layer, /if \(authBusy \|\| !isNativeGooglePlatform\(\)\) return;\s*setAuthBusy\(true\);\s*try \{\s*await signInWithNativeGoogle\(\)/);
   assert.match(
     layer,
-    /accountSession = saveAccountSession\(\s*await signInWithIdToken\(runtimeConfig,[\s\S]*?canResumeOffline\(accountSession, error\)[\s\S]*?resumeAccountLocally\(accountSession\)/
+    /accountSession = saveAccountSession\(\s*await signInWithIdToken\(runtimeConfig,[\s\S]*?accountSignInPending = true;[\s\S]*?renderAccountRecoveryGate\(\{ connecting: true \}\)/
   );
   assert.match(layer, /accountAuthErrorMessage\(error, "google"\)/);
   assert.match(layer, /renderAccountNameCompletionGate\(\{\s*displayName:/);
@@ -494,7 +494,7 @@ test("account gate protects private content and preserves interrupted form work"
   );
   assert.match(
     layer,
-    /if \(canResumeOffline\(accountSession, error\)\) \{[\s\S]*?resumeAccountLocally\(accountSession\)/
+    /if \(!accountSignInPending && canResumeOffline\(accountSession, error\)\) \{[\s\S]*?resumeAccountLocally\(accountSession\)/
   );
   assert.match(
     layer,

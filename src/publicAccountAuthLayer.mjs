@@ -218,7 +218,8 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
 
   const callbackParams = new URLSearchParams(window.location.search);
-  const callbackCode = callbackParams.get("code");
+  const providerRejected = callbackParams.has("error");
+  const callbackCode = providerRejected ? "" : callbackParams.get("code");
   const callbackFlowId = callbackParams.get(ACCOUNT_OAUTH_FLOW_QUERY_PARAM) ?? "";
   const callbackFlow = loadAccountOAuthFlow(callbackFlowId);
   const callbackType = authCallbackType(window.location.hash);
@@ -226,13 +227,17 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   // Provider sign-in must return through the state-bound PKCE code flow below.
   // Recovery sessions are accepted only for the locally initiated reset attempt.
   const validRecoveryCallback =
+    !providerRejected &&
     callbackType === "recovery" &&
     fragmentSession &&
     callbackFlow?.purpose === ACCOUNT_RECOVERY_FLOW_PURPOSE;
   let callbackSession = validRecoveryCallback ? fragmentSession : null;
-  if (fragmentSession && !callbackSession) {
+  let callbackError = "";
+  if (providerRejected || (fragmentSession && !callbackSession)) {
     if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
     cleanAuthHash(callbackFlow);
+    callbackError = "ההתחברות לא הושלמה. כדאי לנסות שוב.";
+    rememberAccountNotice(callbackError);
   }
   let sessionBeforeCallback = null;
   if (!callbackSession && callbackCode) {
@@ -247,6 +252,10 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
           verifier
         );
       }
+    } catch (error) {
+      // A rejected single-use code needs a fresh provider attempt. Keep the
+      // failure visible while continuing to initialize the login controls.
+      emitOperationFailure("auth", { screen: "auth", error });
     } finally {
       if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
       clearOAuthPkceVerifier();
@@ -254,7 +263,8 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         // Authorization codes are single-use. Leaving a failed or stale code in
         // the URL disables the immediate local resume on every later launch.
         cleanAuthHash(callbackFlow);
-        rememberAccountNotice("ההתחברות לא הושלמה. כדאי לנסות שוב.");
+        callbackError = "ההתחברות לא הושלמה. כדאי לנסות שוב.";
+        rememberAccountNotice(callbackError);
       }
     }
   }
@@ -420,8 +430,11 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
     }
   }
   renderAccountGate({
-    message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : ""
+    message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : "",
+    error: callbackError,
+    providerFeedback: Boolean(callbackError)
   });
+  if (callbackError) removeSessionValue(ACCOUNT_NOTICE_MARKER);
   refreshProviderOptions().catch(() => {});
 }
 
@@ -1014,6 +1027,7 @@ function renderAccountGate({
   mode = "login",
   message = "",
   error = "",
+  providerFeedback = false,
   errorFieldName = "",
   showVerificationResend = false,
   values = {}
@@ -1077,6 +1091,8 @@ function renderAccountGate({
           <p>${headingDescription}</p>
         </div>
 
+        ${providerFeedback && error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+
         <div class="account-google-slot" data-google-auth-slot>
           ${providerOptionsMarkup()}
         </div>
@@ -1130,7 +1146,7 @@ function renderAccountGate({
                 : ""
             }
             ${message ? `<p id="account-auth-feedback" class="account-auth-message" role="status">${escapeHtml(message)}</p>` : ""}
-            ${error ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
+            ${error && !providerFeedback ? `<p id="account-auth-feedback" class="account-auth-error" role="alert">${escapeHtml(error)}</p>` : ""}
             ${
               showVerificationResend && emailDeliveryReady
                 ? `<button class="account-forgot-button" type="button" data-account-action="resend-verification">שלח שוב קישור אימות</button>`
@@ -1622,7 +1638,8 @@ async function handleAccountClick(event) {
       emitOperationFailure("auth", { screen: "auth", error });
       renderAccountGate({
         mode: "login",
-        error: accountAuthErrorMessage(error, "apple")
+        error: accountAuthErrorMessage(error, "apple"),
+        providerFeedback: true
       });
     } finally {
       setAuthBusy(false);
@@ -2068,7 +2085,8 @@ function handleGoogleSignInError(error) {
   emitOperationFailure("auth", { screen: "auth", error });
   renderAccountGate({
     mode: "login",
-    error: accountAuthErrorMessage(error, "google")
+    error: accountAuthErrorMessage(error, "google"),
+    providerFeedback: true
   });
 }
 
@@ -2144,6 +2162,9 @@ async function completeGoogleIdTokenSignIn({
       nonce
     })
   );
+  if (!accountSession) throw new Error("Google account session is unavailable");
+  accountSignInPending = true;
+  renderAccountRecoveryGate({ connecting: true });
 
   try {
     accountSession = await restoreAccountSession(accountSession, {
@@ -2154,12 +2175,6 @@ async function completeGoogleIdTokenSignIn({
   } catch (error) {
     if (accountSession?.user && accountProfileNeedsCompletion(error)) {
       throw error;
-    }
-    if (canResumeOffline(accountSession, error)) {
-      resumeAccountLocally(accountSession);
-      watchAccountControls();
-      enhanceAccountControls();
-      return;
     }
     if (accountSession?.user) {
       // Google has already authenticated this account. A later workspace or
@@ -2909,7 +2924,9 @@ function clearAccountReturnUrl() {
 
 function accountReturnPath() {
   const inviteUrl = pendingInviteUrl(window.location.href);
-  const returnUrl = new URL(inviteUrl || window.location.href, window.location.origin);
+  // Capacitor can launch at capacitor://localhost without a pathname. Keep
+  // the saved OAuth return path valid even on that initial native page.
+  const returnUrl = new URL(inviteUrl || window.location.href, window.location.href);
   for (const key of [
     "code",
     "error",
@@ -2919,7 +2936,7 @@ function accountReturnPath() {
   ]) {
     returnUrl.searchParams.delete(key);
   }
-  return `${returnUrl.pathname}${returnUrl.search}`;
+  return `${returnUrl.pathname || "/"}${returnUrl.search}`;
 }
 
 function accountInviteContext() {
@@ -2991,7 +3008,7 @@ function authRedirectUrl(flowId = "") {
   const baseUrl = globalThis.SogrimNative?.authCallbackUrl ||
     `${window.location.origin}${window.location.pathname}`;
   if (!flowId) return baseUrl;
-  const redirectUrl = new URL(baseUrl, window.location.origin);
+  const redirectUrl = new URL(baseUrl, window.location.href);
   redirectUrl.searchParams.set(ACCOUNT_OAUTH_FLOW_QUERY_PARAM, flowId);
   return redirectUrl.toString();
 }
