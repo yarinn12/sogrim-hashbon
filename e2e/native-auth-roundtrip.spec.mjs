@@ -26,7 +26,7 @@ const state = {
 };
 
 async function prepare(page, { googleError = "", userFailureOnce = false, pkceError = false } = {}) {
-  const counts = { token: 0, pkce: 0, user: 0, writes: 0, recovery: 0 };
+  const counts = { token: 0, pkce: 0, refresh: 0, logout: 0, user: 0, writes: 0, recovery: 0 };
   let expectedVerifier = "";
   let recoveryRedirect = "";
   const config = {
@@ -55,9 +55,9 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
     globalThis.__roundtripListeners = {};
     globalThis.__roundtripOpened = [];
     globalThis.__roundtripSocialLogin = {
-      initialize: async options => { globalThis.__roundtripGoogleConfig = options; },
+      initialize: async options => { localStorage.setItem("roundtrip-google-config", JSON.stringify(options)); },
       login: async options => {
-        globalThis.__roundtripGoogleOptions = options;
+        localStorage.setItem("roundtrip-google-options", JSON.stringify(options));
         const count = Number(localStorage.getItem("roundtrip-chooser-count") || 0);
         localStorage.setItem("roundtrip-chooser-count", String(count + 1));
         return { result: { idToken: "fixture-google-id", accessToken: { token: "fixture-google-access" } } };
@@ -87,7 +87,11 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
     if (url.pathname.endsWith("/auth/v1/settings")) return route.fulfill({ json: { external: { google: true, apple: true, email: true } } });
     if (url.pathname.endsWith("/auth/v1/token")) {
       const body = request.postDataJSON();
-      if (url.searchParams.get("grant_type") === "pkce") {
+      if (url.searchParams.get("grant_type") === "refresh_token") {
+        counts.refresh += 1;
+        expect(body.refresh_token).toBe("fixture-refresh");
+        return route.fulfill({ json: { access_token: "fixture-refreshed-access", refresh_token: "fixture-refresh", expires_in: 3600, user } });
+      } else if (url.searchParams.get("grant_type") === "pkce") {
         counts.pkce += 1;
         expect(body.auth_code).toBe("fixture-apple-code");
         expect(body.code_verifier).toBe(expectedVerifier);
@@ -99,6 +103,10 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
         if (googleError && counts.token === 1) return route.fulfill({ status: 400, json: { message: googleError } });
       }
       return route.fulfill({ json: { access_token: "fixture-access", refresh_token: "fixture-refresh", expires_in: 3600, user } });
+    }
+    if (url.pathname.endsWith("/auth/v1/logout")) {
+      counts.logout += 1;
+      return route.fulfill({ status: 204, body: "" });
     }
     if (url.pathname.endsWith("/auth/v1/recover")) {
       counts.recovery += 1;
@@ -129,7 +137,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
   return {
     counts,
     getRecoveryRedirect: () => recoveryRedirect,
-    async appleCallback() {
+    async appleCallback({ providerRejected = false } = {}) {
       await page.getByRole("button", { name: "המשך עם Apple", exact: true }).click();
       await expect.poll(() => page.evaluate(() => globalThis.__roundtripOpened.length)).toBe(1);
       const authorization = new URL(await page.evaluate(() => globalThis.__roundtripOpened[0]));
@@ -138,7 +146,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
       expect(`${callback.origin}${callback.pathname}`).toBe(CALLBACK);
       const id = callback.searchParams.get("auth_flow");
       expectedVerifier = await page.evaluate(id => JSON.parse(localStorage.getItem(`settle-friends-account-oauth-flow:${id}`)).verifier, id);
-      callback.searchParams.set("code", "fixture-apple-code");
+      callback.searchParams.set(providerRejected ? "error" : "code", providerRejected ? "access_denied" : "fixture-apple-code");
       await page.evaluate(url => globalThis.__roundtripListeners.appUrlOpen({ url }), callback.href);
       return id;
     }
@@ -160,6 +168,12 @@ test("native Google returns to the account and retains the session after relaunc
   await expectAccount(page);
   expect(counts.token).toBe(1);
   expect(await page.evaluate(() => localStorage.getItem("roundtrip-chooser-count"))).toBe("1");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("roundtrip-google-config")))).toEqual({
+    google: { webClientId: "fixture-web.apps.googleusercontent.com", mode: "online", iOSClientId: "fixture-ios.apps.googleusercontent.com", iOSServerClientId: "fixture-web.apps.googleusercontent.com" }
+  });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("roundtrip-google-options")))).toEqual({
+    provider: "google", options: { scopes: ["openid", "email", "profile"], forcePrompt: true }
+  });
 });
 
 for (const googleError of ["JWT expired", "Invalid audience"]) {
@@ -168,6 +182,7 @@ for (const googleError of ["JWT expired", "Invalid audience"]) {
     await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
     await expect(page.locator("#account-auth-feedback")).toHaveRole("alert");
     await expect(page.locator("#account-auth-feedback")).toContainText("Google");
+    await expect(page.locator("#account-auth-feedback")).toBeInViewport();
     await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
     await expectAccount(page);
     expect(counts.token).toBe(2);
@@ -189,6 +204,7 @@ test("failed Apple callback clears the spent code and remains ready for a new lo
   const fixture = await prepare(page, { pkceError: true });
   const id = await fixture.appleCallback();
   await expect(page.locator("#account-auth-feedback")).toBeVisible();
+  await expect(page.locator("#account-auth-feedback")).toContainText("ההתחברות לא הושלמה");
   await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeEnabled();
   expect(new URL(page.url()).searchParams.has("code")).toBe(false);
   expect(await page.evaluate(id => localStorage.getItem(`settle-friends-account-oauth-flow:${id}`), id)).toBeNull();
@@ -201,8 +217,61 @@ test("an unbound Apple callback cannot exchange a code or replace the account", 
   const { counts } = await prepare(page);
   await page.evaluate(url => globalThis.__roundtripListeners.appUrlOpen({ url }), `${CALLBACK}?code=attacker-code&auth_flow=unbound-flow`);
   await expect(page.locator("#account-auth-feedback")).toBeVisible();
+  await expect(page.locator("#account-auth-feedback")).toContainText("ההתחברות לא הושלמה");
   expect(counts.pkce).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
+});
+
+test("Apple provider rejection explains the failure and restores a fresh attempt", async ({ page }) => {
+  const fixture = await prepare(page);
+  const id = await fixture.appleCallback({ providerRejected: true });
+  await expect(page.locator("#account-auth-feedback")).toContainText("ההתחברות לא הושלמה");
+  await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeEnabled();
+  expect(new URL(page.url()).searchParams.has("error")).toBe(false);
+  expect(await page.evaluate(id => localStorage.getItem(`settle-friends-account-oauth-flow:${id}`), id)).toBeNull();
+  expect(fixture.counts.pkce).toBe(0);
+});
+
+test("accepted Google login recovers after a temporary account lookup failure without another chooser", async ({ page }) => {
+  const { counts } = await prepare(page, { userFailureOnce: true });
+  await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "נכנסת בהצלחה", exact: true })).toBeVisible();
+  await expectAccount(page);
+  expect(counts.token).toBe(1);
+  expect(counts.user).toBeGreaterThan(1);
+  expect(await page.evaluate(() => localStorage.getItem("roundtrip-chooser-count"))).toBe("1");
+});
+
+test("an expired saved access token refreshes without asking Google to sign in again", async ({ page }) => {
+  const { counts } = await prepare(page);
+  await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
+  await expectAccount(page);
+  await page.evaluate(() => {
+    const key = "settle-friends-account-session";
+    const session = JSON.parse(localStorage.getItem(key));
+    session.expires_at = 1;
+    localStorage.setItem(key, JSON.stringify(session));
+  });
+  await page.reload();
+  await expect(page.getByText(eventName, { exact: true })).toBeVisible();
+  await expect.poll(() => counts.refresh).toBe(1);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-account-session"))?.access_token)).toBe("fixture-refreshed-access");
+  expect(counts.token).toBe(1);
+});
+
+test("sign-out removes the saved session and returns to usable native login options", async ({ page }) => {
+  const { counts } = await prepare(page);
+  await page.getByRole("button", { name: "המשך עם Google", exact: true }).click();
+  await expectAccount(page);
+  await page.locator('[data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-account-controls]')).toBeVisible();
+  await page.locator('[data-account-controls] summary').click();
+  await page.getByRole("button", { name: "התנתק", exact: true }).click();
+  await expect(page.getByRole("button", { name: "המשך עם Apple", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "המשך עם Google", exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => localStorage.getItem("settle-friends-account-session"))).toBeNull();
+  expect(counts.logout).toBe(1);
+  await expect(page.getByText(eventName, { exact: true })).toBeHidden();
 });
 
 test("password recovery from email returns through the native callback and survives reload", async ({ page }) => {

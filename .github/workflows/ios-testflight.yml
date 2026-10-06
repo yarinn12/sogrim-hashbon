@@ -77,7 +77,7 @@ jobs:
       - name: Verify Apple login on iPhone and iPad WebKit
         run: |
           npx playwright install webkit
-          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs --project=iphone-webkit --project=ipad-webkit
+          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs e2e/native-auth-roundtrip.spec.mjs e2e/email-login-completion.spec.mjs --project=iphone-webkit --project=ipad-webkit
 
       - name: Prepare Apple release settings
         run: node scripts/prepare-ios-release.mjs

@@ -218,7 +218,8 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   }
 
   const callbackParams = new URLSearchParams(window.location.search);
-  const callbackCode = callbackParams.get("code");
+  const providerRejected = callbackParams.has("error");
+  const callbackCode = providerRejected ? "" : callbackParams.get("code");
   const callbackFlowId = callbackParams.get(ACCOUNT_OAUTH_FLOW_QUERY_PARAM) ?? "";
   const callbackFlow = loadAccountOAuthFlow(callbackFlowId);
   const callbackType = authCallbackType(window.location.hash);
@@ -226,13 +227,17 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
   // Provider sign-in must return through the state-bound PKCE code flow below.
   // Recovery sessions are accepted only for the locally initiated reset attempt.
   const validRecoveryCallback =
+    !providerRejected &&
     callbackType === "recovery" &&
     fragmentSession &&
     callbackFlow?.purpose === ACCOUNT_RECOVERY_FLOW_PURPOSE;
   let callbackSession = validRecoveryCallback ? fragmentSession : null;
-  if (fragmentSession && !callbackSession) {
+  let callbackError = "";
+  if (providerRejected || (fragmentSession && !callbackSession)) {
     if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
     cleanAuthHash(callbackFlow);
+    callbackError = "ההתחברות לא הושלמה. כדאי לנסות שוב.";
+    rememberAccountNotice(callbackError);
   }
   let sessionBeforeCallback = null;
   if (!callbackSession && callbackCode) {
@@ -247,6 +252,10 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
           verifier
         );
       }
+    } catch (error) {
+      // A rejected single-use code needs a fresh provider attempt. Keep the
+      // failure visible while continuing to initialize the login controls.
+      emitOperationFailure("auth", { screen: "auth", error });
     } finally {
       if (callbackFlowId) clearAccountOAuthFlow(callbackFlowId);
       clearOAuthPkceVerifier();
@@ -254,7 +263,8 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
         // Authorization codes are single-use. Leaving a failed or stale code in
         // the URL disables the immediate local resume on every later launch.
         cleanAuthHash(callbackFlow);
-        rememberAccountNotice("ההתחברות לא הושלמה. כדאי לנסות שוב.");
+        callbackError = "ההתחברות לא הושלמה. כדאי לנסות שוב.";
+        rememberAccountNotice(callbackError);
       }
     }
   }
@@ -420,8 +430,10 @@ async function setupAccountAuth({ retryConfig = false } = {}) {
     }
   }
   renderAccountGate({
-    message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : ""
+    message: accountDeleted ? "החשבון והמידע האישי שלך נמחקו." : "",
+    error: callbackError
   });
+  if (callbackError) removeSessionValue(ACCOUNT_NOTICE_MARKER);
   refreshProviderOptions().catch(() => {});
 }
 
@@ -2144,6 +2156,9 @@ async function completeGoogleIdTokenSignIn({
       nonce
     })
   );
+  if (!accountSession) throw new Error("Google account session is unavailable");
+  accountSignInPending = true;
+  renderAccountRecoveryGate({ connecting: true });
 
   try {
     accountSession = await restoreAccountSession(accountSession, {
@@ -2154,12 +2169,6 @@ async function completeGoogleIdTokenSignIn({
   } catch (error) {
     if (accountSession?.user && accountProfileNeedsCompletion(error)) {
       throw error;
-    }
-    if (canResumeOffline(accountSession, error)) {
-      resumeAccountLocally(accountSession);
-      watchAccountControls();
-      enhanceAccountControls();
-      return;
     }
     if (accountSession?.user) {
       // Google has already authenticated this account. A later workspace or
