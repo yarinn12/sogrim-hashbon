@@ -9,6 +9,7 @@ import {
   notificationTargetFromPayload
 } from "./domain/notificationTargets.mjs";
 import { fetchWithTimeout } from "./data/fetchTimeout.mjs";
+import { claimNativeAuthCallback } from "./domain/nativeAuthCallbacks.mjs";
 
 const NATIVE_AUTH_CALLBACK = new URL(
   NATIVE_AUTH_PATH,
@@ -115,10 +116,15 @@ function setupNativeBridge() {
     }
     lastOpenedRequestKey = requestKey;
     lastOpenedAt = now;
+    const authCallback = isNativeAuthCallback(url);
+    // iOS getLaunchUrl retains this universal link after the WebView reload.
+    // Claim its delivery before closing the browser, so reinitializing this
+    // bridge cannot interrupt or reopen the account's single-use code exchange.
+    if (authCallback && !await claimNativeAuthCallback(url)) return false;
     try {
       await browserPlugin?.close?.();
     } catch {}
-    if (isNativeAuthCallback(url)) {
+    if (authCallback) {
       history.replaceState(history.state, "", destination);
       window.location.reload();
       return true;

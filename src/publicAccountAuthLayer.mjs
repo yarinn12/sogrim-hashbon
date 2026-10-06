@@ -1071,7 +1071,7 @@ function renderAccountGate({
   gate.innerHTML = `
     <div class="account-auth-shell">
       <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
           <h1>החשבון נשאר איתך</h1>
@@ -1190,7 +1190,7 @@ function renderAccountRecoveryGate({ connecting = false } = {}) {
   gate.innerHTML = `
     <div class="account-auth-shell account-auth-shell-compact">
       <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
           <h1>המידע שלך נשאר מוגן</h1>
@@ -1270,7 +1270,7 @@ function renderAccountNameCompletionGate({
   gate.innerHTML = `
     <div class="account-auth-shell account-auth-shell-compact">
       <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
           <h1>${inviteContext ? "עוד רגע מצטרפים לאירוע" : "משלימים את החשבון"}</h1>
@@ -2707,7 +2707,7 @@ function renderPasswordResetGate(error = "") {
   gate.innerHTML = `
     <div class="account-auth-shell account-auth-shell-compact">
       <section class="account-auth-brand">
-        <span class="account-auth-mark" aria-hidden="true"><img src="./icon-192.png" alt="" width="50" height="50" /></span>
+        <span class="account-auth-mark" aria-hidden="true"><img src="./app-icon-exterior-192.png" alt="" width="50" height="50" /></span>
         <div>
           <p class="eyebrow">סוגרים חשבון</p>
           <h1>בוחרים סיסמה חדשה</h1>

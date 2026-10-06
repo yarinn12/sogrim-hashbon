@@ -8137,8 +8137,8 @@ function keepBrandAssetsCurrent() {
   });
 
   document.querySelectorAll(".account-auth-mark img").forEach((image) => {
-    if (image.getAttribute("src") !== "./icon-192.png") {
-      image.setAttribute("src", "./icon-192.png");
+    if (image.getAttribute("src") !== "./app-icon-exterior-192.png") {
+      image.setAttribute("src", "./app-icon-exterior-192.png");
     }
   });
 }

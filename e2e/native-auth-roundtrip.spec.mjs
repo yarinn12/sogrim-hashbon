@@ -74,14 +74,26 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
       Plugins: {
         Browser: {
           open: async ({ url }) => globalThis.__roundtripOpened.push(url),
-          close: async () => localStorage.setItem("roundtrip-browser-closed", "1")
+          close: async () => {
+            localStorage.setItem("roundtrip-browser-closed", "1");
+            localStorage.setItem("roundtrip-browser-close-count", String(Number(localStorage.getItem("roundtrip-browser-close-count") || 0) + 1));
+          }
         },
         App: {
           addListener: async (name, listener) => {
-            globalThis.__roundtripListeners[name] = listener;
+            globalThis.__roundtripListeners[name] = value => {
+              if (name === "appUrlOpen") localStorage.setItem("roundtrip-retained-launch-url", value.url);
+              return listener(value);
+            };
             return { remove() {} };
           },
-          getLaunchUrl: async () => null
+          // Actual Capacitor iOS returns the last universal link again after
+          // every WebView reload. Preserve it instead of masking it with null.
+          getLaunchUrl: async () => {
+            const url = localStorage.getItem("roundtrip-retained-launch-url");
+            if (url) localStorage.setItem("roundtrip-retained-launch-reads", String(Number(localStorage.getItem("roundtrip-retained-launch-reads") || 0) + 1));
+            return url ? { url } : null;
+          }
         }
       }
     };
@@ -211,7 +223,21 @@ test("Apple callback closes the native browser, exchanges the bound code and ope
   expect(fixture.counts.writes).toBeGreaterThan(0);
   expect(await page.evaluate(id => localStorage.getItem(`settle-friends-account-oauth-flow:${id}`), id)).toBeNull();
   expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-closed"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-close-count"))).toBe("1");
+  expect(Number(await page.evaluate(() => localStorage.getItem("roundtrip-retained-launch-reads")))).toBeGreaterThanOrEqual(2);
   expect(new URL(page.url()).searchParams.has("code")).toBe(false);
+});
+
+test("the login and email gates retain the current app mark after rerender", async ({ page }) => {
+  await prepare(page);
+  const mark = page.locator("#public-account-auth-gate .account-auth-mark img");
+  await expect(mark).toHaveAttribute("src", "./app-icon-exterior-192.png");
+  await expect.poll(() => mark.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+  await page.locator('[data-account-mode="signup"]').click();
+  await expect(page.locator('[data-account-form][data-mode="signup"]')).toBeVisible();
+  await expect(mark).toHaveAttribute("src", "./app-icon-exterior-192.png");
+  await page.reload();
+  await expect(mark).toHaveAttribute("src", "./app-icon-exterior-192.png");
 });
 
 test("rejected Google identity stays in the app and a fresh native retry persists the verified account", async ({ page }) => {

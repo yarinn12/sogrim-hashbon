@@ -1,5 +1,5 @@
-const PWA_RELEASE = "507";
-const CACHE_NAME = "settle-friends-live-v507";
+const PWA_RELEASE = "508";
+const CACHE_NAME = "settle-friends-live-v508";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -106,6 +106,7 @@ const CACHE_FILES = [
   "/src/domain/launchReadiness.mjs",
   "/src/domain/money.mjs",
   "/src/domain/nativeDeepLinks.mjs",
+  "/src/domain/nativeAuthCallbacks.mjs",
   "/src/domain/notificationInboxDestination.mjs",
   "/src/domain/notificationTargets.mjs",
   "/src/domain/entitlements.mjs",
