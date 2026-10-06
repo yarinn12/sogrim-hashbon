@@ -111,7 +111,7 @@ function injectEmptyHomePolish() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #2bb8c2, #71d9de, #f46f61);
+      background: linear-gradient(90deg, #b9c9c2, #e4dac8, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -124,7 +124,7 @@ function injectEmptyHomePolish() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #71d9de !important;
+      color: #e4dac8 !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }

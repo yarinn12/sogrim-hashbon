@@ -17,7 +17,8 @@ const CSS = `
     --circle-coral-soft: #fff0ed;
     --circle-positive: #157a57;
     --circle-negative: #b94838;
-    --circle-positive-on-dark: #72d5aa;
+    --circle-positive-on-dark: #c5d5c7;
+    --circle-on-dark-kicker: #e4dac8;
     --circle-negative-on-dark: #ff9d8e;
     --circle-debt: #b94838;
     --circle-debt-soft: #fff0ed;
@@ -6796,7 +6797,7 @@ const CSS = `
   }
 
   html.circle-design-v1.social-ledger-v4 .screen[data-screen-kind="home"] > .top .eyebrow {
-    color: #71d9de !important;
+    color: var(--circle-on-dark-kicker) !important;
   }
 
   html.circle-design-v1.social-ledger-v4 .screen[data-screen-kind="home"] > .top .muted {
@@ -6897,7 +6898,7 @@ const CSS = `
 
   html.circle-design-v1.social-ledger-v4 .quick-expense-modal .quick-split-summary .eyebrow,
   html.circle-design-v1.social-ledger-v4 .quick-expense-modal .quick-split-summary .amount {
-    color: #71d9de !important;
+    color: var(--circle-on-dark-kicker) !important;
   }
 
   html.circle-design-v1.social-ledger-v4.product-v1 .screen.product-empty-home > .top::before,
@@ -6940,7 +6941,7 @@ const CSS = `
     html.circle-design-v1.social-ledger-v4 .product-nav-button:hover,
     html.circle-design-v1.social-ledger-v4 .product-nav-button.is-active,
     html.circle-design-v1.social-ledger-v4 .product-nav-button[aria-current="page"] {
-      color: #71d9de !important;
+      color: var(--circle-brand) !important;
       background: rgba(43, 184, 194, 0.1) !important;
       box-shadow: inset 0 -2px 0 var(--circle-accent) !important;
     }
@@ -7003,7 +7004,7 @@ const CSS = `
     .screen:not([data-screen-kind="home"]):not([data-product-screen="home"]):not(.product-home-screen)
     > .top
     .eyebrow {
-    color: #71d9de !important;
+    color: var(--circle-on-dark-kicker) !important;
   }
 
   html.circle-design-v1.deep-ledger-v5
@@ -7980,7 +7981,7 @@ const CSS = `
     .restaurant-quick-modal
     .quick-split-summary
     .amount {
-    color: #8be0df !important;
+    color: var(--circle-on-dark-kicker) !important;
   }
 
   html.circle-design-v1 .quick-split-list-title {
