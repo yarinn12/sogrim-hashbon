@@ -35,8 +35,27 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path("ios/App/App/AppDelegate.swift")
-          source = p.read_text().replace("import GoogleSignIn", "import GoogleSignIn\nimport WebKit")
+          source = p.read_text().replace("import GoogleSignIn", "import GoogleSignIn\nimport WebKit\nimport AuthenticationServices\nimport ObjectiveC")
+          # ASWebAuthenticationSession presents system UI outside the app's
+          # presentedViewController chain. Observe the real start result,
+          # forwarding its call unchanged; do not substitute authentication.
+          observer = r'''
+          extension ASWebAuthenticationSession {
+              @objc dynamic func sogrimProbeStart() -> Bool {
+                  let started = sogrimProbeStart()
+                  print("PROBE_AUTH_SESSION_STARTED:" + String(started))
+                  fflush(stdout)
+                  return started
+              }
+          }
+          '''
+          assert source.count("@UIApplicationMain") == 1
+          source = source.replace("@UIApplicationMain", observer + "\n@UIApplicationMain", 1)
           probe = r'''
+                  if let original = class_getInstanceMethod(ASWebAuthenticationSession.self, #selector(ASWebAuthenticationSession.start)),
+                     let observation = class_getInstanceMethod(ASWebAuthenticationSession.self, #selector(ASWebAuthenticationSession.sogrimProbeStart)) {
+                      method_exchangeImplementations(original, observation)
+                  }
                   var probeCount = 0
                   Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
                       probeCount += 1
@@ -144,8 +163,8 @@ jobs:
           assert any("PROBE_JS:" in line for line in lines), "No native WebView observation"
           assert any("PROBE_GOOGLE_CLIENT_MATCH:true" in line for line in lines), "Native Google iOS client was not initialized correctly"
           assert any("PROBE_GOOGLE_SERVER_MATCH:true" in line for line in lines), "Native Google server client was not initialized correctly"
-          presentations=[line.partition("PROBE_NATIVE_PRESENTATION:")[2].strip() for line in lines if "PROBE_NATIVE_PRESENTATION:" in line]
-          assert any(p and p != "none" for p in presentations), "Native Google did not present a login window"
+          starts=[line.partition("PROBE_AUTH_SESSION_STARTED:")[2].strip() for line in lines if "PROBE_AUTH_SESSION_STARTED:" in line]
+          assert starts == ["true"], "Native Google must successfully start exactly one system authentication session"
           PY
       - uses: actions/upload-artifact@v6
         if: always()
