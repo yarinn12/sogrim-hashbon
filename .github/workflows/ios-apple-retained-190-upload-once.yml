@@ -72,7 +72,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
-          for (const [id,expected] of [[37522261357,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37522261206,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37528025064,"8aca8cead2db2b6c0cf5254590c8c8e4bb59543e"],[37522534428,"3a2f8107872ff5a2981b4499bcc3f99dfe3c3160"]]) {
+          for (const [id,expected] of [[37522261357,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37522261206,"6e3c8e6de572d086dc497a3b69133ebe86b3a67f"],[37530650372,"4214be8d4956b4bd5c8f0ec705bb081ae9097d62"],[37522534428,"3a2f8107872ff5a2981b4499bcc3f99dfe3c3160"]]) {
             let accepted=false;
             for(let attempt=0;attempt<60;attempt++){
               const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+id,{
