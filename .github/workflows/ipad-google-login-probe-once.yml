@@ -118,7 +118,9 @@ jobs:
           assert devices, "No available iPad simulator"
           device=devices[0]["udid"]
           subprocess.run(["xcrun","simctl","boot",device],check=False)
-          subprocess.run(["xcrun","simctl","bootstatus",device,"-b"],check=True,timeout=240)
+          # Fresh hosted runtimes can spend over four minutes migrating data.
+          # Wait for simulator readiness before testing any application behavior.
+          subprocess.run(["xcrun","simctl","bootstatus",device,"-b"],check=True,timeout=600)
           app=Path("build/probe/Build/Products/Debug-iphonesimulator/App.app")
           subprocess.run(["xcrun","simctl","install",device,str(app)],check=True)
           with Path("probe-console.log").open("w") as output:
