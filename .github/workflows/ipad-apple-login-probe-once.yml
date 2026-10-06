@@ -17,6 +17,8 @@ jobs:
       IOS_BUILD: "186"
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: e74d55453bb3cdea6b7569ef397a1a9f59709419
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -26,24 +28,6 @@ jobs:
       - name: Prepare isolated simulator app
         run: |
           npm ci
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("src/publicAccountAuthLayer.mjs")
-          source = p.read_text()
-          changes = [
-              ('new URL(inviteUrl || window.location.href, window.location.origin)', 'new URL(inviteUrl || window.location.href, window.location.href)'),
-              ('new URL(baseUrl, window.location.origin)', 'new URL(baseUrl, window.location.href)'),
-              ('return `${returnUrl.pathname}${returnUrl.search}`;', 'return `${returnUrl.pathname || "/"}${returnUrl.search}`;')
-          ]
-          for before, after in changes:
-              assert source.count(before) == 1, before
-              source = source.replace(before, after, 1)
-          start = source.index('if (action === "apple")')
-          end = source.index('if (action === "forgot-password")', start)
-          apple = source[start:end].replace('} catch (error) {', '} catch (error) {\n      console.log("PROBE_APPLE_FAILURE:" + JSON.stringify({ name: error?.name, message: error?.message }));', 1)
-          source = source[:start] + apple + source[end:]
-          p.write_text(source)
-          PY
           npm run native:prepare
           node scripts/prepare-ios-release.mjs
       - name: Install safe simulator-only instrumentation
