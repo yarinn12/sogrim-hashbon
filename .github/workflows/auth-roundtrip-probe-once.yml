@@ -1,0 +1,34 @@
+name: Native authentication round-trip probe
+on:
+  push:
+    branches: [work/ios-apple-callback-probe-20261006]
+    paths: [.github/workflows/auth-roundtrip-probe-once.yml]
+permissions:
+  contents: read
+jobs:
+  authentication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify public Apple provider configuration
+        run: npm run qa:ios:providers
+      - name: Install mobile browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Exercise complete authentication paths
+        run: npm run qa:mobile -- e2e/native-auth-roundtrip.spec.mjs e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs e2e/email-login-completion.spec.mjs --project=iphone-webkit --project=ipad-webkit
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: authentication-roundtrip-diagnostics
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
