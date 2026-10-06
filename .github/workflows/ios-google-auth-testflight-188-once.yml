@@ -133,7 +133,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
-          for (const [id,expected] of [[37458278976,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37458278979,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37467348496,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348581,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348757,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348614,'c4508043203909e1dbf6952204fabc33006c2a89']]) {
+          for (const [id,expected] of [[37458278976,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37458278979,'562c082ef3a3217150be1f9e50c87aec8202109c'],[37467348496,'c4508043203909e1dbf6952204fabc33006c2a89'],[37468560278,'7bf4f6848d0fdbadaa3518920835864093ceb026'],[37467348757,'c4508043203909e1dbf6952204fabc33006c2a89'],[37467348614,'c4508043203909e1dbf6952204fabc33006c2a89']]) {
             let accepted=false;
             for(let attempt=0;attempt<60;attempt++){
               const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+id,{
