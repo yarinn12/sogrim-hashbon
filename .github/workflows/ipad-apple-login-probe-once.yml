@@ -14,11 +14,11 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_VERSION: "4.55"
-      IOS_BUILD: "186"
+      IOS_BUILD: "188"
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 8db94c30a2e6006371b9f9e7e799f25b0807d0ff
+          ref: 562c082ef3a3217150be1f9e50c87aec8202109c
       - uses: actions/setup-node@v6
         with:
           node-version: 24

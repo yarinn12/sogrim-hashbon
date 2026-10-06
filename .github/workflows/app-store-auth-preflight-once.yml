@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: e74d55453bb3cdea6b7569ef397a1a9f59709419
+          ref: 562c082ef3a3217150be1f9e50c87aec8202109c
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -50,9 +50,9 @@ jobs:
           report.builds=(await all('/v1/builds?'+new URLSearchParams({'filter[app]':APP,'filter[preReleaseVersion.platform]':'IOS',limit:'200'}))).map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,uploadedDate:b.attributes.uploadedDate}));
           if(report.builds.some(b=>!/^[1-9][0-9]*$/.test(b.build)))throw new Error('Unsupported build number format');
           report.maximumBuildNumber=Math.max(0,...report.builds.map(b=>Number(b.build)));
-          const bq=new URLSearchParams({'filter[app]':APP,'filter[version]':'186',include:'preReleaseVersion',limit:'200'});
+          const bq=new URLSearchParams({'filter[app]':APP,'filter[version]':'187',include:'preReleaseVersion',limit:'200'});
           const br=await get('/v1/builds?'+bq);
-          if(br.links?.next||br.data?.length!==1)throw new Error('Expected one build 186');
+          if(br.links?.next||br.data?.length!==1)throw new Error('Expected one build 187');
           const build=br.data[0];
           const pre=br.included?.find(x=>x.type==='preReleaseVersions'&&x.id===build.relationships?.preReleaseVersion?.data?.id);
           if(pre?.attributes?.version!=='4.55'||pre.attributes.platform!=='IOS')throw new Error('Unexpected build platform/version');

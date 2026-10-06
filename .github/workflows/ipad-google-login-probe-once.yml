@@ -14,11 +14,11 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_VERSION: "4.55"
-      IOS_BUILD: "187"
+      IOS_BUILD: "188"
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 8db94c30a2e6006371b9f9e7e799f25b0807d0ff
+          ref: 562c082ef3a3217150be1f9e50c87aec8202109c
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -48,11 +48,7 @@ jobs:
                       }
                       let nativePresentation = controller.presentedViewController.map { String(describing: type(of: $0)) } ?? "none"
                       print("PROBE_NATIVE_PRESENTATION:" + nativePresentation)
-                      let googleConfig = GIDSignIn.sharedInstance.configuration
-                      let clientExpected = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
-                      let serverExpected = Bundle.main.object(forInfoDictionaryKey: "GIDServerClientID") as? String
-                      print("PROBE_GOOGLE_CLIENT_MATCH:" + String(googleConfig?.clientID != nil && googleConfig?.clientID == clientExpected))
-                      print("PROBE_GOOGLE_SERVER_MATCH:" + String(googleConfig?.serverClientID != nil && googleConfig?.serverClientID == serverExpected))
+                      fflush(stdout)
                       let script = #"""
                       (() => {
                         const button = document.querySelector('[data-account-action="google"]');
@@ -86,7 +82,20 @@ jobs:
                       })()
                       """#
                       webView.evaluateJavaScript(script) { value, error in
-                          if let value = value as? String { print("PROBE_JS:" + value) }
+                          if let value = value as? String {
+                              print("PROBE_JS:" + value)
+                              fflush(stdout)
+                              if let data = value.data(using: .utf8),
+                                 let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                                 state["clicked"] as? Bool == true {
+                                  let googleConfig = GIDSignIn.sharedInstance.configuration
+                                  let clientExpected = Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
+                                  let serverExpected = Bundle.main.object(forInfoDictionaryKey: "GIDServerClientID") as? String
+                                  print("PROBE_GOOGLE_CLIENT_MATCH:" + String(googleConfig?.clientID != nil && googleConfig?.clientID == clientExpected))
+                                  print("PROBE_GOOGLE_SERVER_MATCH:" + String(googleConfig?.serverClientID != nil && googleConfig?.serverClientID == serverExpected))
+                                  fflush(stdout)
+                              }
+                          }
                           if let error = error { let nativeError = error as NSError; print("PROBE_EVAL_ERROR:" + nativeError.domain + ":" + String(nativeError.code)) }
                       }
                   }
@@ -102,23 +111,31 @@ jobs:
       - name: Run actual native Google-button path
         run: |
           python3 - <<'PY'
-          import json, subprocess, time
+          import json, subprocess, time, re
           from pathlib import Path
           listing=json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","--json"]))
           devices=[d for entries in listing["devices"].values() for d in entries if "iPad" in d["name"]]
           assert devices, "No available iPad simulator"
           device=devices[0]["udid"]
           subprocess.run(["xcrun","simctl","boot",device],check=False)
-          subprocess.run(["xcrun","simctl","bootstatus",device,"-b"],check=True)
+          subprocess.run(["xcrun","simctl","bootstatus",device,"-b"],check=True,timeout=240)
           app=Path("build/probe/Build/Products/Debug-iphonesimulator/App.app")
           subprocess.run(["xcrun","simctl","install",device,str(app)],check=True)
           with Path("probe-console.log").open("w") as output:
               child=subprocess.Popen(["xcrun","simctl","launch","--console",device,"com.sogrimhashbon.app"],stdout=output,stderr=subprocess.STDOUT)
               time.sleep(70)
+              result={"launchExitCode":child.poll()}
               subprocess.run(["xcrun","simctl","io",device,"screenshot","probe-ipad.png"],check=False)
               child.terminate()
               try: child.wait(timeout=5)
               except subprocess.TimeoutExpired: child.kill()
+          Path("probe-launch-status.json").write_text(json.dumps(result))
+          print("PROBE_LAUNCH_STATUS:"+json.dumps(result))
+          raw=Path("probe-console.log").read_text(errors="replace").splitlines()
+          diagnostics=[line for line in raw if any(marker in line for marker in ["Error", "error:", "reason:", "Terminating app", "exception", "failed to launch"]) and "PROBE_" not in line]
+          diagnostics=[re.sub(r'https?://\S+|eyJ[A-Za-z0-9_.-]+', '[redacted]', line)[:500] for line in diagnostics[-12:]]
+          Path("probe-diagnostic.log").write_text("\n".join(diagnostics))
+          print("\n".join(diagnostics))
           lines=[line for line in Path("probe-console.log").read_text(errors="replace").splitlines() if "PROBE_" in line]
           Path("probe-sanitized.log").write_text("\n".join(lines)+"\n")
           print("\n".join(lines))
@@ -134,6 +151,9 @@ jobs:
           name: ipad-native-google-probe
           path: |
             probe-sanitized.log
+            probe-launch-status.json
+            probe-diagnostic.log
             probe-ipad.png
           if-no-files-found: ignore
           retention-days: 7
+
