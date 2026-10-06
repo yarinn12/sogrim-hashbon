@@ -9,16 +9,27 @@ jobs:
   probe:
     runs-on: macos-26
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: before
+            source: 562c082ef3a3217150be1f9e50c87aec8202109c
+            supplied: "false"
+          - label: fixed
+            source: f031475c8c8fa5d91e4d074040a8f66527bdf1ef
+            supplied: "true"
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_VERSION: "4.55"
-      IOS_BUILD: "188"
+      IOS_BUILD: "189"
+      EXPECT_SUPPLIED_NONCE: ${{ matrix.supplied }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: 562c082ef3a3217150be1f9e50c87aec8202109c
+          ref: ${{ matrix.source }}
       - uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -35,11 +46,24 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p = Path("ios/App/App/AppDelegate.swift")
-          source = p.read_text().replace("import GoogleSignIn", "import GoogleSignIn\nimport WebKit\nimport AuthenticationServices\nimport ObjectiveC")
+          source = p.read_text().replace("import GoogleSignIn", "import GoogleSignIn\nimport WebKit\nimport AuthenticationServices\nimport ObjectiveC\nimport AppAuth")
           # ASWebAuthenticationSession presents system UI outside the app's
           # presentedViewController chain. Observe the real start result,
           # forwarding its call unchanged; do not substitute authentication.
           observer = r'''
+          extension GIDSignIn {
+              @objc dynamic func sogrimProbeAuthorizationRequest(_ options: NSObject, additionalParameters: [String: String]) -> OIDAuthorizationRequest {
+                  let request = sogrimProbeAuthorizationRequest(options, additionalParameters: additionalParameters)
+                  let supplied = options.value(forKey: "nonce") as? String
+                  let requested = request.nonce ?? ""
+                  print("PROBE_GOOGLE_NONCE_SUPPLIED:" + String(supplied != nil && supplied != ""))
+                  print("PROBE_GOOGLE_NONCE_PRESENT:" + String(!requested.isEmpty))
+                  print("PROBE_GOOGLE_NONCE_HEX:" + String(requested.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil))
+                  print("PROBE_GOOGLE_NONCE_MATCH:" + String(supplied != nil && supplied == requested))
+                  fflush(stdout)
+                  return request
+              }
+          }
           extension ASWebAuthenticationSession {
               @objc dynamic func sogrimProbeStart() -> Bool {
                   let started = sogrimProbeStart()
@@ -56,6 +80,11 @@ jobs:
                      let observation = class_getInstanceMethod(ASWebAuthenticationSession.self, #selector(ASWebAuthenticationSession.sogrimProbeStart)) {
                       method_exchangeImplementations(original, observation)
                   }
+                  guard let originalRequest = class_getInstanceMethod(GIDSignIn.self, NSSelectorFromString("authorizationRequestWithOptions:additionalParameters:")),
+                        let requestObservation = class_getInstanceMethod(GIDSignIn.self, #selector(GIDSignIn.sogrimProbeAuthorizationRequest(_:additionalParameters:))) else {
+                      fatalError("Google authorization request observer unavailable")
+                  }
+                  method_exchangeImplementations(originalRequest, requestObservation)
                   var probeCount = 0
                   Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
                       probeCount += 1
@@ -130,7 +159,7 @@ jobs:
       - name: Run actual native Google-button path
         run: |
           python3 - <<'PY'
-          import json, subprocess, time, re
+          import json, subprocess, time, re, os
           from pathlib import Path
           listing=json.loads(subprocess.check_output(["xcrun","simctl","list","devices","available","--json"]))
           devices=[d for entries in listing["devices"].values() for d in entries if "iPad" in d["name"]]
@@ -165,11 +194,17 @@ jobs:
           assert any("PROBE_GOOGLE_SERVER_MATCH:true" in line for line in lines), "Native Google server client was not initialized correctly"
           starts=[line.partition("PROBE_AUTH_SESSION_STARTED:")[2].strip() for line in lines if "PROBE_AUTH_SESSION_STARTED:" in line]
           assert starts == ["true"], "Native Google must successfully start exactly one system authentication session"
+          expected=os.environ["EXPECT_SUPPLIED_NONCE"]
+          for marker in ["PROBE_GOOGLE_NONCE_SUPPLIED:", "PROBE_GOOGLE_NONCE_HEX:", "PROBE_GOOGLE_NONCE_MATCH:"]:
+              observed=[line.partition(marker)[2].strip() for line in lines if marker in line]
+              assert observed == [expected], marker + " did not match the before/fixed contract"
+          present=[line.partition("PROBE_GOOGLE_NONCE_PRESENT:")[2].strip() for line in lines if "PROBE_GOOGLE_NONCE_PRESENT:" in line]
+          assert present == ["true"], "Real Google/AppAuth must request a nonce even before the client fix"
           PY
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: ipad-native-google-probe
+          name: ipad-native-google-nonce-${{ matrix.label }}
           path: |
             probe-sanitized.log
             probe-launch-status.json
@@ -177,4 +212,3 @@ jobs:
             probe-ipad.png
           if-no-files-found: ignore
           retention-days: 7
-
