@@ -8,7 +8,7 @@ permissions:
 jobs:
   probe:
     runs-on: macos-26
-    timeout-minutes: 25
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -16,7 +16,7 @@ jobs:
           - label: before
             source: f031475c8c8fa5d91e4d074040a8f66527bdf1ef
           - label: fixed
-            source: 6be24a1040c5cfef6ca7dd74bdd0ac71e9fe5686
+            source: 6e3c8e6de572d086dc497a3b69133ebe86b3a67f
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
@@ -49,7 +49,8 @@ jobs:
           probe=r'''
                   var probeCount = 0
                   var callbackInjected = false
-                  var injectedAt = 0
+                  var injectedAt: TimeInterval = 0
+                  var evaluating = false
                   var reloadCount = 0
                   var observation: NSKeyValueObservation?
                   var expectedCallback: URL?
@@ -57,7 +58,7 @@ jobs:
                   var lastState: [String: Any] = [:]
                   Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
                       probeCount += 1
-                      if probeCount > 30 { timer.invalidate(); return }
+                      if probeCount > 150 { timer.invalidate(); return }
                       guard let controller = self?.window?.rootViewController as? CAPBridgeViewController,
                             let webView = controller.webView else { print("PROBE_CALLBACK:no-webview"); fflush(stdout); return }
                       if observation == nil {
@@ -71,7 +72,9 @@ jobs:
                       }
                       let presentation = controller.presentedViewController.map { String(describing: type(of: $0)) } ?? "none"
                       if presentation == "SFSafariViewController" { safariPresented = true }
-                      if callbackInjected && probeCount - injectedAt >= 8 {
+                      let elapsed = callbackInjected ? ProcessInfo.processInfo.systemUptime - injectedAt : 0
+                      let fixedReady = (lastState["ready"] as? Bool == true) && (lastState["feedback"] as? Bool == true) && (lastState["retainedLaunch"] as? Bool == true)
+                      if callbackInjected && elapsed >= 16 && (reloadCount >= 2 || fixedReady || elapsed >= 90) {
                           let report: [String: Any] = [
                               "reloads": reloadCount,
                               "proxyRetainsCallback": ApplicationDelegateProxy.shared.lastURL == expectedCallback,
@@ -88,6 +91,8 @@ jobs:
                           timer.invalidate()
                           return
                       }
+                      if evaluating { return }
+                      evaluating = true
                       let script = #"""
                       (() => {
                         const button = document.querySelector('[data-account-action="apple"]');
@@ -113,7 +118,8 @@ jobs:
                       })()
                       """#
                       webView.evaluateJavaScript(script) { value, error in
-                          if let error = error { let e = error as NSError; print("PROBE_CALLBACK_EVAL_ERROR:" + e.domain + ":" + String(e.code)); fflush(stdout) }
+                          evaluating = false
+                          if let error = error { let e = error as NSError; print("PROBE_CALLBACK_EVAL_ERROR:" + e.domain + ":" + String(e.code) + ":" + e.localizedDescription.replacingOccurrences(of: "https?://[^\\s]+|eyJ[A-Za-z0-9_.-]+", with: "[redacted]", options: .regularExpression)); fflush(stdout) }
                           guard let text = value as? String,
                                 let data = text.data(using: .utf8),
                                 let state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
@@ -125,7 +131,7 @@ jobs:
                               let activity = NSUserActivity(activityType: NSUserActivityTypeBrowsingWeb)
                               activity.webpageURL = expectedCallback
                               callbackInjected = true
-                              injectedAt = probeCount
+                              injectedAt = ProcessInfo.processInfo.systemUptime
                               // Exercise Capacitor's actual proxy/App plugin. The synthetic
                               // provider error contains no identity token/code/account data.
                               let accepted = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
@@ -158,9 +164,13 @@ jobs:
           subprocess.run(['xcrun','simctl','install',device,'build/probe/Build/Products/Debug-iphonesimulator/App.app'],check=True)
           with Path('probe-console.log').open('w') as output:
               child=subprocess.Popen(['xcrun','simctl','launch','--console',device,'com.sogrimhashbon.app'],stdout=output,stderr=subprocess.STDOUT)
-              time.sleep(70)
+              deadline=time.monotonic()+480
+              while time.monotonic()<deadline:
+                  text=Path("probe-console.log").read_text(errors="replace")
+                  if "PROBE_CALLBACK_FINAL:" in text or child.poll() is not None: break
+                  time.sleep(2)
               result={'launchExitCode':child.poll()}
-              subprocess.run(['xcrun','simctl','io',device,'screenshot','probe-ipad.png'],check=False)
+              subprocess.run(['xcrun','simctl','io',device,'screenshot','probe-ipad.png'],check=False,timeout=30)
               child.terminate()
               try: child.wait(timeout=5)
               except subprocess.TimeoutExpired: child.kill()
