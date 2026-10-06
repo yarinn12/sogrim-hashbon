@@ -23,7 +23,7 @@ test("circle design layer defines the final product identity", async () => {
   assert.doesNotMatch(layer, /\.circle-live-amount::after/);
   assert.doesNotMatch(layer, /circle-live-caret/);
   assert.doesNotMatch(layer, /keepLiveReceiptCurrent/);
-  assert.match(layer, /--circle-positive-on-dark: #72d5aa/);
+  assert.match(layer, /--circle-positive-on-dark: #c5d5c7/);
   assert.match(layer, /--circle-negative-on-dark: #ff9d8e/);
   assert.doesNotMatch(layer, /linear-gradient|radial-gradient|repeating-linear-gradient/);
 });

@@ -313,7 +313,8 @@ test("ledger workspace keeps task navigation and mobile modals production ready"
     layer,
     /\.summary-strip[\s\S]*?> \.summary-item\.summary-personal \{[\s\S]*?background: var\(--ledger-brand\) !important/
   );
-  assert.match(layer, /\.summary-personal-value\.is-credit[\s\S]*?color: #9fe4d2 !important/);
+  assert.match(layer, /--ledger-positive-on-dark: #c5d5c7/);
+  assert.match(layer, /\.summary-personal-value\.is-credit[\s\S]*?color: var\(--ledger-positive-on-dark\) !important/);
   assert.match(layer, /\.summary-personal-value\.is-debt[\s\S]*?color: #ffd2c8 !important/);
   assert.match(
     layer,
