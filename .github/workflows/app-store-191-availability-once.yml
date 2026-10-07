@@ -1,0 +1,51 @@
+name: Verify candidate 191 availability
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-availability-once.yml]
+permissions:
+  contents: read
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify Israeli territory remains available
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createAppStoreClient,createAppStoreToken} from './scripts/lib/app-store-release.mjs';
+          const credentials={issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY};
+          const api=createAppStoreClient(credentials);
+          const appId='6809952514';
+          const app=(await api('/v1/apps/'+appId)).data;
+          assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const availability=(await api('/v1/apps/'+appId+'/appAvailabilityV2')).data;
+          const path='/v2/appAvailabilities/'+availability.id+'/territoryAvailabilities';
+          async function read(url){
+           const u=new URL(url,'https://api.appstoreconnect.apple.com');
+           assert.equal(u.origin,'https://api.appstoreconnect.apple.com');
+           assert.equal(u.pathname,path);assert.equal(u.username,'');assert.equal(u.password,'');
+           const r=await fetch(u,{method:'GET',redirect:'error',signal:AbortSignal.timeout(30000),headers:{Authorization:'Bearer '+createAppStoreToken(credentials)}});
+           assert.equal(r.status,200,'Availability HTTP '+r.status);
+           return r.json();
+          }
+          let url=path+'?include=territory&limit=200',rows=[];
+          for(let i=0;url&&i<5;i++){const r=await read(url);assert.ok(Array.isArray(r.data));rows.push(...r.data);url=r.links?.next;}
+          assert.ok(!url,'Incomplete paginated availability');
+          const israel=rows.filter(x=>x.relationships?.territory?.data?.id==='ISR');
+          assert.equal(israel.length,1,'Israel availability record');
+          assert.equal(israel[0].attributes.available,true);
+          console.log('APP_STORE_AVAILABILITY:'+JSON.stringify({checkedAt:new Date().toISOString(),verified:true,id:availability.id,availableInNewTerritories:availability.attributes.availableInNewTerritories,totalTerritories:rows.length,availableTerritories:rows.filter(x=>x.attributes.available).length,israel:israel[0].attributes,appReviewSubmitted:false}));
+          NODE
