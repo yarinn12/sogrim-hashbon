@@ -1,0 +1,91 @@
+name: Replace outdated App Store artwork for 191
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-artwork-update-once.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replace-artwork:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v5
+        with:
+          name: app-store-191-current-artwork
+          path: artwork
+          run-id: 37616665336
+          github-token: ${{ github.token }}
+      - name: Replace only the reviewed screenshot set
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a',setId='063c0fc0-98d5-4592-bacb-eb7f9aca8449';
+          const expected=[{"name":"apple-screenshot-01-event-191-1320x2868.png","size":571252,"sha256":"0fd63ffff0f2ef9b970c07c71a819e48c6a26d6990cc50b481294bcbdd8c3d4f","md5":"2f7f0fbac1e828e7ed62299ee60ee924","width":1320,"height":2868},{"name":"apple-screenshot-02-expense-191-1320x2868.png","size":311499,"sha256":"bcbd78bc08dc354cdd60df8761cf4ee4f3bfe30083896ba6789b011cb7c5bfba","md5":"d444ebb03efd4e6a8e37e925bacaff93","width":1320,"height":2868},{"name":"apple-screenshot-03-summary-191-1320x2868.png","size":588779,"sha256":"0a7f1813f93cdf9cb0d3a3e3612b6781ffc8b20a355e5b1bc9b1c30a589ff1a8","md5":"a3bea179a79d0cbc6f8807c483e2073e","width":1320,"height":2868}];
+          const oldIds=['ff6d809a-fb89-444a-a5e3-a2604db347a6','f9123013-ebcd-471f-b7f0-a6971f0432f0','e565c31e-4a39-4f77-8762-519b8faec81e'];
+          const app=(await api('/v1/apps/'+appId)).data;assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;assert.equal(version.attributes.versionString,'4.55');assert.equal(version.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');
+          const build=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;assert.equal(build.attributes.version,'191');
+          const sets=(await api('/v1/appStoreVersionLocalizations/c3cec718-83fe-4db7-82ab-58a7387113b7/appScreenshotSets?limit=200')).data;assert.ok(sets.some(x=>x.id===setId&&x.attributes.screenshotDisplayType==='APP_IPHONE_67'));
+          async function list(){const r=await api('/v1/appScreenshotSets/'+setId+'/appScreenshots?limit=200');assert.ok(!r.links?.next);return r.data;}
+          const before=await list();
+          assert.deepEqual(before.map(x=>x.id),oldIds,'Unexpected existing screenshot set');
+          const report={checkedAt:new Date().toISOString(),appId,version:'4.55',build:'191',before:before.map(x=>({id:x.id,fileName:x.attributes.fileName,checksum:x.attributes.sourceFileChecksum,state:x.attributes.assetDeliveryState.state,imageAsset:x.attributes.imageAsset})),uploaded:[],appReviewSubmitted:false};
+          writeFileSync('artwork-update-before.json',JSON.stringify(report,null,2));
+          const validated=expected.map(file=>{const bytes=readFileSync('artwork/'+file.name);assert.equal(bytes.length,file.size);assert.equal(createHash('sha256').update(bytes).digest('hex'),file.sha256);assert.equal(createHash('md5').update(bytes).digest('hex'),file.md5);assert.equal(bytes.readUInt32BE(16),1320);assert.equal(bytes.readUInt32BE(20),2868);return {file,bytes};});
+          for(const {file,bytes} of validated){
+           const reserved=(await api('/v1/appScreenshots',{method:'POST',body:{data:{type:'appScreenshots',attributes:{fileName:file.name,fileSize:file.size},relationships:{appScreenshotSet:{data:{type:'appScreenshotSets',id:setId}}}}}})).data;
+           assert.ok(reserved.id);const operations=reserved.attributes.uploadOperations;assert.ok(Array.isArray(operations)&&operations.length>0);
+           let cursor=0;
+           for(const op of operations){
+            const u=new URL(op.url);assert.equal(u.protocol,'https:');assert.ok(u.hostname.endsWith('.blobstore.apple.com'),'Unexpected Apple upload host');assert.equal(u.username,'');assert.equal(u.password,'');assert.equal(op.method,'PUT');assert.equal(op.offset,cursor);assert.ok(Number.isSafeInteger(op.length)&&op.length>0&&op.offset+op.length<=bytes.length);cursor+=op.length;
+           }
+           assert.equal(cursor,bytes.length);
+           for(const op of operations){
+            const headers=Object.fromEntries((op.requestHeaders??[]).map(h=>[h.name,h.value]));assert.ok(!Object.keys(headers).some(h=>h.toLowerCase()==='authorization'));
+            const r=await fetch(op.url,{method:op.method,headers,body:bytes.subarray(op.offset,op.offset+op.length),redirect:'error',signal:AbortSignal.timeout(30000)});assert.ok(r.ok,'Apple upload HTTP '+r.status);
+           }
+           await api('/v1/appScreenshots/'+reserved.id,{method:'PATCH',body:{data:{type:'appScreenshots',id:reserved.id,attributes:{uploaded:true,sourceFileChecksum:file.md5}}}});
+           report.uploaded.push({id:reserved.id,...file});
+           console.log('SCREENSHOT_UPLOADED:'+JSON.stringify({id:reserved.id,fileName:file.name}));
+          }
+          for(const file of report.uploaded){
+           let complete=false;
+           for(let attempt=0;attempt<36;attempt++){
+            const r=(await api('/v1/appScreenshots/'+file.id)).data;
+            const state=r.attributes.assetDeliveryState?.state;assert.notEqual(state,'FAILED','Apple screenshot processing failed');
+            if(state==='COMPLETE'){assert.equal(r.attributes.sourceFileChecksum,file.md5);assert.equal(r.attributes.imageAsset?.width,1320);assert.equal(r.attributes.imageAsset?.height,2868);complete=true;break;}
+            await new Promise(resolve=>setTimeout(resolve,5000));
+           }
+           assert.ok(complete,'Screenshot processing did not finish');
+          }
+          const current=await list();assert.deepEqual(new Set(current.map(x=>x.id)),new Set([...oldIds,...report.uploaded.map(x=>x.id)]));
+          await api('/v1/appScreenshotSets/'+setId+'/relationships/appScreenshots',{method:'PATCH',body:{data:[...report.uploaded.map(x=>({type:'appScreenshots',id:x.id})),...oldIds.map(id=>({type:'appScreenshots',id}))]}});
+          for(const id of oldIds)await api('/v1/appScreenshots/'+id,{method:'DELETE'});
+          const after=await list();assert.deepEqual(after.map(x=>x.id),report.uploaded.map(x=>x.id));
+          report.after=after.map(x=>({id:x.id,fileName:x.attributes.fileName,checksum:x.attributes.sourceFileChecksum,state:x.attributes.assetDeliveryState.state,width:x.attributes.imageAsset?.width,height:x.attributes.imageAsset?.height}));
+          assert.ok(report.after.every(x=>x.state==='COMPLETE'));assert.equal((await api('/v1/appStoreVersions/'+versionId)).data.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');assert.equal((await api('/v1/appStoreVersions/'+versionId+'/build')).data.attributes.version,'191');
+          report.completedAt=new Date().toISOString();writeFileSync('artwork-update-result.json',JSON.stringify(report,null,2));console.log('APP_STORE_ARTWORK_UPDATED:'+JSON.stringify({...report,before:report.before.map(({imageAsset,...x})=>x)}));
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-store-191-artwork-update-evidence
+          path: artwork-update-*.json
+          retention-days: 14
