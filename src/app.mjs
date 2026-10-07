@@ -8071,7 +8071,8 @@ function eventInviteUrl(eventId) {
 function currentReferralInviteCode(event) {
   const scope = openInviteTokenScope(runtimeConfig, event);
   const verifiedInvite = eventOpenInviteRuntimeTokens.get(String(event?.id ?? ""));
-  const verifiedReferralCode = verifiedInvite?.storageKey === scope?.storageKey
+  const verifiedReferralCode = verifiedInvite && scope &&
+    verifiedInvite.storageKey === scope.storageKey
     ? normalizeReferralCode(verifiedInvite.referralCode)
     : "";
   return verifiedReferralCode || normalizeReferralCode(
