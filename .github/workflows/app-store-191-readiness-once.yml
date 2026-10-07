@@ -1,0 +1,58 @@
+name: App Store 191 readiness readback
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-readiness-once.yml]
+permissions:
+  contents: read
+jobs:
+  readback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read candidate and App Review draft without changes
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { createAppStoreClient } from './scripts/lib/app-store-release.mjs';
+          import { writeFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a',buildId='f3424196-dcdb-403a-9d26-d4567169fdef';
+          const app=(await api('/v1/apps/'+appId)).data;
+          if(app?.attributes?.bundleId!=='com.sogrimhashbon.app')throw Error('Unexpected app');
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;
+          if(version?.attributes?.versionString!=='4.55'||version.attributes?.platform!=='IOS')throw Error('Unexpected version');
+          const selected=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;
+          const build=(await api('/v1/builds/'+buildId+'?include=preReleaseVersion')).data;
+          if(build?.attributes?.version!=='191'||build.attributes?.processingState!=='VALID')throw Error('Unexpected candidate');
+          const detail=(await api('/v1/appStoreVersions/'+versionId+'/appStoreReviewDetail')).data;
+          const locs=await api('/v1/appStoreVersions/'+versionId+'/appStoreVersionLocalizations?limit=200');
+          if(locs.links?.next||!Array.isArray(locs.data))throw Error('Incomplete localizations');
+          const screen=[];
+          for(const loc of locs.data){
+           const sets=await api('/v1/appStoreVersionLocalizations/'+loc.id+'/appScreenshotSets?include=appScreenshots&limit=200');
+           if(sets.links?.next||!Array.isArray(sets.data))throw Error('Incomplete screenshots');
+           screen.push({locale:loc.attributes?.locale,localizationId:loc.id,descriptionPresent:!!loc.attributes?.description,supportUrl:loc.attributes?.supportUrl,marketingUrl:loc.attributes?.marketingUrl,sets:sets.data.map(s=>({id:s.id,type:s.attributes?.screenshotDisplayType,count:s.relationships?.appScreenshots?.data?.length??0,screenshots:(sets.included??[]).filter(x=>x.type==='appScreenshots'&&s.relationships?.appScreenshots?.data?.some(y=>y.id===x.id)).map(x=>({id:x.id,status:x.attributes?.assetDeliveryState?.state,filename:x.attributes?.fileName,width:x.attributes?.imageAsset?.width,height:x.attributes?.imageAsset?.height}))}))});
+          }
+          const reviews=await api('/v1/reviewSubmissions?'+new URLSearchParams({'filter[app]':appId,limit:'200'}));
+          if(reviews.links?.next||!Array.isArray(reviews.data))throw Error('Incomplete review submissions');
+          const report={checkedAt:new Date().toISOString(),appId,versionId,version:'4.55',appStoreState:version.attributes?.appStoreState,releaseType:version.attributes?.releaseType,selectedBuild:selected?{id:selected.id,build:selected.attributes?.version}:null,candidate:{id:build.id,build:build.attributes?.version,processingState:build.attributes?.processingState,expired:build.attributes?.expired,usesNonExemptEncryption:build.attributes?.usesNonExemptEncryption},reviewDetail:{id:detail?.id,demoAccountRequired:detail?.attributes?.demoAccountRequired,demoUsernamePresent:!!detail?.attributes?.demoAccountName,demoPasswordPresent:!!detail?.attributes?.demoAccountPassword,contactComplete:!!(detail?.attributes?.contactFirstName&&detail?.attributes?.contactLastName&&detail?.attributes?.contactPhone&&detail?.attributes?.contactEmail),notesPresent:!!detail?.attributes?.notes,notesLength:String(detail?.attributes?.notes??'').length,notesHash:createHash('sha256').update(String(detail?.attributes?.notes??'')).digest('hex'),notesMentionApple:/apple/i.test(detail?.attributes?.notes??''),notesMention191:/191/.test(detail?.attributes?.notes??'')},localizations:screen,reviewSubmissions:reviews.data.map(x=>({id:x.id,state:x.attributes?.state,platform:x.attributes?.platform,submittedDate:x.attributes?.submittedDate}))};
+          writeFileSync('app-store-191-readiness.json',JSON.stringify(report,null,2)+'\n');
+          console.log('APP_STORE_READINESS:'+JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-store-191-readiness
+          path: app-store-191-readiness.json
+          retention-days: 7
