@@ -1,0 +1,78 @@
+name: Live App Review checks for build 191
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-live-checks-once.yml]
+permissions:
+  contents: read
+jobs:
+  live-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify supplied review account and public review prerequisites
+        env:
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          import {signInWithPassword} from './src/data/accountAuth.mjs';
+          import {verifyIosLoginProviders} from './scripts/verify-ios-login-providers.mjs';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const publicUrl='https://sogrim-hesbon-app.vercel.app',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a';
+          const checks=[];function check(name,ok){checks.push({name,ok:!!ok});}
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;assert.equal(version.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');
+          const selected=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;assert.equal(selected.id,'f3424196-dcdb-403a-9d26-d4567169fdef');assert.equal(selected.attributes.version,'191');
+          const detail=(await api('/v1/appStoreVersions/'+versionId+'/appStoreReviewDetail')).data;
+          assert.ok(detail.attributes.demoAccountName&&detail.attributes.demoAccountPassword);
+          check('Apple Team ID is configured',process.env.APPLE_TEAM_ID==='MA9S4L7WKS');
+          const configResponse=await fetch(publicUrl+'/api/config',{signal:AbortSignal.timeout(15000)});assert.ok(configResponse.ok);
+          const config=await configResponse.json();assert.equal(config.storage?.mode,'supabase');
+          const backend=new URL(config.storage.url);assert.equal(backend.protocol,'https:');assert.ok(backend.hostname.endsWith('.supabase.co'));assert.ok(config.storage.anonKey);
+          const settingsResponse=await fetch(backend.origin+'/auth/v1/settings',{headers:{apikey:config.storage.anonKey},signal:AbortSignal.timeout(15000)});const settings=await settingsResponse.json();
+          check('Sign in with Apple is enabled in Supabase',settingsResponse.ok&&settings.external?.apple===true);
+          check('Google and email review fallbacks remain enabled',settings.external?.google===true&&settings.external?.email===true);
+          const associationResponse=await fetch(publicUrl+'/.well-known/apple-app-site-association',{signal:AbortSignal.timeout(15000)});const association=await associationResponse.json();
+          const matching=association.applinks?.details?.find(x=>x.appID==='MA9S4L7WKS.com.sogrimhashbon.app');
+          check('Apple association file is publicly reachable',associationResponse.ok&&associationResponse.headers.get('content-type')?.includes('application/json'));
+          check('Apple association file matches the app and every deep-link route',!!matching&&['/i/*','/r/*','/auth/callback'].every(x=>matching.paths?.includes(x)));
+          for(const [name,path,text]of[['Privacy page','/privacy','Apple'],['Support page','/support','Apple'],['Accessibility page','/accessibility','הצהרת נגישות'],['Account deletion page','/account-deletion','מחיקת חשבון']]){
+           const response=await fetch(publicUrl+path,{signal:AbortSignal.timeout(15000)});const body=await response.text();check(name+' is live and current',response.ok&&body.includes(text));
+          }
+          let accountOk=false,userHash=null;
+          try{
+           const session=await signInWithPassword(config,{email:detail.attributes.demoAccountName,password:detail.attributes.demoAccountPassword});
+           accountOk=!!session?.user?.id&&String(session.user.email??'').trim().toLowerCase()===detail.attributes.demoAccountName.trim().toLowerCase();
+           if(accountOk)userHash=createHash('sha256').update(session.user.id).digest('hex');
+          }catch{}
+          check('App Review account supplied to Apple signs in successfully',accountOk);
+          const providers=await verifyIosLoginProviders();
+          let unresolvedItems;
+          try{
+           const result=await api('/v1/reviewSubmissions/8b6da79a-4738-4884-b744-c04959b104da/items?include=appStoreVersion&limit=200');
+           unresolvedItems={paginated:!!result.links?.next,items:result.data?.map(x=>({id:x.id,type:x.type,state:x.attributes?.state,resolved:x.attributes?.resolved,versionId:x.relationships?.appStoreVersion?.data?.id})),versions:result.included?.filter(x=>x.type==='appStoreVersions').map(x=>({id:x.id,version:x.attributes?.versionString,state:x.attributes?.appStoreState}))};
+          }catch(error){unresolvedItems={unavailable:true,httpStatus:error.status??null};}
+          const report={checkedAt:new Date().toISOString(),selectedBuild:'191',ready:checks.every(x=>x.ok)&&providers.ready,checks,providerChecks:providers,reviewAccountUserIdHash:userHash,unresolvedItems,appReviewSubmitted:false};
+          writeFileSync('app-store-191-live-checks.json',JSON.stringify(report,null,2)+'\n');
+          console.log('APP_STORE_LIVE_CHECKS:'+JSON.stringify(report));
+          if(!report.ready)process.exitCode=1;
+          NODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-store-191-live-checks
+          path: app-store-191-live-checks.json
+          retention-days: 7
