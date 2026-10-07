@@ -22,7 +22,9 @@ const migrationMarker = "-- Mandatory payment parties and finite note envelopes 
 const attributionMarker = "-- Shared note and activity attribution (2026-09-06).";
 const profileVersionMarker = "-- Monotonic public profile versions (2026-09-07).";
 const accountLinkReceiptMarker = "-- An identity link is historical evidence.";
+const referralTriggerMarker = "-- Keep referral activity beside the committed canonical financial write.";
 const accountLinkReceiptMigration = readFileSync(new URL("../supabase/migrations/20260908015000_preserve_committed_event_account_links.sql", import.meta.url), "utf8");
+const referralRecoveryMigration = readFileSync(new URL("../supabase/migrations/20261007090000_recover_referral_rewards.sql", import.meta.url), "utf8");
 const profileVersionMigration = readFileSync(new URL("../supabase/migrations/20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const profileVersionVerification = readFileSync(new URL("../supabase/verification/verify_20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const attributionMigration = readFileSync(new URL("../supabase/migrations/20260906110000_shared_note_activity_attribution.sql", import.meta.url), "utf8");
@@ -65,6 +67,10 @@ before(async () => {
     await db.exec(accountLinkReceiptMigration);
     await db.exec(selfLeaveMigration);
     await db.exec(selfLeaveVerification);
+    if (process.env.DATABASE_INTEGRITY_INSTALL_MODE === "upgrade") {
+      await db.exec(referralRecoveryMigration);
+      await db.exec(referralRecoveryMigration);
+    }
   }
   catch (error) { throw new Error(`Local schema setup failed (${error.code}): ${error.message}`); }
 }, { timeout: 60_000 });
@@ -1371,6 +1377,92 @@ test("SQL invite redemption makes membership, canonical data and personal index 
   });
 });
 
+test("SQL referral reward recovers after email confirmation on a second device", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const inviterId = ids.admin.slice(8);
+    const invitedId = ids.sender.slice(8);
+    await db.exec("reset role");
+    const code = (await db.query(
+      "select code from public.friend_invite_codes where user_id=$1::uuid",
+      [inviterId]
+    )).rows[0].code;
+    await db.exec("set local role authenticated");
+    const claim = (await db.query(
+      "select public.claim_referral($1) as value", [code]
+    )).rows[0].value;
+    assert.equal(claim.claimed, true);
+
+    const committed = await save(markPaid(previous, ids.sender));
+    assert.equal(committed.status, "updated");
+    await db.exec("reset role");
+    const activity = (await db.query(
+      "select actor_user_id, activity_kind from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(activity.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [
+      { actor_user_id: invitedId, activity_kind: "transfer_paid" }
+    ]);
+
+    // Email confirmation and the next session happen away from the device
+    // that held the local qualification retry. The committed activity is the
+    // only durable evidence available to this session.
+    await db.query("update auth.users set email_confirmed_at=now() where id=$1::uuid", [invitedId]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [invitedId]);
+    await db.exec("set local role authenticated");
+    await db.query("select public.get_referral_program_status() as value");
+    const repeat = (await db.query("select public.get_referral_program_status() as value")).rows[0].value;
+    assert.equal(repeat.ad_free_active, false, "the reward belongs to the inviter");
+    const repeatClaim = (await db.query("select public.claim_referral($1) as value", [code])).rows[0].value;
+    assert.equal(repeatClaim.claimed, false);
+    await db.exec("reset role");
+    const referral = (await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [invitedId]
+    )).rows[0];
+    const entitlements = (await db.query(
+      "select source, expires_at > now() as active from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.equal(referral.status, "rewarded");
+    assert.deepEqual(entitlements, [{ source: "referral", active: true }]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [inviterId]);
+    await db.exec("set local role authenticated");
+    await assert.rejects(
+      db.query("select public.claim_referral($1) as value", [code]),
+      /You cannot refer yourself/
+    );
+  });
+});
+
+test("SQL a committed new expense records only its authenticated creator for referral", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const candidate = structuredClone(previous);
+    const now = new Date().toISOString();
+    candidate.events[0].expenses.push({
+      id: "referral-expense-probe", title: "Synthetic referral expense", total: 100,
+      payers: [{ participantId: ids.sender, amount: 100 }],
+      sharedByParticipantIds: [ids.admin, ids.sender],
+      createdByParticipantId: ids.sender, createdAt: now, updatedAt: now
+    });
+    const settlement = reconcileSettlementTransfers(
+      candidate.participants, candidate.events[0].expenses,
+      candidate.events[0].transfers, settlementOptionsForEvent(candidate.events[0])
+    );
+    assert.deepEqual(settlement.issues, []);
+    candidate.events[0].transfers = settlement.transfers;
+    assert.equal((await save(candidate)).status, "updated");
+    await db.exec("reset role");
+    const rows = (await db.query(
+      "select actor_user_id, activity_kind, entity_id from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(rows.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [{
+      actor_user_id: ids.sender.slice(8),
+      activity_kind: "expense_created",
+      entity_id: "referral-expense-probe"
+    }]);
+  });
+});
+
 test("SQL repeated invite redemption does not duplicate members, events or canonical writes", async () => {
   await withOpenInvite(async ({ redeem, inspect }) => {
     await redeem();
@@ -1494,11 +1586,17 @@ test("SQL authenticated RPC keeps CAS conflicts instead of overwriting newer dat
 });
 
 test("SQL fresh schema and incremental migration install exactly the same definitions", () => {
+  // The schema mixes checked-in CRLF with newly appended LF; compare SQL text,
+  // including every statement, after normalizing only the line endings.
+  const sameSql = value => value.replace(/\r\n?/g, "\n").trim();
   assert.equal(schema.slice(schema.indexOf(migrationMarker), schema.indexOf(attributionMarker)).trim(), migration.trim());
   assert.equal(schema.slice(schema.indexOf(attributionMarker), schema.indexOf(profileVersionMarker)).trim(), attributionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(profileVersionMarker),schema.indexOf(accountLinkReceiptMarker)).trim(), profileVersionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker), schema.indexOf(selfLeaveMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
-  assert.equal(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length).trim(), selfLeaveMigration.trim());
+  assert.equal(sameSql(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length, schema.indexOf(referralTriggerMarker))), sameSql(selfLeaveMigration));
+  assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
+  const statusDefinition = source => source.match(/create or replace function public\.get_referral_program_status\(\)[\s\S]*?\$\$;/)?.[0];
+  assert.equal(sameSql(statusDefinition(schema)), sameSql(statusDefinition(referralRecoveryMigration)));
 });
 test("SQL rollout checks preserve enabled triggers and function privileges", async () => {
   await db.exec(rolloutVerification);
