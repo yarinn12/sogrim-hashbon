@@ -1,5 +1,5 @@
 name: Native Apple auth session return before and after
-# Revision 2 corrects isolated probe URL shadowing and waits for the final account write.
+# Revision 3 preserves the simulator build signature; production signing is verified separately.
 on:
   push:
     branches: [work/ios-apple-auth-session-probe-20261007]
@@ -73,20 +73,16 @@ jobs:
           xcrun simctl bootstatus "$PROBE_UDID" -b
           set -o pipefail
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived build-for-testing CODE_SIGNING_ALLOWED=NO | tee build/probe/build.log
-          python3 - <<'PY'
-          import plistlib
-          from pathlib import Path
-          path=Path('ios/App/App/App.entitlements')
-          entitlements=plistlib.loads(path.read_bytes())
-          entitlements['application-identifier']='MA9S4L7WKS.com.sogrimhashbon.app'
-          entitlements['com.apple.developer.team-identifier']='MA9S4L7WKS'
-          entitlements['get-task-allow']=True
-          Path('build/probe/simulator.entitlements').write_bytes(plistlib.dumps(entitlements))
-          PY
-          codesign --force --sign - --entitlements build/probe/simulator.entitlements build/probe/derived/Build/Products/Debug-iphonesimulator/App.app
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
           grep -q PROBE_HTTP_REDIRECT build/probe/server.log
           xcrun simctl io "$PROBE_UDID" screenshot build/probe/simulator.png
+      - name: Keep simulator launch diagnostics on failure
+        if: failure()
+        working-directory: app
+        run: |
+          source build/probe/simulator.env || true
+          xcrun simctl spawn "$PROBE_UDID" log show --last 6m --style compact --predicate 'process == "App" OR process == "launchd_sim"' > build/probe/launch-diagnostics.log 2>&1 || true
+          xcrun simctl io "$PROBE_UDID" screenshot build/probe/failure.png || true
       - uses: actions/upload-artifact@v6
         if: always()
         with:
@@ -96,6 +92,85 @@ jobs:
             app/build/probe/*.png
             app/build/probe/result.xcresult
           if-no-files-found: error
+          retention-days: 14
+  cold-start:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+      IOS_VERSION: "4.55"
+      IOS_BUILD: "191"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 03562206f727691231bdb4279038d63072374a3c
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Verify the production storyboard and custom plugin in an actual cold native launch
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          npm ci
+          npm run native:prepare
+          node scripts/prepare-ios-release.mjs
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('ios/App/App/AppDelegate.swift')
+          s=p.read_text()
+          probe=r'''
+                  var ticks = 0
+                  Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] timer in
+                      ticks += 1
+                      if ticks > 90 { print("PROBE_COLD_FAILED");fflush(stdout);timer.invalidate();return }
+                      guard let controller=self?.window?.rootViewController as? CAPBridgeViewController,
+                            let webView=controller.webView else { return }
+                      webView.evaluateJavaScript("JSON.stringify({bridge:!!globalThis.SogrimNative,plugin:typeof globalThis.Capacitor?.Plugins?.SogrimAuthSession?.open==='function',gate:!!document.getElementById('public-account-auth-gate')})") { value,error in
+                          if let text=value as? String,let data=text.data(using:.utf8),let state=try? JSONSerialization.jsonObject(with:data) as? [String:Any],state["bridge"] as? Bool == true,state["plugin"] as? Bool == true,state["gate"] as? Bool == true {
+                              print("PROBE_COLD_READY:"+text);fflush(stdout);timer.invalidate()
+                          }
+                      }
+                  }
+          '''
+          needle='        return true\n'
+          assert needle in s
+          p.write_text(s.replace(needle,probe+needle,1))
+          PY
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath build/cold CODE_SIGNING_ALLOWED=NO build > cold-build.log 2>&1
+          python3 - <<'PY'
+          import json, subprocess, time
+          from pathlib import Path
+          devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devices','available','--json']))['devices']
+          device=next(d['udid'] for group in devices.values() for d in group if 'iPad' in d['name'])
+          subprocess.run(['xcrun','simctl','boot',device],check=False)
+          subprocess.run(['xcrun','simctl','bootstatus',device,'-b'],check=True)
+          subprocess.run(['xcrun','simctl','install',device,'build/cold/Build/Products/Debug-iphonesimulator/App.app'],check=True)
+          with Path('cold-console.log').open('w') as log:
+              child=subprocess.Popen(['xcrun','simctl','launch','--console',device,'com.sogrimhashbon.app'],stdout=log,stderr=subprocess.STDOUT)
+              deadline=time.monotonic()+240
+              while time.monotonic()<deadline:
+                  output=Path('cold-console.log').read_text(errors='replace')
+                  if 'PROBE_COLD_READY:' in output or child.poll() is not None: break
+                  time.sleep(2)
+              child.terminate()
+              child.wait(timeout=10)
+          output=Path('cold-console.log').read_text(errors='replace')
+          lines=[line for line in output.splitlines() if 'PROBE_COLD_' in line]
+          print('\n'.join(lines))
+          Path('cold-result.log').write_text('\n'.join(lines)+'\n')
+          assert any('PROBE_COLD_READY:' in line for line in lines),'Production storyboard/plugin did not load'
+          PY
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-auth-session-cold-start
+          path: |
+            cold-build.log
+            cold-result.log
+            cold-console.log
           retention-days: 14
   webkit:
     runs-on: ubuntu-latest
