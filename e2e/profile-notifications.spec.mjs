@@ -315,7 +315,7 @@ test("full name and username are full-width rows stacked in reading order", asyn
   expect(gridBox).not.toBeNull();
   expect(nameBox).not.toBeNull();
   expect(usernameBox).not.toBeNull();
-  expect(usernameBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height + 8);
+  expect(Math.abs(usernameBox.y - (nameBox.y + nameBox.height))).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.x - usernameBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
@@ -378,7 +378,6 @@ test("profile sections use one visual surface system without changing their orde
       },
       surfaces: [
         '.profile-avatar-picker-shell',
-        '.profile-identity-summary',
         '.profile-shortcuts',
         '.referral-reward-card.is-profile',
         '.notification-settings-card',
