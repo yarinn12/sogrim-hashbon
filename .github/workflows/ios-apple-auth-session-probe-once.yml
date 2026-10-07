@@ -1,4 +1,5 @@
 name: Native Apple auth session return before and after
+# Revision 2 corrects isolated probe URL shadowing and waits for the final account write.
 on:
   push:
     branches: [work/ios-apple-auth-session-probe-20261007]

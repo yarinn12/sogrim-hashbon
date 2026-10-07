@@ -24,9 +24,10 @@ if mode!='before':
 else:
     browser=root/'node_modules/@capacitor/browser/ios/Sources/BrowserPlugin/BrowserPlugin.swift'
     code=browser.read_text()
+    code=code.replace('let url = URL(string: urlString)','let originalURL = URL(string: urlString)')
     marker='        // extract the optional parameters'
     replacement='''        var probeURL = URLComponents(string: "http://127.0.0.1:8765/start")!
-        let original = URLComponents(url: url, resolvingAgainstBaseURL: false)!
+        let original = URLComponents(url: originalURL, resolvingAgainstBaseURL: false)!
         let redirect = original.queryItems!.first { $0.name == "redirect_to" }!.value!
         probeURL.queryItems = [URLQueryItem(name: "redirect_to", value: redirect)]
         let url = probeURL.url!
@@ -79,7 +80,8 @@ class SogrimProbeBridgeViewController: BASE_CLASS {
                       var state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
                 state["safari"] = self.probeSawSafari
                 let signedIn = state["signedIn"] as? Bool == true
-                if signedIn || (self.probeTicks >= 45 && self.probeSawSafari) {
+                let ready = signedIn && state["gate"] as? Bool == false && state["eventVisible"] as? Bool == true && (state["writes"] as? Int ?? 0) > 0 && state["writeValid"] as? Bool == true
+                if ready || (self.probeTicks >= 45 && self.probeSawSafari) {
                     let result = try! JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])
                     let report = String(data: result, encoding: .utf8)!
                     self.probeLabel.text = report
