@@ -15,6 +15,26 @@ function responseHeadersBeforeFilesystem(config, pathname) {
   return headers;
 }
 
+function callbackDestination(config, requestUrl) {
+  const url = new URL(requestUrl, "https://example.test");
+  return config.routes.find(route => route.dest && route.src &&
+    new RegExp(`^(?:${route.src})$`).test(url.pathname) &&
+    (route.has ?? []).every(condition => condition.type === "query" &&
+      url.searchParams.has(condition.key)))?.dest;
+}
+
+test("Vercel ordinary account callbacks use the packaged static shell; only native session relays use the server", async () => {
+  const config = JSON.parse(await readFile("vercel.json", "utf8"));
+  for (const callback of ["/auth/callback", "/auth/callback?code=synthetic-email-code&auth_flow=fixture-web-flow",
+    "/auth/callback?error=access_denied"]) {
+    assert.equal(callbackDestination(config, callback), "/index.html", callback);
+  }
+  for (const marker of ["1", "invalid", ""]) {
+    assert.equal(callbackDestination(config, `/auth/callback?native_auth_session=${marker}`), "/server.mjs",
+      "The server must validate every present native marker, including malformed ones");
+  }
+});
+
 test("Vercel serves the extensionless Apple association as JSON before static fallback", async () => {
   const config = JSON.parse(await readFile("vercel.json", "utf8"));
   const headers = responseHeadersBeforeFilesystem(config, "/.well-known/apple-app-site-association");
