@@ -4489,6 +4489,11 @@ const CSS = `
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
+    .relationship-comparison-values > [data-relationship-person="target"] .font-num {
+    justify-self: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
     .quick-split-summary .amount {
     color: #ffffff !important;
   }

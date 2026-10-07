@@ -318,7 +318,8 @@ test("full name and username are full-width rows stacked in reading order", asyn
   expect(Math.abs(usernameBox.y - (nameBox.y + nameBox.height))).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.x - usernameBox.x)).toBeLessThanOrEqual(1);
   expect(Math.abs(nameBox.width - usernameBox.width)).toBeLessThanOrEqual(1);
-  expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(1);
+  // The enclosing card has a 1px border on each side; rows fill its content box.
+  expect(Math.abs(nameBox.width - gridBox.width)).toBeLessThanOrEqual(2);
   await assertNoHorizontalOverflow(page);
 });
 
