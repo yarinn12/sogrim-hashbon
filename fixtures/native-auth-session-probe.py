@@ -81,7 +81,7 @@ class SogrimProbeBridgeViewController: BASE_CLASS {
                 state["safari"] = self.probeSawSafari
                 let signedIn = state["signedIn"] as? Bool == true
                 let ready = signedIn && state["gate"] as? Bool == false && state["eventVisible"] as? Bool == true && (state["writes"] as? Int ?? 0) > 0 && state["writeValid"] as? Bool == true
-                if ready || (self.probeTicks >= 45 && self.probeSawSafari) {
+                if ready || (self.probeTicks >= 45 && self.probeSawSafari) || self.probeTicks >= 90 {
                     let result = try! JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])
                     let report = String(data: result, encoding: .utf8)!
                     self.probeLabel.text = report
@@ -142,6 +142,17 @@ import XCTest
 final class AuthProbeUITests: XCTestCase {
     func testSystemAuthenticationReturn() {
         continueAfterFailure = false
+        // XCTest's default interruption handler cancelled the system consent
+        // before our polling loop could inspect it. Accept only its explicit
+        // sign-in permission buttons; keep all final account assertions below.
+        addUIInterruptionMonitor(withDescription: "System sign-in consent") { alert in
+            print("PROBE_SYSTEM_CONSENT:" + alert.debugDescription)
+            for label in ["Continue", "המשך", "Allow", "אפשר"] {
+                let button = alert.buttons[label].firstMatch
+                if button.exists { button.tap(); return true }
+            }
+            return false
+        }
         let app = XCUIApplication(bundleIdentifier: "com.sogrimhashbon.app")
         app.launch()
         let result = app.staticTexts["native-auth-probe-result"]
@@ -164,6 +175,7 @@ final class AuthProbeUITests: XCTestCase {
         }
         let report = result.label
         print("PROBE_UITEST_RESULT:"+report)
+        XCTAssertTrue(report.contains("signedIn"), "No final native state: " + app.debugDescription)
         let data = report.data(using: .utf8)!
         let state = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
         if BEFORE {
