@@ -33,7 +33,7 @@ jobs:
       - name: Checkout verified authentication source
         uses: actions/checkout@v6
         with:
-          ref: 03562206f727691231bdb4279038d63072374a3c
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
           persist-credentials: false
 
       - name: Set up Node.js
@@ -126,14 +126,14 @@ jobs:
       - name: Verify signed iOS artifact
         run: npm run qa:ios:artifact
 
-      - name: Require successful source QA and an unused Apple build number
+      - name: Require successful exact native and source QA, deployed routes and unused Apple build
         env:
           GH_TOKEN: ${{ github.token }}
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
         run: |
           node --input-type=module <<'NODE'
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
-          for (const [id,expected] of [[37588319833,"03562206f727691231bdb4279038d63072374a3c"],[37588319785,"03562206f727691231bdb4279038d63072374a3c"],[37590856161,"dce2027b37b0502f04535e01e98c309f7a79a397"]]) {
+          for (const [id,expected] of [[37606358260,"0ccd26cb0736d378f8fbafc5fa07ee4715bd70be"],[37606358177,"0ccd26cb0736d378f8fbafc5fa07ee4715bd70be"],[37606358276,"0ccd26cb0736d378f8fbafc5fa07ee4715bd70be"]]) {
             let accepted=false;
             for(let attempt=0;attempt<60;attempt++){
               const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+id,{
@@ -150,10 +150,17 @@ jobs:
             }
             if(!accepted)throw new Error('Source verification still pending');
           }
+          const domain='https://sogrim-hesbon-app.vercel.app';
+          for(const path of ['/auth/callback','/auth/callback?code=synthetic-web-check&auth_flow=fixture-release-web-check','/auth/callback?error=access_denied']){
+            const r=await fetch(domain+path,{redirect:'manual',cache:'no-store'});const body=await r.text();
+            if(r.status!==200||!r.headers.get('content-type')?.includes('text/html')||!body.includes('publicNativeBridgeLayer')||!r.headers.get('cache-control')?.includes('no-store'))throw Error('Ordinary callback is not deployed');
+          }
+          const invalid=await fetch(domain+'/auth/callback?native_auth_session=invalid',{redirect:'manual',cache:'no-store'});
+          if(invalid.status!==400||invalid.headers.get('location'))throw Error('Invalid native relay marker bypasses validation');
           const associationResponse=await fetch('https://sogrim-hesbon-app.vercel.app/.well-known/apple-app-site-association',{cache:'no-store'});
           if(!associationResponse.ok)throw new Error('Production association unavailable');
           const association=await associationResponse.json();
-          if(!association.webcredentials?.apps?.includes('MA9S4L7WKS.com.sogrimhashbon.app'))throw new Error('HTTPS authentication domain association is not deployed');
+          if(!association.webcredentials?.apps?.includes('MA9S4L7WKS.com.sogrimhashbon.app'))throw new Error('Production authentication association is not deployed');
           const probe=await fetch('https://sogrim-hesbon-app.vercel.app/auth/callback?native_auth_session=1&auth_flow=fixture-release-check-20261007&code=fixture-release-code',{redirect:'manual',cache:'no-store'});
           if(probe.status!==302||probe.headers.get('location')!=='com.sogrimhashbon.app://auth/callback?auth_flow=fixture-release-check-20261007&code=fixture-release-code')throw new Error('Compatibility return is not deployed');
           const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
@@ -216,7 +223,7 @@ jobs:
           if(readBack.links?.next||!readBack.data?.some(x=>x.id===b.id&&x.attributes?.version===process.env.IOS_BUILD))throw new Error('Build assignment not confirmed');
           const selected=await api('/v1/appStoreVersions/3a69b968-9121-43b6-b9b5-4ea3ddf42d3a/build');
           if(selected.data?.attributes?.version!=='186')throw new Error('Unexpected App Store draft selection');
-          const report={checkedAt:new Date().toISOString(),buildId:b.id,version:process.env.IOS_VERSION,build:process.env.IOS_BUILD,processingState:'VALID',assignedBuildVerified:true,existingTesterIdentityVerified:true,selectedAppStoreBuild:'186',sourceCommit:'03562206f727691231bdb4279038d63072374a3c'};
+          const report={checkedAt:new Date().toISOString(),buildId:b.id,version:process.env.IOS_VERSION,build:process.env.IOS_BUILD,processingState:'VALID',assignedBuildVerified:true,existingTesterIdentityVerified:true,selectedAppStoreBuild:'186',sourceCommit:'0ccd26cb0736d378f8fbafc5fa07ee4715bd70be'};
           writeFileSync('build/ios/testflight-group-finalization.json',JSON.stringify(report,null,2)+'\n');
           console.log('TESTFLIGHT_191_READY:'+JSON.stringify(report));
           console.log('TestFlight '+process.env.IOS_VERSION+' ('+process.env.IOS_BUILD+') is VALID and assigned to the existing internal group.');
