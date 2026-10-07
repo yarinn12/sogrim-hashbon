@@ -202,7 +202,7 @@ test("note editor shares the form gutters, spacing and control shapes", async ({
   expect(metrics.pinRadius).toBe(metrics.saveRadius);
   expect(metrics.panelBackground).toBe("rgb(255, 255, 255)");
   expect(metrics.ancestors.filter(({ opacity }) => Number(opacity) < 1), "settled form must not show the screen underneath").toEqual([]);
-  await expect(modal.locator(".eyebrow")).toHaveCSS("color", "rgb(22, 78, 63)");
+  await expect(modal.locator(".eyebrow")).toHaveCSS("color", "rgb(6, 75, 67)");
   await modal.locator('[data-action="event-note-title"]').fill("פרטי הטיסה");
   await modal.locator('[data-action="event-note-body"]').fill("נפגשים בטרמינל שלוש, ליד הכניסה.");
   await modal.locator('[data-action="toggle-event-note-pin"]').click();
