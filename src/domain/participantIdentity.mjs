@@ -1,6 +1,8 @@
 const PARTICIPANT_PAIR_SEPARATOR = "~";
 const PARTICIPANT_ALIAS_MAX_LENGTH = 32;
 const CONNECTED_AUTH_PROVIDERS = new Set(["google", "apple", "email"]);
+const ACCOUNT_PARTICIPANT_ID_PATTERN =
+  /^account-([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const HEBREW_MARKS_PATTERN =
   /[\u0591-\u05BD\u05BF\u05C1-\u05C2\u05C4-\u05C5\u05C7]/g;
 
@@ -14,12 +16,14 @@ export function normalizeParticipantDisplayName(value) {
 }
 
 export function participantHasConnectedAccount(participant) {
+  if (participant?.accountDeleted === true) return false;
   return Boolean(
     participant?.accountLinked === true ||
       (
         CONNECTED_AUTH_PROVIDERS.has(participant?.authProvider) &&
         participant?.authSubject
-      )
+      ) ||
+      ACCOUNT_PARTICIPANT_ID_PATTERN.test(String(participant?.id ?? ""))
   );
 }
 

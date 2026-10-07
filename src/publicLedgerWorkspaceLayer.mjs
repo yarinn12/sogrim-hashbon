@@ -17,7 +17,7 @@ const CSS = `
     --ledger-brand-hover: #033a34;
     --ledger-accent: #21aaa6;
     --ledger-accent-soft: #dcf3ef;
-    --ledger-on-dark-kicker: #e4dac8;
+    --ledger-on-dark-kicker: #064b43;
     --ledger-positive-on-dark: #c5d5c7;
     --ledger-positive: #187158;
     --ledger-negative: #b94739;
@@ -2920,7 +2920,7 @@ const CSS = `
     z-index: 0 !important;
     height: 3px !important;
     display: block !important;
-    background: linear-gradient(90deg, #b9c9c2 0%, #e4dac8 48%, rgba(228, 218, 200, 0) 100%) !important;
+    background: linear-gradient(90deg, #b9c9c2 0%, #064b43 48%, rgba(6, 75, 67, 0) 100%) !important;
   }
 
   html.ledger-workspace-v1.circle-design-v1
@@ -4925,7 +4925,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .participant-pill.is-offline {
-    border-style: dashed !important;
+    border-style: solid !important;
     border-color: rgba(72, 91, 87, 0.26) !important;
     background: rgba(247, 249, 248, 0.96) !important;
   }
@@ -5003,7 +5003,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .avatar.is-offline {
-    border-style: dashed !important;
+    border-style: solid !important;
     border-color: rgba(72, 91, 87, 0.36) !important;
     color: #526762 !important;
     background: #eef2f1 !important;
@@ -12417,7 +12417,7 @@ const CSS = `
     align-content: center !important;
     gap: 5px !important;
     padding: 24px !important;
-    border: 1px dashed rgba(11, 74, 56, 0.18) !important;
+    border: 1px solid rgba(11, 74, 56, 0.18) !important;
     border-radius: var(--ledger-task-radius) !important;
     color: var(--ledger-muted) !important;
     background: rgba(255, 255, 255, 0.52) !important;
@@ -12470,7 +12470,7 @@ const CSS = `
   html.ledger-workspace-v1 .groups-list-section > .stack.is-empty > .groups-empty-state {
     min-height: 210px !important;
     margin: 0 !important;
-    border: 1px dashed rgba(11, 74, 56, 0.18) !important;
+    border: 1px solid rgba(11, 74, 56, 0.18) !important;
     border-radius: var(--ledger-task-radius) !important;
     background: rgba(255, 255, 255, 0.72) !important;
     box-shadow: var(--ledger-task-shadow) !important;

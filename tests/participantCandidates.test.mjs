@@ -135,7 +135,7 @@ test("participant search survives an unrelated same-screen render", () => {
 test("adding an offline name never steals focus from participant search", () => {
   const handler = app.slice(
     app.indexOf('if (action === "new-event-add-guest")'),
-    app.indexOf('if (action === "toggle-new-event-invite-after-create")')
+    app.indexOf('if (action === "create-event-and-open-invite")')
   );
 
   assert.match(

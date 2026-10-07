@@ -695,7 +695,7 @@ function injectPremiumVisualStyles() {
     }
 
     html.premium-visual-v1 .empty-state {
-      border: 1px dashed rgba(8, 123, 116, 0.24);
+      border: 1px solid rgba(8, 123, 116, 0.24);
       border-radius: 8px;
       background: rgba(255, 253, 248, 0.74);
       color: var(--premium-muted);

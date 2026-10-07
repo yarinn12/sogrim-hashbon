@@ -3306,7 +3306,7 @@ function injectStyle() {
     }
 
     #public-account-auth-gate .account-auth-brand .eyebrow {
-      color: #e4dac8 !important;
+      color: #064b43 !important;
     }
 
     #public-account-auth-gate .account-auth-brand p {
@@ -3329,7 +3329,7 @@ function injectStyle() {
     .account-auth-brand li::before {
       content: "✓";
       margin-inline-end: 9px;
-      color: #e4dac8;
+      color: #064b43;
     }
 
     .account-auth-form-panel {

@@ -2017,7 +2017,7 @@ const CSS = `
     .event-participant-detail.is-offline
     .event-participant-detail-identity
     > .avatar {
-    border: 1px dashed rgba(83, 103, 99, 0.42) !important;
+    border: 1px solid rgba(83, 103, 99, 0.42) !important;
     filter: grayscale(1) saturate(0.1) opacity(0.76) !important;
     box-shadow: none !important;
   }
@@ -2678,7 +2678,7 @@ const CSS = `
     .event-participant-management.is-offline
     .event-participant-management-identity
     > .avatar {
-    border: 1px dashed rgba(83, 103, 99, 0.42) !important;
+    border: 1px solid rgba(83, 103, 99, 0.42) !important;
     filter: grayscale(1) saturate(0.1) opacity(0.76) !important;
     box-shadow: none !important;
   }
@@ -4456,6 +4456,206 @@ const CSS = `
   }
 
   @keyframes account-link-progress { to { transform: rotate(360deg); } }
+
+  /* Dark green accents sit on a pale surface wherever the surrounding panel is dark. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    :is(
+      .screen > .top .eyebrow,
+      .recent-event-eyebrow,
+      .quick-split-summary .eyebrow,
+      .expense-modal-header .eyebrow,
+      .event-modal-header .eyebrow,
+      .event-notes-hero-copy .eyebrow,
+      .referral-benefit-label,
+      .relationship-comparison-values small,
+      .event-invite-pass-copy small,
+      .event-invite-pass-state
+    ) {
+    display: inline-flex !important;
+    align-items: center !important;
+    width: fit-content !important;
+    max-width: 100% !important;
+    padding: 4px 10px !important;
+    border-radius: 999px !important;
+    color: #064b43 !important;
+    background: #e8f3ed !important;
+    text-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .event-invite-pass-main > .command-card-icon {
+    color: #064b43 !important;
+    background: #e8f3ed !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .quick-split-summary .amount {
+    color: #ffffff !important;
+  }
+
+  html.design-coherence-v1 #public-account-auth-gate
+    .account-auth-brand .eyebrow {
+    display: inline-flex !important;
+    width: fit-content !important;
+    padding: 4px 10px !important;
+    border-radius: 999px !important;
+    color: #064b43 !important;
+    background: #e8f3ed !important;
+  }
+
+  html.design-coherence-v1 #public-account-auth-gate
+    .account-auth-brand li::before {
+    display: inline-grid !important;
+    width: 18px !important;
+    height: 18px !important;
+    place-items: center !important;
+    border-radius: 50% !important;
+    color: #064b43 !important;
+    background: #e8f3ed !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts {
+    display: grid !important;
+    gap: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    border-radius: var(--app-radius-card) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts > :is(.profile-identity-summary, .secondary-button) {
+    width: 100% !important;
+    min-height: 60px !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--app-line) !important;
+    border-radius: 0 !important;
+    background: var(--app-surface) !important;
+    box-shadow: none !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts > :last-child {
+    border-bottom: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts > .profile-identity-entry {
+    display: grid !important;
+    grid-template-columns: 24px minmax(0, 1fr) 22px !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 14px !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts > .profile-identity-entry .profile-identity-copy {
+    min-width: 0 !important;
+    gap: 2px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-entry .profile-identity-copy > span {
+    color: var(--app-ink) !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-entry .profile-identity-copy > strong {
+    color: var(--app-muted) !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-identity-grid.profile-shortcuts > .profile-identity-summary.is-editing {
+    display: grid !important;
+    padding: 14px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-grid > .profile-avatar-upload {
+    min-height: 74px !important;
+    display: grid !important;
+    grid-template-columns: 32px minmax(0, 1fr) 16px !important;
+    justify-content: stretch !important;
+    gap: 8px !important;
+    padding: 10px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-control) !important;
+    background: var(--app-surface) !important;
+    text-align: start !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-icon {
+    width: 32px !important;
+    height: 32px !important;
+    display: grid !important;
+    place-items: center !important;
+    border-radius: 10px !important;
+    color: var(--app-brand) !important;
+    background: #e8f3ed !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-copy {
+    min-width: 0 !important;
+    display: grid !important;
+    gap: 2px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-copy strong {
+    color: var(--app-ink) !important;
+    font-size: 13px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-copy small {
+    color: var(--app-muted) !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .profile-edit-screen .profile-avatar-source-chevron {
+    color: var(--app-muted) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .friends-empty-state {
+    gap: 12px !important;
+    padding: 32px 24px !important;
+    border: 1px solid var(--app-line) !important;
+    border-radius: var(--app-radius-panel) !important;
+    background: var(--app-surface) !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .friends-empty-state .friends-empty-icon {
+    width: 52px !important;
+    height: 52px !important;
+    border-radius: 12px !important;
+    background: #e8f3ed !important;
+  }
+
+  @media (max-width: 420px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app
+      .profile-edit-screen .profile-avatar-source-grid {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     html.design-coherence-v1 body #app .account-link-progress-spinner { animation: none; }

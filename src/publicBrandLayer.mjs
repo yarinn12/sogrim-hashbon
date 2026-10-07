@@ -493,7 +493,7 @@ function renderHomeArtwork() {
             <stop offset="1" stop-color="#06413d" />
           </linearGradient>
           <linearGradient id="home-art-aqua" x1="0" x2="1" y1="0" y2="1">
-            <stop offset="0" stop-color="#e4dac8" />
+            <stop offset="0" stop-color="#064b43" />
             <stop offset="1" stop-color="#2bb8c2" />
           </linearGradient>
         </defs>
@@ -790,7 +790,7 @@ function injectBrandStyle() {
     }
 
     .brand-symbol-coin {
-      fill: #e4dac8;
+      fill: #064b43;
       stroke: rgba(255, 255, 255, 0.72);
       stroke-width: 2.3;
     }
@@ -801,7 +801,7 @@ function injectBrandStyle() {
     }
 
     .brand-symbol-bridge {
-      stroke: #e4dac8;
+      stroke: #064b43;
       stroke-width: 4.4;
     }
 
@@ -941,7 +941,7 @@ function injectBrandStyle() {
     }
 
     .art-dot {
-      fill: #e4dac8;
+      fill: #064b43;
     }
 
     .art-dot-two {
@@ -950,13 +950,13 @@ function injectBrandStyle() {
 
     .home-art-loop {
       fill: none;
-      stroke: rgba(228, 218, 200, 0.82);
+      stroke: rgba(6, 75, 67, 0.82);
       stroke-width: 10;
       stroke-linecap: round;
     }
 
     .home-art-orbit {
-      fill: #e4dac8;
+      fill: #064b43;
     }
 
     .home-art-face {
@@ -1214,7 +1214,7 @@ function injectBrandStyle() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #b9c9c2, #e4dac8, #f46f61);
+      background: linear-gradient(90deg, #b9c9c2, #064b43, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -1229,7 +1229,7 @@ function injectBrandStyle() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #e4dac8 !important;
+      color: #064b43 !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }
@@ -1284,7 +1284,7 @@ function injectBrandStyle() {
       margin: 0 auto !important;
       width: min(680px, 100%) !important;
       background: rgba(255, 254, 250, 0.72) !important;
-      border: 1px dashed rgba(8, 123, 116, 0.2) !important;
+      border: 1px solid rgba(8, 123, 116, 0.2) !important;
       border-radius: 8px !important;
       box-shadow: none !important;
     }

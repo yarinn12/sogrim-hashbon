@@ -3278,7 +3278,7 @@ html body .status-chip.is-warn {
 
 .empty-state {
   color: var(--muted);
-  border: 1px dashed var(--line);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 18px;
   text-align: center;

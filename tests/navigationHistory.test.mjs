@@ -71,7 +71,7 @@ test("completed event creation cannot reopen a stale creation step", async () =>
     app.indexOf("function currentHistoryView()")
   );
   const createEvent = app.slice(
-    app.indexOf("function createEventFromDraft()"),
+    app.indexOf("async function createEventFromDraft({ openInvite = false } = {})"),
     app.indexOf("async function joinExistingEventFromDraft()")
   );
 

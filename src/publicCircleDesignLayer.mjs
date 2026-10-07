@@ -18,7 +18,7 @@ const CSS = `
     --circle-positive: #157a57;
     --circle-negative: #b94838;
     --circle-positive-on-dark: #c5d5c7;
-    --circle-on-dark-kicker: #e4dac8;
+    --circle-on-dark-kicker: #064b43;
     --circle-negative-on-dark: #ff9d8e;
     --circle-debt: #b94838;
     --circle-debt-soft: #fff0ed;
@@ -4644,7 +4644,7 @@ const CSS = `
   html.circle-design-v1 .personal-settlement-row {
     padding: 14px 0 !important;
     border: 0 !important;
-    border-top: 1px dashed var(--circle-line-strong) !important;
+    border-top: 1px solid var(--circle-line-strong) !important;
     border-radius: 0 !important;
     background: transparent !important;
   }
@@ -4690,7 +4690,7 @@ const CSS = `
   html.circle-design-v1 .settlement-transfer-board .transfer-row,
   html.circle-design-v1 .settlement-transfer-board .transfer-row:last-child {
     border: 0 !important;
-    border-bottom: 1px dashed var(--circle-line-strong) !important;
+    border-bottom: 1px solid var(--circle-line-strong) !important;
     background: transparent !important;
   }
 
@@ -6628,7 +6628,7 @@ const CSS = `
   html.circle-design-v1.social-ledger-v2 .quick-expense-modal .quick-add-item {
     width: 100% !important;
     min-height: 48px !important;
-    border-style: dashed !important;
+    border-style: solid !important;
     background: var(--circle-surface-soft) !important;
   }
 

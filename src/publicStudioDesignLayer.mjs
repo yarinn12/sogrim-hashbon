@@ -1958,7 +1958,7 @@ const CSS = `
   html.product-studio-v3 .empty-state {
     min-height: 160px !important;
     padding: 28px !important;
-    border-style: dashed !important;
+    border-style: solid !important;
     border-radius: 12px !important;
     background: transparent !important;
     font-weight: 600 !important;

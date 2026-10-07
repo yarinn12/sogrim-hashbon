@@ -858,7 +858,7 @@ function injectStyle() {
       min-height: 150px;
       display: grid;
       place-items: center;
-      border: 1px dashed #cfd8d0;
+      border: 1px solid #cfd8d0;
       border-radius: 8px;
       background: rgba(255, 253, 248, 0.72);
       color: var(--muted);

@@ -111,7 +111,7 @@ function injectEmptyHomePolish() {
       bottom: 0;
       height: 4px;
       pointer-events: none;
-      background: linear-gradient(90deg, #b9c9c2, #e4dac8, #f46f61);
+      background: linear-gradient(90deg, #b9c9c2, #064b43, #f46f61);
       border-radius: 8px 8px 0 0;
     }
 
@@ -124,7 +124,7 @@ function injectEmptyHomePolish() {
 
     html.product-v1 .screen.product-empty-home > .top .eyebrow,
     html.product-v1-live .screen.product-empty-home > .top .eyebrow {
-      color: #e4dac8 !important;
+      color: #064b43 !important;
       font-size: 0.88rem !important;
       font-weight: 900 !important;
     }
@@ -178,7 +178,7 @@ function injectEmptyHomePolish() {
     html.product-v1-live .screen.product-empty-home .home-empty-events {
       margin-top: 0 !important;
       background: rgba(255, 254, 250, 0.8) !important;
-      border: 1px dashed rgba(8, 123, 116, 0.22) !important;
+      border: 1px solid rgba(8, 123, 116, 0.22) !important;
       border-radius: 8px !important;
       box-shadow: none !important;
     }
