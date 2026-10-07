@@ -4490,7 +4490,9 @@ const CSS = `
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .relationship-comparison-values > [data-relationship-person="target"] .font-num {
-    justify-self: start !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+    text-align: left !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
