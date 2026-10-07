@@ -95,7 +95,7 @@ test("username editing never opens an empty action row", async ({ page }) => {
     await page.evaluate(() => document.documentElement.clientWidth)
   );
 
-  await usernameRow.locator('[data-action="edit-profile-username"]').click();
+  await usernameRow.click();
 
   await expect(usernameRow.locator(".profile-username-status")).toContainText(
     "זמינה אחרי חיבור לחשבון"

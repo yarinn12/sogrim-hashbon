@@ -1868,59 +1868,46 @@ function renderProfileSetup() {
         ${renderProfileAvatarPicker()}
         ${
           isEditingProfile
-            ? `<div class="profile-identity-grid">
-                <section class="profile-identity-summary" data-profile-identity="display-name">
-                  ${
-                    profileNameEditing
-                      ? `<label class="field">
-                          <span>שם פרטי ושם משפחה</span>
-                          <input data-action="profile-name" name="displayName" value="${escapeAttribute(profileNameDraft)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" enterkeyhint="done" ${profileError ? 'aria-invalid="true" aria-describedby="profile-name-error"' : ""} />
-                        </label>
-                        <div class="profile-field-actions">
-                          <button class="primary-button" data-action="save-profile">שמור</button>
-                          <button class="secondary-button" type="button" data-action="cancel-profile-name-edit">ביטול</button>
-                        </div>`
-                      : `<div class="profile-identity-copy">
-                          <span>שם פרטי ושם משפחה</span>
-                          <strong>${escapeHtml(profileNameDraft || localProfile?.displayName || "")}</strong>
-                        </div>
-                        <button class="secondary-button profile-identity-edit" type="button" data-action="edit-profile-name" aria-label="עריכת שם פרטי ושם משפחה">
-                          <span aria-hidden="true">${iconSvg("edit")}</span><span>עריכה</span>
-                        </button>`
-                  }
-                </section>
-                <section class="profile-identity-summary" data-profile-identity="username">
-                  ${
-                    profileUsernameEditing
-                      ? `${renderProfileUsernameField()}
-                        <div class="profile-field-actions">
-                          ${profileUsernameEditorReady() ? '<button class="primary-button" data-action="save-profile">שמור</button>' : ""}
-                          <button class="secondary-button" type="button" data-action="cancel-profile-username-edit">ביטול</button>
-                        </div>`
-                      : `<div class="profile-identity-copy">
-                          <span>שם משתמש</span>
-                          <strong><bdi dir="ltr">${currentFriendUsername() ? `@${escapeHtml(currentFriendUsername())}` : "—"}</bdi></strong>
-                        </div>
-                        <button class="secondary-button profile-identity-edit" type="button" data-action="edit-profile-username" aria-label="עריכת שם משתמש">
-                          <span aria-hidden="true">${iconSvg("edit")}</span><span>עריכה</span>
-                        </button>`
-                  }
-                </section>
-              </div>`
-            : `<label class="field">
-                <span>שם פרטי ושם משפחה</span>
-                <input data-action="profile-name" name="displayName" value="${escapeAttribute(profileNameDraft)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" enterkeyhint="done" ${profileError ? 'aria-invalid="true" aria-describedby="profile-name-error"' : ""} />
-              </label>`
-        }
-        ${profileError ? `<p class="field-error" id="profile-name-error" role="alert">${escapeHtml(profileError)}</p>` : ""}
-        ${
-          isEditingProfile
-            ? ""
-            : `<button class="primary-button" data-action="save-profile">המשך</button>`
-        }
-        ${
-          isEditingProfile
-            ? `<nav class="profile-shortcuts" aria-label="אפשרויות פרופיל">
+            ? `<div class="profile-identity-grid profile-shortcuts" role="group" aria-label="פרטי פרופיל ואפשרויות">
+                ${
+                  profileNameEditing
+                    ? `<section class="profile-identity-summary is-editing" data-profile-identity="display-name">
+                        <label class="field">
+                           <span>שם פרטי ושם משפחה</span>
+                           <input data-action="profile-name" name="displayName" value="${escapeAttribute(profileNameDraft)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" enterkeyhint="done" ${profileError ? 'aria-invalid="true" aria-describedby="profile-name-error"' : ""} />
+                         </label>
+                         <div class="profile-field-actions">
+                           <button class="primary-button" data-action="save-profile">שמור</button>
+                           <button class="secondary-button" type="button" data-action="cancel-profile-name-edit">ביטול</button>
+                         </div>
+                       </section>`
+                    : `<button class="secondary-button profile-identity-summary profile-identity-entry" data-profile-identity="display-name" data-action="edit-profile-name" type="button" aria-label="עריכת שם פרטי ושם משפחה">
+                         <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("edit")}</span>
+                         <span class="profile-identity-copy">
+                           <span>שם פרטי ושם משפחה</span>
+                           <strong>${escapeHtml(profileNameDraft || localProfile?.displayName || "")}</strong>
+                         </span>
+                         <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+                       </button>`
+                }
+                ${
+                  profileUsernameEditing
+                    ? `<section class="profile-identity-summary is-editing" data-profile-identity="username">
+                         ${renderProfileUsernameField()}
+                         <div class="profile-field-actions">
+                           ${profileUsernameEditorReady() ? '<button class="primary-button" data-action="save-profile">שמור</button>' : ""}
+                           <button class="secondary-button" type="button" data-action="cancel-profile-username-edit">ביטול</button>
+                         </div>
+                       </section>`
+                    : `<button class="secondary-button profile-identity-summary profile-identity-entry" data-profile-identity="username" data-action="edit-profile-username" type="button" aria-label="עריכת שם משתמש">
+                         <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("edit")}</span>
+                         <span class="profile-identity-copy">
+                           <span>שם משתמש</span>
+                           <strong><bdi dir="ltr">${currentFriendUsername() ? `@${escapeHtml(currentFriendUsername())}` : "—"}</bdi></strong>
+                         </span>
+                         <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+                       </button>`
+                }
                 <button class="secondary-button profile-friends-entry" data-action="groups" data-tab="people" type="button">
                   <span class="profile-shortcut-icon" aria-hidden="true">${iconSvg("users")}</span>
                   <span class="profile-shortcut-label">חברים</span>
@@ -1931,8 +1918,17 @@ function renderProfileSetup() {
                   <span class="profile-shortcut-label">הגדרות נגישות</span>
                   <span class="profile-shortcut-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
                 </button>
-              </nav>`
-            : ""
+               </div>`
+            : `<label class="field">
+                <span>שם פרטי ושם משפחה</span>
+                <input data-action="profile-name" name="displayName" value="${escapeAttribute(profileNameDraft)}" placeholder="שם פרטי ושם משפחה" autocomplete="name" enterkeyhint="done" ${profileError ? 'aria-invalid="true" aria-describedby="profile-name-error"' : ""} />
+              </label>`
+        }
+        ${profileError ? `<p class="field-error" id="profile-name-error" role="alert">${escapeHtml(profileError)}</p>` : ""}
+        ${
+          isEditingProfile
+            ? ""
+            : `<button class="primary-button" data-action="save-profile">המשך</button>`
         }
         ${
           isEditingProfile && adminAnalytics.status === "ready" && adminAnalytics.available
@@ -2356,14 +2352,18 @@ function renderProfileAvatarPicker() {
       </summary>
       <div class="profile-avatar-picker-body">
         <div class="profile-avatar-source-grid">
-          <label class="secondary-button profile-avatar-upload">
-            <span>מהגלריה</span>
-            <input data-action="profile-avatar-image" data-image-source="gallery" type="file" accept="image/*" hidden />
-          </label>
-          <label class="secondary-button profile-avatar-upload">
-            <span>מצלמה</span>
-            <input data-action="profile-avatar-image" data-image-source="camera" type="file" accept="image/*" capture="environment" hidden />
-          </label>
+          <button class="secondary-button profile-avatar-upload" type="button" data-action="choose-profile-avatar-image" data-image-source="gallery" aria-label="בחירת תמונת פרופיל מהגלריה">
+            <span class="profile-avatar-source-icon" aria-hidden="true">${iconSvg("image")}</span>
+            <span class="profile-avatar-source-copy"><strong>מהגלריה</strong><small>תמונה מהמכשיר</small></span>
+            <span class="profile-avatar-source-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
+          <input data-action="profile-avatar-image" data-image-source="gallery" type="file" accept="image/*" hidden />
+          <button class="secondary-button profile-avatar-upload" type="button" data-action="choose-profile-avatar-image" data-image-source="camera" aria-label="צילום תמונת פרופיל במצלמה">
+            <span class="profile-avatar-source-icon" aria-hidden="true">${iconSvg("camera")}</span>
+            <span class="profile-avatar-source-copy"><strong>מצלמה</strong><small>צילום תמונה חדשה</small></span>
+            <span class="profile-avatar-source-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span>
+          </button>
+          <input data-action="profile-avatar-image" data-image-source="camera" type="file" accept="image/*" capture="environment" hidden />
           ${profileAvatarImageDraft ? '<button class="secondary-button" type="button" data-action="remove-profile-avatar-image">הסר</button>' : ""}
         </div>
         ${picker}
@@ -3139,6 +3139,7 @@ function renderFriendsPeopleTab({
             : `<section class="friends-empty-state" aria-labelledby="friends-empty-title">
                 <span class="friends-empty-icon" aria-hidden="true">${renderCommandIcon("participants")}</span>
                 <h2 id="friends-empty-title">עוד אין חברים</h2>
+                <p>חברים שתוסיף יופיעו כאן, מוכנים לאירוע הבא.</p>
                 <button class="primary-button" data-action="open-friend-add" type="button">הוסף חבר</button>
               </section>`
         }
@@ -4264,8 +4265,7 @@ function ensureNewEventDraft() {
       groupId: "",
       participantIds: state.currentParticipantId ? [state.currentParticipantId] : [],
       guestName: "",
-      participantView: "",
-      inviteAfterCreate: false
+      participantView: ""
     };
   }
 }
@@ -7069,7 +7069,9 @@ function renderNewEventParticipantAction({
   title,
   className = "",
   pressed = false,
-  view = ""
+  view = "",
+  disabled = false,
+  ariaLabel = ""
 }) {
   return `
     <button
@@ -7077,7 +7079,8 @@ function renderNewEventParticipantAction({
       type="button"
       data-action="${escapeAttribute(action)}"
       ${view ? `data-participant-view="${escapeAttribute(view)}"` : ""}
-      ${action === "toggle-new-event-invite-after-create" ? `aria-pressed="${pressed}"` : ""}
+      ${ariaLabel ? `aria-label="${escapeAttribute(ariaLabel)}"` : ""}
+      ${disabled ? "disabled" : ""}
     >
       <span class="new-event-participant-route-icon" aria-hidden="true">${iconSvg(icon)}</span>
       <strong>${escapeHtml(title)}</strong>
@@ -7220,9 +7223,7 @@ function renderNewEventParticipants() {
   const selectedParticipants = newEventDraft.participantIds
     .map((participantId) => state.participants.find((participant) => participant.id === participantId))
     .filter(Boolean);
-  const createLabel = newEventDraft.inviteAfterCreate
-    ? "צור אירוע ופתח הזמנה"
-    : eventTypeConfig(newEventDraft.eventType).createLabel;
+  const createLabel = eventTypeConfig(newEventDraft.eventType).createLabel;
 
   return `
     <section class="screen font-hebrew new-event-participants-screen" data-screen-kind="new-event" data-event-creation-step="participants">
@@ -7243,11 +7244,12 @@ function renderNewEventParticipants() {
         <h2 id="new-event-additions-title">הוספת משתתפים</h2>
         <div class="new-event-participant-actions" aria-label="דרכים להוספת משתתפים">
           ${renderNewEventParticipantAction({
-            action: "toggle-new-event-invite-after-create",
+            action: "create-event-and-open-invite",
             icon: "share",
-            title: "הזמן בקישור",
+            title: createEventBusy ? "מכין הזמנה…" : "הזמן בקישור",
             className: "is-primary",
-            pressed: newEventDraft.inviteAfterCreate
+            disabled: createEventBusy || selectedParticipants.length === 0,
+            ariaLabel: "הזמן בקישור. האירוע יישמר תחילה ואז ייפתחו הקישור וקוד ה־QR"
           })}
           ${renderNewEventParticipantAction({
             action: "set-new-event-participant-view",
@@ -11471,18 +11473,9 @@ function participantConnectionStatusForEvent(participant, event) {
   const isHistoricalOffline = Boolean(
     event && isEventParticipantInactive(event, participant.id)
   );
-  const authProvider =
-    participant.authProvider ??
-    (isCurrentParticipant ? localProfile?.authProvider : "");
-  const authSubject =
-    participant.authSubject ??
-    (isCurrentParticipant ? localProfile?.authSubject : "");
   const connected =
-    participant.accountLinked === true ||
-    (
-      ["google", "apple", "email"].includes(authProvider) &&
-      Boolean(authSubject)
-    );
+    participantHasConnectedAccount(participant) ||
+    (isCurrentParticipant && participantHasConnectedAccount(localProfile));
 
   if (connected && !isHistoricalOffline) {
     return {
@@ -12047,6 +12040,12 @@ async function handleClick(event) {
 
   const action = target.dataset.action;
 
+  if (action === "choose-profile-avatar-image") {
+    event.preventDefault();
+    app.querySelector(`input[data-action="profile-avatar-image"][data-image-source="${target.dataset.imageSource}"]`)?.click();
+    return;
+  }
+
   if (action === "dismiss-notice") {
     event.preventDefault();
     clearRenderedNotice();
@@ -12301,6 +12300,7 @@ async function handleClick(event) {
     profileNameDraft = localProfile?.displayName ?? participantName(state.currentParticipantId);
     profileError = "";
     render();
+    requestAnimationFrame(() => app.querySelector('[data-action="edit-profile-name"]')?.focus());
   }
 
   if (action === "cancel-profile-username-edit") {
@@ -12308,6 +12308,7 @@ async function handleClick(event) {
     profileUsernameDraft = currentFriendUsername();
     profileUsernameError = "";
     render();
+    requestAnimationFrame(() => app.querySelector('[data-action="edit-profile-username"]')?.focus());
   }
 
   if (action === "edit-profile") {
@@ -12930,15 +12931,8 @@ async function handleClick(event) {
     });
   }
 
-  if (action === "toggle-new-event-invite-after-create") {
-    if (!newEventDraft) return;
-    newEventDraft.inviteAfterCreate = !newEventDraft.inviteAfterCreate;
-    render();
-    requestAnimationFrame(() => {
-      app
-        .querySelector('[data-action="toggle-new-event-invite-after-create"]')
-        ?.focus({ preventScroll: true });
-    });
+  if (action === "create-event-and-open-invite") {
+    await createEventFromDraft({ openInvite: true });
     return;
   }
 
@@ -14877,7 +14871,7 @@ async function handleChange(event) {
   replaceBrowserHistoryState();
 }
 
-async function createEventFromDraft() {
+async function createEventFromDraft({ openInvite = false } = {}) {
   if (createEventRequest && !createEventRequest.isCurrent()) {
     createEventRequest = null;
     createEventBusy = false;
@@ -14902,7 +14896,6 @@ async function createEventFromDraft() {
   const submittedDraft = structuredClone(newEventDraft);
   const activeDraft = newEventDraft;
   const submittedScreen = screen;
-  const inviteAfterCreate = newEventDraft.inviteAfterCreate === true;
   const createdAt = new Date();
   const createdAtIso = createdAt.toISOString();
   const event = appendEventActivity({
@@ -15013,7 +15006,7 @@ async function createEventFromDraft() {
     }
     // Invitations/link preparation are follow-up work, not part of the form
     // lock or its rollback. They must wait for a confirmed cloud save.
-    void finishCreatedEventPublication(saveResult, event.id, invitedAccountParticipants, request, inviteAfterCreate);
+    void finishCreatedEventPublication(saveResult, event.id, invitedAccountParticipants, request, openInvite);
   } catch (error) {
     restoreRejectedCreation({ ok: false, error });
   } finally {
@@ -15025,7 +15018,7 @@ async function createEventFromDraft() {
   }
 }
 
-async function finishCreatedEventPublication(saveResult, eventId, participants, request, inviteAfterCreate) {
+async function finishCreatedEventPublication(saveResult, eventId, participants, request, openInvite) {
   try {
     const result = await completedSaveResult(saveResult);
     if (!request.isCurrent() || !getEvent(eventId)) return;
@@ -15035,9 +15028,9 @@ async function finishCreatedEventPublication(saveResult, eventId, participants, 
       await publishEventInvitation(eventId, participant, { showMessage: false });
     }
     // Do not open a delayed share sheet on top of newer navigation or editing.
-    if (!request.isCurrent() || !inviteAfterCreate || screen.name !== "event" ||
+    if (!request.isCurrent() || !openInvite || screen.name !== "event" ||
         screen.eventId !== eventId || newEventDraft || expenseDraft || eventDialog) return;
-    await openPreparedEventShare(eventId, app.querySelector('[data-action="open-event-share"]'));
+    await openPreparedEventShare(eventId, app.querySelector('[data-action="open-event-share"]'), "link");
   } catch (error) {
     if (!request.isCurrent()) return;
     emitOperationDeferred("event_invite", { screen: "new_event", error });

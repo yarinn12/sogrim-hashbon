@@ -805,7 +805,7 @@ const FINTECH_DESIGN_CSS = `
     display: grid;
     place-items: center;
     padding: 18px;
-    border: 1px dashed rgba(10, 118, 111, 0.28);
+    border: 1px solid rgba(10, 118, 111, 0.28);
     border-radius: var(--fintech-radius-card);
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(247, 250, 247, 0.62));

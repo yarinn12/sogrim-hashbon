@@ -34,7 +34,7 @@ test("public app asks each visitor for their own saved name", async () => {
 test("existing profile identity is read-only until the user chooses edit", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
-  assert.match(app, /class="profile-identity-grid"/);
+  assert.match(app, /class="profile-identity-grid profile-shortcuts"/);
   assert.match(app, /data-action="edit-profile-name"/);
   assert.match(app, /data-action="edit-profile-username"/);
   assert.match(app, /aria-label="עריכת שם פרטי ושם משפחה"/);
@@ -73,7 +73,7 @@ test("tester-facing forms use accessible names and polished loading copy", async
 test("participant validation stays inside the app and returns focus to the choice", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const eventScreen = sourceBetween(app, "function renderNewEvent()", "function syncNewEventParticipantControls");
-  const createEvent = sourceBetween(app, "function createEventFromDraft()", "function inviteJoinErrorMessage");
+  const createEvent = sourceBetween(app, "async function createEventFromDraft({ openInvite = false } = {})", "function inviteJoinErrorMessage");
   const saveGroup = sourceBetween(app, "function saveEditedGroup()", "function createGroupFromDraft()");
   const createGroup = sourceBetween(app, "function createGroupFromDraft()", "function syncCreateGroupButton()");
 

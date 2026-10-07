@@ -504,7 +504,7 @@ test("participant manager distinguishes connected accounts from manually added n
   ]);
 
   assert.match(app, /function participantConnectionStatus\(participant\)/);
-  assert.match(app, /\["google", "apple", "email"\]\.includes\(authProvider\)/);
+  assert.match(app, /participantHasConnectedAccount\(participant\)/);
   assert.match(app, /label: isCurrentParticipant \? "אתה" : "חבר באפליקציה"/);
   assert.match(app, /label: "שם אופליין"/);
   assert.match(app, /class="participant-connection-badge/);

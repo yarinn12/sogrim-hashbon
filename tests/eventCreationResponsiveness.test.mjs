@@ -6,7 +6,7 @@ import { appendEventActivity } from "../src/domain/eventActivityLog.mjs";
 import { saveFailureMessage } from "../src/domain/userNoticePolicy.mjs";
 
 const source = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
-const start = source.indexOf("async function createEventFromDraft()");
+const start = source.indexOf("async function createEventFromDraft(");
 const end = source.indexOf("function syncNewEventDraftFromRenderedDetails", start);
 const tick = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 
@@ -24,7 +24,7 @@ test("the restored creation form renders its save failure notice", () => {
 
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function harness({ save, invite, share } = {}) {
-  const saves = [], invitations = [], pending = [], renders = [];
+  const saves = [], invitations = [], pending = [], renders = [], shares = [];
   let nextId = 0;
   const ctx = vm.createContext({
     structuredClone, appendEventActivity, saveFailureMessage,
@@ -48,7 +48,10 @@ function harness({ save, invite, share } = {}) {
     publishEventInvitation: (id, participant) => { invitations.push({ id, participant }); return invite ? invite() : Promise.resolve({ ok: true }); },
     schedulePendingMutationRecovery() {},
     completedSaveResult: request => Promise.resolve(request).then(result => result?.completion ?? result),
-    openPreparedEventShare: () => share ? share() : Promise.resolve(),
+    openPreparedEventShare: (...args) => {
+      shares.push(args);
+      return share ? share() : Promise.resolve();
+    },
     getEvent: id => ctx.state.events.find(event => event.id === id),
     captureFriendAccountContext: () => {
       const participantId = ctx.state.currentParticipantId, generation = ctx.generation;
@@ -56,7 +59,7 @@ function harness({ save, invite, share } = {}) {
     }
   });
   vm.runInContext(source.slice(start, end), ctx);
-  return { ctx, saves, invitations, pending, renders };
+  return { ctx, saves, invitations, pending, renders, shares };
 }
 
 test("connected event creation uses the durable UI budget while forcing canonical publication", async () => {
@@ -76,9 +79,29 @@ test("slow invitations do not retain the create-event busy lock", async () => {
 
 test("optional share failure never rolls back an already saved event", async () => {
   const h = harness({ share: async () => { throw new Error("Share unavailable"); } });
-  h.ctx.newEventDraft.inviteAfterCreate = true;
-  await h.ctx.createEventFromDraft(); await tick();
+  await h.ctx.createEventFromDraft({ openInvite: true }); await tick();
   assert.equal(h.ctx.state.events.length, 2); assert.equal(h.ctx.screen.name, "event");
+  assert.equal(h.shares.length, 1);
+});
+
+test("invite from creation opens the existing event link route after cloud save", async () => {
+  const h = harness();
+  await h.ctx.createEventFromDraft({ openInvite: true });
+  await tick();
+  assert.equal(h.shares.length, 1);
+  assert.equal(h.shares[0][0], h.ctx.state.events[0].id);
+  assert.equal(h.shares[0][2], "link");
+});
+
+test("invite from a queued creation waits for cloud confirmation", async () => {
+  const gate = deferred();
+  const h = harness({ save: async () => ({ ok: true, mode: "queued", pending: true, completion: gate.promise }) });
+  await h.ctx.createEventFromDraft({ openInvite: true });
+  assert.equal(h.shares.length, 0);
+  gate.resolve({ ok: true, mode: "cloud" });
+  await tick();
+  assert.equal(h.shares.length, 1);
+  assert.equal(h.shares[0][2], "link");
 });
 
 test("a synchronous save exception releases the busy flag and preserves the draft", async () => {

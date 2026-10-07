@@ -6,6 +6,7 @@ import {
   duplicateParticipantPairKey,
   findOfflineParticipantByName,
   normalizeParticipantDisplayName,
+  participantHasConnectedAccount,
   participantEventDisplayName,
   remapParticipantPairKeys,
   unresolvedDuplicateParticipantPairs
@@ -22,6 +23,17 @@ const participants = [
   { id: "manual-dani", displayName: "  דני   כהן ", kind: "guest" },
   { id: "other", displayName: "אבי לוי", kind: "user" }
 ];
+
+test("canonical account participants stay connected when legacy auth metadata is missing", () => {
+  const account = {
+    id: "account-123e4567-e89b-42d3-a456-426614174000",
+    displayName: "Owner",
+    kind: "user"
+  };
+  assert.equal(participantHasConnectedAccount(account), true);
+  assert.equal(participantHasConnectedAccount({ ...account, accountDeleted: true }), false);
+  assert.equal(participantHasConnectedAccount({ id: "manual-owner", kind: "guest" }), false);
+});
 
 test("duplicate participant names normalize spacing and letter case", () => {
   assert.equal(normalizeParticipantDisplayName("  Dani   Cohen "), "dani cohen");

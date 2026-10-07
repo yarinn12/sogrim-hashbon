@@ -206,7 +206,7 @@ test("offline names use subdued grayscale avatars while connected accounts stay 
   );
   assert.match(
     layer,
-    /\.avatar\.is-offline \{[\s\S]*?border-style: dashed !important;/
+    /\.avatar\.is-offline \{[\s\S]*?border-style: solid !important;/
   );
   assert.doesNotMatch(
     layer,

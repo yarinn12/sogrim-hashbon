@@ -180,12 +180,12 @@ test("new event participants offer friends, offline names, and an invite link or
   );
   const createFlow = sourceBetween(
     app,
-    "async function createEventFromDraft()",
+    "async function createEventFromDraft(",
     "async function joinExistingEventFromDraft()"
   );
-  const inviteToggleAction = sourceBetween(
+  const inviteAction = sourceBetween(
     app,
-    'if (action === "toggle-new-event-invite-after-create")',
+    'if (action === "create-event-and-open-invite")',
     'if (action === "group-add-member")'
   );
 
@@ -200,13 +200,12 @@ test("new event participants offer friends, offline names, and an invite link or
     participantsStep.indexOf("new-event-selected-participants") <
       participantsStep.indexOf("new-event-participant-additions")
   );
-  assert.match(participantsStep, /action: "toggle-new-event-invite-after-create"/);
-  assert.match(participantsStep, /aria-pressed="\$\{pressed\}"/);
-  assert.match(app, /inviteAfterCreate: false/);
+  assert.match(participantsStep, /action: "create-event-and-open-invite"/);
+  assert.doesNotMatch(participantsStep, /נבחר וצור אירוע והזמן|צור אירוע ופתח הזמנה/);
+  assert.doesNotMatch(participantsStep, /toggle-new-event-invite-after-create/);
   assert.match(newEventAction, /refreshFriendNetwork\(\{ preserveNotice: true \}\)/);
-  assert.match(inviteToggleAction, /newEventDraft\.inviteAfterCreate = !newEventDraft\.inviteAfterCreate/);
-  assert.doesNotMatch(inviteToggleAction, /participantDetails\.open/);
-  assert.match(createFlow, /const inviteAfterCreate = newEventDraft\.inviteAfterCreate === true/);
+  assert.match(inviteAction, /await createEventFromDraft\(\{ openInvite: true \}\)/);
+  assert.match(createFlow, /async function createEventFromDraft\(\{ openInvite = false \} = \{\}\)/);
   assert.match(
     createFlow,
     /const saveRequest = persistState\(\{[\s\S]*?forceSharedEventIds: invitedAccountParticipants\.length \? \[event\.id\] : \[\]/
@@ -255,8 +254,8 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(createFlow, /finally \{[\s\S]*?createEventBusy = false/);
   assert.doesNotMatch(createFlow, /Promise\.resolve\(saveRequest\)\.catch/);
   assert.match(createFlow, /await openPreparedEventShare/);
-  assert.match(ledgerStyles, /\.new-event-invite-after-create/);
-  assert.match(ledgerStyles, /min-height: 72px/);
+  assert.match(createFlow, /openPreparedEventShare\(eventId, app\.querySelector\('\[data-action="open-event-share"\]'\), "link"\)/);
+  assert.match(ledgerStyles, /\.new-event-participant-route-action/);
 });
 
 test("new events start without silently selecting a saved group", async () => {
@@ -355,7 +354,7 @@ test("the event creator stays selected while other participant removals ask for 
   );
   assert.match(
     app,
-    /async function createEventFromDraft\(\) \{[\s\S]*?if \(createEventBusy\) return;[\s\S]*?ensureCurrentParticipantInNewEventDraft\(\)/
+    /async function createEventFromDraft\(\{ openInvite = false \} = \{\}\) \{[\s\S]*?if \(createEventBusy\) return;[\s\S]*?ensureCurrentParticipantInNewEventDraft\(\)/
   );
 });
 

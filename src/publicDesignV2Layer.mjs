@@ -1194,7 +1194,7 @@ const CSS = `
     display: grid !important;
     place-items: center !important;
     padding: 24px !important;
-    border: 1px dashed #bfd0cb !important;
+    border: 1px solid #bfd0cb !important;
     border-radius: var(--v2-radius) !important;
     color: var(--v2-muted) !important;
     background: transparent !important;

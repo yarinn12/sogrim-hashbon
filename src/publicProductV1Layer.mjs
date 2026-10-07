@@ -321,7 +321,7 @@ const PRODUCT_V1_CSS = `
   }
 
   html.product-v1 .screen > .top .eyebrow {
-    color: #e4dac8;
+    color: #064b43;
   }
 
   html.product-v1 .muted,
@@ -979,7 +979,7 @@ const PRODUCT_V1_CSS = `
     width: min(720px, 100%) !important;
     margin: 0 auto !important;
     background: rgba(255, 255, 255, 0.76) !important;
-    border: 1px dashed rgba(8, 120, 111, 0.22) !important;
+    border: 1px solid rgba(8, 120, 111, 0.22) !important;
   }
 
   html.product-v1 .event-command-grid {
