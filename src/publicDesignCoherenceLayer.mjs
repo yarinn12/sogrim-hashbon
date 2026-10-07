@@ -4520,7 +4520,7 @@ const CSS = `
     gap: 0 !important;
     overflow: hidden !important;
     margin: 0 !important;
-    border-radius: var(--app-radius-card) !important;
+    border-radius: var(--app-radius-panel) !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
