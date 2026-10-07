@@ -1,5 +1,5 @@
-const PWA_RELEASE = "508";
-const CACHE_NAME = "settle-friends-live-v508";
+const PWA_RELEASE = "509";
+const CACHE_NAME = "settle-friends-live-v509";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -257,7 +257,8 @@ self.addEventListener("fetch", (event) => {
   if (
     event.request.method !== "GET" ||
     !sameOrigin ||
-    url.pathname.startsWith("/api/")
+    url.pathname.startsWith("/api/") ||
+    (url.pathname === "/auth/callback" && url.searchParams.has("native_auth_session"))
   ) {
     return;
   }

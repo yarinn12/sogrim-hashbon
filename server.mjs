@@ -12,6 +12,7 @@ import { loadEnvFile } from "./src/server/envFile.mjs";
 import { getHealthPayload } from "./src/server/health.mjs";
 import { renderInviteDocument } from "./src/server/invitePageMetadata.mjs";
 import { parseInviteEventId } from "./src/domain/inviteLinks.mjs";
+import { nativeAuthReturn } from "./src/server/nativeAuthReturn.mjs";
 import { deleteSupabaseAccount } from "./src/server/accountDeletion.mjs";
 import { verifyGoogleCredential } from "./src/server/googleAuth.mjs";
 import { verifyGooglePlaySubscription } from "./src/server/googlePlayBilling.mjs";
@@ -152,6 +153,21 @@ export function createAppHandler({
       env
     );
     applyNativeCors(request, response);
+
+    if (url.pathname === "/auth/callback") {
+      const nativeReturn = nativeAuthReturn(url);
+      if (nativeReturn) {
+        const status = request.method === "GET" ? nativeReturn.status : 405;
+        response.writeHead(status, {
+          ...securityHeaders(),
+          "Cache-Control": "no-store, max-age=0",
+          "Content-Type": "text/plain; charset=utf-8",
+          ...(status === 302 ? { Location: nativeReturn.location } : {})
+        });
+        response.end(status === 302 ? "" : "Authentication return unavailable");
+        return;
+      }
+    }
 
     if (request.method === "OPTIONS" && url.pathname.startsWith("/api/")) {
       response.writeHead(204);

@@ -26,7 +26,7 @@ const state = {
   }]
 };
 
-async function prepare(page, { googleError = "", userFailureOnce = false, pkceError = false } = {}) {
+async function prepare(page, { googleError = "", userFailureOnce = false, pkceError = false, appleSession = false } = {}) {
   const counts = { token: 0, pkce: 0, refresh: 0, logout: 0, user: 0, writes: 0, recovery: 0 };
   const tokenBodies = [];
   let expectedVerifier = "";
@@ -47,7 +47,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
     expect(source.split(sdkImport)).toHaveLength(2);
     await route.fulfill({ response, body: source.replace(sdkImport, "Promise.resolve({ SocialLogin: globalThis.__roundtripSocialLogin })") });
   });
-  await page.addInitScript(({ config }) => {
+  await page.addInitScript(({ config, appleSession }) => {
     if (!sessionStorage.getItem("native-roundtrip-ready")) {
       localStorage.clear(); sessionStorage.clear();
       sessionStorage.setItem("native-roundtrip-ready", "1");
@@ -72,6 +72,15 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
     globalThis.Capacitor = {
       isNativePlatform: () => true, getPlatform: () => "ios",
       Plugins: {
+        ...(appleSession ? { SogrimAuthSession: { open: async ({ url }) => {
+          const authorization = new URL(url);
+          const callback = new URL(authorization.searchParams.get("redirect_to"));
+          const flow = JSON.parse(localStorage.getItem(`settle-friends-account-oauth-flow:${callback.searchParams.get("auth_flow")}`));
+          localStorage.setItem("roundtrip-session-verifier", flow.verifier);
+          localStorage.setItem("roundtrip-apple-session-count", String(Number(localStorage.getItem("roundtrip-apple-session-count") || 0) + 1));
+          callback.searchParams.set("code", "fixture-apple-code");
+          return { url: callback.href };
+        } } } : {}),
         Browser: {
           open: async ({ url }) => globalThis.__roundtripOpened.push(url),
           close: async () => {
@@ -97,7 +106,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
         }
       }
     };
-  }, { config });
+  }, { config, appleSession });
   await page.route(`${AUTH}/**`, async route => {
     const request = route.request();
     const url = new URL(request.url());
@@ -112,7 +121,8 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
       } else if (url.searchParams.get("grant_type") === "pkce") {
         counts.pkce += 1;
         expect(body.auth_code).toBe("fixture-apple-code");
-        expect(body.code_verifier).toBe(expectedVerifier);
+        const verifier = appleSession ? await page.evaluate(() => localStorage.getItem("roundtrip-session-verifier")) : expectedVerifier;
+        expect(body.code_verifier).toBe(verifier);
         if (pkceError) return route.fulfill({ status: 400, json: { message: "Authorization code expired" } });
       } else {
         expect(url.searchParams.get("grant_type")).toBe("id_token");
@@ -225,6 +235,18 @@ test("Apple callback closes the native browser, exchanges the bound code and ope
   expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-closed"))).toBe("1");
   expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-close-count"))).toBe("1");
   expect(Number(await page.evaluate(() => localStorage.getItem("roundtrip-retained-launch-reads")))).toBeGreaterThanOrEqual(2);
+  expect(new URL(page.url()).searchParams.has("code")).toBe(false);
+});
+
+test("Apple OS session delivers a valid code, writes the account and persists login without reopening Safari", async ({ page }) => {
+  const fixture = await prepare(page, { appleSession: true });
+  await page.getByRole("button", { name: "המשך עם Apple", exact: true }).click();
+  await expectAccount(page);
+  expect(fixture.counts.pkce).toBe(1);
+  expect(fixture.counts.writes).toBeGreaterThan(0);
+  expect(await page.evaluate(() => localStorage.getItem("roundtrip-apple-session-count"))).toBe("1");
+  expect(await page.evaluate(() => localStorage.getItem("roundtrip-browser-close-count"))).toBeNull();
+  expect(await page.evaluate(() => globalThis.__roundtripOpened.length)).toBe(0);
   expect(new URL(page.url()).searchParams.has("code")).toBe(false);
 });
 

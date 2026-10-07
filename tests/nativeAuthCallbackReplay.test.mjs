@@ -9,10 +9,11 @@ const source=(await readFile('src/publicNativeBridgeLayer.mjs','utf8')).replaceA
 const origin='https://sogrim-hesbon-app.vercel.app';
 const flowId='fixture-apple-callback-flow-20261006';
 function storage() {const values=new Map();return {values,getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)};}
-async function page({sessionStorage,launchUrl=null,currentUrl='capacitor://localhost'}) {
+async function page({sessionStorage,launchUrl=null,currentUrl='capacitor://localhost',authSession=null}) {
   const listeners={};
   const reloads=[];
   const navigations=[];
+  const browserCalls=[];
   const location=new URL(currentUrl);
   location.reload=()=>reloads.push(location.href);
   location.replace=value=>navigations.push(value);
@@ -25,14 +26,29 @@ async function page({sessionStorage,launchUrl=null,currentUrl='capacitor://local
     window:{location,dispatchEvent(){return true;}},
     history:{state:null,replaceState(_state,_title,destination){location.href=new URL(destination,location.href).href;}},
     Capacitor:{isNativePlatform:()=>true,getPlatform:()=>'ios',Plugins:{
-      Browser:{close:async()=>{},open:async()=>{}},
+      Browser:{close:async()=>{browserCalls.push('close');},open:async()=>{browserCalls.push('open');}},
+      ...(authSession ? {SogrimAuthSession:authSession} : {}),
       App:{addListener:async(name,callback)=>{listeners[name]=callback;return {remove(){}};},getLaunchUrl:async()=>launchUrl?{url:launchUrl}:null}
     }}
   });
   vm.runInContext(source,context);
   for(let i=0;i<16;i++)await Promise.resolve();
-  return {listeners,reloads,navigations,location};
+  return {listeners,reloads,navigations,location,browserCalls,native:context.SogrimNative};
 }
+
+test('Apple authentication session returns its bound code to the original app without a Safari page or Browser.close',async()=>{
+  const callback=`${origin}/auth/callback?code=single-use-session-code&auth_flow=${flowId}`;
+  const authorization=new URL('https://fixture.supabase.co/auth/v1/authorize');
+  authorization.searchParams.set('provider','apple');
+  authorization.searchParams.set('redirect_to',`${origin}/auth/callback?auth_flow=${flowId}`);
+  const opened=[];
+  const first=await page({sessionStorage:storage(),authSession:{open:async options=>{opened.push(options.url);return {url:callback};}}});
+  assert.equal(await first.native.openAuth(authorization.href),true);
+  assert.equal(opened.length,1,'Apple must use the OS authentication session rather than an isolated Safari page');
+  assert.equal(first.reloads.length,1,'the completed code must reach the app holding the PKCE verifier');
+  assert.match(first.reloads[0],/code=single-use-session-code/);
+  assert.deepEqual(first.browserCalls,[],'closing a Browser that was never opened must not delay delivery');
+});
 
 for(const query of ['code=single-use-apple-code','error=access_denied']) {
   test(`retained iOS launch URL cannot reload the Apple callback again: ${query.split('=')[0]}`,async()=>{
@@ -56,6 +72,33 @@ for(const query of ['code=single-use-apple-code','error=access_denied']) {
     assert(!JSON.stringify([...shared.values.values()]).includes('single-use-apple-code'),'deduplication must not persist authorization codes');
   });
 }
+
+test('a cancelled Apple OS session can retry, while mismatched or ambiguous callbacks never reach the app',async()=>{
+  const authorization=new URL('https://fixture.supabase.co/auth/v1/authorize');
+  authorization.searchParams.set('provider','apple');
+  authorization.searchParams.set('redirect_to',`${origin}/auth/callback?auth_flow=${flowId}`);
+  let result='cancel';
+  const first=await page({sessionStorage:storage(),authSession:{open:async()=>{
+    if(result==='cancel')throw new Error('Authentication cancelled');
+    return {url:result};
+  }}});
+  await assert.rejects(first.native.openAuth(authorization.href),/cancelled/);
+  for(const callback of [
+    `${origin}/auth/callback?code=bad&auth_flow=fixture-other-flow-20261007`,
+    `${origin}/auth/callback?code=bad&error=denied&auth_flow=${flowId}`,
+    `${origin}/auth/callback?code=bad&auth_flow=${flowId}&auth_flow=${flowId}`,
+    `https://attacker.example/auth/callback?code=bad&auth_flow=${flowId}`,
+    `${origin}/auth/callback?code=bad&auth_flow=${flowId}#access_token=bad`
+  ]) {
+    result=callback;
+    await assert.rejects(first.native.openAuth(authorization.href),/bound callback/);
+    assert.equal(first.reloads.length,0);
+  }
+  result=`${origin}/auth/callback?code=retry&auth_flow=${flowId}`;
+  assert.equal(await first.native.openAuth(authorization.href),true);
+  assert.equal(first.reloads.length,1);
+  assert.deepEqual(first.browserCalls,[]);
+});
 
 test('a cold native callback is delivered once and unrelated links retain navigation',async()=>{
   const shared=storage();

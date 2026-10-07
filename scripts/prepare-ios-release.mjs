@@ -60,6 +60,7 @@ await mkdir(associationDir, { recursive: true });
 await writeFile(
   join(associationDir, "apple-app-site-association"),
   `${JSON.stringify({
+    webcredentials: { apps: [`${teamId}.com.sogrimhashbon.app`] },
     applinks: {
       apps: [],
       details: [

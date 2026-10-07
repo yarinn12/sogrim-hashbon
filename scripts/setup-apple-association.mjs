@@ -9,6 +9,7 @@ if (!/^[A-Z0-9]{10}$/.test(teamId)) {
 const outputDir = join(process.cwd(), ".well-known");
 await mkdir(outputDir, { recursive: true });
 await writeFile(join(outputDir, "apple-app-site-association"), `${JSON.stringify({
+  webcredentials: { apps: [`${teamId}.com.sogrimhashbon.app`] },
   applinks: {
     apps: [],
     details: [
