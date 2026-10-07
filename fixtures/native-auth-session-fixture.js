@@ -6,7 +6,9 @@
   const config = {publicUrl:'https://sogrim-hesbon-app.vercel.app',auth:{googleClientId:'fixture-web.apps.googleusercontent.com',googleIosClientId:'fixture-ios.apps.googleusercontent.com'},launch:{googleAuthReady:true,googleIosAuthReady:true,authEmailDeliveryReady:true},storage:{mode:'supabase',url:auth,anonKey:'fixture-public-key',table:'app_snapshots'}};
   if(!localStorage.getItem('probe-fixture-initialized')){localStorage.clear();sessionStorage.clear();localStorage.setItem('probe-fixture-initialized','1');}
   sessionStorage.setItem('settle-friends-skip-next-splash','1');
-  globalThis.SogrimNativeRuntimeConfig=Object.freeze(config);
+  // The packaged HTML also assigns its production bootstrap later. Keep this
+  // isolated external-service fixture authoritative on every WebView reload.
+  Object.defineProperty(globalThis,'SogrimNativeRuntimeConfig',{configurable:false,get:()=>Object.freeze(config),set:()=>{}});
   const originalFetch=globalThis.fetch.bind(globalThis);
   const json=(data,status=200)=>Promise.resolve(new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}}));
   const increment=key=>localStorage.setItem(key,String(Number(localStorage.getItem(key)||0)+1));
@@ -16,7 +18,10 @@
     const body=options.body?JSON.parse(options.body):null;
     if(url.pathname==='/api/config')return json(config);
     if(url.pathname==='/api/product-metrics')return json({ok:true,accepted:Array.isArray(body?.events)?body.events.length:0});
-    if(url.origin!==auth)return originalFetch(input,options);
+    if(url.origin!==auth){
+      if(url.hostname.endsWith('.supabase.co'))throw new Error('Probe refusing an unexpected Supabase origin');
+      return originalFetch(input,options);
+    }
     if(url.pathname.endsWith('/auth/v1/settings'))return json({external:{google:true,apple:true,email:true}});
     if(url.pathname.endsWith('/auth/v1/token')){
       const flow=Object.keys(localStorage).filter(k=>k.startsWith('settle-friends-account-oauth-flow:')).map(k=>{try{return JSON.parse(localStorage.getItem(k));}catch{return null;}}).find(f=>f?.verifier===body?.code_verifier);

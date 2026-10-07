@@ -1,5 +1,5 @@
 name: Native Apple auth session return before and after
-# Revision 3 preserves the simulator build signature; production signing is verified separately.
+# Revision 4 isolates the packaged bootstrap from live account APIs; authentication assertions remain unchanged.
 on:
   push:
     branches: [work/ios-apple-auth-session-probe-20261007]
