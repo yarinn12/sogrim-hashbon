@@ -1,0 +1,69 @@
+name: Prepare verified App Store draft 191
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-prepare-once.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare-draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Select verified build 191 and update review notes
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const notes="Sogrim Hashbon is a Hebrew group-expense calculator for friends. It does not hold funds, connect to bank accounts, or process money transfers.\n\nVerified candidate: 4.55 (191). This build corrects the return from Apple authentication to the iOS app and retains the Google sign-in fix. The app owner reported successful Apple authentication and session persistence after fully closing and reopening this TestFlight build. Automated source and iOS callback/persistence verification also passed.\n\nGuideline 4.8 - Login Services:\nSign in with Apple is offered on the same sign-in screen as Google and email/password. The Apple button is labelled \"המשך עם Apple\" (Continue with Apple).\n\nTo review Sign in with Apple:\n1. Launch the app signed out. If an account is already signed in, open Profile and tap \"התנתק\" (Sign out).\n2. Tap \"המשך עם Apple\" on the sign-in screen.\n3. Complete Apple's authorization, choosing Hide My Email if desired, and return to the app.\n4. Confirm that the account opens. Fully close and reopen the app; the account should remain signed in.\n\nApple authorization requests only the name and email scopes. Apple private-relay email addresses are supported. The iOS app contains no advertising SDK and does not track app interactions for advertising. If provider discovery temporarily fails, the app retries and retains confirmed Apple availability; iOS does not present Google as the sole social sign-in option. Email/password remains available.\n\nReview flow:\n1. Sign in with the review account supplied in App Review Information.\n2. Tap \"אירוע חדש\" and choose \"יציאה רגילה\".\n3. Add participants and create an expense.\n4. Select who paid and who participated in that expense.\n5. Open \"סיכום\" to see the optimized settlement transfers.\n6. Open the sharing screen to inspect the invitation link and QR code.\n7. Account deletion is available under Profile > \"מחיקת חשבון\".\n\nThe first iOS release contains no advertising and no in-app purchases. Push notifications are not enabled in this release.\n";
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a',buildId='f3424196-dcdb-403a-9d26-d4567169fdef',oldBuild='3d5a4910-6bb0-4304-889f-676c1be1d176',detailId='9c74b362-c7bf-4198-9e36-cf8f350931fd';
+          for(const runId of [37606358260,37606358177,37606358276]){
+           const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/'+runId,{headers:{Authorization:'Bearer '+process.env.GH_TOKEN,Accept:'application/vnd.github+json'}});
+           if(!response.ok)throw Error('Source QA cannot be read');
+           const run=await response.json();
+           assert.equal(run.head_sha,'0ccd26cb0736d378f8fbafc5fa07ee4715bd70be');
+           assert.equal(run.status,'completed');assert.equal(run.conclusion,'success');
+          }
+          const app=(await api('/v1/apps/'+appId)).data;assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const before=(await api('/v1/appStoreVersions/'+versionId)).data;
+          assert.equal(before.attributes.versionString,'4.55');assert.equal(before.attributes.platform,'IOS');assert.equal(before.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');assert.equal(before.attributes.releaseType,'AFTER_APPROVAL');
+          const candidateResult=await api('/v1/builds/'+buildId+'?include=app,preReleaseVersion');
+          const candidate=candidateResult.data;assert.equal(candidate.attributes.version,'191');assert.equal(candidate.attributes.processingState,'VALID');assert.equal(candidate.attributes.expired,false);assert.equal(candidate.attributes.usesNonExemptEncryption,false);assert.equal(candidate.relationships.app.data.id,appId);
+          const pre=candidateResult.included.find(x=>x.type==='preReleaseVersions'&&x.id===candidate.relationships.preReleaseVersion.data.id);assert.equal(pre.attributes.version,'4.55');assert.equal(pre.attributes.platform,'IOS');
+          const selectedBefore=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;
+          assert.ok([oldBuild,buildId].includes(selectedBefore.id),'Draft build changed unexpectedly');
+          const detail=(await api('/v1/appStoreVersions/'+versionId+'/appStoreReviewDetail')).data;assert.equal(detail.id,detailId);
+          assert.equal(detail.attributes.demoAccountRequired,true);assert.ok(detail.attributes.demoAccountName&&detail.attributes.demoAccountPassword&&detail.attributes.contactFirstName&&detail.attributes.contactLastName&&detail.attributes.contactPhone&&detail.attributes.contactEmail);
+          const notesHash=createHash('sha256').update(detail.attributes.notes??'').digest('hex');
+          assert.ok(notesHash==='7bf41d5135897384dbbe08a3f8185430bd68693b9f41e2e526f51aaed6bd4733'||detail.attributes.notes===notes,'Review notes changed unexpectedly');
+          if(selectedBefore.id!==buildId)await api('/v1/appStoreVersions/'+versionId+'/relationships/build',{method:'PATCH',body:{data:{type:'builds',id:buildId}}});
+          if(detail.attributes.notes!==notes)await api('/v1/appStoreReviewDetails/'+detailId,{method:'PATCH',body:{data:{type:'appStoreReviewDetails',id:detailId,attributes:{notes}}}});
+          const selectedAfter=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;assert.equal(selectedAfter.id,buildId);assert.equal(selectedAfter.attributes.version,'191');
+          const after=(await api('/v1/appStoreVersions/'+versionId)).data;assert.equal(after.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');assert.equal(after.attributes.releaseType,before.attributes.releaseType);
+          const detailAfter=(await api('/v1/appStoreVersions/'+versionId+'/appStoreReviewDetail')).data;assert.equal(detailAfter.attributes.notes,notes);
+          for(const name of ['demoAccountRequired','demoAccountName','demoAccountPassword','contactFirstName','contactLastName','contactPhone','contactEmail'])assert.equal(detailAfter.attributes[name],detail.attributes[name],'Review field changed unexpectedly');
+          const report={checkedAt:new Date().toISOString(),appId,versionId,version:'4.55',buildId,selectedBuild:'191',processingState:'VALID',appStoreState:after.attributes.appStoreState,releaseType:after.attributes.releaseType,sourceCommit:'0ccd26cb0736d378f8fbafc5fa07ee4715bd70be',sourceQARuns:[37606358260,37606358177,37606358276],physicalDeviceAcceptance:'user_reported_apple_sign_in_and_close_relaunch_persistence',reviewNotesVerified:true,reviewNotesHash:createHash('sha256').update(notes).digest('hex'),reviewCredentialAndContactFieldsPreserved:true,appReviewSubmitted:false};
+          writeFileSync('app-store-191-preparation.json',JSON.stringify(report,null,2)+'\n');
+          console.log('APP_STORE_PREPARATION:'+JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-store-191-preparation
+          path: app-store-191-preparation.json
+          retention-days: 7
