@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 
+test("native auth returns bypass the worker instead of falling back to a login shell", async () => {
+  const worker = await createWorker({ fetchImpl: async () => { throw new Error("Custom-scheme redirect cannot be fetched"); } });
+  const request = { method: "GET", mode: "navigate", headers: new Headers(), url: "https://sogrim-hesbon-app.vercel.app/auth/callback?native_auth_session=1&auth_flow=fixture-native-auth-flow-20261007&code=synthetic-code" };
+  assert.equal(worker.dispatchFetch(request), undefined, "the OS session must handle the redirect as a navigation");
+  assert.equal(worker.fetchCalls.length, 0);
+  assert.equal(worker.cacheWrites.length, 0);
+});
+
 async function createWorker({
   fetchImpl,
   cachePut = async () => {},
@@ -134,7 +142,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length >= 8);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "508" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "509" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -143,7 +151,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=508",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=509",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -225,7 +233,7 @@ test("an updated worker reloads open installed-app windows even when old page co
     }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v508"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v509"],
     windowClients: [staleWindow]
   });
 
@@ -237,7 +245,7 @@ test("an updated worker reloads open installed-app windows even when old page co
 test("a first service-worker install does not reload the open page", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v508"],
+    cacheNames: ["settle-friends-live-v509"],
     windowClients: [{
       url: "https://sogrim-hesbon-app.vercel.app/",
       async navigate(url) {

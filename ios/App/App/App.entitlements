@@ -9,6 +9,7 @@
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:sogrim-hesbon-app.vercel.app</string>
+		<string>webcredentials:sogrim-hesbon-app.vercel.app</string>
 	</array>
 </dict>
 </plist>

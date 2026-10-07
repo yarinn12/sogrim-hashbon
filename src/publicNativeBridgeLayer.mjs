@@ -32,6 +32,7 @@ function setupNativeBridge() {
   const appPlugin = plugins.App;
   const appLauncherPlugin = plugins.AppLauncher;
   const browserPlugin = plugins.Browser;
+  const authSessionPlugin = plugins.SogrimAuthSession;
   const hapticsPlugin = plugins.Haptics;
   const sharePlugin = plugins.Share;
   const pushPlugin = plugins.PushNotifications;
@@ -68,6 +69,14 @@ function setupNativeBridge() {
       }
     },
     async openAuth(url) {
+      if (nativePlatform === "ios" && authSessionPlugin?.open && isAppleAuthorizationUrl(url)) {
+        const result = await authSessionPlugin.open({ url });
+        if (!matchesAppleAuthorizationCallback(url, result?.url)) {
+          throw new Error("Apple authentication did not return its bound callback");
+        }
+        await openNativeUrl(result.url, { closeBrowser: false });
+        return true;
+      }
       if (!browserPlugin?.open) return false;
       await browserPlugin.open({ url, presentationStyle: "popover" });
       return true;
@@ -97,7 +106,7 @@ function setupNativeBridge() {
         : createNativeNotificationApi(pushPlugin)
   };
 
-  const openNativeUrl = async (url, { notification = null } = {}) => {
+  const openNativeUrl = async (url, { notification = null, closeBrowser = true } = {}) => {
     const destination = nativeDestination(url);
     const notificationData = notification?.data &&
       typeof notification.data === "object"
@@ -122,7 +131,7 @@ function setupNativeBridge() {
     // bridge cannot interrupt or reopen the account's single-use code exchange.
     if (authCallback && !await claimNativeAuthCallback(url)) return false;
     try {
-      await browserPlugin?.close?.();
+      if (closeBrowser) await browserPlugin?.close?.();
     } catch {}
     if (authCallback) {
       history.replaceState(history.state, "", destination);
@@ -452,6 +461,32 @@ function isNativeAuthCallback(value) {
       url.hostname === NATIVE_PUBLIC_HOST &&
       url.pathname === NATIVE_AUTH_PATH
     );
+  } catch {
+    return false;
+  }
+}
+
+function isAppleAuthorizationUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.pathname === "/auth/v1/authorize" &&
+      url.searchParams.get("provider") === "apple";
+  } catch {
+    return false;
+  }
+}
+
+function matchesAppleAuthorizationCallback(authorization, value) {
+  try {
+    const expected = new URL(new URL(authorization).searchParams.get("redirect_to"));
+    const actual = new URL(value);
+    const flow = expected.searchParams.get("auth_flow") ?? "";
+    return isNativeAuthCallback(expected.href) && isNativeAuthCallback(actual.href) &&
+      /^[A-Za-z0-9_-]{20,128}$/.test(flow) &&
+      actual.searchParams.getAll("auth_flow").length === 1 &&
+      actual.searchParams.get("auth_flow") === flow && !actual.hash &&
+      ((actual.searchParams.getAll("code").length === 1 && !!actual.searchParams.get("code") && !actual.searchParams.has("error")) ||
+       (actual.searchParams.getAll("error").length === 1 && !!actual.searchParams.get("error") && !actual.searchParams.has("code")));
   } catch {
     return false;
   }

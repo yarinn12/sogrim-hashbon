@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import GoogleSignIn
+import AuthenticationServices
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -64,4 +65,131 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         )
     }
 
+}
+
+// ASWebAuthenticationSession delivers its result to this app's WKWebView,
+// where the flow's PKCE verifier was created. A Safari page cannot read it.
+@objc(SogrimBridgeViewController)
+class SogrimBridgeViewController: CAPBridgeViewController {
+    override func capacitorDidLoad() {
+        bridge?.registerPluginInstance(SogrimAuthSessionPlugin())
+    }
+}
+
+@objc(SogrimAuthSessionPlugin)
+public class SogrimAuthSessionPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenticationPresentationContextProviding {
+    public let identifier = "SogrimAuthSessionPlugin"
+    public let jsName = "SogrimAuthSession"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "open", returnType: CAPPluginReturnPromise)
+    ]
+    private var authenticationSession: ASWebAuthenticationSession?
+    private var activeAttempt: UUID?
+    private weak var anchorWindow: UIWindow?
+    private static let callbackScheme = "com.sogrimhashbon.app"
+    private static let callbackHost = "sogrim-hesbon-app.vercel.app"
+
+    @objc func open(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { call.reject("Authentication unavailable", "AUTH_UNAVAILABLE"); return }
+            guard self.authenticationSession == nil else { call.reject("Authentication already active", "AUTH_BUSY"); return }
+            guard let value = call.getString("url"),
+                  var authorization = URLComponents(string: value),
+                  authorization.scheme == "https", authorization.user == nil, authorization.password == nil,
+                  authorization.port == nil || authorization.port == 443,
+                  authorization.host?.hasSuffix(".supabase.co") == true,
+                  authorization.path == "/auth/v1/authorize",
+                  Self.singleQuery("provider", in: authorization) == "apple",
+                  Self.singleQuery("code_challenge_method", in: authorization) == "s256",
+                  let challenge = Self.singleQuery("code_challenge", in: authorization),
+                  challenge.range(of: "^[A-Za-z0-9_-]{43}$", options: .regularExpression) != nil,
+                  let redirect = Self.singleQuery("redirect_to", in: authorization),
+                  var callback = URLComponents(string: redirect),
+                  callback.scheme == "https", callback.host == Self.callbackHost,
+                  callback.path == "/auth/callback", callback.user == nil, callback.password == nil,
+                  callback.port == nil, callback.fragment == nil,
+                  let flow = Self.singleQuery("auth_flow", in: callback),
+                  flow.range(of: "^[A-Za-z0-9_-]{20,128}$", options: .regularExpression) != nil,
+                  let window = self.bridge?.viewController?.view.window else {
+                call.reject("Invalid authentication request", "AUTH_INVALID_REQUEST"); return
+            }
+            // Keep the existing Supabase HTTPS allowlisted callback. Its server
+            // redirects the result to this session's registered custom scheme,
+            // which also supports iOS versions before HTTPS callback matching.
+            let usesHTTPSCallback: Bool
+            if #available(iOS 17.4, *) { usesHTTPSCallback = true } else { usesHTTPSCallback = false }
+            callback.queryItems = (callback.queryItems ?? []).filter { $0.name != "native_auth_session" }
+            if !usesHTTPSCallback {
+                callback.queryItems = (callback.queryItems ?? []) + [URLQueryItem(name: "native_auth_session", value: "1")]
+            }
+            guard let redirectURL = callback.url else { call.reject("Invalid authentication return", "AUTH_INVALID_REQUEST"); return }
+            authorization.queryItems = (authorization.queryItems ?? []).filter { $0.name != "redirect_to" } +
+                [URLQueryItem(name: "redirect_to", value: redirectURL.absoluteString)]
+            guard let authorizationURL = authorization.url else { call.reject("Invalid authentication request", "AUTH_INVALID_REQUEST"); return }
+            let attempt = UUID()
+            self.activeAttempt = attempt
+            self.anchorWindow = window
+            let completion: ASWebAuthenticationSession.CompletionHandler = { [weak self] result, error in
+                DispatchQueue.main.async {
+                    guard let self = self, self.activeAttempt == attempt else { return }
+                    self.authenticationSession = nil
+                    self.activeAttempt = nil
+                    self.anchorWindow = nil
+                    if let error = error {
+                        let cancelled = (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue
+                        call.reject(cancelled ? "Authentication cancelled" : "Authentication incomplete", cancelled ? "AUTH_CANCELLED" : "AUTH_INCOMPLETE")
+                        return
+                    }
+                    guard let result = result,
+                          let normalized = Self.normalizedCallback(result, expectedFlow: flow, usesHTTPSCallback: usesHTTPSCallback) else {
+                        call.reject("Invalid authentication result", "AUTH_INVALID_CALLBACK"); return
+                    }
+                    call.resolve(["url": normalized.absoluteString])
+                }
+            }
+            let session: ASWebAuthenticationSession
+            if #available(iOS 17.4, *) {
+                session = ASWebAuthenticationSession(url: authorizationURL, callback: .https(host: Self.callbackHost, path: "/auth/callback"), completionHandler: completion)
+            } else {
+                session = ASWebAuthenticationSession(url: authorizationURL, callbackURLScheme: Self.callbackScheme, completionHandler: completion)
+                // Avoid a previously installed web worker intercepting the
+                // compatibility redirect and substituting its offline shell.
+                session.prefersEphemeralWebBrowserSession = true
+            }
+            session.presentationContextProvider = self
+            self.authenticationSession = session
+            if !session.start() {
+                self.authenticationSession = nil
+                self.activeAttempt = nil
+                self.anchorWindow = nil
+                call.reject("Authentication could not start", "AUTH_UNAVAILABLE")
+            }
+        }
+    }
+
+    public func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        return anchorWindow ?? UIWindow()
+    }
+
+    private static func singleQuery(_ name: String, in components: URLComponents) -> String? {
+        let items = (components.queryItems ?? []).filter { $0.name == name }
+        return items.count == 1 ? items[0].value : nil
+    }
+
+    static func normalizedCallback(_ url: URL, expectedFlow: String, usesHTTPSCallback: Bool) -> URL? {
+        guard let result = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              (usesHTTPSCallback ? (result.scheme == "https" && result.host == callbackHost && result.path == "/auth/callback") :
+               (result.scheme == callbackScheme && result.host == "auth" && result.path == "/callback")),
+              result.user == nil, result.password == nil, result.port == nil, result.fragment == nil,
+              singleQuery("auth_flow", in: result) == expectedFlow else { return nil }
+        let code = singleQuery("code", in: result)
+        let error = singleQuery("error", in: result)
+        let hasCode = (result.queryItems ?? []).contains { $0.name == "code" }
+        let hasError = (result.queryItems ?? []).contains { $0.name == "error" }
+        guard hasCode != hasError, let value = code ?? error, !value.isEmpty, value.count <= 2048,
+              value.rangeOfCharacter(from: .whitespacesAndNewlines.union(.controlCharacters)) == nil else { return nil }
+        var callback = URLComponents(string: "https://\(callbackHost)/auth/callback")!
+        callback.queryItems = [URLQueryItem(name: "auth_flow", value: expectedFlow), URLQueryItem(name: hasCode ? "code" : "error", value: value)]
+        return callback.url
+    }
 }

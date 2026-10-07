@@ -85,7 +85,7 @@
     { "src": "/api/(.*)", "dest": "/server.mjs" },
     { "src": "/i/(.*)", "dest": "/index.html" },
     { "src": "/r/(.*)", "dest": "/index.html" },
-    { "src": "/auth/callback", "dest": "/index.html" },
+    { "src": "/auth/callback", "dest": "/server.mjs" },
     { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/support", "dest": "/support.html" },
     { "src": "/terms", "dest": "/terms.html" },
