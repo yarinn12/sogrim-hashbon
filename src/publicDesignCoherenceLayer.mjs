@@ -4489,10 +4489,23 @@ const CSS = `
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
+    .relationship-comparison-values > [data-relationship-person="target"] {
+    justify-items: stretch !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
     .relationship-comparison-values > [data-relationship-person="target"] .font-num {
     justify-self: stretch !important;
-    width: 100% !important;
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
     text-align: left !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app
+    .relationship-comparison-values > [data-relationship-person="target"] small {
+    justify-self: end !important;
+    padding-inline: 4px !important;
   }
 
   html.design-coherence-v1.ledger-workspace-v1 body #app
