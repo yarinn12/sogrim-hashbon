@@ -972,6 +972,7 @@ const faultInboxRow = (id, readAt = null) => ({
 });
 
 test("foreground inbox receives new rows and remote reads without push or navigation", async ({ page }, testInfo) => {
+  const maximumForegroundWaitMs = 6_000;
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await expect(page.locator(".product-nav-badge")).toHaveText("2");
   const rows = [faultInboxRow("peer-notification")];
@@ -982,7 +983,7 @@ test("foreground inbox receives new rows and remote reads without push or naviga
     return route.fulfill({ headers: inboxFaultHeaders, json: rows });
   });
   const started = performance.now();
-  await expect(page.locator(".product-nav-badge")).toHaveText("1", { timeout: 16_000 });
+  await expect(page.locator(".product-nav-badge")).toHaveText("1", { timeout: maximumForegroundWaitMs });
   const badgeMs = Math.round(performance.now() - started);
   expect(reads).toBe(1);
   await page.locator('[data-nav-destination="notifications"]').click();
@@ -991,7 +992,7 @@ test("foreground inbox receives new rows and remote reads without push or naviga
   rows[0].read_at = new Date().toISOString();
   rows.push(faultInboxRow("another-peer-notification", rows[0].read_at));
   const remoteStarted = performance.now();
-  await expect(page.getByText("another-peer-notification", { exact: true })).toBeVisible({ timeout: 16_000 });
+  await expect(page.getByText("another-peer-notification", { exact: true })).toBeVisible({ timeout: maximumForegroundWaitMs });
   const remoteMs = Math.round(performance.now() - remoteStarted);
   await expect(page.locator(".notification-inbox-item.is-read")).toHaveCount(2);
   await expect(page.locator(".product-nav-badge")).toBeHidden();

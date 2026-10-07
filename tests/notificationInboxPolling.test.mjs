@@ -14,7 +14,7 @@ function harness() {
     profileNameEditing: false, profileUsernameEditing: false,
     notificationInboxOwnerId: "a", notificationInboxGeneration: 1, generation: 1,
     state: { currentParticipantId: "account-a" }, session: { user: { id: "a" } },
-    lastNotificationInboxRefreshAt: 0, NOTIFICATION_INBOX_SYNC_INTERVAL_MS: 12_000,
+    lastNotificationInboxRefreshAt: 0, NOTIFICATION_INBOX_SYNC_INTERVAL_MS: 3_000,
     window: { localStorage: {} }, Date: { now: () => 50_000 },
     loadStoredAccountSession: () => context.session,
     versionedReadCacheSessionGeneration: () => context.generation,
