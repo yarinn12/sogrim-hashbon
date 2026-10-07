@@ -1,0 +1,54 @@
+name: Read App Store metadata for candidate 191
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-metadata-audit-once.yml]
+permissions:
+  contents: read
+jobs:
+  metadata-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read required metadata, age declaration, pricing and availability
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {writeFileSync} from 'node:fs';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a';
+          const app=(await api('/v1/apps/'+appId)).data;assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const report={checkedAt:new Date().toISOString(),app:{id:appId,name:app.attributes.name,bundleId:app.attributes.bundleId,primaryLocale:app.attributes.primaryLocale,contentRightsDeclaration:app.attributes.contentRightsDeclaration,isOrEverWasMadeForKids:app.attributes.isOrEverWasMadeForKids},appInfos:[],version:null,pricing:null,availability:null,uiOnlyChecks:['Full latest reviewer message','Published App Privacy data-type declarations','Outstanding developer agreements or account verification'],appReviewSubmitted:false};
+          async function list(path){const value=await api(path);assert.ok(Array.isArray(value.data));assert.ok(!value.links?.next,'Collection is paginated');return value;}
+          async function optional(label,read){try{return {verified:true,...await read()};}catch(error){return {verified:false,label,httpStatus:error.status??null};}}
+          const infos=await list('/v1/apps/'+appId+'/appInfos?include=primaryCategory,secondaryCategory&limit=200');
+          for(const info of infos.data){
+           const locs=await list('/v1/appInfos/'+info.id+'/appInfoLocalizations?limit=200');
+           const age=await optional('Age declaration',async()=>{const r=(await api('/v1/appInfos/'+info.id+'/ageRatingDeclaration')).data;return {id:r.id,attributes:r.attributes};});
+           report.appInfos.push({id:info.id,state:info.attributes.state??info.attributes.appStoreState,appStoreAgeRating:info.attributes.appStoreAgeRating,primaryCategory:info.relationships?.primaryCategory?.data?.id,secondaryCategory:info.relationships?.secondaryCategory?.data?.id,localizations:locs.data.map(x=>({id:x.id,locale:x.attributes.locale,name:x.attributes.name,subtitle:x.attributes.subtitle,privacyPolicyUrl:x.attributes.privacyPolicyUrl,privacyChoicesUrl:x.attributes.privacyChoicesUrl})),ageRatingDeclaration:age});
+          }
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;assert.equal(version.attributes.versionString,'4.55');
+          const locs=await list('/v1/appStoreVersions/'+versionId+'/appStoreVersionLocalizations?limit=200');
+          const selected=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;
+          report.version={id:versionId,version:'4.55',state:version.attributes.appStoreState,copyright:version.attributes.copyright,releaseType:version.attributes.releaseType,usesIdfa:version.attributes.usesIdfa,selectedBuild:selected.attributes.version,localizations:locs.data.map(x=>({id:x.id,locale:x.attributes.locale,descriptionLength:String(x.attributes.description??'').length,keywords:x.attributes.keywords,supportUrl:x.attributes.supportUrl,marketingUrl:x.attributes.marketingUrl,whatsNew:x.attributes.whatsNew,promotionalText:x.attributes.promotionalText}))};
+          report.pricing=await optional('App price schedule',async()=>{const result=await api('/v1/apps/'+appId+'/appPriceSchedule?include=baseTerritory');const schedule=result.data;const manual=await list('/v1/appPriceSchedules/'+schedule.id+'/manualPrices?include=appPricePoint,territory&limit=200');return {id:schedule.id,baseTerritory:schedule.relationships?.baseTerritory?.data?.id,prices:manual.data.map(x=>({startDate:x.attributes.startDate,endDate:x.attributes.endDate,territory:x.relationships?.territory?.data?.id,customerPrice:manual.included?.find(y=>y.type==='appPricePoints'&&y.id===x.relationships?.appPricePoint?.data?.id)?.attributes?.customerPrice}))};});
+          report.availability=await optional('App territory availability',async()=>{const result=await api('/v1/apps/'+appId+'/appAvailabilityV2');const data=result.data;const territories=await list('/v2/appAvailabilities/'+data.id+'/territoryAvailabilities?include=territory&limit=200');return {id:data.id,availableInNewTerritories:data.attributes.availableInNewTerritories,territories:territories.data.map(x=>({id:x.id,territory:x.relationships?.territory?.data?.id,available:x.attributes.available,preOrderEnabled:x.attributes.preOrderEnabled,releaseDate:x.attributes.releaseDate,contentStatuses:x.attributes.contentStatuses}))};});
+          writeFileSync('app-store-191-metadata-audit.json',JSON.stringify(report,null,2)+'\n');console.log('APP_STORE_METADATA_AUDIT:'+JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-store-191-metadata-audit
+          path: app-store-191-metadata-audit.json
+          retention-days: 7
