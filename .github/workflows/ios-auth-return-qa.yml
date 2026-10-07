@@ -1,0 +1,88 @@
+name: iOS authentication return QA
+# Actual SDK and OS callback with synthetic account data; no Apple account sign-in.
+on:
+  pull_request:
+    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
+  push:
+    branches: [main]
+    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      PROBE_MODE: custom
+      PROBE_FIXTURES: ${{ github.workspace }}/scripts/qa/native-auth-session
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+      IOS_VERSION: "4.55"
+      IOS_BUILD: "191"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Select Xcode and prepare the actual native SDK
+        working-directory: app
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          npm ci
+          npm run native:prepare
+          node scripts/prepare-ios-release.mjs
+          python3 "$PROBE_FIXTURES/native-auth-session-probe.py"
+      - name: Build and run the real system-session redirect with synthetic account data
+        working-directory: app
+        run: |
+          mkdir -p build/probe
+          export SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD=1
+          node "$PROBE_FIXTURES/native-auth-session-server.mjs" "$PWD" > build/probe/server.log 2>&1 &
+          for n in $(seq 1 30); do grep -q PROBE_HTTP_READY build/probe/server.log && break; sleep 1; done
+          grep -q PROBE_HTTP_READY build/probe/server.log
+          python3 - <<'PY' > build/probe/simulator.env
+          import json, subprocess
+          available=json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))['runtimes']
+          runtime=sorted([x for x in available if x.get('isAvailable') and '.iOS-' in x['identifier']],key=lambda x:tuple(int(v) for v in x['version'].split('.')))[-1]
+          types=json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))['devicetypes']
+          device=next(x for x in types if 'iPad Pro 11' in x['name'])
+          udid=subprocess.check_output(['xcrun','simctl','create','Native Apple auth probe',device['identifier'],runtime['identifier']],text=True).strip()
+          print('PROBE_UDID='+udid)
+          PY
+          source build/probe/simulator.env
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived build-for-testing CODE_SIGNING_ALLOWED=NO | tee build/probe/build.log
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$PROBE_UDID" -derivedDataPath build/probe/derived -resultBundlePath build/probe/result.xcresult test-without-building CODE_SIGNING_ALLOWED=NO | tee build/probe/test.log
+          grep -q PROBE_HTTP_REDIRECT build/probe/server.log
+          xcrun simctl io "$PROBE_UDID" screenshot build/probe/simulator.png
+      - name: Keep simulator launch diagnostics on failure
+        if: failure()
+        working-directory: app
+        run: |
+          source build/probe/simulator.env || true
+          xcrun simctl spawn "$PROBE_UDID" log show --last 6m --style compact --predicate 'process == "App" OR process == "launchd_sim"' > build/probe/launch-diagnostics.log 2>&1 || true
+          xcrun simctl io "$PROBE_UDID" screenshot build/probe/failure.png || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: native-auth-session-custom
+          path: |
+            app/build/probe/*.log
+            app/build/probe/*.png
+            app/build/probe/result.xcresult
+          if-no-files-found: error
+          retention-days: 14
