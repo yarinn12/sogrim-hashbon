@@ -8054,7 +8054,7 @@ function eventInviteUrl(eventId) {
     runtimeConfig.storage?.mode === "supabase" ||
     Boolean(eventShareCredentials(event)) ||
     Boolean(inviteToken);
-  const referralCode = currentReferralInviteCode();
+  const referralCode = currentReferralInviteCode(event);
   return buildEventInviteUrl(
     runtimePublicOrigin(runtimeConfig),
     eventId,
@@ -8068,8 +8068,13 @@ function eventInviteUrl(eventId) {
   );
 }
 
-function currentReferralInviteCode() {
-  return normalizeReferralCode(
+function currentReferralInviteCode(event) {
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  const verifiedInvite = eventOpenInviteRuntimeTokens.get(String(event?.id ?? ""));
+  const verifiedReferralCode = verifiedInvite?.storageKey === scope?.storageKey
+    ? normalizeReferralCode(verifiedInvite.referralCode)
+    : "";
+  return verifiedReferralCode || normalizeReferralCode(
     globalThis.SogrimMonetization?.status?.referralCode
   );
 }
@@ -18892,7 +18897,11 @@ async function prepareEventShareWithCurrentSession(
       }
     }
     const sharedEvent = getEvent(eventId);
-    rememberEventOpenInviteToken(eventId, openInvite.token);
+    rememberEventOpenInviteToken(
+      eventId,
+      openInvite.token,
+      openInvite.referralCode
+    );
     if (!attachOpenInviteToken(sharedEvent, openInvite.token)) {
       throw new Error("Open event invitation could not be attached");
     }
@@ -19007,7 +19016,11 @@ async function rotateCurrentEventInvite(eventId) {
       eventId
     );
     replacementCreated = true;
-    rememberEventOpenInviteToken(eventId, replacement.token);
+    rememberEventOpenInviteToken(
+      eventId,
+      replacement.token,
+      replacement.referralCode
+    );
     if (!attachOpenInviteToken(event, replacement.token)) {
       throw new Error("Open event invitation could not be attached");
     }
@@ -19072,19 +19085,27 @@ function currentEventOpenInviteToken(event) {
   return null;
 }
 
-function rememberEventOpenInviteToken(eventId, token) {
+function rememberEventOpenInviteToken(eventId, token, serverReferralCode = "") {
   const event = getEvent(eventId);
   const normalizedToken = eventOpenInviteToken({ openInviteToken: token });
   const scope = openInviteTokenScope(runtimeConfig, event);
   if (!event || !scope || !normalizedToken) return false;
+  const existingRecord = eventOpenInviteRuntimeTokens.get(eventId);
+  const referralCode = normalizeReferralCode(serverReferralCode) ||
+    (existingRecord?.storageKey === scope.storageKey
+      ? normalizeReferralCode(existingRecord.referralCode)
+      : "");
   const storedRecord = saveVerifiedOpenInviteToken(
     runtimeConfig,
     event,
-    normalizedToken
+    normalizedToken,
+    undefined,
+    { referralCode }
   );
   eventOpenInviteRuntimeTokens.set(eventId, storedRecord ?? {
     ...scope,
     token: normalizedToken,
+    referralCode,
     verifiedAt: new Date().toISOString()
   });
   return true;
