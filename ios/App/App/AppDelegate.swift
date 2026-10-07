@@ -113,15 +113,11 @@ public class SogrimAuthSessionPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenti
                   let window = self.bridge?.viewController?.view.window else {
                 call.reject("Invalid authentication request", "AUTH_INVALID_REQUEST"); return
             }
-            // Keep the existing Supabase HTTPS allowlisted callback. Its server
-            // redirects the result to this session's registered custom scheme,
-            // which also supports iOS versions before HTTPS callback matching.
-            let usesHTTPSCallback: Bool
-            if #available(iOS 17.4, *) { usesHTTPSCallback = true } else { usesHTTPSCallback = false }
+            // Use the bound OS session's registered callback on every supported
+            // version. HTTPS session matching also depends on Apple's cached
+            // webcredentials association, which can lag a deployed update.
             callback.queryItems = (callback.queryItems ?? []).filter { $0.name != "native_auth_session" }
-            if !usesHTTPSCallback {
-                callback.queryItems = (callback.queryItems ?? []) + [URLQueryItem(name: "native_auth_session", value: "1")]
-            }
+            callback.queryItems = (callback.queryItems ?? []) + [URLQueryItem(name: "native_auth_session", value: "1")]
             guard let redirectURL = callback.url else { call.reject("Invalid authentication return", "AUTH_INVALID_REQUEST"); return }
             authorization.queryItems = (authorization.queryItems ?? []).filter { $0.name != "redirect_to" } +
                 [URLQueryItem(name: "redirect_to", value: redirectURL.absoluteString)]
@@ -141,21 +137,15 @@ public class SogrimAuthSessionPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenti
                         return
                     }
                     guard let result = result,
-                          let normalized = Self.normalizedCallback(result, expectedFlow: flow, usesHTTPSCallback: usesHTTPSCallback) else {
+                          let normalized = Self.normalizedCallback(result, expectedFlow: flow) else {
                         call.reject("Invalid authentication result", "AUTH_INVALID_CALLBACK"); return
                     }
                     call.resolve(["url": normalized.absoluteString])
                 }
             }
-            let session: ASWebAuthenticationSession
-            if #available(iOS 17.4, *) {
-                session = ASWebAuthenticationSession(url: authorizationURL, callback: .https(host: Self.callbackHost, path: "/auth/callback"), completionHandler: completion)
-            } else {
-                session = ASWebAuthenticationSession(url: authorizationURL, callbackURLScheme: Self.callbackScheme, completionHandler: completion)
-                // Avoid a previously installed web worker intercepting the
-                // compatibility redirect and substituting its offline shell.
-                session.prefersEphemeralWebBrowserSession = true
-            }
+            let session = ASWebAuthenticationSession(url: authorizationURL, callbackURLScheme: Self.callbackScheme, completionHandler: completion)
+            // Isolate the return from a web worker installed by an older release.
+            session.prefersEphemeralWebBrowserSession = true
             session.presentationContextProvider = self
             self.authenticationSession = session
             if !session.start() {
@@ -176,10 +166,9 @@ public class SogrimAuthSessionPlugin: CAPPlugin, CAPBridgedPlugin, ASWebAuthenti
         return items.count == 1 ? items[0].value : nil
     }
 
-    static func normalizedCallback(_ url: URL, expectedFlow: String, usesHTTPSCallback: Bool) -> URL? {
+    static func normalizedCallback(_ url: URL, expectedFlow: String) -> URL? {
         guard let result = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              (usesHTTPSCallback ? (result.scheme == "https" && result.host == callbackHost && result.path == "/auth/callback") :
-               (result.scheme == callbackScheme && result.host == "auth" && result.path == "/callback")),
+              result.scheme == callbackScheme && result.host == "auth" && result.path == "/callback",
               result.user == nil, result.password == nil, result.port == nil, result.fragment == nil,
               singleQuery("auth_flow", in: result) == expectedFlow else { return nil }
         let code = singleQuery("code", in: result)
