@@ -1,0 +1,48 @@
+name: Confirm reserved screenshot upload hostname
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/app-store-191-reservation-host-once.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  replace-artwork:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v5
+        with:
+          name: app-store-191-current-artwork
+          path: artwork
+          run-id: 37616665336
+          github-token: ${{ github.token }}
+      - name: Replace only the reviewed screenshot set
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {readFileSync,writeFileSync} from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          const api=createAppStoreClient({issuerId:process.env.APPSTORE_ISSUER_ID,keyId:process.env.APPSTORE_API_KEY_ID,privateKey:process.env.APPSTORE_API_PRIVATE_KEY});
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a',setId='063c0fc0-98d5-4592-bacb-eb7f9aca8449';
+          const expected=[{"name":"apple-screenshot-01-event-191-1320x2868.png","size":571252,"sha256":"0fd63ffff0f2ef9b970c07c71a819e48c6a26d6990cc50b481294bcbdd8c3d4f","md5":"2f7f0fbac1e828e7ed62299ee60ee924","width":1320,"height":2868},{"name":"apple-screenshot-02-expense-191-1320x2868.png","size":311499,"sha256":"bcbd78bc08dc354cdd60df8761cf4ee4f3bfe30083896ba6789b011cb7c5bfba","md5":"d444ebb03efd4e6a8e37e925bacaff93","width":1320,"height":2868},{"name":"apple-screenshot-03-summary-191-1320x2868.png","size":588779,"sha256":"0a7f1813f93cdf9cb0d3a3e3612b6781ffc8b20a355e5b1bc9b1c30a589ff1a8","md5":"a3bea179a79d0cbc6f8807c483e2073e","width":1320,"height":2868}];
+          const oldIds=['ff6d809a-fb89-444a-a5e3-a2604db347a6','f9123013-ebcd-471f-b7f0-a6971f0432f0','e565c31e-4a39-4f77-8762-519b8faec81e'];
+          const app=(await api('/v1/apps/'+appId)).data;assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;assert.equal(version.attributes.versionString,'4.55');assert.equal(version.attributes.appStoreState,'PREPARE_FOR_SUBMISSION');
+          const build=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;assert.equal(build.attributes.version,'191');
+          const sets=(await api('/v1/appStoreVersionLocalizations/c3cec718-83fe-4db7-82ab-58a7387113b7/appScreenshotSets?limit=200')).data;assert.ok(sets.some(x=>x.id===setId&&x.attributes.screenshotDisplayType==='APP_IPHONE_67'));
+          async function list(){const r=await api('/v1/appScreenshotSets/'+setId+'/appScreenshots?limit=200');assert.ok(!r.links?.next);return r.data;}
+          const file=expected[1];const screenshots=await list();assert.ok(!screenshots.some(x=>x.attributes.fileName===file.name));const r=(await api('/v1/appScreenshots',{method:'POST',body:{data:{type:'appScreenshots',attributes:{fileName:file.name,fileSize:file.size},relationships:{appScreenshotSet:{data:{type:'appScreenshotSets',id:setId}}}}}})).data;console.log('SCREENSHOT_RESERVED_HOSTS:'+JSON.stringify({id:r.id,fileName:r.attributes.fileName,hosts:(r.attributes.uploadOperations??[]).map(x=>new URL(x.url).hostname),operations:r.attributes.uploadOperations?.length??0}));
+          NODE
