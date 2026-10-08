@@ -208,17 +208,21 @@ test("personal pins survive incoming event changes and do not affect another par
     updated.events.find(event => event.id === OLD).name = "השם עודכן ממכשיר אחר";
     updated.events.find(event => event.id === OLD).settingsUpdatedAt = new Date().toISOString();
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toContainText("השם עודכן ממכשיר אחר");
     await order(page, [OLD, NEW, CLOSED]);
     await expect(row(page, CLOSED).locator(".event-note-pin")).toHaveCount(0);
     updated.events = updated.events.filter(event => event.id !== OLD);
     updated.deletedEvents.push({ id: OLD, deletedAt: new Date().toISOString(), deletedByParticipantId: updated.currentParticipantId });
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toHaveCount(0);
     await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
     expect(cloud.reads.some(snapshot => snapshot.state.events.some(event => event.name === "השם עודכן ממכשיר אחר"))).toBe(true);
+    if (cloud.diagnostics.length) await test.info().attach("webkit-document-replacement-diagnostics", {
+      contentType: "application/json",
+      body: JSON.stringify(cloud.diagnostics.map(({ url, stack, reason }) => ({ url, stack, reason })))
+    });
     expect(cloud.errors).toEqual([]);
   } finally { await other.close(); }
 });

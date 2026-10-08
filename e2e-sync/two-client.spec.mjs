@@ -506,7 +506,7 @@ test('self-leave reports repeated rejected requests and a later retry commits on
     await member.locator('.important-action-dialog [data-action="confirm-important-action"]').click();
     await expect.poll(()=>f.canonical.state.events[0].inactiveParticipantIds?.includes(actor)).toBe(true);
     expect(f.canonical.state.events[0].activityLog.filter(entry=>entry.kind==='participant-left')).toHaveLength(1);
-    await member.reload();
+    await f.reloadClient(1);
     await expect(member.locator(`[data-action="open-event"][data-event-id="${eventId}"]`)).toHaveCount(0);
     expect(f.errors).toEqual([]);expect(f.unexpectedWrites).toEqual([]);
   } finally {await f.close();}

@@ -1,4 +1,5 @@
 import { expect } from "@playwright/test";
+import { recordPersonalPinsCloudErrors } from "./personalPinsCloudErrors.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // Pin preferences remain device-local; no production credentials or data are used.
@@ -10,8 +11,10 @@ export async function personalPinsCloud(page, baseURL, initialState) {
   const user = { id: userId, email: "personal-pins@example.test", app_metadata: { provider: "google" },
     user_metadata: { full_name: "בודק נעיצות", username: "personal_pins", account_space_id: space, account_space_key: key } };
   let current = { id: space, state, updated_at: "2026-09-03T08:00:00.000Z" };
-  const reads = [], writes = [], errors = [];
-  page.on("pageerror", error => errors.push(error.message));
+  const reads = [], writes = [];
+  const errorMonitor = recordPersonalPinsCloudErrors(page, {
+    origin, userId, browserName: page.context().browser()?.browserType().name()
+  });
   const headers = { "access-control-allow-origin": "*", "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
     "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(baseURL).origin ? route.continue() : route.abort());
@@ -57,6 +60,7 @@ export async function personalPinsCloud(page, baseURL, initialState) {
   }, { user, state, space, key, participantId });
   await page.goto("/");
   await expect(page.locator(".event-row")).toHaveCount(state.events.length);
-  return { reads, writes, errors, state: () => structuredClone(current.state),
+  return { reads, writes, errors: errorMonitor.errors, diagnostics: errorMonitor.diagnostics,
+    reload: () => errorMonitor.withReload(() => page.reload()), state: () => structuredClone(current.state),
     update: next => { current = { ...current, state: structuredClone(next), updated_at: new Date().toISOString() }; } };
 }
