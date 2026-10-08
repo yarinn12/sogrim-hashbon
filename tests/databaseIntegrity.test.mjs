@@ -1420,16 +1420,26 @@ test("SQL invite redemption and a new member expense reward the inviter after la
     await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
     await db.exec("set local role authenticated");
     await db.query("select public.get_referral_program_status() as value");
+    await db.exec("reset role");
+    const firstEntitlement = (await db.query(
+      "select to_jsonb(expires_at) as expires_at from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.equal(firstEntitlement.length, 1);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
     await db.query("select public.get_referral_program_status() as value");
     await db.exec("reset role");
     assert.equal((await db.query(
       "select status from public.referrals where invited_user_id=$1::uuid", [userId]
     )).rows[0].status, "rewarded");
     const entitlements = (await db.query(
-      "select source,expires_at > now() as active from public.user_entitlements where user_id=$1::uuid",
+      "select source,to_jsonb(expires_at) as expires_at,expires_at > now() + interval '29 days' as full_month,expires_at < now() + interval '31 days' as at_most_one_month from public.user_entitlements where user_id=$1::uuid",
       [inviterId]
     )).rows;
-    assert.deepEqual(entitlements, [{ source: "referral", active: true }]);
+    assert.deepEqual(entitlements, [{ source: "referral", expires_at: firstEntitlement[0].expires_at,
+      full_month: true, at_most_one_month: true }]);
   });
 });
 
