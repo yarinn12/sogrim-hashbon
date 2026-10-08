@@ -3,21 +3,26 @@ import { isWebKitReloadDiagnostic } from '../e2e/helpers/reloadDiagnostics.mjs';
 // WebKit also sends native CORS diagnostics through Playwright's pageerror.
 // Keep these separate from actual error/unhandledrejection events. A diagnostic
 // is expected only for a deliberately failed fixture request, or an unissued
-// snapshot fetch from the old document while that document is being replaced.
-export async function recordBrowserErrors(context, {client, errors, diagnostics, browserName, origin}) {
+// fixture read from the old document while that document is being replaced.
+export async function recordBrowserErrors(context, {client, errors, diagnostics, browserName, origin, inboxRecipientUserId}) {
   const recordedRequests = new WeakSet(), pendingDiagnostics = new Map();
   const activeRequests = new Map(), documentReloads = new Map();
-  const failedSnapshotRequests = new Map(), unplannedFailures = new WeakSet();
-  const snapshotUrl = value => {
+  const failedReadRequests = new Map(), unplannedFailures = new WeakSet();
+  const trackedReadUrl = value => {
     try {
       const url=new URL(value);
-      return url.origin===origin && url.pathname==='/rest/v1/app_snapshots' ? url.href : null;
+      if (url.origin!==origin) return null;
+      if (url.pathname==='/rest/v1/app_snapshots') return url.href;
+      // Only this client's inbox read may be an old-document diagnostic.
+      if (inboxRecipientUserId && url.pathname==='/rest/v1/notification_inbox' &&
+          url.searchParams.get('recipient_user_id')===`eq.${inboxRecipientUserId}`) return url.href;
+      return null;
     } catch { return null; }
   };
-  const removeFailedSnapshot = url => {
-    const remaining=(failedSnapshotRequests.get(url) ?? 0)-1;
-    if(remaining>0) failedSnapshotRequests.set(url,remaining);
-    else failedSnapshotRequests.delete(url);
+  const removeFailedRead = url => {
+    const remaining=(failedReadRequests.get(url) ?? 0)-1;
+    if(remaining>0) failedReadRequests.set(url,remaining);
+    else failedReadRequests.delete(url);
   };
   context.on('request', request => {
     const url=request.url();
@@ -28,10 +33,10 @@ export async function recordBrowserErrors(context, {client, errors, diagnostics,
   context.on('requestfailed', request => {
     activeRequests.delete(request);
     if(recordedRequests.has(request)) return;
-    const url=snapshotUrl(request.url());
+    const url=trackedReadUrl(request.url());
     if(!url) return;
     unplannedFailures.add(request);
-    failedSnapshotRequests.set(url,(failedSnapshotRequests.get(url) ?? 0)+1);
+    failedReadRequests.set(url,(failedReadRequests.get(url) ?? 0)+1);
   });
   const withDocumentReload = async (page, reload) => {
     const state={issuedUrls:new Set(activeRequests.values())};
@@ -45,7 +50,7 @@ export async function recordBrowserErrors(context, {client, errors, diagnostics,
     recordedRequests.add(request);
     if(unplannedFailures.has(request)) {
       unplannedFailures.delete(request);
-      removeFailedSnapshot(snapshotUrl(url));
+      removeFailedRead(trackedReadUrl(url));
     }
     pendingDiagnostics.set(url,(pendingDiagnostics.get(url) ?? 0)+1);
   };
@@ -75,9 +80,9 @@ export async function recordBrowserErrors(context, {client, errors, diagnostics,
     const firstLine=String(error.stack ?? '').split('\n')[0];
     const prefix='Fetch API cannot load ', suffix=' due to access control checks.';
     const nativeUrl=firstLine.startsWith(prefix) && firstLine.endsWith(suffix)
-      ? snapshotUrl(firstLine.slice(prefix.length,-suffix.length)) : null;
-    const actualFailedRequest=nativeUrl && failedSnapshotRequests.has(nativeUrl);
-    if(actualFailedRequest) removeFailedSnapshot(nativeUrl);
+      ? trackedReadUrl(firstLine.slice(prefix.length,-suffix.length)) : null;
+    const actualFailedRequest=nativeUrl && failedReadRequests.has(nativeUrl);
+    if(actualFailedRequest) removeFailedRead(nativeUrl);
     if(expectedUrl && !actualFailedRequest) {
       const remaining=pendingDiagnostics.get(expectedUrl)-1;
       if(remaining)pendingDiagnostics.set(expectedUrl,remaining);

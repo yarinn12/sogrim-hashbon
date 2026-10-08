@@ -31,7 +31,55 @@ async function probe(options = {}) {
 }
 
 const snapshotUrl = 'https://network-fixture.example.test/rest/v1/app_snapshots?id=eq.personal&select=updated_at';
-const reloadContext = {browserName:'webkit',origin:'https://network-fixture.example.test'};
+const inboxUrl = 'https://network-fixture.example.test/rest/v1/notification_inbox?recipient_user_id=eq.synthetic';
+const reloadContext = {browserName:'webkit',origin:'https://network-fixture.example.test',inboxRecipientUserId:'synthetic'};
+
+test('an unissued WebKit inbox diagnostic during explicit document replacement is retained separately',async()=>{
+  const f=await probe(reloadContext);
+  await f.recorder.withDocumentReload(f.page,async()=>{
+    f.page.emit('pageerror',reloadNativeDiagnostic(inboxUrl));
+  });
+  assert.deepEqual(f.errors,[]);
+  assert.equal(f.diagnostics.length,1);
+  assert.equal(f.diagnostics[0].reason,'webkit-document-replacement');
+});
+
+test('an issued inbox request with a real transport failure still fails during reload',async()=>{
+  const f=await probe(reloadContext), request={url:()=>inboxUrl};
+  await f.recorder.withDocumentReload(f.page,async()=>{
+    f.context.emit('request',request);
+    f.context.emit('requestfailed',request);
+    f.page.emit('pageerror',reloadNativeDiagnostic(inboxUrl));
+  });
+  assert.equal(f.errors.length,1);
+  assert.deepEqual(f.diagnostics,[]);
+});
+
+test('an inbox diagnostic outside document replacement still fails',async()=>{
+  const f=await probe(reloadContext);
+  f.page.emit('pageerror',reloadNativeDiagnostic(inboxUrl));
+  assert.equal(f.errors.length,1);
+  assert.deepEqual(f.diagnostics,[]);
+});
+
+test('an inbox diagnostic for another account still fails during reload',async()=>{
+  const f=await probe(reloadContext);
+  await f.recorder.withDocumentReload(f.page,async()=>{
+    f.page.emit('pageerror',reloadNativeDiagnostic(inboxUrl.replace('eq.synthetic','eq.other')));
+  });
+  assert.equal(f.errors.length,1);
+  assert.deepEqual(f.diagnostics,[]);
+});
+
+test('an issued inbox request still fails during reload without a failed event',async()=>{
+  const f=await probe(reloadContext), request={url:()=>inboxUrl};
+  await f.recorder.withDocumentReload(f.page,async()=>{
+    f.context.emit('request',request);
+    f.page.emit('pageerror',reloadNativeDiagnostic(inboxUrl));
+  });
+  assert.equal(f.errors.length,1);
+  assert.deepEqual(f.diagnostics,[]);
+});
 
 test('an unissued WebKit snapshot diagnostic during explicit document replacement is retained separately',async()=>{
   const f=await probe(reloadContext);

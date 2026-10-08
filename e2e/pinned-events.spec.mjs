@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
+import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
 
 test.use({ serviceWorkers: "block" });
 const OWNER = "person-event-pins-owner";
@@ -74,7 +75,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   page.on("pageerror", error => errors.push(error.message));
   await seed(page);
   await order(page, [NEW, OLD, CLOSED]);
-  const before = await (await request.get("/api/state")).json();
+  const before = await (await readLocalQaState(request, test.info().project.use.baseURL)).json();
   const localEventsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events);
   for (let attempt = 0; attempt < 3; attempt++) {
     await pin(page, OLD, true);
@@ -92,7 +93,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   await order(page, [OLD, NEW, CLOSED]);
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
   // Personal ordering must never modify the shared event, note pins or activity.
-  expect(await (await request.get("/api/state")).json()).toEqual(before);
+  expect(await (await readLocalQaState(request, test.info().project.use.baseURL)).json()).toEqual(before);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events)).toEqual(localEventsBefore);
   expect(errors).toEqual([]);
 });
