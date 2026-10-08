@@ -1350,8 +1350,22 @@ async function withOpenInvite(run, { workspace = true, expired = false, closed =
   });
 }
 
-test("SQL invite redemption makes membership, canonical data and personal index readable together", async () => {
+test("SQL invite redemption and a new member expense reward the inviter after later email confirmation", async () => {
   await withOpenInvite(async ({ userId, participantId, redeem, inspect, save }) => {
+    const inviterId = ids.admin.slice(8);
+    const code = (await db.query(
+      "select code from public.friend_invite_codes where user_id=$1::uuid", [inviterId]
+    )).rows[0].code;
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    assert.equal((await db.query(
+      "select public.claim_referral($1) as value", [code]
+    )).rows[0].value.claimed, true);
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.role','service_role',true)");
+    await db.exec("set local role service_role");
     const result = await redeem();
     assert.equal(result.status, "joined");
     assert.equal(result.canonicalParticipantReady, true);
@@ -1373,7 +1387,49 @@ test("SQL invite redemption makes membership, canonical data and personal index 
     const at = new Date().toISOString();
     candidate.events[0].notes = [{ id: "joined-member-note", title: "First note", body: "After joining",
       createdAt: at, updatedAt: at, createdByParticipantId: participantId, updatedByParticipantId: participantId }];
-    assert.equal((await save(candidate, committed.shared.version)).status, "updated");
+    const noteReceipt = await save(candidate, committed.shared.version);
+    assert.equal(noteReceipt.status, "updated");
+    const afterExpense = structuredClone(candidate);
+    afterExpense.events[0].expenses.push({
+      id: "joined-member-referral-expense", title: "Synthetic joined member expense", total: 100,
+      payers: [{ participantId, amount: 100 }],
+      sharedByParticipantIds: [ids.admin, participantId],
+      createdByParticipantId: participantId, createdAt: at, updatedAt: at
+    });
+    const settlement = reconcileSettlementTransfers(
+      afterExpense.participants, afterExpense.events[0].expenses,
+      afterExpense.events[0].transfers, settlementOptionsForEvent(afterExpense.events[0])
+    );
+    assert.deepEqual(settlement.issues, []);
+    afterExpense.events[0].transfers = settlement.transfers;
+    assert.equal((await save(afterExpense, noteReceipt.updatedAt)).status, "updated");
+    await db.exec("reset role");
+    const activity = (await db.query(
+      "select actor_user_id,activity_kind,entity_id from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(activity.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [{
+      actor_user_id: userId, activity_kind: "expense_created", entity_id: "joined-member-referral-expense"
+    }]);
+    assert.equal((await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [userId]
+    )).rows[0].status, "pending");
+    await db.query("update auth.users set email_confirmed_at=now() where id=$1::uuid", [userId]);
+    // A later authenticated request has no access to the first client's local retry state.
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    await db.query("select public.get_referral_program_status() as value");
+    await db.query("select public.get_referral_program_status() as value");
+    await db.exec("reset role");
+    assert.equal((await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [userId]
+    )).rows[0].status, "rewarded");
+    const entitlements = (await db.query(
+      "select source,expires_at > now() as active from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.deepEqual(entitlements, [{ source: "referral", active: true }]);
   });
 });
 
