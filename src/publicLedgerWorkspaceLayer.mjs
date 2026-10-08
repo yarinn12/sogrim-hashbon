@@ -1748,22 +1748,6 @@ const CSS = `
 
   html.ledger-workspace-v1
     .profile-avatar-option
-    input:checked
-    + .profile-avatar-preview::after {
-    content: "" !important;
-    position: absolute !important;
-    inset-inline-start: -2px !important;
-    inset-block-end: -2px !important;
-    width: 13px !important;
-    height: 13px !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 50% !important;
-    background: var(--ledger-brand) !important;
-    box-shadow: 0 3px 8px rgba(6, 75, 67, 0.28) !important;
-  }
-
-  html.ledger-workspace-v1
-    .profile-avatar-option
     input:focus-visible
     + .profile-avatar-preview {
     outline: 3px solid rgba(33, 170, 166, 0.28) !important;
@@ -8095,8 +8079,8 @@ const CSS = `
       min-height: 164px !important;
       display: block !important;
       gap: 0 !important;
-      margin: 12px 0 44px !important;
-      padding: 24px 22px 32px !important;
+      margin: 10px 0 36px !important;
+      padding: 20px 22px 26px !important;
       border-radius: 24px !important;
     }
 
@@ -16869,15 +16853,15 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-participant-actions {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    margin-top: 10px !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-additions {
     display: grid !important;
     gap: 0 !important;
-    margin-top: 24px !important;
-    padding-top: 22px !important;
+    margin-top: 16px !important;
+    padding-top: 16px !important;
     border-top: 1px solid var(--ledger-line-strong) !important;
   }
 
@@ -16890,7 +16874,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action {
     min-width: 0 !important;
-    min-height: 62px !important;
+    min-height: 58px !important;
     display: grid !important;
     grid-template-columns: 28px minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -16907,7 +16891,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action.is-primary {
     grid-column: auto !important;
-    min-height: 68px !important;
+    min-height: 64px !important;
     border-color: var(--ledger-brand) !important;
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
@@ -17062,8 +17046,8 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participants {
     display: grid !important;
     gap: 12px !important;
-    margin-top: 18px !important;
-    padding: 16px !important;
+    margin-top: 12px !important;
+    padding: 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 14px !important;
     background: #ffffff !important;
@@ -17076,7 +17060,7 @@ const CSS = `
     align-items: baseline !important;
     justify-content: space-between !important;
     gap: 12px !important;
-    padding-bottom: 10px !important;
+    padding-bottom: 8px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
   }
 
@@ -17101,12 +17085,12 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participant {
     position: relative !important;
     min-width: 0 !important;
-    min-height: 76px !important;
+    min-height: 68px !important;
     display: grid !important;
     grid-template-columns: 48px minmax(0, 1fr) auto 34px !important;
     align-items: center !important;
     gap: 11px !important;
-    padding: 12px 14px !important;
+    padding: 10px 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 12px !important;
     color: var(--ledger-ink) !important;

@@ -467,6 +467,28 @@ test("participant identity uses colored or grayscale pictures without status dot
   await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
 });
 
+test("choosing a profile picture keeps its selection clear without a green dot", async ({ page }) => {
+  await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  const picker = page.locator('.profile-avatar-picker-shell');
+  if (await picker.count()) await picker.locator(':scope > summary').click();
+
+  const selected = page.locator('.profile-avatar-option:has(input:checked) .profile-avatar-preview');
+  await expect(selected).toHaveCount(1);
+  const marker = () => selected.evaluate(element => getComputedStyle(element, '::after').content);
+  expect(await marker(), 'the selected profile picture must have no dot').toBe('none');
+
+  await page.locator('.profile-avatar-option').nth(1).click();
+  await expect(page.locator('.profile-avatar-option').nth(1).locator('input')).toBeChecked();
+  expect(await marker(), 'changing pictures must not restore a dot').toBe('none');
+  // A later design layer chooses the exact brand shade; compare the selected ring with an unselected picture.
+  const border = await selected.evaluate(element => getComputedStyle(element).borderColor);
+  const unselectedBorder = await page.locator('.profile-avatar-option:not(:has(input:checked)) .profile-avatar-preview')
+    .first().evaluate(element => getComputedStyle(element).borderColor);
+  expect(border, 'the selected picture keeps a visible selection ring').not.toBe(unselectedBorder);
+  expect(border).not.toBe('rgba(0, 0, 0, 0)');
+});
+
 test("payer choices open after a normal held pointer press", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   const expense = page.locator('[data-expense-id="expense-taxi"]');

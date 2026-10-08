@@ -7,15 +7,15 @@ on:
       version:
         description: App Store version
         required: true
-        default: "4.55"
+        default: "4.57"
       build:
         description: Unique TestFlight build number
         required: true
-        default: "186"
+        default: "192"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
-        default: "תכניות ההחזר נשמרות באופן עקבי במעבר בין שיטות הקיזוז וברענון. נוסף פירוט הסכום שכל משלם שילם בכל הוצאה. תוקנו בחירת המשלמים באייפון ובאייפד, וההתחברות עם Apple ובאימייל."
+        default: "שופר עיצוב האפליקציה וזרימת הזמנת חברים. ההתראות מתעדכנות מהר יותר כשהאפליקציה פתוחה."
 
 permissions:
   contents: read
