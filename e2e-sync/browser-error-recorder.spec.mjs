@@ -3,13 +3,15 @@ import {recordBrowserErrors} from './browser-error-recorder.mjs';
 
 const pageUrl = 'https://transport-monitor.example.test/';
 const failedUrl = 'https://network-fixture.example.test/rejected';
+const snapshotUrl = 'https://network-fixture.example.test/rest/v1/app_snapshots?id=eq.personal&select=updated_at';
 
 async function probe(run) {
   const browser = await webkit.launch();
   try {
     const context = await browser.newContext();
     const errors=[], diagnostics=[], failedUrls=new Set();
-    const recorder=await recordBrowserErrors(context,{client:1,errors,diagnostics});
+    const recorder=await recordBrowserErrors(context,{client:1,errors,diagnostics,
+      browserName:'webkit',origin:'https://network-fixture.example.test'});
     await context.route('**/*', route => {
       if(failedUrls.has(route.request().url()))recorder.recordExpectedFailure(route.request());
       return route.request().url() === pageUrl
@@ -18,7 +20,7 @@ async function probe(run) {
     });
     const page=await context.newPage();
     await page.goto(pageUrl);
-    await run({page,errors,diagnostics,failedUrls});
+    await run({page,errors,diagnostics,failedUrls,recorder});
   } finally {await browser.close();}
 }
 
@@ -43,6 +45,18 @@ test('an unplanned CORS failure still fails the sync error guard',async()=>{
   await probe(async({page,errors,diagnostics})=>{
     await page.evaluate(async url=>{try {await fetch(url);} catch {}},failedUrl);
     await expect.poll(()=>errors.length).toBeGreaterThan(0);
+    expect(diagnostics).toEqual([]);
+  });
+});
+
+test('a real CORS-failing snapshot request remains an error during a tracked reload',async()=>{
+  await probe(async({page,errors,diagnostics,recorder})=>{
+    await recorder.withDocumentReload(page,async()=>{
+      const caught=await page.evaluate(async url=>{try {await fetch(url);return false;} catch {return true;}},snapshotUrl);
+      expect(caught).toBe(true);
+      await expect.poll(()=>errors.length).toBeGreaterThan(0);
+      await page.reload();
+    });
     expect(diagnostics).toEqual([]);
   });
 });
