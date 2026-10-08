@@ -614,6 +614,10 @@ for (const sender of [0,1]) {
           expect(f.canonical.state.events[0].expenses).toHaveLength(0);
           expect(f.activityRequests).toHaveLength(0);
         }
+        // Keep the notification pending across restart, while allowing
+        // unrelated snapshot reads to finish before navigation in WebKit.
+        await sending.waitForLoadState('networkidle');
+        await expect.poll(pending).toHaveLength(1);
         await sending.reload();
         await expect(sending.locator('#app .screen')).toBeVisible();
         await expect.poll(pending).toHaveLength(1);
