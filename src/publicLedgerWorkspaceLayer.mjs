@@ -8080,7 +8080,7 @@ const CSS = `
       display: block !important;
       gap: 0 !important;
       margin: 10px 0 36px !important;
-      padding: 20px 22px 26px !important;
+      padding: 24px 22px 32px !important;
       border-radius: 24px !important;
     }
 
