@@ -142,7 +142,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length >= 8);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "510" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "511" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -151,7 +151,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=510",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=511",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -233,7 +233,7 @@ test("an updated worker reloads open installed-app windows even when old page co
     }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v510"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v511"],
     windowClients: [staleWindow]
   });
 
@@ -245,7 +245,7 @@ test("an updated worker reloads open installed-app windows even when old page co
 test("a first service-worker install does not reload the open page", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v510"],
+    cacheNames: ["settle-friends-live-v511"],
     windowClients: [{
       url: "https://sogrim-hesbon-app.vercel.app/",
       async navigate(url) {
