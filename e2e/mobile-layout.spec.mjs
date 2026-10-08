@@ -531,20 +531,34 @@ test("another person's picture alone opens shared statistics while editable text
   await expect(currentParticipantAvatar).toHaveAttribute("aria-label", "פתיחת הפרופיל שלך");
   const currentParticipantAvatarImage = currentParticipantAvatar.locator("img");
   await expect(currentParticipantAvatarImage).toBeVisible();
-  const currentParticipantAvatarRendering = await currentParticipantAvatar.evaluate((avatar) => {
-    const image = avatar.querySelector("img");
-    const imageStyle = image ? getComputedStyle(image) : null;
-    const interactionTargetStyle = getComputedStyle(avatar, "::before");
-    const statusMarkerStyle = getComputedStyle(avatar, "::after");
-    return {
-      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
-      imageDisplay: imageStyle?.display,
-      imageVisibility: imageStyle?.visibility,
-      interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
-      interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
-      statusMarkerContent: statusMarkerStyle.content
-    };
-  });
+  // Hold this already-visible image back for the first rendering sample. An
+  // image element can be visible before its bytes arrive and decode.
+  const avatarSource = await currentParticipantAvatarImage.getAttribute("src");
+  await currentParticipantAvatarImage.evaluate((image) => image.removeAttribute("src"));
+  let sampledBeforeRestore = false;
+  const readAvatarRendering = async () => {
+    const rendering = await currentParticipantAvatar.evaluate((avatar) => {
+      const image = avatar.querySelector("img");
+      const imageStyle = image ? getComputedStyle(image) : null;
+      const interactionTargetStyle = getComputedStyle(avatar, "::before");
+      const statusMarkerStyle = getComputedStyle(avatar, "::after");
+      return {
+        imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        imageDisplay: imageStyle?.display,
+        imageVisibility: imageStyle?.visibility,
+        interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
+        interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
+        statusMarkerContent: statusMarkerStyle.content
+      };
+    });
+    if (!sampledBeforeRestore) {
+      sampledBeforeRestore = true;
+      await currentParticipantAvatarImage.evaluate((image, source) => image.setAttribute("src", source), avatarSource);
+    }
+    return rendering;
+  };
+  await expect.poll(async () => (await readAvatarRendering()).imageLoaded).toBe(true);
+  const currentParticipantAvatarRendering = await readAvatarRendering();
   expect(currentParticipantAvatarRendering).toEqual(
     expect.objectContaining({
       imageLoaded: true,
