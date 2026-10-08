@@ -18,7 +18,7 @@
 | Personal info > Name | שם מלא | כן | כן | Account management, App functionality |
 | Personal info > Email address | אימייל בהרשמה או Google | כן | כן | Account management, App functionality |
 | Personal info > User IDs | מזהה חשבון ומזהה משתתף | כן | כן | Account management, App functionality, Security |
-| Contacts | קשרי חברות, בקשות חברות וקשרי השתתפות באירועים שנשמרים בענן; ללא ספר הטלפונים של המכשיר | כן | לפי שימוש בחברים או באירוע משותף | App functionality |
+| Contacts > Contacts | קשרי חברות, בקשות חברות וקשרי השתתפות באירועים שנשמרים בענן; ללא ספר הטלפונים של המכשיר | כן | לפי שימוש בחברים או באירוע משותף | App functionality |
 | Financial info > Other financial info | סכומי הוצאות, יתרות וחובות בין משתתפים | כן | לפי שימוש | App functionality |
 | App activity > Other user-generated content | שמות אירועים, הוצאות, משתתפים, הערות, תמונות אירוע ותמונות קבלה או הוצאה שהמשתמש מעלה | כן | לפי שימוש | App functionality |
 | App activity > App interactions | אירועים טכניים מצומצמים כמו פתיחת האפליקציה, יצירת אירוע או הוצאה, פתיחת סיכום ושיתוף הזמנה; ללא שמות או סכומים | כן, הבקשה מאומתת לחשבון | כן | Analytics, App functionality |

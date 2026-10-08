@@ -168,9 +168,13 @@ test("verified app links and store submission declarations are prepared", async 
   assert.match(packageJson.scripts["native:ios:association"], /setup-apple-association/);
   assert.match(packageJson.scripts["qa:store"], /verify-store-readiness/);
   assert.match(dataSafety, /Other financial info|מידע פיננסי אחר/);
-  assert.match(dataSafety, /אינה אוספת אנשי קשר/);
+  // Store Contacts includes the persisted friendship/social graph even though
+  // the app never reads the device address book. Do not restore the old
+  // no-collection declaration merely because READ_CONTACTS is absent.
+  assert.match(dataSafety, /Contacts > Contacts/);
+  assert.match(dataSafety, /גרף המשתתפים שנשמרים בענן ומקושרים לחשבון/);
+  assert.doesNotMatch(dataSafety, /אינה אוספת אנשי קשר/);
   assert.match(dataSafety, /אין הרשאת `READ_CONTACTS`/);
-  assert.doesNotMatch(dataSafety, /Contacts > Contacts/);
   assert.match(dataSafety, /account-deletion/);
   assert.match(dataSafety, /אסימון התראות של Android/);
   assert.match(appPrivacy, /NSPrivacyCollectedDataTypeOtherFinancialInfo/);
