@@ -278,6 +278,7 @@ test("service worker activates complete updates and claims installed apps", asyn
 
   assert.match(sw, /\.then\(\(\) => self\.skipWaiting\(\)\)/);
   assert.match(sw, /await Promise\.all\(\s*cacheNames[\s\S]*?\.map\(\(name\) => caches\.delete\(name\)\)\s*\);\s*await self\.clients\.claim\(\)/);
+  assert.match(sw, /cacheNames[\s\S]*?\.filter\(\(name\) => name !== CACHE_NAME\)/);
   assert.match(sw, /self\.clients\.matchAll\([\s\S]*?includeUncontrolled: true/);
   assert.match(sw, /self\.clients\.get\(client\.id\)/);
   assert.match(sw, /currentClient\.navigate\?\.\(clientUrl\.href\)/);
