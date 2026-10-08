@@ -614,6 +614,10 @@ for (const sender of [0,1]) {
           expect(f.canonical.state.events[0].expenses).toHaveLength(0);
           expect(f.activityRequests).toHaveLength(0);
         }
+        // Keep the notification pending across restart, while allowing
+        // unrelated snapshot reads to finish before navigation in WebKit.
+        await sending.waitForLoadState('networkidle');
+        await expect.poll(pending).toHaveLength(1);
         await sending.reload();
         await expect(sending.locator('#app .screen')).toBeVisible();
         await expect.poll(pending).toHaveLength(1);
@@ -942,6 +946,9 @@ for(const joiningClient of [0,1]) {
 test('an invitation survives a temporary membership-index failure during iPhone account login and joins automatically',async({},testInfo)=>{
   const f=await fixture(testInfo,{joiningClient:1}),joiner=f.pages[1];
   try {
+    // Let the initial home requests finish before navigation cancels them.
+    // The join flow below still injects and verifies the membership failure.
+    await joiner.waitForLoadState('networkidle');
     f.failInvites(1,true);
     await joiner.goto(`/i/${eventId}/t/${'a'.repeat(64)}`);
     await expect(joiner.locator('#app .screen')).toBeVisible();
@@ -956,6 +963,9 @@ test('an invitation survives a temporary membership-index failure during iPhone 
     await expect.poll(()=>f.canonical.state.events[0].participantIds).toContain(`account-${ids[1]}`);
     await expect.poll(()=>joiner.evaluate(()=>localStorage.getItem('sogrim-pending-invite-handoff-v1'))).toBe(null);
     await expect(joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"], [data-action="open-event-notes"]`).first()).toBeVisible();
+    // The final navigation should test persisted membership, not cancel an
+    // unrelated foreground GET and count WebKit's native abort as an app error.
+    await joiner.waitForLoadState('networkidle');
     await joiner.goto('/');
     await expect(joiner.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first()).toBeVisible();
     expect(f.personal[1].state.events.filter(event=>event.id===eventId)).toHaveLength(1);
@@ -1687,6 +1697,10 @@ for (const author of [0, 1]) {
         .toEqual([{id,body:'תוכן אחרי שחזור'}]);
       await expect(noteCard(b,id)).toContainText('תוכן אחרי שחזור');
       expect(f.writes.every(write => write.event.notes.length <= 1)).toBe(true);
+      expect(f.errors).toEqual([]);
+      // The receipt race was exercised by the first reload. Let independent
+      // background reads finish before this final persistence check reload.
+      await a.waitForLoadState('networkidle');
       await a.reload();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await a.locator('[data-action="open-event-notes"]').click();

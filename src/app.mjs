@@ -332,7 +332,9 @@ const ACTIVE_EVENT_SYNC_INTERVAL_MS = 1_000;
 // could rate-limit the very sync requests meant to keep devices current.
 const BACKGROUND_ACCOUNT_SYNC_INTERVAL_MS = 15_000;
 const FRIEND_NETWORK_SYNC_INTERVAL_MS = 12_000;
-const NOTIFICATION_INBOX_SYNC_INTERVAL_MS = 12_000;
+// A visible account without push still needs a fresh inbox within a few seconds.
+// Keep this read separate from the much heavier account and event snapshots.
+const NOTIFICATION_INBOX_SYNC_INTERVAL_MS = 3_000;
 const PENDING_MUTATION_RETRY_BASE_MS = 5_000;
 const PENDING_MUTATION_RETRY_MAX_MS = 60_000;
 const VISIBLE_BACKGROUND_SYNC_SCREENS = new Set([
