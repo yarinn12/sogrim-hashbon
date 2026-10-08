@@ -1693,6 +1693,10 @@ for (const author of [0, 1]) {
         .toEqual([{id,body:'תוכן אחרי שחזור'}]);
       await expect(noteCard(b,id)).toContainText('תוכן אחרי שחזור');
       expect(f.writes.every(write => write.event.notes.length <= 1)).toBe(true);
+      expect(f.errors).toEqual([]);
+      // The receipt race was exercised by the first reload. Let independent
+      // background reads finish before this final persistence check reload.
+      await a.waitForLoadState('networkidle');
       await a.reload();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await a.locator('[data-action="open-event-notes"]').click();
