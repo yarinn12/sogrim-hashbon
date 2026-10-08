@@ -1,0 +1,85 @@
+name: Read-only iOS unified release readiness 20261008
+on:
+  push:
+    branches: [work/ios-review-191-readiness-20261007]
+    paths: [.github/workflows/ios-unified-readonly-audit-20261008.yml]
+permissions:
+  contents: read
+jobs:
+  readonly-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+      APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+      APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
+      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 0ccd26cb0736d378f8fbafc5fa07ee4715bd70be
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify stored signing access and read build numbers and TestFlight
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {X509Certificate,createPrivateKey} from 'node:crypto';
+          import {spawnSync} from 'node:child_process';
+          import {writeFileSync} from 'node:fs';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          
+          const env=process.env;
+          assert.equal(env.APPLE_TEAM_ID,'MA9S4L7WKS','Unexpected signing team');
+          for(const key of ['APPSTORE_ISSUER_ID','APPSTORE_API_KEY_ID','APPSTORE_API_PRIVATE_KEY','APPSTORE_CERTIFICATES_FILE_BASE64','APPSTORE_CERTIFICATES_PASSWORD','GOOGLE_CLIENT_ID','GOOGLE_IOS_CLIENT_ID']) {
+            assert.ok(String(env[key]??'').trim(),key+' is missing');
+          }
+          assert.notEqual(env.GOOGLE_CLIENT_ID,env.GOOGLE_IOS_CLIENT_ID,'Google iOS and server client IDs must differ');
+          assert.equal(createPrivateKey(env.APPSTORE_API_PRIVATE_KEY).asymmetricKeyType,'ec','Unexpected App Store key type');
+          const certificateBytes=Buffer.from(env.APPSTORE_CERTIFICATES_FILE_BASE64.replace(/\s+/g,''),'base64');
+          let decoded=spawnSync('openssl',['pkcs12','-clcerts','-nokeys','-passin','env:APPSTORE_CERTIFICATES_PASSWORD'],{input:certificateBytes,encoding:'utf8'});
+          if(decoded.status!==0) decoded=spawnSync('openssl',['pkcs12','-legacy','-clcerts','-nokeys','-passin','env:APPSTORE_CERTIFICATES_PASSWORD'],{input:certificateBytes,encoding:'utf8'});
+          assert.equal(decoded.status,0,'Distribution certificate could not be decoded with the stored password');
+          const cert=new X509Certificate(decoded.stdout);
+          assert.ok(cert.subject.includes('Apple Distribution'),'Unexpected certificate kind');
+          assert.ok(cert.subject.includes('MA9S4L7WKS'),'Unexpected distribution certificate team');
+          assert.ok(Date.parse(cert.validTo)>Date.now(),'Distribution certificate has expired');
+          const rawApi=createAppStoreClient({issuerId:env.APPSTORE_ISSUER_ID,keyId:env.APPSTORE_API_KEY_ID,privateKey:env.APPSTORE_API_PRIVATE_KEY});
+          const api=(path)=>rawApi(path,{method:'GET'});
+          async function all(path){
+            const rows=[];let next=path;
+            for(let page=0;next&&page<20;page++){
+              const result=await api(next);assert.ok(Array.isArray(result.data),'Malformed Apple collection');rows.push(...result.data);next=result.links?.next;
+            }
+            assert.ok(!next,'Apple pagination did not complete');return rows;
+          }
+          const appId='6809952514',versionId='3a69b968-9121-43b6-b9b5-4ea3ddf42d3a';
+          const app=(await api('/v1/apps/'+appId)).data;assert.equal(app.attributes.bundleId,'com.sogrimhashbon.app');
+          const builds=await all('/v1/builds?'+new URLSearchParams({'filter[app]':appId,'filter[preReleaseVersion.platform]':'IOS',limit:'200'}));
+          assert.ok(builds.length,'No Apple builds found');
+          const numbers=builds.map(b=>Number(b.attributes.version));assert.ok(numbers.every(n=>Number.isSafeInteger(n)&&n>0),'Unexpected build format');
+          const maxBuild=Math.max(...numbers);
+          const version=(await api('/v1/appStoreVersions/'+versionId)).data;
+          const selected=(await api('/v1/appStoreVersions/'+versionId+'/build')).data;
+          const groups=await all('/v1/apps/'+appId+'/betaGroups?limit=200');
+          const groupReports=[];
+          for(const g of groups){
+            const testers=await all('/v1/betaGroups/'+g.id+'/betaTesters?limit=200');
+            const assigned=await all('/v1/betaGroups/'+g.id+'/builds?limit=200');
+            groupReports.push({id:g.id,name:g.attributes.name,isInternalGroup:g.attributes.isInternalGroup,testerCount:testers.length,testerStates:testers.map(t=>({id:t.id,state:t.attributes.state,existingTester:t.id==='5d2040f0-3af9-4d98-a188-fd6eeb5547db',requestedMotherTester:String(t.attributes.email??'').trim().toLowerCase()==='izhakgalit@gmail.com'})),builds:assigned.map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,expired:b.attributes.expired}))});
+          }
+          const report={checkedAt:new Date().toISOString(),mode:'READ_ONLY',sourcePinnedTo:'0ccd26cb0736d378f8fbafc5fa07ee4715bd70be',appId,version:{id:versionId,number:version.attributes.versionString,state:version.attributes.appStoreState,releaseType:version.attributes.releaseType,selectedBuild:selected.attributes.version},maximumUploadedIosBuild:maxBuild,nextCurrentlyUnusedBuild:maxBuild+1,builds:builds.sort((a,b)=>Number(b.attributes.version)-Number(a.attributes.version)).slice(0,8).map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,uploadedDate:b.attributes.uploadedDate,expired:b.attributes.expired})),signing:{teamId:env.APPLE_TEAM_ID,apiAccessVerified:true,storedP12PasswordVerified:true,distributionCertificateValidFrom:cert.validFrom,distributionCertificateValidTo:cert.validTo,distributionCertificateFingerprint256:cert.fingerprint256,googleClientsPresentAndDistinct:true},testFlightGroups:groupReports,mutationsPerformed:[],limitations:['Build number is observed as unused, not reserved. Recheck immediately before upload.','No physical device sign-in performed.','Review messages and public store availability require a separate UI/store check.']};
+          writeFileSync('ios-unified-readonly-audit-20261008.json',JSON.stringify(report,null,2)+'\n');
+          console.log('IOS_UNIFIED_READONLY_AUDIT:'+JSON.stringify(report));
+          NODE
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ios-unified-readonly-audit-20261008
+          path: ios-unified-readonly-audit-20261008.json
+          retention-days: 7
