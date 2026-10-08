@@ -16,7 +16,7 @@ const headers = {'access-control-allow-origin': '*',
 
 async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false, withStableRepaymentPlan = false, withReversePaymentPlan = false, withRoundedStablePlan = false, withPaidInstallments = false, paidEventOpen = false, withAliases = false, managingClient = 0, restaurant = false, withAccountLink = false, withInterruptedLink = false, withCompetingLinks = false, joiningClient = null, withSelfLeave = false} = {}) {
   const browsers = [];
-  const contexts = [], pages = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
+  const contexts = [], pages = [], errorRecorders = [], errors = [], networkDiagnostics = [], unexpectedWrites = [], writes = [], requests = [], linkLogs = [];
   const blocked = new Set();
   const workspaceFailures = new Map();
   const membershipReadHolds = new Map();
@@ -141,7 +141,9 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
     const context = await browsers[i].newContext({...devices[i ? 'iPhone 13' : 'Pixel 5'],
       baseURL, locale: 'he-IL', timezoneId: 'Asia/Jerusalem', reducedMotion: 'reduce', serviceWorkers: 'block'});
     contexts.push(context);
-    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics});
+    const errorRecorder=await recordBrowserErrors(context,{client:i,errors,diagnostics:networkDiagnostics,
+      browserName:i?'webkit':'chromium',origin});
+    errorRecorders.push(errorRecorder);
     // WebKit's context-level offline switch can reject a request before route()
     // runs. Record only this client's deliberately disconnected requests so its
     // native diagnostic consumes one receipt for that exact aborted request.
@@ -380,6 +382,7 @@ async function fixture(testInfo, {withExpense = false, withRepaymentPlan = false
   }
   return {pages, contexts, canonical, personal, writes, requests, errors, unexpectedWrites, linkLogs, inviteRequests, rejectedSharedWrites,
     activityRequests, activityInbox,
+    reloadClient(i) { return errorRecorders[i].withDocumentReload(pages[i],()=>pages[i].reload()); },
     holdNextSecondary(i,table) {
       let release; const ready=new Promise(resolve=>{release=resolve;});
       const hold={arrived:false,ready,release};secondaryHolds.set(`${i}:${table}`,hold);return hold;
@@ -1672,7 +1675,7 @@ for (const author of [0, 1]) {
         }
       }
       // The server committed, but this page never receives its acknowledgement.
-      await a.reload();
+      await f.reloadClient(author);
       hold.release();
       await expect(a.locator('[data-screen-kind="home"]')).toBeVisible();
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -1701,7 +1704,7 @@ for (const author of [0, 1]) {
       // The receipt race was exercised by the first reload. Let independent
       // background reads finish before this final persistence check reload.
       await a.waitForLoadState('networkidle');
-      await a.reload();
+      await f.reloadClient(author);
       await a.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
       await a.locator('[data-action="open-event-notes"]').click();
       await a.locator('[data-action="new-event-note"]').click();

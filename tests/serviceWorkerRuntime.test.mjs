@@ -60,7 +60,8 @@ async function createWorker({
       location: { origin: "https://sogrim-hesbon-app.vercel.app" },
       clients: {
         claim: async () => {},
-        matchAll: async () => windowClients
+        matchAll: async () => windowClients,
+        get: async (id) => windowClients.find((client) => client.id === id)
       },
       skipWaiting: async () => {
         skipWaitingCalls += 1;
@@ -227,6 +228,7 @@ test("a waiting worker can be activated explicitly on iPhone", async () => {
 test("an updated worker reloads open installed-app windows even when old page code is stuck", async () => {
   const navigations = [];
   const staleWindow = {
+    id: "stale-installed-app",
     url: "https://sogrim-hesbon-app.vercel.app/?qa=stale-installed-app",
     async navigate(url) {
       navigations.push(url);
