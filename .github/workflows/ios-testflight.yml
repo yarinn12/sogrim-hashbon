@@ -1,29 +1,24 @@
-name: iOS signed artifact only
-run-name: iOS signed artifact 4.57 (192) from 379f3c9
-
+name: iOS upload retained verified IPA
+run-name: Upload iOS 4.57 (192) retained from run 37979340803
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Fixed candidate version; this workflow never uploads to Apple
+        description: Fixed version for uploading the already signed IPA to Apple
         required: true
         default: "4.57"
       build:
-        description: Fixed candidate build; this run does not reserve the number
+        description: Fixed build for uploading the same verified IPA; no rebuild
         required: true
         default: "192"
-
 permissions:
   contents: read
   actions: read
-
-# Shares the lock with the existing Apple upload path; do not cancel signing runs.
 concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
-
 jobs:
-  build-export-verify-private:
+  verify-and-upload-same-ipa:
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -35,27 +30,24 @@ jobs:
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
-      IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
+      IOS_PROVISIONING_PROFILE: Sogrim Hashbon App Store 2026
       IOS_VERSION: ${{ inputs.version }}
       IOS_BUILD: ${{ inputs.build }}
-      IOS_RELEASE_NOTES: "מועמד 4.57: שיפורי עיצוב, תיקוני התחברות, שמירה והפניות."
+      IOS_RELEASE_NOTES: שופר עיצוב האפליקציה וזרימת הזמנת חברים. ההתראות מתעדכנות מהר יותר כשהאפליקציה פתוחה.
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
-
     steps:
       - name: Checkout the application source that passed all release CI
         uses: actions/checkout@v6
         with:
-          ref: "379f3c910429b92e4d5b4a21caf895ebaa6f4120"
+          ref: 379f3c910429b92e4d5b4a21caf895ebaa6f4120
           persist-credentials: false
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-
-      - name: Materialize reviewed artifact verification helpers
+      - name: Materialize reviewed provenance, decryption and original asset verifiers
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/sogrim-source-guard.mjs" <<'GUARD'
@@ -395,134 +387,243 @@ jobs:
           if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main();
           PROTECT
 
-      - name: Require pinned source CI and read unused build number before signing
+          cp "$RUNNER_TEMP/sogrim-source-guard.mjs" "$RUNNER_TEMP/source-guard.mjs"
+          cp "$RUNNER_TEMP/sogrim-protect-artifact.mjs" "$RUNNER_TEMP/protect-artifact.mjs"
+          cat > "$RUNNER_TEMP/verify-upload-input.mjs" <<'UPLOAD_GUARD'
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          import {readFileSync, writeFileSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          import {resolve} from 'node:path';
+          import {fileURLToPath, pathToFileURL} from 'node:url';
+          import {SOURCE, TREE, verifyCheckout, verifyRuns, readUnusedBuild} from './source-guard.mjs';
+          import {unprotect} from './protect-artifact.mjs';
+
+          export const RUN_ID = 37979340803;
+          export const WORKFLOW_SHA = 'c60d21b2ff9db2beeffeb92b6d1e11f73cb9aeeb';
+          export const ARTIFACT_ID = 11640591417;
+          export const ARTIFACT_NAME = 'sogrim-ios-4.57-192-379f3c9-encrypted-37979340803-1';
+          export const ARTIFACT_DIGEST = 'sha256:dc18653d8d16c4df7a9894fb4875e3b7fb3e9925e3db946f3207c60b9664ea72';
+
+          export function verifyBuildRun(run, artifact) {
+            assert.equal(run.id, RUN_ID);
+            assert.equal(run.repository?.full_name, 'yarinn12/sogrim-hashbon');
+            assert.equal(run.status, 'completed');
+            assert.equal(run.conclusion, 'success');
+            assert.equal(run.head_sha, WORKFLOW_SHA);
+            assert.equal(run.head_branch, 'codex/ios-artifact-only-379-20261009');
+            assert.equal(run.path, '.github/workflows/ios-testflight.yml');
+            assert.equal(run.event, 'workflow_dispatch');
+            assert.equal(run.run_attempt, 1, 'Do not silently accept a rerun or a second signed IPA');
+            assert.equal(artifact.id, ARTIFACT_ID);
+            assert.equal(artifact.name, ARTIFACT_NAME);
+            assert.equal(artifact.digest, ARTIFACT_DIGEST);
+            assert.equal(artifact.size_in_bytes, 12531144);
+            assert.equal(artifact.expired, false);
+            assert.equal(artifact.workflow_run?.id, RUN_ID);
+            assert.equal(artifact.workflow_run?.head_sha, WORKFLOW_SHA);
+            assert.equal(artifact.workflow_run?.repository_id, 1247836328);
+            assert.equal(artifact.workflow_run?.head_repository_id, 1247836328);
+          }
+
+          export function verifyEvidence(envelope, proof, before, after, manifest, readSource) {
+            const identity = JSON.parse(envelope.aad);
+            assert.equal(identity.sourceCommit, SOURCE);
+            assert.equal(String(identity.buildRunId), String(RUN_ID));
+            assert.equal(String(identity.buildRunAttempt), '1');
+            assert.equal(identity.version, '4.57');
+            assert.equal(identity.build, '192');
+            assert.match(identity.ipaSha256, /^[0-9a-f]{64}$/);
+            for (const evidence of [proof, manifest, before, after]) {
+              assert.equal(evidence.sourceCommit, SOURCE);
+              assert.equal(evidence.sourceTree, TREE);
+              assert.equal(evidence.version, '4.57');
+              assert.equal(evidence.build, '192');
+              assert.equal(evidence.pwaRelease, '511');
+              assert.equal(evidence.appleUploadPerformed, false);
+            }
+            for (const evidence of [proof, manifest]) {
+              assert.equal(evidence.ipaSha256, identity.ipaSha256);
+              assert.equal(evidence.signatureVerified, true);
+              assert.equal(evidence.everyWwwAssetMatches, true);
+              assert.equal(evidence.noUnexpectedWebAssets, true);
+              assert.equal(evidence.noRemoteServerUrl, true);
+              assert.equal(evidence.profile?.knownCertificateIncluded, true);
+              assert.equal(evidence.profile?.debugEntitlement, false);
+            }
+            assert.equal(manifest.sha256.toLowerCase(), identity.ipaSha256);
+            assert.equal(manifest.bundleId, 'com.sogrimhashbon.app');
+            assert.equal(manifest.teamId, 'MA9S4L7WKS');
+            assert.equal(before.phase, 'before-build');
+            assert.equal(after.phase, 'after-export');
+            for (const evidence of [before, after]) {
+              assert.equal(evidence.workflowCommit, WORKFLOW_SHA);
+              assert.equal(String(evidence.buildRunId), String(RUN_ID));
+              assert.equal(String(evidence.buildRunAttempt), '1');
+              assert.ok(Object.keys(evidence.sourceInputs).length > 500);
+            }
+            assert.deepEqual(before.sourceInputs, after.sourceInputs);
+            assert.equal(before.packageSha256, after.packageSha256);
+            assert.equal(before.packageLockSha256, after.packageLockSha256);
+            if (readSource) for (const [path, hash] of Object.entries(after.sourceInputs)) {
+              assert.equal(createHash('sha256').update(readSource(path)).digest('hex'), hash,
+                'Retained build inputs differ from the pinned checkout: ' + path);
+            }
+            return identity;
+          }
+
+          async function main() {
+            const phase = process.argv[2];
+            assert.ok(['attest-run', 'decrypt', 'verify-evidence', 'before-upload'].includes(phase));
+            const env = process.env;
+            if (phase === 'attest-run' || phase === 'before-upload') {
+              const get = async path => {
+                const r = await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/' + path, {
+                  method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30000),
+                  headers: {Authorization: 'Bearer ' + env.GH_TOKEN, Accept: 'application/vnd.github+json'}
+                });
+                assert.ok(r.ok, 'GitHub provenance could not be read');
+                return r.json();
+              };
+              const [run, artifact] = await Promise.all([get('actions/runs/' + RUN_ID), get('actions/artifacts/' + ARTIFACT_ID)]);
+              verifyBuildRun(run, artifact);
+              verifyCheckout(args => execFileSync('git', args, {encoding:'utf8'}).trim(), path => readFileSync(path, 'utf8'), env);
+              const ci = await verifyRuns(fetch, env.GH_TOKEN);
+              const {createAppStoreClient} = await import(pathToFileURL(resolve('scripts/lib/app-store-release.mjs')));
+              const apple = await readUnusedBuild(createAppStoreClient({issuerId:env.APPSTORE_ISSUER_ID,
+                keyId:env.APPSTORE_API_KEY_ID, privateKey:env.APPSTORE_API_PRIVATE_KEY}));
+              if (phase === 'before-upload') {
+                const proof = JSON.parse(readFileSync('build/ios/artifact-verification.json', 'utf8'));
+                assert.equal(createHash('sha256').update(readFileSync('build/ios/SogrimHashbon.ipa')).digest('hex'), proof.ipaSha256);
+              }
+              writeFileSync(resolve(env.RUNNER_TEMP, phase + '.json'), JSON.stringify({runId:RUN_ID, artifactId:ARTIFACT_ID,
+                artifactDigest:ARTIFACT_DIGEST, sourceCommit:SOURCE, ci, apple, checkedAt:new Date().toISOString()}, null, 2));
+              console.log('Verified exact successful build run, immutable artifact, source CI and currently unused 192: ' + phase);
+            } else if (phase === 'decrypt') {
+              const folder = resolve(env.RUNNER_TEMP, 'sogrim-retained-encrypted');
+              const envelope = JSON.parse(readFileSync(resolve(folder,'envelope.json'), 'utf8'));
+              const identity = JSON.parse(envelope.aad);
+              assert.equal(String(identity.buildRunId), String(RUN_ID));
+              assert.equal(String(identity.buildRunAttempt), '1');
+              writeFileSync(resolve(env.RUNNER_TEMP,'sogrim-retained.tar'),
+                unprotect(readFileSync(resolve(folder,'release.tar.enc')),envelope,env.APPSTORE_API_PRIVATE_KEY),{flag:'wx'});
+              console.log('Authenticated retained archive decrypted; original IPA is reused.');
+            } else {
+              const json = path => JSON.parse(readFileSync(path,'utf8'));
+              const envelope = json(resolve(env.RUNNER_TEMP,'sogrim-retained-encrypted/envelope.json'));
+              const identity = verifyEvidence(envelope,json('build/ios/artifact-verification.json'),
+                json('build/ios/source-before-build.json'),json('build/ios/source-after-export.json'),
+                json('build/ios/release-manifest.json'),path=>readFileSync(path));
+              assert.equal(createHash('sha256').update(readFileSync('build/ios/SogrimHashbon.ipa')).digest('hex'),identity.ipaSha256);
+              console.log('Retained IPA and source evidence verified: ' + identity.ipaSha256);
+            }
+          }
+          if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) await main();
+          UPLOAD_GUARD
+          cat > "$RUNNER_TEMP/verify-retained-ipa.py" <<'RETAINED_IPA'
+          import importlib.util
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import subprocess
+          import sys
+          import tarfile
+          import tempfile
+          import zipfile
+
+          FILES = {'SogrimHashbon.ipa', 'release-manifest.json', 'artifact-verification.json',
+                   'source-before-build.json', 'source-after-export.json', 'web-assets.json', 'Package.resolved'}
+
+          def extract_safe(archive_path, destination):
+              with tarfile.open(archive_path, 'r:') as archive:
+                  members = archive.getmembers()
+                  if len(members) != len(FILES) or {m.name for m in members} != FILES:
+                      raise ValueError('Only the seven originally retained release files may be extracted')
+                  if any(not m.isfile() or m.size > 250_000_000 for m in members):
+                      raise ValueError('Links, directories, unusual entries or oversized members are forbidden')
+                  destination.mkdir(parents=True, exist_ok=True)
+                  for member in members:
+                      with (destination / member.name).open('xb') as target:
+                          target.write(archive.extractfile(member).read())
+
+          def verify_ipa(helper, root):
+              proof = json.loads((root / 'artifact-verification.json').read_text())
+              expected = json.loads((root / 'web-assets.json').read_text())
+              helper.require(expected['sourceCommit'] == helper.SOURCE and expected['pwaRelease'] == '511', 'Wrong assets source')
+              helper.require(proof['ipaSha256'] == helper.digest((root / 'SogrimHashbon.ipa').read_bytes()), 'Retained IPA hash differs')
+              with zipfile.ZipFile(root / 'SogrimHashbon.ipa') as archive:
+                  app = helper.inspect_zip(archive, expected)
+              helper.require(sys.platform == 'darwin', 'Real signature validation requires macOS')
+              with tempfile.TemporaryDirectory(prefix='sogrim-retained-verify-') as directory:
+                  subprocess.run(['/usr/bin/ditto', '-x', '-k', str(root / 'SogrimHashbon.ipa'), directory], check=True, capture_output=True)
+                  app_path = pathlib.Path(directory) / app
+                  subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app_path)], check=True, capture_output=True)
+                  signed = plistlib.loads(subprocess.run(['/usr/bin/codesign', '-d', '--entitlements', ':-', str(app_path)],
+                                                        check=True, capture_output=True).stdout)
+                  profile = plistlib.loads(subprocess.run(['/usr/bin/security', 'cms', '-D', '-i', str(app_path / 'embedded.mobileprovision')],
+                                                         check=True, capture_output=True).stdout)
+                  helper.validate_profile(profile, signed)
+              print('Same retained IPA, all packaged assets, signature, profile and release entitlements reverified without rebuilding.')
+
+          if __name__ == '__main__':
+              runner = pathlib.Path(os.environ['RUNNER_TEMP'])
+              root = pathlib.Path('build/ios')
+              if sys.argv[1] == 'extract':
+                  extract_safe(runner / 'sogrim-retained.tar', root)
+              else:
+                  spec = importlib.util.spec_from_file_location('assets', runner / 'sogrim-verify-assets.py')
+                  helper = importlib.util.module_from_spec(spec)
+                  spec.loader.exec_module(helper)
+                  verify_ipa(helper, root)
+          RETAINED_IPA
+      - name: Require exact successful first build, encrypted artifact, source CI and unused 192
         env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$RUNNER_TEMP/sogrim-source-guard.mjs" before-build
-
-      - name: Validate existing Apple configuration
-        run: node scripts/verify-ios-workflow-env.mjs
+        run: node "$RUNNER_TEMP/verify-upload-input.mjs" attest-run
+      - name: Download only immutable encrypted artifact 11640591417 from run 37979340803
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: "11640591417"
+          run-id: "37979340803"
+          repository: yarinn12/sogrim-hashbon
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/sogrim-retained-encrypted
+          digest-mismatch: error
+      - name: Authenticate and decrypt the same retained release archive
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
-
-      - name: Verify public Apple login provider readiness by reading existing configuration
-        run: npm run qa:ios:providers
-
-      - name: Select and verify Xcode 26.6 and iPhone SDK
-        run: |
-          set -euo pipefail
-          sudo xcode-select -s /Applications/Xcode_26.6.app
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-
-      - name: Install locked dependencies
-        run: npm ci
-
-      - name: Build web assets and prepare the native project from the pinned checkout
-        run: |
-          set -euo pipefail
-          npm run native:ios:flatten-icon
-          npm run native:prepare
-          node scripts/prepare-ios-release.mjs
-          npm run qa:ios
-          python3 "$RUNNER_TEMP/sogrim-verify-assets.py" snapshot
-
-      - name: Import the existing Apple Distribution certificate
-        uses: apple-actions/import-codesign-certs@v7
+        run: node "$RUNNER_TEMP/verify-upload-input.mjs" decrypt
+      - name: Extract only the original seven regular release files
+        run: python3 "$RUNNER_TEMP/verify-retained-ipa.py" extract
+      - name: Require original IPA hash, source fingerprint and signed build evidence
+        run: node "$RUNNER_TEMP/verify-upload-input.mjs" verify-evidence
+      - name: Reverify actual retained IPA signature, profile, entitlements and all assets without rebuilding
+        run: python3 "$RUNNER_TEMP/verify-retained-ipa.py" verify
+      - name: Immediately recheck provenance, source CI, same IPA hash and unused number before Apple write
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: node "$RUNNER_TEMP/verify-upload-input.mjs" before-upload
+      - name: Upload the same verified IPA to existing Apple app
+        uses: apple-actions/upload-testflight-build@v5
         with:
-          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
-
-      - name: Download an existing active App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v6
-        with:
-          bundle-id: com.sogrimhashbon.app
-          profile-type: IOS_APP_STORE
+          app-path: build/ios/SogrimHashbon.ipa
+          app-type: ios
           issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-
-      - name: Resolve Swift packages and retain the resolved dependency identity
-        run: |
-          set -euo pipefail
-          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-          resolved="ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-          test -f "$resolved"
-          cp "$resolved" build/ios/Package.resolved
-
-      - name: Archive signed iOS app without sending anything to Apple
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            clean archive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            | tee build/ios/archive.log
-
-      - name: Export IPA locally without upload destination
-        run: |
-          set -euo pipefail
-          /usr/libexec/PlistBuddy -c 'Print :destination' ios/ExportOptions.generated.plist | grep -x export
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.generated.plist \
-            -exportPath build/ios/export \
-            | tee build/ios/export.log
-          python3 - <<'EXPORT'
-          from pathlib import Path
-          import shutil
-          files = list(Path('build/ios/export').rglob('*.ipa'))
-          if len(files) != 1:
-              raise ValueError('Expected exactly one exported IPA')
-          shutil.copyfile(files[0], 'build/ios/SogrimHashbon.ipa')
-          EXPORT
-
-      - name: Verify signed iOS artifact with the existing signature verifier
-        run: npm run qa:ios:artifact
-
-      - name: Recheck exact source CI and current unused number after export
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$RUNNER_TEMP/sogrim-source-guard.mjs" after-export
-
-      - name: Require all packaged web assets, release entitlements and valid distribution profile
-        run: python3 "$RUNNER_TEMP/sogrim-verify-assets.py" verify
-
-      - name: Encrypt only the verified IPA and its evidence for private retention
+          wait-for-processing: "false"
+          backend: appstore-api
+      - name: Renew API authentication and require Apple VALID plus verified Hebrew release notes
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          tar -cf "$RUNNER_TEMP/sogrim-ios-release.tar" -C build/ios \
-            SogrimHashbon.ipa release-manifest.json artifact-verification.json \
-            source-before-build.json source-after-export.json web-assets.json Package.resolved
-          node "$RUNNER_TEMP/sogrim-protect-artifact.mjs" encrypt \
-            "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
-
-      - name: Retain only encrypted release output for seven days
-        id: private_artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: sogrim-ios-4.57-192-379f3c9-encrypted-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            build/ios/private-artifact/release.tar.enc
-            build/ios/private-artifact/envelope.json
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Record preparation outcome
-        run: |
-          printf '%s\n' \
-            'Signed iOS 4.57 (192) artifact prepared from 379f3c910429b92e4d5b4a21caf895ebaa6f4120.' \
-            'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
-            'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
-            >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/complete-ios-testflight.mjs
+      - name: Record successful Apple processing without App Review or automatic distribution
+        run: |-
+          node - <<'RECEIPT'
+          const fs = require('node:fs');
+          const r = JSON.parse(fs.readFileSync('build/ios/testflight-completion.json','utf8'));
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, 'Existing signed iOS 4.57 (192) from source379 and build run37979340803 uploaded; Apple VALID and Hebrew notes verified.\nNo new build, App Review submission, tester invitations, release or database changes.\n```json\n'+JSON.stringify(r,null,2)+'\n```\n');
+          RECEIPT
