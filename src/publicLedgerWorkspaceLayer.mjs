@@ -17809,6 +17809,19 @@ const CSS = `
     pointer-events: none !important;
   }
 
+  /* Keep enabled auth text readable when touch leaves the legacy hover state active. */
+  html.ledger-workspace-v1 #public-account-auth-gate .account-auth-submit:not(:disabled) {
+    color: #ffffff !important;
+  }
+  /* Keep the legal links and their bottom padding inside the mobile scroll range. */
+  @media (max-width: 760px),
+    (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    html.ledger-workspace-v1 #public-account-auth-gate .account-auth-shell {
+      overflow: visible !important;
+      grid-template-rows: auto auto !important;
+    }
+  }
+
   /* Final mobile touch-target guardrails for shared route controls. */
   html.ledger-workspace-v1 .product-route-controls > .accessibility-entry-button,
   html.ledger-workspace-v1 .expense-modal-step-header .expense-accessibility-button,
