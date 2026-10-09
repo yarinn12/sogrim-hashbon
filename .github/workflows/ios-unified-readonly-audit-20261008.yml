@@ -30,7 +30,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import {X509Certificate,createPrivateKey} from 'node:crypto';
+          import {X509Certificate,createPrivateKey,createHash} from 'node:crypto';
           import {spawnSync} from 'node:child_process';
           import {writeFileSync} from 'node:fs';
           import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
@@ -72,7 +72,7 @@ jobs:
           for(const g of groups){
             const testers=await all('/v1/betaGroups/'+g.id+'/betaTesters?limit=200');
             const assigned=await all('/v1/betaGroups/'+g.id+'/builds?limit=200');
-            groupReports.push({id:g.id,name:g.attributes.name,isInternalGroup:g.attributes.isInternalGroup,testerCount:testers.length,testerStates:testers.map(t=>({id:t.id,state:t.attributes.state,existingTester:t.id==='5d2040f0-3af9-4d98-a188-fd6eeb5547db',requestedMotherTester:String(t.attributes.email??'').trim().toLowerCase()==='izhakgalit@gmail.com'})),builds:assigned.map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,expired:b.attributes.expired}))});
+            groupReports.push({id:g.id,name:g.attributes.name,isInternalGroup:g.attributes.isInternalGroup,testerCount:testers.length,testerStates:testers.map(t=>({id:t.id,state:t.attributes.state,existingTester:t.id==='5d2040f0-3af9-4d98-a188-fd6eeb5547db',requestedMotherTester:createHash('sha256').update(String(t.attributes.email??'').trim().toLowerCase()).digest('hex')==='3ebc2d2fe9f75a260c6076b2d8ba75a252014decc925ffecd94c4a0ab0d889b3'})),builds:assigned.map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,expired:b.attributes.expired}))});
           }
           const report={checkedAt:new Date().toISOString(),mode:'READ_ONLY',sourcePinnedTo:'0ccd26cb0736d378f8fbafc5fa07ee4715bd70be',appId,version:{id:versionId,number:version.attributes.versionString,state:version.attributes.appStoreState,releaseType:version.attributes.releaseType,selectedBuild:selected.attributes.version},maximumUploadedIosBuild:maxBuild,nextCurrentlyUnusedBuild:maxBuild+1,builds:builds.sort((a,b)=>Number(b.attributes.version)-Number(a.attributes.version)).slice(0,8).map(b=>({id:b.id,build:b.attributes.version,processingState:b.attributes.processingState,uploadedDate:b.attributes.uploadedDate,expired:b.attributes.expired})),signing:{teamId:env.APPLE_TEAM_ID,apiAccessVerified:true,storedP12PasswordVerified:true,distributionCertificateValidFrom:cert.validFrom,distributionCertificateValidTo:cert.validTo,distributionCertificateFingerprint256:cert.fingerprint256,googleClientsPresentAndDistinct:true},testFlightGroups:groupReports,mutationsPerformed:[],limitations:['Build number is observed as unused, not reserved. Recheck immediately before upload.','No physical device sign-in performed.','Review messages and public store availability require a separate UI/store check.']};
           writeFileSync('ios-unified-readonly-audit-20261008.json',JSON.stringify(report,null,2)+'\n');
