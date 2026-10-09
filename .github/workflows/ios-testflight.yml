@@ -1,33 +1,34 @@
-name: iOS TestFlight
-run-name: iOS TestFlight ${{ inputs.version }} (${{ inputs.build }})
+name: iOS signed artifact only
+run-name: iOS signed artifact 4.57 (192) from 379f3c9
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: App Store version
+        description: Fixed candidate version; this workflow never uploads to Apple
         required: true
         default: "4.57"
       build:
-        description: Unique TestFlight build number
+        description: Fixed candidate build; this run does not reserve the number
         required: true
         default: "192"
-      release_notes:
-        description: Hebrew TestFlight release notes
-        required: true
-        default: "שופר עיצוב האפליקציה וזרימת הזמנת חברים. ההתראות מתעדכנות מהר יותר כשהאפליקציה פתוחה."
 
 permissions:
   contents: read
+  actions: read
 
+# Shares the lock with the existing Apple upload path; do not cancel signing runs.
 concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  build-and-upload:
+  build-export-verify-private:
     runs-on: macos-26
     timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
     env:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
@@ -37,11 +38,15 @@ jobs:
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: ${{ inputs.version }}
       IOS_BUILD: ${{ inputs.build }}
-      IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
+      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+      WORKFLOW_REF: ${{ github.workflow_ref }}
 
     steps:
-      - name: Checkout
+      - name: Checkout the application source that passed all release CI
         uses: actions/checkout@v6
+        with:
+          ref: "379f3c910429b92e4d5b4a21caf895ebaa6f4120"
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -49,49 +54,388 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Validate Apple configuration
+      - name: Materialize reviewed artifact verification helpers
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/sogrim-source-guard.mjs" <<'GUARD'
+          import assert from 'node:assert/strict';
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+          import {resolve} from 'node:path';
+          import {fileURLToPath, pathToFileURL} from 'node:url';
+
+          export const SOURCE = '379f3c910429b92e4d5b4a21caf895ebaa6f4120';
+          export const TREE = '89dc47488227fec0df41e76bf6af20625f86eca7';
+          export const RUNS = [
+            ['37960351486', '.github/workflows/qa.yml'],
+            ['37960351547', '.github/workflows/qa-windows.yml'],
+            ['37960351633', '.github/workflows/ios-auth-return-qa.yml']
+          ];
+
+          export async function verifyRuns(fetchImpl, token) {
+            const proofs = [];
+            for (const [id, path] of RUNS) {
+              const response = await fetchImpl(`https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/runs/${id}`, {
+                method: 'GET', redirect: 'error', signal: AbortSignal.timeout(30_000),
+                headers: {Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json'}
+              });
+              assert.ok(response.ok, 'Cannot read required source CI');
+              const run = await response.json();
+              assert.equal(String(run.id), id);
+              assert.equal(run.repository?.full_name, 'yarinn12/sogrim-hashbon');
+              assert.equal(run.head_sha, SOURCE, 'CI must verify the pinned application source');
+              assert.equal(run.path, path);
+              assert.equal(run.status, 'completed');
+              assert.equal(run.conclusion, 'success');
+              proofs.push({id, path, source: run.head_sha, conclusion: run.conclusion, updatedAt: run.updated_at});
+            }
+            return proofs;
+          }
+
+          export async function readUnusedBuild(request) {
+            const app = (await request('/v1/apps/6809952514', {method: 'GET'})).data;
+            assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
+            let next = '/v1/builds?' + new URLSearchParams({
+              'filter[app]': '6809952514', 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
+            });
+            let maximum = 0;
+            for (let page = 0; next && page < 20; page++) {
+              const response = await request(next, {method: 'GET'});
+              assert.ok(Array.isArray(response.data), 'Incomplete Apple build list');
+              for (const build of response.data) {
+                assert.match(build.attributes?.version ?? '', /^[1-9][0-9]*$/);
+                const number = Number(build.attributes.version);
+                assert.ok(Number.isSafeInteger(number));
+                maximum = Math.max(maximum, number);
+              }
+              next = response.links?.next;
+            }
+            assert.ok(!next, 'Apple pagination limit reached; refuse incomplete lookup');
+            assert.ok(maximum < 192, 'Build 192 is no longer unused; coordinator must select a new candidate');
+            return {appId: '6809952514', maximumUploadedBuild: maximum, candidateBuild: 192, reserved: false, checkedAt: new Date().toISOString()};
+          }
+
+          export function verifyCheckout(runGit, readText, env) {
+            assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
+            assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+            assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
+            assert.equal(env.IOS_VERSION, '4.57');
+            assert.equal(env.IOS_BUILD, '192');
+            assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
+            assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), TREE);
+            const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
+            assert.equal(pwa, '511');
+            const expected = [
+              ['src/publicDesignCoherenceLayer.mjs', '58842b6df46b63094f942447285bcf0399fe64dc6c3f6195567b1094218a461d'],
+              ['e2e/iphone-landscape-proportions.spec.mjs', '24608727f5255b3f0fc65e21cb5c2c45602e0b7b49077006179cbc092abd1385']
+            ];
+            for (const [path, digest] of expected) {
+              assert.equal(createHash('sha256').update(readText(path).replaceAll('\r\n', '\n')).digest('hex'), digest,
+                'Required final proportions patch differs from the reviewed source');
+            }
+            return {sourceCommit: SOURCE, sourceTree: TREE, pwaRelease: pwa};
+          }
+
+          async function main() {
+            const phase = process.argv[2];
+            assert.ok(['before-build', 'after-export'].includes(phase));
+            const env = process.env;
+            const runGit = args => execFileSync('git', args, {encoding: 'utf8'}).trim();
+            const source = verifyCheckout(runGit, path => readFileSync(path, 'utf8'), env);
+            if (phase === 'before-build') assert.equal(runGit(['status', '--porcelain']), '', 'Checkout must start clean');
+            const ci = await verifyRuns(fetch, env.GH_TOKEN);
+            const {createAppStoreClient} = await import(pathToFileURL(resolve('scripts/lib/app-store-release.mjs')));
+            const api = createAppStoreClient({issuerId: env.APPSTORE_ISSUER_ID, keyId: env.APPSTORE_API_KEY_ID,
+              privateKey: env.APPSTORE_API_PRIVATE_KEY});
+            const apple = await readUnusedBuild(api);
+            const sha256 = path => createHash('sha256').update(readFileSync(path)).digest('hex');
+            const inputPaths = execFileSync('git', ['ls-files', '--cached', '-z'], {encoding: 'utf8'}).split('\0').filter(Boolean)
+              .filter(path => !/^(android\/|ios\/|\.well-known\/)/.test(path) ||
+                (/^ios\/.+\.swift$/.test(path) && !path.endsWith('/Package.swift'))).sort();
+            const sourceInputs = Object.fromEntries(inputPaths.map(path => [path, sha256(path)]));
+            assert.ok(inputPaths.length > 500, 'Incomplete application source fingerprint');
+            if (phase === 'after-export') {
+              const before = JSON.parse(readFileSync('build/ios/source-before-build.json', 'utf8'));
+              assert.deepEqual(sourceInputs, before.sourceInputs, 'Application inputs changed during preparation/signing');
+            }
+            mkdirSync('build/ios', {recursive: true});
+            writeFileSync(`build/ios/source-${phase}.json`, JSON.stringify({
+              ...source, phase, ci, apple, version: env.IOS_VERSION, build: env.IOS_BUILD,
+              packageSha256: sha256('package.json'), packageLockSha256: sha256('package-lock.json'),
+              sourceInputs,
+              workflowCommit: env.WORKFLOW_COMMIT, workflowRef: env.WORKFLOW_REF,
+              buildRunId: env.GITHUB_RUN_ID, buildRunAttempt: env.GITHUB_RUN_ATTEMPT,
+              checkedAt: new Date().toISOString(), appleUploadPerformed: false
+            }, null, 2) + '\n');
+            console.log(`Pinned source CI and unused build 192 verified (${phase}); no Apple write.`);
+          }
+
+          if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) await main();
+          GUARD
+          cat > "$RUNNER_TEMP/sogrim-verify-assets.py" <<'ASSETS'
+          import datetime
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import plistlib
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          import zipfile
+
+          SOURCE = '379f3c910429b92e4d5b4a21caf895ebaa6f4120'
+          TEAM = 'MA9S4L7WKS'
+          BUNDLE = 'com.sogrimhashbon.app'
+          CERT_SHA256 = 'ae0e5a0a889d2852b178124f02377084e4cb95905f7a62a6ed3787988b7828b8'
+
+          def require(condition, message):
+              if not condition:
+                  raise ValueError(message)
+
+          def digest(data):
+              return hashlib.sha256(data).hexdigest()
+
+          def file_map(directory):
+              require(directory.is_dir(), 'Expected asset directory is missing')
+              result = {}
+              for path in sorted(directory.rglob('*')):
+                  require(not path.is_symlink(), 'Asset symlinks are not allowed')
+                  if path.is_file():
+                      result[path.relative_to(directory).as_posix()] = digest(path.read_bytes())
+              require(len(result) > 0, 'Empty web asset directory')
+              return result
+
+          def validate_config(data):
+              config = json.loads(data)
+              require(config.get('appId') == BUNDLE and config.get('webDir') == 'www', 'Unexpected Capacitor identity')
+              require('url' not in config.get('server', {}), 'Remote server.url is forbidden in this artifact')
+              require(config.get('ios', {}).get('contentInset') == 'automatic', 'Unexpected iOS content inset')
+              require(config.get('ios', {}).get('preferredContentMode') == 'mobile', 'Unexpected iOS content mode')
+
+          def snapshot(root):
+              web = file_map(root / 'www')
+              copied = file_map(root / 'ios/App/App/public')
+              require(set(copied) == set(web) | {'cordova.js', 'cordova_plugins.js'}, 'Unexpected files in copied iOS web assets')
+              for name, sha in web.items():
+                  require(copied[name] == sha, 'Capacitor copied a different web asset: ' + name)
+              for name in ('cordova.js', 'cordova_plugins.js'):
+                  require(copied[name] == digest(b''), 'Unexpected Cordova plugin content')
+              configs = {}
+              for name in ('capacitor.config.json', 'config.xml'):
+                  data = (root / 'ios/App/App' / name).read_bytes()
+                  configs[name] = digest(data)
+                  if name == 'capacitor.config.json':
+                      validate_config(data)
+              return {'sourceCommit': SOURCE, 'pwaRelease': '511', 'www': web, 'iosPublic': copied, 'nativeConfigs': configs}
+
+          def inspect_zip(archive, expected):
+              entries = archive.infolist()
+              names = [entry.filename for entry in entries]
+              require(len(names) == len(set(names)), 'Duplicate IPA entries are forbidden')
+              for name in names:
+                  path = pathlib.PurePosixPath(name)
+                  require(not path.is_absolute() and '..' not in path.parts and '\\' not in name, 'Unsafe IPA entry')
+              info_paths = [name for name in names if re.fullmatch(r'Payload/[^/]+\.app/Info\.plist', name)]
+              require(len(info_paths) == 1, 'Expected exactly one IPA application')
+              app = info_paths[0][:-len('Info.plist')]
+              info = plistlib.loads(archive.read(info_paths[0]))
+              require(info.get('CFBundleIdentifier') == BUNDLE, 'Wrong IPA bundle')
+              require(info.get('CFBundleShortVersionString') == '4.57' and info.get('CFBundleVersion') == '192', 'Wrong IPA version/build')
+              prefix = app + 'public/'
+              public = {name[len(prefix):]: digest(archive.read(name)) for name in names if name.startswith(prefix) and not name.endswith('/')}
+              require(public == expected['iosPublic'], 'IPA web assets do not exactly match the newly built source')
+              for name, sha in expected['nativeConfigs'].items():
+                  data = archive.read(app + name)
+                  require(digest(data) == sha, 'IPA native configuration differs from prepared configuration')
+                  if name == 'capacitor.config.json':
+                      validate_config(data)
+              return app
+
+          def validate_profile(profile, signed):
+              now = datetime.datetime.now(datetime.timezone.utc)
+              expiration = profile.get('ExpirationDate')
+              creation = profile.get('CreationDate')
+              require(isinstance(expiration, datetime.datetime) and isinstance(creation, datetime.datetime), 'Profile dates missing')
+              require(creation.replace(tzinfo=datetime.timezone.utc) <= now < expiration.replace(tzinfo=datetime.timezone.utc), 'Profile expired or not yet valid')
+              require(profile.get('TeamIdentifier') == [TEAM], 'Wrong provisioning team')
+              require(profile.get('Name') == 'Sogrim Hashbon App Store 2026', 'Wrong provisioning profile')
+              require(not profile.get('ProvisionedDevices') and not profile.get('ProvisionsAllDevices'), 'Expected App Store distribution profile')
+              require(any(digest(cert) == CERT_SHA256 for cert in profile.get('DeveloperCertificates', [])), 'Known distribution certificate missing from profile')
+              for entitlements in (profile.get('Entitlements', {}), signed):
+                  require(entitlements.get('application-identifier') == TEAM + '.' + BUNDLE, 'Wrong signed application identifier')
+                  require(entitlements.get('com.apple.developer.team-identifier') == TEAM, 'Wrong signed team entitlement')
+                  require(entitlements.get('get-task-allow') is False, 'Debug entitlement is forbidden')
+                  require(entitlements.get('com.apple.developer.applesignin') == ['Default'], 'Apple sign-in entitlement is missing')
+              require(set(['applinks:sogrim-hesbon-app.vercel.app', 'webcredentials:sogrim-hesbon-app.vercel.app']).issubset(signed.get('com.apple.developer.associated-domains', [])), 'Associated Domains missing')
+              return {'profileValidAtVerification': True, 'profileExpiresAt': expiration.replace(tzinfo=datetime.timezone.utc).isoformat(), 'knownCertificateIncluded': True, 'debugEntitlement': False, 'appleSignIn': ['Default']}
+
+          def verify(root, expected):
+              require(snapshot(root) == expected, 'Prepared web assets changed after snapshot')
+              ipa = root / 'build/ios/SogrimHashbon.ipa'
+              manifest = json.loads((root / 'build/ios/release-manifest.json').read_text())
+              sha = digest(ipa.read_bytes())
+              require(manifest.get('sha256', '').lower() == sha, 'Signed IPA changed after signature verification')
+              with zipfile.ZipFile(ipa) as archive:
+                  app = inspect_zip(archive, expected)
+              require(sys.platform == 'darwin', 'Real codesign and provisioning checks require macOS')
+              with tempfile.TemporaryDirectory(prefix='sogrim-379-artifact-') as directory:
+                  extracted = pathlib.Path(directory)
+                  subprocess.run(['/usr/bin/ditto', '-x', '-k', str(ipa), str(extracted)], check=True, capture_output=True)
+                  app_path = extracted / app
+                  subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app_path)], check=True, capture_output=True)
+                  signed_result = subprocess.run(['/usr/bin/codesign', '-d', '--entitlements', ':-', str(app_path)], check=True, capture_output=True)
+                  signed = plistlib.loads(signed_result.stdout)
+                  profile_result = subprocess.run(['/usr/bin/security', 'cms', '-D', '-i', str(app_path / 'embedded.mobileprovision')], check=True, capture_output=True)
+                  profile = plistlib.loads(profile_result.stdout)
+                  profile_proof = validate_profile(profile, signed)
+              before = json.loads((root / 'build/ios/source-before-build.json').read_text())
+              after = json.loads((root / 'build/ios/source-after-export.json').read_text())
+              require(before['sourceCommit'] == after['sourceCommit'] == SOURCE, 'Source proof mismatch')
+              require(before['packageSha256'] == after['packageSha256'] and before['packageLockSha256'] == after['packageLockSha256'], 'Package declarations changed during build')
+              proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '511', 'version': '4.57', 'build': '192', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+              (root / 'build/ios/artifact-verification.json').write_text(json.dumps(proof, indent=2) + '\n')
+              manifest.update(proof)
+              (root / 'build/ios/release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+              print('Signed artifact identity, signature, profile and all web assets verified; no Apple upload.')
+
+          if __name__ == '__main__':
+              root = pathlib.Path.cwd()
+              target = root / 'build/ios/web-assets.json'
+              if sys.argv[1] == 'snapshot':
+                  target.write_text(json.dumps(snapshot(root), indent=2) + '\n')
+                  print('Complete web and native configuration snapshot saved.')
+              elif sys.argv[1] == 'verify':
+                  verify(root, json.loads(target.read_text()))
+              else:
+                  raise ValueError('Expected snapshot or verify')
+          ASSETS
+          cat > "$RUNNER_TEMP/sogrim-protect-artifact.mjs" <<'PROTECT'
+          import assert from 'node:assert/strict';
+          import {createCipheriv, createDecipheriv, createHash, createPrivateKey, hkdfSync, randomBytes} from 'node:crypto';
+          import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+          import {resolve} from 'node:path';
+          import {fileURLToPath} from 'node:url';
+
+          const CONTEXT = 'sogrim-ios-private-artifact-v1';
+          const SOURCE = '379f3c910429b92e4d5b4a21caf895ebaa6f4120';
+          const hash = data => createHash('sha256').update(data).digest('hex');
+
+          function derive(pem, salt, aad) {
+            const secret = createPrivateKey(pem).export({type: 'pkcs8', format: 'der'});
+            try { return Buffer.from(hkdfSync('sha256', secret, salt, Buffer.from(CONTEXT + '\n' + aad), 32)); }
+            finally { secret.fill(0); }
+          }
+
+          export function protect(plaintext, pem, identity) {
+            assert.equal(identity.sourceCommit, SOURCE);
+            assert.equal(identity.version, '4.57');
+            assert.equal(identity.build, '192');
+            const aad = JSON.stringify({context: CONTEXT, ...identity});
+            const salt = randomBytes(32), iv = randomBytes(12), key = derive(pem, salt, aad);
+            try {
+              const cipher = createCipheriv('aes-256-gcm', key, iv);
+              cipher.setAAD(Buffer.from(aad));
+              const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+              return {ciphertext, envelope: {format: CONTEXT, algorithm: 'AES-256-GCM', kdf: 'HKDF-SHA256-PKCS8-DER',
+                salt: salt.toString('base64'), iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'),
+                aad, ciphertextSha256: hash(ciphertext), plaintextSha256: hash(plaintext)}};
+            } finally {key.fill(0);}
+          }
+
+          export function unprotect(ciphertext, envelope, pem) {
+            assert.equal(envelope.format, CONTEXT);
+            assert.equal(envelope.algorithm, 'AES-256-GCM');
+            assert.equal(envelope.kdf, 'HKDF-SHA256-PKCS8-DER');
+            assert.equal(hash(ciphertext), envelope.ciphertextSha256);
+            const identity = JSON.parse(envelope.aad);
+            assert.equal(identity.context, CONTEXT);
+            assert.equal(identity.sourceCommit, SOURCE);
+            assert.equal(identity.version, '4.57');
+            assert.equal(identity.build, '192');
+            const salt = Buffer.from(envelope.salt, 'base64'), iv = Buffer.from(envelope.iv, 'base64'), tag = Buffer.from(envelope.tag, 'base64');
+            assert.equal(salt.length, 32); assert.equal(iv.length, 12); assert.equal(tag.length, 16);
+            const key = derive(pem, salt, envelope.aad);
+            try {
+              const decipher = createDecipheriv('aes-256-gcm', key, iv);
+              decipher.setAAD(Buffer.from(envelope.aad)); decipher.setAuthTag(tag);
+              const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+              assert.equal(hash(plaintext), envelope.plaintextSha256);
+              return plaintext;
+            } finally {key.fill(0);}
+          }
+
+          function main() {
+            const [mode, input, output] = process.argv.slice(2);
+            const pem = process.env.APPSTORE_API_PRIVATE_KEY;
+            assert.ok(pem, 'Existing App Store API private key must be supplied through the environment');
+            if (mode === 'encrypt') {
+              const manifest = JSON.parse(readFileSync('build/ios/artifact-verification.json', 'utf8'));
+              assert.equal(manifest.appleUploadPerformed, false);
+              assert.equal(manifest.signatureVerified, true);
+              assert.equal(manifest.everyWwwAssetMatches, true);
+              const result = protect(readFileSync(input), pem, {sourceCommit: manifest.sourceCommit,
+                version: manifest.version, build: manifest.build, buildRunId: process.env.GITHUB_RUN_ID,
+                buildRunAttempt: process.env.GITHUB_RUN_ATTEMPT, ipaSha256: manifest.ipaSha256});
+              mkdirSync(output, {recursive: true});
+              writeFileSync(resolve(output, 'release.tar.enc'), result.ciphertext);
+              writeFileSync(resolve(output, 'envelope.json'), JSON.stringify(result.envelope, null, 2) + '\n');
+              console.log('Verified release encrypted; only ciphertext and envelope may be retained as GitHub artifacts.');
+            } else if (mode === 'decrypt') {
+              const envelope = JSON.parse(readFileSync(resolve(input, 'envelope.json'), 'utf8'));
+              const plaintext = unprotect(readFileSync(resolve(input, 'release.tar.enc')), envelope, pem);
+              writeFileSync(output, plaintext, {flag: 'wx'});
+              console.log('Authenticated release archive decrypted to a new local file.');
+            } else throw new Error('Expected encrypt or decrypt');
+          }
+
+          if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main();
+          PROTECT
+
+      - name: Require pinned source CI and read unused build number before signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$RUNNER_TEMP/sogrim-source-guard.mjs" before-build
+
+      - name: Validate existing Apple configuration
         run: node scripts/verify-ios-workflow-env.mjs
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
-      - name: Verify public Apple login provider readiness
+      - name: Verify public Apple login provider readiness by reading existing configuration
         run: npm run qa:ios:providers
 
-      - name: Select and verify Xcode 26.6
+      - name: Select and verify Xcode 26.6 and iPhone SDK
         run: |
+          set -euo pipefail
           sudo xcode-select -s /Applications/Xcode_26.6.app
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Run release checks
+      - name: Build web assets and prepare the native project from the pinned checkout
         run: |
-          npm test
+          set -euo pipefail
           npm run native:ios:flatten-icon
           npm run native:prepare
+          node scripts/prepare-ios-release.mjs
+          npm run qa:ios
+          python3 "$RUNNER_TEMP/sogrim-verify-assets.py" snapshot
 
-      - name: Verify Apple login on iPhone and iPad WebKit
-        run: |
-          npx playwright install webkit
-          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs e2e/native-auth-roundtrip.spec.mjs e2e/email-login-completion.spec.mjs --project=iphone-webkit --project=ipad-webkit
-
-      - name: Prepare Apple release settings
-        run: node scripts/prepare-ios-release.mjs
-
-      - name: Verify prepared iOS release
-        run: npm run qa:ios
-
-      - name: Import Apple Distribution certificate
+      - name: Import the existing Apple Distribution certificate
         uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
-      - name: Download App Store provisioning profile
+      - name: Download an existing active App Store provisioning profile
         uses: apple-actions/download-provisioning-profiles@v6
         with:
           bundle-id: com.sogrimhashbon.app
@@ -100,13 +444,17 @@ jobs:
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
-      - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-
-      - name: Archive signed iOS app
+      - name: Resolve Swift packages and retain the resolved dependency identity
         run: |
-          mkdir -p build/ios
-          set -o pipefail
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
+          resolved="ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+          test -f "$resolved"
+          cp "$resolved" build/ios/Package.resolved
+
+      - name: Archive signed iOS app without sending anything to Apple
+        run: |
+          set -euo pipefail
           xcodebuild \
             -project ios/App/App.xcodeproj \
             -scheme App \
@@ -117,51 +465,63 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             | tee build/ios/archive.log
 
-      - name: Export IPA
+      - name: Export IPA locally without upload destination
         run: |
-          set -o pipefail
+          set -euo pipefail
+          /usr/libexec/PlistBuddy -c 'Print :destination' ios/ExportOptions.generated.plist | grep -x export
           xcodebuild \
             -exportArchive \
             -archivePath build/ios/SogrimHashbon.xcarchive \
             -exportOptionsPlist ios/ExportOptions.generated.plist \
             -exportPath build/ios/export \
             | tee build/ios/export.log
-          ipa_path="$(find build/ios/export -maxdepth 2 -name '*.ipa' -print -quit)"
-          test -n "$ipa_path"
-          cp "$ipa_path" build/ios/SogrimHashbon.ipa
+          python3 - <<'EXPORT'
+          from pathlib import Path
+          import shutil
+          files = list(Path('build/ios/export').rglob('*.ipa'))
+          if len(files) != 1:
+              raise ValueError('Expected exactly one exported IPA')
+          shutil.copyfile(files[0], 'build/ios/SogrimHashbon.ipa')
+          EXPORT
 
-      - name: Verify signed iOS artifact
+      - name: Verify signed iOS artifact with the existing signature verifier
         run: npm run qa:ios:artifact
 
-      - name: Upload app to TestFlight
-        uses: apple-actions/upload-testflight-build@v5
-        with:
-          app-path: build/ios/SogrimHashbon.ipa
-          app-type: ios
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          # The action retains a ten-minute token throughout polling. Upload only;
-          # the next required step renews authentication and verifies VALID + notes.
-          wait-for-processing: "false"
-          backend: appstore-api
+      - name: Recheck exact source CI and current unused number after export
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$RUNNER_TEMP/sogrim-source-guard.mjs" after-export
 
-      - name: Verify Apple processing and complete TestFlight notes
-        run: node scripts/complete-ios-testflight.mjs
+      - name: Require all packaged web assets, release entitlements and valid distribution profile
+        run: python3 "$RUNNER_TEMP/sogrim-verify-assets.py" verify
+
+      - name: Encrypt only the verified IPA and its evidence for private retention
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          tar -cf "$RUNNER_TEMP/sogrim-ios-release.tar" -C build/ios \
+            SogrimHashbon.ipa release-manifest.json artifact-verification.json \
+            source-before-build.json source-after-export.json web-assets.json Package.resolved
+          node "$RUNNER_TEMP/sogrim-protect-artifact.mjs" encrypt \
+            "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
 
-      - name: Keep IPA and diagnostics for seven days
-        if: always()
+      - name: Retain only encrypted release output for seven days
+        id: private_artifact
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-hashbon-ios-${{ env.IOS_VERSION }}-${{ env.IOS_BUILD }}
+          name: sogrim-ios-4.57-192-379f3c9-encrypted-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            build/ios/SogrimHashbon.ipa
-            build/ios/release-manifest.json
-            build/ios/testflight-completion.json
-            build/ios/*.log
-            test-results/
-            playwright-report/
-          if-no-files-found: warn
+            build/ios/private-artifact/release.tar.enc
+            build/ios/private-artifact/envelope.json
+          if-no-files-found: error
           retention-days: 7
+
+      - name: Record preparation outcome
+        run: |
+          printf '%s\n' \
+            'Signed iOS 4.57 (192) artifact prepared from 379f3c910429b92e4d5b4a21caf895ebaa6f4120.' \
+            'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
+            'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
+            >> "$GITHUB_STEP_SUMMARY"
