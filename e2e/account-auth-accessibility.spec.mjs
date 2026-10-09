@@ -26,7 +26,7 @@ test.beforeEach(async ({ page, baseURL }) => {
   });
 });
 
-test("pre-sign-in accessibility responds to touch and keyboard, persists settings, and leaves terms reachable", async ({ page }, testInfo) => {
+test("pre-sign-in accessibility responds to touch and keyboard and persists settings", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 375, height: 667 });
   await page.goto("/");
   const gate = page.locator("#public-account-auth-gate");
@@ -64,6 +64,26 @@ test("pre-sign-in accessibility responds to touch and keyboard, persists setting
   await expect(page.locator("html")).toHaveAttribute("data-accessibility-text-size", "extra-large");
   await expect(page.locator("html")).toHaveClass(/accessibility-high-contrast/);
   await expect(page.locator("html")).toHaveClass(/accessibility-reduced-motion/);
+  await gate.getByRole("button", { name: "פתיחת הגדרות נגישות" }).click();
+  await expect(center).toBeVisible();
+  await expect(center.locator('[data-accessibility-text-size][value="extra-large"]')).toBeChecked();
+  await expect(center.locator("[data-accessibility-contrast]")).toBeChecked();
+  await expect(center.locator("[data-accessibility-motion]")).toBeChecked();
+});
+
+test("pre-sign-in terms stay reachable and accessibility reopens after return", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.goto("/");
+  const gate = page.locator("#public-account-auth-gate");
+  await expect(gate).toBeVisible();
+  const center = page.getByRole("dialog", { name: "נגישות" });
+  await gate.getByRole("button", { name: "פתיחת הגדרות נגישות" }).click();
+  await expect(center).toBeVisible();
+  await center.locator('[data-accessibility-text-size][value="extra-large"]').check();
+  await center.locator("[data-accessibility-contrast]").check();
+  await center.locator("[data-accessibility-motion]").check();
+  await center.getByRole("button", { name: "סיום" }).click();
+  await expect(center).toBeHidden();
   await gate.locator('.account-auth-legal a[href="./terms.html"]').click();
   await expect(page).toHaveURL(/\/terms\.html$/);
   await expect(page.getByRole("heading", { name: "תנאי שימוש", exact: true })).toBeVisible();
