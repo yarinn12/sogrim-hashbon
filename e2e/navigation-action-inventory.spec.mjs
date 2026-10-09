@@ -141,3 +141,30 @@ test("permission feedback for an unavailable event has no broken review action",
   await expect(summary).toContainText("אין הרשאה לבצע את השינוי");
   await expect(summary.locator('[data-action="open-event"]')).toHaveCount(0);
 });
+
+test("permission feedback arriving after home render keeps its event action stable", async ({ page }) => {
+  await page.goto("/");
+  const home = page.locator('.screen[data-screen-kind="home"]');
+  await expect(home.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first()).toBeVisible();
+  const summary = home.locator("[data-sync-account-summary]");
+  await expect(summary).not.toHaveAttribute("data-sync-account-event-id");
+  await page.evaluate((eventId) => window.dispatchEvent(new CustomEvent("sogrim:sync-status", { detail: {
+    status: "unavailable", pending: true, pendingEventIds: [eventId], failureKind: "permission"
+  } })), EVENT);
+  const review = summary.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`);
+  await expect(summary).toContainText("אירוע ניווט");
+  await expect(review).toHaveCount(1);
+  const stableAfterObserver = await page.evaluate(() => new Promise((resolve) => {
+    const summary = document.querySelector("[data-sync-account-summary]");
+    const button = summary.querySelector('[data-action="open-event"]');
+    const mutation = document.createElement("span");
+    summary.closest(".product-home-screen").append(mutation);
+    setTimeout(() => {
+      resolve(button === summary.querySelector('[data-action="open-event"]'));
+      mutation.remove();
+    }, 100);
+  }));
+  expect(stableAfterObserver).toBe(true);
+  await expect(summary).toContainText("אירוע ניווט");
+  await expect(review).toHaveCount(1);
+});

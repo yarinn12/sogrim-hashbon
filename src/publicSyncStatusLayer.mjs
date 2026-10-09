@@ -363,7 +363,7 @@ function renderAccountPendingSummary(target, message) {
   const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
   const homeEvent = ids.find((id) => id === target.dataset.syncAccountEventId);
   const row = homeEvent ? null : [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
-    .find((button) => ids.includes(button.dataset.eventId));
+    .find((button) => !target.contains(button) && ids.includes(button.dataset.eventId));
   const eventId = homeEvent || row?.dataset.eventId || "";
   const eventName = homeEvent
     ? target.dataset.syncAccountEventName || ""
