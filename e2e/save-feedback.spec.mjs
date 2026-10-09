@@ -33,9 +33,10 @@ async function assertQuietParticipantRoster(page, testInfo, phase) {
   await page.screenshot({ path: testInfo.outputPath(`participant-roster-${phase}.png`), animations: "disabled" });
 }
 // Synthetic backend only: actual app controls, local durable outbox and status UI.
-for (const { status, restart = false, delayedDialogFrame = false, offline = false } of [
+for (const { status, restart = false, delayedDialogFrame = false, offline = false, permissionContext = false } of [
   ...[403, 503, "delayed-success", "transient-recovery", "partial-create", "partial-edit", "partial-delete"].map(status => ({ status })),
   ...[503, "partial-create", "partial-edit", "partial-delete"].map(status => ({ status, restart: true })),
+  { status: "partial-create", restart: true, permissionContext: true },
   ...["receipt-edit", "receipt-delete", "pending-next-fails", "pending-next-recovers"].map(status => ({ status })),
   { status: "pending-next-recovers", delayedDialogFrame: true },
   { status: 503, offline: true }
@@ -44,8 +45,9 @@ const partialRetry = String(status).startsWith("partial-");
 const deleteRetry = status === "partial-delete";
 const receiptConflict = String(status).startsWith("receipt-");
 const pendingFollowup = String(status).startsWith("pending-next-");
+const includeSecondEvent = pendingFollowup || permissionContext;
 const quietRecovery = ["delayed-success", "transient-recovery"].includes(status);
-const testName = pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
+const testName = permissionContext ? "permission summary identifies the pending event, opens it, and clears only after acknowledgement" : pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
 test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
   let writeStatus = 200, canonicalAttempts = 0;
   let competingNoteId = "";
@@ -89,14 +91,14 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     initialState.participants.push({ id: "account-concurrent-peer", displayName: "משתתף נוסף", kind: "user", accountLinked: true });
     initialState.events[0].participantIds.push("account-concurrent-peer");
   }
-  if (pendingFollowup) {
+  if (includeSecondEvent) {
     initialState.events.push({ ...structuredClone(initialState.events[0]),
       id: secondEventId, name: "אירוע שני", sharedSpaceId: secondSharedId, notes: [] });
   }
   let personal = { id: spaceId, state: structuredClone(initialState), updated_at: initialVersion };
   const shared = { id: sharedId, state: structuredClone(initialState), updated_at: initialVersion };
   shared.state.events = [shared.state.events[0]];
-  const secondShared = pendingFollowup ? {
+  const secondShared = includeSecondEvent ? {
     id: secondSharedId, state: { ...structuredClone(initialState), events: [structuredClone(initialState.events[1])] },
     updated_at: initialVersion
   } : null;
@@ -157,7 +159,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     if (url.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
       const payload = request.postDataJSON();
       const writtenEvent = payload.p_state.events[0];
-      const target = pendingFollowup && payload.p_snapshot_id === secondSharedId ? secondShared : shared;
+      const target = includeSecondEvent && payload.p_snapshot_id === secondSharedId ? secondShared : shared;
       if (deleteRetry ? writtenEvent?.deletedNotes?.some(note => note.id === "cache-sync-note")
         : writtenEvent?.notes?.some(note => note.body === "טיוטה שלא תאבד")) canonicalAttempts++;
       if (quietRecovery && canonicalAttempts > 0) {
@@ -376,12 +378,22 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     // personal snapshot may discard the accepted local intent.
     await reloadPage();
     await expect(eventButton).toBeVisible();
+    if (permissionContext) {
+      const summary = page.locator("[data-sync-account-summary]");
+      await expect(summary).toContainText("אין הרשאה לבצע את השינוי");
+      await expect(summary).toContainText("פתקים בסנכרון חסכוני");
+      const reviewButton = summary.locator('[data-action="open-event"]');
+      await expect(reviewButton).toHaveAttribute("data-event-id", eventId);
+      await expect(reviewButton).toBeEnabled();
+      await reviewButton.click();
+      await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+    }
     if (!partialRetry) {
       await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
       await page.waitForTimeout(5_200);
       await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     }
-    await eventButton.click();
+    if (!permissionContext) await eventButton.click();
     if (!partialRetry) {
       // Exercise the participant route with the real outbox restored by boot,
       // not just an injected status event. Navigation must preserve that intent.
@@ -399,6 +411,16 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     // that actionable permission failure from the transient HTTP 503 case.
     if (partialRetry) await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
     else await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    if (permissionContext) {
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+      await expect(page.locator("[data-sync-account-summary]")).toContainText("פתקים בסנכרון חסכוני");
+      await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+      await reloadPage();
+      await expect(page.locator("[data-sync-account-summary]")).toContainText("פתקים בסנכרון חסכוני");
+      await assertLocalIntent();
+    }
     expect(await page.evaluate(() => window.__qaPendingNotices)).toEqual([]);
     await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("save-feedback-pending-restart.png"), fullPage: true, animations: "disabled" });
@@ -409,6 +431,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await reloadPage();
     await expect(eventButton).toBeVisible();
     await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
+    if (permissionContext) await expect(page.locator("[data-sync-account-summary]")).toBeHidden();
     await testInfo.attach("restart-recovery", { contentType: "application/json", body: JSON.stringify({
       status, project: testInfo.project.name, noteId: intent.id,
       recoveredBootMs: Date.now() - recoveryStartedAt,

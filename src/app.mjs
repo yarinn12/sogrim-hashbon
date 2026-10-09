@@ -599,6 +599,7 @@ let runtimeConfig = {
 let eventStatusFilter = "events";
 let eventLifecycleFilter = "all";
 let appHistoryDepth = 0;
+let homeBackNavigationPending = false;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
 let lastRenderedScreenKey = "";
@@ -1260,6 +1261,7 @@ function eventDialogHistoryIdentity(dialog) {
 }
 
 function handleBrowserHistoryBack(event) {
+  homeBackNavigationPending = false;
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
 
@@ -2445,6 +2447,8 @@ function renderHome() {
   );
   const homeTitle = "מה סוגרים היום?";
   const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
+  const pendingHomeEventIds = pendingSharedSyncStatus().pendingEventIds;
+  const pendingHomeEvent = sortedEvents.find((event) => pendingHomeEventIds.includes(event.id));
   const awaitingAuthoritativeEvents =
     sortedEvents.length === 0 &&
     !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
@@ -2472,7 +2476,9 @@ function renderHome() {
             </section>`
       }
 
-      <p class="muted" data-inline-sync-status data-sync-account-summary role="status" aria-live="polite" hidden></p>
+      <p class="muted" data-inline-sync-status data-sync-account-summary
+        ${pendingHomeEvent ? `data-sync-account-event-id="${escapeAttribute(pendingHomeEvent.id)}" data-sync-account-event-name="${escapeAttribute(pendingHomeEvent.name)}"` : ""}
+        role="status" aria-live="polite" hidden></p>
 
       ${
         sortedEvents.length
@@ -14391,6 +14397,13 @@ function goBackInApp() {
     groupDraft = null;
     editingGroupDraft = null;
     mergeParticipantsDraft = null;
+    renderHistoryFallback();
+    return;
+  }
+
+  if (screen.name === "home" && appHistoryDepth > 0) {
+    if (homeBackNavigationPending) return;
+    homeBackNavigationPending = true;
     renderHistoryFallback();
     return;
   }
