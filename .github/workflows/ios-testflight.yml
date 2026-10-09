@@ -38,6 +38,7 @@ jobs:
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: ${{ inputs.version }}
       IOS_BUILD: ${{ inputs.build }}
+      IOS_RELEASE_NOTES: "מועמד 4.57: שיפורי עיצוב, תיקוני התחברות, שמירה והפניות."
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
 
