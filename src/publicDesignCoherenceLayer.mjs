@@ -4705,7 +4705,8 @@ const CSS = `
       display: none !important;
     }
 
-    html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
       padding-block-end: 32px !important;
     }
 
@@ -4809,6 +4810,11 @@ const CSS = `
       gap: 6px !important;
       padding: 6px 8px !important;
       font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
     }
 
     html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions {

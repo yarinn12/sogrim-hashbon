@@ -60,6 +60,21 @@ for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }
     expect(geometry.top).toBeGreaterThanOrEqual(0);
     expect(geometry.bottom, 'home shortcuts must fit above the fixed navigation when the screen opens').toBeLessThanOrEqual(geometry.clipBottom + 1);
     expect(geometry.receivesTap).toBe(true);
+    const create = page.locator('.home-create-event-action');
+    const createGeometry = await recordGeometry(page, create, `home-create-${viewport.width}`, testInfo);
+    expect(createGeometry.height).toBeGreaterThanOrEqual(44);
+    expect(createGeometry.bottom).toBeLessThanOrEqual(createGeometry.clipBottom + 1);
+    expect(createGeometry.receivesTap).toBe(true);
+    const placement = await create.evaluate(element => {
+      const screen = element.closest('.screen');
+      const hero = screen.querySelector(':scope > .top').getBoundingClientRect();
+      const copy = screen.querySelector(':scope > .top .brand').getBoundingClientRect();
+      const button = element.getBoundingClientRect();
+      return { edgeOffset: Math.abs((button.top + button.bottom) / 2 - hero.bottom), copyGap: button.top - copy.bottom };
+    });
+    await testInfo.attach(`home-edge-${viewport.width}`, { contentType: 'application/json', body: JSON.stringify(placement) });
+    expect(placement.edgeOffset).toBeLessThanOrEqual(3);
+    expect(placement.copyGap).toBeGreaterThanOrEqual(0);
   });
 
   test(`landscape event keeps workspace tabs available on opening ${viewport.width}`, async ({ page }, testInfo) => {
