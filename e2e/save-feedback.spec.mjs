@@ -49,7 +49,7 @@ const includeSecondEvent = pendingFollowup || permissionContext;
 const quietRecovery = ["delayed-success", "transient-recovery"].includes(status);
 const testName = permissionContext ? "permission summary identifies the pending event, opens it, and clears only after acknowledgement" : pendingFollowup ? `note ${status} keeps earlier pending work covered by the next event save` : receiptConflict ? `new note ${status} conflict keeps the published identity on retry` : restart ? `note ${status} survives restart during outage and recovers automatically` : partialRetry ? `note ${status} retry confirms one note without duplication` : `note save feedback handles HTTP ${status} without false offline alerts`;
 test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame: " : ""}${testName}`, async ({ page, browserName }, testInfo) => {
-  let writeStatus = 200, canonicalAttempts = 0;
+  let writeStatus = 200, secondSharedStatus = permissionContext ? 403 : 200, canonicalAttempts = 0, personalConflicts = 0;
   let competingNoteId = "";
   const origin = "https://egress-cache-test.supabase.co";
   const userId = "egress-cache-user";
@@ -95,6 +95,17 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     initialState.events.push({ ...structuredClone(initialState.events[0]),
       id: secondEventId, name: "אירוע שני", sharedSpaceId: secondSharedId, notes: [] });
   }
+  const permissionPending = permissionContext ? structuredClone(initialState) : null;
+  if (permissionPending) {
+    permissionPending.events[1].notes.push({
+      id: "pending-permission-note", title: "דורש הרשאה", body: "שינוי שממתין להרשאה",
+      pinned: false, createdByParticipantId: participantId, updatedByParticipantId: participantId,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
+    permissionPending.__pendingSync = {
+      version: 1, selection: { eventIds: [secondEventId], deletedEventIds: [] }
+    };
+  }
   let personal = { id: spaceId, state: structuredClone(initialState), updated_at: initialVersion };
   const shared = { id: sharedId, state: structuredClone(initialState), updated_at: initialVersion };
   shared.state.events = [shared.state.events[0]];
@@ -103,6 +114,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     updated_at: initialVersion
   } : null;
   const reads = [];
+  const canonicalWrites = [], personalAttempts = [];
   const errors = [];
   const reloadDiagnostics = [];
   let reloading = false;
@@ -170,14 +182,23 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
         // immediate retries, then delivers inside the bounded quiet window.
         await delay(2_500);
       }
-      // One canonical commit followed by a failed personal write and rejected
-      // immediate canonical retry creates genuine partial progress in the store.
-      if (writeStatus === "partial") {
-        if (canonicalAttempts > 1) return reply({ message: "Synthetic later rejection" }, { status: 403 });
-      } else if (writeStatus !== 200 && target !== secondShared) return reply({ message: "Synthetic rejection" }, { status: writeStatus });
+      if (permissionContext && target === secondShared && secondSharedStatus !== 200) {
+        return reply({ message: "Synthetic pending sibling lacks permission" }, { status: secondSharedStatus });
+      }
+      // The shared write commits once. A later personal failure must retain
+      // that receipt without requiring another canonical publication. Reject
+      // a duplicate so the test catches a false "unconfirmed note" warning.
+      if (partialRetry && !permissionContext && canonicalAttempts > 1) {
+        return reply({ message: "Synthetic duplicate shared write rejected" }, { status: 403 });
+      }
+      if (writeStatus !== 200 && writeStatus !== "partial" && target !== secondShared) {
+        return reply({ message: "Synthetic rejection" }, { status: writeStatus });
+      }
       target.state = payload.p_state;
       target.updated_at = new Date().toISOString();
-      return reply({ status: "updated", updatedAt: target.updated_at });
+      const receipt = { status: "updated", updatedAt: target.updated_at };
+      canonicalWrites.push({ snapshotId: payload.p_snapshot_id, state: structuredClone(payload.p_state), receipt });
+      return reply(receipt);
     }
     if (url.pathname.endsWith("/app_snapshots")) {
       if (request.method() === "GET") {
@@ -202,11 +223,20 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
           : updateEventNote(shared.state, eventId, competingNoteId, { participantId: "account-concurrent-peer", body: "שינוי מהמכשיר השני", updatedAt: changedAt });
         shared.updated_at = changedAt;
         personal = { ...personal, state: structuredClone(shared.state), updated_at: changedAt };
+        personalAttempts.push({ body: structuredClone(body), status: 503 });
         return reply({ message: "Synthetic personal response lost after peer update" }, { status: 503 });
       }
+      const expectedVersion = url.searchParams.get("updated_at")?.replace(/^eq\./, "");
+      if (expectedVersion && expectedVersion !== personal.updated_at) {
+        personalConflicts++;
+        personalAttempts.push({ body: structuredClone(body), status: 200, casConflict: true });
+        return reply([]);
+      }
       if (writeStatus === "partial" && canonicalAttempts > 0) {
+        personalAttempts.push({ body: structuredClone(body), status: 503 });
         return reply({ message: "Synthetic personal outage" }, { status: 503 });
       }
+      personalAttempts.push({ body: structuredClone(body), status: 200 });
       if (body?.state && url.searchParams.get("id") !== `eq.${sharedId}`) {
         personal = { ...personal, state: body.state, updated_at: body.updated_at || new Date().toISOString() };
       }
@@ -224,7 +254,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     if (request.method() === "GET") return reply([]);
     return route.fulfill({ headers, status: 204 });
   });
-  await page.addInitScript(({ user, state, spaceId, spaceKey }) => {
+  await page.addInitScript(({ user, state, spaceId, spaceKey, permissionPending }) => {
     // Seed this isolated browser once; restarting must exercise the app's own
     // durable snapshot/outbox, not silently reset it to the fixture.
     if (localStorage.getItem("qa-note-save-seeded")) return;
@@ -240,11 +270,12 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     localStorage.setItem("settle-friends-cloud-space", spaceId);
     localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
     localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(state));
+    if (permissionPending) localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(permissionPending));
     localStorage.setItem(`settle-friends-current-participant:account:${encodeURIComponent(user.id)}`,
       `account-${user.id}`);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
     localStorage.setItem("qa-note-save-seeded", "1");
-  }, { user, state: initialState, spaceId, spaceKey });
+  }, { user, state: initialState, spaceId, spaceKey, permissionPending });
 
 
   const dynamicType = (offline || (restart && !partialRetry))
@@ -339,6 +370,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
   } else if (receiptConflict) {
     await expect(page.locator(".event-note-modal")).toContainText("השינוי שלך לא נשמר");
     expect(competingNoteId).toBeTruthy();
+    expect(personalConflicts).toBeGreaterThan(0);
     const attemptsBeforeRetry = canonicalAttempts;
     await page.locator('[data-action="save-event-note"]').click();
     await expect(page.locator('[data-action="save-event-note"]')).toBeEnabled();
@@ -355,15 +387,48 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
         expect(event.notes.find(note => note.id === competingNoteId).body).toBe("שינוי מהמכשיר השני");
       }
     }
+    expect(personalAttempts.some(attempt => attempt.status === 200 && !attempt.casConflict &&
+      (status === "receipt-delete"
+        ? attempt.body.state.events[0].deletedNotes.some(note => note.id === competingNoteId)
+        : attempt.body.state.events[0].notes.some(note => note.id === competingNoteId && note.body === "שינוי מהמכשיר השני")))).toBe(true);
   } else if (restart) {
-    if (partialRetry) await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
-    else await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
     const pendingBefore = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+    if (permissionContext) {
+      expect(pendingBefore.__pendingSync.selection.eventIds).toContain(secondEventId);
+      expect(pendingBefore.events.find(event => event.id === secondEventId).notes
+        .some(note => note.id === "pending-permission-note")).toBe(true);
+      expect(secondShared.state.events[0].notes.some(note => note.id === "pending-permission-note")).toBe(false);
+      expect(canonicalWrites.some(write => write.snapshotId === sharedId && write.receipt.status === "updated" &&
+        write.state.events[0].notes.some(note => note.body === "טיוטה שלא תאבד"))).toBe(true);
+    }
+    if (partialRetry && !permissionContext) {
+      expect(pendingBefore.__pendingSync.selection).toEqual({ eventIds: [], deletedEventIds: [] });
+      expect(canonicalAttempts).toBe(1);
+      expect(canonicalWrites.filter(write => write.snapshotId === sharedId && (deleteRetry
+        ? write.state.events[0].deletedNotes.some(note => note.id === "cache-sync-note")
+        : write.state.events[0].notes.some(note => note.body === "טיוטה שלא תאבד")))).toHaveLength(1);
+      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    }
     const pendingEvent = pendingBefore.events.find(event => event.id === eventId);
     const intent = structuredClone(deleteRetry
       ? pendingEvent.deletedNotes.find(note => note.id === "cache-sync-note")
       : pendingEvent.notes.find(note => note.body === "טיוטה שלא תאבד"));
     expect(intent?.id).toBeTruthy();
+    const personalAttemptContainsIntent = attempt => {
+      const event = attempt.body.state.events.find(event => event.id === eventId);
+      return deleteRetry
+        ? event?.deletedNotes.some(note => note.id === intent.id && note.deletedAt === intent.deletedAt)
+        : event?.notes.some(note => note.id === intent.id && note.body === intent.body);
+    };
+    if (partialRetry && !permissionContext) {
+      const failedPersonalWrites = personalAttempts.filter(personalAttemptContainsIntent);
+      expect(failedPersonalWrites.length).toBeGreaterThan(0);
+      expect(failedPersonalWrites.every(attempt => attempt.status === 503)).toBe(true);
+      expect(canonicalWrites.find(write => write.snapshotId === sharedId && (deleteRetry
+        ? write.state.events[0].deletedNotes.some(note => note.id === intent.id && note.deletedAt === intent.deletedAt)
+        : write.state.events[0].notes.some(note => note.id === intent.id && note.body === intent.body)))?.receipt.status).toBe("updated");
+    }
     const assertLocalIntent = async () => {
       const pending = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
       const event = pending?.events.find(event => event.id === eventId);
@@ -381,9 +446,9 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     if (permissionContext) {
       const summary = page.locator("[data-sync-account-summary]");
       await expect(summary).toContainText("אין הרשאה לבצע את השינוי");
-      await expect(summary).toContainText("פתקים בסנכרון חסכוני");
+      await expect(summary).toContainText("אירוע שני");
       const reviewButton = summary.locator('[data-action="open-event"]');
-      await expect(reviewButton).toHaveAttribute("data-event-id", eventId);
+      await expect(reviewButton).toHaveAttribute("data-event-id", secondEventId);
       await expect(reviewButton).toBeEnabled();
       await reviewButton.click();
       await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
@@ -393,8 +458,12 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
       await page.waitForTimeout(5_200);
       await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     }
-    if (!permissionContext) await eventButton.click();
-    if (!partialRetry) {
+    if (permissionContext) {
+      await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
+      await page.getByRole("button", { name: "בית", exact: true }).click();
+    }
+    await eventButton.click();
+    if (!permissionContext) {
       // Exercise the participant route with the real outbox restored by boot,
       // not just an injected status event. Navigation must preserve that intent.
       await page.locator('[data-action="open-event-participants"]').click();
@@ -407,31 +476,38 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await assertLocalIntent();
     if (deleteRetry) await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toHaveCount(0);
     else await expect(page.locator(`.event-note-open[data-note-id="${intent.id}"]`)).toContainText("טיוטה שלא תאבד");
-    // Partial fixtures now reject shared writes with HTTP 403; distinguish
-    // that actionable permission failure from the transient HTTP 503 case.
-    if (partialRetry) await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
-    else await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     if (permissionContext) {
       await page.getByRole("button", { name: "בית", exact: true }).click();
-      await expect(page.locator("[data-sync-account-summary]")).toContainText("פתקים בסנכרון חסכוני");
+      await expect(page.locator("[data-sync-account-summary]")).toContainText("אירוע שני");
       await page.locator(`[data-action="open-event"][data-event-id="${secondEventId}"]`).first().click();
-      await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
+      await expect(page.locator("[data-inline-sync-status]:visible").first()).toContainText("אין הרשאה לבצע את השינוי");
       await page.getByRole("button", { name: "בית", exact: true }).click();
       await reloadPage();
-      await expect(page.locator("[data-sync-account-summary]")).toContainText("פתקים בסנכרון חסכוני");
+      await expect(page.locator("[data-sync-account-summary]")).toContainText("אירוע שני");
       await assertLocalIntent();
     }
     expect(await page.evaluate(() => window.__qaPendingNotices)).toEqual([]);
     await expect(page.locator(".public-sync-status:visible")).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath("save-feedback-pending-restart.png"), fullPage: true, animations: "disabled" });
     writeStatus = 200;
+    if (permissionContext) secondSharedStatus = 200;
     // A fresh boot after recovery must deliver without an imported store call
     // or a second Save/Delete click.
     const recoveryStartedAt = Date.now();
     await reloadPage();
     await expect(eventButton).toBeVisible();
     await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
+    if (partialRetry && !permissionContext) {
+      expect(canonicalAttempts).toBe(1);
+      expect(personalAttempts.some(attempt => attempt.status === 200 && personalAttemptContainsIntent(attempt))).toBe(true);
+    }
     if (permissionContext) await expect(page.locator("[data-sync-account-summary]")).toBeHidden();
+    if (permissionContext) {
+      expect(secondShared.state.events[0].notes.filter(note => note.id === "pending-permission-note")).toHaveLength(1);
+      expect(personal.state.events.find(event => event.id === secondEventId).notes
+        .filter(note => note.id === "pending-permission-note")).toHaveLength(1);
+    }
     await testInfo.attach("restart-recovery", { contentType: "application/json", body: JSON.stringify({
       status, project: testInfo.project.name, noteId: intent.id,
       recoveredBootMs: Date.now() - recoveryStartedAt,
@@ -451,33 +527,58 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await page.locator('[data-action="open-event-notes"]').click();
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
   } else if (deleteRetry) {
-    await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור למחיקת");
-    await expect(page.locator('[data-action="save-event-note"]')).toBeDisabled();
-    await expect(page.locator('[data-action="event-note-body"]')).toHaveAttribute("readonly", "");
-    expect(canonicalAttempts).toBeGreaterThanOrEqual(2);
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    expect(canonicalAttempts).toBe(1);
+    const deletionWrites = canonicalWrites.filter(write => write.snapshotId === sharedId &&
+      write.state.events[0].deletedNotes.some(note => note.id === "cache-sync-note"));
+    expect(deletionWrites).toHaveLength(1);
+    expect(deletionWrites[0].receipt.status).toBe("updated");
     const tombstone = structuredClone(shared.state.events[0].deletedNotes.find(note => note.id === "cache-sync-note"));
+    expect(tombstone?.id).toBe("cache-sync-note");
+    expect(deletionWrites[0].state.events[0].deletedNotes).toContainEqual(tombstone);
+    const tombstonePersonalAttempts = personalAttempts.filter(attempt =>
+      attempt.body.state.events[0].deletedNotes.some(note => note.id === tombstone.id));
+    expect(tombstonePersonalAttempts.length).toBeGreaterThan(0);
+    expect(tombstonePersonalAttempts.every(attempt => attempt.status === 503)).toBe(true);
+    const pending = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+    expect(pending.__pendingSync.selection).toEqual({ eventIds: [], deletedEventIds: [] });
+    expect(pending.events[0].deletedNotes).toContainEqual(tombstone);
+    expect(personal.state.events[0].notes.some(note => note.id === tombstone.id)).toBe(true);
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     const attemptsBeforeRetry = canonicalAttempts;
     writeStatus = 200;
-    await page.locator('[data-action="request-delete-event-note"]').click();
-    await page.locator('[data-action="confirm-important-action"]').click();
+    const outcome = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).flushPendingSharedState());
+    expect(outcome.ok).toBe(true);
     await expect(page.locator(".event-note-modal")).toHaveCount(0);
     await expect(page.locator(".important-action-dialog")).toHaveCount(0);
-    expect(canonicalAttempts).toBeGreaterThan(attemptsBeforeRetry);
+    expect(canonicalAttempts).toBe(attemptsBeforeRetry);
     expect(shared.state.events[0].notes.some(note => note.id === "cache-sync-note")).toBe(false);
     expect(shared.state.events[0].deletedNotes.filter(note => note.id === "cache-sync-note")).toEqual([tombstone]);
     expect(personal.state.events[0].notes.some(note => note.id === "cache-sync-note")).toBe(false);
     await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBeNull();
     await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
   } else if (partialRetry) {
-    await expect(page.locator(".event-note-modal")).toContainText("עדיין לא התקבל אישור");
-    await expect(page.locator('[data-action="event-note-body"]')).toHaveValue("טיוטה שלא תאבד");
-    expect(canonicalAttempts).toBeGreaterThanOrEqual(2);
+    await expect(page.locator(".event-note-modal")).toHaveCount(0);
+    expect(canonicalAttempts).toBe(1);
+    const noteWrites = canonicalWrites.filter(write => write.snapshotId === sharedId &&
+      write.state.events[0].notes.some(note => note.body === "טיוטה שלא תאבד"));
+    expect(noteWrites).toHaveLength(1);
+    expect(noteWrites[0].receipt.status).toBe("updated");
     const attemptedId = shared.state.events[0].notes.find(note => note.body === "טיוטה שלא תאבד").id;
+    const notePersonalAttempts = personalAttempts.filter(attempt =>
+      attempt.body.state.events[0].notes.some(note => note.id === attemptedId && note.body === "טיוטה שלא תאבד"));
+    expect(notePersonalAttempts.length).toBeGreaterThan(0);
+    expect(notePersonalAttempts.every(attempt => attempt.status === 503)).toBe(true);
+    const pending = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+    expect(pending.__pendingSync.selection).toEqual({ eventIds: [], deletedEventIds: [] });
+    expect(pending.events[0].notes.find(note => note.id === attemptedId)?.body).toBe("טיוטה שלא תאבד");
+    expect(personal.state.events[0].notes.find(note => note.id === attemptedId)?.body).not.toBe("טיוטה שלא תאבד");
+    await expect(page.locator("[data-inline-sync-status]:visible")).toHaveCount(0);
     const attemptsBeforeRetry = canonicalAttempts;
     writeStatus = 200;
-    await page.locator('[data-action="save-event-note"]').click();
-    await expect(page.locator(".event-note-modal")).toHaveCount(0);
-    expect(canonicalAttempts).toBeGreaterThan(attemptsBeforeRetry);
+    const outcome = await page.evaluate(async () => (await import("/src/data/localStore.mjs")).flushPendingSharedState());
+    expect(outcome.ok).toBe(true);
+    expect(canonicalAttempts).toBe(attemptsBeforeRetry);
     const savedNotes = shared.state.events[0].notes.filter(note => note.body === "טיוטה שלא תאבד");
     expect(savedNotes).toHaveLength(1);
     expect(savedNotes[0].id).toBe(attemptedId);
