@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
+import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
 
 test.use({ serviceWorkers: "block" });
 const OWNER = "person-event-pins-owner";
@@ -74,7 +75,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   page.on("pageerror", error => errors.push(error.message));
   await seed(page);
   await order(page, [NEW, OLD, CLOSED]);
-  const before = await (await request.get("/api/state")).json();
+  const before = await (await readLocalQaState(request, test.info().project.use.baseURL)).json();
   const localEventsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events);
   for (let attempt = 0; attempt < 3; attempt++) {
     await pin(page, OLD, true);
@@ -92,7 +93,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   await order(page, [OLD, NEW, CLOSED]);
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
   // Personal ordering must never modify the shared event, note pins or activity.
-  expect(await (await request.get("/api/state")).json()).toEqual(before);
+  expect(await (await readLocalQaState(request, test.info().project.use.baseURL)).json()).toEqual(before);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events)).toEqual(localEventsBefore);
   expect(errors).toEqual([]);
 });
@@ -208,17 +209,21 @@ test("personal pins survive incoming event changes and do not affect another par
     updated.events.find(event => event.id === OLD).name = "השם עודכן ממכשיר אחר";
     updated.events.find(event => event.id === OLD).settingsUpdatedAt = new Date().toISOString();
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toContainText("השם עודכן ממכשיר אחר");
     await order(page, [OLD, NEW, CLOSED]);
     await expect(row(page, CLOSED).locator(".event-note-pin")).toHaveCount(0);
     updated.events = updated.events.filter(event => event.id !== OLD);
     updated.deletedEvents.push({ id: OLD, deletedAt: new Date().toISOString(), deletedByParticipantId: updated.currentParticipantId });
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toHaveCount(0);
     await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
     expect(cloud.reads.some(snapshot => snapshot.state.events.some(event => event.name === "השם עודכן ממכשיר אחר"))).toBe(true);
+    if (cloud.diagnostics.length) await test.info().attach("webkit-document-replacement-diagnostics", {
+      contentType: "application/json",
+      body: JSON.stringify(cloud.diagnostics.map(({ url, stack, reason }) => ({ url, stack, reason })))
+    });
     expect(cloud.errors).toEqual([]);
   } finally { await other.close(); }
 });

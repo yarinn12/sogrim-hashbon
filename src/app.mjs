@@ -599,6 +599,7 @@ let runtimeConfig = {
 let eventStatusFilter = "events";
 let eventLifecycleFilter = "all";
 let appHistoryDepth = 0;
+let homeBackNavigationPending = false;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
 let lastRenderedScreenKey = "";
@@ -1260,6 +1261,7 @@ function eventDialogHistoryIdentity(dialog) {
 }
 
 function handleBrowserHistoryBack(event) {
+  homeBackNavigationPending = false;
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
 
@@ -2445,6 +2447,8 @@ function renderHome() {
   );
   const homeTitle = "מה סוגרים היום?";
   const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
+  const pendingHomeEventIds = pendingSharedSyncStatus().pendingEventIds;
+  const pendingHomeEvent = sortedEvents.find((event) => pendingHomeEventIds.includes(event.id));
   const awaitingAuthoritativeEvents =
     sortedEvents.length === 0 &&
     !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
@@ -2472,7 +2476,9 @@ function renderHome() {
             </section>`
       }
 
-      <p class="muted" data-inline-sync-status data-sync-account-summary role="status" aria-live="polite" hidden></p>
+      <p class="muted" data-inline-sync-status data-sync-account-summary
+        ${pendingHomeEvent ? `data-sync-account-event-id="${escapeAttribute(pendingHomeEvent.id)}" data-sync-account-event-name="${escapeAttribute(pendingHomeEvent.name)}"` : ""}
+        role="status" aria-live="polite" hidden></p>
 
       ${
         sortedEvents.length
@@ -8054,7 +8060,7 @@ function eventInviteUrl(eventId) {
     runtimeConfig.storage?.mode === "supabase" ||
     Boolean(eventShareCredentials(event)) ||
     Boolean(inviteToken);
-  const referralCode = currentReferralInviteCode();
+  const referralCode = currentReferralInviteCode(event);
   return buildEventInviteUrl(
     runtimePublicOrigin(runtimeConfig),
     eventId,
@@ -8068,8 +8074,14 @@ function eventInviteUrl(eventId) {
   );
 }
 
-function currentReferralInviteCode() {
-  return normalizeReferralCode(
+function currentReferralInviteCode(event) {
+  const scope = openInviteTokenScope(runtimeConfig, event);
+  const verifiedInvite = eventOpenInviteRuntimeTokens.get(String(event?.id ?? ""));
+  const verifiedReferralCode = verifiedInvite && scope &&
+    verifiedInvite.storageKey === scope.storageKey
+    ? normalizeReferralCode(verifiedInvite.referralCode)
+    : "";
+  return verifiedReferralCode || normalizeReferralCode(
     globalThis.SogrimMonetization?.status?.referralCode
   );
 }
@@ -14389,6 +14401,13 @@ function goBackInApp() {
     return;
   }
 
+  if (screen.name === "home" && appHistoryDepth > 0) {
+    if (homeBackNavigationPending) return;
+    homeBackNavigationPending = true;
+    renderHistoryFallback();
+    return;
+  }
+
   if (screen.name !== "home") {
     const clearedInviteRoute = clearInviteRouteFromAddress();
     if (clearedInviteRoute) appHistoryDepth = 0;
@@ -18892,7 +18911,11 @@ async function prepareEventShareWithCurrentSession(
       }
     }
     const sharedEvent = getEvent(eventId);
-    rememberEventOpenInviteToken(eventId, openInvite.token);
+    rememberEventOpenInviteToken(
+      eventId,
+      openInvite.token,
+      openInvite.referralCode
+    );
     if (!attachOpenInviteToken(sharedEvent, openInvite.token)) {
       throw new Error("Open event invitation could not be attached");
     }
@@ -19007,7 +19030,11 @@ async function rotateCurrentEventInvite(eventId) {
       eventId
     );
     replacementCreated = true;
-    rememberEventOpenInviteToken(eventId, replacement.token);
+    rememberEventOpenInviteToken(
+      eventId,
+      replacement.token,
+      replacement.referralCode
+    );
     if (!attachOpenInviteToken(event, replacement.token)) {
       throw new Error("Open event invitation could not be attached");
     }
@@ -19072,19 +19099,27 @@ function currentEventOpenInviteToken(event) {
   return null;
 }
 
-function rememberEventOpenInviteToken(eventId, token) {
+function rememberEventOpenInviteToken(eventId, token, serverReferralCode = "") {
   const event = getEvent(eventId);
   const normalizedToken = eventOpenInviteToken({ openInviteToken: token });
   const scope = openInviteTokenScope(runtimeConfig, event);
   if (!event || !scope || !normalizedToken) return false;
+  const existingRecord = eventOpenInviteRuntimeTokens.get(eventId);
+  const referralCode = normalizeReferralCode(serverReferralCode) ||
+    (existingRecord?.storageKey === scope.storageKey
+      ? normalizeReferralCode(existingRecord.referralCode)
+      : "");
   const storedRecord = saveVerifiedOpenInviteToken(
     runtimeConfig,
     event,
-    normalizedToken
+    normalizedToken,
+    undefined,
+    { referralCode }
   );
   eventOpenInviteRuntimeTokens.set(eventId, storedRecord ?? {
     ...scope,
     token: normalizedToken,
+    referralCode,
     verifiedAt: new Date().toISOString()
   });
   return true;

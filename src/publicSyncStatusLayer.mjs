@@ -343,7 +343,11 @@ function syncInlineStatusTargets() {
     const eventId = target.dataset.syncEventId;
     const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
     const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
-    if (target.textContent !== message) target.textContent = message;
+    if (target.dataset.syncAccountSummary !== undefined) {
+      renderAccountPendingSummary(target, message);
+    } else if (target.textContent !== message) {
+      target.textContent = message;
+    }
     target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");
     if (routeStatus) routeStatus.hidden = !message;
@@ -353,6 +357,37 @@ function syncInlineStatusTargets() {
     button.hidden = true;
   });
   syncMutationControls();
+}
+
+function renderAccountPendingSummary(target, message) {
+  const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
+  const homeEvent = ids.find((id) => id === target.dataset.syncAccountEventId);
+  const row = homeEvent ? null : [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
+    .find((button) => !target.contains(button) && ids.includes(button.dataset.eventId));
+  const eventId = homeEvent || row?.dataset.eventId || "";
+  const eventName = homeEvent
+    ? target.dataset.syncAccountEventName || ""
+    : row?.querySelector(".event-row-title strong, .recent-event-main strong")?.textContent?.trim() || "";
+  const key = JSON.stringify([message, ids.length, eventId, eventName]);
+  if (target.dataset.syncSummaryKey === key) return;
+  target.dataset.syncSummaryKey = key;
+  target.replaceChildren();
+  if (!message) return;
+
+  const context = ids.length > 1
+    ? `שינויים ב־${ids.length} אירועים ממתינים לשמירה. `
+    : eventName ? `השינוי באירוע ״${eventName}״ ממתין לשמירה. `
+      : ids.length === 1 ? "שינוי באירוע ממתין לשמירה. " : "שמירת החשבון ממתינה. ";
+  target.append(document.createTextNode(`${context}${message}`));
+  if (!eventId || !eventName) return;
+  const review = document.createElement("button");
+  review.type = "button";
+  review.className = "pending-sync-review";
+  review.dataset.action = "open-event";
+  review.dataset.eventId = eventId;
+  review.textContent = "בדקו את האירוע";
+  review.setAttribute("aria-label", `פתיחת האירוע ${eventName} לבדיקת השינוי הממתין`);
+  target.append(document.createTextNode(" "), review);
 }
 
 function syncMutationControls() {
@@ -446,6 +481,23 @@ function injectStyles() {
     }
 
     [data-inline-sync-status][hidden] { display: none !important; }
+    [data-sync-account-summary] .pending-sync-review {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      min-height: 44px;
+      padding: 6px 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    [data-sync-account-summary] .pending-sync-review:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
 
     .event-route-sync-status {
       display: flex;

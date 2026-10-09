@@ -1,6 +1,6 @@
 # ממשל מידע ומוכנות משפטית להשקה
 
-עודכן: 31 באוגוסט 2026
+בסיס המסמך: 31 באוגוסט 2026. עדכון ממוקד ב־08.10.2026: התאמת סעיפי Contacts לגרף החברתי שנשמר בענן. יתר הסעיפים לא עברו כאן בדיקה משפטית חדשה.
 
 המסמך מרכז את המידע שנדרש לתפעול אחראי של "סוגרים חשבון". הוא מסמך עבודה פנימי ואינו מחליף ייעוץ משפטי פרטני.
 
@@ -77,7 +77,7 @@
 
 ### Google Play
 
-- Data Safety: לסמן Name, Email, User IDs, Other financial info, Other user-generated content, App interactions, Push token/device ID, וכן Contacts עבור שם יחיד שנבחר אופציונלית באמצעות בוחר המערכת.
+- Data Safety: לסמן Name, Email, User IDs, Other financial info, Other user-generated content, App interactions, Push token/device ID, וכן Contacts עבור קשרי החברות וגרף המשתתפים שנשמרים בענן. אין בוחר אנשי קשר או גישה לספר הטלפונים. פירוט הנתונים והמטרות ב־`docs/store-submission/google-play-data-safety-he.md`; יש לאמת את הטופס ב־Play Console מול המועמד שנשלח.
 - Ads: לסמן שהאפליקציה מכילה מודעות אם AdMob ארוז בגרסה, גם אם ההצגה נשלטת מרחוק.
 - Account deletion URL: `https://sogrim-hesbon-app.vercel.app/account-deletion`.
 - Target audience: לא לבחור Kids/ילדים; להשיב לפי קהל היעד האמיתי.
@@ -87,11 +87,13 @@
 ### App Store Connect
 
 - Privacy Policy URL בתוך המטא-דאטה ובאפליקציה.
-- App Privacy: Name, Email, User ID, Other Financial Info, Other User Content, Diagnostics והנתונים הרלוונטיים של ספקים; Contacts רק אם יכולת אנשי הקשר תיכלל גם ב-iOS.
+- App Privacy: להתאים את הסוגים והמטרות ל־`docs/store-submission/apple-app-privacy-he.md` ול־`ios/App/App/PrivacyInfo.xcprivacy`. Contacts כבר נכלל עבור קשרי החברות וגרף המשתתפים שמקושרים לחשבון, ללא גישה לספר הטלפונים. יש לאמת שהצהרת App Store Connect תואמת גם היא לחבילה שנשלחת.
 - Account deletion בתוך האפליקציה.
 - Sign in with Apple כאשר מוצעת כניסה חיצונית אחרת ובהתאם לדרישות Apple.
 - App Review: חשבון בדיקה, הוראות הצטרפות לאירוע וקישור או QR לדוגמה.
 - להשלים DSA trader status, דירוג גיל, Content Rights ונגישות בהתאם לסטטוס האמיתי של המפעיל.
+
+הגדרות Contacts של [Google Play](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en) ושל [Apple](https://developer.apple.com/app-store/app-privacy-details/) כוללות גרף חברתי. התאמת הסיווג כאן מבוססת על קשרי החברות וחברי האירועים שכבר נשמרים בקוד, ואינה הוספת איסוף או הרשאה.
 
 ## בדיקה ישראלית לפני השקה ציבורית
 

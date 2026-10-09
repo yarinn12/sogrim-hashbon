@@ -70,6 +70,7 @@ for (const kind of ["new note", "edited note", "edited expense"]) {
       const navigation = page.waitForEvent("framenavigated", { predicate: frame => frame === page.mainFrame() });
       await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
       await navigation;
+      await page.waitForLoadState("load", { timeout: 8000 });
       await openEditor(page, kind);
       await expect(field).toHaveValue(text);
       if (kind !== "edited expense") {

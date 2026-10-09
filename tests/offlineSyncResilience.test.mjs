@@ -564,11 +564,14 @@ test("shared-event mutations reach the canonical event before the personal works
     localStore.indexOf("async function withFreshCloudAccount")
   );
   const prioritizedSync = persist.indexOf(
-    "? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)"
+    "? await syncSharedEvents(config, state, globalThis.fetch, initialSyncSelection)"
   );
   const workspaceSave = persist.indexOf("initialSave = await saveCloudStateWithRetry(");
 
   assert.match(persist, /const prioritizeSharedEventWrite = Boolean\(/);
+  assert.match(persist, /const initialSyncSelection = sharedWriteAlreadyConfirmed\s*\? \{ eventIds: \[\], deletedEventIds: \[\] \}\s*: syncSelection;/,
+    "only a prior canonical acknowledgement may skip its shared retry");
+  assert.match(persist, /const sharedWriteAlreadyConfirmed = Boolean\(error\.sharedEventPersisted && error\.persistedState\);/);
   assert.ok(prioritizedSync >= 0, "shared mutations have an explicit canonical-first path");
   assert.ok(
     prioritizedSync < workspaceSave,

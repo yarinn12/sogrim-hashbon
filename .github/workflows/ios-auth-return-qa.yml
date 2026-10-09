@@ -19,8 +19,8 @@ jobs:
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
-      IOS_VERSION: "4.55"
-      IOS_BUILD: "191"
+      IOS_VERSION: "4.57"
+      IOS_BUILD: "192"
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@v6

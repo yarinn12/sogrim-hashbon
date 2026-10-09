@@ -467,6 +467,28 @@ test("participant identity uses colored or grayscale pictures without status dot
   await expect(editor.locator('[data-action="expense-payer-id"]').first()).toHaveValue("person-ariel");
 });
 
+test("choosing a profile picture keeps its selection clear without a green dot", async ({ page }) => {
+  await page.locator('.product-app-nav [data-nav-destination="profile"]').click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  const picker = page.locator('.profile-avatar-picker-shell');
+  if (await picker.count()) await picker.locator(':scope > summary').click();
+
+  const selected = page.locator('.profile-avatar-option:has(input:checked) .profile-avatar-preview');
+  await expect(selected).toHaveCount(1);
+  const marker = () => selected.evaluate(element => getComputedStyle(element, '::after').content);
+  expect(await marker(), 'the selected profile picture must have no dot').toBe('none');
+
+  await page.locator('.profile-avatar-option').nth(1).click();
+  await expect(page.locator('.profile-avatar-option').nth(1).locator('input')).toBeChecked();
+  expect(await marker(), 'changing pictures must not restore a dot').toBe('none');
+  // A later design layer chooses the exact brand shade; compare the selected ring with an unselected picture.
+  const border = await selected.evaluate(element => getComputedStyle(element).borderColor);
+  const unselectedBorder = await page.locator('.profile-avatar-option:not(:has(input:checked)) .profile-avatar-preview')
+    .first().evaluate(element => getComputedStyle(element).borderColor);
+  expect(border, 'the selected picture keeps a visible selection ring').not.toBe(unselectedBorder);
+  expect(border).not.toBe('rgba(0, 0, 0, 0)');
+});
+
 test("payer choices open after a normal held pointer press", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   const expense = page.locator('[data-expense-id="expense-taxi"]');
@@ -509,20 +531,34 @@ test("another person's picture alone opens shared statistics while editable text
   await expect(currentParticipantAvatar).toHaveAttribute("aria-label", "פתיחת הפרופיל שלך");
   const currentParticipantAvatarImage = currentParticipantAvatar.locator("img");
   await expect(currentParticipantAvatarImage).toBeVisible();
-  const currentParticipantAvatarRendering = await currentParticipantAvatar.evaluate((avatar) => {
-    const image = avatar.querySelector("img");
-    const imageStyle = image ? getComputedStyle(image) : null;
-    const interactionTargetStyle = getComputedStyle(avatar, "::before");
-    const statusMarkerStyle = getComputedStyle(avatar, "::after");
-    return {
-      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
-      imageDisplay: imageStyle?.display,
-      imageVisibility: imageStyle?.visibility,
-      interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
-      interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
-      statusMarkerContent: statusMarkerStyle.content
-    };
-  });
+  // Hold this already-visible image back for the first rendering sample. An
+  // image element can be visible before its bytes arrive and decode.
+  const avatarSource = await currentParticipantAvatarImage.getAttribute("src");
+  await currentParticipantAvatarImage.evaluate((image) => image.removeAttribute("src"));
+  let sampledBeforeRestore = false;
+  const readAvatarRendering = async () => {
+    const rendering = await currentParticipantAvatar.evaluate((avatar) => {
+      const image = avatar.querySelector("img");
+      const imageStyle = image ? getComputedStyle(image) : null;
+      const interactionTargetStyle = getComputedStyle(avatar, "::before");
+      const statusMarkerStyle = getComputedStyle(avatar, "::after");
+      return {
+        imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+        imageDisplay: imageStyle?.display,
+        imageVisibility: imageStyle?.visibility,
+        interactionTargetWidth: Number.parseFloat(interactionTargetStyle.width),
+        interactionTargetHeight: Number.parseFloat(interactionTargetStyle.height),
+        statusMarkerContent: statusMarkerStyle.content
+      };
+    });
+    if (!sampledBeforeRestore) {
+      sampledBeforeRestore = true;
+      await currentParticipantAvatarImage.evaluate((image, source) => image.setAttribute("src", source), avatarSource);
+    }
+    return rendering;
+  };
+  await expect.poll(async () => (await readAvatarRendering()).imageLoaded).toBe(true);
+  const currentParticipantAvatarRendering = await readAvatarRendering();
   expect(currentParticipantAvatarRendering).toEqual(
     expect.objectContaining({
       imageLoaded: true,

@@ -310,6 +310,38 @@ test("restaurant expense back and accessibility controls never overlap", async (
   expect(separated, "back and accessibility controls must occupy separate header columns").toBe(true);
 });
 
+test("restaurant total updates and can be read while the visual keyboard is open", async ({ page }, testInfo) => {
+  test.skip(!testInfo.project.use.hasTouch, "a touch keyboard viewport check");
+  await page.addInitScript(() => {
+    const viewport = new EventTarget();
+    Object.assign(viewport, { width: innerWidth, height: innerHeight, offsetTop: 0, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    window.__setKeyboardViewport = height => {
+      viewport.height = height;
+      viewport.dispatchEvent(new Event("resize"));
+    };
+  });
+  await page.reload();
+  await page.locator(`[data-action="open-event"][data-event-id="${RESTAURANT_EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="show-expense-form"][data-event-id="${RESTAURANT_EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="restaurant-split-mode"][data-mode="equal"]').click();
+
+  const amount = page.locator('[data-action="quick-item-amount"]').first();
+  await amount.focus();
+  await page.evaluate(() => window.__setKeyboardViewport(340));
+  await expect(page.locator('html')).toHaveClass(/app-software-keyboard-open/);
+  await amount.fill('120');
+  const summary = page.locator('.quick-split-summary');
+  await expect(summary).toContainText('120.00');
+  await expect(amount).toBeFocused();
+  await summary.evaluate(element => element.scrollIntoView({ block: 'center' }));
+  await expect.poll(() => summary.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    return rect.top >= -1 && rect.bottom <= window.visualViewport.height + 1;
+  }), { message: 'the live restaurant summary must be readable without dismissing the keyboard' }).toBe(true);
+  await expect(amount).toBeFocused();
+});
+
 test("a failed share link stops loading and explains the unavailable action", async ({ page }) => {
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
   await page

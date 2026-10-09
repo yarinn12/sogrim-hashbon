@@ -165,7 +165,7 @@ async function saveCloudStateWithRetry(config, state) {
   });
 }
 
-async function syncAndPersistCloudStateOnce(config, state, syncSelection = null) {
+async function syncAndPersistCloudStateOnce(config, state, syncSelection = null, sharedWriteAlreadyConfirmed = false) {
   const prioritizeSharedEventWrite = Boolean(
     syncSelection &&
     (
@@ -176,8 +176,14 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null)
   let syncedState = state;
   let deferredSharedFailure = null;
   try {
+    // A retry after the canonical write succeeded only owes the personal
+    // workspace its receipt. Re-reading/reposting the acknowledged event can
+    // fail when connectivity drops and falsely mark that group undelivered.
+    const initialSyncSelection = sharedWriteAlreadyConfirmed
+      ? { eventIds: [], deletedEventIds: [] }
+      : syncSelection;
     syncedState = prioritizeSharedEventWrite
-      ? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)
+      ? await syncSharedEvents(config, state, globalThis.fetch, initialSyncSelection)
       : state;
   } catch (error) {
     if (!error?.partialSharedState?.state ||
@@ -286,9 +292,10 @@ async function syncAndPersistCloudState(
     );
     const hasPriorProgress = Boolean(priorProgress?.succeededEventIds?.length);
     const retryState = hasPriorProgress ? priorProgress.state : state;
+    const sharedWriteAlreadyConfirmed = Boolean(error.sharedEventPersisted && error.persistedState);
     await new Promise((resolve) => setTimeout(resolve, 350));
     try {
-      return await syncAndPersistCloudStateOnce(config, retryState, syncSelection);
+      return await syncAndPersistCloudStateOnce(config, retryState, syncSelection, sharedWriteAlreadyConfirmed);
     } catch (retryError) {
       if (hasPriorProgress && !retryError.sharedEventPersisted) {
         const latestProgress = retryError.partialSharedState;

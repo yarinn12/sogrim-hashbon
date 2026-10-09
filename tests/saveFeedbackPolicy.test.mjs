@@ -73,6 +73,38 @@ function functionSource(name) {
   const rest = layer.slice(match.index + 1), end = /\n(?:async )?function /.exec(rest);
   return layer.slice(match.index, end ? match.index + 1 + end.index : undefined);
 }
+test("late permission status keeps its review target stable across observer passes", () => {
+  const target = {
+    dataset: { syncAccountSummary: "" }, children: [],
+    replaceChildren() { this.children = []; },
+    append(...nodes) { this.children.push(...nodes); },
+    contains(node) { return this.children.includes(node); }
+  };
+  const eventRow = {
+    dataset: { eventId: "event-a" },
+    querySelector: () => ({ textContent: "אירוע לבדיקה" })
+  };
+  const document = {
+    querySelectorAll: () => [
+      ...target.children.filter((child) => child.dataset?.action === "open-event"),
+      eventRow
+    ],
+    createTextNode: (textContent) => ({ textContent }),
+    createElement: () => ({ dataset: {}, setAttribute() {}, querySelector: () => null })
+  };
+  const context = vm.createContext({ document, pendingEventIds: ["event-a"] });
+  vm.runInContext(functionSource("renderAccountPendingSummary"), context);
+  const reviewButtons = () => target.children.filter((child) => child.dataset?.action === "open-event");
+  context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
+  assert.equal(reviewButtons().length, 1);
+  const firstButton = reviewButtons()[0];
+  for (let pass = 0; pass < 3; pass++) {
+    context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
+    assert.equal(reviewButtons().length, 1, "an observer pass must not remove the review target");
+    assert.equal(reviewButtons()[0], firstButton, "unchanged status must not rebuild its action");
+    assert.equal(reviewButtons()[0].dataset.eventId, "event-a");
+  }
+});
 function harness(result) {
   const statuses = [], target = { className: "hint", textContent: "", hidden: true, dataset: { syncEventId: "event-a" }, closest: () => null };
   const timers = new Map();

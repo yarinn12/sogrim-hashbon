@@ -4677,6 +4677,213 @@ const CSS = `
     }
   }
 
+  /* Scale shared page headings with the user's text size while keeping the
+     event name and first task together on a narrow phone. */
+  @media (pointer: coarse) and (orientation: portrait) and (max-width: 720px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      margin-block: 8px 12px !important;
+      padding: 12px 18px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      width: 100% !important;
+      max-width: none !important;
+      margin-block: 0 !important;
+      font-size: 1.5rem !important;
+      line-height: 1.15 !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.875rem !important;
+      line-height: 1.3 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      flex-direction: column !important;
+      gap: 3px !important;
+      padding: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+      white-space: nowrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro > [data-action="new-event-note"] {
+      order: -1 !important;
+      align-self: stretch !important;
+      min-height: 44px !important;
+      padding: 8px 16px !important;
+      line-height: 1.2 !important;
+    }
+  }
+
+  /* A phone turned sideways has tablet width but very little usable height.
+     Keep the task above the fixed navigation, with the same touch targets. */
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 450px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] {
+      width: 100% !important;
+      max-width: 960px !important;
+      padding-inline: 16px !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-app-identity {
+      min-height: calc(56px + env(safe-area-inset-top)) !important;
+      padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin-block: 6px 12px !important;
+      padding: 6px 16px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top :is(h1, .muted, .eyebrow) {
+      margin-block: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      font-size: 1.25rem !important;
+      line-height: 1.15 !important;
+      max-width: none !important;
+      width: 100% !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow,
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top .muted {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions button {
+      min-height: 44px !important;
+      flex-direction: row !important;
+      gap: 6px !important;
+      padding: 6px 8px !important;
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions {
+      align-items: start !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions .home-quick-action {
+      min-height: 60px !important;
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      padding-block: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header {
+      padding-block: 6px !important;
+      margin-block-end: 0 !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-step-header .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header h2 {
+      margin-block: 4px 0 !important;
+      font-size: 1.25rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-flow-progress {
+      padding-block-start: 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-body {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field input[data-action="expense-total"] {
+      min-height: 50px !important;
+      font-size: 2rem !important;
+      line-height: 1.1 !important;
+      padding-block: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field > span {
+      font-size: 0.75rem !important;
+      line-height: 1.25 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-actions {
+      padding-block: 6px !important;
+    }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     html.design-coherence-v1 body #app .account-link-progress-spinner { animation: none; }
   }

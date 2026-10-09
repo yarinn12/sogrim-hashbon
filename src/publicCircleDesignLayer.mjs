@@ -2099,7 +2099,11 @@ const CSS = `
     color: var(--circle-muted) !important;
   }
 
-  html.circle-design-v1 .account-google-button,
+  html.circle-design-v1 .account-google-button {
+    min-height: 56px !important;
+    border-radius: var(--circle-radius-control) !important;
+  }
+
   html.circle-design-v1 .account-auth-submit {
     min-height: 52px !important;
     border-radius: var(--circle-radius-control) !important;
@@ -6283,9 +6287,16 @@ const CSS = `
     font-size: 30px !important;
   }
 
-  html.circle-design-v1.social-ledger-v2 .account-google-button,
+  html.circle-design-v1.social-ledger-v2 .account-google-button {
+    min-height: 56px !important;
+  }
+
   html.circle-design-v1.social-ledger-v2 .account-email-toggle {
     min-height: 52px !important;
+  }
+
+  html.circle-design-v1.social-ledger-v2 .account-google-button,
+  html.circle-design-v1.social-ledger-v2 .account-email-toggle {
     border: 0 !important;
     background: var(--circle-surface) !important;
     box-shadow: var(--circle-shadow-border) !important;

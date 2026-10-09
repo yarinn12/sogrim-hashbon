@@ -1,5 +1,5 @@
-const PWA_RELEASE = "510";
-const CACHE_NAME = "settle-friends-live-v510";
+const PWA_RELEASE = "511";
+const CACHE_NAME = "settle-friends-live-v511";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -200,6 +200,7 @@ const CRITICAL_PRECACHE_FILES = new Set([
   ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css)$/.test(path))
 ]);
 const PRECACHE_CONCURRENCY = 6;
+let activationNavigations = null;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -219,26 +220,36 @@ async function activateCurrentRelease() {
   const replacesPreviousRelease = cacheNames.some(
     (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME
   );
-
-  await Promise.all([
-    Promise.all(
-      cacheNames
-        .filter((name) => name !== CACHE_NAME)
-        .map((name) => caches.delete(name))
-    ),
-    self.clients.claim()
-  ]);
-
-  if (!replacesPreviousRelease) return;
-  const windowClients = await self.clients.matchAll({
+  const windowClients = replacesPreviousRelease ? await self.clients.matchAll({
     type: "window",
     includeUncontrolled: true
-  });
+  }) : [];
+  activationNavigations = replacesPreviousRelease ? [] : null;
+
+  await Promise.all(
+    cacheNames
+      .filter((name) => name !== CACHE_NAME)
+      .map((name) => caches.delete(name))
+  );
+  await self.clients.claim();
+
+  if (!replacesPreviousRelease) return;
+  // Existing pages may reload on controllerchange. Let that navigation start
+  // before deciding which remaining windows need a worker-initiated reload.
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  const startedNavigations = activationNavigations;
+  activationNavigations = null;
   for (const client of windowClients) {
     const clientUrl = new URL(client.url);
     if (clientUrl.origin !== self.location.origin) continue;
+    const sameUrlClients = windowClients.filter((item) => item.url === client.url);
+    if (startedNavigations.some(({ clientId, url }) =>
+      clientId === client.id || (!clientId && sameUrlClients.length === 1 && url === client.url)
+    )) continue;
     try {
-      const navigation = client.navigate?.(clientUrl.href);
+      const currentClient = await self.clients.get(client.id);
+      if (!currentClient) continue;
+      const navigation = currentClient.navigate?.(clientUrl.href);
       navigation?.catch?.(() => {});
     } catch {
       // Activation must finish even if one stale window cannot be navigated.
@@ -251,6 +262,12 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
+  if (activationNavigations && event.request.mode === "navigate") {
+    activationNavigations.push({
+      clientId: event.replacesClientId || event.clientId || "",
+      url: event.request.url
+    });
+  }
   const url = new URL(event.request.url);
   const sameOrigin = url.origin === self.location.origin;
 
