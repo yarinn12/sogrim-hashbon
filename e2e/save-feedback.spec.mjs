@@ -145,6 +145,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     try { await page.reload({ waitUntil: "commit" }); }
     finally { reloading = false; }
     await page.waitForLoadState("load");
+    if (dynamicType) await expect(page.locator("html")).toHaveCSS("font-size", `${dynamicType}px`);
   };
   const headers = {
     "access-control-allow-origin": "*",
@@ -278,9 +279,10 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
   }, { user, state: initialState, spaceId, spaceKey, permissionPending });
 
 
-  const dynamicType = (offline || (restart && !partialRetry))
+  const dynamicType = (offline || restart)
     ? Number(testInfo.project.metadata?.dynamicTypePreview || 0) : 0;
   await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
+  if (dynamicType) await expect(page.locator("html")).toHaveCSS("font-size", `${dynamicType}px`);
   if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await expect.poll(() => page.evaluate(() => typeof window.__qaNoteEditorState)).toBe("function");
   const eventButton = page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first();
   await expect(eventButton).toBeVisible();
