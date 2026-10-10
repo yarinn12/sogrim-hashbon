@@ -56,9 +56,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$APP_SHA"
           test -z "$(git status --porcelain)"
+          mkdir -p build/native-parity
           sudo xcode-select -s /Applications/Xcode_26.6.app
           npm ci
-          node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs"
+          node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs" > build/native-parity/bundle.log 2>&1
           npx cap sync ios
           node scripts/finalize-native-projects.mjs
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/prepare.py" prepare "$PWD" "$APP_SHA"
@@ -116,6 +117,8 @@ jobs:
         if: failure()
         working-directory: app
         run: |
+          mkdir -p build/native-parity
+          if [[ ! -f build/native-parity/simulator.env ]]; then exit 0; fi
           source build/native-parity/simulator.env || true
           container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data 2>/dev/null)" || true
           if [[ -n "$container" ]]; then cp "$container/Documents"/native-parity* build/native-parity/ 2>/dev/null || true; fi
