@@ -124,12 +124,8 @@ jobs:
           done
           test "$booted" = 1
           test "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD"
-          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell cmd connectivity airplane-mode enable
-          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell svc wifi disable
-          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell svc data disable
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/network-isolation.mjs
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell settings put secure show_ime_with_hard_keyboard 1
-          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys connectivity > artifacts/android-native-isolated/connectivity.txt
-          grep -Eq 'Active default network: none|mDefaultNetwork=null' artifacts/android-native-isolated/connectivity.txt
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" install android/app/build/outputs/apk/debug/app-debug.apk
       - name: Prove the Native guard detects stacked CSS then restores single OS scale
         working-directory: app

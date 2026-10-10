@@ -153,3 +153,22 @@ Only paths, public-key fingerprint and preparation status enter the diagnostic
 receipt. Private keys remain outside the uploaded artifact paths. ADB authentication
 stays enabled. A local key/signature test is distinct from actual Native acceptance;
 the latter still requires the same real boot and Native gates to pass in CI.
+
+## Wait for the real network teardown acknowledgement
+
+On source 10a1760 the actual SDK preflight and authenticated emulator boot passed
+(68.424s). The airplane/Wi-Fi/data disable commands succeeded, but the immediately
+captured connectivity dump still named default network 100. OS logcat recorded
+its disconnect less than one second later. A one-shot grep therefore failed
+before APK install or Native acceptance, even though the requested teardown was
+in progress.
+
+`network-isolation.mjs` first verifies the exact owned AVD name, executes each of
+the three disable commands once, then polls only OS readbacks for up to 30s. It
+requires airplane mode 1 and exactly one current `Active default network: none`
+header, rejecting contradictory defaults and historical matches. Each SDK
+observation has its own timeout capped by the remaining polling deadline. Failed
+disable commands, exited launchers, unknown states and persistent networking fail
+closed. The receipt preserves attempts and the actual final connectivity dump.
+This gate does not retry user input, change ADB authentication, or relax Native
+font, clipping, IME, save acknowledgement or relaunch checks.
