@@ -3,6 +3,9 @@ run-name: Exact 054 local fonts and mobile copy on macOS
 
 on:
   workflow_dispatch:
+  push:
+    branches: [codex/macos-parity-root-054-20261010]
+    paths: [.github/workflows/ios-font-parity-macos.yml, scripts/qa/ios-font-parity/**]
 
 permissions:
   contents: read
