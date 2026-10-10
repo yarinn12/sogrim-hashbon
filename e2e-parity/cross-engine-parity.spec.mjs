@@ -223,7 +223,23 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
       heading: ".event-overview-header h1", expense: ".expense-row strong",
       tab: ".event-workspace-tab strong"
     }, cdp);
-    await page.locator('[data-action="open-event-notes"]:visible').first().click();
+    const notesTab = page.locator('[data-action="open-event-notes"]:visible').first();
+    if (scenario.label === 'landscape-667-32px') {
+      await notesTab.scrollIntoViewIfNeeded();
+      await expect.poll(() => notesTab.evaluate(element => {
+        const bounds = element.getBoundingClientRect();
+        const route = document.querySelector('.product-route-controls')?.getBoundingClientRect();
+        const appNav = document.querySelector('.product-app-nav')?.getBoundingClientRect();
+        const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+        return {
+          belowRouteControls: bounds.top >= (route?.bottom ?? 0) - 1,
+          aboveAppNavigation: bounds.bottom <= (appNav?.top ?? innerHeight) + 1,
+          receivesTap: element === hit || element.contains(hit)
+        };
+      }), { message: `${name}: ordinary scroll must reveal the whole notes tab between fixed controls` })
+        .toEqual({ belowRouteControls: true, aboveAppNavigation: true, receivesTap: true });
+    }
+    await notesTab.click();
     records.notes = await capture(page, testInfo, `${name}-notes`, {
       title: ".event-note-title-line strong", preview: ".event-note-preview"
     }, cdp);
@@ -271,6 +287,9 @@ for (const scenario of [
   { label: "iphone-393-32px", viewport: { width: 393, height: 852 }, font: 32 },
   { label: "iphone-393-AX-equivalent", viewport: { width: 393, height: 852 }, font: 37.64706, ax: true },
   { label: "landscape-852-default", viewport: { width: 852, height: 393 }, font: 16 },
+  { label: "landscape-667-32px", viewport: { width: 667, height: 375 }, font: 32 },
+  { label: "landscape-844-AX-equivalent", viewport: { width: 844, height: 390 }, font: 37.64706, ax: true },
+  { label: "portrait-375-AX-equivalent", viewport: { width: 375, height: 667 }, font: 37.64706, ax: true },
   { label: "tablet-768-default", viewport: { width: 768, height: 1024 }, font: 16 }
 ]) {
   test(`same text, fonts and Hebrew word lines across engines: ${scenario.label}`, async ({ request, baseURL }, testInfo) => {

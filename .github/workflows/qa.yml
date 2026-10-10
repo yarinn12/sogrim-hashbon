@@ -62,6 +62,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
+      - name: Require whole phone actions at maximum preview and iOS accessibility size
+        if: ${{ matrix.project == 'iphone-large-text' }}
+        run: |
+          for size in 32 37.64706; do
+            PW_DYNAMIC_TYPE_SIZE="$size" \
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/test-results-large-text/$size/results.json" \
+              npx playwright test e2e/iphone-landscape-proportions.spec.mjs \
+                --project=iphone-large-text --output="test-results-large-text/$size" --reporter=line,json
+          done
+
       - name: Run mobile layout QA
         run: npm run qa:mobile -- --project=${{ matrix.project }}
 
@@ -73,6 +83,7 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            test-results-large-text/
           retention-days: 7
 
   cross-platform:
