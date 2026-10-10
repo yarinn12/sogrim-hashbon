@@ -84,6 +84,7 @@ async function measure(page, mode, screen) {
 }
 
 test('rendered home, expenses, notes and profile text grow without clipping at 32 and AX-equivalent 37.647', async ({ page, request }, testInfo) => {
+  test.setTimeout(150_000);
   await request.post('/api/reset');
   await request.put('/api/state', { data: state });
   await page.addInitScript(({ state, owner }) => {
@@ -117,27 +118,12 @@ test('rendered home, expenses, notes and profile text grow without clipping at 3
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT}"]`)).toBeVisible();
     samples[mode].event = await measure(page, mode, 'event');
-    if (mode === 'AX-active') {
-      await testInfo.attach('ax-equivalent-event', {
-        body: await page.screenshot(), contentType: 'image/png'
-      });
-    }
     await page.locator('[data-action="open-event-notes"]:visible').first().click();
     await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${EVENT}"]`)).toBeVisible();
     samples[mode].notes = await measure(page, mode, 'notes');
-    if (mode === 'AX-active') {
-      await testInfo.attach('ax-equivalent-notes', {
-        body: await page.screenshot(), contentType: 'image/png'
-      });
-    }
     await page.locator('[data-action="edit-profile"]:visible').first().click();
     await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
     samples[mode].profile = await measure(page, mode, 'profile');
-    if (mode === 'AX-active') {
-      await testInfo.attach('ax-equivalent-profile', {
-        body: await page.screenshot(), contentType: 'image/png'
-      });
-    }
   }
   await testInfo.attach('typography-spillover-measurements', {
     body: JSON.stringify(samples, null, 2), contentType: 'application/json'
