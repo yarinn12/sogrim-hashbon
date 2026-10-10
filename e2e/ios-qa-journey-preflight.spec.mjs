@@ -73,3 +73,99 @@ test('the isolated iOS QA journey reaches keyboard-ready through the real DOM co
   }));
   expect(fixtureHealth).toEqual({ blocked: [], unhandled: [] });
 });
+
+test('the accessibility XL amount and next controls stay hittable above the iOS keyboard', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.addInitScript({ content: syntheticService });
+  await page.addInitScript(() => {
+    const viewport = new EventTarget();
+    Object.assign(viewport, { width: innerWidth, height: innerHeight, offsetTop: 0, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: viewport });
+    window.__setKeyboardViewport = height => {
+      viewport.height = height;
+      viewport.dispatchEvent(new Event('resize'));
+    };
+  });
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    root.classList.add('native-app', 'dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
+    root.style.setProperty('--apple-font-scale', String(40 / 17));
+    root.style.setProperty('font-size', '37.64706px', 'important');
+    const browserCapacitor = globalThis.Capacitor || {};
+    globalThis.Capacitor = {
+      ...browserCapacitor, isNativePlatform: () => true, getPlatform: () => 'ios',
+      Plugins: { ...browserCapacitor.Plugins, App: {
+        ...browserCapacitor.Plugins?.App,
+        getInfo: async () => ({ id: 'com.sogrimhashbon.app', name: 'Synthetic Browser Preflight', version: '0', build: '0' })
+      } }
+    };
+    globalThis.__iosQaBrowserCaptures = [];
+    globalThis.webkit ??= {};
+    globalThis.webkit.messageHandlers ??= {};
+    globalThis.webkit.messageHandlers.iosParity = { postMessage(record) {
+      globalThis.__iosQaBrowserCaptures.push(record);
+      queueMicrotask(() => globalThis.__iosParityCaptureAck?.(record.index));
+    } };
+  });
+  await page.evaluate(journey);
+  await page.waitForFunction(() => ['keyboard-ready', 'error'].includes(
+    globalThis.__iosQaBrowserCaptures?.at(-1)?.phase
+  ), null, { timeout: 45_000 });
+  const phase = await page.evaluate(() => globalThis.__iosQaBrowserCaptures?.at(-1));
+  expect(phase.phase, JSON.stringify(phase.errors || [])).toBe('keyboard-ready');
+  const amount = page.locator('[data-action="expense-total"]');
+  await expect(amount).toBeFocused();
+  // Headless WebKit reports zero safe-area insets. The native iPhone in this
+  // regression has a 59px top inset, which reduces the keyboard-open body.
+  await page.locator('.expense-modal-step-header').evaluate(element => {
+    const current = parseFloat(getComputedStyle(element).paddingTop);
+    element.style.setProperty('padding-top', `${current + 59}px`, 'important');
+  });
+  await page.evaluate(() => window.__setKeyboardViewport(476));
+  await expect(page.locator('html')).toHaveClass(/app-software-keyboard-open/);
+  await amount.evaluate(element => element.scrollIntoView({ block: 'center' }));
+
+  const controls = await page.evaluate(() => {
+    const inspect = selector => {
+      const element = document.querySelector(selector);
+      const rect = element.getBoundingClientRect();
+      const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2;
+      const hit = document.elementFromPoint(x, y);
+      return { top: rect.top, bottom: rect.bottom, hit: hit?.outerHTML?.slice(0, 180),
+        hittable: Boolean(hit && (element === hit || element.contains(hit))) };
+    };
+    const details = selector => {
+      const element = document.querySelector(selector);
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return { top: rect.top, bottom: rect.bottom, clientHeight: element.clientHeight,
+        scrollHeight: element.scrollHeight, scrollTop: element.scrollTop,
+        overflowY: style.overflowY, position: style.position };
+    };
+    return { amount: inspect('[data-action="expense-total"]'),
+      next: inspect('[data-action="expense-step-next"]'),
+      progress: inspect('.expense-flow-progress'),
+      modal: details('.expense-step-modal'),
+      header: details('.expense-modal-step-header'),
+      fields: details('.expense-flow-fields'),
+      body: details('.expense-flow-body'),
+      footer: details('.expense-modal-actions'),
+      visualHeight: visualViewport.height };
+  });
+  await testInfo.attach('accessibility-xl-keyboard-hits', {
+    body: JSON.stringify(controls, null, 2), contentType: 'application/json'
+  });
+  expect(controls.progress.bottom, JSON.stringify(controls)).toBeLessThan(controls.amount.top);
+  for (const control of [controls.amount, controls.next]) {
+    expect(control.top, JSON.stringify(controls)).toBeGreaterThanOrEqual(0);
+    expect(control.bottom, JSON.stringify(controls)).toBeLessThanOrEqual(controls.visualHeight);
+    expect(control.hittable, JSON.stringify(controls)).toBe(true);
+  }
+  await amount.fill('120');
+  const next = page.locator('[data-action="expense-step-next"]');
+  if (testInfo.project.use.hasTouch) await next.tap();
+  else await next.click();
+  await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step', 'name');
+});

@@ -352,6 +352,37 @@ const CSS = `
       max-height: var(--app-keyboard-viewport-height) !important;
     }
 
+    /* At accessibility text sizes the fixed header and progress row can leave
+       less room than one input. Scroll those rows with the field so the input
+       cannot sit underneath the progress hit target. Keep Next in view. */
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal {
+      display: block !important;
+      overflow-y: auto !important;
+      scroll-padding-block: 12px 104px !important;
+      touch-action: pan-y !important;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal > .expense-flow-fields {
+      display: block !important;
+      overflow: visible !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-route-backdrop .expense-step-modal .expense-flow-body {
+      flex: none !important;
+      overflow: visible !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal .expense-modal-actions {
+      position: sticky !important;
+      bottom: 0 !important;
+      z-index: 2 !important;
+    }
+
     html.app-software-keyboard-open.ledger-workspace-v1 body #app
       :is(.product-app-nav, .event-route-primary-nav) {
       visibility: hidden !important;
