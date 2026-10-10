@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
 
 test.use({ serviceWorkers: "block" });
 
@@ -63,6 +64,9 @@ const rosterState = {
     expenses: [], notes: [], transfers: [] }]
 };
 
+const HELD_IMAGE_READINESS_TEST = "platform home is ready while a nonessential image is still loading";
+const heldImageGates = new WeakMap();
+
 async function openEvent(page, eventId) {
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
@@ -92,9 +96,27 @@ async function assertTappable(page, locator, label) {
   expect(hit, `${label}: center must receive a tap`).toBe(true);
 }
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
   await request.post("/api/reset");
   await request.put("/api/state", { data: state });
+  if (testInfo.title === HELD_IMAGE_READINESS_TEST) {
+    let releaseImage;
+    const imageGate = new Promise(resolve => { releaseImage = resolve; });
+    const gate = { releaseImage, requested: false };
+    heldImageGates.set(page, gate);
+    await page.route(`${baseURL}/__qa_held_nonessential_image`, async route => {
+      gate.requested = true;
+      await imageGate;
+      await route.fulfill({ status: 200, contentType: "image/png", body: "" });
+    });
+    const homeOrigin = new URL(baseURL).origin;
+    await page.route(url => url.origin === homeOrigin && url.pathname === "/", async route => {
+      const response = await route.fetch();
+      const html = await response.text();
+      await route.fulfill({ response, body: html.replace("</body>",
+        '<img src="/__qa_held_nonessential_image" alt="" hidden></body>') });
+    });
+  }
   await page.addInitScript(({ state, owner, injectNoteWriteFailure }) => {
     if (!sessionStorage.getItem("platform-coherence-seeded")) {
       localStorage.clear();
@@ -122,8 +144,18 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { state, owner: OWNER, injectNoteWriteFailure: process.env.PLATFORM_COHERENCE_FAULT === "drop-note-write" });
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
-  await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
-  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await openTypographyHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/" });
+});
+
+test(HELD_IMAGE_READINESS_TEST, async ({ page }) => {
+  const gate = heldImageGates.get(page);
+  try {
+    expect(gate?.requested, "the document actually requested the held image").toBe(true);
+    expect(await page.evaluate(() => document.readyState)).toBe("interactive");
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  } finally {
+    gate?.releaseImage();
+  }
 });
 
 test("empty note, validation, long pinned save, return and reload remain coherent", async ({ page }, testInfo) => {
@@ -197,9 +229,12 @@ test("long expense note survives summary navigation, orientation and reload", as
   await expect(modal).toHaveCount(0);
   await row.locator('[data-action="toggle-expense-participants"]').click();
   await expect(row.locator(".expense-saved-notes")).toHaveText(EXPENSE_NOTE);
-  // Compact iPhone layout hides the workspace tab and exposes the same route
-  // through the settlement card; select the visible control for each layout.
-  await page.locator(`[data-action="settle"][data-event-id="${OPEN_EVENT}"]:visible`).first().click();
+  // The balance card is the summary route on every layout. Selecting the
+  // first generic settle button can latch onto a workspace tab that becomes
+  // hidden after the note panel expands on a compact screen.
+  const summaryCard = page.locator(`.event-personal-balance[data-action="settle"][data-event-id="${OPEN_EVENT}"]`);
+  await assertTappable(page, summaryCard, "summary balance card");
+  await summaryCard.click();
   await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
   await page.setViewportSize(landscapeFor(testInfo.project.name));
   await assertNoHorizontalOverflow(page, "summary landscape");
@@ -264,7 +299,7 @@ test("desktop 32px roster exposes the last participant and add action above navi
   await request.put("/api/state", { data: rosterState });
   await page.evaluate(next => localStorage.setItem("settle-friends-state", JSON.stringify(next)), rosterState);
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("/?dynamic-type-preview=32");
+  await openTypographyHome(page, { path: "/?dynamic-type-preview=32" });
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
   await openEvent(page, ROSTER_EVENT);
   await page.locator('[data-action="open-event-participants"]:visible').first().click();
