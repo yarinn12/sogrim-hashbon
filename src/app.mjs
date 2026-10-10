@@ -4546,9 +4546,10 @@ function renderEvent(event) {
 
   return `
     <section class="screen font-hebrew${isEmptyEvent ? "" : " event-has-action-dock"}" data-screen-kind="event" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeParticipants)}
+      ${renderEventHeader(event, activeParticipants, { showActions: false })}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "expenses")}
+      ${renderEventHeaderActions(event, activeParticipants)}
       ${renderEventCover(event)}
       ${isEmptyEvent ? `<p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>` : ""}
       ${isEmptyEvent ? renderEventStartPanel(event) : ""}
@@ -4586,24 +4587,34 @@ function renderEvent(event) {
   `;
 }
 
-function renderEventHeader(event, participants = activeEventParticipants(event)) {
+function renderEventHeaderActions(event, participants = activeEventParticipants(event)) {
   const shareLabel = participants.length === 1 ? "הזמנת חברים" : "שיתוף";
   const shareAccessibleLabel = participants.length === 1
     ? "הזמנת חברים לאירוע"
     : "שיתוף והצטרפות לאירוע";
+  return `
+    <div class="hero-actions event-header-actions">
+      <button class="secondary-button event-header-utility-button" data-action="open-event-participants" data-event-id="${event.id}" aria-label="משתתפים באירוע" title="משתתפים באירוע"><span class="event-header-action-label">משתתפים</span></button>
+      <button class="secondary-button event-header-utility-button" data-action="open-event-participant-add" data-event-id="${event.id}" aria-label="${shareAccessibleLabel}" title="${shareAccessibleLabel}"><span class="button-action-icon" aria-hidden="true">${iconSvg("share")}</span><span class="event-header-action-label">${shareLabel}</span></button>
+      <button class="secondary-button event-settings-button event-header-utility-button" data-action="open-event-settings" data-event-id="${event.id}" aria-label="הגדרות האירוע" title="הגדרות האירוע"><span class="event-settings-label event-header-action-label">הגדרות</span></button>
+    </div>
+  `;
+}
+
+function renderEventHeaderMeta(event, participants = activeEventParticipants(event)) {
+  return `<p class="muted event-header-meta">${escapeHtml(currencySelectLabel(event.currency))} · ${formatCount(participants.length, "משתתף", "משתתפים")}</p>`;
+}
+
+function renderEventHeader(event, participants = activeEventParticipants(event), { showActions = true, showMeta = true } = {}) {
   return `
     <header class="top event-overview-header">
       ${renderAppBackButton()}
       <div class="brand">
         <p class="eyebrow">אירוע</p>
         <h1>${escapeHtml(event.name)}</h1>
-        <p class="muted">${escapeHtml(currencySelectLabel(event.currency))} · ${formatCount(participants.length, "משתתף", "משתתפים")}</p>
+        ${showMeta ? renderEventHeaderMeta(event, participants) : ""}
       </div>
-      <div class="hero-actions event-header-actions">
-        <button class="secondary-button event-header-utility-button" data-action="open-event-participants" data-event-id="${event.id}" aria-label="משתתפים באירוע" title="משתתפים באירוע"><span class="event-header-action-label">משתתפים</span></button>
-        <button class="secondary-button event-header-utility-button" data-action="open-event-participant-add" data-event-id="${event.id}" aria-label="${shareAccessibleLabel}" title="${shareAccessibleLabel}"><span class="button-action-icon" aria-hidden="true">${iconSvg("share")}</span><span class="event-header-action-label">${shareLabel}</span></button>
-        <button class="secondary-button event-settings-button event-header-utility-button" data-action="open-event-settings" data-event-id="${event.id}" aria-label="הגדרות האירוע" title="הגדרות האירוע"><span class="event-settings-label event-header-action-label">הגדרות</span></button>
-      </div>
+      ${showActions ? renderEventHeaderActions(event, participants) : ""}
     </header>
   `;
 }
@@ -4853,9 +4864,15 @@ function renderEventNotes(event) {
 
   return `
     <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event))}
+      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false, showMeta: false })}
       ${renderNotice()}
+      <button class="primary-button event-notes-entry-action" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
+        <span aria-hidden="true">${iconSvg("edit")}</span>
+        <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
+      </button>
       ${renderEventWorkspaceNav(event, "notes")}
+      ${renderEventHeaderMeta(event, activeEventParticipants(event))}
+      ${renderEventHeaderActions(event, activeEventParticipants(event))}
       <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
       <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
         <div>
@@ -4863,10 +4880,6 @@ function renderEventNotes(event) {
           <h2 id="event-notes-title">כל מה שחשוב לאירוע, במקום אחד</h2>
           <p class="muted">כל משתתף באירוע רואה את העדכונים.</p>
         </div>
-        <button class="primary-button" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
-          <span aria-hidden="true">${iconSvg("edit")}</span>
-          <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
-        </button>
       </section>
       <section class="event-notes-content" aria-labelledby="event-notes-list-title">
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
@@ -9849,9 +9862,10 @@ function renderSettlement(event) {
 
   return `
     <section class="screen font-hebrew settlement-screen" data-screen-kind="event" data-event-view="summary" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event))}
+      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false })}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "summary")}
+      ${renderEventHeaderActions(event, activeEventParticipants(event))}
 
       ${expenseDraft?.eventId === event.id ? renderExpenseForm(event) : ""}
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}

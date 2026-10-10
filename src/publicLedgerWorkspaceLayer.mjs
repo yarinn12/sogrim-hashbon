@@ -20613,6 +20613,28 @@ const CSS = `
     padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
   }
 
+  html.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action {
+    width: 100% !important;
+    min-height: 56px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 8px 16px !important;
+    line-height: 1.2 !important;
+  }
+
+  html.ledger-workspace-v1 body #app .screen > .event-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 12px !important;
+    border-radius: 16px !important;
+    background: var(--ledger-hero-surface) !important;
+  }
+
   html.ledger-workspace-v1 .event-notes-screen .event-workspace-nav {
     margin-top: 0 !important;
   }

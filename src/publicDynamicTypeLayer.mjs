@@ -391,34 +391,34 @@ function injectDynamicTypeStyles(document) {
       }
     }
 
-    /* On a narrow portrait phone the full event title and two-row tabs can
-       otherwise push the primary notes action behind the fixed app nav. */
+    /* Keep branding, the full event title, and the primary notes action in
+       document order while using less vertical chrome on narrow phones. */
     @media (max-width: 480px) and (orientation: portrait) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .event-notes-screen {
-        display: flex !important;
-        flex-direction: column !important;
+        body #app .screen.event-notes-screen > .product-app-identity {
+        padding: calc(6px + env(safe-area-inset-top)) 8px 6px !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .event-notes-screen > .event-notes-intro {
-        order: 1 !important;
+        body #app .screen.event-notes-screen .product-brand-lockup {
+        align-items: center !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .event-notes-screen > .event-workspace-nav {
-        order: 2 !important;
+        body #app .screen.event-notes-screen > .top {
+        margin-block: 4px 0 !important;
+        padding-block: 4px !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .event-notes-screen > .event-notes-content {
-        order: 3 !important;
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-header-actions {
+        grid-template-columns: minmax(0, 1fr) !important;
       }
     }
 
     /* A short landscape phone has enough width for one header row and three
        complete tab labels, but not enough height for the portrait stacking. */
-    @media (min-width: 600px) and (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
+    @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
         .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
         > .product-app-identity {
@@ -450,16 +450,61 @@ function injectDynamicTypeStyles(document) {
         overflow-wrap: normal !important;
       }
 
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        margin-block: 0 !important;
+        padding-block: 4px !important;
+      }
+
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
         .event-workspace-nav {
         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        padding-block: 1px !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
         .event-workspace-nav > .event-workspace-notes {
         grid-column: auto !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+        grid-template-columns: max-content minmax(0, 1fr) !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding: 6px 12px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions {
+        gap: 0 !important;
+        padding: 6px 14px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions .expense-step-next {
+        min-height: 56px !important;
+        padding: 8px 12px !important;
+        line-height: 1.2 !important;
+      }
+    }
+
+    /* A compact desktop viewport can scroll an event tab underneath the
+       fixed route controls; leave a visible landing zone for keyboard/touch. */
+    @media (max-width: 720px) and (max-height: 500px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+        body #app .screen[data-screen-kind="event"] .event-workspace-tab {
+        scroll-margin-block-start: 80px !important;
+        scroll-margin-block-end: calc(96px + env(safe-area-inset-bottom)) !important;
       }
     }
 
