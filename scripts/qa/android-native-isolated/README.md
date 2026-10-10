@@ -230,3 +230,22 @@ all24 page samples, all8 actual IME/write/relaunch checks, the stacked-font
 negative control and all4 clipping controls. Local synthetic protocol tests and
 the SDK receipt are not substitutes for that run. No log clearing, ADB retries,
 guest protocol disabling, Native getter or application change is introduced.
+# Font control diagnostics
+
+The fault changes the sole actual `html.dynamic-type-active.dynamic-type-android`
+stylesheet rule from `16px !important` to the original product defect,
+`calc(16px * var(--android-font-scale, 1)) !important`. It refuses absent,
+ambiguous or unexpected guards and any existing inline root font override.
+Root/rem/brand must all reject the stacked scale, while the fixed-pixel probe
+keeps one OS scale. Actual rem and brand text ranges must grow. Restoration
+checks exact stylesheet bytes, CSSOM rules and unchanged root inline state,
+then requires all fonts to return to the baseline. Matched/computed font rules
+are collected through the owned WebView CDP; no CSS/Native source is edited.
+
+The immediate root/rem/brand negative-control assertions remain authoritative.
+Additional frame 0/1/2 observations record computed and authored font sizes,
+transition properties, active animations, visibility and reduced-motion state.
+They do not retry or replace a failed measurement. After a failed control, the
+original root style is restored and the same diagnostic records recovery;
+recovery does not make the acceptance result pass. This instrumentation is for
+the unresolved Linux AECB control failure, not a verified font or timing fix.
