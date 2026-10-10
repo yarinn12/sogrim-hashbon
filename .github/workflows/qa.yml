@@ -139,9 +139,15 @@ jobs:
     with:
       app_sha: ${{ github.event.pull_request.head.sha || github.sha }}
 
+  android-native:
+    needs: unit
+    uses: ./.github/workflows/android-native-parity-qa.yml
+    with:
+      app_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, two-client-sync, cross-platform, ios-native]
+    needs: [unit, mobile, two-client-sync, cross-platform, ios-native, android-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
@@ -151,12 +157,14 @@ jobs:
           SYNC_RESULT: ${{ needs.two-client-sync.result }}
           CROSS_PLATFORM_RESULT: ${{ needs.cross-platform.result }}
           IOS_NATIVE_RESULT: ${{ needs.ios-native.result }}
+          ANDROID_NATIVE_RESULT: ${{ needs.android-native.result }}
         run: |
           test "$UNIT_RESULT" = success
           test "$MOBILE_RESULT" = success
           test "$SYNC_RESULT" = success
           test "$CROSS_PLATFORM_RESULT" = success
           test "$IOS_NATIVE_RESULT" = success
+          test "$ANDROID_NATIVE_RESULT" = success
 
   backup-runtime:
     runs-on: ubuntu-latest

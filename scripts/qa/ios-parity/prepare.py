@@ -129,7 +129,11 @@ def validate(out: Path, source_sha: str) -> None:
                 preview_ellipsis = phase == "notes" and key in ["title", "preview"] and metric.get("textOverflow") == "ellipsis" and metric.get("overflowX") == "hidden"
                 assert metric["clientWidth"] > 0
                 if not metric.get("isTextControl"):
-                    assert metric["words"] and all(word["rows"] >= 1 for word in metric["words"])
+                    assert metric["words"], (phase, key, "missing text")
+                    # An intentional preview may omit trailing glyphs. Its
+                    # complete content must still match the opened note below.
+                    visible_words = [word["rows"] >= 1 for word in metric["words"]]
+                    assert (any(visible_words) if preview_ellipsis else all(visible_words)), (phase, key, "missing glyphs")
                 if not preview_ellipsis:
                     assert metric["scrollWidth"] <= metric["clientWidth"] + 1
                     assert metric["horizontalGlyphOverflow"] is False

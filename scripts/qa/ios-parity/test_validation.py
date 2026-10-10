@@ -96,7 +96,13 @@ class AcceptanceTests(unittest.TestCase):
     def test_explicit_preview_ellipsis_with_full_opened_content_passes(self):
         metric = self.record("notes")["metrics"]["title"]
         metric.update({"scrollWidth": 1800, "horizontalGlyphOverflow": True, "textOverflow": "ellipsis", "overflowX": "hidden"})
+        metric["words"].append({"text": "קוצר", "rows": 0, "outsideTab": False})
         self.accept()
+    def test_preview_ellipsis_with_no_visible_glyphs_fails(self):
+        metric = self.record("notes")["metrics"]["title"]
+        metric.update({"textOverflow": "ellipsis", "overflowX": "hidden"})
+        metric["words"][0]["rows"] = 0
+        self.rejects()
     def test_preview_ellipsis_cannot_hide_missing_full_title(self):
         metric = self.record("notes")["metrics"]["title"]
         metric.update({"scrollWidth": 1800, "horizontalGlyphOverflow": True, "textOverflow": "ellipsis", "overflowX": "hidden"})

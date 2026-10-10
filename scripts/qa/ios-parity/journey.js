@@ -45,8 +45,23 @@
     if (!element) return null;
     const box = element.getBoundingClientRect();
     const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    const describe = item => {
+      const rect = item.getBoundingClientRect(), style = getComputedStyle(item);
+      return { tag: item.tagName, className: item.className,
+        top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right,
+        height: rect.height, pointerEvents: style.pointerEvents, position: style.position,
+        transform: style.transform, overflow: style.overflow, minHeight: style.minHeight,
+        flex: style.flex, scrollTop: item.scrollTop, clientHeight: item.clientHeight,
+        scrollHeight: item.scrollHeight };
+    };
+    const progress = document.querySelector('.expense-flow-progress');
     return { top: box.top, bottom: box.bottom, left: box.left, right: box.right,
       centerHit: hit?.outerHTML?.slice(0, 500), focused: document.activeElement === element,
+      pointerEvents: getComputedStyle(element).pointerEvents,
+      hitStack: document.elementsFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+        .slice(0, 5).map(describe),
+      progress: progress ? describe(progress) : null,
+      modal: element.closest('.expense-modal') ? describe(element.closest('.expense-modal')) : null,
       modalScrollTop: element.closest('.expense-modal')?.scrollTop,
       rootClasses: document.documentElement.className };
   }

@@ -125,6 +125,13 @@ jobs:
           container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data 2>/dev/null)" || true
           if [[ -n "$container" ]]; then cp "$container/Documents"/native-parity* build/native-parity/ 2>/dev/null || true; fi
           xcrun simctl io "$PROBE_UDID" screenshot build/native-parity/failure.png || true
+          for result in build/native-parity/*/result.xcresult; do
+            [[ -d "$result" ]] || continue
+            out="$(dirname "$result")"
+            if [[ ! -d "$out/system-screenshots" ]]; then
+              xcrun xcresulttool export attachments --path "$result" --output-path "$out/system-screenshots" > "$out/export-attachments.log" 2>&1 || true
+            fi
+          done
           xcrun simctl spawn "$PROBE_UDID" log show --last 8m --style compact --predicate 'process == "App"' > build/native-parity/simulator.log 2>&1 || true
       - uses: actions/upload-artifact@v6
         if: always()

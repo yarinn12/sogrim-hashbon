@@ -3,6 +3,9 @@ name: Cross-engine font provenance QA
 on:
   pull_request:
     paths:
+      - src/**
+      - styles.css
+      - assets/fonts/**
       - e2e-parity/cross-engine-parity.spec.mjs
       - .github/workflows/cross-engine-font-provenance-qa.yml
 

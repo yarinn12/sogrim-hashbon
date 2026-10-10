@@ -36,7 +36,7 @@ still pass the independent local-resource and loaded-face assertions.
 
 GitHub's `QA` workflow runs cross-platform verification as a separate required
 lane of the `unit-and-mobile` aggregate alongside unit, mobile and synchronization
-jobs, including the real Capacitor iOS simulator workflow. A failed, cancelled
+jobs, including the real Capacitor iOS simulator and Android emulator workflows. A failed, cancelled
 or skipped lane fails that aggregate. Automatic Vercel
 deployment from this workflow requires the whole QA run to succeed. Manual
 deployment and provider Git integrations are separate paths; this does not claim
@@ -58,8 +58,9 @@ Typography navigation uses DOM actions; XCTest uses hit-tested native-coordinate
 taps for the expense wizard, requires a UIKit keyboard, confirms the final
 synthetic acknowledgement, and checks background/foreground and relaunch.
 Accessibility fields are reached with bounded real finger drags when needed.
-The mapper converts document points through the actual scroll view so its
-automatic content insets and offsets are part of the coordinates
+The QA mapper converts document points through the actual scroll view and
+records its measured content insets and offsets. Trusted input events and
+native/DOM keyboard geometry validate the mapping for the tested run
 ([UIKit scroll-view geometry](https://developer.apple.com/documentation/uikit/uiscrollview)).
 It preserves the production iPhone portrait policy. Both the fresh OS default
 and OS accessibility-extra-large categories must pass. The reusable workflow is
@@ -73,7 +74,7 @@ names, missing glyphs, container/ancestor clipping and incorrect font-scale
 ratios fail acceptance. Enlarged target sizes must match the measured UIKit
 body-size ratio within 0.2 CSS px (root: 0.002 px). An explicit note-preview
 ellipsis is allowed only when opening that same note recovers its complete title
-and body. Twenty-three automated artifact controls exercise valid reports and these
+and body. Twenty-four automated artifact controls exercise valid reports and these
 failure conditions; they validate the report boundary, while real simulator
 runs validate the app.
 XCTest also retains whole-screen screenshots from `XCUIScreen` during amount and
@@ -81,6 +82,24 @@ name input, resume and restored display, including system UI and keyboard. Its
 attachments are exported from the result bundle for inspection. Trusted click
 and input events, mapped document/native coordinates and matching keyboard/
 visual-viewport geometry are required for the actual input and save phases.
+
+The browser iOS journey preflight executes the same synthetic service and
+journey files through real DOM navigation up to the expense input. It mocks
+Capacitor identity and screenshot acknowledgements only. It catches navigation
+failures, including an attempt to click the deliberately hidden transfer summary;
+it does not prove native bridge, keyboard or coordinate behavior.
+
+`Android Capacitor parity QA` builds an isolated Debug APK from the exact source
+SHA and audits its packaged WWW assets and local font bytes. An owned emulator
+with physical networking disabled uses the real Capacitor bridge and OS font
+scales 1/1.5/2 in portrait and landscape. The suite measures six font/layout cases,
+24 display states and the eight-step IME/Back/save/edit/relaunch journey with
+synthetic server acknowledgement. Temporary stacked-font and text-clipping faults
+must fail and restored measurements must pass. Range boxes and Canvas ink
+measurements remain in the artifacts; where their font metrics differ the whole
+conservative Range box is used. Normal CI requires the reusable workflow through
+the fail-closed aggregate. Live authentication, real connectivity recovery,
+production data, release performance and installation upgrades remain separate.
 
 For every product bug, keep the permanent test with the fix, demonstrate the
 relevant failure before the fix and success after it, and record the tested

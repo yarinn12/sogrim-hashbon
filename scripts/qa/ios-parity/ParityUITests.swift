@@ -26,6 +26,7 @@ final class ParityProbeUITests: XCTestCase {
                 if state()["phase"] as? String == "error" { break }
                 Thread.sleep(forTimeInterval: 0.3)
             }
+            systemScreenshot("failure-\(name)")
             XCTFail("Timed out: \(name). State: \(status.label)")
         }
         func tap(_ key: String) {
