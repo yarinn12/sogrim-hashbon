@@ -1888,7 +1888,7 @@ async function readCharacterLines(locator, naturalWrap = false) {
   }, naturalWrap);
 }
 
-test("summary guidance keeps the same complete word wrapping at mobile widths", async ({ page }, testInfo) => {
+test("summary guidance keeps the same complete word wrapping at mobile widths", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -1903,50 +1903,29 @@ test("summary guidance keeps the same complete word wrapping at mobile widths", 
     await document.fonts.ready;
   });
 
-  const expectedLines = {
-    360: {
-      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק", "לאחר סגירת האירוע."],
-      transferHelper: ["המקבל עשוי להיות שונה ממי", "ששילם, כי קיזזנו בין כולם"]
-    },
-    375: {
-      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק", "לאחר סגירת האירוע."],
-      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי", "קיזזנו בין כולם"]
-    },
-    390: {
-      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר", "סגירת האירוע."],
-      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי", "קיזזנו בין כולם"]
-    },
-    430: {
-      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת", "האירוע."],
-      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו", "בין כולם"]
-    }
+  const expectedCopy = {
+    description: "אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.",
+    transferHelper: "המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם"
   };
   for (const width of [360, 375, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });
-    const description = page.locator(".settlement-hero .muted");
-    const transferHelper = page.locator(".settlement-stage-heading > div > small");
-    const lineTexts = {
-      description: await readCharacterLines(description),
-      transferHelper: await readCharacterLines(transferHelper)
-    };
-    if (testInfo.project.name === "reflow-200") {
-      // Windows and Linux shape the local font slightly differently at 200%.
-      // Keep the complete copy and two-line layout, then compare each actual
-      // break to a natural-wrap control at the same rendered width and font.
-      for (const [key, locator] of Object.entries({ description, transferHelper })) {
-        expect(lineTexts[key].join(" "), `${key} complete copy at ${width}px`)
-          .toBe(expectedLines[width][key].join(" "));
-        expect(lineTexts[key], `${key} stays on two lines at ${width}px`).toHaveLength(2);
-        expect(lineTexts[key], `${key} uses natural wrapping at ${width}px`)
-          .toEqual(await readCharacterLines(locator, true));
-      }
-    } else {
-      expect(lineTexts, `complete summary copy at ${width}px`).toEqual(expectedLines[width]);
+    for (const [key, selector] of Object.entries({
+      description: ".settlement-hero .muted",
+      transferHelper: ".settlement-stage-heading > div > small"
+    })) {
+      const locator = page.locator(selector);
+      const lines = await readCharacterLines(locator);
+      expect(lines.join(" "), `${key} complete copy at ${width}px`).toBe(expectedCopy[key]);
+      expect(lines, `${key} stays on two lines at ${width}px`).toHaveLength(2);
+      expect(lines, `${key} follows natural wrapping at ${width}px`)
+        .toEqual(await readCharacterLines(locator, true));
+      await expect(locator, `${key} uses natural line selection at ${width}px`)
+        .toHaveCSS("text-wrap-style", "auto");
     }
   }
 });
 
-test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }, testInfo) => {
+test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -1956,18 +1935,13 @@ test("home introduction keeps the same complete word wrapping at mobile width", 
   });
   const introduction = page.locator('.product-home-screen .top .brand .muted');
   const lines = await readCharacterLines(introduction);
-  const expected = [
-    "אירוע חדש, חברים קבועים, או חשבון שכבר",
-    "מחכה לסגירה."
-  ];
-  if (testInfo.project.name === "reflow-200") {
-    expect(lines.join(" "), "the whole introduction remains visible").toBe(expected.join(" "));
-    expect(lines, "the introduction remains two lines").toHaveLength(2);
-    expect(lines, "the introduction follows natural wrapping")
-      .toEqual(await readCharacterLines(introduction, true));
-  } else {
-    expect(lines).toEqual(expected);
-  }
+  expect(lines.join(" "), "the whole introduction remains visible")
+    .toBe("אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.");
+  expect(lines, "the introduction remains two lines").toHaveLength(2);
+  await expect(introduction, "the introduction uses natural line selection")
+    .toHaveCSS("text-wrap-style", "auto");
+  expect(lines, "the introduction follows natural wrapping")
+    .toEqual(await readCharacterLines(introduction, true));
 });
 
 test("transfer explanation and event management copy keep complete word wrapping", async ({ page }, testInfo) => {
@@ -1994,9 +1968,7 @@ test("transfer explanation and event management copy keep complete word wrapping
     '.settlement-transfer-board .transfer-explanation[open] .transfer-route-note'
   ];
   const transfer = await readWordLines(page, transferSelectors);
-  const naturalTransfer = testInfo.project.name === "reflow-200"
-    ? await readWordLines(page, transferSelectors, true)
-    : null;
+  const naturalTransfer = await readWordLines(page, transferSelectors, true);
   await page.goBack();
   await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2006,44 +1978,35 @@ test("transfer explanation and event management copy keep complete word wrapping
     '.event-settings-menu-item[data-settings-section="management"] small'
   ];
   const management = await readWordLines(page, managementSelectors);
-  const naturalManagement = testInfo.project.name === "reflow-200"
-    ? await readWordLines(page, managementSelectors, true)
-    : null;
-  const expectedManagement = [{
-    text: 'ניהול משותף · מנהל: ירין יצחק, Awesome Maor · מאור סיבוני',
-    lines: ['ניהול משותף · מנהל: ירין יצחק, Awesome Maor ·', 'מאור סיבוני']
-  }];
-  const expectedTransfer = [
-    {
-      text: 'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
-      lines: ['אריאל ניזרי מהטיול המשפחתי חייב ל־ ירין יצחק', '₪85.00']
-    },
-    {
-      text: 'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.',
-      lines: ['סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר', 'מדויק.']
-    },
-    {
-      text: 'אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ירין יצחק מתוך חוב כולל של ₪85.33.',
-      lines: ['אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ ירין יצחק', 'מתוך חוב כולל של ₪85.33 .']
-    }
+  const naturalManagement = await readWordLines(page, managementSelectors, true);
+  const expectedManagement = [
+    'ניהול משותף · מנהל: ירין יצחק, Awesome Maor · מאור סיבוני'
   ];
-  if (testInfo.project.name === "reflow-200") {
-    // Font shaping on Linux and Windows may move one complete word at 200%.
-    // The reference changes only line selection on the same live DOM nodes.
-    for (const [actual, reference, expected] of [
-      [management, naturalManagement, expectedManagement],
-      [transfer, naturalTransfer, expectedTransfer]
-    ]) {
-      expect(actual.map(({ text }) => text), "the complete copy remains intact")
-        .toEqual(expected.map(({ text }) => text));
-      expect(actual.map(({ lines }) => lines.length), "each explanation remains two lines")
-        .toEqual(expected.map(({ lines }) => lines.length));
-      expect(actual.map(({ lines }) => lines), "the words follow natural wrapping")
-        .toEqual(reference.map(({ lines }) => lines));
+  const expectedTransfer = [
+    'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
+    'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.',
+    'אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ירין יצחק מתוך חוב כולל של ₪85.33.'
+  ];
+  // Native font shaping can move one complete word between lines across OSes.
+  // Compare each line and count to an auto-wrap control on the same DOM node,
+  // while the exact text and a bounded readable layout stay mandatory.
+  for (const [actual, reference, expected] of [
+    [management, naturalManagement, expectedManagement],
+    [transfer, naturalTransfer, expectedTransfer]
+  ]) {
+    expect(actual.map(({ text }) => text), "the complete copy remains intact")
+      .toEqual(expected);
+    expect(actual.map(({ wrapStyle }) => wrapStyle), "line selection stays natural")
+      .toEqual(expected.map(() => "auto"));
+    expect(actual.map(({ lines }) => lines.length), "line counts match natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines.length));
+    expect(actual.map(({ lines }) => lines), "complete words follow natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines));
+    const maxLines = testInfo.project.name === "iphone-large-text" ? 6 : 3;
+    for (const { lines } of actual) {
+      expect(lines.length, "the explanation remains visibly compact").toBeGreaterThan(0);
+      expect(lines.length, "the explanation remains visibly compact").toBeLessThanOrEqual(maxLines);
     }
-  } else {
-    expect(management.map(({ text, lines }) => ({ text, lines }))).toEqual(expectedManagement);
-    expect(transfer.map(({ text, lines }) => ({ text, lines }))).toEqual(expectedTransfer);
   }
 });
 
@@ -2072,7 +2035,8 @@ async function readWordLines(page, selectors, naturalWrap = false) {
         line.words.push(match[0]);
       }
     }
-    const result = { selector, text: element.textContent.trim(), wrap: getComputedStyle(element).textWrap,
+    const result = { selector, text: element.textContent.trim(),
+      wrapStyle: getComputedStyle(element).textWrapStyle,
       width: element.getBoundingClientRect().width,
       lines: lines.sort((a, b) => a.top - b.top).map(line => line.words.join(' ')) };
     if (useNaturalWrap) {

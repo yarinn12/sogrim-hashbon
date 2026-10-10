@@ -379,8 +379,7 @@ async function visibleWordLines(locator) {
   });
 }
 
-test("32px failed-share action keeps complete Hebrew words on the same lines", async ({ page }, testInfo) => {
-  test.skip(!["android-mobile", "iphone-webkit"].includes(testInfo.project.name));
+test("32px failed-share action keeps complete Hebrew words on the same lines", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?dynamic-type-preview=32");
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
@@ -394,8 +393,7 @@ test("32px failed-share action keeps complete Hebrew words on the same lines", a
   expect(await visibleWordLines(action)).toEqual(["הקישור לא", "זמין"]);
 });
 
-test("32px repayment choice keeps complete Hebrew words on the same lines", async ({ page }, testInfo) => {
-  test.skip(!["android-mobile", "iphone-webkit"].includes(testInfo.project.name));
+test("32px repayment choice keeps complete Hebrew words on the same lines", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?dynamic-type-preview=32");
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
