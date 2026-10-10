@@ -10,6 +10,13 @@ export async function requireUnusedAdbServerPort(port=5037){
   await new Promise((accept,reject)=>{probe.once('error',reject);probe.listen(port,()=>probe.close(error=>error?reject(error):accept()));});
 }
 
+function sdkFailure(stage,result){
+  const safe=value=>String(value||'').replace(/-----BEGIN (?:[A-Z0-9 ]* )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:[A-Z0-9 ]* )?PRIVATE KEY-----|$)/g,'[redacted private key]').slice(-4096);
+  const error=new Error(`${stage} failed (${result.error?.code||result.status})`);
+  error.diagnostic={stage,exitCode:result.status,signal:result.signal||null,errorCode:result.error?.code||null,stdout:safe(result.stdout),stderr:safe(result.stderr)};
+  return error;
+}
+
 export function verifyAdbKeyPair(keyPath){
   const privateKey=createPrivateKey(readFileSync(keyPath));
   if(privateKey.asymmetricKeyType!=='rsa'||privateKey.asymmetricKeyDetails.modulusLength!==2048)throw new Error('Require an actual 2048-bit RSA ADB test key');
@@ -31,13 +38,13 @@ export function prepareOwnedAdbKey({runnerTemp,userHome,emulatorHome,vendorKey,a
   if(realpathSync(ownedHome)!==join(realpathSync(runnerTemp),'android-native-home'))throw new Error('Refuse redirected QA key directory');
   if(existsSync(keyPath)||existsSync(keyPath+'.pub'))throw new Error('Refuse to overwrite an existing ADB key');
   if(!Number.isSafeInteger(serverPort)||serverPort<1024||serverPort>65535)throw new Error('Require a valid local ADB server port');
-  const options={encoding:'utf8',timeout:15000,killSignal:'SIGKILL',windowsHide:true,maxBuffer:65536,env:{...env,ANDROID_USER_HOME:ownedHome,ANDROID_EMULATOR_HOME:ownedHome,ADB_VENDOR_KEYS:keyPath,ANDROID_ADB_SERVER_PORT:String(serverPort),ADB_SERVER_SOCKET:`tcp:127.0.0.1:${serverPort}`}};
+  const options={encoding:'utf8',timeout:15000,killSignal:'SIGKILL',windowsHide:true,maxBuffer:65536,env:{...env,ANDROID_USER_HOME:ownedHome,ANDROID_EMULATOR_HOME:ownedHome,ADB_VENDOR_KEYS:keyPath,ANDROID_ADB_SERVER_PORT:String(serverPort),ADB_SERVER_SOCKET:`tcp:${serverPort}`}};
   const result=run(adbPath,['keygen',keyPath],options);
-  if(result.error||result.status!==0)throw new Error(`Isolated ADB key generation failed (${result.error?.code||result.status})`);
+  if(result.error||result.status!==0)throw sdkFailure('Isolated ADB key generation',result);
   const verification=verifyAdbKeyPair(keyPath);
   chmodSync(keyPath,0o600);
   const server=run(adbPath,['start-server'],options);
-  if(server.error||server.status!==0)throw new Error(`Owned ADB server startup failed (${server.error?.code||server.status})`);
+  if(server.error||server.status!==0)throw sdkFailure('Owned ADB server startup',server);
   return {prepared:true,serverStartedWithSharedKey:true,serverSocket:options.env.ADB_SERVER_SOCKET,userHome:ownedHome,emulatorHome:ownedHome,vendorKey:keyPath,...verification};
 }
 
@@ -45,7 +52,7 @@ async function main(){
   const out=resolve('artifacts/android-native-isolated');mkdirSync(out,{recursive:true});
   const report={source:process.env.ANDROID_QA_SOURCE,prepared:false,startedAtUtc:new Date().toISOString()};
   try{await requireUnusedAdbServerPort();Object.assign(report,prepareOwnedAdbKey({runnerTemp:process.env.RUNNER_TEMP,userHome:process.env.ANDROID_USER_HOME,emulatorHome:process.env.ANDROID_EMULATOR_HOME,vendorKey:process.env.ADB_VENDOR_KEYS,adbPath:process.env.ADB_PATH}));}
-  catch(error){report.error=error.message;process.exitCode=1;}
+  catch(error){report.error=error.message;if(error.diagnostic)report.diagnostic=error.diagnostic;process.exitCode=1;}
   finally{report.completedAtUtc=new Date().toISOString();writeFileSync(join(out,'adb-key-preflight.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href)main().catch(error=>{console.error(error.message);process.exitCode=1;});

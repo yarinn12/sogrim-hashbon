@@ -67,7 +67,7 @@ jobs:
           echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
           echo "ADB_VENDOR_KEYS=$RUNNER_TEMP/android-native-home/adbkey" >> "$GITHUB_ENV"
           echo "ANDROID_ADB_SERVER_PORT=5037" >> "$GITHUB_ENV"
-          echo "ADB_SERVER_SOCKET=tcp:127.0.0.1:5037" >> "$GITHUB_ENV"
+          echo "ADB_SERVER_SOCKET=tcp:5037" >> "$GITHUB_ENV"
           echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-native-no-upload.properties" >> "$GITHUB_ENV"
           echo "ADB_PATH=$ANDROID_HOME/platform-tools/adb" >> "$GITHUB_ENV"
       - name: Install actual Android emulator SDK and create an empty AVD

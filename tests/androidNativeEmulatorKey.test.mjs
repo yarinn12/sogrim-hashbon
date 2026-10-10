@@ -14,7 +14,7 @@ function adbPublic(key){
 function fixture(){
   const runnerTemp=mkdtempSync(join(tmpdir(),'android-qa-adb-key-')),home=join(runnerTemp,'android-native-home');return {runnerTemp,home,options:{runnerTemp,userHome:home,emulatorHome:home,vendorKey:join(home,'adbkey'),adbPath:'owned-fake-sdk-adb'}};
 }
-function keygen(privateKey,publicKey=privateKey){return (_path,args,options)=>{assert.equal(options.env.ANDROID_EMULATOR_HOME,options.env.ANDROID_USER_HOME);assert.equal(options.timeout,15000);assert.equal(options.env.ADB_SERVER_SOCKET,'tcp:127.0.0.1:5037');if(args[0]==='keygen'){assert.equal(options.env.ADB_VENDOR_KEYS,args[1]);writeFileSync(args[1],privateKey.export({format:'pem',type:'pkcs8'}));writeFileSync(args[1]+'.pub',adbPublic(publicKey));}else{assert.deepEqual(args,['start-server']);assert.equal(verifyAdbKeyPair(options.env.ADB_VENDOR_KEYS).pairMatches,true);}return {status:0};};}
+function keygen(privateKey,publicKey=privateKey){return (_path,args,options)=>{assert.equal(options.env.ANDROID_EMULATOR_HOME,options.env.ANDROID_USER_HOME);assert.equal(options.timeout,15000);if(args[0]==='keygen'){assert.equal(options.env.ADB_VENDOR_KEYS,args[1]);writeFileSync(args[1],privateKey.export({format:'pem',type:'pkcs8'}));writeFileSync(args[1]+'.pub',adbPublic(publicKey));}else{assert.deepEqual(args,['start-server']);if(!/^tcp:(?:localhost:)?\d+$/.test(options.env.ADB_SERVER_SOCKET))return {status:255,stderr:'* cannot start server on remote host'};assert.equal(verifyAdbKeyPair(options.env.ADB_VENDOR_KEYS).pairMatches,true);}return {status:0};};}
 
 test('the first emulator launch can use the same pre-created key as the ADB client',()=>{
   const f=fixture();try{
@@ -25,6 +25,14 @@ test('the first emulator launch can use the same pre-created key as the ADB clie
     const guestPublic=createPublicKey({format:'jwk',key:{kty:'RSA',n:Buffer.from(bytes.subarray(8,264)).reverse().toString('base64url'),e:exponent.subarray(exponent.findIndex(byte=>byte!==0)).toString('base64url')}});
     const token=Buffer.alloc(20,0x37);assert.equal(verify('sha1',token,guestPublic,sign('sha1',token,readFileSync(result.vendorKey))),true);
     assert.doesNotMatch(JSON.stringify(result),/BEGIN PRIVATE KEY|BEGIN RSA PRIVATE KEY/);
+  }finally{rmSync(f.runnerTemp,{recursive:true,force:true});}
+});
+test('SDK startup diagnostics retain the failure reason while redacting private key material',()=>{
+  const f=fixture(),key=rsa().privateKey,generate=keygen(key);try{
+    const privatePem=key.export({format:'pem',type:'pkcs8'});
+    assert.throws(()=>prepareOwnedAdbKey({...f.options,run:(path,args,options)=>args[0]==='start-server'?{status:255,stderr:'* cannot start server on remote host\n'+privatePem,stdout:'startup aborted'}:generate(path,args,options)}),error=>{
+      assert.equal(error.diagnostic.exitCode,255);assert.match(error.diagnostic.stderr,/cannot start server on remote host/);assert.equal(error.diagnostic.stdout,'startup aborted');assert.equal(/BEGIN PRIVATE KEY|BEGIN RSA PRIVATE KEY/.test(JSON.stringify(error.diagnostic)),false,'Diagnostic contains private key material');assert.equal(error.diagnostic.stderr.includes(privatePem),false);assert.match(error.diagnostic.stderr,/redacted private key/);return true;
+    });
   }finally{rmSync(f.runnerTemp,{recursive:true,force:true});}
 });
 test('a missing or foreign emulator key path fails before key generation and existing keys are preserved',()=>{

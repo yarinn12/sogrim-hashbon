@@ -142,6 +142,13 @@ environment. It first refuses an already occupied server port; it never kills an
 unknown server. The CI server remains on port 5037. The driver and all ADB clients
 inherit the same loopback socket and key environment, with no serial/path changes.
 
+Use the canonical `ADB_SERVER_SOCKET=tcp:5037`, without `-a`. ADB recognizes the
+empty TCP hostname as local and starts its default loopback listener. The numeric
+`tcp:127.0.0.1:5037` form is classified as remote by ADB and prevents auto-start
+(exit255 in Linux CI). A real SDK isolated-port check reproduced the numeric-host
+failure, then started/read/closed the server successfully using `tcp:15037`.
+SDK failures now retain bounded stdout/stderr with private PEM blocks redacted.
+
 Only paths, public-key fingerprint and preparation status enter the diagnostic
 receipt. Private keys remain outside the uploaded artifact paths. ADB authentication
 stays enabled. A local key/signature test is distinct from actual Native acceptance;
