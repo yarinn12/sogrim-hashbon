@@ -6,15 +6,21 @@ its debuggable WebView. They never select the first connected device. Provide
 before any command. Use a newly created empty AVD, never a user's existing AVD.
 
 This run uses `emulator-5582` / `sogrim_bf49_20261010` and a debug test certificate
-created under an isolated workspace Android home. No upload/release certificate
-or private configuration is used. The product's Android source is unchanged.
+created under an isolated workspace Android home. CI uses its own fresh
+`sogrim_ci_<run>_<attempt>` AVD. No upload/release certificate or private
+configuration is used. Clean acceptance rejects diagnostic Native changes.
 
 Prepare the normal WWW build with `SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD=1` and
 `NODE_OPTIONS=--import=file:///absolute/path/to/offline-build-config.mjs`, then
 run `prepare-fixture.mjs`, `cap copy android`, and offline `assembleDebug` with
 the isolated Android user home. Set the release signing-properties path to a
 verified nonexistent file. Verify the APK package is `com.sogrimhashbon.app.debug`
-before installing. Disable AVD Wi-Fi/data before launch. Only the empty QA app's
+before installing. Set `ANDROID_QA_SOURCE` to the exact checked-out application
+commit before `prepare-fixture.mjs`. The source guard rejects mismatched HEAD,
+changed product files, or the diagnostic typography Native method. Run
+`python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"`
+after building; runners require this fresh, successful WWW/APK/source audit.
+Disable AVD Wi-Fi/data before launch. Only the empty QA app's
 data may be cleared to seed a new source run.
 
 The derived WWW index adds `fixture.js` before the product app. The fixture
@@ -38,22 +44,46 @@ Its collapsed expense actions menu is opened with a real tap before editing;
 the hit test deliberately rejects a hidden child that DOM click could trigger.
 
 `matrix.mjs` records all six OS font-scale (1/1.5/2) × portrait/landscape cases,
-native plugin readback, required selector existence, computed font sizes and
-glyph/container bounds, overflow, and screenshots. It restores OS settings in
+native plugin readback, required visible selector counts, exact computed font
+sizes, each Range glyph/container bound, three distinct tab labels, overflow,
+fixed16px/rem probes, and screenshots. It restores OS settings in
 `finally` and returns nonzero for any failed/missing case or check. The standalone
 `matrix-verdict.mjs` is the exact CLI verdict boundary. Normal unit tests cover
 that boundary and fixture persistence/CAS/network rejection. Controlled mutation
 of the verdict to always return zero proves the regression turns red.
 The runner verifies actual viewport orientation after `wm user-rotation lock`
-and waits for the product's CSS font readback. Each case records its own failure
+and waits for actual Native OS preference and product reflow. Each case records its own failure
 and the other cases still run. Expanded transfer helpers must have visible text;
 their container is opened with a real tap rather than measuring a collapsed child.
 
-`pages.mjs` additionally measures home/event/notes/profile at all three OS font
-scales, including a seeded synthetic note, essential target existence, text growth,
-tab label width and app overflow. It is supplementary to the matrix's exact font
-size checks, which detect multiplied scaling. A script existing does not mean its
+`pages.mjs` measures all24 home/event/notes/profile × scale × orientation states,
+including a seeded synthetic note, rendered text, exact per-text baseline ratio,
+Range glyph bounds, three tabs and overflow. DOM navigation is used for these
+measurements; actual Native taps are exercised in matrix and journey. A script existing does not mean its
 cases have passed: require the saved source-specific JSON and exit status.
+
+`font-regression.mjs` proves the actual Native guard's sensitivity at OS1.5:
+normal root/rem24 and brand25.5 pass, a temporary inline copy of the old CSS
+root multiplier produces36/38.25 and fails the same exact-size guards, then
+restoring the inline style passes. It never changes WebView settings or source.
+`acceptance.mjs` runs matrix/pages/journey and returns nonzero for any stage.
+
+`.github/workflows/android-native-parity-qa.yml` is reusable via required
+`workflow_call(app_sha)` and manually via `workflow_dispatch(app_sha)`. It has
+no PR/push trigger to avoid duplicate runs. Root should call it from the QA
+workflow with the PR head SHA (or push SHA), after unit, and require its success
+in the aggregate check. Relevant caller paths include Android, src, CSS, fonts,
+index, package/lockfile, native build scripts, these QA tools/tests and workflow.
+It builds a real clean Debug Capacitor APK on Ubuntu24/KVM, with a test certificate,
+synthetic/offline data and actual OS font preference; it runs the Native mutation
+control plus all6 matrix/24 page/8 journey checks. It stores source/tree, QA tool
+source, WWW/APK/font hashes, stage outcomes, screenshots, certificate metadata,
+SDK/build/device logs and the synthetic APK, also on failure. Root integrates
+the aggregate; this new reusable workflow alone does not gate deployment.
+
+SDK setup follows [Android avdmanager](https://developer.android.com/tools/avdmanager)
+and the [GitHub Ubuntu24 runner inventory](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md).
+CI execution has not been claimed until a source-specific run completes.
 
 These tests do not verify real authentication, providers, push delivery,
 production database permissions, real network recovery, physical-device upgrade

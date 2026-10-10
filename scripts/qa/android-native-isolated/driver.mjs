@@ -6,12 +6,12 @@ export const device = process.env.ANDROID_QA_DEVICE;
 export const avd = process.env.ANDROID_QA_AVD;
 export const packageName = 'com.sogrimhashbon.app.debug';
 const adbPath = process.env.ADB_PATH;
-if (!/^emulator-\d+$/.test(device || '') || !/^sogrim_.*_20261010$/.test(avd || '') || !adbPath) {
+if (!/^emulator-\d+$/.test(device || '') || !/^sogrim_(?:ci_[a-z0-9_]+|[a-z0-9_]+_20261010)$/.test(avd || '') || !adbPath) {
   throw new Error('Require explicit isolated emulator serial, QA AVD name and ADB_PATH');
 }
 export function adb(args, binary = false) {
   const result = spawnSync(adbPath, ['-s', device, ...args], { encoding: binary ? null : 'utf8', windowsHide: true, timeout: args.includes('-W')?60000:20000, maxBuffer: 20 * 1024 * 1024 });
-  if (result.error || result.status !== 0) throw new Error(`ADB ${args.join(' ')} failed: ${result.error || result.stderr}`);
+  if (result.error || result.status !== 0) throw new Error(`ADB ${args.join(' ')} failed: ${result.error || result.stderr} ${String(result.stdout||'').slice(-700)}`);
   return result.stdout;
 }
 const name = adb(['emu', 'avd', 'name']).split(/\r?\n/)[0].trim();
@@ -75,9 +75,11 @@ class Cdp {
   }
   async tap(selector){
     const point=await this.evaluate(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw new Error('Tap control unavailable');e.scrollIntoView({block:'center'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!(hit===e||e.contains(hit)))throw new Error('Tap target covered by '+hit?.outerHTML?.slice(0,200));return{x,y,dpr:devicePixelRatio,action:e.dataset.action};})()`);
-    adb(['shell','uiautomator','dump','/sdcard/qa-native-window.xml']);
-    const xml=adb(['shell','cat','/sdcard/qa-native-window.xml']);
-    const tag=xml.match(/<node[^>]*class="android\.webkit\.WebView"[^>]*>/)?.[0];
+    const dumpPath=`/sdcard/qa-native-window-${Date.now()}-${++this.sequence}.xml`;
+    const dumped=adb(['shell','uiautomator','dump','--compressed',dumpPath]);
+    if(!/dumped to/i.test(dumped))throw new Error('Native UI dump did not produce fresh bounds: '+dumped);
+    const xml=adb(['shell','cat',dumpPath]);
+    const tag=[...xml.matchAll(/<node[^>]*class="android\.webkit\.WebView"[^>]*>/g)].map(match=>match[0]).find(tag=>tag.includes(`package="${packageName}"`));
     const bounds=tag?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
     if(!bounds)throw new Error('Native tap requires actual WebView bounds');
     const x=Math.round(+bounds[1]+point.x*point.dpr),y=Math.round(+bounds[2]+point.y*point.dpr);
@@ -102,5 +104,5 @@ export function screenshot(path) { mkdirSync(resolve(path, '..'), { recursive: t
 export const inspectExpression = `(() => {
   const app = document.querySelector('#app'), root = document.documentElement;
   const controls = [...document.querySelectorAll('button,input,textarea,select')].filter(e => { const r=e.getBoundingClientRect(); return r.width>0 && r.height>0 && getComputedStyle(e).visibility!=='hidden'; });
-  return { url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
+  return { url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), nativeMethods:(Capacitor.PluginHeaders?.find(plugin=>plugin.name==='SogrimCapabilities')?.methods||[]).map(method=>method.name), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
 })()`;

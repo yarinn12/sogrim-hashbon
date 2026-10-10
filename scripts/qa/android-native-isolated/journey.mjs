@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { mkdirSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { adb, connect, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
+import {acceptanceRunProvenance} from './run-provenance.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated'); mkdirSync(out,{recursive:true});
-const checks=[], evidence={source:process.env.ANDROID_QA_SOURCE,checks};
+const checks=[], evidence={provenance:acceptanceRunProvenance(),source:process.env.ANDROID_QA_SOURCE,checks};
 let page;
 function check(name,condition){checks.push({name,ok:Boolean(condition)});console.log(JSON.stringify(checks.at(-1)));assert.ok(condition,name);}
 const step=()=>page.evaluate(`document.querySelector('[data-expense-step]')?.dataset.expenseStep`);
@@ -13,20 +14,13 @@ async function tap(selector){(evidence.nativeTaps??=[]).push(await page.tap(sele
 async function openEvent(){await tap('[data-action="open-event"][data-event-id="android-native-event"]');await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='event'`),'Event');}
 async function payload(name,total){return waitFor(()=>page.evaluate(`(() => { const writes=JSON.parse(localStorage.getItem('qa-native-writes')||'[]');return writes.findLast(w=>w.state.events.find(e=>e.id==='android-native-event')?.expenses.some(e=>e.name===${JSON.stringify(name)}&&e.total===${total})); })()`),'Final acknowledged snapshot payload',30000);}
 async function nativeFocus(selector){
-  const rect=await page.evaluate(`(() => {const e=document.querySelector(${JSON.stringify(selector)});e.scrollIntoView({block:'center'});return {rect:e.getBoundingClientRect().toJSON(),dpr:devicePixelRatio};})()`);
-  adb(['shell','uiautomator','dump','/sdcard/qa-native-window.xml']);
-  const xml=adb(['shell','cat','/sdcard/qa-native-window.xml']);
-  const tag=xml.match(/<node[^>]*class="android\.webkit\.WebView"[^>]*>/)?.[0];
-  const bounds=tag?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
-  if(!bounds)throw new Error('Actual native WebView bounds unavailable');
-  const x=Math.round(+bounds[1]+(rect.rect.x+rect.rect.width/2)*rect.dpr),y=Math.round(+bounds[2]+(rect.rect.y+rect.rect.height/2)*rect.dpr);
-  adb(['shell','input','tap',String(x),String(y)]);
+  const actualTap=await page.tap(selector);(evidence.nativeTaps??=[]).push(actualTap);
   await waitFor(()=>/mInputShown=true|mIsInputViewShown=true/.test(adb(['shell','dumpsys','input_method'])),'Real Android keyboard shown');
-  evidence.keyboard={tap:{x,y},webViewBounds:bounds.slice(1),inputMethod:adb(['shell','dumpsys','input_method']).split('\n').filter(l=>/mInputShown|mIsInputViewShown|mImeWindowVis/.test(l))};
+  evidence.keyboard={tap:actualTap,webViewBounds:actualTap.webViewBounds,inputMethod:adb(['shell','dumpsys','input_method']).split('\n').filter(l=>/mInputShown|mIsInputViewShown|mImeWindowVis/.test(l))};
 }
 try{
   adb(['shell','settings','put','system','font_scale','1']);
-  adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','settings','put','system','user_rotation','0']);
+  adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','wm','user-rotation','lock','0']);
   evidence.initialWarmAttach=process.env.ANDROID_QA_WARM_ATTACH==='1';
   page=evidence.initialWarmAttach?await connect():await launch(); await page.command('Runtime.enable');
   await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='home'`),'Home screen',30000);await openEvent();
@@ -72,4 +66,4 @@ try{
   check('Acknowledged save leaves no pending outbox after restart',restart.pending.length===0);
   await snapshot('restarted-event');
 }catch(error){evidence.error=error.stack;process.exitCode=1;}
-finally{if(page){evidence.final=await page.evaluate(inspectExpression).catch(e=>({error:e.message}));evidence.exceptions=page.exceptions;page.close();}writeFileSync(resolve(out,'journey.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify({checks,error:evidence.error,keyboard:evidence.keyboard},null,2));}
+finally{if(page){evidence.final=await page.evaluate(inspectExpression).catch(e=>({error:e.message}));evidence.exceptions=page.exceptions;page.close();}if(checks.length!==8||checks.some(check=>!check.ok)||evidence.exceptions?.length||evidence.final?.fixtureUnhandled?.length)process.exitCode=1;writeFileSync(resolve(out,'journey.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify({checks,error:evidence.error,keyboard:evidence.keyboard},null,2));}

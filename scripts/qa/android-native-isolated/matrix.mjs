@@ -1,57 +1,61 @@
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { adb, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
+import {writeFileSync,mkdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {adb,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
 import {matrixExitCode} from './matrix-verdict.mjs';
-const out = resolve(process.env.ANDROID_QA_OUTPUT || 'artifacts/android-native-isolated');
-mkdirSync(out, { recursive: true });
-const results = [], source = process.env.ANDROID_QA_SOURCE;
-const original = Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(k=>[k,adb(['shell','settings','get','system',k]).trim()]));
+import {scaledFontSizeMatches} from './font-ratio.mjs';
+import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
+import {fontProbeExpression} from './font-probes.mjs';
+import {acceptanceRunProvenance} from './run-provenance.mjs';
+const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
+const provenance=acceptanceRunProvenance(),results=[];
+const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
+const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
 let page;
-try {
+try{
   adb(['shell','settings','put','system','accelerometer_rotation','0']);
-  for (const scale of [1,1.5,2]) for (const [orientation,rotation] of [['portrait',0],['landscape',1]]) {
-    try {
-    adb(['shell','settings','put','system','font_scale',String(scale)]);
-    adb(['shell','wm','user-rotation','lock',String(rotation)]);
-    await sleep(750);
-    page = await launch();
-    await waitFor(()=>page.evaluate(`(${orientation==='portrait'?'innerHeight>innerWidth':'innerWidth>innerHeight'})`),'Actual '+orientation+' WebView viewport',15000);
-    const capabilities = await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');
-    await waitFor(()=>page.evaluate(`Math.abs(Number(getComputedStyle(document.documentElement).getPropertyValue('--android-font-scale'))-${scale})<.01`),'Product CSS observes requested OS font scale',15000);
-    await page.click('[data-action="open-event"][data-event-id="android-native-event"]');
-    await page.click('[data-action="settle"]');
-    await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='settlement'`),'Settlement screen');
-    const nativeTaps=[];
-    if(!await page.evaluate(`document.querySelector('.transfer-row .transfer-explanation')?.open===true`))nativeTaps.push(await page.tap('.transfer-row .personal-transfer-badge'));
-    await waitFor(()=>page.evaluate(`document.querySelector('.transfer-row .transfer-explanation')?.open===true`),'Transfer breakdown is really expanded');
-    await sleep(250);
-    const state = await page.evaluate(inspectExpression);
-    const text = await page.evaluate(`(() => { const selectors=['.event-header-action-label','.settlement-hero-title-row .muted','.settlement-hero-title-row h2','.settlement-hero .status-chip','.settlement-stage-heading small','.product-brand-copy strong','.transfer-participant-copy strong','.transfer-amount > .amount','.personal-transfer-badge','.transfer-debt-summary','.transfer-equation-item > span']; const rows=[]; for(const selector of selectors) for(const e of document.querySelectorAll(selector)){const r=e.getBoundingClientRect(),s=getComputedStyle(e);if(r.width&&r.height&&e.innerText.trim()&&!e.closest('details:not([open])')){const range=document.createRange(); range.selectNodeContents(e); const ink=range.getBoundingClientRect(); const parent=e.closest('button,.transfer-row,.settlement-hero')?.getBoundingClientRect();rows.push({selector,text:e.innerText,fontSize:parseFloat(s.fontSize),lineHeight:s.lineHeight,rect:r.toJSON(),ink:ink.toJSON(),parent:parent?.toJSON(),scrollWidth:e.scrollWidth,clientWidth:e.clientWidth,scrollHeight:e.scrollHeight,clientHeight:e.clientHeight,overflow:s.overflow,textOverflow:s.textOverflow});}} return rows; })()`);
-    const required = {'.settlement-hero-title-row .muted':12,'.product-brand-copy strong':17,'.event-header-action-label':11,'.transfer-participant-copy strong':14,'.transfer-amount > .amount':20,'.personal-transfer-badge':11,'.transfer-debt-summary':14,'.transfer-equation-item > span':10};
-    const checks = Object.entries(required).map(([selector,size])=>({name:selector+' scales with OS',ok:text.some(x=>x.selector===selector)&&text.filter(x=>x.selector===selector).every(x=>Math.abs(x.fontSize-size*scale)<.2)}));
-    if(process.env.ANDROID_QA_INJECT_FAILURE==='1'&&results.length===0)checks.push({name:'Controlled QA failure injection',ok:false});
-    checks.push({name:'Native plugin reports actual OS scale',ok:Math.abs(capabilities.fontScale-scale)<.01},{name:'Requested orientation is actually displayed',ok:orientation==='portrait'?state.dimensions.height>state.dimensions.width:state.dimensions.width>state.dimensions.height},{name:'Capacitor Android shell active',ok:state.native&&state.platform==='android'},{name:'No horizontal app overflow',ok:state.dimensions.appWidth<=state.dimensions.width+1});
-    const labels=text.filter(x=>x.selector==='.event-header-action-label');
-    checks.push({name:'Header labels fit their buttons',ok:labels.every(x=>x.ink.left>=x.parent.left-1&&x.ink.right<=x.parent.right+1&&x.ink.bottom<=x.parent.bottom+1)});
-    const names=text.filter(x=>x.selector==='.transfer-participant-copy strong');
-    checks.push({name:'Long names fit transfer rows',ok:names.every(x=>x.ink.left>=x.parent.left-1&&x.ink.right<=x.parent.right+1)});
-    const descriptions=text.filter(x=>x.selector==='.settlement-hero-title-row .muted');
-    checks.push({name:'Summary description glyphs stay inside hero',ok:descriptions.length>0&&descriptions.every(x=>x.ink.bottom<=x.parent.bottom+1&&x.scrollHeight<=x.clientHeight+1)});
-    const helpers=text.filter(x=>x.selector==='.transfer-equation-item > span'||x.selector==='.transfer-debt-summary');
-    checks.push({name:'Expanded breakdown text fits transfer row',ok:helpers.length>0&&helpers.every(x=>x.ink.left>=x.parent.left-1&&x.ink.right<=x.parent.right+1&&x.ink.bottom<=x.parent.bottom+1)});
-    screenshot(resolve(out,`${orientation}-scale-${scale}.png`));
-    await page.evaluate(`document.querySelector('.settlement-hero')?.scrollIntoView({block:'center'})`);await sleep(150);screenshot(resolve(out,`${orientation}-scale-${scale}-hero.png`));
-    await page.evaluate(`document.querySelector('.settlement-transfer-board .transfer-row')?.scrollIntoView({block:'center'})`);await sleep(150);screenshot(resolve(out,`${orientation}-scale-${scale}-transfer.png`));
-    results.push({scale,orientation,capabilities,state,text,checks,nativeTaps,exceptions:page.exceptions});
-    console.log(JSON.stringify({scale,orientation,native:state.native,capabilities,dimensions:state.dimensions,checks}));
-    } catch(error) {results.push({scale,orientation,error:error.stack,state:page?await page.evaluate(inspectExpression).catch(e=>({error:e.message})):null});console.log(JSON.stringify({scale,orientation,error:error.message}));}
-    finally {page?.close();page=null;}
+  for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
+    const row={scale,orientation,checks:[],nativeTaps:[]};results.push(row);
+    const check=(name,ok,detail={})=>row.checks.push({name,ok:Boolean(ok),...detail});
+    try{
+      adb(['shell','settings','put','system','font_scale',String(scale)]);adb(['shell','wm','user-rotation','lock',String(rotation)]);await sleep(750);
+      page=await launch();
+      await waitFor(()=>page.evaluate(orientation==='portrait'?'innerHeight>innerWidth':'innerWidth>innerHeight'),'Actual '+orientation+' viewport',15000);
+      row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
+      await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
+      row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
+      await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
+      await page.evaluate(`document.querySelector('.event-workspace-nav').scrollIntoView({block:'center'})`);await sleep(250);
+      row.tabs=await page.evaluate(textMeasurementExpression(['.event-workspace-tab strong'],false));
+      check('Exactly three rendered event tabs',row.tabs.length===3&&new Set(row.tabs.map(tab=>tab.text)).size===3);
+      check('All three tab labels fit their actual buttons',row.tabs.length===3&&row.tabs.every(glyphsFitContainer));
+      check('Three tab labels have exact OS ratio',row.tabs.length===3&&row.tabs.every(tab=>scaledFontSizeMatches(tab.fontSize,13.5,scale)),{baselinePx:13.5,expectedRatio:scale,tolerancePx:.2});
+      screenshot(resolve(out,`${orientation}-scale-${scale}-tabs.png`));
+      row.nativeTaps.push(await page.tap('[data-action="settle"]'));
+      await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='settlement'`),'Settlement');await sleep(250);
+      if(!await page.evaluate(`document.querySelector('.transfer-explanation')?.open===true`))row.nativeTaps.push(await page.tap('.transfer-row .personal-transfer-badge'));
+      await waitFor(()=>page.evaluate(`document.querySelector('.transfer-explanation')?.open===true`),'Visible expanded transfer breakdown');await sleep(250);
+      row.text=await page.evaluate(textMeasurementExpression(Object.keys(required)));
+      row.fontProbes=await page.evaluate(fontProbeExpression);row.state=await page.evaluate(inspectExpression);
+      for(const [selector,{size,count}] of Object.entries(required)){
+        const targets=row.text.filter(target=>target.selector===selector);
+        check(selector+': required visible count',targets.length>=count,{minimumCount:count,actualCount:targets.length});
+        check(selector+': exact OS ratio',targets.length>=count&&targets.every(target=>scaledFontSizeMatches(target.fontSize,size,scale)),{baselinePx:size,expectedRatio:scale,tolerancePx:.2});
+        check(selector+': text glyphs fit container',targets.length>=count&&targets.every(glyphsFitContainer));
+      }
+      check('Root font applies OS scale exactly once',scaledFontSizeMatches(parseFloat(row.state.rootFontSize),16,scale));
+      check('Fixed16px and1rem probes both apply OS scale once',row.fontProbes.length===2&&row.fontProbes.every(probe=>scaledFontSizeMatches(probe.computed,16,scale)));
+      check('Actual Android bridge is active without diagnostic method',row.state.native&&row.state.platform==='android'&&!row.state.nativeMethods.includes('getQaWebViewTypography')&&row.state.nativeMethods.includes('getCapabilities'));
+      check('No horizontal root or app overflow',row.state.dimensions.appWidth<=row.state.dimensions.width+1&&row.state.dimensions.rootWidth<=row.state.dimensions.width+1);
+      check('No unhandled fixture requests or JS exceptions',!row.state.fixtureUnhandled.length&&!page.exceptions.length);
+      check('Actual requested viewport orientation',orientation==='portrait'?row.state.dimensions.height>row.state.dimensions.width:row.state.dimensions.width>row.state.dimensions.height);
+      if(process.env.ANDROID_QA_INJECT_FAILURE==='1'&&results.length===1)check('Controlled QA failure injection',false);
+      for(const [label,selector] of [['header','.product-app-identity'],['hero','.settlement-hero'],['transfer','.transfer-row']]){await page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);await sleep(200);screenshot(resolve(out,`${orientation}-scale-${scale}-${label}.png`));}
+      row.exceptions=page.exceptions;
+    }catch(error){row.error=error.stack;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
+    finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }
-} catch(error) { results.push({error:error.stack});process.exitCode=1; }
-finally {
-  page?.close();
-  for(const [key,value] of Object.entries(original)) adb(value==='null'?['shell','settings','delete','system',key]:['shell','settings','put','system',key,value]);
-  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({source,original,results},null,2));
-  process.exitCode=matrixExitCode(results);
+}finally{
+  page?.close();for(const [key,value] of Object.entries(original))adb(value==='null'?['shell','settings','delete','system',key]:['shell','settings','put','system',key,value]);
+  adb(['shell','wm','user-rotation','lock',original.user_rotation==='null'?'0':original.user_rotation]);
+  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));process.exitCode=matrixExitCode(results);
 }
-

@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto";
 import { copyFile, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { execFileSync } from 'node:child_process';
+import {cleanSourceProvenance} from './provenance.mjs';
 
 const root = process.cwd(), directory = join(root, "scripts/qa/android-native-isolated");
+const source=cleanSourceProvenance(root,process.env.ANDROID_QA_SOURCE);
+if(process.env.SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD!=='1')throw new Error('Private environment must be disabled for isolated Native acceptance');
 const htmlPath = join(root, "www/index.html");
 const originalHtml = await readFile(htmlPath, "utf8");
 if (originalHtml.includes('android-native-qa-fixture.js')) throw new Error('Fixture already prepared');
@@ -14,8 +16,7 @@ await writeFile(htmlPath, fixtureHtml, "utf8");
 const hash = text => createHash('sha256').update(text).digest('hex');
 await mkdir(join(root, 'artifacts/android-native-isolated'), { recursive: true });
 await writeFile(join(root, 'artifacts/android-native-isolated/fixture-provenance.json'), JSON.stringify({
-  sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true }).trim(),
-  sourceTree: execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8', windowsHide: true }).trim(),
+  ...source,
   derivedArtifactOnly: true, privateEnvDisabled: true, bootstrapIsSynthetic: true,
   originalBuiltIndexSha256: hash(originalHtml), fixtureIndexSha256: hash(fixtureHtml),
   fixtureSha256: hash(await readFile(join(directory, 'fixture.js'))),
