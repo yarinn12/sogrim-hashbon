@@ -23,7 +23,7 @@ test.use({
   hasTouch: false
 });
 
-test("large text takes effect immediately with reduced motion", async ({ page, request }) => {
+test("large and normal text take effect immediately with reduced motion", async ({ page, request }) => {
   // The project device profile can override test.use media settings. Apply the
   // requested OS preference to this page before the app styles load.
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -59,7 +59,7 @@ test("large text takes effect immediately with reduced motion", async ({ page, r
 
     // Read in the same browser task: a transition must not expose the old
     // 16px root and 13px description for a frame after the preference changes.
-    return {
+    const enlarged = {
       reducedMotion,
       coarsePointer,
       beforeRoot,
@@ -69,6 +69,19 @@ test("large text takes effect immediately with reduced motion", async ({ page, r
       rootFontTransition: root.getAnimations().some(animation =>
         animation instanceof CSSTransition && animation.transitionProperty === "font-size"),
       descriptionFontTransition: description.getAnimations().some(animation =>
+        animation instanceof CSSTransition && animation.transitionProperty === "font-size")
+    };
+
+    root.classList.remove("dynamic-type-active", "dynamic-type-apple", "dynamic-type-extra-large");
+    root.style.removeProperty("--apple-font-scale");
+    root.style.removeProperty("font-size");
+    return {
+      ...enlarged,
+      restoredRoot: parseFloat(getComputedStyle(root).fontSize),
+      restoredDescription: parseFloat(getComputedStyle(description).fontSize),
+      restoredRootFontTransition: root.getAnimations().some(animation =>
+        animation instanceof CSSTransition && animation.transitionProperty === "font-size"),
+      restoredDescriptionFontTransition: description.getAnimations().some(animation =>
         animation instanceof CSSTransition && animation.transitionProperty === "font-size")
     };
   });
@@ -81,4 +94,35 @@ test("large text takes effect immediately with reduced motion", async ({ page, r
   expect(sizes.description).toBeCloseTo(30.588236, 3);
   expect(sizes.rootFontTransition).toBe(false);
   expect(sizes.descriptionFontTransition).toBe(false);
+  expect(sizes.restoredRoot).toBeCloseTo(16, 3);
+  expect(sizes.restoredDescription).toBeCloseTo(13, 3);
+  expect(sizes.restoredRootFontTransition).toBe(false);
+  expect(sizes.restoredDescriptionFontTransition).toBe(false);
+
+  await page.goto("/?dynamic-type-preview=28");
+  await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+  const previewReturn = await page.evaluate(() => {
+    const root = document.documentElement;
+    const description = document.querySelector(".product-home-screen .top .brand .muted");
+    const beforeRoot = parseFloat(getComputedStyle(root).fontSize);
+    const beforeDescription = parseFloat(getComputedStyle(description).fontSize);
+    root.classList.remove("dynamic-type-preview");
+    root.style.removeProperty("font-size");
+    return {
+      beforeRoot,
+      beforeDescription,
+      root: parseFloat(getComputedStyle(root).fontSize),
+      description: parseFloat(getComputedStyle(description).fontSize),
+      rootFontTransition: root.getAnimations().some(animation =>
+        animation instanceof CSSTransition && animation.transitionProperty === "font-size"),
+      descriptionFontTransition: description.getAnimations().some(animation =>
+        animation instanceof CSSTransition && animation.transitionProperty === "font-size")
+    };
+  });
+  expect(previewReturn.beforeRoot).toBeCloseTo(28, 3);
+  expect(previewReturn.beforeDescription).toBeCloseTo(22.75, 3);
+  expect(previewReturn.root).toBeCloseTo(16, 3);
+  expect(previewReturn.description).toBeCloseTo(13, 3);
+  expect(previewReturn.rootFontTransition).toBe(false);
+  expect(previewReturn.descriptionFontTransition).toBe(false);
 });

@@ -174,12 +174,13 @@ function injectDynamicTypeStyles(document) {
     }
 
     /* Reduced-motion layers shorten every transition to 1ms but leave its
-       default property as "all". That briefly animates the root and text from
-       their old font sizes when the user's text preference changes. */
+       default property as "all". Prevent a stale font-size frame both when
+       enlarged text turns on and when the preference returns to normal. */
     @media (prefers-reduced-motion: reduce) {
-      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview),
-      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) #app,
-      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) #app * {
+      html,
+      html body,
+      html #app,
+      html #app * {
         transition-duration: 0s !important;
       }
     }

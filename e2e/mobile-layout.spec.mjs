@@ -2557,7 +2557,6 @@ async function readHeaderBrandPresentation(page) {
 }
 
 test("AX summary actions keep whole labels and reachable controls at phone widths", async ({ page }) => {
-  test.setTimeout(150_000);
   for (const viewport of [{ width: 375, height: 667 }, { width: 393, height: 852 }]) {
     await page.setViewportSize(viewport);
     await page.goto("/");
