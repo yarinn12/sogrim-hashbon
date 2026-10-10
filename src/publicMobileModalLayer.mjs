@@ -481,6 +481,7 @@ function setupKeyboardViewport() {
   let frame = 0;
   let keyboardOpen = false;
   let safeAreaProbe;
+  let observedModal;
 
   const safeAreaTop = () => {
     if (!safeAreaProbe) {
@@ -498,17 +499,26 @@ function setupKeyboardViewport() {
     const modal = field.closest(".expense-step-modal");
     if (!modal) return;
     const header = modal.querySelector(".expense-modal-step-header");
-    const headerInset = header ? Number.parseFloat(getComputedStyle(header).paddingTop) || 0 : 0;
-    const safeTop = offsetTop + Math.max(safeAreaTop(), headerInset) + 4;
+    const headerStyle = header ? getComputedStyle(header) : null;
+    const headerInset = headerStyle ? Number.parseFloat(headerStyle.paddingTop) || 0 : 0;
+    const safeTop = Math.max(
+      offsetTop + Math.max(safeAreaTop(), headerInset),
+      headerStyle?.position === "sticky" ? header.getBoundingClientRect().bottom : 0
+    ) + 4;
     const actions = modal.querySelector(".expense-modal-actions");
-    const safeBottom = Math.min(offsetTop + visibleHeight, actions?.getBoundingClientRect().top ?? Infinity) - 8;
-    const bounds = field.getBoundingClientRect();
-    if (bounds.height > safeBottom - safeTop) return;
-    // UIKit can scroll a focused input beneath the status bar when the
-    // keyboard changes type or text arrives. Correct only that out-of-bounds
-    // state; an already visible field keeps the user's scroll position.
-    if (bounds.top < safeTop || bounds.bottom > safeBottom) {
-      field.scrollIntoView({ block: "center", behavior: "auto" });
+    // Correct the modal scrollport against its actually unobscured bounds.
+    // scrollIntoView(center) also applies accumulated scroll margins/padding:
+    // with the sticky footer it can leave the field covered or move it beneath
+    // the header. An already visible field keeps the user's scroll position.
+    // The first scroll can move the footer into its sticky position. Measure
+    // that final position once more rather than assuming its old top is fixed.
+    for (let adjustment = 0; adjustment < 2; adjustment += 1) {
+      const safeBottom = Math.min(offsetTop + visibleHeight, actions?.getBoundingClientRect().top ?? Infinity) - 8;
+      const bounds = field.getBoundingClientRect();
+      if (bounds.height > safeBottom - safeTop) return;
+      if (bounds.top >= safeTop && bounds.bottom <= safeBottom) return;
+      const delta = bounds.top < safeTop ? bounds.top - safeTop : bounds.bottom - safeBottom;
+      modal.scrollTop += delta < 0 ? Math.floor(delta) : Math.ceil(delta);
     }
   };
 
@@ -527,6 +537,19 @@ function setupKeyboardViewport() {
       unzoomed && visibleHeight > 0 && obscured > 150 && (editing || keyboardOpen)
     );
     root.classList.toggle("app-software-keyboard-open", keyboardOpen);
+    const modal = keyboardOpen ? active?.closest?.(".expense-step-modal") : null;
+    if (modal !== observedModal) {
+      focusedLayoutObserver?.disconnect();
+      observedModal = modal;
+      if (modal) {
+        // A font or rendered template can change layout after the viewport
+        // event, without another keyboard or input event. Keep the field clear
+        // when its real content/header/footer boxes change size as well.
+        for (const element of [modal, ...modal.querySelectorAll(
+          ".expense-modal-step-header, .expense-flow-fields, .expense-flow-body, .expense-modal-actions"
+        )]) focusedLayoutObserver?.observe(element);
+      }
+    }
     if (keyboardOpen) {
       const height = `${Math.round(visibleHeight)}px`;
       const top = `${Math.round(offsetTop)}px`;
@@ -545,6 +568,9 @@ function setupKeyboardViewport() {
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(sync);
   };
+  const focusedLayoutObserver = typeof ResizeObserver === "function"
+    ? new ResizeObserver(schedule)
+    : null;
   viewport.addEventListener("resize", schedule, { passive: true });
   viewport.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule, { passive: true });
