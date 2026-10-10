@@ -1,0 +1,50 @@
+name: iOS font parity macOS diagnostic
+run-name: Source379 font control and summary on macOS (no native build)
+on:
+  push:
+    branches: [codex/ios-font-parity-379-20261010]
+    paths: [.github/workflows/ios-font-parity-macos.yml, scripts/qa/ios-font-parity/**]
+permissions:
+  contents: read
+jobs:
+  font-parity:
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      APP_PUBLIC_URL: " "
+      SUPABASE_URL: " "
+      SUPABASE_ANON_KEY: " "
+      SUPABASE_SERVICE_ROLE_KEY: " "
+      GOOGLE_CLIENT_ID: " "
+      APP_LOCAL_STATE_FILE: ${{ github.workspace }}/font-parity-state.json
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: 379f3c910429b92e4d5b4a21caf895ebaa6f4120
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install locked browser test dependencies
+        working-directory: app
+        run: |
+          npm ci
+          npx playwright install webkit chromium
+          test "$(git rev-parse HEAD)" = 379f3c910429b92e4d5b4a21caf895ebaa6f4120
+          test "$(git rev-parse HEAD^{tree})" = 89dc47488227fec0df41e76bf6af20625f86eca7
+      - name: Read-only source rendering and synthetic font control
+        run: |
+          (cd app && node server.mjs 4287) > font-parity-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for n in $(seq 1 30); do curl -sf http://127.0.0.1:4287/api/health >/dev/null && break; sleep 1; done
+          curl -sf http://127.0.0.1:4287/api/health >/dev/null
+          node scripts/qa/ios-font-parity/macos-font-parity.mjs
+      - name: Diagnostic server log on failure
+        if: failure()
+        run: cat font-parity-server.log || true
