@@ -1,0 +1,92 @@
+name: Combined 054 macOS font and copy parity
+run-name: Exact 054 local fonts and mobile copy on macOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  font-parity:
+    runs-on: macos-26
+    timeout-minutes: 25
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      APP_PUBLIC_URL: " "
+      SUPABASE_URL: " "
+      SUPABASE_ANON_KEY: " "
+      SUPABASE_SERVICE_ROLE_KEY: " "
+      SUPABASE_SECRET_KEY: " "
+      GOOGLE_CLIENT_ID: " "
+      GOOGLE_IOS_CLIENT_ID: " "
+      APP_LOCAL_STATE_FILE: ${{ github.workspace }}/font-parity-state.json
+    steps:
+      - name: Checkout instrumentation branch
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Checkout immutable combined candidate
+        uses: actions/checkout@v6
+        with:
+          ref: 05496645041e51baed22c6d878116329ad3d1813
+          path: app
+          persist-credentials: false
+      - name: Verify exact application source
+        shell: bash
+        run: |
+          test "$(git -C app rev-parse HEAD)" = 05496645041e51baed22c6d878116329ad3d1813
+          test "$(git -C app rev-parse HEAD^{tree})" = ad2457eed3d8d33be238f64278d5f69f86b84b49
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install locked browser dependencies
+        working-directory: app
+        run: |
+          npm ci
+          npx playwright install chromium webkit
+      - name: Measure local fonts, word lines, and raster flags
+        id: probe
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd app && node server.mjs 4287) > font-parity-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for n in $(seq 1 30); do
+            curl -sf http://127.0.0.1:4287/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:4287/api/health >/dev/null
+          node scripts/qa/ios-font-parity/macos-font-parity.mjs 2>&1 | tee font-parity-probe.log
+      - name: Run unchanged mobile copy regressions on macOS
+        id: mobile-copy
+        continue-on-error: true
+        working-directory: app
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx playwright test e2e/mobile-layout.spec.mjs \
+            --project android-mobile --project iphone-webkit \
+            --grep 'summary guidance|home introduction|transfer explanation and event management' \
+            --retries=0 --reporter=line 2>&1 | tee ../font-parity-mobile-tests.log
+      - name: Preserve probe, screenshots, traces, and server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-054-macos-font-parity-${{ github.run_id }}
+          path: |
+            font-parity-evidence/
+            font-parity-probe.log
+            font-parity-mobile-tests.log
+            font-parity-server.log
+            app/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Require both independent checks
+        if: always()
+        shell: bash
+        run: |
+          test '${{ steps.probe.outcome }}' = success
+          test '${{ steps.mobile-copy.outcome }}' = success
