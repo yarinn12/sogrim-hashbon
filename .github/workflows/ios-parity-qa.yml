@@ -1,0 +1,136 @@
+name: iOS Capacitor parity QA
+
+on:
+  pull_request:
+    paths: [ios/**, src/**, assets/fonts/**, styles.css, index.html, package.json, package-lock.json, capacitor.config.json, scripts/build-native-web.mjs, scripts/finalize-native-projects.mjs, scripts/qa/ios-parity/**, .github/workflows/ios-parity-qa.yml]
+  push:
+    branches: [main]
+    paths: [ios/**, src/**, assets/fonts/**, styles.css, index.html, package.json, package-lock.json, capacitor.config.json, scripts/build-native-web.mjs, scripts/finalize-native-projects.mjs, scripts/qa/ios-parity/**, .github/workflows/ios-parity-qa.yml]
+  workflow_dispatch:
+    inputs:
+      app_sha:
+        description: Full 40-character application commit for unsigned simulator QA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  native-parity:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Checkout QA fixture
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Resolve exact application source
+        id: source
+        env:
+          INPUT_SHA: ${{ inputs.app_sha }}
+          EVENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          sha="$EVENT_SHA"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then sha="$INPUT_SHA"; fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Build synthetic WWW and instrument the actual Capacitor controller
+        working-directory: app
+        env:
+          APP_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APP_SHA"
+          test -z "$(git status --porcelain)"
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          npm ci
+          node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs"
+          npx cap sync ios
+          node scripts/finalize-native-projects.mjs
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/prepare.py" prepare "$PWD" "$APP_SHA"
+      - name: Boot iPhone 15 or 16 and build unsigned Debug with the real SDK
+        working-directory: app
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > build/native-parity/simulator.env
+          import json, subprocess
+          runtimes=json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))['runtimes']
+          runtime=sorted([row for row in runtimes if row.get('isAvailable') and '.iOS-' in row['identifier']],key=lambda row:tuple(int(v) for v in row['version'].split('.')))[-1]
+          devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))['devicetypes']
+          device=next(row for name in ['iPhone 16','iPhone 15'] for row in devices if row['name']==name)
+          udid=subprocess.check_output(['xcrun','simctl','create','Capacitor parity QA',device['identifier'],runtime['identifier']],text=True).strip()
+          print('PROBE_UDID='+udid)
+          print('PROBE_IOS='+runtime['version'])
+          print('PROBE_DEVICE='+device['name'].replace(' ','_'))
+          PY
+          source build/native-parity/simulator.env
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" \
+            -derivedDataPath build/native-parity/derived build-for-testing CODE_SIGNING_ALLOWED=NO \
+            > build/native-parity/build.log 2>&1
+      - name: Verify normal and real OS accessibility sizes, keyboard, native taps and persistence
+        working-directory: app
+        env:
+          APP_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          source build/native-parity/simulator.env
+          run_category() {
+            local mode="$1"
+            local out="build/native-parity/$mode"
+            mkdir -p "$out"
+            xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+              -destination "platform=iOS Simulator,id=$PROBE_UDID" \
+              -derivedDataPath build/native-parity/derived -resultBundlePath "$out/result.xcresult" \
+              test-without-building CODE_SIGNING_ALLOWED=NO > "$out/test.log" 2>&1
+            container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
+            cp "$container/Documents/native-parity.json" "$out/"
+            cp "$container/Documents"/native-parity-*.png "$out/"
+            xcrun simctl io "$PROBE_UDID" screenshot "$out/final-simulator.png"
+          }
+          run_category default
+          xcrun simctl terminate "$PROBE_UDID" com.sogrimhashbon.app || true
+          xcrun simctl uninstall "$PROBE_UDID" com.sogrimhashbon.app
+          xcrun simctl ui "$PROBE_UDID" content_size accessibility-extra-large > build/native-parity/content-size.log 2>&1
+          run_category accessibility-extra-large
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/prepare.py" validate "$PWD/build/native-parity" "$APP_SHA" \
+            > build/native-parity/validation.log 2>&1
+          cat build/native-parity/validation.log
+      - name: Preserve native diagnostics on failure
+        if: failure()
+        working-directory: app
+        run: |
+          source build/native-parity/simulator.env || true
+          container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data 2>/dev/null)" || true
+          if [[ -n "$container" ]]; then cp "$container/Documents"/native-parity* build/native-parity/ 2>/dev/null || true; fi
+          xcrun simctl io "$PROBE_UDID" screenshot build/native-parity/failure.png || true
+          xcrun simctl spawn "$PROBE_UDID" log show --last 8m --style compact --predicate 'process == "App"' > build/native-parity/simulator.log 2>&1 || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-capacitor-parity-${{ steps.source.outputs.sha }}
+          path: |
+            app/build/native-parity/*.json
+            app/build/native-parity/*.log
+            app/build/native-parity/*.png
+            app/build/native-parity/simulator.env
+            app/build/native-parity/default/
+            app/build/native-parity/accessibility-extra-large/
+          if-no-files-found: error
+          retention-days: 14
