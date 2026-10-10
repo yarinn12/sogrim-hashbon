@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openTypographyHome } from '../e2e/helpers/typographyReadiness.mjs';
+import { openRenderedHome, openTypographyHome } from '../e2e/helpers/typographyReadiness.mjs';
 
 const owner = 'qa-typography-readiness-owner';
 const state = {
@@ -69,4 +69,12 @@ test('geometry waits for the actual application, not just DOMContentLoaded', asy
     status: 200, contentType: 'text/javascript', body: 'throw new Error("synthetic app boot failure")'
   }));
   await expect(openTypographyHome(page, { readyTimeoutMs: 1_000 })).rejects.toThrow();
+});
+
+test('app-only home readiness rejects a broken application module', async ({ page, request }) => {
+  await installFixture(page, request);
+  await page.route('**/src/app.mjs?*', route => route.fulfill({
+    status: 200, contentType: 'text/javascript', body: 'throw new Error("synthetic app boot failure")'
+  }));
+  await expect(openRenderedHome(page, { readyTimeoutMs: 1_000 })).rejects.toThrow();
 });

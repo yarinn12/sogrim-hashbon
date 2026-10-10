@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 const OWNER_ID = "person-home-responsive-owner";
 const emptyAccountState = {
@@ -245,7 +247,7 @@ test("hero-edge action respects large text and inline feedback", async ({ page }
   await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
 });
 
-test("an old event joined today appears first on home", async ({ page, request }) => {
+async function assertRecentlyJoinedOldEventAppearsFirst(page, request) {
   const syncedState = {
     ...populatedAccountState,
     events: [...populatedAccountState.events, newlyJoinedOldEvent]
@@ -254,7 +256,7 @@ test("an old event joined today appears first on home", async ({ page, request }
   await page.addInitScript((state) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, syncedState);
-  await page.goto("/");
+  await openRenderedHome(page);
   await expect(page.locator(".event-row")).toHaveCount(2);
   await expect(
     page.locator(`.event-row[data-event-id="${newlyJoinedOldEvent.id}"]`)
@@ -262,6 +264,21 @@ test("an old event joined today appears first on home", async ({ page, request }
   await expect(page.locator(".event-row").first()).toContainText(
     newlyJoinedOldEvent.name
   );
+}
+
+test("an old event joined today appears first on home", async ({ page, request }) => {
+  await assertRecentlyJoinedOldEventAppearsFirst(page, request);
+});
+
+test("a newly joined old event appears first before a nonessential image loads", async ({ page, request, baseURL }) => {
+  const heldImage = await holdNonessentialHomeImage(page, baseURL);
+  try {
+    await assertRecentlyJoinedOldEventAppearsFirst(page, request);
+    expect(heldImage.requested, "the held image must actually be requested").toBe(true);
+    expect(await page.evaluate(() => document.readyState)).toBe("interactive");
+  } finally {
+    heldImage.release();
+  }
 });
 
 test("home status labels and counts fit their touch targets at narrow widths", async ({ page, request }, testInfo) => {
