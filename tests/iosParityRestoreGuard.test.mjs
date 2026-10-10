@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
+import { performance } from 'node:perf_hooks';
 
 const source = await readFile(new URL('../scripts/qa/ios-parity/journey.js', import.meta.url), 'utf8');
 
@@ -10,12 +11,14 @@ async function runJourney(script, renderedExpensePresent) {
   let clock = 0;
   const makeElement = text => ({
     textContent: text,
+    outerHTML: `<button>${text}</button>`,
     disabled: false,
     scrollWidth: 100,
     clientWidth: 100,
     scrollIntoView() {},
     click() {},
     closest() { return null; },
+    contains(element) { return element === this; },
     getBoundingClientRect() { return { left: 5, top: 5, right: 105, bottom: 25, width: 100, height: 20 }; }
   });
   const opener = makeElement('Open');
@@ -32,6 +35,7 @@ async function runJourney(script, renderedExpensePresent) {
     fonts: { ready: Promise.resolve() },
     documentElement: { scrollWidth: 393 },
     querySelector: () => null,
+    elementFromPoint: () => opener,
     querySelectorAll: selector => {
       if (selector === '[data-screen-kind="home"]') return [opener];
       if (selector === '[data-action="open-event"][data-event-id="ios-native-event"]') return [opener];
@@ -45,6 +49,7 @@ async function runJourney(script, renderedExpensePresent) {
   };
   const sandbox = {
     document, localStorage, innerWidth: 393, innerHeight: 852,
+    performance, history: { state: null },
     scrollX: 0, scrollY: 0,
     visualViewport: { height: 852 },
     location: { href: 'capacitor://localhost/' },
