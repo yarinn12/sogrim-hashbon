@@ -74,7 +74,7 @@ test('the isolated iOS QA journey reaches keyboard-ready through the real DOM co
   expect(fixtureHealth).toEqual({ blocked: [], unhandled: [] });
 });
 
-test('the accessibility XL amount and next controls stay hittable above the iOS keyboard', async ({ page }, testInfo) => {
+test('the accessibility XL expense fields stay hittable below the status bar and above the iOS keyboard', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript({ content: syntheticService });
   await page.addInitScript(() => {
@@ -164,8 +164,62 @@ test('the accessibility XL amount and next controls stay hittable above the iOS 
     expect(control.hittable, JSON.stringify(controls)).toBe(true);
   }
   await amount.fill('120');
+  await page.waitForFunction(() => ['keyboard-amount', 'error'].includes(
+    globalThis.__iosQaBrowserCaptures?.at(-1)?.phase
+  ), null, { timeout: 15_000 });
+  const amountPhase = await page.evaluate(() => globalThis.__iosQaBrowserCaptures?.at(-1));
+  expect(amountPhase.phase, JSON.stringify(amountPhase.errors || [])).toBe('keyboard-amount');
   const next = page.locator('[data-action="expense-step-next"]');
   if (testInfo.project.use.hasTouch) await next.tap();
   else await next.click();
   await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step', 'name');
+  await page.locator('.expense-modal-step-header').evaluate(element => {
+    const current = parseFloat(getComputedStyle(element).paddingTop);
+    element.style.setProperty('padding-top', `${current + 59}px`, 'important');
+  });
+  const name = page.locator('[data-action="expense-name"]');
+  await name.evaluate(element => element.scrollIntoView({ block: 'center' }));
+  if (testInfo.project.use.hasTouch) await name.tap();
+  else await name.click();
+  await page.evaluate(() => window.__setKeyboardViewport(449));
+  // UIKit can scroll the focused control again when it switches from the
+  // decimal to text keyboard. Reproduce the native 126px displacement that
+  // placed the field at -19px while its DOM center still accepted typing.
+  await page.locator('.expense-step-modal').evaluate(element => { element.scrollTop += 126; });
+  await expect(name).toBeFocused();
+  await page.keyboard.type('QA iOS');
+  await page.waitForFunction(() => ['keyboard-name', 'error'].includes(
+    globalThis.__iosQaBrowserCaptures?.at(-1)?.phase
+  ), null, { timeout: 15_000 });
+  const namePhase = await page.evaluate(() => globalThis.__iosQaBrowserCaptures?.at(-1));
+  expect(namePhase.phase, JSON.stringify(namePhase.errors || [])).toBe('keyboard-name');
+  const readNameControls = () => page.evaluate(() => {
+    const inspect = selector => {
+      const element = document.querySelector(selector);
+      const bounds = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      return { top: bounds.top, bottom: bounds.bottom,
+        hit: hit?.outerHTML?.slice(0, 180),
+        hittable: Boolean(hit && (element === hit || element.contains(hit))) };
+    };
+    return { name: inspect('[data-action="expense-name"]'),
+      next: inspect('[data-action="expense-step-next"]'),
+      progress: inspect('.expense-flow-progress'),
+      modalScrollTop: document.querySelector('.expense-step-modal').scrollTop,
+      visualHeight: visualViewport.height };
+  });
+  const nameControls = await readNameControls();
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const settledControls = await readNameControls();
+  await testInfo.attach('accessibility-xl-name-keyboard-hits', {
+    body: JSON.stringify({ nameControls, settledControls }, null, 2), contentType: 'application/json'
+  });
+  for (const sample of [nameControls, settledControls]) {
+    expect(sample.name.top, JSON.stringify(sample)).toBeGreaterThanOrEqual(54);
+    expect(sample.name.bottom, JSON.stringify(sample)).toBeLessThanOrEqual(sample.visualHeight);
+    expect(sample.name.hittable, JSON.stringify(sample)).toBe(true);
+    expect(sample.next.bottom, JSON.stringify(sample)).toBeLessThanOrEqual(sample.visualHeight);
+    expect(sample.next.hittable, JSON.stringify(sample)).toBe(true);
+  }
+  expect(settledControls.modalScrollTop).toBeCloseTo(nameControls.modalScrollTop, 0);
 });

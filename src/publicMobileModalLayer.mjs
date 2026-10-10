@@ -480,6 +480,37 @@ function setupKeyboardViewport() {
   const root = document.documentElement;
   let frame = 0;
   let keyboardOpen = false;
+  let safeAreaProbe;
+
+  const safeAreaTop = () => {
+    if (!safeAreaProbe) {
+      safeAreaProbe = document.createElement("span");
+      safeAreaProbe.setAttribute("aria-hidden", "true");
+      safeAreaProbe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;width:0;height:0;padding-top:env(safe-area-inset-top)";
+      document.body.append(safeAreaProbe);
+    }
+    return Number.parseFloat(getComputedStyle(safeAreaProbe).paddingTop) || 0;
+  };
+
+  const revealFocusedExpenseField = (visibleHeight, offsetTop) => {
+    const field = document.activeElement;
+    if (!field?.matches?.('[data-action="expense-total"], [data-action="expense-name"]')) return;
+    const modal = field.closest(".expense-step-modal");
+    if (!modal) return;
+    const header = modal.querySelector(".expense-modal-step-header");
+    const headerInset = header ? Number.parseFloat(getComputedStyle(header).paddingTop) || 0 : 0;
+    const safeTop = offsetTop + Math.max(safeAreaTop(), headerInset) + 4;
+    const actions = modal.querySelector(".expense-modal-actions");
+    const safeBottom = Math.min(offsetTop + visibleHeight, actions?.getBoundingClientRect().top ?? Infinity) - 8;
+    const bounds = field.getBoundingClientRect();
+    if (bounds.height > safeBottom - safeTop) return;
+    // UIKit can scroll a focused input beneath the status bar when the
+    // keyboard changes type or text arrives. Correct only that out-of-bounds
+    // state; an already visible field keeps the user's scroll position.
+    if (bounds.top < safeTop || bounds.bottom > safeBottom) {
+      field.scrollIntoView({ block: "center", behavior: "auto" });
+    }
+  };
 
   const sync = () => {
     frame = 0;
@@ -509,6 +540,7 @@ function setupKeyboardViewport() {
       root.style.removeProperty("--app-keyboard-viewport-height");
       root.style.removeProperty("--app-keyboard-viewport-top");
     }
+    if (keyboardOpen) revealFocusedExpenseField(visibleHeight, offsetTop);
   };
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(sync);
@@ -517,6 +549,7 @@ function setupKeyboardViewport() {
   viewport.addEventListener("scroll", schedule, { passive: true });
   window.addEventListener("resize", schedule, { passive: true });
   document.addEventListener("focusin", schedule, { passive: true });
+  document.addEventListener("input", schedule, { passive: true });
   schedule();
 }
 
