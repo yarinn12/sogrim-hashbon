@@ -66,6 +66,8 @@ const rosterState = {
 
 const HELD_IMAGE_READINESS_TEST = "platform home is ready while a nonessential image is still loading";
 const heldImageGates = new WeakMap();
+const HELD_DEFER_READINESS_TEST = "platform home is ready before an unrelated deferred script completes";
+const heldDeferGates = new WeakMap();
 
 async function openEvent(page, eventId) {
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -115,6 +117,29 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
       const html = await response.text();
       await route.fulfill({ response, body: html.replace("</body>",
         '<img src="/__qa_held_nonessential_image" alt="" hidden></body>') });
+    });
+  }
+  if (testInfo.title === HELD_DEFER_READINESS_TEST) {
+    let releaseScript;
+    const scriptGate = new Promise(resolve => { releaseScript = resolve; });
+    const gate = { releaseScript, requested: false };
+    heldDeferGates.set(page, gate);
+    page.setDefaultNavigationTimeout(5_000);
+    await page.addInitScript(() => {
+      window.__qaDomContentLoaded = false;
+      document.addEventListener("DOMContentLoaded", () => { window.__qaDomContentLoaded = true; }, { once: true });
+    });
+    await page.route(`${baseURL}/__qa_held_nonessential_defer.js`, async route => {
+      gate.requested = true;
+      await scriptGate;
+      await route.fulfill({ status: 200, contentType: "text/javascript", body: "" });
+    });
+    const homeOrigin = new URL(baseURL).origin;
+    await page.route(url => url.origin === homeOrigin && url.pathname === "/", async route => {
+      const response = await route.fetch();
+      const html = await response.text();
+      await route.fulfill({ response, body: html.replace("</body>",
+        '<script defer src="/__qa_held_nonessential_defer.js"></script></body>') });
     });
   }
   await page.addInitScript(({ state, owner, injectNoteWriteFailure }) => {
@@ -357,6 +382,20 @@ test("desktop 32px roster exposes the last participant and add action above navi
   await assertTappable(page, add, "add participant");
   await add.click();
   await expect(page.locator(".event-participant-add-route-modal")).toBeVisible();
+});
+
+test(HELD_DEFER_READINESS_TEST, async ({ page }) => {
+  const gate = heldDeferGates.get(page);
+  try {
+    expect(gate?.requested, "the document actually requested the deferred script").toBe(true);
+    expect(await page.evaluate(() => document.readyState)).toBe("interactive");
+    expect(await page.evaluate(() => window.__qaDomContentLoaded)).toBe(false);
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  } finally {
+    gate?.releaseScript();
+  }
+  await page.waitForLoadState("domcontentloaded");
+  expect(await page.evaluate(() => window.__qaDomContentLoaded)).toBe(true);
 });
 
 async function openNoteEditorForDelayedHistory(page, request) {

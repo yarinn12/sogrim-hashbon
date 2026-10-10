@@ -1,9 +1,9 @@
 import { expect } from '@playwright/test';
 
 export async function openRenderedHome(page, { path = '/', readyTimeoutMs = 8_000 } = {}) {
-  // The app can render its home screen before a nonessential resource finishes
-  // and the document load event fires.
-  await page.goto(path, { waitUntil: 'domcontentloaded' });
+  // A deferred script can hold DOMContentLoaded after the app has rendered.
+  // Verify the actual home screen instead of waiting for unrelated scripts.
+  await page.goto(path, { waitUntil: 'commit' });
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible({ timeout: readyTimeoutMs });
 }
 
