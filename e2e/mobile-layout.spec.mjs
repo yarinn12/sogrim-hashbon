@@ -2162,6 +2162,24 @@ async function assertCompactSettlementFirstView(page) {
       };
     };
 
+    const describeBlock = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        tag: element.tagName.toLowerCase(), className: element.className,
+        text: element.textContent.trim().replace(/\s+/gu, ' ').slice(0, 100),
+        top: Math.round(rect.top), bottom: Math.round(rect.bottom),
+        width: Math.round(rect.width), height: Math.round(rect.height),
+        marginTop: style.marginTop, marginBottom: style.marginBottom,
+        paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+        fontSize: style.fontSize, lineHeight: style.lineHeight,
+        display: style.display, minHeight: style.minHeight
+      };
+    };
+    const screen = document.querySelector('.settlement-screen');
+    const hero = screen?.querySelector('.settlement-hero');
+    const eventActions = screen?.querySelector('.event-header-actions');
+
     return {
       viewportHeight: innerHeight,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -2181,11 +2199,37 @@ async function assertCompactSettlementFirstView(page) {
       }),
       screenPaddingBottom: parseFloat(
         getComputedStyle(document.querySelector(".settlement-screen")).paddingBottom
-      ) || 0
+      ) || 0,
+      blocks: [...(screen?.children ?? [])].map(describeBlock),
+      heroBlocks: [...(hero?.children ?? [])].map(describeBlock),
+      eventActionLayout: eventActions ? {
+        ...describeBlock(eventActions),
+        gridTemplateColumns: getComputedStyle(eventActions).gridTemplateColumns,
+        flexDirection: getComputedStyle(eventActions).flexDirection,
+        gap: getComputedStyle(eventActions).gap,
+        children: [...eventActions.children].map(describeBlock)
+      } : null,
+      heroDetails: [
+        '.settlement-hero-title-row', '.settlement-hero-title-row h2',
+        '.settlement-hero-title-row p', '.settlement-hero-total',
+        '.settlement-hero-actions', '.settlement-stage',
+        '.settlement-stage-heading', '.settlement-transfer-board'
+      ].map(selector => {
+        const element = screen?.querySelector(selector);
+        return element ? { selector, ...describeBlock(element) } : { selector, missing: true };
+      })
     };
   });
 
   const extraLargeText = layout.rootFontSize >= 23;
+  if (extraLargeText || process.env.CAPTURE_SETTLEMENT_GEOMETRY === '1') {
+    await test.info().attach('settlement-large-text-geometry', {
+      body: JSON.stringify(layout, null, 2), contentType: 'application/json'
+    });
+    await test.info().attach('settlement-large-text-full-page', {
+      body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+    });
+  }
   if (extraLargeText) {
     expect(layout.heading?.top, "large text keeps transfers close to the primary answer")
       .toBeLessThan(layout.viewportHeight * 1.5);
