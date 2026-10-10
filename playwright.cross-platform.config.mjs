@@ -49,7 +49,7 @@ export default defineConfig({
     })),
     {
       name: "compact-firefox",
-      testMatch: journeys,
+      testMatch: [...journeys, "e2e-parity/typography-navigation-readiness.spec.mjs"],
       use: { ...devices["Desktop Firefox"], viewport: { width: 390, height: 844 } }
     },
     {

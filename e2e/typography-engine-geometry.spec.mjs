@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { calculateSettlement } from '../src/domain/settlement.mjs';
+import { openTypographyHome } from './helpers/typographyReadiness.mjs';
 
 const owner = 'person-typography-geometry-owner';
 const peers = [
@@ -33,9 +34,7 @@ const state = {
     expenses, transfers, activityLog: [] }]
 };
 
-test('summary and header text grow with system text and leave long copy readable', async ({ page, request }, testInfo) => {
-  const errors = [];
-  page.on('pageerror', error => errors.push(error.message));
+async function installTypographyFixture(page, request) {
   await request.post('/api/reset');
   await request.put('/api/state', { data: state });
   await page.addInitScript(({ ownerId, initialState }) => {
@@ -48,9 +47,15 @@ test('summary and header text grow with system text and leave long copy readable
     localStorage.setItem('settle-friends-current-participant', ownerId);
     sessionStorage.setItem('settle-friends-skip-next-splash', '1');
   }, { ownerId: owner, initialState: state });
+}
+
+test('summary and header text grow with system text and leave long copy readable', async ({ page, request }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await installTypographyFixture(page, request);
 
   await page.setViewportSize({ width: 393, height: 852 });
-  await page.goto('/');
+  await openTypographyHome(page);
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await page.locator(`[data-action="settle"][data-event-id="${eventId}"]`).first().click();
   const summary = page.locator('.screen[data-event-view="summary"]');
