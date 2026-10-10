@@ -32,7 +32,11 @@ test("Hebrew and numeric brand fonts load when Google Fonts is unreachable", asy
     await document.fonts.ready;
     return {
       loadedFamilies: [...new Set([...document.fonts]
-        .filter(face => face.status === "loaded").map(face => face.family))],
+        .filter(face => face.status === "loaded")
+        // FontFace.family is a CSS descriptor: Firefox preserves the quotes
+        // around the single family name. Compare the same semantic name in
+        // all engines without relaxing the loaded-face/resource checks.
+        .map(face => face.family.replace(/^(["'])(.*)\1$/, "$2")))],
       localResources: performance.getEntriesByType("resource")
         .filter(entry => /\/fonts\/.*\.woff2/.test(entry.name))
         .map(entry => entry.name),
