@@ -143,10 +143,10 @@ jobs:
         working-directory: app
         run: |
           mkdir -p artifacts/android-native-isolated
-          if [[ -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
-            "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -d > artifacts/android-native-isolated/logcat.txt 2>&1 || true
-            "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
-            "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
+          if [[ -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
+            timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -d > artifacts/android-native-isolated/logcat.txt 2>&1 || true
+            timeout 10 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
+            timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
           fi
       - uses: actions/upload-artifact@v6
         if: always()
