@@ -48,6 +48,8 @@ def report(enlarged=False):
         if phase.startswith("keyboard-"):
             field = "amount" if phase == "keyboard-amount" else "name"
             metrics = {field: deepcopy(metric), "next": deepcopy(metric)}
+            for key in ["bounds", "nativeBounds"]:
+                metrics["next"][key].update({"top": 270, "bottom": 322})
         if phase == "restored":
             metrics["expense"] = deepcopy(metric)
             metrics["expense"]["text"] = "QA iOS"
@@ -56,6 +58,9 @@ def report(enlarged=False):
                                   "errors": [], "documentWidth": 393, "rootFontSize": 16 * factor,
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
                                   "metrics": metrics, "writes": [{"ok": True}], "pendingOutbox": [],
+                                  "keyboardLayout": {"header": {"top": 0, "bottom": 120},
+                                                     "footer": {"top": 250, "bottom": 476},
+                                                     "fieldHittable": True, "nextHittable": True},
                                   "openedNote": {"title": "טקסט תקין", "body": "טקסט תקין"},
                                   "documentScroll": {"x": 0, "y": 0},
                                   "trustedInputs": [{"action": "expense-total", "value": "120"}, {"action": "expense-name", "value": "QA iOS"}],
@@ -154,6 +159,19 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
     def test_field_under_keyboard_fails(self):
         self.record("keyboard-name")["metrics"]["name"]["bounds"]["bottom"] = 600
+        self.rejects()
+    def test_footer_covers_field_edge_despite_hittable_center_fails(self):
+        # Field center remains at 175, but its bottom 20px are under the footer.
+        self.record("keyboard-name")["keyboardLayout"]["footer"]["top"] = 180
+        self.rejects()
+    def test_header_covers_field_edge_despite_hittable_center_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["header"]["bottom"] = 160
+        self.rejects()
+    def test_keyboard_field_center_covered_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["fieldHittable"] = False
+        self.rejects()
+    def test_keyboard_next_center_covered_fails(self):
+        self.record("keyboard-amount")["keyboardLayout"]["nextHittable"] = False
         self.rejects()
     def test_native_name_scroll_above_viewport_fails(self):
         # The real AX run accepted typing with a DOM-hit-tested center while

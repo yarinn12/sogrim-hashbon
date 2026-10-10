@@ -19,6 +19,41 @@ const nativeMeasureSource = [
   sourceBetween('  function first(selector) {', '  function point(selector) {'),
   sourceBetween('  function measure(selector) {', '  let captureIndex = 0;')
 ].join('\n');
+const nativeKeyboardSource = [
+  sourceBetween('  function visible(element) {', '  function first(selector) {'),
+  sourceBetween('  function first(selector) {', '  function point(selector) {'),
+  sourceBetween('  function point(selector) {', "  let phase = 'starting';"),
+  sourceBetween('  function keyboardLayout(name, selectors) {', '  async function keyboardGeometryReadbacks(name, selectors, index) {')
+].join('\n');
+
+test('actual QA keyboard measurement distinguishes a covered edge from a covered center', async ({ page }) => {
+  // This is the DOM measurement boundary, without any Capacitor or OS mock.
+  await page.setContent(`
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <header class="expense-modal-step-header" style="position:fixed;inset:0 0 auto;height:50px">Header</header>
+    <input id="field" style="position:fixed;left:20px;top:100px;width:200px;height:60px;box-sizing:border-box" />
+    <footer class="expense-modal-actions" style="position:fixed;left:0;right:0;top:200px;height:100px;z-index:2;background:white">
+      <button id="next" style="position:absolute;left:20px;top:20px;width:200px;height:40px">Next</button>
+    </footer>
+  `);
+  await page.evaluate(source => {
+    globalThis.__iosQaKeyboardLayout = new Function(`${source}\nreturn keyboardLayout;`)();
+  }, nativeKeyboardSource);
+  const read = () => page.evaluate(() => globalThis.__iosQaKeyboardLayout('keyboard-name', { name: '#field', next: '#next' }));
+  const normal = await read();
+  expect(normal).toMatchObject({ header: { bottom: 50 }, footer: { top: 200 }, fieldHittable: true, nextHittable: true });
+
+  await page.locator('footer').evaluate(element => { element.style.top = '150px'; });
+  const edgeCovered = await read();
+  expect(edgeCovered.fieldHittable).toBe(true);
+  expect(edgeCovered.footer.top).toBe(150);
+  expect(await page.locator('#field').evaluate(element => element.getBoundingClientRect().bottom)).toBeGreaterThan(edgeCovered.footer.top);
+
+  await page.locator('footer').evaluate(element => { element.style.top = '120px'; });
+  expect((await read()).fieldHittable).toBe(false);
+  await page.locator('footer').evaluate(element => { element.style.top = '200px'; });
+  expect(await read()).toEqual(normal);
+});
 
 const WORD = 'ABCDEFGHIJKLMNO';
 async function fixture(page) {

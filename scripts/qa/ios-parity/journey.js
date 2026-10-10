@@ -119,6 +119,40 @@
   let captureIndex = 0;
   const pending = new Map();
   globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
+  function keyboardLayout(name, selectors) {
+    if (name !== 'keyboard-amount' && name !== 'keyboard-name') return null;
+    const field = name === 'keyboard-amount' ? 'amount' : 'name';
+    const bounds = selector => {
+      const element = first(selector);
+      if (!element) throw new Error(`Required keyboard boundary is missing: ${selector}`);
+      const box = element.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, left: box.left, right: box.right };
+    };
+    return {
+      header: bounds('.expense-modal-step-header'), footer: bounds('.expense-modal-actions'),
+      fieldHittable: Boolean(point(selectors[field])), nextHittable: Boolean(point(selectors.next))
+    };
+  }
+  async function keyboardGeometryReadbacks(name, selectors, index) {
+    const startedAt = performance.now();
+    const read = frame => ({
+      frame, elapsedMs: performance.now() - startedAt, livePhase: phase,
+      viewport: { height: innerHeight, visualHeight: visualViewport?.height,
+        visualTop: visualViewport?.offsetTop, visualPageTop: visualViewport?.pageTop, scale: visualViewport?.scale },
+      documentScroll: { x: scrollX, y: scrollY },
+      rootBounds: document.documentElement.getBoundingClientRect().toJSON(),
+      keyboardStyle: { top: document.documentElement.style.getPropertyValue('--app-keyboard-viewport-top'),
+        height: document.documentElement.style.getPropertyValue('--app-keyboard-viewport-height') },
+      keyboardLayout: keyboardLayout(name, selectors),
+      metrics: Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]))
+    });
+    const snapshots = [read(0)];
+    for (let frame = 1; frame <= 2; frame += 1) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      snapshots.push(read(frame));
+    }
+    webkit.messageHandlers.iosParity.postMessage({ kind: 'keyboard-geometry-diagnostic', index, phase: name, snapshots });
+  }
   async function capture(name, selectors) {
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -126,7 +160,7 @@
     phase = name;
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
-    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics,
+    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, keyboardLayout: keyboardLayout(name, selectors),
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
       appUrl: location.href,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -142,6 +176,11 @@
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
     });
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
+    // Observe subsequent geometry without replacing the sealed original
+    // capture or delaying the trusted XCTest actions that consume its phase.
+    if (name === 'keyboard-amount' || name === 'keyboard-name') {
+      void keyboardGeometryReadbacks(name, selectors, index).catch(error => errors.push(String(error)));
+    }
   }
   globalThis.__iosParityCaptureCurrent = name => capture(name, { heading: '.event-overview-header h1' });
   async function run() {

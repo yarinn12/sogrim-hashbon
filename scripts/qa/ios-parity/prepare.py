@@ -151,6 +151,14 @@ def validate(out: Path, source_sha: str) -> None:
             assert record["native"]["keyboardFrame"]["y"] < record["native"]["windowBounds"]["height"]
             viewport = record["viewport"]
             assert 0 < viewport["visualHeight"] < viewport["height"]
+            # A field can clear the OS keyboard while still being partly
+            # covered by the wizard's sticky header or action footer.
+            layout = record["keyboardLayout"]
+            assert layout["fieldHittable"] is True and layout["nextHittable"] is True
+            assert record["metrics"][field]["bounds"]["top"] >= layout["header"]["bottom"] - 1
+            assert record["metrics"][field]["bounds"]["bottom"] <= layout["footer"]["top"] + 1
+            assert record["metrics"]["next"]["bounds"]["top"] >= layout["footer"]["top"] - 1
+            assert record["metrics"]["next"]["bounds"]["bottom"] <= layout["footer"]["bottom"] + 1
             for key in [field, "next"]:
                 bounds = record["metrics"][key]["bounds"]
                 assert bounds["top"] >= viewport["visualTop"] - 1

@@ -113,6 +113,18 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard var record = message.body as? [String: Any], let index = record["index"] as? Int else { return }
+        if record["kind"] as? String == "keyboard-geometry-diagnostic" {
+            guard let phase = record["phase"] as? String,
+                  ["keyboard-amount", "keyboard-name"].contains(phase),
+                  let original = records.first(where: { $0["index"] as? Int == index && $0["phase"] as? String == phase }) else { return }
+            record["kind"] = "Later observations only; original acceptance capture unchanged"
+            record["originalCapture"] = original
+            record["nativeAfterReadbacks"] = nativeInfo()
+            if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .prettyPrinted]) {
+                try? data.write(to: output.appendingPathComponent("native-parity-geometry-\(phase).json"), options: .atomic)
+            }
+            return
+        }
         let scroll = record["documentScroll"] as? [String: Double] ?? [:]
         if var metrics = record["metrics"] as? [String: [String: Any]] {
             for (key, var metric) in metrics {
