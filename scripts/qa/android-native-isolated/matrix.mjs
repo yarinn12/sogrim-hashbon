@@ -28,7 +28,7 @@ try{
       row.tabs=await page.evaluate(textMeasurementExpression(['.event-workspace-tab strong'],false));
       check('Exactly three rendered event tabs',row.tabs.length===3&&new Set(row.tabs.map(tab=>tab.text)).size===3);
       check('All three tab labels fit their actual buttons',row.tabs.length===3&&row.tabs.every(glyphsFitContainer));
-      check('Three tab labels have exact OS ratio',row.tabs.length===3&&row.tabs.every(tab=>scaledFontSizeMatches(tab.fontSize,13.5,scale)),{baselinePx:13.5,expectedRatio:scale,tolerancePx:.2});
+      check('Three tab labels have exact OS ratio',row.tabs.length===3&&row.tabs.every(tab=>scaledFontSizeMatches(tab.fontSize,14,scale)),{baselinePx:14,expectedRatio:scale,tolerancePx:.2});
       screenshot(resolve(out,`${orientation}-scale-${scale}-tabs.png`));
       row.nativeTaps.push(await page.tap('[data-action="settle"]'));
       await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='settlement'`),'Settlement');await sleep(250);

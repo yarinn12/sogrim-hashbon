@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import {observeFreshWebViewBounds} from './native-observation.mjs';
 
 export const device = process.env.ANDROID_QA_DEVICE;
 export const avd = process.env.ANDROID_QA_AVD;
@@ -41,7 +42,7 @@ export async function connect() {
 class Cdp {
   constructor(url) {
     this.socket = new WebSocket(url);
-    this.sequence = 0; this.pending = new Map(); this.exceptions = [];
+    this.sequence = 0; this.pending = new Map(); this.exceptions = [];this.nativeObservations=[];
     this.ready = new Promise((resolve, reject) => { const timer=setTimeout(()=>{this.socket.close();reject(new Error('CDP WebSocket open timed out'));},10000); this.socket.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});this.socket.addEventListener('error',e=>{clearTimeout(timer);reject(e);},{once:true}); });
     this.socket.addEventListener('message', e => {
       const m = JSON.parse(String(e.data));
@@ -74,17 +75,14 @@ class Cdp {
     return this.evaluate(`(() => { const e = document.querySelector(${JSON.stringify(selector)}); if (!e) throw new Error('Input missing'); const setter = Object.getOwnPropertyDescriptor(e.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value').set; setter.call(e, ${JSON.stringify(value)}); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
   }
   async tap(selector){
-    const point=await this.evaluate(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw new Error('Tap control unavailable');e.scrollIntoView({block:'center'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!(hit===e||e.contains(hit)))throw new Error('Tap target covered by '+hit?.outerHTML?.slice(0,200));return{x,y,dpr:devicePixelRatio,action:e.dataset.action};})()`);
-    const dumpPath=`/sdcard/qa-native-window-${Date.now()}-${++this.sequence}.xml`;
-    const dumped=adb(['shell','uiautomator','dump','--compressed',dumpPath]);
-    if(!/dumped to/i.test(dumped))throw new Error('Native UI dump did not produce fresh bounds: '+dumped);
-    const xml=adb(['shell','cat',dumpPath]);
-    const tag=[...xml.matchAll(/<node[^>]*class="android\.webkit\.WebView"[^>]*>/g)].map(match=>match[0]).find(tag=>tag.includes(`package="${packageName}"`));
-    const bounds=tag?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
-    if(!bounds)throw new Error('Native tap requires actual WebView bounds');
-    const x=Math.round(+bounds[1]+point.x*point.dpr),y=Math.round(+bounds[2]+point.y*point.dpr);
-    if(x<+bounds[1]||x>=+bounds[3]||y<+bounds[2]||y>=+bounds[4])throw new Error('Native tap point outside WebView');
-    adb(['shell','input','tap',String(x),String(y)]);return{...point,xPhysical:x,yPhysical:y,webViewBounds:bounds.slice(1)};
+    const locate=()=>this.evaluate(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw new Error('Tap control unavailable');e.scrollIntoView({block:'center'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!(hit===e||e.contains(hit)))throw new Error('Tap target covered by '+hit?.outerHTML?.slice(0,200));return{x,y,dpr:devicePixelRatio,action:e.dataset.action};})()`);
+    await locate();
+    const observed=await observeFreshWebViewBounds({packageName,dump:path=>adb(['shell','uiautomator','dump','--compressed',path]),read:path=>adb(['shell','cat',path]),delay:sleep,makePath:attempt=>`/sdcard/qa-native-window-${Date.now()}-${++this.sequence}-${attempt}.xml`,onAttempt:record=>this.nativeObservations.push({...record,selector})});
+    // Recheck the hit target after the potentially slow observation.
+    const point=await locate(),[left,top,right,bottom]=observed.bounds;
+    const x=Math.round(left+point.x*point.dpr),y=Math.round(top+point.y*point.dpr);
+    if(x<left||x>=right||y<top||y>=bottom)throw new Error('Native tap point outside WebView');
+    adb(['shell','input','tap',String(x),String(y)]);return{...point,xPhysical:x,yPhysical:y,webViewBounds:observed.bounds,observationAttempts:observed.attempts};
   }
   close() { this.socket.close(); }
 }

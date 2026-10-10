@@ -56,17 +56,52 @@ and waits for actual Native OS preference and product reflow. Each case records 
 and the other cases still run. Expanded transfer helpers must have visible text;
 their container is opened with a real tap rather than measuring a collapsed child.
 
+Geometry keeps a fixed one-pixel containment limit. DOM Range boxes include
+unused font ascent/descent; Canvas `actualBoundingBoxAscent/Descent`, measured
+with the actual loaded computed font, estimates painted vertical bounds when
+Canvas font metrics and the DOM fragment height agree within one pixel. Raw
+Range boxes and per-grapheme metrics remain in each report. On a metric mismatch
+the entire conservative Range box must fit; no inferred baseline or larger
+tolerance is used. Horizontal bounds always retain conservative DOM Range widths.
+Every actual `overflow: hidden/clip/auto/scroll` ancestor is checked independently,
+including the text element itself. A visible linebox's scrollHeight is evidence,
+not clipping by itself. Brand text is also checked inside its full brand lockup,
+while its own clipping boundary remains enforced. This is metric-based geometry,
+supplemented by Native screenshots, rather than pixel-level OCR.
+
+Visibility is checked after scrolling/reflow, so temporarily occluded event
+tabs cannot disappear from the measurement. The baseline tab labels are14px,
+giving actual14/21/28px at OS1/1.5/2. The normal regression suite reproduces the
+previous visibility-before-scroll bug and rejects a1.5px painted/card overflow.
+
 `pages.mjs` measures all24 home/event/notes/profile × scale × orientation states,
 including a seeded synthetic note, rendered text, exact per-text baseline ratio,
 Range glyph bounds, three tabs and overflow. DOM navigation is used for these
 measurements; actual Native taps are exercised in matrix and journey. A script existing does not mean its
 cases have passed: require the saved source-specific JSON and exit status.
+The note list intentionally ellipsizes long title/body previews at the baseline
+size. Only those two declared selectors may use a visible-preview bound, and
+only after opening the real note editor, proving exact full values, title caret
+start/end and actual horizontal scrolling, body wrapping or scroll reachability,
+and the exact requested OS ratio in both editor controls. The fixture is not
+shortened. Vertical clipping and missing full disclosure still fail the gate.
+
+Native taps require a newly named UIAutomator dump of the correct QA package.
+A nonzero dump is rejected even if stdout says it wrote a file. Observation may
+retry at most3 times, each with a new path, and every failure is preserved.
+The DOM hit target is checked again after observation. Native input is executed
+once only, after successful bounds and hit testing; input errors never retry.
 
 `font-regression.mjs` proves the actual Native guard's sensitivity at OS1.5:
 normal root/rem24 and brand25.5 pass, a temporary inline copy of the old CSS
 root multiplier produces36/38.25 and fails the same exact-size guards, then
 restoring the inline style passes. It never changes WebView settings or source.
 `acceptance.mjs` runs matrix/pages/journey and returns nonzero for any stage.
+`geometry-regression.mjs` runs the same real Native sensor at OS2 on the header
+labels and transfer badges. Four controls temporarily clip actual width or
+height to1px: the same rows must retain nonempty glyphs, turn red on clipping,
+and return green after restoring the original inline styles. Both the painted
+metric path and conservative whole-em fallback remain subject to clipping.
 
 `.github/workflows/android-native-parity-qa.yml` is reusable via required
 `workflow_call(app_sha)` and manually via `workflow_dispatch(app_sha)`. It has
@@ -84,6 +119,8 @@ the aggregate; this new reusable workflow alone does not gate deployment.
 SDK setup follows [Android avdmanager](https://developer.android.com/tools/avdmanager)
 and the [GitHub Ubuntu24 runner inventory](https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md).
 CI execution has not been claimed until a source-specific run completes.
+The tracked Gradle wrapper has mode100644, so Linux CI invokes it through bash
+without changing application files or their Git mode.
 
 These tests do not verify real authentication, providers, push delivery,
 production database permissions, real network recovery, physical-device upgrade
