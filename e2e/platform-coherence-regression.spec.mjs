@@ -11,6 +11,12 @@ const TITLE = "פרטי הנסיעה המשותפת והרכבת מירושלי�
 const BODY = "נפגשים ברציף שלוש בשעה שמונה וחצי. שומרים כרטיסים, כתובות ומספרי טלפון כדי שכל המשתתפים יראו את אותו המידע גם לאחר חזרה למסך הקודם ורענון.";
 const EXPENSE_NOTE = "הכרטיסים נקנו יחד והקבלה נשלחה לכל המשתתפים לפני היציאה לדרך.";
 const UPDATED_AT = "2026-10-01T08:00:00.000Z";
+const portraitFor = project => project === "ipad-webkit"
+  ? { width: 768, height: 1024 }
+  : project === "reflow-200" ? { width: 320, height: 800 } : { width: 390, height: 844 };
+const landscapeFor = project => project === "ipad-webkit"
+  ? { width: 1194, height: 834 }
+  : project === "reflow-200" ? { width: 800, height: 320 } : { width: 844, height: 390 };
 
 const state = {
   currentParticipantId: OWNER,
@@ -40,6 +46,21 @@ const state = {
         createdByParticipantId: OWNER, updatedByParticipantId: OWNER,
         createdAt: UPDATED_AT, updatedAt: UPDATED_AT }] }
   ]
+};
+
+const ROSTER_EVENT = "event-platform-coherence-desktop-roster";
+const rosterParticipants = [state.participants[0], ...Array.from({ length: 15 }, (_, index) => ({
+  id: `person-platform-coherence-roster-${index + 1}`,
+  displayName: `משתתף מספר ${index + 1} עם שם משפחה ארוך לאירוע המשותף`,
+  kind: "guest"
+}))];
+const rosterState = {
+  ...state,
+  participants: rosterParticipants,
+  events: [{ ...state.events[0], id: ROSTER_EVENT,
+    name: "נסיעה משפחתית ארוכה במיוחד בין ערים ומדינות עם רשימת משתתפים גדולה",
+    participantIds: rosterParticipants.map(participant => participant.id),
+    expenses: [], notes: [], transfers: [] }]
 };
 
 async function openEvent(page, eventId) {
@@ -113,13 +134,9 @@ test("empty note, validation, long pinned save, return and reload remain coheren
   const notes = page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`);
   await expect(notes.locator(".event-notes-empty")).toContainText("עוד אין פתקים משותפים");
 
-  const portrait = testInfo.project.name === "ipad-webkit"
-    ? { width: 768, height: 1024 } : { width: 390, height: 844 };
-  const landscape = testInfo.project.name === "ipad-webkit"
-    ? { width: 1194, height: 834 } : { width: 844, height: 390 };
-  await page.setViewportSize(landscape);
+  await page.setViewportSize(landscapeFor(testInfo.project.name));
   await assertNoHorizontalOverflow(page, "empty notes landscape");
-  await page.setViewportSize(portrait);
+  await page.setViewportSize(portraitFor(testInfo.project.name));
   await assertTappable(page, notes.locator('[data-action="new-event-note"]'), "new note");
   await notes.locator('[data-action="new-event-note"]').click();
   const modal = page.locator(".event-note-modal");
@@ -184,9 +201,7 @@ test("long expense note survives summary navigation, orientation and reload", as
   // through the settlement card; select the visible control for each layout.
   await page.locator(`[data-action="settle"][data-event-id="${OPEN_EVENT}"]:visible`).first().click();
   await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
-  const landscape = testInfo.project.name === "ipad-webkit"
-    ? { width: 1194, height: 834 } : { width: 844, height: 390 };
-  await page.setViewportSize(landscape);
+  await page.setViewportSize(landscapeFor(testInfo.project.name));
   await assertNoHorizontalOverflow(page, "summary landscape");
   await page.locator(`[data-action="back-to-event"][data-event-id="${OPEN_EVENT}"]:visible`).first().click();
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
@@ -225,9 +240,7 @@ test("account-pending notifications and empty friends return to the previous scr
   await expect(inbox.locator(".notification-inbox-empty.is-account-pending"))
     .toContainText("ההתראות מחכות בחשבון שלך");
   await assertNoHorizontalOverflow(page, "notifications account pending");
-  const landscape = testInfo.project.name === "ipad-webkit"
-    ? { width: 1194, height: 834 } : { width: 844, height: 390 };
-  await page.setViewportSize(landscape);
+  await page.setViewportSize(landscapeFor(testInfo.project.name));
   await assertNoHorizontalOverflow(page, "notifications landscape");
   await inbox.locator('[data-action="go-back"]').click();
   await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
@@ -244,4 +257,69 @@ test("account-pending notifications and empty friends return to the previous scr
   await friends.locator('[data-action="go-back"]').click();
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("desktop 32px roster exposes the last participant and add action above navigation", async ({ page, request, browserName }, testInfo) => {
+  await request.post("/api/reset");
+  await request.put("/api/state", { data: rosterState });
+  await page.evaluate(next => localStorage.setItem("settle-friends-state", JSON.stringify(next)), rosterState);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await openEvent(page, ROSTER_EVENT);
+  await page.locator('[data-action="open-event-participants"]:visible').first().click();
+  const roster = page.locator(".event-participant-roster-modal");
+  await expect(roster).toBeVisible();
+  await expect(roster.locator(".event-participant-roster-row"))
+    .toHaveCount(rosterParticipants.length);
+  await page.evaluate(() => document.fonts.ready);
+  await expect.poll(() => page.evaluate(() => document.getAnimations()
+    .filter(animation => animation.playState === "running" &&
+      Number.isFinite(animation.effect?.getComputedTiming().endTime)).length)).toBe(0);
+  // The route also has JS-driven entrance motion, outside getAnimations().
+  await page.waitForTimeout(350);
+  const geometry = await roster.evaluate(node => {
+    const panel = node.getBoundingClientRect();
+    const nav = [...document.querySelectorAll(".product-app-nav")]
+      .map(element => element.getBoundingClientRect())
+      .find(rect => rect.width > 0 && rect.height > 0);
+    return { panelBottom: panel.bottom, navTop: nav?.top ?? null,
+      gap: nav ? nav.top - panel.bottom : null,
+      overflowY: getComputedStyle(node).overflowY,
+      scrollHeight: node.scrollHeight, clientHeight: node.clientHeight };
+  });
+  await testInfo.attach("desktop-roster-32px-geometry", {
+    contentType: "application/json", body: JSON.stringify(geometry)
+  });
+  console.log(JSON.stringify({ kind: "desktop-roster-32px-geometry",
+    project: testInfo.project.name, browserName, ...geometry }));
+  expect(geometry.navTop, "desktop navigation must be measurable").not.toBeNull();
+  expect(geometry.gap, "navigation must not cover the roster").toBeGreaterThanOrEqual(-1);
+  expect(geometry.overflowY, "roster must own user scrolling").toBe("auto");
+  expect(geometry.scrollHeight, "roster must contain more rows than fit at once")
+    .toBeGreaterThan(geometry.clientHeight);
+
+  // Mobile WebKit has no Playwright wheel input; desktop WebKit, Chromium and
+  // Firefox still verify real pointer-wheel scrolling in this regression.
+  if (browserName !== "webkit" || /desktop/i.test(testInfo.project.name)) {
+    const box = await roster.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 550);
+    await expect.poll(() => roster.evaluate(node => node.scrollTop), {
+      message: "wheel input must move the real roster scroller"
+    }).toBeGreaterThan(0);
+  }
+  const last = roster.locator(".event-participant-roster-row").last();
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await assertTappable(page, last, "last participant");
+  await last.click();
+  await expect(page.locator(".event-participant-management-modal")).toBeVisible();
+  await page.goBack();
+  await expect(roster).toBeVisible();
+  const add = roster.locator('[data-action="open-event-participant-add"]');
+  await add.scrollIntoViewIfNeeded();
+  await assertTappable(page, add, "add participant");
+  await add.click();
+  await expect(page.locator(".event-participant-add-route-modal")).toBeVisible();
 });
