@@ -22,6 +22,22 @@ final class ParityProbeUITests: XCTestCase {
             XCTFail("Timed out: \(name). State: \(status.label)")
         }
         func tap(_ key: String) {
+            // Large accessibility text may need ordinary user scrolling before
+            // a field's center is hit-testable. Never use a DOM click for input.
+            for _ in 0..<4 {
+                if state()[key] is [String: Double] { break }
+                let viewport = state()["viewport"] as? [String: Double] ?? [:]
+                let height = viewport["visualHeight"] ?? viewport["height"] ?? 852
+                let geometryKey = key == "amountPoint" ? "amountGeometry" : "nameGeometry"
+                let geometry = state()[geometryKey] as? [String: Any] ?? [:]
+                let top = geometry["top"] as? Double ?? height
+                let upward = top >= height * 0.35
+                let origin = app.coordinate(withNormalizedOffset: .zero)
+                let a = origin.withOffset(CGVector(dx: 40, dy: height * (upward ? 0.72 : 0.35)))
+                let b = origin.withOffset(CGVector(dx: 40, dy: height * (upward ? 0.35 : 0.72)))
+                a.press(forDuration: 0.1, thenDragTo: b)
+                Thread.sleep(forTimeInterval: 0.5)
+            }
             wait("hittable \(key)") { state()[key] is [String: Double] }
             guard let point = state()[key] as? [String: Double], let x = point["x"], let y = point["y"] else { return }
             app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()

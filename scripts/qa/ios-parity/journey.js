@@ -29,12 +29,24 @@
     return hit && (element === hit || element.contains(hit)) ? { x, y } : null;
   }
   let phase = 'starting';
+  function controlGeometry(selector) {
+    const element = first(selector);
+    if (!element) return null;
+    const box = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    return { top: box.top, bottom: box.bottom, left: box.left, right: box.right,
+      centerHit: hit?.outerHTML?.slice(0, 500), focused: document.activeElement === element,
+      modalScrollTop: element.closest('.expense-modal')?.scrollTop,
+      rootClasses: document.documentElement.className };
+  }
   globalThis.__iosParityLive = () => ({
     phase, errors, screen: document.querySelector('#app')?.dataset.screen,
     amount: first('[data-action="expense-total"]')?.value || '',
     name: first('[data-action="expense-name"]')?.value || '',
     amountPoint: point('[data-action="expense-total"]'),
     namePoint: point('[data-action="expense-name"]'),
+    amountGeometry: controlGeometry('[data-action="expense-total"]'),
+    nameGeometry: controlGeometry('[data-action="expense-name"]'),
     nextPoint: point('[data-action="expense-step-next"]'),
     savePoint: point('[data-action="save-expense"]'),
     viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height },
@@ -121,7 +133,7 @@
     await click(`[data-action="open-event"][data-event-id="${EVENT}"]`);
     await click('[data-action="show-expense-form"]');
     await until(() => first('[data-action="expense-total"]'), 'expense amount field');
-    phase = 'keyboard-ready';
+    await capture('keyboard-ready', { amount: '[data-action="expense-total"]' });
     await until(() => {
       const row = JSON.parse(localStorage.getItem('qa-native-server-row'));
       return row?.state.events[0].expenses.some(expense => expense.name === 'QA iOS' && expense.total === 12000);
