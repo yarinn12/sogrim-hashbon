@@ -76,5 +76,6 @@ test('app-only home readiness rejects a broken application module', async ({ pag
   await page.route('**/src/app.mjs?*', route => route.fulfill({
     status: 200, contentType: 'text/javascript', body: 'throw new Error("synthetic app boot failure")'
   }));
-  await expect(openRenderedHome(page, { readyTimeoutMs: 1_000 })).rejects.toThrow();
+  await expect(openRenderedHome(page, { readyTimeoutMs: 1_000 }))
+    .rejects.toThrow(/Startup readiness: .*"documentReadyState":.*"marks":/);
 });

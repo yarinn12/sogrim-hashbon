@@ -68,6 +68,8 @@ const HELD_IMAGE_READINESS_TEST = "platform home is ready while a nonessential i
 const heldImageGates = new WeakMap();
 const HELD_DEFER_READINESS_TEST = "platform home is ready before an unrelated deferred script completes";
 const heldDeferGates = new WeakMap();
+const DELAYED_MODULE_READINESS_TEST = "home readiness starts its UI budget after the app module executes";
+const delayedModuleGates = new WeakMap();
 
 async function openEvent(page, eventId) {
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
@@ -142,6 +144,15 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
         '<script defer src="/__qa_held_nonessential_defer.js"></script></body>') });
     });
   }
+  if (testInfo.title === DELAYED_MODULE_READINESS_TEST) {
+    const gate = { requested: false };
+    delayedModuleGates.set(page, gate);
+    await page.route('**/src/app.mjs?*', async route => {
+      gate.requested = true;
+      await new Promise(resolve => setTimeout(resolve, 4_500));
+      await route.continue();
+    });
+  }
   await page.addInitScript(({ state, owner, injectNoteWriteFailure }) => {
     if (!sessionStorage.getItem("platform-coherence-seeded")) {
       localStorage.clear();
@@ -169,7 +180,10 @@ test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { state, owner: OWNER, injectNoteWriteFailure: process.env.PLATFORM_COHERENCE_FAULT === "drop-note-write" });
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
-  await openTypographyHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/" });
+  await openTypographyHome(page, {
+    path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/",
+    readyTimeoutMs: testInfo.title === DELAYED_MODULE_READINESS_TEST ? 4_000 : 8_000
+  });
 });
 
 test(HELD_IMAGE_READINESS_TEST, async ({ page }) => {
@@ -396,6 +410,18 @@ test(HELD_DEFER_READINESS_TEST, async ({ page }) => {
   }
   await page.waitForLoadState("domcontentloaded");
   expect(await page.evaluate(() => window.__qaDomContentLoaded)).toBe(true);
+});
+
+test(DELAYED_MODULE_READINESS_TEST, async ({ page }) => {
+  expect(delayedModuleGates.get(page)?.requested, "the app module was actually held").toBe(true);
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  const marks = await page.evaluate(() => Object.fromEntries(
+    performance.getEntriesByType("mark")
+      .filter(entry => entry.name.startsWith("sogrim:start:"))
+      .map(entry => [entry.name.slice("sogrim:start:".length), entry.startTime])
+  ));
+  expect(marks["app-module-ready"], "the module milestone follows the controlled delay").toBeGreaterThan(4_000);
+  expect(marks["first-screen-rendered"]).toBeGreaterThanOrEqual(marks["app-module-ready"]);
 });
 
 async function openNoteEditorForDelayedHistory(page, request) {
