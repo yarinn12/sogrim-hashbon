@@ -155,6 +155,20 @@ class AcceptanceTests(unittest.TestCase):
     def test_field_under_keyboard_fails(self):
         self.record("keyboard-name")["metrics"]["name"]["bounds"]["bottom"] = 600
         self.rejects()
+    def test_native_name_scroll_above_viewport_fails(self):
+        # The real AX run accepted typing with a DOM-hit-tested center while
+        # UIKit's additional scroll left the top of the name field at -19px.
+        metric = self.record("keyboard-name")["metrics"]["name"]
+        for key in ["bounds", "nativeBounds"]:
+            metric[key].update({"top": -19.375, "bottom": 89.890625})
+        self.rejects()
+    def test_name_center_visible_but_field_under_status_bar_fails(self):
+        # Being inside visualViewport is insufficient: the complete native
+        # field must also clear the OS bar, even if its center is below it.
+        metric = self.record("keyboard-name")["metrics"]["name"]
+        for key in ["bounds", "nativeBounds"]:
+            metric[key].update({"top": 10, "bottom": 119.265625})
+        self.rejects()
     def test_keyboard_without_native_frame_fails(self):
         self.record("keyboard-amount")["native"]["keyboardFrame"]["height"] = 0
         self.rejects()
