@@ -364,9 +364,29 @@ function injectDynamicTypeStyles(document) {
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: 1 / -1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .event-workspace-tab strong {
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+    }
+
+    @media (max-width: 360px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: minmax(0, 1fr) !important;
       }
     }
 
