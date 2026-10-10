@@ -13,6 +13,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private let sourceTree = "__APP_TREE__"
     private var keyboardFrame = CGRect.zero
     private var lifecycleCaptureRequested = false
+    private var lastPointMappings: [String: Any] = [:]
     private var output: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
 
     override func capacitorDidLoad() {
@@ -64,10 +65,13 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 "bridgeAvailable": bridge != nil, "webViewUrl": webView!.url?.absoluteString ?? "",
                 "windowBounds": rect(view.window?.bounds ?? .zero),
                 "webViewFrame": rect(webView!.convert(webView!.bounds, to: nil)),
+                "scrollViewFrame": rect(webView!.scrollView.convert(webView!.scrollView.bounds, to: nil)),
+                "nativeZoomScale": webView!.scrollView.zoomScale,
                 "statusBarFrame": rect(view.window?.windowScene?.statusBarManager?.statusBarFrame ?? .zero),
                 "keyboardFrame": rect(keyboardFrame),
                 "webViewInsets": ["top": inset.top, "bottom": inset.bottom, "left": inset.left, "right": inset.right],
                 "nativeContentOffset": ["x": webView!.scrollView.contentOffset.x, "y": webView!.scrollView.contentOffset.y],
+                "pointMappings": lastPointMappings,
                 "preferredContentSizeCategory": UIApplication.shared.preferredContentSizeCategory.rawValue,
                 "webViewContentSizeCategory": webView!.traitCollection.preferredContentSizeCategory.rawValue,
                 "nativeBodyPointSize": UIFont.preferredFont(forTextStyle: .body).pointSize,
@@ -93,6 +97,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 }
             }
             state["pointMappings"] = mappings
+            self.lastPointMappings = mappings
             state["native"] = self.nativeInfo()
             if state["phase"] as? String == "saved", self.backgrounds > 0, self.foregrounds > 0,
                !self.lifecycleCaptureRequested {
@@ -108,6 +113,20 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard var record = message.body as? [String: Any], let index = record["index"] as? Int else { return }
+        let scroll = record["documentScroll"] as? [String: Double] ?? [:]
+        if var metrics = record["metrics"] as? [String: [String: Any]] {
+            for (key, var metric) in metrics {
+                if let b = metric["bounds"] as? [String: Double], let left = b["left"], let top = b["top"],
+                   let right = b["right"], let bottom = b["bottom"] {
+                    let frame = webView!.scrollView.convert(CGRect(x: left + (scroll["x"] ?? 0), y: top + (scroll["y"] ?? 0),
+                                                                 width: right - left, height: bottom - top), to: nil)
+                    metric["nativeBounds"] = ["left": Double(frame.minX), "right": Double(frame.maxX),
+                                              "top": Double(frame.minY), "bottom": Double(frame.maxY)]
+                    metrics[key] = metric
+                }
+            }
+            record["metrics"] = metrics
+        }
         record["native"] = nativeInfo()
         records.append(record)
         report = nativeInfo(); report["records"] = records

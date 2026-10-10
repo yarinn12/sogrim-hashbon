@@ -1,5 +1,15 @@
 (() => {
   const errors = [];
+  const trustedClicks = [], trustedInputs = [];
+  addEventListener('click', event => {
+    const action = event.target.closest?.('[data-action]')?.dataset.action;
+    if (event.isTrusted && action) trustedClicks.push({ action, x: event.clientX, y: event.clientY });
+  });
+  addEventListener('input', event => {
+    if (event.isTrusted && event.target.dataset?.action) {
+      trustedInputs.push({ action: event.target.dataset.action, value: event.target.value });
+    }
+  });
   addEventListener('error', event => errors.push(event.message));
   addEventListener('unhandledrejection', event => errors.push(String(event.reason)));
   const EVENT = 'ios-native-event';
@@ -110,6 +120,8 @@
       documentWidth: document.documentElement.scrollWidth, errors: [...errors],
       nativeAppInfo: globalThis.__iosParityNativeAppInfo,
       openedNote,
+      trustedClicks: [...trustedClicks], trustedInputs: [...trustedInputs],
+      documentScroll: { x: scrollX, y: scrollY },
       saved: JSON.parse(localStorage.getItem('qa-native-server-row') || 'null'),
       writes: JSON.parse(localStorage.getItem('qa-native-writes') || '[]'),
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
@@ -143,7 +155,10 @@
       tab2: '.event-workspace-tab:nth-child(2) strong', tab3: '.event-workspace-tab:nth-child(3) strong' });
     await click(`[data-action="settle"][data-event-id="${EVENT}"]`);
     await capture('summary', { description: '.settlement-hero-title-row .muted', status: '.settlement-hero .status-chip', helper: '.settlement-stage-heading > div > small' });
-    await click('.transfer-explanation > summary');
+    // The summary is intentionally hidden; the visible transfer card is the
+    // production control that expands its explanation.
+    await click('.transfer-row:has(.transfer-explanation)');
+    await until(() => first('.transfer-explanation[open] .transfer-debt-summary'), 'expanded transfer explanation');
     await capture('transfers', { longName: '.transfer-participant:has([data-participant-id="ios-native-guest"]) strong',
       amount: '.transfer-amount > .amount', badge: '.personal-transfer-badge',
       debt: '.transfer-debt-summary', equation: '.transfer-equation-item > span' });

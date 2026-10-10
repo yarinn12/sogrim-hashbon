@@ -12,6 +12,13 @@ final class ParityProbeUITests: XCTestCase {
                   let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
             return value
         }
+        func systemScreenshot(_ phase: String) {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = "native-system-\(phase)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            print("NATIVE_SYSTEM_SCREENSHOT: \(phase)")
+        }
         func wait(_ name: String, timeout: TimeInterval = 35, predicate: () -> Bool) {
             let end = Date().addingTimeInterval(timeout)
             while Date() < end {
@@ -53,6 +60,7 @@ final class ParityProbeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "A real UIKit keyboard must appear")
         app.typeText("120")
         wait("real amount input and keyboard capture") { state()["amount"] as? String == "120" && state()["phase"] as? String == "keyboard-amount" }
+        systemScreenshot("keyboard-amount")
         let keyboardState = state()["native"] as? [String: Any] ?? [:]
         XCTAssertGreaterThan(keyboardState["keyboardShows"] as? Int ?? 0, 0)
         tap("nextPoint")
@@ -60,6 +68,7 @@ final class ParityProbeUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         app.typeText("QA iOS")
         wait("real name input and keyboard capture") { state()["name"] as? String == "QA iOS" && state()["phase"] as? String == "keyboard-name" }
+        systemScreenshot("keyboard-name")
         // Navigate the real wizard with hit-tested native-coordinate taps.
         for _ in 0..<4 {
             if state()["savePoint"] is [String: Double] { break }
@@ -74,9 +83,11 @@ final class ParityProbeUITests: XCTestCase {
             let native = state()["native"] as? [String: Any] ?? [:]
             return (native["backgrounds"] as? Int ?? 0) > 0 && (native["foregrounds"] as? Int ?? 0) > 0 && state()["phase"] as? String == "resumed"
         }
+        systemScreenshot("resumed")
         app.terminate(); app.launch()
         wait("persisted expense after real relaunch", timeout: 45) { state()["phase"] as? String == "restored" }
         XCTAssertEqual(state()["restored"] as? Bool, true)
+        systemScreenshot("restored")
         print("NATIVE_PARITY_XCTEST_SUCCESS: keyboard, native taps, acknowledged save, portrait policy, lifecycle, relaunch")
     }
 }

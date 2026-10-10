@@ -99,6 +99,7 @@ def validate(out: Path, source_sha: str) -> None:
         for phase in ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]:
             record = records[phase]
             native = record["native"]
+            assert math.isclose(native["nativeZoomScale"], 1, abs_tol=0.001)
             assert native["bridgeAvailable"] is True and native["sourceTree"] == manifest["sourceTree"]
             for url in [native["webViewUrl"], record["appUrl"]]:
                 parsed = urlsplit(url)
@@ -117,6 +118,13 @@ def validate(out: Path, source_sha: str) -> None:
             assert record["viewport"]["height"] > record["viewport"]["width"]
             assert record["rootFontSize"] > 0 and record["metrics"]
             for key, metric in record["metrics"].items():
+                bounds, mapped = metric["bounds"], metric["nativeBounds"]
+                scroll, frame, offset = record["documentScroll"], native["scrollViewFrame"], native["nativeContentOffset"]
+                dx, dy = frame["x"] + scroll["x"] - offset["x"], frame["y"] + scroll["y"] - offset["y"]
+                for axis, delta in [("left", dx), ("right", dx), ("top", dy), ("bottom", dy)]:
+                    assert math.isclose(mapped[axis], bounds[axis] + delta, abs_tol=1), (phase, key, axis)
+                if phase == "home":
+                    assert mapped["top"] >= bar["y"] + bar["height"] - 1
                 assert metric["text"] and metric["width"] > 0 and metric["fontSize"] > 0
                 preview_ellipsis = phase == "notes" and key in ["title", "preview"] and metric.get("textOverflow") == "ellipsis" and metric.get("overflowX") == "hidden"
                 assert metric["clientWidth"] > 0
@@ -143,6 +151,15 @@ def validate(out: Path, source_sha: str) -> None:
                 bounds = record["metrics"][key]["bounds"]
                 assert bounds["top"] >= viewport["visualTop"] - 1
                 assert bounds["bottom"] <= viewport["visualTop"] + viewport["visualHeight"] + 1
+                mapped = record["metrics"][key]["nativeBounds"]
+                assert mapped["top"] >= record["native"]["statusBarFrame"]["y"] + record["native"]["statusBarFrame"]["height"] - 1
+                assert mapped["bottom"] <= record["native"]["keyboardFrame"]["y"] + 1
+            frame, offset, scroll = record["native"]["scrollViewFrame"], record["native"]["nativeContentOffset"], record["documentScroll"]
+            visual_bottom = frame["y"] + scroll["y"] - offset["y"] + viewport["visualTop"] + viewport["visualHeight"]
+            assert math.isclose(visual_bottom, record["native"]["keyboardFrame"]["y"], abs_tol=1)
+            action, value = ("expense-total", "120") if field == "amount" else ("expense-name", "QA iOS")
+            assert any(item["action"] == action and item["value"] == value for item in record["trustedInputs"])
+        assert all(any(item["action"] == action for item in saved["trustedClicks"]) for action in ["expense-step-next", "save-expense"])
         assert records["resumed"]["native"]["backgrounds"] > 0 and records["resumed"]["native"]["foregrounds"] > 0
         for key in ["tab", "tab2", "tab3"]:
             metric = records["expenses"]["metrics"][key]

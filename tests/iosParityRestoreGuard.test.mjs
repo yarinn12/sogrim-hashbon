@@ -45,6 +45,7 @@ async function runJourney(script, renderedExpensePresent) {
   };
   const sandbox = {
     document, localStorage, innerWidth: 393, innerHeight: 852,
+    scrollX: 0, scrollY: 0,
     visualViewport: { height: 852 },
     location: { href: 'capacitor://localhost/' },
     Capacitor: {

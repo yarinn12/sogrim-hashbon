@@ -26,12 +26,15 @@ def report(enlarged=False):
               "bridgeAvailable": True, "webViewUrl": "capacitor://localhost/", "safeArea": {"top": 59, "bottom": 34},
               "windowBounds": {"x": 0, "y": 0, "width": 393, "height": 852},
               "webViewFrame": {"x": 0, "y": 0, "width": 393, "height": 852},
+              "scrollViewFrame": {"x": 0, "y": 0, "width": 393, "height": 852},
+              "nativeContentOffset": {"x": 0, "y": 0}, "nativeZoomScale": 1,
               "statusBarFrame": {"x": 0, "y": 0, "width": 393, "height": 59},
               "keyboardFrame": {"x": 0, "y": 476, "width": 393, "height": 376},
               "keyboardShows": 2, "backgrounds": 1, "foregrounds": 2}
     metric = {"text": "טקסט תקין", "width": 100, "height": 25, "fontSize": 14 * factor,
               "clientWidth": 100, "scrollWidth": 100, "horizontalGlyphOverflow": False, "clippedByAncestor": False,
               "bounds": {"top": 150, "bottom": 200, "left": 30, "right": 130},
+              "nativeBounds": {"top": 150, "bottom": 200, "left": 30, "right": 130},
               "words": [{"text": "טקסט", "rows": 1, "outsideTab": False}]}
     result = deepcopy(native)
     result["records"] = []
@@ -54,6 +57,9 @@ def report(enlarged=False):
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
                                   "metrics": metrics, "writes": [{"ok": True}], "pendingOutbox": [],
                                   "openedNote": {"title": "טקסט תקין", "body": "טקסט תקין"},
+                                  "documentScroll": {"x": 0, "y": 0},
+                                  "trustedInputs": [{"action": "expense-total", "value": "120"}, {"action": "expense-name", "value": "QA iOS"}],
+                                  "trustedClicks": [{"action": "expense-step-next"}, {"action": "save-expense"}],
                                   "saved": {"state": {"events": [{"expenses": [{"name": "QA iOS", "total": 12000}]}]}}})
     return result
 
@@ -116,6 +122,23 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
     def test_missing_glyphs_fails(self):
         self.record("summary")["metrics"]["heading"]["words"][0]["rows"] = 0
+        self.rejects()
+    def test_heading_beneath_status_bar_fails(self):
+        m = self.record("home")["metrics"]["heading"]
+        m["bounds"].update({"top": 0, "bottom": 30})
+        m["nativeBounds"].update({"top": 0, "bottom": 30})
+        self.rejects()
+    def test_inset_mapping_mismatch_fails(self):
+        self.record("keyboard-name")["native"]["scrollViewFrame"]["y"] = 59
+        self.rejects()
+    def test_inconsistent_keyboard_and_visual_viewport_fails(self):
+        self.record("keyboard-name")["native"]["keyboardFrame"]["y"] = 650
+        self.rejects()
+    def test_untrusted_amount_input_fails(self):
+        self.record("keyboard-amount")["trustedInputs"] = []
+        self.rejects()
+    def test_untrusted_save_click_fails(self):
+        self.record("saved")["trustedClicks"] = [{"action": "expense-step-next"}]
         self.rejects()
     def test_wrong_source_tree_fails(self):
         self.record("home")["native"]["sourceTree"] = "c" * 40

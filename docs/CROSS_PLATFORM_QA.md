@@ -73,9 +73,14 @@ names, missing glyphs, container/ancestor clipping and incorrect font-scale
 ratios fail acceptance. Enlarged target sizes must match the measured UIKit
 body-size ratio within 0.2 CSS px (root: 0.002 px). An explicit note-preview
 ellipsis is allowed only when opening that same note recovers its complete title
-and body. Eighteen automated artifact controls exercise valid reports and these
+and body. Twenty-three automated artifact controls exercise valid reports and these
 failure conditions; they validate the report boundary, while real simulator
 runs validate the app.
+XCTest also retains whole-screen screenshots from `XCUIScreen` during amount and
+name input, resume and restored display, including system UI and keyboard. Its
+attachments are exported from the result bundle for inspection. Trusted click
+and input events, mapped document/native coordinates and matching keyboard/
+visual-viewport geometry are required for the actual input and save phases.
 
 For every product bug, keep the permanent test with the fix, demonstrate the
 relevant failure before the fix and success after it, and record the tested
