@@ -732,6 +732,64 @@ test("a personal-only save cannot clear a still-undelivered shared note", async 
   assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
 }, { status: 503 }));
 
+for (const nextEdit of ["profile-bootstrap", "different-event"]) {
+  test(`a ${nextEdit} snapshot missing an older pending note retains its payload through acknowledgement`, async () => fixture(async ({ state, storage, workspaceId, canonical, workspaceWrites, recover }) => {
+    const store = await import(`../src/data/localStore.mjs?missing-pending-${nextEdit}-${crypto.randomUUID()}`);
+    const queued = addEventNote(state, "failing", { id: "accepted-before-bootstrap", body: "Must survive another snapshot" });
+    queued.__pendingSync = { version: 1, selection: { eventIds: ["failing"], deletedEventIds: [] } };
+    storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(queued));
+    // Bootstrap can still own a snapshot read before the accepted outbox was
+    // restored. Its profile save must not replace that older durable intent.
+    const incoming = nextEdit === "different-event"
+      ? addEventNote(state, "healthy", { id: "new-healthy-note", body: "Separate new action" })
+      : { ...structuredClone(state), groups: [{ id: "private-after-bootstrap", name: "Private", participantIds: [state.currentParticipantId] }] };
+    const attempts = [];
+    const transport = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      if (String(url).endsWith("/rpc/update_shared_event_snapshot")) attempts.push(JSON.parse(options.body));
+      return transport(url, options);
+    };
+    await store.saveSharedState(incoming, { awaitCloud: true });
+    const durable = JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`));
+    assert.ok(durable.events.find(event => event.id === "failing").notes.some(note => note.id === "accepted-before-bootstrap"), "a rejected sibling must retain the actual note, not only its delivery target");
+    const failingAttempts = attempts.filter(body => body.p_snapshot_id === "space-partial-failing");
+    assert.ok(failingAttempts.length);
+    assert.ok(failingAttempts.every(body => body.p_state.events[0].notes.some(note => note.id === "accepted-before-bootstrap")), "every final shared write payload must include the undelivered note");
+    assert.ok(durable.__pendingSync.selection.eventIds.includes("failing"));
+    assert.equal(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "accepted-before-bootstrap"), false, "403 is not an acknowledgement");
+    recover();
+    const result = await store.flushPendingSharedState();
+    assert.equal(result.ok, true);
+    assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "accepted-before-bootstrap"));
+    assert.ok(workspaceWrites.at(-1).events.find(event => event.id === "failing").notes.some(note => note.id === "accepted-before-bootstrap"));
+    assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null, "clear only after shared and personal acknowledgement");
+  }));
+}
+
+test("retaining pending event intent respects a newer note deletion and does not restore private groups", async () => fixture(async ({ state, storage, workspaceId, canonical, workspaceWrites, recover }) => {
+  const store = await import(`../src/data/localStore.mjs?pending-deletion-${crypto.randomUUID()}`);
+  const queued = addEventNote(state, "failing", { id: "pending-now-deleted", body: "Delete intentionally" });
+  queued.groups = [{ id: "removed-private-group", name: "Old private group", participantIds: [state.currentParticipantId] }];
+  queued.__pendingSync = { version: 1, selection: { eventIds: ["failing"], deletedEventIds: [] } };
+  storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(queued));
+  const priorNote = queued.events.find(event => event.id === "failing").notes[0];
+  const incoming = removeEventNote(queued, "failing", priorNote.id, { participantId: state.currentParticipantId,
+    deletedAt: new Date(Date.parse(priorNote.updatedAt) + 1).toISOString() });
+  incoming.groups = [];
+  delete incoming.__pendingSync;
+  recover();
+  const result = await store.saveSharedState(incoming, { awaitCloud: true });
+  assert.equal(result.ok, true);
+  for (const snapshot of [canonical.get("space-partial-failing"), workspaceWrites.at(-1), store.loadState()]) {
+    const event = snapshot.events.find(event => event.id === "failing");
+    assert.equal(event.notes.some(note => note.id === priorNote.id), false);
+    assert.ok(event.deletedNotes.some(note => note.id === priorNote.id));
+  }
+  assert.deepEqual(workspaceWrites.at(-1).groups, []);
+  assert.deepEqual(store.loadState().groups, []);
+  assert.equal(storage.getItem(`settle-friends-pending-sync:${workspaceId}`), null);
+}));
+
 test("healthy canonical progress survives simultaneous shared and personal failures", async () => fixture(async ({ pending, storage, workspaceId }) => {
   storage.setItem(`settle-friends-state:${workspaceId}`, JSON.stringify(pending));
   storage.setItem(`settle-friends-pending-sync:${workspaceId}`, JSON.stringify(pending));

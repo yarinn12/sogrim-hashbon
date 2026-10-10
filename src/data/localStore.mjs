@@ -43,6 +43,7 @@ import {
   emitOperationFailure
 } from "./productMetrics.mjs";
 import {
+  buildSharedEventState,
   buildSharedEventSyncSelection,
   recoverAccessibleSharedEvents,
   syncSharedEvents
@@ -1170,7 +1171,7 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
     };
   }
   const previousState = loadState();
-  const cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
+  let cleanState = cleanLegacyStarterData(state, loadProtectedParticipantId());
   if (
     requestAccountParticipantId &&
     cleanState.currentParticipantId !== requestAccountParticipantId
@@ -1183,6 +1184,12 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
   }
   const priorPendingConfig = pendingSyncConfig(LOCAL_RUNTIME_CONFIG);
   const priorPendingPayload = priorPendingConfig ? pendingSharedStateRaw(priorPendingConfig) : null;
+  if (priorPendingConfig && priorPendingPayload) {
+    // A bootstrap/profile snapshot can precede outbox hydration. Carry the
+    // accepted event content as well as its delivery targets into this save;
+    // otherwise a newer snapshot can queue an empty sibling before its ACK.
+    cleanState = mergePendingEventIntent(priorPendingConfig, cleanState);
+  }
   const syncSelection = mergeSharedSyncSelections(
     buildSharedEventSyncSelection(previousState, cleanState, {
       forceParticipantIds: forceSharedParticipantIds,
@@ -2144,6 +2151,27 @@ function mergeSharedSyncSelections(...selections) {
   return Object.fromEntries(["eventIds", "deletedEventIds"].map(key => [key,
     [...new Set(selections.flatMap(selection => selection?.[key] ?? []))]
   ]));
+}
+
+function mergePendingEventIntent(config, incoming) {
+  const pending = loadPendingSharedState(config);
+  const selection = pendingSharedStateSelection(config);
+  if (!pending || !selection) return incoming;
+  let merged = incoming;
+  for (const eventId of selection.eventIds) {
+    const projection = buildSharedEventState(pending, eventId);
+    if (!projection) continue;
+    // Retain the local sharing credentials and group association too. The
+    // projection limits participants to this event and excludes private lists.
+    projection.events = pending.events.filter(event => event.id === eventId);
+    merged = mergeSharedStates(projection, merged);
+  }
+  const pendingDeletions = (pending.deletedEvents ?? [])
+    .filter(event => selection.deletedEventIds.includes(event.id));
+  if (pendingDeletions.length) {
+    merged = mergeSharedStates({ events: [], participants: [], groups: [], deletedEvents: pendingDeletions }, merged);
+  }
+  return merged;
 }
 
 function pendingSharedStateSelection(config) {
