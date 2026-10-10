@@ -1,0 +1,161 @@
+name: QA iOS Simulator typography probe
+
+# This workflow is intentionally limited to the isolated QA branch. It builds
+# an unsigned Debug simulator app from one exact app commit and uploads evidence.
+on:
+  push:
+    branches: ["codex/ios-typography-probe-*"]
+    paths:
+      - ".github/workflows/ios-typography-probe.yml"
+      - "scripts/qa/ios-typography/**"
+  workflow_dispatch:
+    inputs:
+      app_sha:
+        description: "Full 40-character app commit to measure"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  wkwebview:
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      # Only the QA branch uses this pinned value on push. workflow_dispatch
+      # requires an explicit SHA and never falls back to a moving branch.
+      PUSH_APP_SHA: "05496645041e51baed22c6d878116329ad3d1813"
+    steps:
+      - name: Check out QA fixture branch
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Resolve and guard the exact app source
+        id: source
+        env:
+          INPUT_SHA: ${{ inputs.app_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == codex/ios-typography-probe-* ]]
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            sha="$INPUT_SHA"
+          else
+            sha="$PUSH_APP_SHA"
+          fi
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out pinned application
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: app
+          persist-credentials: false
+      - name: Verify application checkout
+        env:
+          APP_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git -C app rev-parse HEAD)" = "$APP_SHA"
+          test -z "$(git -C app status --porcelain)"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Prepare unsigned simulator build and synthetic fixture
+        working-directory: app
+        env:
+          APP_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          npm ci
+          npm run native:prepare
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-typography/prepare.py" prepare "$PWD" "$APP_SHA"
+      - name: Start pinned local app with synthetic data
+        working-directory: app
+        env:
+          APP_LOCAL_STATE_FILE: ${{ github.workspace }}/app/build/typography/app-state.json
+        run: |
+          set -euo pipefail
+          nohup node server.mjs 8765 > build/typography/server.log 2>&1 < /dev/null &
+          echo $! > build/typography/server.pid
+          for n in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8765/api/health > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8765/api/health > /dev/null
+          curl -fsS -X POST http://127.0.0.1:8765/api/reset > /dev/null
+          curl -fsS -X PUT -H 'Content-Type: application/json' \
+            --data-binary @build/typography/seed-state.json \
+            http://127.0.0.1:8765/api/state > /dev/null
+      - name: Boot an available iPhone simulator
+        working-directory: app
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > build/typography/simulator.env
+          import json, subprocess
+          runtimes=json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))['runtimes']
+          runtime=sorted([r for r in runtimes if r.get('isAvailable') and '.iOS-' in r['identifier']],
+                         key=lambda r: tuple(int(v) for v in r['version'].split('.')))[-1]
+          devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))['devicetypes']
+          device=next((d for name in ('iPhone 16','iPhone 15') for d in devices if d['name']==name),None)
+          assert device, 'No iPhone 15/16 simulator device type available'
+          udid=subprocess.check_output(['xcrun','simctl','create','Typography WKWebView probe',
+                                        device['identifier'],runtime['identifier']],text=True).strip()
+          print('PROBE_UDID='+udid)
+          print('PROBE_DEVICE='+device['name'].replace(' ','_'))
+          print('PROBE_IOS='+runtime['version'])
+          PY
+          source build/typography/simulator.env
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b
+      - name: Build and run QA-only WKWebView host
+        working-directory: app
+        env:
+          APP_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          source build/typography/simulator.env
+          curl -fsS http://127.0.0.1:8765/api/health > /dev/null
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" \
+            -derivedDataPath build/typography/derived build CODE_SIGNING_ALLOWED=NO \
+            > build/typography/build.log 2>&1
+          xcrun simctl install "$PROBE_UDID" \
+            build/typography/derived/Build/Products/Debug-iphonesimulator/App.app
+          xcrun simctl launch "$PROBE_UDID" com.sogrimhashbon.app \
+            > build/typography/launch.log 2>&1
+          container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
+          for n in $(seq 1 120); do
+            if test -f "$container/Documents/typography-report.json" && \
+              python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r.get("complete") or any(x.get("phase")=="error" for x in r.get("records",[])) else 1)' \
+                "$container/Documents/typography-report.json"; then break; fi
+            sleep 1
+          done
+          cp "$container/Documents/typography-report.json" build/typography/typography-report.json
+          cp "$container/Documents"/typography-*.png build/typography/
+          xcrun simctl io "$PROBE_UDID" screenshot build/typography/final-simulator.png
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-typography/prepare.py" \
+            validate "$PWD/build/typography" "$APP_SHA"
+      - name: Keep simulator diagnostics on failure
+        if: failure()
+        working-directory: app
+        run: |
+          source build/typography/simulator.env || true
+          xcrun simctl spawn "$PROBE_UDID" log show --last 8m --style compact \
+            --predicate 'process == "App"' > build/typography/simulator.log 2>&1 || true
+          xcrun simctl io "$PROBE_UDID" screenshot build/typography/failure-simulator.png || true
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios-wkwebview-typography-${{ steps.source.outputs.sha }}
+          path: |
+            app/build/typography/*.json
+            app/build/typography/*.log
+            app/build/typography/*.png
+            app/build/typography/simulator.env
+          if-no-files-found: error
+          retention-days: 14
