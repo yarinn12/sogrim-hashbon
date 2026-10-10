@@ -1,5 +1,11 @@
 (() => {
   const errors = [];
+  const navigationDiagnostics = [];
+  const historyDiagnostics = [];
+  addEventListener('popstate', event => historyDiagnostics.push({
+    at: performance.now(), phase, screen: document.querySelector('#app')?.dataset.screen,
+    state: event.state
+  }), true);
   const trustedClicks = [], trustedInputs = [];
   addEventListener('click', event => {
     const action = event.target.closest?.('[data-action]')?.dataset.action;
@@ -81,8 +87,17 @@
   });
   async function click(selector) {
     const element = await until(() => first(selector), selector);
+    const diagnostic = { selector, at: performance.now(), beforePhase: phase, beforeScreen: document.querySelector('#app')?.dataset.screen,
+      historyBefore: history.state,
+      target: element.outerHTML.slice(0, 700), hit: point(selector),
+      inertAncestor: element.closest('[inert], [data-app-dialog-inert]')?.outerHTML.slice(0, 400) || null,
+      pointerEvents: getComputedStyle(element).pointerEvents };
+    navigationDiagnostics.push(diagnostic);
     element.click();
+    diagnostic.immediateScreen = document.querySelector('#app')?.dataset.screen;
     await sleep(150);
+    diagnostic.afterScreen = document.querySelector('#app')?.dataset.screen;
+    diagnostic.afterInert = document.querySelector('[inert], [data-app-dialog-inert]')?.outerHTML.slice(0, 400) || null;
   }
   function measure(selector) {
     const element = first(selector);
@@ -247,7 +262,7 @@
     await capture('saved', { heading: '.event-overview-header h1' });
   }
   run().catch(error => {
-    errors.push(String(error.stack || error)); phase = 'error';
-    webkit.messageHandlers.iosParity.postMessage({ index: ++captureIndex, phase, errors });
+    errors.push(String(error), String(error.stack || error)); phase = 'error';
+    webkit.messageHandlers.iosParity.postMessage({ index: ++captureIndex, phase, errors, navigationDiagnostics, historyDiagnostics });
   });
 })();
