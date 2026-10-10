@@ -127,6 +127,13 @@ const CSS = `
     text-wrap: pretty;
   }
 
+  /* Natural wrapping keeps complete words on the same lines across engines.
+     Browser-specific pretty algorithms otherwise alter body copy in the
+     home, settlement, and event settings flows at the same width. */
+  html.circle-design-v1 body #app :is(p, small, strong) {
+    text-wrap: wrap !important;
+  }
+
   html.circle-design-v1 .muted {
     color: var(--circle-muted) !important;
   }

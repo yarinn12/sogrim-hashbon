@@ -96,3 +96,23 @@ test("pre-sign-in terms stay reachable and accessibility reopens after return", 
   await expect(center.locator("[data-accessibility-contrast]")).toBeChecked();
   await expect(center.locator("[data-accessibility-motion]")).toBeChecked();
 });
+
+test("pre-sign-in accessibility control stays round with enlarged text", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?dynamic-type-preview=28");
+  const gate = page.locator("#public-account-auth-gate");
+  await expect(gate).toBeVisible();
+  await expect(page.locator("html")).toHaveClass(/dynamic-type-preview/);
+  const entry = gate.getByRole("button", { name: "פתיחת הגדרות נגישות" });
+  await expect(entry).toBeVisible();
+  const geometry = await entry.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return { width: rect.width, height: rect.height, tappable: hit === element || element.contains(hit) };
+  });
+  await page.screenshot({ path: testInfo.outputPath("auth-enlarged-text.png") });
+  expect(geometry.width).toBeGreaterThanOrEqual(44);
+  expect(geometry.height).toBeGreaterThanOrEqual(44);
+  expect(Math.abs(geometry.width - geometry.height), "the round icon must stay square").toBeLessThanOrEqual(1);
+  expect(geometry.tappable).toBe(true);
+});

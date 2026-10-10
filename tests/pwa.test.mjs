@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { posix as path } from "node:path";
 
 function escapeRegExp(value) {
@@ -125,6 +125,21 @@ test("service worker precaches the app shell", async () => {
   assert.match(sw, /request\.mode === "navigate"/);
   assert.match(sw, /fetchWithNetworkTimeout\(request\)/);
   assert.match(sw, /if \(!response\?\.ok\)/);
+});
+
+test("service worker precaches every local font subset before offline activation", async () => {
+  const sw = await readFile("sw.js", "utf8");
+  const localCss = await readFile("assets/fonts/local.css", "utf8");
+  const fontFiles = (await readdir("assets/fonts")).filter(name => name.endsWith(".woff2"));
+
+  assert.ok(fontFiles.length >= 2);
+  assert.match(sw, /"\/assets\/fonts\/local\.css"/);
+  for (const name of fontFiles) {
+    assert.match(localCss, new RegExp(escapeRegExp(name)));
+    assert.match(sw, new RegExp(escapeRegExp(`/assets/fonts/${name}`)));
+  }
+  assert.match(sw, /CRITICAL_PRECACHE_FILES[\s\S]*?\(\?:mjs\|js\|css\|woff2\)/);
+  assert.match(sw, /path\.endsWith\("\.woff2"\)\) return contentType\.includes\("font\/woff2"\)/);
 });
 
 test("service worker loads heavy brand media on demand and reuses it", async () => {

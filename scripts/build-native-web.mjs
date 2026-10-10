@@ -69,6 +69,10 @@ for (const file of publicFiles) {
   await cp(join(root, file), join(output, file));
 }
 
+await cp(join(root, "assets", "fonts"), join(output, "assets", "fonts"), {
+  recursive: true
+});
+
 await cp(join(root, "src"), join(output, "src"), {
   recursive: true,
   filter(source) {
@@ -94,7 +98,6 @@ async function bundleNativeModules() {
   }
 
   const preludeNames = new Set([
-    "./src/publicFontLoader.mjs",
     "./src/publicAppSplashLayer.mjs",
     "./src/publicMutationThrottleLayer.mjs"
   ]);

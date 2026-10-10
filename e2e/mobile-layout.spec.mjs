@@ -1860,6 +1860,174 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   }
 });
 
+test("summary guidance keeps the same complete word wrapping at mobile widths", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await Promise.all([
+      document.fonts.load('500 12px Rubik', 'אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.'),
+      document.fonts.load('400 12px Rubik', 'המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם')
+    ]);
+    await document.fonts.ready;
+  });
+
+  const expectedLines = {
+    360: {
+      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק", "לאחר סגירת האירוע."],
+      transferHelper: ["המקבל עשוי להיות שונה ממי", "ששילם, כי קיזזנו בין כולם"]
+    },
+    375: {
+      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק", "לאחר סגירת האירוע."],
+      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי", "קיזזנו בין כולם"]
+    },
+    390: {
+      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר", "סגירת האירוע."],
+      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי", "קיזזנו בין כולם"]
+    },
+    430: {
+      description: ["אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת", "האירוע."],
+      transferHelper: ["המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו", "בין כולם"]
+    }
+  };
+  for (const width of [360, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    const lineTexts = await page.evaluate(() => {
+      const linesFor = selector => {
+        const element = document.querySelector(selector);
+        const text = element?.firstChild;
+        if (!text || text.nodeType !== Node.TEXT_NODE) return null;
+        const lines = new Map();
+        for (let i = 0; i < text.length; i++) {
+          const range = document.createRange();
+          range.setStart(text, i);
+          range.setEnd(text, i + 1);
+          const rect = range.getBoundingClientRect();
+          if (rect.height < 1) continue;
+          const top = Math.round(rect.top);
+          lines.set(top, (lines.get(top) || "") + text.data[i]);
+        }
+        return [...lines].sort(([a], [b]) => a - b).map(([, value]) => value.trim());
+      };
+      return {
+        description: linesFor(".settlement-hero .muted"),
+        transferHelper: linesFor(".settlement-stage-heading > div > small")
+      };
+    });
+    expect(lineTexts, `complete summary copy at ${width}px`).toEqual(expectedLines[width]);
+  }
+});
+
+test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 14px Rubik', 'אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.');
+    await document.fonts.ready;
+  });
+  const lines = await page.locator('.product-home-screen .top .brand .muted').evaluate(element => {
+    const text = element.firstChild;
+    const rows = new Map();
+    for (let i = 0; i < text.length; i++) {
+      const range = document.createRange();
+      range.setStart(text, i);
+      range.setEnd(text, i + 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.height < 1) continue;
+      const top = Math.round(rect.top);
+      rows.set(top, (rows.get(top) || "") + text.data[i]);
+    }
+    return [...rows].sort(([a], [b]) => a - b).map(([, value]) => value.trim());
+  });
+  expect(lines).toEqual([
+    "אירוע חדש, חברים קבועים, או חשבון שכבר",
+    "מחכה לסגירה."
+  ]);
+});
+
+test("transfer explanation and event management copy keep complete word wrapping", async ({ page }) => {
+  await page.setViewportSize({ width: 354, height: 844 });
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`).click();
+  await page.locator('[data-action="toggle-event-participant-admin"]').check();
+  await page.goBack();
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.locator('.settlement-transfer-board .transfer-row').first().click();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open]').first()).toBeVisible();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note').first()).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 12px Rubik', 'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.');
+    await document.fonts.ready;
+  });
+  const transfer = await readWordLines(page, [
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-debt-summary strong',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-route-note'
+  ]);
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('.event-settings-modal')).toBeVisible();
+  const management = await readWordLines(page, [
+    '.event-settings-menu-item[data-settings-section="management"] small'
+  ]);
+  expect(management.map(({ text, lines }) => ({ text, lines }))).toEqual([{
+    text: 'ניהול משותף · מנהל: ירין יצחק, Awesome Maor · מאור סיבוני',
+    lines: ['ניהול משותף · מנהל: ירין יצחק, Awesome Maor ·', 'מאור סיבוני']
+  }]);
+  expect(transfer.map(({ text, lines }) => ({ text, lines }))).toEqual([
+    {
+      text: 'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
+      lines: ['אריאל ניזרי מהטיול המשפחתי חייב ל־ ירין יצחק', '₪85.00']
+    },
+    {
+      text: 'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.',
+      lines: ['סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר', 'מדויק.']
+    },
+    {
+      text: 'אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ירין יצחק מתוך חוב כולל של ₪85.33.',
+      lines: ['אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ ירין יצחק', 'מתוך חוב כולל של ₪85.33 .']
+    }
+  ]);
+});
+
+async function readWordLines(page, selectors) {
+  return page.evaluate((targetSelectors) => targetSelectors.map(selector => {
+    const element = document.querySelector(selector);
+    if (!element) return { selector, missing: true };
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    const lines = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      for (const match of node.textContent.matchAll(/\S+/g)) {
+        range.setStart(node, match.index);
+        range.setEnd(node, match.index + match[0].length);
+        const rect = range.getClientRects()[0];
+        if (!rect || rect.height < 1) continue;
+        let line = lines.find(entry => Math.abs(entry.top - rect.top) <= 6);
+        if (!line) {
+          line = { top: rect.top, words: [] };
+          lines.push(line);
+        }
+        line.words.push(match[0]);
+      }
+    }
+    return { selector, text: element.textContent.trim(), wrap: getComputedStyle(element).textWrap,
+      width: element.getBoundingClientRect().width,
+      lines: lines.sort((a, b) => a.top - b.top).map(line => line.words.join(' ')) };
+  }), selectors);
+}
+
 async function captureCoherenceScreen(page, name) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await settleCoherenceMotion(page);

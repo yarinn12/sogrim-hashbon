@@ -29,12 +29,13 @@ test("public app uses a dedicated Hebrew UI font stack", async () => {
   const css = await readFile("styles.css", "utf8");
   const app = await readFile("src/app.mjs", "utf8");
   const circleLayer = await readFile("src/publicCircleDesignLayer.mjs", "utf8");
+  const localFonts = await readFile("assets/fonts/local.css", "utf8");
 
-  assert.match(html, /fonts\.googleapis\.com/);
-  assert.match(html, /family=Inter:wght@500;600;700;800;900/);
-  assert.match(html, /family=Rubik:wght@400;500;600;700;800;900/);
+  assert.match(html, /href="\.\/assets\/fonts\/local\.css\?pwa_release=511"/);
+  assert.match(localFonts, /font-family: 'Inter';[\s\S]*?font-weight: 500 900/);
+  assert.match(localFonts, /font-family: 'Rubik';[\s\S]*?font-weight: 400 900/);
   assert.doesNotMatch(html, /IBM\+Plex/);
-  assert.match(html, /display=swap/);
+  assert.match(localFonts, /font-display: swap/);
   assert.match(css, /--font-hebrew: "Rubik", "Heebo", "Assistant", sans-serif/);
   assert.match(css, /--font-num: "Inter", "Rubik", sans-serif/);
   assert.match(html, /<body class="font-hebrew">/);
@@ -45,18 +46,16 @@ test("public app uses a dedicated Hebrew UI font stack", async () => {
   assert.match(circleLayer, /font-family: var\(--font-num\)/);
 });
 
-test("Hebrew font loading does not block the app from rendering", async () => {
+test("Hebrew font loading uses local licensed assets without remote requests", async () => {
   const html = await readFile("index.html", "utf8");
-  const loader = await readFile("src/publicFontLoader.mjs", "utf8");
+  const localFonts = await readFile("assets/fonts/local.css", "utf8");
 
-  assert.match(html, /rel="preload" href="https:\/\/fonts\.googleapis\.com/);
-  assert.match(html, /as="style"/);
-  assert.match(html, /id="app-font-stylesheet"[^>]*rel="stylesheet" media="print"/);
-  assert.match(html, /src="\.\/src\/publicFontLoader\.mjs\?pwa_release=511"/);
+  assert.match(html, /rel="preload" href="\.\/assets\/fonts\/rubik-hebrew-v31\.woff2" as="font"/);
+  assert.match(html, /rel="stylesheet" href="\.\/assets\/fonts\/local\.css\?pwa_release=511"/);
+  assert.match(localFonts, /rubik-hebrew-v31\.woff2/);
+  assert.match(localFonts, /inter-latin-v20\.woff2/);
+  assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
   assert.doesNotMatch(html, /\son(?:load|error|click)=/i);
-  assert.match(loader, /addEventListener\("load", activateFontStylesheet, \{ once: true \}\)/);
-  assert.match(loader, /fontStylesheet\.media = "all"/);
-  assert.match(html, /<noscript>[\s\S]*fonts\.googleapis\.com[\s\S]*<\/noscript>/);
 });
 
 test("event rows render participants, a uniform text status, and a quiet options chevron", async () => {

@@ -293,6 +293,20 @@ function injectDynamicTypeStyles(document) {
       min-height: max(48px, 2.85rem) !important;
     }
 
+    /* The sign-in accessibility control has an icon only. Keep its enlarged
+       touch target round while text-bearing controls may grow vertically. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #public-account-auth-gate .accessibility-entry-auth {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 48px !important;
+      min-height: 48px !important;
+      max-height: 48px !important;
+      padding: 0 !important;
+      aspect-ratio: 1 !important;
+    }
+
     /* Icon-only overflow triggers keep a square hit target at enlarged text
        sizes; they do not contain readable copy that needs to reflow. */
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app

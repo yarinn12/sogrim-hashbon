@@ -128,6 +128,9 @@ function assetResponse(input, body = "fresh") {
   if (pathname === "/" || pathname.endsWith(".html")) contentType = "text/html";
   else if (/\.(?:mjs|js)$/.test(pathname)) contentType = "text/javascript";
   else if (pathname.endsWith(".css")) contentType = "text/css";
+  // Local font assets are now essential precache entries, so the synthetic
+  // origin must serve the same MIME type required by the real worker.
+  else if (pathname.endsWith(".woff2")) contentType = "font/woff2";
   else if (pathname.endsWith(".webmanifest")) contentType = "application/manifest+json";
   else if (pathname.endsWith(".svg")) contentType = "image/svg+xml";
   else if (/\.(?:png|jpg|jpeg|webp)$/.test(pathname)) contentType = "image/png";

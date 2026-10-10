@@ -6,6 +6,20 @@ const CACHE_FILES = [
   "/",
   "/index.html",
   "/styles.css",
+  "/assets/fonts/local.css",
+  "/assets/fonts/inter-cyrillic-ext-v20.woff2",
+  "/assets/fonts/inter-cyrillic-v20.woff2",
+  "/assets/fonts/inter-greek-ext-v20.woff2",
+  "/assets/fonts/inter-greek-v20.woff2",
+  "/assets/fonts/inter-latin-ext-v20.woff2",
+  "/assets/fonts/inter-latin-v20.woff2",
+  "/assets/fonts/inter-vietnamese-v20.woff2",
+  "/assets/fonts/rubik-arabic-v31.woff2",
+  "/assets/fonts/rubik-cyrillic-ext-v31.woff2",
+  "/assets/fonts/rubik-cyrillic-v31.woff2",
+  "/assets/fonts/rubik-hebrew-v31.woff2",
+  "/assets/fonts/rubik-latin-ext-v31.woff2",
+  "/assets/fonts/rubik-latin-v31.woff2",
   "/legal.css",
   "/legal.mjs",
   "/manifest.webmanifest",
@@ -138,7 +152,6 @@ const CACHE_FILES = [
   "/src/publicEventWorkspaceLayer.mjs",
   "/src/publicExpenseGuestLayer.mjs",
   "/src/publicFintechDesignLayer.mjs",
-  "/src/publicFontLoader.mjs",
   "/src/publicFramerMotionLayer.mjs",
   "/src/vendor/framer-motion-dom.js",
   "/src/publicGoogleAuthLayer.mjs",
@@ -197,7 +210,7 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/src/pwaBootstrap.mjs",
   "/src/platformCompatibility.mjs",
   "/src/publicAccountAuthLayer.mjs",
-  ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css)$/.test(path))
+  ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css|woff2)$/.test(path))
 ]);
 const PRECACHE_CONCURRENCY = 6;
 let activationNavigations = null;
@@ -386,6 +399,7 @@ function isExpectedAssetResponse(path, response) {
     return contentType.includes("javascript");
   }
   if (path.endsWith(".css")) return contentType.includes("text/css");
+  if (path.endsWith(".woff2")) return contentType.includes("font/woff2");
   if (path.endsWith(".webmanifest")) {
     return contentType.includes("json") || contentType.includes("manifest");
   }

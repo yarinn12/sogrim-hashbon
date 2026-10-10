@@ -439,7 +439,7 @@ async function captureConsistencySurface(page, name) {
   if (process.env.CAPTURE_COHERENCE_ALL !== "1") return;
   await page.waitForTimeout(200);
   await page.screenshot({
-    path: `design-audits/consistency-current/${name}.png`,
+    path: test.info().outputPath(`${name}.png`),
     fullPage: false
   });
 }
