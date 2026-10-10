@@ -1998,13 +1998,21 @@ test("system text preferences update iOS and Android typography without losing t
       } };
       const level = await refreshAndroidDynamicType(root, capacitor);
       results.push({ scale, level, root: parseFloat(getComputedStyle(root).fontSize),
-        helper: parseFloat(getComputedStyle(document.querySelector('.settlement-stage-heading > div > small')).fontSize) });
+        helper: parseFloat(getComputedStyle(document.querySelector('.settlement-stage-heading > div > small')).fontSize),
+        nativeScale: Number(root.style.getPropertyValue('--android-font-scale')),
+        active: root.classList.contains('dynamic-type-active'),
+        android: root.classList.contains('dynamic-type-android') });
     }
     return results;
   });
   for (const entry of androidSizes) {
-    expect(entry.root).toBeCloseTo(16 * entry.scale, 1);
-    expect(entry.helper).toBeCloseTo(12 * entry.scale, 1);
+    // Native WebView text zoom already applies the OS scale. Browser QA has
+    // no native zoom, so the CSS sizes here must remain at their pre-zoom base.
+    expect(entry.root).toBeCloseTo(16, 1);
+    expect(entry.helper).toBeCloseTo(12, 1);
+    expect(entry.nativeScale).toBe(entry.scale);
+    expect(entry.active).toBe(entry.scale > 1);
+    expect(entry.android).toBe(entry.scale > 1);
     expect(entry.level).toBe(entry.scale === 1 ? 'normal' : 'extra-large');
   }
 });

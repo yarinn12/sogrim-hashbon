@@ -174,17 +174,30 @@ test('summary and header text grow with system text and leave long copy readable
   expect(extraLargeTransfer.columns).toBe(1);
   expect(extraLargeTransfer.namesFit).toBe(true);
   if (testInfo.project.name === 'android-mobile') {
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
       const root = document.documentElement;
       root.classList.remove('dynamic-type-preview');
       root.style.removeProperty('font-size');
-      root.classList.add('dynamic-type-active', 'dynamic-type-android');
-      root.style.setProperty('--android-font-scale', '2');
+      const { refreshAndroidDynamicType } = await import('/src/publicDynamicTypeLayer.mjs');
+      await refreshAndroidDynamicType(root, { getPlatform: () => 'android', Plugins: {
+        SogrimCapabilities: { getCapabilities: async () => ({ fontScale: 2 }) }
+      } });
     });
-    await expect(description).toHaveCSS('font-size', '24px');
-    await expect(headerLabel).toHaveCSS('font-size', '22px');
-    await expect(brand).toHaveCSS('font-size', '34px');
-    await page.evaluate(() => document.documentElement.style.setProperty('--android-font-scale', '1'));
+    await expect(description).toHaveCSS('font-size', '12px');
+    await expect(headerLabel).toHaveCSS('font-size', '11px');
+    await expect(brand).toHaveCSS('font-size', '17px');
+    const androidState = await page.evaluate(() => ({
+      scale: document.documentElement.style.getPropertyValue('--android-font-scale'),
+      active: document.documentElement.classList.contains('dynamic-type-active'),
+      extraLarge: document.documentElement.classList.contains('dynamic-type-extra-large')
+    }));
+    expect(androidState).toEqual({ scale: '2', active: true, extraLarge: true });
+    await page.evaluate(async () => {
+      const { refreshAndroidDynamicType } = await import('/src/publicDynamicTypeLayer.mjs');
+      await refreshAndroidDynamicType(document.documentElement, { getPlatform: () => 'android', Plugins: {
+        SogrimCapabilities: { getCapabilities: async () => ({ fontScale: 1 }) }
+      } });
+    });
   } else {
     await page.evaluate(() => document.documentElement.style.setProperty('font-size', '16px', 'important'));
   }

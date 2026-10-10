@@ -174,7 +174,8 @@ function injectDynamicTypeStyles(document) {
     }
 
     html.${ACTIVE_CLASS}.${ANDROID_CLASS} {
-      font-size: calc(16px * var(--android-font-scale, 1)) !important;
+      /* Android WebView text zoom already applies the OS font scale. */
+      font-size: 16px !important;
     }
 
     html.${ACTIVE_CLASS} body,

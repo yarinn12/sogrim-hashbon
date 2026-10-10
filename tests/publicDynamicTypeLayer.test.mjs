@@ -163,6 +163,11 @@ test("dynamic type layer reads Android system font scale from the native capabil
   assert.match(layer, /SogrimCapabilities\?\.getCapabilities/);
   assert.match(layer, /--android-font-scale/);
   assert.match(layer, /dynamic-type-android/);
+  // Native WebView text zoom owns the OS font scale; the CSS root must not
+  // multiply the same native value a second time.
+  const androidRootRule = layer.match(/html\.\$\{ACTIVE_CLASS\}\.\$\{ANDROID_CLASS\}\s*\{([^}]*)\}/)?.[1];
+  assert.ok(androidRootRule);
+  assert.match(androidRootRule, /font-size:\s*16px !important;/);
 });
 
 test("large text mode releases rigid controls and protects fixed bottom navigation", () => {
