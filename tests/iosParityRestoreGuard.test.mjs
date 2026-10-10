@@ -46,6 +46,7 @@ async function runJourney(script, renderedExpensePresent) {
   const sandbox = {
     document, localStorage, innerWidth: 393, innerHeight: 852,
     visualViewport: { height: 852 },
+    location: { href: 'capacitor://localhost/' },
     Capacitor: {
       isNativePlatform: () => true, getPlatform: () => 'ios',
       Plugins: { App: { getInfo: async () => ({ id: 'com.sogrimhashbon.app' }) } }

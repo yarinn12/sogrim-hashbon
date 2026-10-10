@@ -24,7 +24,7 @@
     localStorage.setItem('qa-native-initialized', '1');
   }
   sessionStorage.setItem('settle-friends-skip-next-splash', '1');
-  // The emulator's network is physically disabled. Advertise only the
+  // External service fetches are rejected below. Advertise only the
   // availability of this synthetic service so the real outbox can send its
   // payload to the fixture. This does not test real connectivity or recovery.
   Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });

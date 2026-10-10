@@ -36,7 +36,8 @@ still pass the independent local-resource and loaded-face assertions.
 
 GitHub's `QA` workflow runs cross-platform verification as a separate required
 lane of the `unit-and-mobile` aggregate alongside unit, mobile and synchronization
-jobs. A failed, cancelled or skipped lane fails that aggregate. Automatic Vercel
+jobs, including the real Capacitor iOS simulator workflow. A failed, cancelled
+or skipped lane fails that aggregate. Automatic Vercel
 deployment from this workflow requires the whole QA run to succeed. Manual
 deployment and provider Git integrations are separate paths; this does not claim
 they all enforce the aggregate.
@@ -56,10 +57,25 @@ and state requests; it does not test real connectivity or a production database.
 Typography navigation uses DOM actions; XCTest uses hit-tested native-coordinate
 taps for the expense wizard, requires a UIKit keyboard, confirms the final
 synthetic acknowledgement, and checks background/foreground and relaunch.
+Accessibility fields are reached with bounded real finger drags when needed.
+The mapper converts document points through the actual scroll view so its
+automatic content insets and offsets are part of the coordinates
+([UIKit scroll-view geometry](https://developer.apple.com/documentation/uikit/uiscrollview)).
 It preserves the production iPhone portrait policy. Both the fresh OS default
-and OS accessibility-extra-large categories must pass. This standalone workflow
-is separate from the `unit-and-mobile` aggregate and is not a physical iPhone,
+and OS accessibility-extra-large categories must pass. The reusable workflow is
+required by `unit-and-mobile`; it is not a physical iPhone,
 signed distribution build, installation-upgrade or live authentication check.
+
+The native artifacts include the source tree, WWW and fixture hashes, exact
+Capacitor URL and bridge, UIKit window/WebView/status-bar/keyboard rectangles,
+safe areas, and screenshots while amount/name input is active. Long transfer
+names, missing glyphs, container/ancestor clipping and incorrect font-scale
+ratios fail acceptance. Enlarged target sizes must match the measured UIKit
+body-size ratio within 0.2 CSS px (root: 0.002 px). An explicit note-preview
+ellipsis is allowed only when opening that same note recovers its complete title
+and body. Eighteen automated artifact controls exercise valid reports and these
+failure conditions; they validate the report boundary, while real simulator
+runs validate the app.
 
 For every product bug, keep the permanent test with the fix, demonstrate the
 relevant failure before the fix and success after it, and record the tested

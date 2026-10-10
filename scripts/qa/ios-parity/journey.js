@@ -29,6 +29,7 @@
     return hit && (element === hit || element.contains(hit)) ? { x, y } : null;
   }
   let phase = 'starting';
+  let openedNote = null;
   function controlGeometry(selector) {
     const element = first(selector);
     if (!element) return null;
@@ -50,6 +51,7 @@
     nextPoint: point('[data-action="expense-step-next"]'),
     savePoint: point('[data-action="save-expense"]'),
     viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height },
+    documentScroll: { x: scrollX, y: scrollY },
     restored: Boolean(localStorage.getItem('qa-ios-parity-complete'))
   });
   async function click(selector) {
@@ -62,20 +64,32 @@
     if (!element) throw new Error(`Required typography target is missing: ${selector}`);
     const style = getComputedStyle(element), bounds = element.getBoundingClientRect();
     const tabBounds = element.closest('.event-workspace-tab')?.getBoundingClientRect();
+    let horizontalGlyphOverflow = false, clippedByAncestor = false;
     const words = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       for (const word of node.textContent.matchAll(/\S+/gu)) {
         const range = document.createRange();
         range.setStart(node, word.index); range.setEnd(node, word.index + word[0].length);
         const rects = [...range.getClientRects()].filter(rect => rect.width && rect.height);
+        horizontalGlyphOverflow ||= rects.some(rect => rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
+        for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+          const parentStyle = getComputedStyle(parent);
+          if (!['hidden', 'clip', 'auto', 'scroll'].includes(parentStyle.overflowX)) continue;
+          const parentBox = parent.getBoundingClientRect();
+          clippedByAncestor ||= rects.some(rect => rect.left < parentBox.left + parent.clientLeft - 1
+            || rect.right > parentBox.left + parent.clientLeft + parent.clientWidth + 1);
+        }
         words.push({ text: word[0], rows: new Set(rects.map(rect => Math.round(rect.top))).size,
           outsideTab: Boolean(tabBounds && rects.some(rect => rect.left < tabBounds.left - 1
             || rect.right > tabBounds.right + 1 || rect.top < tabBounds.top - 1 || rect.bottom > tabBounds.bottom + 1)) });
       }
     }
-    return { text: element.textContent.trim(), fontSize: parseFloat(style.fontSize),
+    return { text: element.value || element.textContent.trim(), fontSize: parseFloat(style.fontSize),
       width: bounds.width, height: bounds.height, words, fontFamily: style.fontFamily,
-      scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
+      scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, horizontalGlyphOverflow,
+      clippedByAncestor, isTextControl: ['INPUT', 'TEXTAREA'].includes(element.tagName),
+      textOverflow: style.textOverflow, overflowX: style.overflowX,
+      bounds: { top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right } };
   }
   let captureIndex = 0;
   const pending = new Map();
@@ -89,16 +103,20 @@
     const completed = new Promise(resolve => pending.set(index, resolve));
     webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics,
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
+      appUrl: location.href,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
-      viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height },
+      viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height,
+        visualTop: visualViewport?.offsetTop || 0 },
       documentWidth: document.documentElement.scrollWidth, errors: [...errors],
       nativeAppInfo: globalThis.__iosParityNativeAppInfo,
+      openedNote,
       saved: JSON.parse(localStorage.getItem('qa-native-server-row') || 'null'),
       writes: JSON.parse(localStorage.getItem('qa-native-writes') || '[]'),
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
     });
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
   }
+  globalThis.__iosParityCaptureCurrent = name => capture(name, { heading: '.event-overview-header h1' });
   async function run() {
     await until(() => first('[data-screen-kind="home"]'), 'home');
     await until(() => globalThis.Capacitor?.isNativePlatform?.(), 'actual Capacitor bridge');
@@ -125,8 +143,21 @@
       tab2: '.event-workspace-tab:nth-child(2) strong', tab3: '.event-workspace-tab:nth-child(3) strong' });
     await click(`[data-action="settle"][data-event-id="${EVENT}"]`);
     await capture('summary', { description: '.settlement-hero-title-row .muted', status: '.settlement-hero .status-chip', helper: '.settlement-stage-heading > div > small' });
+    await click('.transfer-explanation > summary');
+    await capture('transfers', { longName: '.transfer-participant:has([data-participant-id="ios-native-guest"]) strong',
+      amount: '.transfer-amount > .amount', badge: '.personal-transfer-badge',
+      debt: '.transfer-debt-summary', equation: '.transfer-equation-item > span' });
     await click('[data-action="open-event-notes"]');
     await capture('notes', { title: '.event-note-title-line strong', preview: '.event-note-preview' });
+    await click('[data-action="open-event-note"]');
+    openedNote = { title: first('[data-action="event-note-title"]')?.value,
+      body: first('[data-action="event-note-body"]')?.value };
+    const expectedNote = JSON.parse(localStorage.getItem('qa-native-server-row')).state.events[0].notes[0];
+    if (openedNote.title !== expectedNote.title || openedNote.body !== expectedNote.body) {
+      throw new Error('Opening the shortened note preview lost its full title or body');
+    }
+    await capture('note-opened', { body: '[data-action="event-note-body"]' });
+    await click('[data-action="close-event-dialog"]');
     await click('[data-action="edit-profile"]');
     await capture('profile', { name: '.profile-identity-copy strong' });
     await click('[data-action="home"][data-nav-destination="home"]');
@@ -134,6 +165,10 @@
     await click('[data-action="show-expense-form"]');
     await until(() => first('[data-action="expense-total"]'), 'expense amount field');
     await capture('keyboard-ready', { amount: '[data-action="expense-total"]' });
+    await until(() => first('[data-action="expense-total"]')?.value === '120', 'real native amount typing', 90000);
+    await capture('keyboard-amount', { amount: '[data-action="expense-total"]', next: '[data-action="expense-step-next"]' });
+    await until(() => first('[data-action="expense-name"]')?.value === 'QA iOS', 'real native name typing', 90000);
+    await capture('keyboard-name', { name: '[data-action="expense-name"]', next: '[data-action="expense-step-next"]' });
     await until(() => {
       const row = JSON.parse(localStorage.getItem('qa-native-server-row'));
       return row?.state.events[0].expenses.some(expense => expense.name === 'QA iOS' && expense.total === 12000);

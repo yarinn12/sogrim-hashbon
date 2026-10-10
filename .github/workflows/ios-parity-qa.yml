@@ -1,11 +1,11 @@
 name: iOS Capacitor parity QA
 
 on:
-  pull_request:
-    paths: [ios/**, src/**, assets/fonts/**, styles.css, index.html, package.json, package-lock.json, capacitor.config.json, scripts/build-native-web.mjs, scripts/finalize-native-projects.mjs, scripts/qa/ios-parity/**, .github/workflows/ios-parity-qa.yml]
-  push:
-    branches: [main]
-    paths: [ios/**, src/**, assets/fonts/**, styles.css, index.html, package.json, package-lock.json, capacitor.config.json, scripts/build-native-web.mjs, scripts/finalize-native-projects.mjs, scripts/qa/ios-parity/**, .github/workflows/ios-parity-qa.yml]
+  workflow_call:
+    inputs:
+      app_sha:
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       app_sha:
@@ -31,7 +31,7 @@ jobs:
         id: source
         env:
           INPUT_SHA: ${{ inputs.app_sha }}
-          EVENT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          EVENT_SHA: ${{ inputs.app_sha || github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           sha="$EVENT_SHA"
@@ -59,6 +59,7 @@ jobs:
           mkdir -p build/native-parity
           sudo xcode-select -s /Applications/Xcode_26.6.app
           npm ci
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_validation.py" > build/native-parity/validator-controls.log 2>&1
           node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs" > build/native-parity/bundle.log 2>&1
           npx cap sync ios
           node scripts/finalize-native-projects.mjs

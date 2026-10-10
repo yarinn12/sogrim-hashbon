@@ -10,6 +10,9 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var backgrounds = 0
     private var foregrounds = 0
     private let sourceSha = "__APP_SHA__"
+    private let sourceTree = "__APP_TREE__"
+    private var keyboardFrame = CGRect.zero
+    private var lifecycleCaptureRequested = false
     private var output: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
 
     override func capacitorDidLoad() {
@@ -39,16 +42,32 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         status.isAccessibilityElement = true
         view.addSubview(status)
         let center = NotificationCenter.default
-        center.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { [weak self] _ in self?.keyboardShows += 1 }
-        center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in self?.keyboardHides += 1 }
+        center.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { [weak self] note in
+            self?.keyboardShows += 1
+            self?.keyboardFrame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue ?? .zero
+        }
+        center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.keyboardHides += 1; self?.keyboardFrame = .zero
+        }
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.backgrounds += 1 }
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.foregrounds += 1 }
         timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in self?.refreshStatus() }
     }
     private func nativeInfo() -> [String: Any] {
         let safe = view.window?.safeAreaInsets ?? .zero
-        return ["sourceSha": sourceSha, "systemVersion": UIDevice.current.systemVersion,
+        func rect(_ frame: CGRect) -> [String: Double] {
+            return ["x": Double(frame.minX), "y": Double(frame.minY), "width": Double(frame.width), "height": Double(frame.height)]
+        }
+        let inset = webView!.scrollView.adjustedContentInset
+        return ["sourceSha": sourceSha, "sourceTree": sourceTree, "systemVersion": UIDevice.current.systemVersion,
                 "deviceName": UIDevice.current.name, "controller": String(describing: type(of: self)),
+                "bridgeAvailable": bridge != nil, "webViewUrl": webView!.url?.absoluteString ?? "",
+                "windowBounds": rect(view.window?.bounds ?? .zero),
+                "webViewFrame": rect(webView!.convert(webView!.bounds, to: nil)),
+                "statusBarFrame": rect(view.window?.windowScene?.statusBarManager?.statusBarFrame ?? .zero),
+                "keyboardFrame": rect(keyboardFrame),
+                "webViewInsets": ["top": inset.top, "bottom": inset.bottom, "left": inset.left, "right": inset.right],
+                "nativeContentOffset": ["x": webView!.scrollView.contentOffset.x, "y": webView!.scrollView.contentOffset.y],
                 "preferredContentSizeCategory": UIApplication.shared.preferredContentSizeCategory.rawValue,
                 "webViewContentSizeCategory": webView!.traitCollection.preferredContentSizeCategory.rawValue,
                 "nativeBodyPointSize": UIFont.preferredFont(forTextStyle: .body).pointSize,
@@ -60,13 +79,26 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         webView?.evaluateJavaScript("JSON.stringify(globalThis.__iosParityLive?.() || {})") { [weak self] value, error in
             guard let self = self, let text = value as? String, let data = text.data(using: .utf8),
                   var state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            let origin: CGPoint = self.webView!.convert(.zero, to: nil)
+            let documentScroll = state["documentScroll"] as? [String: Double] ?? [:]
+            var mappings: [String: Any] = [:]
             for key in ["amountPoint", "namePoint", "nextPoint", "savePoint"] {
-                if var point = state[key] as? [String: Double] {
-                    point["x"]! += Double(origin.x); point["y"]! += Double(origin.y); state[key] = point
+                if let point = state[key] as? [String: Double], let x = point["x"], let y = point["y"] {
+                    // Client rectangles are relative to the document viewport.
+                    // Convert its document point through the real scroll view,
+                    // including automatic insets and native content offsets.
+                    let documentPoint = CGPoint(x: x + (documentScroll["x"] ?? 0), y: y + (documentScroll["y"] ?? 0))
+                    let windowPoint = self.webView!.scrollView.convert(documentPoint, to: nil)
+                    state[key] = ["x": Double(windowPoint.x), "y": Double(windowPoint.y)]
+                    mappings[key] = ["client": point, "documentScroll": documentScroll, "window": state[key]!]
                 }
             }
+            state["pointMappings"] = mappings
             state["native"] = self.nativeInfo()
+            if state["phase"] as? String == "saved", self.backgrounds > 0, self.foregrounds > 0,
+               !self.lifecycleCaptureRequested {
+                self.lifecycleCaptureRequested = true
+                self.webView?.evaluateJavaScript("globalThis.__iosParityCaptureCurrent?.('resumed')", completionHandler: nil)
+            }
             if let error = error { state["evaluationError"] = String(describing: error) }
             if let encoded = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]),
                let result = String(data: encoded, encoding: .utf8) {

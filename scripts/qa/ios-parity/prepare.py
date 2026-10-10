@@ -2,10 +2,12 @@
 from hashlib import sha256
 from pathlib import Path
 import json
+import math
 import plistlib
 import re
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 FIXTURES = Path(__file__).parent
 
@@ -17,7 +19,11 @@ def prepare(app: Path, source_sha: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     public = app / "ios/App/App/public"
     assert public.is_dir()
-    manifest = {"sourceSha": source_sha, "source": {}, "www": {}}
+    source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=app, text=True).strip()
+    manifest = {"sourceSha": source_sha, "sourceTree": source_tree, "source": {}, "www": {}, "qaFixtures": {}}
+    for path in sorted(FIXTURES.iterdir()):
+        if path.is_file():
+            manifest["qaFixtures"][path.name] = sha256(path.read_bytes()).hexdigest()
     for path in sorted((app / "src").glob("public*Layer.mjs")):
         manifest["source"][str(path.relative_to(app))] = sha256(path.read_bytes()).hexdigest()
     for path in sorted(public.rglob("*")):
@@ -31,7 +37,7 @@ def prepare(app: Path, source_sha: str) -> None:
     assert "class SogrimBridgeViewController: CAPBridgeViewController" in source
     assert source.count("import AuthenticationServices") == 1
     source = source.replace("import AuthenticationServices", "import AuthenticationServices\nimport WebKit")
-    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha)
+    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree)
     delegate.write_text(source, encoding="utf8")
     story = app / "ios/App/App/Base.lproj/Main.storyboard"
     markup = story.read_text(encoding="utf8")
@@ -79,27 +85,65 @@ def install_test_target(app: Path) -> None:
 
 
 def validate(out: Path, source_sha: str) -> None:
+    manifest = json.loads((out / "package-manifest.json").read_text(encoding="utf8"))
+    assert manifest["sourceSha"] == source_sha and re.fullmatch(r"[0-9a-f]{40}", manifest["sourceTree"])
     reports = {}
     for mode in ["default", "accessibility-extra-large"]:
         report = json.loads((out / mode / "native-parity.json").read_text(encoding="utf8"))
         assert report["sourceSha"] == source_sha
         assert report["controller"] == "SogrimParityBridgeViewController"
+        assert report["sourceTree"] == manifest["sourceTree"]
         assert report["preferredContentSizeCategory"] == report["webViewContentSizeCategory"]
         records = {record["phase"]: record for record in report["records"]}
         assert not records.get("error"), records.get("error")
-        for phase in ["home", "expenses", "summary", "notes", "profile", "saved", "restored"]:
+        for phase in ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]:
             record = records[phase]
+            native = record["native"]
+            assert native["bridgeAvailable"] is True and native["sourceTree"] == manifest["sourceTree"]
+            for url in [native["webViewUrl"], record["appUrl"]]:
+                parsed = urlsplit(url)
+                assert parsed.scheme == "capacitor" and parsed.hostname == "localhost" and parsed.port is None
+            assert native["safeArea"]["top"] > 0 and native["safeArea"]["bottom"] > 0
+            window, webview, bar = native["windowBounds"], native["webViewFrame"], native["statusBarFrame"]
+            assert window["width"] > 0 and window["height"] > 0
+            assert webview["width"] > 0 and webview["height"] > 0
+            assert 0 <= webview["x"] and webview["x"] + webview["width"] <= window["width"] + 1
+            assert 0 <= webview["y"] and webview["y"] + webview["height"] <= window["height"] + 1
+            assert bar["height"] > 0 and bar["y"] + bar["height"] <= native["safeArea"]["top"] + 1
             assert record["nativeShell"] is True and record["platform"] == "ios"
             assert record["nativeAppInfo"]["id"] == "com.sogrimhashbon.app"
             assert record["errors"] == []
             assert record["documentWidth"] <= record["viewport"]["width"] + 1
             assert record["viewport"]["height"] > record["viewport"]["width"]
             assert record["rootFontSize"] > 0 and record["metrics"]
-            for metric in record["metrics"].values():
+            for key, metric in record["metrics"].items():
                 assert metric["text"] and metric["width"] > 0 and metric["fontSize"] > 0
+                preview_ellipsis = phase == "notes" and key in ["title", "preview"] and metric.get("textOverflow") == "ellipsis" and metric.get("overflowX") == "hidden"
+                assert metric["clientWidth"] > 0
+                if not metric.get("isTextControl"):
+                    assert metric["words"] and all(word["rows"] >= 1 for word in metric["words"])
+                if not preview_ellipsis:
+                    assert metric["scrollWidth"] <= metric["clientWidth"] + 1
+                    assert metric["horizontalGlyphOverflow"] is False
+                    assert metric["clippedByAncestor"] is False
             screenshot = out / mode / f"native-parity-{phase}.png"
             assert screenshot.is_file() and screenshot.stat().st_size > 1000
         saved = records["saved"]
+        assert "שם ארוך" in records["transfers"]["metrics"]["longName"]["text"]
+        opened = records["note-opened"]["openedNote"]
+        assert opened["title"] == records["notes"]["metrics"]["title"]["text"]
+        assert opened["body"] == records["notes"]["metrics"]["preview"]["text"]
+        for phase, field in [("keyboard-amount", "amount"), ("keyboard-name", "name")]:
+            record = records[phase]
+            assert record["native"]["keyboardShows"] > 0 and record["native"]["keyboardFrame"]["height"] > 0
+            assert record["native"]["keyboardFrame"]["y"] < record["native"]["windowBounds"]["height"]
+            viewport = record["viewport"]
+            assert 0 < viewport["visualHeight"] < viewport["height"]
+            for key in [field, "next"]:
+                bounds = record["metrics"][key]["bounds"]
+                assert bounds["top"] >= viewport["visualTop"] - 1
+                assert bounds["bottom"] <= viewport["visualTop"] + viewport["visualHeight"] + 1
+        assert records["resumed"]["native"]["backgrounds"] > 0 and records["resumed"]["native"]["foregrounds"] > 0
         for key in ["tab", "tab2", "tab3"]:
             metric = records["expenses"]["metrics"][key]
             assert metric["words"] and all(word["rows"] == 1 and word["outsideTab"] is False for word in metric["words"]), key
@@ -113,12 +157,13 @@ def validate(out: Path, source_sha: str) -> None:
     assert normal["preferredContentSizeCategory"] == "UICTContentSizeCategoryL"
     assert enlarged["preferredContentSizeCategory"] == "UICTContentSizeCategoryAccessibilityXL"
     assert enlarged["nativeBodyPointSize"] > normal["nativeBodyPointSize"]
-    for phase in ["home", "expenses", "summary", "notes", "profile"]:
+    factor = enlarged["nativeBodyPointSize"] / normal["nativeBodyPointSize"]
+    for phase in ["home", "expenses", "summary", "transfers", "notes", "profile"]:
         a = next(record for record in normal["records"] if record["phase"] == phase)
         b = next(record for record in enlarged["records"] if record["phase"] == phase)
-        assert b["rootFontSize"] > a["rootFontSize"]
+        assert math.isclose(b["rootFontSize"], a["rootFontSize"] * factor, abs_tol=0.002)
         for key, metric in a["metrics"].items():
-            assert b["metrics"][key]["fontSize"] >= metric["fontSize"] * 1.5, (phase, key)
+            assert math.isclose(b["metrics"][key]["fontSize"], metric["fontSize"] * factor, abs_tol=0.2), (phase, key)
     print(json.dumps({"sourceSha": source_sha, "status": "passed", "nativeController": normal["controller"], "iOS": normal["systemVersion"], "categories": [normal["preferredContentSizeCategory"], enlarged["preferredContentSizeCategory"]]}))
 
 

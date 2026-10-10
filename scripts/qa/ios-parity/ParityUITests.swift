@@ -52,14 +52,14 @@ final class ParityProbeUITests: XCTestCase {
         tap("amountPoint")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10), "A real UIKit keyboard must appear")
         app.typeText("120")
-        wait("real amount input") { state()["amount"] as? String == "120" }
+        wait("real amount input and keyboard capture") { state()["amount"] as? String == "120" && state()["phase"] as? String == "keyboard-amount" }
         let keyboardState = state()["native"] as? [String: Any] ?? [:]
         XCTAssertGreaterThan(keyboardState["keyboardShows"] as? Int ?? 0, 0)
         tap("nextPoint")
         tap("namePoint")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
         app.typeText("QA iOS")
-        wait("real name input") { state()["name"] as? String == "QA iOS" }
+        wait("real name input and keyboard capture") { state()["name"] as? String == "QA iOS" && state()["phase"] as? String == "keyboard-name" }
         // Navigate the real wizard with hit-tested native-coordinate taps.
         for _ in 0..<4 {
             if state()["savePoint"] is [String: Double] { break }
@@ -72,7 +72,7 @@ final class ParityProbeUITests: XCTestCase {
         app.activate()
         wait("native background and foreground") {
             let native = state()["native"] as? [String: Any] ?? [:]
-            return (native["backgrounds"] as? Int ?? 0) > 0 && (native["foregrounds"] as? Int ?? 0) > 0
+            return (native["backgrounds"] as? Int ?? 0) > 0 && (native["foregrounds"] as? Int ?? 0) > 0 && state()["phase"] as? String == "resumed"
         }
         app.terminate(); app.launch()
         wait("persisted expense after real relaunch", timeout: 45) { state()["phase"] as? String == "restored" }

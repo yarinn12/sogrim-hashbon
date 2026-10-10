@@ -133,9 +133,15 @@ jobs:
 
   # Preserve the existing required-check name, but fail closed if any lane
   # fails, is cancelled or skipped. The deploy workflow still waits for all QA.
+  ios-native:
+    needs: unit
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, two-client-sync, cross-platform]
+    needs: [unit, mobile, two-client-sync, cross-platform, ios-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
@@ -144,11 +150,13 @@ jobs:
           MOBILE_RESULT: ${{ needs.mobile.result }}
           SYNC_RESULT: ${{ needs.two-client-sync.result }}
           CROSS_PLATFORM_RESULT: ${{ needs.cross-platform.result }}
+          IOS_NATIVE_RESULT: ${{ needs.ios-native.result }}
         run: |
           test "$UNIT_RESULT" = success
           test "$MOBILE_RESULT" = success
           test "$SYNC_RESULT" = success
           test "$CROSS_PLATFORM_RESULT" = success
+          test "$IOS_NATIVE_RESULT" = success
 
   backup-runtime:
     runs-on: ubuntu-latest

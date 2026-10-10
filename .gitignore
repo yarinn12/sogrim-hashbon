@@ -83,3 +83,4 @@ tmp-*.png
 mobile-*-receipt*.png
 ux-*.png
 .vercel
+scripts/qa/**/__pycache__/
