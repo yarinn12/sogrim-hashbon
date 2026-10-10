@@ -46,8 +46,9 @@ const CSS = `
     letter-spacing: 0 !important;
   }
 
-  /* Rubik's Linux glyph advances agree across engines in geometric precision mode. */
-  html.design-coherence-v1 body {
+  /* Blink leaves some nested labels at auto when only body sets this property. */
+  html.design-coherence-v1 body,
+  html.design-coherence-v1 body #app * {
     text-rendering: geometricPrecision !important;
   }
 

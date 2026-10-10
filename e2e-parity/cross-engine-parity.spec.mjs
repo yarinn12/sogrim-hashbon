@@ -301,7 +301,7 @@ for (const scenario of [
         for (const [target, expected] of Object.entries(baseline.metrics)) {
           const measured = actual.metrics[target];
           const label = `${scenario.label}/${name}/${screen}/${target}`;
-          for (const field of ["text", "wordLines", "family", "weight", "color", "direction"]) {
+          for (const field of ["text", "wordLines", "family", "weight", "color", "direction", "textRendering"]) {
             expect(measured[field], `${label}: ${field}`).toEqual(expected[field]);
           }
           expect(measured.size, `${label}: font size`).toBeCloseTo(expected.size, 3);
