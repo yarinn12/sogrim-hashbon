@@ -20,13 +20,16 @@ calculated balances and paid/undo actions, focus after dialog transitions,
 navigation/return, long participant lists, note persistence and local font
 availability. The paired comparison opens the same synthetic account and event
 in each engine at 320, 393, 852-landscape and 768-tablet widths, including a
-32px text preview. It records the actual viewport, root font size, text,
+32px text preview and an explicitly simulated 37.647px iOS accessibility category.
+Home, expenses, notes, profile, summary, share and repayment screens use the same
+state in each engine. It records the actual viewport, root font size, text,
 Hebrew words on each line, word fragmentation, family, weight, size, line height,
 color, direction and horizontal clipping. Screenshots and JSON measurements are
 attached to the Playwright report.
 
 The paired comparison requires identical text and word lines. It permits at most
-one CSS pixel of width rounding and one pixel of box-height rounding per line;
+one CSS pixel of width rounding, one pixel of box-height rounding per line and
+1/60 CSS pixel of computed line-height rounding ([Gecko layout unit](https://github.com/mozilla/gecko-dev/blob/master/gfx/src/AppUnits.h));
 it does not weaken the word, font-size, overflow or clipping checks. CSS family
 names are normalized only for optional enclosing quotes. Font loading must
 still pass the independent local-resource and loaded-face assertions.
@@ -44,6 +47,19 @@ assets, actual Capacitor bridge, OS text category/scale, keyboard and viewport
 state. Preserve normal and enlarged-text screenshots separately. A plain
 WKWebView probe cannot close a Capacitor-shell check. Physical-device,
 installation/upgrade and live-provider checks remain separate acceptance tasks.
+
+`iOS Capacitor parity QA` builds an unsigned Debug simulator app from the exact
+PR or dispatch SHA. Its QA subclass calls the original
+`SogrimBridgeViewController.capacitorDidLoad`, uses the real SDK and packaged WWW,
+and proves a native `App.getInfo` call. The synthetic service intercepts account
+and state requests; it does not test real connectivity or a production database.
+Typography navigation uses DOM actions; XCTest uses hit-tested native-coordinate
+taps for the expense wizard, requires a UIKit keyboard, confirms the final
+synthetic acknowledgement, and checks background/foreground and relaunch.
+It preserves the production iPhone portrait policy. Both the fresh OS default
+and OS accessibility-extra-large categories must pass. This standalone workflow
+is separate from the `unit-and-mobile` aggregate and is not a physical iPhone,
+signed distribution build, installation-upgrade or live authentication check.
 
 For every product bug, keep the permanent test with the fix, demonstrate the
 relevant failure before the fix and success after it, and record the tested

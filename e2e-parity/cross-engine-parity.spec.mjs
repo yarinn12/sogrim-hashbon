@@ -21,7 +21,11 @@ const state = {
       id: "expense-cross-engine", name: "ארוחת ערב משותפת במסעדה", total: 12345,
       payers: [{ participantId: OWNER, amount: 12345 }], sharedByParticipantIds: [OWNER, FRIEND, THIRD],
       createdByParticipantId: OWNER, updatedAt: "2026-10-01T08:00:01.000Z"
-    }], transfers: [], notes: [], activityLog: []
+    }], transfers: [], notes: [{
+      id: "note-cross-engine", title: "פרטי נסיעה", body: "נפגשים בכניסה הראשית.", pinned: true,
+      createdByParticipantId: OWNER, updatedByParticipantId: OWNER,
+      createdAt: "2026-10-01T08:00:00.000Z", updatedAt: "2026-10-01T08:00:00.000Z"
+    }], activityLog: []
   }]
 };
 
@@ -101,12 +105,38 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");
     }, { state, owner: OWNER });
     const url = `${baseURL}/${scenario.font === 32 ? "?dynamic-type-preview=32" : ""}`;
-    await page.goto(url);
-    await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+    async function openHome() {
+      await page.goto(url);
+      await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+      if (scenario.ax) {
+        await page.evaluate(() => {
+          const root = document.documentElement;
+          root.classList.add('dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
+          root.style.setProperty('--apple-font-scale', String(40 / 17));
+          root.style.setProperty('font-size', '37.64706px', 'important');
+        });
+      }
+    }
+    await openHome();
     const records = {};
     records.home = await capture(page, testInfo, `${name}-home`, {
-      description: ".product-home-screen .top .brand .muted"
+      description: ".product-home-screen .top .brand .muted", brand: ".product-brand-copy strong"
     });
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
+    records.expenses = await capture(page, testInfo, `${name}-expenses`, {
+      heading: ".event-overview-header h1", expense: ".expense-row strong",
+      tab: ".event-workspace-tab strong"
+    });
+    await page.locator('[data-action="open-event-notes"]:visible').first().click();
+    records.notes = await capture(page, testInfo, `${name}-notes`, {
+      title: ".event-note-title-line strong", preview: ".event-note-preview"
+    });
+    await page.locator('[data-action="edit-profile"]:visible').first().click();
+    records.profile = await capture(page, testInfo, `${name}-profile`, {
+      name: ".profile-identity-copy strong"
+    });
+    await page.locator('[data-action="home"][data-nav-destination="home"]:visible').first().click();
+    await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     await page.locator(`[data-action="settle"][data-event-id="${EVENT}"]`).first().click();
     records.summary = await capture(page, testInfo, `${name}-summary`, {
@@ -119,7 +149,7 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     records.share = await capture(page, testInfo, `${name}-share`, {
       unavailable: '[data-action="share-invite-whatsapp"]', copy: '[data-action="copy-invite"]'
     });
-    await page.goto(url);
+    await openHome();
     await page.locator('[data-action="new-event"]').first().click();
     await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
     await page.locator('[data-action="open-new-event-settlement"]').click();
@@ -133,6 +163,10 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     records.selected = await capture(page, testInfo, `${name}-selected`, {
       direct: '.new-event-inline-picker:has([data-choice-value="direct"]) summary > span'
     });
+    for (const [screen, record] of Object.entries(records)) {
+      expect(parseFloat(record.rootFontSize), `${name}/${screen}: requested text scale`)
+        .toBeCloseTo(scenario.font, 3);
+    }
     expect(errors, `${name}: runtime errors`).toEqual([]);
     return { browserVersion: browser.version(), records };
   } finally {
@@ -144,6 +178,7 @@ for (const scenario of [
   { label: "compact-320-default", viewport: { width: 320, height: 800 }, font: 16 },
   { label: "iphone-393-default", viewport: { width: 393, height: 852 }, font: 16 },
   { label: "iphone-393-32px", viewport: { width: 393, height: 852 }, font: 32 },
+  { label: "iphone-393-AX-equivalent", viewport: { width: 393, height: 852 }, font: 37.64706, ax: true },
   { label: "landscape-852-default", viewport: { width: 852, height: 393 }, font: 16 },
   { label: "tablet-768-default", viewport: { width: 768, height: 1024 }, font: 16 }
 ]) {
@@ -158,7 +193,7 @@ for (const scenario of [
       for (const [screen, baseline] of Object.entries(results.chromium.records)) {
         const actual = results[name].records[screen];
         expect(actual.viewport, `${name}/${screen}: actual viewport`).toEqual(baseline.viewport);
-        expect(actual.rootFontSize, `${name}/${screen}: requested text scale`).toBe(`${scenario.font}px`);
+        expect(parseFloat(actual.rootFontSize), `${name}/${screen}: requested text scale`).toBeCloseTo(scenario.font, 3);
         for (const [target, expected] of Object.entries(baseline.metrics)) {
           const measured = actual.metrics[target];
           const label = `${scenario.label}/${name}/${screen}/${target}`;
@@ -167,7 +202,11 @@ for (const scenario of [
           }
           expect(measured.size, `${label}: font size`).toBeCloseTo(expected.size, 3);
           if (expected.lineHeight === "normal") expect(measured.lineHeight, `${label}: line height`).toBe("normal");
-          else expect(measured.lineHeight, `${label}: line height`).toBeCloseTo(expected.lineHeight, 3);
+          // Gecko quantizes layout to 1/60 CSS px (gfx/src/AppUnits.h).
+          // Preserve the raw values and permit only that subpixel rounding;
+          // words, rows, font size and the actual line boxes remain checked.
+          else expect(Math.abs(measured.lineHeight - expected.lineHeight), `${label}: line height rounding`)
+            .toBeLessThanOrEqual(1 / 60);
           // Browser line boxes round differently. Require exact words/rows and
           // allow at most one CSS pixel of box rounding per rendered line.
           expect(Math.abs(measured.width - expected.width), `${label}: width`).toBeLessThanOrEqual(1);
