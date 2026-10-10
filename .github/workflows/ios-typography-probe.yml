@@ -26,7 +26,7 @@ jobs:
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
       # Only the QA branch uses this pinned value on push. workflow_dispatch
       # requires an explicit SHA and never falls back to a moving branch.
-      PUSH_APP_SHA: "683f620dba38b9449b9df199b44e79742a5d332d"
+      PUSH_APP_SHA: "bf49d0b5d0d1ceb0cc686e00be29d2f684411a91"
     steps:
       - name: Check out QA fixture branch
         uses: actions/checkout@v6
