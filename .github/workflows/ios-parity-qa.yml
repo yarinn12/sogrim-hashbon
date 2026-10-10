@@ -104,6 +104,10 @@ jobs:
             container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
             cp "$container/Documents/native-parity.json" "$out/"
             cp "$container/Documents"/native-parity-*.png "$out/"
+            for diagnostic in "$container/Documents"/native-parity-geometry-*.json; do
+              [[ -f "$diagnostic" ]] || continue
+              cp "$diagnostic" "$out/"
+            done
             xcrun xcresulttool export attachments --path "$out/result.xcresult" --output-path "$out/system-screenshots" > "$out/export-attachments.log" 2>&1
             xcrun simctl io "$PROBE_UDID" screenshot "$out/final-simulator.png"
           }
