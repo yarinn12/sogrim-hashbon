@@ -165,6 +165,7 @@ function injectDynamicTypeStyles(document) {
       --dynamic-text-15: 0.9375rem;
       --dynamic-text-16: 1rem;
       --dynamic-text-17: 1.0625rem;
+      --dynamic-text-19: 1.1875rem;
       --dynamic-text-20: 1.25rem;
       --dynamic-text-24: 1.5rem;
       --dynamic-text-28: 1.75rem;
@@ -280,7 +281,9 @@ function injectDynamicTypeStyles(document) {
     }
 
     html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-      body #app .screen[data-event-view="summary"] .product-brand-copy strong {
+      body #app .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+        [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+      .product-brand-copy strong {
       font-size: var(--dynamic-text-17, 17px) !important;
     }
 
@@ -293,13 +296,17 @@ function injectDynamicTypeStyles(document) {
 
     @media (max-width: 720px) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] > .product-app-identity {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        > .product-app-identity {
         display: block !important;
         padding: calc(10px + env(safe-area-inset-top)) 12px 12px !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] .product-brand-lockup {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-lockup {
         width: 100% !important;
         display: grid !important;
         grid-template-columns: 40px 44px minmax(0, 1fr) !important;
@@ -307,45 +314,59 @@ function injectDynamicTypeStyles(document) {
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] .product-brand-mark {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-mark {
         grid-column: 1 !important;
         grid-row: 1 !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] .product-header-profile-avatar {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-header-profile-avatar {
         grid-column: 2 !important;
         grid-row: 1 !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] .product-brand-copy {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy {
         grid-column: 1 / -1 !important;
         grid-row: 2 !important;
         text-align: center !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"] .product-brand-copy strong {
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy strong {
         white-space: normal !important;
         overflow-wrap: anywhere !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"]
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
         .event-header-utility-button {
         height: auto !important;
         min-height: 54px !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
-        .screen[data-event-view="summary"]
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
         .event-header-action-label {
         max-width: 100% !important;
         white-space: normal !important;
         overflow-wrap: anywhere !important;
         text-align: center !important;
         line-height: 1.2 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-workspace-tab strong {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
       }
     }
 

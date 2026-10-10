@@ -19826,7 +19826,7 @@ const CSS = `
   html.ledger-workspace-v1 .profile-identity-copy > strong {
     overflow-wrap: anywhere !important;
     color: var(--ledger-ink) !important;
-    font-size: 17px !important;
+    font-size: var(--dynamic-text-17, 17px) !important;
     line-height: 1.35 !important;
   }
 
@@ -20399,7 +20399,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-ink) !important;
-    font-size: 19px !important;
+    font-size: var(--dynamic-text-19, 19px) !important;
     font-weight: 820 !important;
     line-height: 1.3 !important;
     text-overflow: ellipsis !important;
@@ -20423,7 +20423,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-muted) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;

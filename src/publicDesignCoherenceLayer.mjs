@@ -4586,7 +4586,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .profile-edit-screen .profile-identity-entry .profile-identity-copy > strong {
     color: var(--app-muted) !important;
-    font-size: 13px !important;
+    font-size: var(--dynamic-text-13, 13px) !important;
     font-weight: 500 !important;
   }
 
