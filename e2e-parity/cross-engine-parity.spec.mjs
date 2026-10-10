@@ -33,10 +33,34 @@ async function textLayout(locator) {
   await expect(locator).toBeVisible();
   return locator.evaluate(async element => {
     const style = getComputedStyle(element);
+    const isAxHomeDescription = element.matches('.product-home-screen .top .brand .muted')
+      && typeof window.__qaAxFontProbe === 'function';
+    const axInitialStyle = isAxHomeDescription ? {
+      fontSize: style.fontSize, lineHeight: style.lineHeight,
+      isConnected: element.isConnected,
+      isCurrentTarget: document.querySelector('.product-home-screen .top .brand .muted') === element,
+      bounds: { width: element.getBoundingClientRect().width,
+        height: element.getBoundingClientRect().height }
+    } : undefined;
     const fontRequest = `${style.fontWeight} ${style.fontSize} Rubik`;
     const loadedFaces = await document.fonts.load(fontRequest, element.textContent);
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    // The same read-only probe is taken immediately after AX setup and here,
+    // after the existing font wait, so Linux can show when a style diverges.
+    const axFontDiagnosticBeforeMeasurement = isAxHomeDescription
+      ? { ...window.__qaAxFontProbe(element),
+        styleLifetime: {
+          initial: axInitialStyle,
+          savedDeclaration: { fontSize: style.fontSize, lineHeight: style.lineHeight },
+          freshDeclaration: {
+            fontSize: getComputedStyle(element).fontSize,
+            lineHeight: getComputedStyle(element).lineHeight
+          },
+          isConnected: element.isConnected,
+          isCurrentTarget: document.querySelector('.product-home-screen .top .brand .muted') === element
+        } }
+      : undefined;
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const lines = new Map();
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -100,6 +124,7 @@ async function textLayout(locator) {
       textRendering: style.textRendering,
       fontOpticalSizing: style.fontOpticalSizing,
       shapingProbe,
+      ...(axFontDiagnosticBeforeMeasurement ? { axFontDiagnosticBeforeMeasurement } : {}),
       lineHeight: style.lineHeight === "normal" ? "normal" : parseFloat(style.lineHeight),
       width: bounds.width, height: bounds.height,
       clippedHorizontally: element.scrollWidth > element.clientWidth + 1,
@@ -200,24 +225,154 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
       }));
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");
     }, { state, owner: OWNER });
+    if (scenario.label === 'portrait-375-AX-equivalent') {
+      await page.addInitScript(() => {
+        window.__qaAxFontProbe = element => {
+          // Read the target first, before enumerating CSS rules or inserting a
+          // temporary offscreen 1rem probe. No application style is changed.
+          const targetStyle = getComputedStyle(element);
+          const targetBounds = element.getBoundingClientRect();
+          const target = {
+            fontSize: targetStyle.fontSize, lineHeight: targetStyle.lineHeight,
+            fontFamily: targetStyle.fontFamily, fontWeight: targetStyle.fontWeight,
+            color: targetStyle.color, textRendering: targetStyle.textRendering,
+            width: targetBounds.width, height: targetBounds.height,
+            maxWidth: targetStyle.maxWidth, transition: targetStyle.transition,
+            transitionProperty: targetStyle.transitionProperty,
+            animations: element.getAnimations().map(animation => ({
+              type: animation.constructor.name, playState: animation.playState,
+              currentTime: animation.currentTime,
+              duration: animation.effect?.getComputedTiming().duration
+            })),
+            inlineStyle: element.getAttribute('style')
+          };
+          const root = document.documentElement;
+          const rootStyle = getComputedStyle(root);
+          const matchingFontSizeRules = [];
+          const stylesheetErrors = [];
+          for (const [sheetIndex, sheet] of [...document.styleSheets].entries()) {
+            const source = {
+              sheetIndex, href: sheet.href,
+              ownerId: sheet.ownerNode?.id || '',
+              ownerTag: sheet.ownerNode?.tagName || ''
+            };
+            const visit = (rules, conditions = [], active = true, path = '') => {
+              for (const [index, rule] of [...rules].entries()) {
+                const rulePath = path ? `${path}.${index}` : String(index);
+                if (rule.type === CSSRule.STYLE_RULE) {
+                  const fontSize = rule.style?.getPropertyValue('font-size');
+                  const fontShorthand = rule.style?.getPropertyValue('font');
+                  if (fontSize || fontShorthand) {
+                    try {
+                      if (element.matches(rule.selectorText)) {
+                        matchingFontSizeRules.push({ ...source, rulePath, conditions, active,
+                          selector: rule.selectorText, fontSize, fontShorthand,
+                          priority: rule.style.getPropertyPriority('font-size') });
+                      }
+                    } catch (error) {
+                      stylesheetErrors.push({ ...source, rulePath, selector: rule.selectorText,
+                        error: String(error) });
+                    }
+                  }
+                }
+                if (rule.cssRules?.length) {
+                  const conditionText = rule.conditionText || rule.name || rule.constructor.name;
+                  let conditionActive = true;
+                  if (rule.type === CSSRule.MEDIA_RULE) {
+                    conditionActive = matchMedia(rule.conditionText).matches;
+                  } else if (rule.type === CSSRule.SUPPORTS_RULE) {
+                    conditionActive = CSS.supports(rule.conditionText);
+                  }
+                  visit(rule.cssRules,
+                    [...conditions, { type: rule.constructor.name, text: conditionText, active: conditionActive }],
+                    active && conditionActive, rulePath);
+                }
+              }
+            };
+            try { visit(sheet.cssRules); }
+            catch (error) { stylesheetErrors.push({ ...source, error: String(error) }); }
+          }
+          const oneRemProbe = document.createElement('span');
+          Object.assign(oneRemProbe.style, { position: 'fixed', left: '-10000px', top: '0',
+            visibility: 'hidden', fontSize: '1rem', lineHeight: '1' });
+          document.body.append(oneRemProbe);
+          const oneRemProbeSize = getComputedStyle(oneRemProbe).fontSize;
+          oneRemProbe.remove();
+          return {
+            capturedAt: performance.now(),
+            millisecondsSinceAxApplied: typeof window.__qaAxAppliedAt === 'number'
+              ? performance.now() - window.__qaAxAppliedAt : null,
+            target,
+            root: { className: root.className, inlineStyle: root.getAttribute('style'),
+              inlineFontSize: root.style.fontSize, computedFontSize: rootStyle.fontSize,
+              appleFontScale: rootStyle.getPropertyValue('--apple-font-scale').trim(),
+              dynamicText13: rootStyle.getPropertyValue('--dynamic-text-13').trim(),
+              dynamicText16: rootStyle.getPropertyValue('--dynamic-text-16').trim() },
+            targetVariables: {
+              dynamicText13: targetStyle.getPropertyValue('--dynamic-text-13').trim(),
+              dynamicText16: targetStyle.getPropertyValue('--dynamic-text-16').trim()
+            },
+            oneRemProbeSize,
+            runtime: { userAgent: navigator.userAgent,
+              resizeObserverAvailable: typeof ResizeObserver !== 'undefined' },
+            viewport: { innerWidth, innerHeight, clientWidth: root.clientWidth,
+              visualWidth: window.visualViewport?.width, devicePixelRatio },
+            media: Object.fromEntries([
+              '(pointer: coarse)', '(any-pointer: coarse)', '(pointer: fine)',
+              '(hover: none)', '(hover: hover)',
+              '(max-width: 375px)', '(max-width: 380px)', '(max-width: 720px)',
+              '(orientation: portrait)', '(prefers-reduced-motion: reduce)'
+            ].map(query => [query, matchMedia(query).matches])),
+            fonts: { status: document.fonts.status,
+              targetCheck: document.fonts.check(`${target.fontWeight} ${target.fontSize} Rubik`, element.textContent),
+              rubikFaces: [...document.fonts]
+                .filter(face => face.family.replace(/["']/g, '') === 'Rubik')
+                .map(face => ({ family: face.family, status: face.status,
+                  weight: face.weight, unicodeRange: face.unicodeRange })) },
+            matchingFontSizeRules, stylesheetErrors
+          };
+        };
+      });
+    }
     const url = `${baseURL}/${scenario.font === 32 ? "?dynamic-type-preview=32" : ""}`;
-    async function openHome() {
+    async function openHome({ diagnoseInitialAx = false } = {}) {
       await page.goto(url);
       await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
       if (scenario.ax) {
-        await page.evaluate(() => {
+        return page.evaluate(diagnose => {
           const root = document.documentElement;
           root.classList.add('dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
           root.style.setProperty('--apple-font-scale', String(40 / 17));
           root.style.setProperty('font-size', '37.64706px', 'important');
-        });
+          window.__qaAxAppliedAt = performance.now();
+          // Read in the same browser task as the fixture's AX setup, so the
+          // first home capture keeps its original Playwright call boundary.
+          if (diagnose) {
+            const target = document.querySelector('.product-home-screen .top .brand .muted');
+            return target ? window.__qaAxFontProbe(target) : null;
+          }
+          return null;
+        }, diagnoseInitialAx);
       }
+      return null;
     }
-    await openHome();
+    const axFontDiagnosticImmediate = await openHome({
+      diagnoseInitialAx: scenario.label === 'portrait-375-AX-equivalent'
+    });
     const records = {};
     records.home = await capture(page, testInfo, `${name}-home`, {
       description: ".product-home-screen .top .brand .muted", brand: ".product-brand-copy strong"
     }, cdp);
+    if (axFontDiagnosticImmediate) records.home.axFontDiagnosticImmediate = axFontDiagnosticImmediate;
+    if (scenario.label === 'portrait-375-AX-equivalent') {
+      // Keep the original first-home capture above. This later sample is only
+      // evidence about whether another paint changes the computed style.
+      records.home.axFontDiagnosticAfterTwoFrames = await page.locator('.product-home-screen .top .brand .muted')
+        .evaluate(async element => {
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          return window.__qaAxFontProbe(element);
+        });
+    }
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     records.expenses = await capture(page, testInfo, `${name}-expenses`, {
       heading: ".event-overview-header h1", expense: ".expense-row strong",
@@ -249,6 +404,10 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     }, cdp);
     await page.locator('[data-action="home"][data-nav-destination="home"]:visible').first().click();
     await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+    if (scenario.label === 'portrait-375-AX-equivalent') {
+      records.home.axFontDiagnosticAfterReturn = await page.locator('.product-home-screen .top .brand .muted')
+        .evaluate(element => window.__qaAxFontProbe(element));
+    }
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     await page.locator(`[data-action="settle"][data-event-id="${EVENT}"]`).first().click();
     records.summary = await capture(page, testInfo, `${name}-summary`, {
@@ -300,6 +459,16 @@ for (const scenario of [
     }
     // Preserve every engine's screenshot and font provenance before a parity assertion can fail.
     await testInfo.attach("engine-measurements", { body: JSON.stringify({ scenario, results }, null, 2), contentType: "application/json" });
+    if (scenario.label === 'portrait-375-AX-equivalent') {
+      await testInfo.attach('ax-home-font-diagnostics', {
+        body: JSON.stringify(Object.fromEntries(Object.entries(results).map(([engine, result]) => [engine, {
+          immediate: result.records.home.axFontDiagnosticImmediate,
+          beforeMeasurement: result.records.home.metrics.description.axFontDiagnosticBeforeMeasurement,
+          afterTwoFrames: result.records.home.axFontDiagnosticAfterTwoFrames,
+          afterReturn: result.records.home.axFontDiagnosticAfterReturn
+        }])), null, 2), contentType: 'application/json'
+      });
+    }
     for (const [name, result] of Object.entries(results)) {
       expect(result.errors, `${name}: runtime errors`).toEqual([]);
       for (const [screen, record] of Object.entries(result.records)) {
