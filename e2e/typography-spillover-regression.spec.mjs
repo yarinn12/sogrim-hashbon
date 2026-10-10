@@ -56,7 +56,9 @@ const targets = {
 
 async function measure(page, mode, screen) {
   const selectors = targets[screen];
-  const value = await page.evaluate(selectors => {
+  const value = await page.evaluate(async selectors => {
+    await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const visible = element => {
       const box = element.getBoundingClientRect();
       const style = getComputedStyle(element);
@@ -67,13 +69,52 @@ async function measure(page, mode, screen) {
       if (!element) return [selector, null];
       const box = element.getBoundingClientRect();
       const style = getComputedStyle(element);
+      const fragmentedWords = [];
+      if (selector === '.event-workspace-tab strong') {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          for (const word of node.textContent.matchAll(/\S+/gu)) {
+            const range = document.createRange();
+            range.setStart(node, word.index);
+            range.setEnd(node, word.index + word[0].length);
+            const rows = new Set([...range.getClientRects()]
+              .filter(rect => rect.width && rect.height).map(rect => Math.round(rect.top)));
+            if (rows.size > 1) fragmentedWords.push(word[0]);
+          }
+        }
+      }
       return [selector, { text: element.textContent.trim().replace(/\s+/gu, ' ').slice(0, 120),
+        fragmentedWords,
         fontSize: parseFloat(style.fontSize), lineHeight: style.lineHeight,
         width: box.width, height: box.height,
         scrollWidth: element.scrollWidth, clientWidth: element.clientWidth,
         scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }];
     }));
-    return { viewport: { width: innerWidth, height: innerHeight },
+    const workspaceTabs = [...document.querySelectorAll('.event-workspace-tab')]
+      .filter(visible).map(tab => {
+        const label = tab.querySelector('strong');
+        const box = tab.getBoundingClientRect();
+        const walker = document.createTreeWalker(label, NodeFilter.SHOW_TEXT);
+        const fragmentedWords = [];
+        const outsideGlyphs = [];
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          for (const word of node.textContent.matchAll(/\S+/gu)) {
+            const range = document.createRange();
+            range.setStart(node, word.index);
+            range.setEnd(node, word.index + word[0].length);
+            const rects = [...range.getClientRects()].filter(rect => rect.width && rect.height);
+            if (new Set(rects.map(rect => Math.round(rect.top))).size > 1) {
+              fragmentedWords.push(word[0]);
+            }
+            if (rects.some(rect => rect.left < box.left - 1 || rect.right > box.right + 1
+              || rect.top < box.top - 1 || rect.bottom > box.bottom + 1)) {
+              outsideGlyphs.push(word[0]);
+            }
+          }
+        }
+        return { text: label.textContent.trim(), fragmentedWords, outsideGlyphs };
+      });
+    return { viewport: { width: innerWidth, height: innerHeight }, workspaceTabs,
       rootClassName: document.documentElement.className,
       rootFontSize: getComputedStyle(document.documentElement).fontSize,
       documentWidth: document.documentElement.scrollWidth,
@@ -83,8 +124,7 @@ async function measure(page, mode, screen) {
   return value;
 }
 
-test('rendered home, expenses, notes and profile text grow without clipping at 32 and AX-equivalent 37.647', async ({ page, request }, testInfo) => {
-  test.setTimeout(150_000);
+async function seed(page, request) {
   await request.post('/api/reset');
   await request.put('/api/state', { data: state });
   await page.addInitScript(({ state, owner }) => {
@@ -99,21 +139,30 @@ test('rendered home, expenses, notes and profile text grow without clipping at 3
     }
     sessionStorage.setItem('settle-friends-skip-next-splash', '1');
   }, { state, owner: OWNER });
+}
+
+async function openAtSize(page, mode) {
+  await page.goto(mode === '32' ? '/?dynamic-type-preview=32' : '/');
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  if (mode === 'AX-active') {
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.classList.add('dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
+      root.style.setProperty('--apple-font-scale', String(40 / 17));
+      root.style.setProperty('font-size', '37.64706px', 'important');
+    });
+  }
+}
+
+test('rendered home, expenses, notes and profile text grow without clipping at 32 and AX-equivalent 37.647', async ({ page, request }, testInfo) => {
+  test.setTimeout(150_000);
+  await seed(page, request);
 
   const samples = {};
   for (const mode of ['normal', '32', 'AX-active']) {
     samples[mode] = {};
     await page.setViewportSize({ width: 393, height: 852 });
-    await page.goto(mode === '32' ? '/?dynamic-type-preview=32' : '/');
-    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
-    if (mode === 'AX-active') {
-      await page.evaluate(() => {
-        const root = document.documentElement;
-        root.classList.add('dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
-        root.style.setProperty('--apple-font-scale', String(40 / 17));
-        root.style.setProperty('font-size', '37.64706px', 'important');
-      });
-    }
+    await openAtSize(page, mode);
     samples[mode].home = await measure(page, mode, 'home');
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT}"]`)).toBeVisible();
@@ -175,6 +224,39 @@ test('rendered home, expenses, notes and profile text grow without clipping at 3
       const label = samples[mode][screen].records['.event-workspace-tab strong'];
       expect.soft(label.scrollWidth, `${mode}/${screen}: workspace tab label must fit`)
         .toBeLessThanOrEqual(label.clientWidth + 1);
+      expect.soft(label.fragmentedWords, `${mode}/${screen}: workspace tab words stay complete`)
+        .toEqual([]);
     }
   }
+});
+
+test('short Hebrew workspace tab words remain whole and inside their controls at 393 and 320', async ({ page, request }, testInfo) => {
+  test.setTimeout(150_000);
+  await seed(page, request);
+  const samples = [];
+  for (const width of [393, 320]) {
+    await page.setViewportSize({ width, height: 852 });
+    for (const mode of ['32', 'AX-active']) {
+      await openAtSize(page, mode);
+      await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
+      await expect(page.locator(`[data-screen-kind="event"][data-event-id="${EVENT}"]`)).toBeVisible();
+      for (const screen of ['event', 'notes']) {
+        if (screen === 'notes') {
+          await page.locator('[data-action="open-event-notes"]:visible').first().click();
+          await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${EVENT}"]`)).toBeVisible();
+        }
+        const sample = await measure(page, mode, screen);
+        samples.push({ mode, screen, width, ...sample });
+        expect.soft(sample.workspaceTabs.map(tab => tab.text), `${width}/${mode}/${screen}: all tabs exist`)
+          .toEqual(['הוצאות', 'סיכום', 'פתקים']);
+        for (const tab of sample.workspaceTabs) {
+          expect.soft(tab.fragmentedWords, `${width}/${mode}/${screen}/${tab.text}: words stay whole`).toEqual([]);
+          expect.soft(tab.outsideGlyphs, `${width}/${mode}/${screen}/${tab.text}: glyphs fit`).toEqual([]);
+        }
+      }
+    }
+  }
+  await testInfo.attach('workspace-tab-word-measurements', {
+    body: JSON.stringify(samples, null, 2), contentType: 'application/json'
+  });
 });
