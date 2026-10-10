@@ -105,7 +105,9 @@ jobs:
           sudo setfacl -m "u:$USER:rw" /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect -memory 2048 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/emulator.pid
-          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" wait-for-device
+          # A failed emulator must produce diagnostics rather than leave ADB
+          # waiting for a device until the entire job times out.
+          timeout 240 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" wait-for-device
           booted=0
           for n in $(seq 1 180); do
             if [[ "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]]; then booted=1; break; fi
