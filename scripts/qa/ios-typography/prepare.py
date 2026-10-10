@@ -237,6 +237,9 @@ def validate(out: Path, source_sha: str) -> None:
     control = records[0]["weightControl"]
     assert [item["weight"] for item in control] == [400, 500, 700, 900]
     assert all(item["inkPixels"] > 0 and item["width"] > 0 for item in control)
+    assert records[3]["selectedValue"]["text"] == "החזר לפי מי ששילם"
+    assert records[3]["directOption"]["text"] == "החזר לפי מי ששילם"
+    assert records[3]["directSelected"] is True
     assert records[2]["shareButton"]["fontSize"] == "32px"
     assert records[3]["selectedValue"]["fontSize"] == "32px"
     assert records[3]["directOption"]["fontSize"] == "32px"

@@ -47,6 +47,18 @@
     };
     tick();
   });
+  const waitForText = (selector, expected, timeoutMs = 20000) => new Promise((resolve, reject) => {
+    const started = performance.now();
+    const tick = () => {
+      const element = [...document.querySelectorAll(selector)].find(visible);
+      if (element?.textContent.trim() === expected) return resolve(element);
+      if (performance.now() - started >= timeoutMs) {
+        return reject(new Error(`Timed out waiting for ${selector} to read ${expected} in ${phase}`));
+      }
+      setTimeout(tick, 80);
+    };
+    tick();
+  });
   const settle = async () => {
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -151,6 +163,8 @@
       return;
     }
     if (phase === "repayment") {
+      const repaymentPicker = '.new-event-inline-picker:has(button[data-action="new-event-repayment-choice"][data-choice-value="direct"])';
+      const direct = `${repaymentPicker} button[data-choice-value="direct"]`;
       await click('[data-action="new-event"]');
       await click('[data-action="new-event-type"][data-event-type="standard"]');
       const name = await waitFor('[data-action="new-event-name"]');
@@ -159,14 +173,17 @@
       name.dispatchEvent(new Event("input", { bubbles: true }));
       await click('[data-action="open-new-event-settlement"]');
       await waitFor('[data-event-creation-step="settlement"]');
-      await click('.new-event-inline-picker summary');
-      await click('.new-event-inline-picker-menu button[data-choice-value="direct"]');
-      const picker = await waitFor('.new-event-inline-picker details');
-      if (!picker.open) await click('.new-event-inline-picker summary');
+      await click(`${repaymentPicker} summary`);
+      await click(direct);
+      await waitForText(`${repaymentPicker} summary > span:first-child`, 'החזר לפי מי ששילם');
+      const picker = await waitFor(`${repaymentPicker} details`);
+      if (!picker.open) await click(`${repaymentPicker} summary`);
+      await waitFor(`${direct}[aria-pressed="true"]`);
       await settle();
       await report("repayment", { ...context(),
-        selectedValue: measure('.new-event-inline-picker summary > span:first-child'),
-        directOption: measure('.new-event-inline-picker-menu button[data-choice-value="direct"] > span:first-child') });
+        selectedValue: measure(`${repaymentPicker} summary > span:first-child`),
+        directOption: measure(`${direct} > span:first-child`),
+        directSelected: document.querySelector(direct)?.getAttribute('aria-pressed') === 'true' });
       return;
     }
     throw new Error(`Unknown probe phase: ${phase}`);
