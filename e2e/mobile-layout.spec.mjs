@@ -1429,9 +1429,10 @@ test("partially clipped workspace navigation probes visible controls and rejects
   const navigation=page.locator('.event-workspace-nav');
   await expect(navigation).toBeVisible();
   await page.evaluate(()=>{
-    const navigation=document.querySelector('.event-workspace-nav').getBoundingClientRect();
     const route=document.querySelector('.product-route-controls').getBoundingClientRect();
-    window.scrollBy(0,navigation.top-route.bottom+Math.ceil(navigation.height*0.64));
+    const button=document.querySelector('.event-workspace-summary').getBoundingClientRect();
+    // Place the route edge inside the button's lower half at every text scale.
+    window.scrollBy(0,button.top+button.height*0.75-route.bottom);
   });
   await expect.poll(()=>navigation.evaluate(element=>{
     const clip=Number.parseFloat(getComputedStyle(element).getPropertyValue('--event-nav-route-occlusion'));
