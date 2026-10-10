@@ -46,6 +46,11 @@ const CSS = `
     letter-spacing: 0 !important;
   }
 
+  /* Rubik's Linux glyph advances agree across engines in geometric precision mode. */
+  html.design-coherence-v1 body {
+    text-rendering: geometricPrecision !important;
+  }
+
   html.design-coherence-v1 .font-num,
   html.design-coherence-v1 .font-num *,
   html.design-coherence-v1 .currency-input-badge {
