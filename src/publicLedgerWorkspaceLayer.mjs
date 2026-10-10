@@ -13840,7 +13840,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-workspace-tab strong {
-    font-size: 13.5px !important;
+    font-size: 0.84375rem !important;
   }
 
   html.ledger-workspace-v1 .event-personal-balance {

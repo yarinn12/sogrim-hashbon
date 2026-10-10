@@ -4052,7 +4052,7 @@ const CSS = `
       .screen[data-screen-kind="event"]
       > .event-overview-header
       h1 {
-      font-size: 28px !important;
+      font-size: var(--dynamic-text-28, 28px) !important;
       line-height: 1.08 !important;
     }
 
