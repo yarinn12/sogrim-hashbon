@@ -127,11 +127,17 @@ const CSS = `
     text-wrap: pretty;
   }
 
-  /* Natural wrapping keeps complete words on the same lines across engines.
-     Browser-specific pretty algorithms otherwise alter body copy in the
-     home, settlement, and event settings flows at the same width. */
+  /* Natural line selection keeps complete words aligned across engines.
+     Set the style longhand so controls that require nowrap retain it. */
   html.circle-design-v1 body #app :is(p, small, strong) {
-    text-wrap: wrap !important;
+    text-wrap-style: auto !important;
+  }
+
+  /* Dynamic Type's pretty balancing can choose different complete-word lines
+     in WebKit and Chromium for these short, constrained action labels. */
+  html.circle-design-v1 body #app .event-share-modal .event-invite-link-actions .whatsapp-button,
+  html.circle-design-v1 body #app .new-event-inline-picker :is(summary, .new-event-inline-picker-menu button) {
+    text-wrap-style: auto !important;
   }
 
   html.circle-design-v1 .muted {
