@@ -46,7 +46,7 @@ for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
    await page.locator('[data-action="settle"][data-event-id="'+EVENT_ID+'"]').first().click();
    await page.locator('[data-event-view="summary"]').waitFor({state:'visible'});
    await page.waitForFunction(()=>document.documentElement.classList.contains('design-coherence-v1'));
-   if(mode==='normal')await page.waitForFunction(()=>document.querySelector('link[href*="fonts.googleapis.com"]')?.media==='all'&&[...document.fonts].some(f=>f.family==='Rubik'&&f.status==='loaded'));
+   if(mode==='normal')await page.waitForFunction(()=>document.querySelector('link[rel="stylesheet"][href*="fonts.googleapis.com"]')?.media==='all'&&[...document.fonts].some(f=>f.family==='Rubik'&&f.status==='loaded'));
    await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
    const summary=await page.evaluate(()=>{
     const selectors=['.screen-header h1','.settlement-hero-title-row h2','.settlement-hero-title-row p.muted','.settlement-stage-heading small'];
