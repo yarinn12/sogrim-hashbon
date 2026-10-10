@@ -7,7 +7,7 @@ export function cleanSourceProvenance(repository, expectedSource) {
   const git=args=>execFileSync('git',['-C',repository,...args],{encoding:'utf8',windowsHide:true}).trim();
   const sourceCommit=git(['rev-parse','HEAD']);
   if(sourceCommit!==expectedSource)throw new Error('Requested Native source differs from actual HEAD');
-  const allowed=name=>name.startsWith('scripts/qa/android-native-isolated/')||/^tests\/androidNative(IsolatedFixture|MatrixVerdict|FontRatio|Provenance|TextGeometry|Observation)\.test\.mjs$/.test(name)||['android/app/capacitor.build.gradle','android/capacitor.settings.gradle','ios/App/CapApp-SPM/Package.swift'].includes(name);
+  const allowed=name=>name.startsWith('scripts/qa/android-native-isolated/')||/^tests\/androidNative(IsolatedFixture|MatrixVerdict|FontRatio|Provenance|TextGeometry|Observation|EmulatorBoot|EmulatorKey)\.test\.mjs$/.test(name)||['android/app/capacitor.build.gradle','android/capacitor.settings.gradle','ios/App/CapApp-SPM/Package.swift'].includes(name);
   const changed=git(['diff','--name-only','HEAD']).split(/\r?\n/).filter(Boolean);
   const rejected=changed.filter(name=>!allowed(name));
   if(rejected.length)throw new Error('Clean Native source required; changed product files: '+rejected.join(', '));

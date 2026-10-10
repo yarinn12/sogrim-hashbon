@@ -64,6 +64,10 @@ jobs:
           echo "ANDROID_QA_AVD=sogrim_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
           echo "ANDROID_AVD_HOME=$RUNNER_TEMP/android-native-avd" >> "$GITHUB_ENV"
           echo "ANDROID_USER_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ADB_VENDOR_KEYS=$RUNNER_TEMP/android-native-home/adbkey" >> "$GITHUB_ENV"
+          echo "ANDROID_ADB_SERVER_PORT=5037" >> "$GITHUB_ENV"
+          echo "ADB_SERVER_SOCKET=tcp:127.0.0.1:5037" >> "$GITHUB_ENV"
           echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-native-no-upload.properties" >> "$GITHUB_ENV"
           echo "ADB_PATH=$ANDROID_HOME/platform-tools/adb" >> "$GITHUB_ENV"
       - name: Install actual Android emulator SDK and create an empty AVD
@@ -83,6 +87,11 @@ jobs:
           rows=[line for line in config.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
           config.write_text('\n'.join(rows+[key+' = '+value for key,value in values.items()])+'\n')
           PY
+      - name: Prepare shared isolated key and fresh ADB server before first emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/adb-key-preflight.mjs
       - name: Build synthetic WWW and clean actual Debug APK
         working-directory: app
         run: |

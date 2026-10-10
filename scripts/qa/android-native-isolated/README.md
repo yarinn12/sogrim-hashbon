@@ -127,3 +127,22 @@ production database permissions, real network recovery, physical-device upgrade
 from Play, release signing, release speed or public availability. Synthetic server
 acknowledgements must be labeled as such. Record all failures, retries and source
 differences, and close only the newly created QA AVD after the run.
+### Fresh CI ADB authorization
+
+The failed 3d218a6 CI artifact showed emulator 37.2.12 booting in 49.839s,
+followed by `device unauthorized`: no emulator private key was available before
+the first userdata image was created. This is an authorization bootstrap failure,
+not a slow OS boot or an application failure.
+
+The workflow explicitly shares `ANDROID_USER_HOME`, `ANDROID_EMULATOR_HOME` and
+`ADB_VENDOR_KEYS` under `RUNNER_TEMP/android-native-home`. Before the first emulator
+launch, `adb-key-preflight.mjs` generates a new test key with the actual SDK,
+verifies the private/public RSA pair, and starts a fresh ADB server with the same
+environment. It first refuses an already occupied server port; it never kills an
+unknown server. The CI server remains on port 5037. The driver and all ADB clients
+inherit the same loopback socket and key environment, with no serial/path changes.
+
+Only paths, public-key fingerprint and preparation status enter the diagnostic
+receipt. Private keys remain outside the uploaded artifact paths. ADB authentication
+stays enabled. A local key/signature test is distinct from actual Native acceptance;
+the latter still requires the same real boot and Native gates to pass in CI.
