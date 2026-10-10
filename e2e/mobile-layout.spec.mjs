@@ -1925,6 +1925,90 @@ test("summary guidance keeps the same complete word wrapping at mobile widths", 
   }
 });
 
+test("system text preferences update iOS and Android typography without losing the normal baseline", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto('/');
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  const defaultStyles = await page.evaluate(() => {
+    const label = document.createElement('label');
+    label.className = 'dynamic-type-parity-label';
+    label.textContent = 'תווית בדיקה';
+    const small = document.createElement('small');
+    small.className = 'dynamic-type-parity-small';
+    small.textContent = 'טקסט עזר';
+    document.querySelector('.product-home-screen').append(label, small);
+    const selectors = {
+      heading: '.product-home-screen .top .brand h1',
+      button: '.home-create-event-action',
+      small: '.dynamic-type-parity-small',
+      muted: '.product-home-screen .top .brand .muted',
+      label: '.dynamic-type-parity-label',
+      navigation: '.product-app-nav .product-nav-button'
+    };
+    const read = () => Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing typography control: ${selector}`);
+      const style = getComputedStyle(element);
+      return [name, { fontSize: style.fontSize, lineHeight: style.lineHeight,
+        fontFamily: style.fontFamily, fontWeight: style.fontWeight,
+        whiteSpace: style.whiteSpace, overflowWrap: style.overflowWrap }];
+    }));
+    window.readDynamicTypeDefaultStyles = read;
+    return read();
+  });
+  const homeBaseline = await page.locator('.product-home-screen .top .brand .muted')
+    .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+  const appleSizes = [17, 19, 23, 32, 17];
+  const measureApple = selector => page.evaluate(({ sizes, selector }) => {
+    const root = document.documentElement;
+    return sizes.map(systemSize => {
+      root.classList.add('dynamic-type-apple');
+      root.classList.toggle('dynamic-type-active', systemSize > 17);
+      root.classList.remove('dynamic-type-android');
+      const uiSize = 16 * systemSize / 17;
+      root.classList.toggle('dynamic-type-large', uiSize >= 19 && uiSize < 23);
+      root.classList.toggle('dynamic-type-extra-large', uiSize >= 23);
+      root.style.setProperty('--apple-font-scale', String(systemSize / 17));
+      return { systemSize, root: parseFloat(getComputedStyle(root).fontSize),
+        text: parseFloat(getComputedStyle(document.querySelector(selector)).fontSize) };
+    });
+  }, { sizes: appleSizes, selector });
+
+  for (const entry of await measureApple('.product-home-screen .top .brand .muted')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(homeBaseline * entry.systemSize / 17, 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.classList.contains('dynamic-type-active'))).toBe(false);
+  expect(await page.evaluate(() => window.readDynamicTypeDefaultStyles())).toEqual(defaultStyles);
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  for (const entry of await measureApple('.settlement-stage-heading > div > small')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(12 * entry.systemSize / 17, 1);
+  }
+
+  const androidSizes = await page.evaluate(async () => {
+    const { refreshAndroidDynamicType } = await import('/src/publicDynamicTypeLayer.mjs');
+    const root = document.documentElement;
+    const results = [];
+    for (const scale of [1, 1.5, 2, 1]) {
+      const capacitor = { getPlatform: () => 'android', Plugins: {
+        SogrimCapabilities: { getCapabilities: async () => ({ fontScale: scale }) }
+      } };
+      const level = await refreshAndroidDynamicType(root, capacitor);
+      results.push({ scale, level, root: parseFloat(getComputedStyle(root).fontSize),
+        helper: parseFloat(getComputedStyle(document.querySelector('.settlement-stage-heading > div > small')).fontSize) });
+    }
+    return results;
+  });
+  for (const entry of androidSizes) {
+    expect(entry.root).toBeCloseTo(16 * entry.scale, 1);
+    expect(entry.helper).toBeCloseTo(12 * entry.scale, 1);
+    expect(entry.level).toBe(entry.scale === 1 ? 'normal' : 'extra-large');
+  }
+});
+
 test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
