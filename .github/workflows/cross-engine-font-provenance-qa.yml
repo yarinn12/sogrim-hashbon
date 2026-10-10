@@ -26,7 +26,7 @@ jobs:
       - name: Install Chromium, Firefox and WebKit
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Capture all six paired font scenarios
-        run: npx playwright test --config playwright.cross-platform.config.mjs --project cross-engine-comparison e2e-parity/cross-engine-parity.spec.mjs
+        run: npx playwright test e2e-parity/cross-engine-parity.spec.mjs --config playwright.cross-platform.config.mjs --project=cross-engine-comparison
       - name: Upload screenshots, measurements and traces
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
