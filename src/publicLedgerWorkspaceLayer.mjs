@@ -20768,9 +20768,9 @@ if (!document.getElementById(STYLE_ID)) {
 
 const appRoot = document.querySelector("#app");
 let workspaceOcclusionFrame = 0;
+let workspaceOcclusionFramesRemaining = 0;
 
 function syncWorkspaceNavigationOcclusion() {
-  workspaceOcclusionFrame = 0;
   const workspaceNavigation = appRoot?.querySelector(
     '.screen[data-screen-kind="event"] .event-workspace-nav'
   );
@@ -20795,16 +20795,29 @@ function syncWorkspaceNavigationOcclusion() {
     workspaceNavigation.style.removeProperty("--event-nav-route-occlusion");
   }
 
-  if (roundedOcclusion >= Math.floor(navigationRect.height)) {
+  if (navigationRect.height > 0 && occlusion >= navigationRect.height) {
     workspaceNavigation.dataset.routeFullyOccluded = "true";
   } else {
     workspaceNavigation.removeAttribute("data-route-fully-occluded");
   }
 }
 
+function flushWorkspaceNavigationOcclusion() {
+  workspaceOcclusionFrame = 0;
+  syncWorkspaceNavigationOcclusion();
+  workspaceOcclusionFramesRemaining -= 1;
+  if (workspaceOcclusionFramesRemaining > 0) {
+    workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
+  }
+}
+
 function scheduleWorkspaceNavigationOcclusion() {
+  // WebKit can deliver a scroll event before the final layout position is
+  // painted. Read once in that frame and once in the following frame, then
+  // stop. New scrolls restart this bounded pair rather than polling forever.
+  workspaceOcclusionFramesRemaining = 2;
   if (workspaceOcclusionFrame) return;
-  workspaceOcclusionFrame = requestAnimationFrame(syncWorkspaceNavigationOcclusion);
+  workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
 }
 
 if (appRoot) {
@@ -20818,7 +20831,17 @@ if (appRoot) {
   window.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
+  document.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    capture: true,
+    passive: true
+  });
   window.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
   scheduleWorkspaceNavigationOcclusion();
