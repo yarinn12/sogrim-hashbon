@@ -87,6 +87,11 @@ jobs:
           rows=[line for line in config.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
           config.write_text('\n'.join(rows+[key+' = '+value for key,value in values.items()])+'\n')
           PY
+      - name: Record actual host and guest DMA compatibility before emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
       - name: Prepare shared isolated key and fresh ADB server before first emulator launch
         working-directory: app
         run: |
@@ -112,7 +117,7 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo setfacl -m "u:$USER:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu software -memory 2048 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu software -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 2048 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/emulator.pid
           # A failed emulator must produce diagnostics rather than leave ADB
           # waiting for a device until the entire job times out.
@@ -132,6 +137,7 @@ jobs:
         run: |
           set -euo pipefail
           ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
       - name: Prove the Native guard detects stacked CSS then restores single OS scale
         working-directory: app
         run: |

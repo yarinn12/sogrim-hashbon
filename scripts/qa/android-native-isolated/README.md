@@ -200,3 +200,33 @@ longer lookalikes. Java `system_server` crashes are also rejected from the actua
 `AndroidRuntime` core-fatal marker, which AOSP RuntimeInit writes at ERROR level,
 without requiring a libc signal. WARNING messages, other tags, and ordinary
 application `FATAL EXCEPTION: main` records do not count as this core-system gate.
+
+## Require the host DMA capability before Native acceptance
+
+Source4e77 reproduced the same two SurfaceFlinger aborts with supported
+`-gpu software` (Lavapipe plus swangle). GPU selection alone did not provide
+the guest's required `ANDROID_EMU_read_color_buffer_dma` extension. The new
+health gate correctly rejected the crashes before any Native font acceptance.
+
+[AOSP gfxstream render control](https://android.googlesource.com/platform/hardware/google/gfxstream/+/04d0287b04f72d908c621a919fa2ea5c563b1a66/host/render_control.cpp)
+advertises that extension only when both `GlDirectMem` and
+`HasSharedSlotsHostMemoryAllocator` are enabled. These are supported host feature
+names, unlike a hypothetical standalone `ReadColorBufferDma` command-line flag.
+[AOSP emulator feature initialization](https://android.googlesource.com/platform/external/qemu/+/f0c183f1cc7456ecd6f3607f2f47893768ae4334/android/emu/feature/src/android/featurecontrol/FeatureControlImpl.cpp)
+applies explicit `-feature` overrides before renderer initialization. Its host
+default has `GLDirectMem=off`, while the API36.1 guest requires/supports it.
+
+Launch now requests only these two prerequisites and enables verbose SDK logging.
+`renderer-capabilities.mjs snapshot` first records actual installed host/image
+revisions, config hashes and these protocol defaults. It refuses a guest that
+does not support GLDirectMem. After owned boot and the before-health gate,
+`verify` requires one actual gfxstream readback per prerequisite, both enabled,
+and the same prepared SDK/source/AVD and live launcher PID. CLI request text alone,
+missing/disabled/duplicate runtime readbacks, or later recovery cannot pass.
+
+This is a QA compatibility candidate. The real Linux fix is verified only after
+the exact new source passes both health gates, all6 OS font/orientation cases,
+all24 page samples, all8 actual IME/write/relaunch checks, the stacked-font
+negative control and all4 clipping controls. Local synthetic protocol tests and
+the SDK receipt are not substitutes for that run. No log clearing, ADB retries,
+guest protocol disabling, Native getter or application change is introduced.
