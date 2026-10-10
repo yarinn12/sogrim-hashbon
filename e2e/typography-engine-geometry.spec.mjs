@@ -68,7 +68,8 @@ test('summary and header text grow with system text and leave long copy readable
   const amount = firstTransfer.locator('.transfer-amount > .amount');
   const debt = firstTransfer.locator('.transfer-debt-summary');
   const explanationLabel = firstTransfer.locator('.transfer-equation-item > span').first();
-  const headerLabel = summary.locator('.event-header-action-label').first();
+  // Use the named action: DOM order can change when compact route controls move.
+  const headerLabel = summary.locator('[data-action="open-event-participants"] .event-header-action-label');
   const brand = page.locator('.product-brand-copy strong').first();
   await expect(status).toHaveCSS('font-size', '11px');
   await expect(badge).toHaveCSS('font-size', '11px');
@@ -76,7 +77,7 @@ test('summary and header text grow with system text and leave long copy readable
   await expect(amount).toHaveCSS('font-size', '20px');
   await expect(debt).toHaveCSS('font-size', '14px');
   await expect(explanationLabel).toHaveCSS('font-size', '10px');
-  await expect(headerLabel).toHaveCSS('font-size', '11px');
+  await expect(headerLabel).toHaveCSS('font-size', '11.5px');
   await expect(brand).toHaveCSS('font-size', '17px');
 
   await page.evaluate(() => {
@@ -91,7 +92,7 @@ test('summary and header text grow with system text and leave long copy readable
   await expect(amount).toHaveCSS('font-size', '40px');
   await expect(debt).toHaveCSS('font-size', '28px');
   await expect(explanationLabel).toHaveCSS('font-size', '20px');
-  await expect(headerLabel).toHaveCSS('font-size', '22px');
+  await expect(headerLabel).toHaveCSS('font-size', '32px');
   await expect(brand).toHaveCSS('font-size', '34px');
   const headerLayout = await summary.evaluate(screen => {
     const mark = screen.querySelector('.product-brand-mark').getBoundingClientRect();
@@ -137,6 +138,8 @@ test('summary and header text grow with system text and leave long copy readable
   expect(layout.documentScrollWidth).toBeLessThanOrEqual(layout.documentClientWidth + 1);
 
   await page.evaluate(() => document.documentElement.style.setProperty('font-size', '37.64706px', 'important'));
+  expect(await headerLabel.evaluate(element => parseFloat(getComputedStyle(element).fontSize)))
+    .toBeCloseTo(37.64706, 2);
   const extraLargeSize = await description.evaluate(element => parseFloat(getComputedStyle(element).fontSize));
   expect(extraLargeSize).toBeCloseTo(12 * 37.64706 / 16, 2);
   const extraLargeLayout = await description.evaluate(element => {
@@ -184,7 +187,9 @@ test('summary and header text grow with system text and leave long copy readable
       } });
     });
     await expect(description).toHaveCSS('font-size', '12px');
-    await expect(headerLabel).toHaveCSS('font-size', '11px');
+    // Native Android uses the OS scale and its large-text class, without the
+    // extra root-font preview scale that would double-apply accessibility size.
+    await expect(headerLabel).toHaveCSS('font-size', '16px');
     await expect(brand).toHaveCSS('font-size', '17px');
     const androidState = await page.evaluate(() => ({
       scale: document.documentElement.style.getPropertyValue('--android-font-scale'),
@@ -199,11 +204,14 @@ test('summary and header text grow with system text and leave long copy readable
       } });
     });
   } else {
-    await page.evaluate(() => document.documentElement.style.setProperty('font-size', '16px', 'important'));
+    await page.evaluate(() => {
+      document.documentElement.classList.remove('dynamic-type-preview');
+      document.documentElement.style.setProperty('font-size', '16px', 'important');
+    });
   }
   await expect(description).toHaveCSS('font-size', '12px');
   await expect(status).toHaveCSS('font-size', '11px');
-  await expect(headerLabel).toHaveCSS('font-size', '11px');
+  await expect(headerLabel).toHaveCSS('font-size', '11.5px');
   await expect(brand).toHaveCSS('font-size', '17px');
   expect(errors).toEqual([]);
 });
