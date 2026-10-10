@@ -249,3 +249,26 @@ They do not retry or replace a failed measurement. After a failed control, the
 original root style is restored and the same diagnostic records recovery;
 recovery does not make the acceptance result pass. This instrumentation is for
 the unresolved Linux AECB control failure, not a verified font or timing fix.
+# Authored typography contract after 9e96d41
+
+`font-contract.mjs` uses fixed expectations from the published CSS, selected by
+actual viewport, `(pointer: coarse)` and settled Dynamic Type class readbacks.
+It never derives a baseline from the font being tested. Native system scale is
+still applied exactly once with the existing 0.2px tolerance. Ordinary noncoarse
+tabs are13.5px, and the relocated utility spans inherit11.5px normally/16px at
+AX size. Coarse pointer rules deliberately use14px tabs and24px portrait/20px
+short landscape headings; other authored headings switch between28/32 at AX.
+Unmapped page text keeps its independent OS1.0 baseline comparison.
+
+The original failing run38092857710/artifact11684439565 stays FAIL. Its font
+fault and eight Native journey checks passed, while matrix/pages failed and
+four clipping controls/after-health never ran. Independent desktop replay of
+the exact APK CSS and13 fonts explained36 font observations, but is not Native
+acceptance or proof of the Native pointer media state. The next full SDK run
+must record those actual media readbacks and matched/inherited CSS rules, then
+pass all6/24/8/font/four clipping/before-after health and packaging gates.
+
+`tests/androidNativeFontContract.test.mjs` rejects the obsolete fixture bases,
+wrong AX promotion, stale/missing layout readbacks, frozen text, extra OS zoom
+and a0.21px size mismatch. Existing words/glyph overflow/Native control counts,
+tap/payload/ack/relaunch and exact font-fault restoration guards are retained.

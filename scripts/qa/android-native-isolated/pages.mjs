@@ -4,6 +4,7 @@ import {adb,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mj
 import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer,notePreviewFitsContainer} from './text-measurement.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
+import {fontContractContextExpression,hasAuthoredFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/pages');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),originalScale=adb(['shell','settings','get','system','font_scale']).trim(),originalRotation=adb(['shell','settings','get','system','user_rotation']).trim();
 const targets={home:['.product-brand-copy strong','.product-home-screen .top .brand h1','.home-create-event-action'],event:['.product-brand-copy strong','.event-overview-header h1','.event-header-action-label','.expense-row strong','.event-workspace-tab strong'],notes:['.product-brand-copy strong','[data-screen-kind="event-notes"] h1','.event-note-title-line strong','.event-note-preview','.event-workspace-tab strong'],profile:['.product-brand-copy strong','[data-screen-kind="profile"] h1','.profile-identity-copy strong']};
@@ -33,8 +34,10 @@ async function noteDisclosure(rows,scale,orientation){
 }
 async function sample(scale,orientation,screen){
   await page.evaluate('document.fonts.ready.then(()=>true)');
+  const fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
+  const fontContractRules=await actualAuthoredFontRules(page,targets[screen].filter(hasAuthoredFontContract));
   const rows=await page.evaluate(textMeasurementExpression(targets[screen]));
-  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure});
+  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure,fontContract,fontContractRules});
   screenshot(resolve(out,`${orientation}-${screen}-scale-${scale}.png`));
   const prefix=`${scale}/${orientation}/${screen}`;
   checks.push({name:prefix+': no horizontal overflow',ok:state.dimensions.appWidth<=state.dimensions.width+1&&state.dimensions.rootWidth<=state.dimensions.width+1});
@@ -42,7 +45,8 @@ async function sample(scale,orientation,screen){
   for(const selector of targets[screen]){
     const values=rows.filter(row=>row.selector===selector);checks.push({name:prefix+'/'+selector+': rendered text exists',ok:values.length>0});
     checks.push({name:prefix+'/'+selector+': visible glyphs fit container',ok:values.length>0&&values.every(value=>['.event-note-title-line strong','.event-note-preview'].includes(selector)?notePreviewFitsContainer(value,disclosure?.ok):glyphsFitContainer(value))});
-    if(scale>1){const baseline=samples.find(sample=>sample.scale===1&&sample.orientation===orientation&&sample.screen===screen)?.rows.filter(row=>row.selector===selector)||[];checks.push({name:prefix+'/'+selector+': exact requested OS ratio',expectedRatio:scale,tolerancePx:.2,ok:values.length>0&&values.every(value=>{const base=baseline.find(row=>row.text===value.text);return base&&scaledFontSizeMatches(value.fontSize,base.fontSize,scale);})});}
+    if(hasAuthoredFontContract(selector))checks.push({name:prefix+'/'+selector+': exact authored size at requested OS ratio',baselinePx:authoredNativeFontBase(selector,fontContract),baselineSource:'Published authored CSS and actual viewport/pointer/class readbacks',expectedRatio:scale,tolerancePx:.2,ok:values.length>0&&values.every(value=>authoredNativeFontMatches(value.fontSize,selector,fontContract))});
+    else if(scale>1){const baseline=samples.find(sample=>sample.scale===1&&sample.orientation===orientation&&sample.screen===screen)?.rows.filter(row=>row.selector===selector)||[];checks.push({name:prefix+'/'+selector+': exact requested OS ratio',expectedRatio:scale,tolerancePx:.2,ok:values.length>0&&values.every(value=>{const base=baseline.find(row=>row.text===value.text);return base&&scaledFontSizeMatches(value.fontSize,base.fontSize,scale);})});}
     if(selector==='.event-workspace-tab strong')checks.push({name:prefix+': exactly three distinct visible tabs',ok:values.length===3&&new Set(values.map(value=>value.text)).size===3});
   }
   console.log(JSON.stringify({scale,orientation,screen,sizes:rows.map(row=>({selector:row.selector,size:row.fontSize})),failed:checks.filter(check=>check.name.startsWith(prefix)&&!check.ok)}));

@@ -6,10 +6,11 @@ import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
 import {fontProbeExpression} from './font-probes.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
+import {fontContractContextExpression,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
 const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
-const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
+const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11.5,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
 let page;
 try{
   adb(['shell','settings','put','system','accelerometer_rotation','0']);
@@ -22,13 +23,15 @@ try{
       await waitFor(()=>page.evaluate(orientation==='portrait'?'innerHeight>innerWidth':'innerWidth>innerHeight'),'Actual '+orientation+' viewport',15000);
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
+      row.fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
       row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
       await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
       await page.evaluate(`document.querySelector('.event-workspace-nav').scrollIntoView({block:'center'})`);await sleep(250);
       row.tabs=await page.evaluate(textMeasurementExpression(['.event-workspace-tab strong'],false));
+      row.tabFontContractRules=await actualAuthoredFontRules(page,['.event-workspace-tab strong']);
       check('Exactly three rendered event tabs',row.tabs.length===3&&new Set(row.tabs.map(tab=>tab.text)).size===3);
       check('All three tab labels fit their actual buttons',row.tabs.length===3&&row.tabs.every(glyphsFitContainer));
-      check('Three tab labels have exact OS ratio',row.tabs.length===3&&row.tabs.every(tab=>scaledFontSizeMatches(tab.fontSize,14,scale)),{baselinePx:14,expectedRatio:scale,tolerancePx:.2});
+      check('Three tab labels have exact OS ratio',row.tabs.length===3&&row.tabs.every(tab=>authoredNativeFontMatches(tab.fontSize,'.event-workspace-tab strong',row.fontContract)),{baselinePx:authoredNativeFontBase('.event-workspace-tab strong',row.fontContract),expectedRatio:scale,tolerancePx:.2,baselineSource:'Published authored CSS and actual viewport/pointer/class readbacks'});
       screenshot(resolve(out,`${orientation}-scale-${scale}-tabs.png`));
       row.nativeTaps.push(await page.tap('[data-action="settle"]'));
       await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='settlement'`),'Settlement');await sleep(250);
@@ -36,10 +39,12 @@ try{
       await waitFor(()=>page.evaluate(`document.querySelector('.transfer-explanation')?.open===true`),'Visible expanded transfer breakdown');await sleep(250);
       row.text=await page.evaluate(textMeasurementExpression(Object.keys(required)));
       row.fontProbes=await page.evaluate(fontProbeExpression);row.state=await page.evaluate(inspectExpression);
+      row.fontContractRules=await actualAuthoredFontRules(page,['.event-header-action-label']);
       for(const [selector,{size,count}] of Object.entries(required)){
+        const baseline=selector==='.event-header-action-label'?authoredNativeFontBase(selector,row.fontContract):size;
         const targets=row.text.filter(target=>target.selector===selector);
         check(selector+': required visible count',targets.length>=count,{minimumCount:count,actualCount:targets.length});
-        check(selector+': exact OS ratio',targets.length>=count&&targets.every(target=>scaledFontSizeMatches(target.fontSize,size,scale)),{baselinePx:size,expectedRatio:scale,tolerancePx:.2});
+        check(selector+': exact OS ratio',targets.length>=count&&targets.every(target=>scaledFontSizeMatches(target.fontSize,baseline,scale)),{baselinePx:baseline,expectedRatio:scale,tolerancePx:.2});
         check(selector+': text glyphs fit container',targets.length>=count&&targets.every(glyphsFitContainer));
       }
       check('Root font applies OS scale exactly once',scaledFontSizeMatches(parseFloat(row.state.rootFontSize),16,scale));
