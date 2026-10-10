@@ -124,22 +124,64 @@ jobs:
             -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" \
             -derivedDataPath build/typography/derived build CODE_SIGNING_ALLOWED=NO \
             > build/typography/build.log 2>&1
-          xcrun simctl install "$PROBE_UDID" \
-            build/typography/derived/Build/Products/Debug-iphonesimulator/App.app
-          xcrun simctl launch "$PROBE_UDID" com.sogrimhashbon.app \
-            > build/typography/launch.log 2>&1
-          container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
-          for n in $(seq 1 120); do
-            if test -f "$container/Documents/typography-report.json" && \
-              python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r.get("complete") or any(x.get("phase")=="error" for x in r.get("records",[])) else 1)' \
-                "$container/Documents/typography-report.json"; then break; fi
-            sleep 1
+          app_bundle="build/typography/derived/Build/Products/Debug-iphonesimulator/App.app"
+          capture_category() {
+            local mode="$1"
+            local out="build/typography/$mode"
+            mkdir -p "$out"
+            xcrun simctl install "$PROBE_UDID" "$app_bundle"
+            xcrun simctl launch "$PROBE_UDID" com.sogrimhashbon.app > "$out/launch.log" 2>&1
+            local container
+            container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
+            for n in $(seq 1 120); do
+              if test -f "$container/Documents/typography-report.json" && \
+                python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); sys.exit(0 if r.get("complete") or any(x.get("phase")=="error" for x in r.get("records",[])) else 1)' \
+                  "$container/Documents/typography-report.json"; then break; fi
+              sleep 1
+            done
+            cp "$container/Documents/typography-report.json" "$out/typography-report.json"
+            cp "$container/Documents"/typography-*.png "$out/"
+            xcrun simctl io "$PROBE_UDID" screenshot "$out/final-simulator.png"
+          }
+
+          # The first launch uses the fresh simulator's real default setting.
+          capture_category default
+          xcrun simctl help ui > build/typography/simctl-ui-help.log 2>&1 || true
+          if ! grep -q 'content_size' build/typography/simctl-ui-help.log; then
+            echo 'simctl ui content_size is unavailable; default report was preserved' \
+              | tee build/typography/os-content-size-error.log
+            python3 "$GITHUB_WORKSPACE/scripts/qa/ios-typography/prepare.py" \
+              validate "$PWD/build/typography/default" "$APP_SHA" \
+              > build/typography/validation-default.log 2>&1 || true
+            exit 1
+          fi
+
+          xcrun simctl terminate "$PROBE_UDID" com.sogrimhashbon.app || true
+          xcrun simctl uninstall "$PROBE_UDID" com.sogrimhashbon.app
+          if ! xcrun simctl ui "$PROBE_UDID" content_size accessibility-extra-large \
+            > build/typography/simctl-content-size.log 2>&1; then
+            echo 'simctl rejected accessibility-extra-large; default report was preserved' \
+              | tee build/typography/os-content-size-error.log
+            exit 1
+          fi
+          curl -fsS -X POST http://127.0.0.1:8765/api/reset > /dev/null
+          curl -fsS -X PUT -H 'Content-Type: application/json' \
+            --data-binary @build/typography/seed-state.json \
+            http://127.0.0.1:8765/api/state > /dev/null
+          capture_category accessibility-extra-large
+
+          status=0
+          for mode in default accessibility-extra-large; do
+            python3 "$GITHUB_WORKSPACE/scripts/qa/ios-typography/prepare.py" \
+              validate "$PWD/build/typography/$mode" "$APP_SHA" \
+              > "build/typography/validation-$mode.log" 2>&1 || status=1
+            cat "build/typography/validation-$mode.log"
           done
-          cp "$container/Documents/typography-report.json" build/typography/typography-report.json
-          cp "$container/Documents"/typography-*.png build/typography/
-          xcrun simctl io "$PROBE_UDID" screenshot build/typography/final-simulator.png
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-typography/prepare.py" \
-            validate "$PWD/build/typography" "$APP_SHA"
+            validate-os-pair "$PWD/build/typography" "$APP_SHA" \
+            > build/typography/validation-os-pair.log 2>&1 || status=1
+          cat build/typography/validation-os-pair.log
+          exit "$status"
       - name: Keep simulator diagnostics on failure
         if: failure()
         working-directory: app
@@ -157,5 +199,11 @@ jobs:
             app/build/typography/*.log
             app/build/typography/*.png
             app/build/typography/simulator.env
+            app/build/typography/default/*.json
+            app/build/typography/default/*.log
+            app/build/typography/default/*.png
+            app/build/typography/accessibility-extra-large/*.json
+            app/build/typography/accessibility-extra-large/*.log
+            app/build/typography/accessibility-extra-large/*.png
           if-no-files-found: error
           retention-days: 14

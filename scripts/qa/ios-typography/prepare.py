@@ -128,6 +128,8 @@ final class TypographyProbeController: UIViewController, WKScriptMessageHandler 
             "systemName": UIDevice.current.systemName,
             "systemVersion": UIDevice.current.systemVersion,
             "preferredContentSizeCategory": UIApplication.shared.preferredContentSizeCategory.rawValue,
+            "webViewContentSizeCategory": webView.traitCollection.preferredContentSizeCategory.rawValue,
+            "isAccessibilityExtraLarge": UIApplication.shared.preferredContentSizeCategory == .accessibilityExtraLarge,
             "nativeBodyPointSize": UIFont.preferredFont(forTextStyle: .body).pointSize,
             "screenScale": UIScreen.main.scale, "records": records
         ]
@@ -249,12 +251,56 @@ def validate(out: Path, source_sha: str) -> None:
                       "phases": [record["phase"] for record in records]}))
 
 
+def validate_os_pair(out: Path, source_sha: str) -> None:
+    normal = json.loads((out / "default/typography-report.json").read_text(encoding="utf8"))
+    enlarged = json.loads((out / "accessibility-extra-large/typography-report.json").read_text(encoding="utf8"))
+    for report in (normal, enlarged):
+        assert report["sourceSha"] == source_sha
+        assert report["complete"] is True and report["errors"] == []
+        assert [row["phase"] for row in report["records"]] == [
+            "home", "summary", "share", "repayment"]
+        assert all(row["nativeShell"] is False for row in report["records"])
+        assert all("dynamic-type-preview" not in row["url"] for row in report["records"][:2])
+        assert report["webViewContentSizeCategory"] == report["preferredContentSizeCategory"]
+
+    comparison = {
+        "sourceSha": source_sha,
+        "normal": {"category": normal["preferredContentSizeCategory"],
+                   "webViewCategory": normal["webViewContentSizeCategory"],
+                   "bodyPointSize": normal["nativeBodyPointSize"],
+                   "rootFontSize": [row["rootFontSize"] for row in normal["records"][:2]],
+                   "homeFontSize": normal["records"][0]["home"]["fontSize"],
+                   "summaryHelperFontSize": normal["records"][1]["transferHelper"]["fontSize"]},
+        "enlarged": {"category": enlarged["preferredContentSizeCategory"],
+                     "webViewCategory": enlarged["webViewContentSizeCategory"],
+                     "bodyPointSize": enlarged["nativeBodyPointSize"],
+                     "rootFontSize": [row["rootFontSize"] for row in enlarged["records"][:2]],
+                     "homeFontSize": enlarged["records"][0]["home"]["fontSize"],
+                     "summaryHelperFontSize": enlarged["records"][1]["transferHelper"]["fontSize"]},
+    }
+    (out / "os-size-comparison.json").write_text(
+        json.dumps(comparison, indent=2, ensure_ascii=False), encoding="utf8")
+    assert comparison["normal"]["category"] == "UICTContentSizeCategoryL"
+    assert normal["isAccessibilityExtraLarge"] is False
+    assert enlarged["isAccessibilityExtraLarge"] is True
+    assert comparison["enlarged"]["bodyPointSize"] > comparison["normal"]["bodyPointSize"]
+    for normal_size, enlarged_size in zip(comparison["normal"]["rootFontSize"],
+                                          comparison["enlarged"]["rootFontSize"]):
+        assert float(enlarged_size.rstrip("px")) > float(normal_size.rstrip("px"))
+    for key in ("homeFontSize", "summaryHelperFontSize"):
+        assert float(comparison["enlarged"][key].rstrip("px")) > float(
+            comparison["normal"][key].rstrip("px"))
+    print(json.dumps({"status": "os-dynamic-type-changed", **comparison}, ensure_ascii=False))
+
+
 if __name__ == "__main__":
-    assert len(sys.argv) == 4, "usage: prepare.py prepare|validate APP_OR_OUTPUT_DIR FULL_APP_SHA"
+    assert len(sys.argv) == 4, "usage: prepare.py prepare|validate|validate-os-pair APP_OR_OUTPUT_DIR FULL_APP_SHA"
     command, location, source_sha = sys.argv[1:]
     if command == "prepare":
         prepare(Path(location).resolve(), source_sha)
     elif command == "validate":
         validate(Path(location).resolve(), source_sha)
+    elif command == "validate-os-pair":
+        validate_os_pair(Path(location).resolve(), source_sha)
     else:
         raise ValueError(command)
