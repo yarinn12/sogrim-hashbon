@@ -15,6 +15,7 @@ const journeys = [
   "e2e/note-validation-focus.spec.mjs",
   "e2e/participant-roster-reflow.spec.mjs",
   "e2e/typography-engine-geometry.spec.mjs",
+  "e2e/typography-spillover-regression.spec.mjs",
   "e2e/platform-coherence-regression.spec.mjs"
 ];
 
