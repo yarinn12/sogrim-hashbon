@@ -48,6 +48,14 @@ for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
    await page.waitForFunction(()=>document.documentElement.classList.contains('design-coherence-v1'));
    if(mode==='normal')await page.waitForFunction(()=>document.querySelector('link[rel="stylesheet"][href*="fonts.googleapis.com"]')?.media==='all'&&[...document.fonts].some(f=>f.family==='Rubik'&&f.status==='loaded'));
    await page.evaluate(async()=>{await document.fonts.ready;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
+   const paragraphFontLoadProof=await page.evaluate(async(mode)=>{
+ const rows=[];for(const selector of ['.settlement-hero-title-row p.muted','.settlement-stage-heading small']){
+ const el=document.querySelector(selector),cs=getComputedStyle(el),text=el.textContent.trim(),descriptor=cs.fontWeight+' '+cs.fontSize+' Rubik';
+ const faces=mode==='normal'?await document.fonts.load(descriptor,text):[];
+ rows.push({selector,text,descriptor,deliberatelyBlocked:mode==='blocked',faces:faces.map(f=>({family:f.family,weight:f.weight,status:f.status,range:f.unicodeRange}))});}
+ await document.fonts.ready;return rows;
+},mode);
+if(mode==='normal')assert(paragraphFontLoadProof.every(r=>r.faces.some(f=>f.family==='Rubik'&&f.status==='loaded')),'Exact Hebrew paragraphs must load Rubik at their computed weight');
    const summary=await page.evaluate(()=>{
     const selectors=['.screen-header h1','.settlement-hero-title-row h2','.settlement-hero-title-row p.muted','.settlement-stage-heading small'];
     const elements=[];
@@ -69,12 +77,13 @@ for(const [engine,type] of [['chromium',chromium],['webkit',webkit]]) {
  const sample=()=>selectors.map(selector=>{const el=document.querySelector(selector),cs=getComputedStyle(el),rect=el.getBoundingClientRect();const map=new Map(),walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);while(walker.nextNode()){const node=walker.currentNode;for(let i=0;i<node.length;i++){const r=document.createRange();r.setStart(node,i);r.setEnd(node,i+1);const box=r.getBoundingClientRect();if(!box.height)continue;const top=Math.round(box.top*100)/100;map.set(top,(map.get(top)||'')+node.textContent[i]);}}return{selector,fontSize:cs.fontSize,lineHeight:cs.lineHeight,width:rect.width,letterSpacing:cs.letterSpacing,wordSpacing:cs.wordSpacing,textWrap:cs.textWrap,textWrapStyle:cs.textWrapStyle,wordBreak:cs.wordBreak,overflowWrap:cs.overflowWrap,lines:[...map].sort((a,b)=>a[0]-b[0]).map(([top,text])=>({top,text}))};});
  const before=sample();document.documentElement.classList.remove('dynamic-type-active','dynamic-type-apple','dynamic-type-large','dynamic-type-extra-large');document.documentElement.style.setProperty('font-size','16px','important');await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));const after=sample();for(const selector of selectors)document.querySelector(selector).style.setProperty('text-wrap','wrap','important');await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));return{scope:'Diagnostic only: Apple Dynamic Type CSS classes disabled/root16 forced, followed by plain text-wrap on the two paragraphs; no application implementation change or physical preference simulation',before,after,afterPlainWrap:sample(),afterHtmlClasses:document.documentElement.className};
 });
-   const record={preferenceDiagnostic,engine,browserVersion:browser.version(),mode,scope:'Immutable source379 served as web on macOS; NOT compiled native WWW, simulator or iPhone',weightControl:control,summary,fontResponses,errors};
+   const record={paragraphFontLoadProof,preferenceDiagnostic,engine,browserVersion:browser.version(),mode,scope:'Immutable source379 served as web on macOS; NOT compiled native WWW, simulator or iPhone',weightControl:control,summary,fontResponses,errors};
    records.push(record);console.log('FONT_PARITY_RECORD '+JSON.stringify(record));await context.close();
   }
  }finally{await browser.close();}
 }
-const result={checkedAt:new Date().toISOString(),platform:os.platform(),osRelease:os.release(),sourceCommit:'379f3c910429b92e4d5b4a21caf895ebaa6f4120',sourceTree:'89dc47488227fec0df41e76bf6af20625f86eca7',runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,workflowCommit:process.env.GITHUB_SHA,fixtureSha256:createHash('sha256').update(JSON.stringify(seededState)).digest('hex'),nativeBuildPerformed:false,signedIpaOpened:false,simulatorRun:false,physicalIphoneAcceptance:false,records};
+const sourceAssetProof=[];for(const file of ['index.html','styles.css','src/publicDesignCoherenceLayer.mjs','src/publicDynamicTypeLayer.mjs','src/publicCircleDesignLayer.mjs','src/publicLedgerWorkspaceLayer.mjs','src/publicFontLoader.mjs']){const bytes=await readFile(root+'/app/'+file);sourceAssetProof.push({file,bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}
+const result={sourceAssetProof,checkedAt:new Date().toISOString(),platform:os.platform(),osRelease:os.release(),sourceCommit:'379f3c910429b92e4d5b4a21caf895ebaa6f4120',sourceTree:'89dc47488227fec0df41e76bf6af20625f86eca7',runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,workflowCommit:process.env.GITHUB_SHA,fixtureSha256:createHash('sha256').update(JSON.stringify(seededState)).digest('hex'),nativeBuildPerformed:false,signedIpaOpened:false,simulatorRun:false,physicalIphoneAcceptance:false,records};
 await writeFile(output+'/results.json',JSON.stringify(result,null,2));
 console.log('FONT_PARITY_RESULT '+JSON.stringify(result));
 async function capture(page,name){
