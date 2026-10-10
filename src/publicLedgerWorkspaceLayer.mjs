@@ -3176,7 +3176,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .product-brand-copy strong {
-      font-size: 17px !important;
+      font-size: var(--dynamic-text-17, 17px) !important;
     }
 
     html.ledger-workspace-v1.circle-design-v1
@@ -8329,7 +8329,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }
@@ -9730,7 +9730,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-participant-copy strong {
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.25 !important;
   }
 
@@ -9740,7 +9740,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-amount > .amount {
-    font-size: 20px !important;
+    font-size: var(--dynamic-text-20, 20px) !important;
   }
 
   html.ledger-workspace-v1 .transfer-actions > button {
@@ -15702,7 +15702,7 @@ const CSS = `
     border: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 700 !important;
     line-height: 1.25 !important;
   }
@@ -15738,7 +15738,7 @@ const CSS = `
     border-radius: 0 !important;
     color: var(--ledger-muted) !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 650 !important;
     white-space: normal !important;
   }
@@ -15765,7 +15765,7 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-current-user {
     flex: 0 0 auto !important;
     color: var(--ledger-muted) !important;
-    font-size: 10px !important;
+    font-size: var(--dynamic-text-10, 10px) !important;
     font-weight: 650 !important;
     line-height: 1 !important;
   }
@@ -18589,7 +18589,7 @@ const CSS = `
     padding: 0 0 9px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     color: var(--ledger-ink) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
   }
 
@@ -20665,7 +20665,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }

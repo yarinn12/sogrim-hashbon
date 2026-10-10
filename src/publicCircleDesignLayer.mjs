@@ -3276,12 +3276,12 @@ const CSS = `
 
   html.circle-design-v1 .transfer-equation-item span {
     color: var(--circle-muted) !important;
-    font-size: 10px !important;
+    font-size: var(--dynamic-text-10, 10px) !important;
   }
 
   html.circle-design-v1 .transfer-equation-item strong {
     color: var(--circle-ink) !important;
-    font-size: 16px !important;
+    font-size: var(--dynamic-text-16, 16px) !important;
     font-weight: 650 !important;
     white-space: nowrap !important;
   }
