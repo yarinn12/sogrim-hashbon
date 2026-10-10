@@ -1,0 +1,39 @@
+name: Cross-engine font provenance QA
+
+on:
+  pull_request:
+    paths:
+      - e2e-parity/cross-engine-parity.spec.mjs
+      - .github/workflows/cross-engine-font-provenance-qa.yml
+
+permissions:
+  contents: read
+
+jobs:
+  linux-font-provenance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Chromium, Firefox and WebKit
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Capture all six paired font scenarios
+        run: npx playwright test --config playwright.cross-platform.config.mjs --project cross-engine-comparison e2e-parity/cross-engine-parity.spec.mjs
+      - name: Upload screenshots, measurements and traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: cross-engine-font-provenance-${{ github.sha }}
+          path: |
+            playwright-report-cross-platform/
+            test-results-cross-platform/
+          if-no-files-found: warn
+          retention-days: 14

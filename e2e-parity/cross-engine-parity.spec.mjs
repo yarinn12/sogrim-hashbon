@@ -33,7 +33,8 @@ async function textLayout(locator) {
   await expect(locator).toBeVisible();
   return locator.evaluate(async element => {
     const style = getComputedStyle(element);
-    await document.fonts.load(`${style.fontWeight} ${style.fontSize} Rubik`, element.textContent);
+    const fontRequest = `${style.fontWeight} ${style.fontSize} Rubik`;
+    const loadedFaces = await document.fonts.load(fontRequest, element.textContent);
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
@@ -56,6 +57,17 @@ async function textLayout(locator) {
       wordLines: [...lines.values()],
       family: style.fontFamily.split(",").map(name => name.trim().replace(/^(["'])(.*)\1$/, "$2")),
       size: parseFloat(style.fontSize), weight: style.fontWeight,
+      fontRequest,
+      fontCheck: document.fonts.check(fontRequest, element.textContent),
+      loadedFaces: loadedFaces.map(face => ({
+        family: face.family, status: face.status, style: face.style,
+        weight: face.weight, unicodeRange: face.unicodeRange
+      })),
+      fontVariationSettings: style.fontVariationSettings,
+      fontFeatureSettings: style.fontFeatureSettings,
+      fontKerning: style.fontKerning,
+      textRendering: style.textRendering,
+      fontOpticalSizing: style.fontOpticalSizing,
       lineHeight: style.lineHeight === "normal" ? "normal" : parseFloat(style.lineHeight),
       width: bounds.width, height: bounds.height,
       clippedHorizontally: element.scrollWidth > element.clientWidth + 1,
@@ -64,20 +76,67 @@ async function textLayout(locator) {
   });
 }
 
-async function capture(page, testInfo, name, targets) {
+async function capture(page, testInfo, name, targets, cdp) {
   const metrics = {};
   for (const [key, selector] of Object.entries(targets)) {
     metrics[key] = await textLayout(page.locator(selector).first());
-    expect(metrics[key].clippedHorizontally, `${name}/${key}: full text width`).toBe(false);
   }
-  const layout = await page.evaluate(() => ({
-    viewport: { width: innerWidth, height: innerHeight },
-    overflow: document.documentElement.scrollWidth > innerWidth + 1,
-    rootFontSize: getComputedStyle(document.documentElement).fontSize,
-    rtl: getComputedStyle(document.body).direction
-  }));
-  expect(layout.overflow, `${name}: no page overflow`).toBe(false);
-  expect(layout.rtl).toBe("rtl");
+  const layout = await page.evaluate(() => {
+    const root = document.documentElement;
+    const rootStyle = getComputedStyle(root);
+    const screen = document.querySelector(".screen[data-screen-kind]");
+    const screenStyle = screen ? getComputedStyle(screen) : null;
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      overflow: root.scrollWidth > innerWidth + 1,
+      rootFontSize: rootStyle.fontSize,
+      rtl: getComputedStyle(document.body).direction,
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      devicePixelRatio,
+      rootClass: root.className,
+      screen: screen && {
+        kind: screen.dataset.screenKind, className: screen.className,
+        fontFamily: screenStyle.fontFamily, fontSize: screenStyle.fontSize,
+        fontWeight: screenStyle.fontWeight, direction: screenStyle.direction,
+        fontVariationSettings: screenStyle.fontVariationSettings,
+        fontFeatureSettings: screenStyle.fontFeatureSettings,
+        fontKerning: screenStyle.fontKerning,
+        textRendering: screenStyle.textRendering,
+        fontOpticalSizing: screenStyle.fontOpticalSizing
+      },
+      rootCSS: {
+        fontFamily: rootStyle.fontFamily, fontSize: rootStyle.fontSize,
+        fontWeight: rootStyle.fontWeight, direction: rootStyle.direction,
+        fontVariationSettings: rootStyle.fontVariationSettings,
+        fontFeatureSettings: rootStyle.fontFeatureSettings,
+        fontKerning: rootStyle.fontKerning,
+        textRendering: rootStyle.textRendering,
+        fontOpticalSizing: rootStyle.fontOpticalSizing
+      },
+      rubikFaces: [...document.fonts]
+        .filter(face => face.family.replace(/["']/g, "") === "Rubik")
+        .map(face => ({ family: face.family, status: face.status,
+          style: face.style, weight: face.weight, unicodeRange: face.unicodeRange })),
+      fontResources: performance.getEntriesByType("resource")
+        .filter(entry => /\/assets\/fonts\/.*\.woff2(?:\?|$)/.test(entry.name))
+        .map(entry => ({ url: entry.name, initiatorType: entry.initiatorType,
+          responseStatus: entry.responseStatus, transferSize: entry.transferSize,
+          encodedBodySize: entry.encodedBodySize, decodedBodySize: entry.decodedBodySize,
+          duration: entry.duration }))
+    };
+  });
+  if (cdp) {
+    // Chromium reports the fonts actually used for child text glyphs, not just CSS fallback names.
+    const { root } = await cdp.send("DOM.getDocument");
+    layout.platformFonts = {};
+    for (const [key, selector] of Object.entries(targets)) {
+      const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector });
+      if (!nodeId) throw new Error(`${name}/${key}: CDP font target missing: ${selector}`);
+      const { fonts } = await cdp.send("CSS.getPlatformFontsForNode", { nodeId });
+      layout.platformFonts[key] = fonts;
+    }
+  }
   await testInfo.attach(name, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   return { ...layout, metrics };
 }
@@ -92,6 +151,11 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
       locale: "he-IL", timezoneId: "Asia/Jerusalem", reducedMotion: "reduce", serviceWorkers: "block"
     });
     const page = await context.newPage();
+    const cdp = name === "chromium" ? await context.newCDPSession(page) : null;
+    if (cdp) {
+      await cdp.send("DOM.enable");
+      await cdp.send("CSS.enable");
+    }
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
@@ -121,20 +185,20 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     const records = {};
     records.home = await capture(page, testInfo, `${name}-home`, {
       description: ".product-home-screen .top .brand .muted", brand: ".product-brand-copy strong"
-    });
+    }, cdp);
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
     records.expenses = await capture(page, testInfo, `${name}-expenses`, {
       heading: ".event-overview-header h1", expense: ".expense-row strong",
       tab: ".event-workspace-tab strong"
-    });
+    }, cdp);
     await page.locator('[data-action="open-event-notes"]:visible').first().click();
     records.notes = await capture(page, testInfo, `${name}-notes`, {
       title: ".event-note-title-line strong", preview: ".event-note-preview"
-    });
+    }, cdp);
     await page.locator('[data-action="edit-profile"]:visible').first().click();
     records.profile = await capture(page, testInfo, `${name}-profile`, {
       name: ".profile-identity-copy strong"
-    });
+    }, cdp);
     await page.locator('[data-action="home"][data-nav-destination="home"]:visible').first().click();
     await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
     await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
@@ -142,13 +206,13 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     records.summary = await capture(page, testInfo, `${name}-summary`, {
       description: ".settlement-hero-title-row .muted",
       helper: ".settlement-stage-heading > div > small"
-    });
+    }, cdp);
     await page.locator('[data-action="open-event-participant-add"]').first().click();
     await page.locator('[data-action="open-event-share"]').first().click();
     await expect(page.locator(".event-share-link-status")).toHaveClass(/is-error/);
     records.share = await capture(page, testInfo, `${name}-share`, {
       unavailable: '[data-action="share-invite-whatsapp"]', copy: '[data-action="copy-invite"]'
-    });
+    }, cdp);
     await openHome();
     await page.locator('[data-action="new-event"]').first().click();
     await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
@@ -157,18 +221,13 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     await picker.locator("summary").click();
     records.repayment = await capture(page, testInfo, `${name}-repayment`, {
       direct: '.new-event-inline-picker [data-action="new-event-repayment-choice"][data-choice-value="direct"] > span'
-    });
+    }, cdp);
     await picker.locator('[data-action="new-event-repayment-choice"][data-choice-value="direct"]').click();
     await expect(picker.locator("summary > span").first()).toHaveText("החזר לפי מי ששילם");
     records.selected = await capture(page, testInfo, `${name}-selected`, {
       direct: '.new-event-inline-picker:has([data-choice-value="direct"]) summary > span'
-    });
-    for (const [screen, record] of Object.entries(records)) {
-      expect(parseFloat(record.rootFontSize), `${name}/${screen}: requested text scale`)
-        .toBeCloseTo(scenario.font, 3);
-    }
-    expect(errors, `${name}: runtime errors`).toEqual([]);
-    return { browserVersion: browser.version(), records };
+    }, cdp);
+    return { browserVersion: browser.version(), records, errors };
   } finally {
     await browser.close();
   }
@@ -188,7 +247,20 @@ for (const scenario of [
     for (const [name, engine] of Object.entries({ chromium, firefox, webkit })) {
       results[name] = await journey(engine, name, request, baseURL, scenario, testInfo);
     }
+    // Preserve every engine's screenshot and font provenance before a parity assertion can fail.
     await testInfo.attach("engine-measurements", { body: JSON.stringify({ scenario, results }, null, 2), contentType: "application/json" });
+    for (const [name, result] of Object.entries(results)) {
+      expect(result.errors, `${name}: runtime errors`).toEqual([]);
+      for (const [screen, record] of Object.entries(result.records)) {
+        expect(parseFloat(record.rootFontSize), `${name}/${screen}: requested text scale`)
+          .toBeCloseTo(scenario.font, 3);
+        expect(record.overflow, `${name}/${screen}: no page overflow`).toBe(false);
+        expect(record.rtl, `${name}/${screen}: RTL layout`).toBe("rtl");
+        for (const [target, metrics] of Object.entries(record.metrics)) {
+          expect(metrics.clippedHorizontally, `${name}/${screen}/${target}: full text width`).toBe(false);
+        }
+      }
+    }
     for (const name of ["firefox", "webkit"]) {
       for (const [screen, baseline] of Object.entries(results.chromium.records)) {
         const actual = results[name].records[screen];
