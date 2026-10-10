@@ -173,6 +173,17 @@ function injectDynamicTypeStyles(document) {
       --dynamic-text-36: 2.25rem;
     }
 
+    /* Reduced-motion layers shorten every transition to 1ms but leave its
+       default property as "all". That briefly animates the root and text from
+       their old font sizes when the user's text preference changes. */
+    @media (prefers-reduced-motion: reduce) {
+      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview),
+      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) #app,
+      html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) #app * {
+        transition-duration: 0s !important;
+      }
+    }
+
     html.${ACTIVE_CLASS}.${ANDROID_CLASS} {
       /* Android WebView text zoom already applies the OS font scale. */
       font-size: 16px !important;
