@@ -358,3 +358,225 @@ test("desktop 32px roster exposes the last participant and add action above navi
   await add.click();
   await expect(page.locator(".event-participant-add-route-modal")).toBeVisible();
 });
+
+async function openNoteEditorForDelayedHistory(page, request) {
+  const note = {
+    id: "note-platform-coherence-history-race", title: "פרטי נסיעה שנשמרו",
+    body: "הפתק חייב להישאר גם אחרי ניווט וחזרת היסטוריה מאוחרת.", pinned: true,
+    createdByParticipantId: OWNER, updatedByParticipantId: OWNER,
+    createdAt: UPDATED_AT, updatedAt: UPDATED_AT
+  };
+  const noteState = { ...state, events: state.events.map(event => event.id === OPEN_EVENT
+    ? { ...event, notes: [note] } : event) };
+  await request.put("/api/state", { data: noteState });
+  await page.evaluate(next => localStorage.setItem("settle-friends-state", JSON.stringify(next)), noteState);
+  await openTypographyHome(page);
+  await openEvent(page, OPEN_EVENT);
+  await page.locator('[data-action="open-event-notes"]').click();
+  await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await page.locator('.event-note-open').click();
+  await expect(page.locator('.event-note-modal')).toBeVisible();
+  return note;
+}
+
+async function holdActualDialogHistoryTraversal(page) {
+  await page.evaluate(() => {
+    const realBack = history.back.bind(history);
+    const realGo = history.go.bind(history);
+    const realPush = history.pushState.bind(history);
+    let pending = null;
+    let heldDialogBack = false;
+    window.__qaDialogHistory = { popstates: [], get pending() { return pending; } };
+    window.addEventListener('popstate', event => {
+      window.__qaDialogHistory.popstates.push({ depth: event.state?.depth,
+        screen: event.state?.view?.screen?.name });
+    }, true);
+    history.back = function() {
+      // Hold only the dialog close. Later user Back actions must remain real.
+      if (heldDialogBack) return realBack();
+      heldDialogBack = true;
+      pending = { pushes: 0, distance: 1, targetDepth: Number(history.state?.depth) - 1 };
+    };
+    history.pushState = function(...args) {
+      if (pending) pending.pushes += 1;
+      return realPush(...args);
+    };
+    history.go = function(steps) {
+      if (steps < 0 && !heldDialogBack) {
+        heldDialogBack = true;
+        pending = { pushes: 0, distance: -steps,
+          targetDepth: Number(history.state?.depth) + steps };
+        return;
+      }
+      return realGo(steps);
+    };
+    window.__qaReleaseDialogHistory = () => {
+      if (!pending) throw new Error('Dialog history rewind was not requested');
+      const steps = pending.pushes + pending.distance;
+      pending = null;
+      return realGo(-steps);
+    };
+    window.__qaReleaseHeldCall = () => {
+      if (!pending) throw new Error('Dialog history rewind was not requested');
+      const distance = pending.distance;
+      pending = null;
+      return distance === 1 ? realBack() : realGo(-distance);
+    };
+  });
+}
+
+async function closeNoteEditorWithHeldHistory(page) {
+  await holdActualDialogHistoryTraversal(page);
+  await page.locator('.event-note-modal [data-action="close-event-dialog"]').click();
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+  const pending = await page.evaluate(() => window.__qaDialogHistory.pending);
+  expect(pending?.targetDepth, 'closing the note must request a real browser-history rewind')
+    .toBeGreaterThanOrEqual(0);
+  return pending;
+}
+
+test('late note-dialog popstate cannot replace newer profile, home and event navigation', async ({ page, request }, testInfo) => {
+  const note = await openNoteEditorForDelayedHistory(page, request);
+  const pending = await closeNoteEditorWithHeldHistory(page);
+  await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.locator('[data-nav-destination="home"]').first().click();
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.locator(`[data-action="open-event"][data-event-id="${OPEN_EVENT}"]`).first().click();
+  await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  const beforeRelease = await page.evaluate(() => ({ depth: history.state?.depth,
+    screen: history.state?.view?.screen?.name, pushes: window.__qaDialogHistory.pending?.pushes }));
+  expect(beforeRelease.screen).toBe('event');
+  expect(beforeRelease.pushes).toBeGreaterThanOrEqual(3);
+  await page.evaluate(() => window.__qaReleaseDialogHistory());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(1);
+  await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => history.state?.view?.screen?.name)).toBe('event');
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+  const savedNote = await page.evaluate(eventId => JSON.parse(localStorage.getItem('settle-friends-state'))
+    .events.find(event => event.id === eventId).notes[0], OPEN_EVENT);
+  expect(savedNote).toMatchObject({ id: note.id, body: note.body });
+  await testInfo.attach('delayed-actual-popstate', { contentType: 'application/json',
+    body: JSON.stringify({ pending, beforeRelease,
+      after: await page.evaluate(() => ({ state: history.state,
+        popstates: window.__qaDialogHistory.popstates })) }) });
+  await page.evaluate(() => history.back());
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+});
+
+test('note-dialog history rewind without newer navigation returns to notes', async ({ page, request }) => {
+  const note = await openNoteEditorForDelayedHistory(page, request);
+  const pending = await closeNoteEditorWithHeldHistory(page);
+  expect(pending.pushes).toBe(0);
+  await page.evaluate(() => window.__qaReleaseDialogHistory());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBe(1);
+  await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => history.state?.view?.screen?.name)).toBe('event-notes');
+  const savedNote = await page.evaluate(eventId => JSON.parse(localStorage.getItem('settle-friends-state'))
+    .events.find(event => event.id === eventId).notes[0], OPEN_EVENT);
+  expect(savedNote).toMatchObject({ id: note.id, body: note.body });
+  await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.evaluate(() => history.back());
+  await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+});
+
+test('new navigation after late dialog-history replay keeps its own Back destination', async ({ page, request }) => {
+  await openNoteEditorForDelayedHistory(page, request);
+  await closeNoteEditorWithHeldHistory(page);
+  await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.evaluate(() => window.__qaReleaseDialogHistory());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.locator('[data-nav-destination="home"]').first().click();
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.evaluate(() => history.back());
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+});
+
+test('draft typed while dialog-history rewind waits survives replay, next route and Back', async ({ page, request }) => {
+  await openNoteEditorForDelayedHistory(page, request);
+  await closeNoteEditorWithHeldHistory(page);
+  await page.locator('[data-nav-destination="home"]').first().click();
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await expect(page.locator('[data-screen-kind="new-event"]')).toBeVisible();
+  const name = 'טיוטת אירוע שנכתבה בזמן התאוששות הניווט';
+  await page.locator('[data-action="new-event-name"]').fill(name);
+  await expect.poll(() => page.evaluate(() => history.state?.view?.newEventDraft?.name)).toBe(name);
+  await page.evaluate(() => window.__qaReleaseDialogHistory());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue(name);
+  await expect.poll(() => page.evaluate(() => history.state?.view?.newEventDraft?.name)).toBe(name);
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await expect(page.locator('[data-screen-kind="new-event"][data-event-creation-step="settlement"]')).toBeVisible();
+  await page.evaluate(() => history.back());
+  await expect(page.locator('[data-screen-kind="new-event"][data-event-creation-step="details"]')).toBeVisible();
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue(name);
+  await expect.poll(() => page.evaluate(() => history.state?.view?.newEventDraft?.name)).toBe(name);
+});
+
+test('late multi-step expense-save rewind returns to the latest route and preserves Back', async ({ page }) => {
+  await openEvent(page, OPEN_EVENT);
+  await page.locator(`[data-action="show-expense-form"][data-event-id="${OPEN_EVENT}"]`).first().click();
+  const expenseDialog = page.locator('.expense-step-modal');
+  await expect(expenseDialog).toHaveAttribute('data-expense-step', 'amount');
+  await expenseDialog.locator('[data-action="expense-total"]').fill('120');
+  await expenseDialog.locator('[data-action="expense-step-next"]').click();
+  await expect(expenseDialog).toHaveAttribute('data-expense-step', 'name');
+  await expenseDialog.locator('[data-action="expense-name"]').fill('נסיעה שנשמרה לפני החזרה המאוחרת');
+  for (let step = 0; step < 4 && !(await expenseDialog.locator('[data-action="save-expense"]').isVisible()); step++) {
+    await expenseDialog.locator('[data-action="expense-step-next"]').click();
+  }
+  await expect(expenseDialog.locator('[data-action="save-expense"]')).toBeVisible();
+  await holdActualDialogHistoryTraversal(page);
+  await expenseDialog.locator('[data-action="save-expense"]').click();
+  await expect(expenseDialog).toHaveCount(0);
+  const pending = await page.evaluate(() => window.__qaDialogHistory.pending);
+  expect(pending.distance, 'saving a multi-step expense must rewind multiple entries').toBeGreaterThan(1);
+  const savedExpense = await page.evaluate(eventId => JSON.parse(localStorage.getItem('settle-friends-state'))
+    .events.find(event => event.id === eventId).expenses.find(expense =>
+      expense.name === 'נסיעה שנשמרה לפני החזרה המאוחרת'), OPEN_EVENT);
+  expect(savedExpense?.name).toBe('נסיעה שנשמרה לפני החזרה המאוחרת');
+  await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.evaluate(() => window.__qaReleaseDialogHistory());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => history.state?.view?.screen?.name)).toBe('profile');
+  await page.evaluate(() => history.back());
+  await expect(page.locator(`[data-screen-kind="event"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await expect(page.locator('.expense-modal')).toHaveCount(0);
+  await expect(page.locator('.expense-row').filter({ hasText: 'נסיעה שנשמרה לפני החזרה המאוחרת' })).toHaveCount(1);
+  await page.evaluate(() => history.back());
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.reload();
+  await openEvent(page, OPEN_EVENT);
+  await expect(page.locator('.expense-row').filter({ hasText: 'נסיעה שנשמרה לפני החזרה המאוחרת' })).toHaveCount(1);
+});
+
+test('two note-editor closes before the first Back settles never reopen either editor', async ({ page, request }) => {
+  const note = await openNoteEditorForDelayedHistory(page, request);
+  await closeNoteEditorWithHeldHistory(page);
+  await page.locator('.event-note-open').click();
+  await expect(page.locator('.event-note-modal')).toBeVisible();
+  await page.locator('.event-note-modal [data-action="close-event-dialog"]').click();
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(1);
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+  await page.locator('.product-app-identity [data-action="edit-profile"]').first().click();
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await page.evaluate(() => window.__qaReleaseHeldCall());
+  await expect.poll(() => page.evaluate(() => window.__qaDialogHistory.popstates.length)).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+  await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => history.state?.view?.eventDialog ?? null)).toBeNull();
+  const savedNote = await page.evaluate(eventId => JSON.parse(localStorage.getItem('settle-friends-state'))
+    .events.find(event => event.id === eventId).notes[0], OPEN_EVENT);
+  expect(savedNote).toMatchObject({ id: note.id, body: note.body });
+  await page.evaluate(() => history.back());
+  await expect(page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`)).toBeVisible();
+  await expect(page.locator('.event-note-modal')).toHaveCount(0);
+});

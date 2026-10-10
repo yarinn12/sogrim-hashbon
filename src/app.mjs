@@ -602,6 +602,7 @@ let appHistoryDepth = 0;
 let homeBackNavigationPending = false;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
+let pendingDialogHistoryRewind = null;
 let lastRenderedScreenKey = "";
 let lastCommittedScreenMarkup = "";
 let renderGeneration = 0;
@@ -1175,11 +1176,18 @@ function syncBrowserHistory() {
     return;
   }
 
-  if (key === lastNavigationViewKey) return;
+  if (key === lastNavigationViewKey) {
+    if (pendingDialogHistoryRewind?.entries.length) {
+      pendingDialogHistoryRewind.entries.at(-1).view = currentHistoryView();
+    }
+    return;
+  }
 
   appHistoryDepth += 1;
   try {
-    window.history.pushState(createBrowserHistoryState(), "", window.location.href);
+    const nextState = createBrowserHistoryState();
+    window.history.pushState(nextState, "", window.location.href);
+    if (pendingDialogHistoryRewind) pendingDialogHistoryRewind.entries.push(nextState);
   } catch (error) {
     appHistoryDepth = Math.max(0, appHistoryDepth - 1);
     if (error?.name !== "SecurityError") throw error;
@@ -1194,6 +1202,9 @@ function renderDetachedEventDialog() {
 }
 
 function scheduleBrowserHistoryReplacement() {
+  if (pendingDialogHistoryRewind?.entries.length) {
+    pendingDialogHistoryRewind.entries.at(-1).view = currentHistoryView();
+  }
   if (!window.history?.replaceState || scheduledBrowserHistoryReplacement !== null) return;
 
   scheduledBrowserHistoryReplacement = window.setTimeout(() => {
@@ -1218,8 +1229,12 @@ function replaceBrowserHistoryState() {
     scheduledBrowserHistoryReplacement = null;
   }
   const key = navigationViewKey();
+  const nextState = createBrowserHistoryState();
   try {
-    window.history.replaceState(createBrowserHistoryState(), "", window.location.href);
+    window.history.replaceState(nextState, "", window.location.href);
+    if (pendingDialogHistoryRewind?.entries.length) {
+      pendingDialogHistoryRewind.entries[pendingDialogHistoryRewind.entries.length - 1] = nextState;
+    }
   } catch (error) {
     if (error?.name !== "SecurityError") throw error;
   }
@@ -1264,6 +1279,36 @@ function handleBrowserHistoryBack(event) {
   homeBackNavigationPending = false;
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
+
+  const pendingRewind = pendingDialogHistoryRewind;
+  if (pendingRewind && event.state.depth === pendingRewind.depth) {
+    pendingDialogHistoryRewind = null;
+    if (navigationViewKey() !== pendingRewind.closedViewKey) {
+      // A newer route won the race against the dialog's history rewind.
+      // Rebuild those routes from the actual base entry, cutting the closed
+      // dialog steps out of the Back chain without rerendering the current UI.
+      for (const entry of pendingRewind.entries) {
+        try {
+          window.history.pushState(entry, "", window.location.href);
+        } catch (error) {
+          if (error?.name !== "SecurityError") throw error;
+          break;
+        }
+      }
+      replaceBrowserHistoryState();
+      return;
+    }
+  }
+  if (
+    pendingRewind && event.state.depth > pendingRewind.depth &&
+    ((event.state.view?.eventDialog && !eventDialog) ||
+      (event.state.view?.expenseDraft && !expenseDraft))
+  ) {
+    // Another close can finish while an earlier browser rewind is still in
+    // flight. Its intermediate entry still describes the closed editor.
+    replaceBrowserHistoryState();
+    return;
+  }
 
   const previousEventDialog = cloneNavigationValue(eventDialog);
   // Completed links can leave history entries for the removed source identity.
@@ -14487,6 +14532,22 @@ function closeDialogWithHistory(rewindSteps = 1) {
   const deferFocus = historyDistance > 0 &&
     Boolean(historyDistance === 1 ? window.history?.back : window.history?.go);
   deactivateDialog({ deferFocus });
+  if (deferFocus) {
+    if (pendingDialogHistoryRewind) {
+      pendingDialogHistoryRewind.depth = Math.min(
+        pendingDialogHistoryRewind.depth,
+        appHistoryDepth - historyDistance
+      );
+      pendingDialogHistoryRewind.closedViewKey = navigationViewKey();
+      pendingDialogHistoryRewind.entries.splice(-historyDistance);
+    } else {
+      pendingDialogHistoryRewind = {
+        depth: appHistoryDepth - historyDistance,
+        closedViewKey: navigationViewKey(),
+        entries: []
+      };
+    }
+  }
   renderHistoryFallback(historyDistance);
 }
 
