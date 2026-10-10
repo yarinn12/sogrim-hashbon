@@ -145,8 +145,14 @@ def source_hashes(app: Path, source_sha: str) -> dict:
     files = ["index.html", "styles.css", "src/publicDynamicTypeLayer.mjs",
              "assets/fonts/local.css", "assets/fonts/rubik-hebrew-v31.woff2",
              "assets/fonts/rubik-latin-v31.woff2", "assets/fonts/inter-latin-v20.woff2"]
-    return {"sourceSha": source_sha,
-            "files": {name: sha256((app / name).read_bytes()).hexdigest() for name in files}}
+    hashes = {}
+    for name in files:
+        assert (app / name).is_file(), f"Pinned source file missing: {name}"
+        diff = subprocess.run(["git", "diff", "--quiet", source_sha, "--", name], cwd=app)
+        assert diff.returncode == 0, f"Source changed after pinned checkout: {name}"
+        committed = subprocess.check_output(["git", "show", f"{source_sha}:{name}"], cwd=app)
+        hashes[name] = sha256(committed).hexdigest()
+    return {"sourceSha": source_sha, "files": hashes}
 
 
 def seeded_state(app: Path) -> dict:
