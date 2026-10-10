@@ -51,6 +51,34 @@ async function textLayout(locator) {
         lines.set(top, [...(lines.get(top) ?? []), fragment]);
       }
     }
+    // Diagnostic only: measure the same text in an offscreen, unwrapped span
+    // while changing one shaping switch at a time. The app DOM is untouched.
+    const probe = document.createElement("span");
+    Object.assign(probe.style, {
+      position: "fixed", left: "-10000px", top: "0", visibility: "hidden",
+      whiteSpace: "pre", fontFamily: style.fontFamily, fontSize: style.fontSize,
+      fontWeight: style.fontWeight, fontStyle: style.fontStyle,
+      fontStretch: style.fontStretch, letterSpacing: style.letterSpacing,
+      wordSpacing: style.wordSpacing, direction: style.direction,
+      unicodeBidi: style.unicodeBidi, fontVariationSettings: style.fontVariationSettings,
+      fontFeatureSettings: style.fontFeatureSettings,
+      fontOpticalSizing: style.fontOpticalSizing,
+      fontKerning: style.fontKerning, textRendering: style.textRendering
+    });
+    probe.textContent = element.textContent.trim().replace(/\s+/gu, " ");
+    document.body.append(probe);
+    const probeWidth = () => probe.getBoundingClientRect().width;
+    const shapingProbe = { baseline: probeWidth() };
+    probe.style.textRendering = "auto";
+    shapingProbe.autoTextRendering = probeWidth();
+    probe.style.textRendering = "geometricPrecision";
+    shapingProbe.geometricPrecision = probeWidth();
+    probe.style.textRendering = style.textRendering;
+    probe.style.fontKerning = "none";
+    shapingProbe.noKerning = probeWidth();
+    probe.style.textRendering = "geometricPrecision";
+    shapingProbe.geometricPrecisionNoKerning = probeWidth();
+    probe.remove();
     const bounds = element.getBoundingClientRect();
     return {
       text: element.textContent.trim().replace(/\s+/gu, " "),
@@ -66,8 +94,12 @@ async function textLayout(locator) {
       fontVariationSettings: style.fontVariationSettings,
       fontFeatureSettings: style.fontFeatureSettings,
       fontKerning: style.fontKerning,
+      fontSynthesis: style.fontSynthesis,
+      letterSpacing: style.letterSpacing,
+      wordSpacing: style.wordSpacing,
       textRendering: style.textRendering,
       fontOpticalSizing: style.fontOpticalSizing,
+      shapingProbe,
       lineHeight: style.lineHeight === "normal" ? "normal" : parseFloat(style.lineHeight),
       width: bounds.width, height: bounds.height,
       clippedHorizontally: element.scrollWidth > element.clientWidth + 1,
