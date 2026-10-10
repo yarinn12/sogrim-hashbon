@@ -359,6 +359,34 @@ const CSS = `
     }
   }
 
+  /* Desktop pointer layouts keep the same bottom navigation, so the roster
+     needs its own scrollport above that navigation as well. */
+  @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+    html.ledger-workspace-v1 body #app
+      .event-participant-route-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal {
+      box-sizing: border-box !important;
+      height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      min-height: 0 !important;
+      max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      display: block !important;
+      overflow-y: auto !important;
+      scroll-padding-block: 12px !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-participant-route-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal > .event-modal-header {
+      position: static !important;
+    }
+
+    html.ledger-workspace-v1 body #app
+      .event-participant-route-backdrop[data-event-route-dialog="true"]
+      .event-participant-roster-modal > .event-modal-body {
+      overflow-y: visible !important;
+    }
+  }
+
   /* Tablets use their available canvas instead of inheriting a narrow phone
      column. Keep a readable maximum width while respecting both landscape
      safe areas and the persistent navigation. */
