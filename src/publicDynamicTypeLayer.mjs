@@ -427,6 +427,39 @@ function injectDynamicTypeStyles(document) {
       }
     }
 
+    /* On phone-width summaries, two complete utility labels fit beside each
+       other. Keep the third action on its own row so transfers follow the
+       primary answer without three stacked rows of secondary controls. */
+    @media (min-width: 375px) and (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+        margin-bottom: 0 !important;
+        padding: 4px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        .event-header-utility-button {
+        min-height: 48px !important;
+      }
+
+      /* At AX sizes the longest word needs the full row; the two shorter
+         actions still share the next row without splitting their labels. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        > [data-action="open-event-participants"] {
+        grid-column: 1 / -1 !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        .event-header-utility-button {
+        padding-inline: 8px !important;
+      }
+    }
+
     /* A short landscape phone has enough width for one header row and three
        complete tab labels, but not enough height for the portrait stacking. */
     @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {

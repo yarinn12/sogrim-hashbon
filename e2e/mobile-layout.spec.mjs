@@ -2168,6 +2168,17 @@ async function assertCompactSettlementFirstView(page) {
       heading: rectFor(".settlement-stage-heading"),
       firstTransfer: rectFor(".settlement-transfer-board .transfer-row"),
       bottomNavigation: rectFor(".product-app-nav"),
+      actionLabels: [...document.querySelectorAll(
+        ".settlement-screen > .event-header-actions .event-header-action-label"
+      )].map((label) => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return {
+          text: label.textContent.trim(),
+          fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+          buttonHeight: Math.round(label.closest("button").getBoundingClientRect().height)
+        };
+      }),
       screenPaddingBottom: parseFloat(
         getComputedStyle(document.querySelector(".settlement-screen")).paddingBottom
       ) || 0
@@ -2182,6 +2193,11 @@ async function assertCompactSettlementFirstView(page) {
       layout.firstTransfer?.top - layout.heading?.bottom,
       "large text must not introduce an empty block before the first transfer"
     ).toBeLessThanOrEqual(80);
+    expect(layout.actionLabels, "the three event utility actions remain visible").toHaveLength(3);
+    expect(
+      layout.actionLabels.filter(({ fragments, buttonHeight }) => fragments !== 1 || buttonHeight < 48),
+      "large-text event actions keep whole labels and 48px touch targets"
+    ).toEqual([]);
   } else {
     expect(layout.heading?.top, "transfer heading stays in the document flow")
       .toBeLessThan(layout.viewportHeight * 1.5);
@@ -2539,3 +2555,59 @@ async function readHeaderBrandPresentation(page) {
     };
   });
 }
+
+test("AX summary actions keep whole labels and reachable controls at phone widths", async ({ page }) => {
+  test.setTimeout(150_000);
+  for (const viewport of [{ width: 375, height: 667 }, { width: 393, height: 852 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+    await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+    await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.classList.add("dynamic-type-active", "dynamic-type-apple", "dynamic-type-extra-large");
+      root.style.setProperty("--apple-font-scale", String(40 / 17));
+      root.style.setProperty("font-size", "37.64706px", "important");
+    });
+    await page.evaluate(() => document.fonts.ready);
+
+    const layout = await page.evaluate(() => {
+      const actions = document.querySelector('.settlement-screen > .event-header-actions');
+      return {
+        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth,
+        labels: [...actions.querySelectorAll('.event-header-action-label')].map(label => {
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          const button = label.closest('button');
+          return {
+            text: label.textContent.trim(),
+            fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+            buttonHeight: button.getBoundingClientRect().height,
+            labelWidth: label.scrollWidth,
+            availableWidth: label.clientWidth
+          };
+        })
+      };
+    });
+    expect(layout.rootFontSize).toBeCloseTo(37.64706, 3);
+    expect(layout.labels).toHaveLength(3);
+    expect(layout.documentWidth, `${viewport.width}px: no horizontal page clipping`)
+      .toBeLessThanOrEqual(layout.viewportWidth + 1);
+    for (const label of layout.labels) {
+      expect(label.fragments, `${viewport.width}px: ${label.text} stays on one line`).toBe(1);
+      expect(label.labelWidth, `${viewport.width}px: ${label.text} fits its control`)
+        .toBeLessThanOrEqual(label.availableWidth + 1);
+      expect(label.buttonHeight, `${viewport.width}px: utility action stays tappable`)
+        .toBeGreaterThanOrEqual(48);
+    }
+    for (const action of await page.locator('.settlement-screen > .event-header-actions > button').all()) {
+      await action.click({ trial: true });
+    }
+    await page.locator('.settlement-stage-heading').scrollIntoViewIfNeeded();
+    await expect(page.locator('.settlement-stage-heading')).toBeInViewport();
+  }
+});
