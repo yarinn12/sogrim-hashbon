@@ -172,3 +172,31 @@ disable commands, exited launchers, unknown states and persistent networking fai
 closed. The receipt preserves attempts and the actual final connectivity dump.
 This gate does not retry user input, change ADB authentication, or relax Native
 font, clipping, IME, save acknowledgement or relaunch checks.
+
+## Reject core emulator crashes before accepting Native results
+
+The bcfbbc9 CI network gate passed on the real OS after two readbacks. Native
+font measurement then stopped at its first `settings get system font_scale`
+with Broken pipe32. Actual logcat showed two SurfaceFlinger/RegionSampling
+SIGABRTs in GoldfishMapper::readFromHost: the guest lacked ReadColorBufferDma.
+Core services disappeared afterward. This is a real graphics/system crash,
+not a font measurement failure or a harmless read to retry.
+
+CI installed emulator37.2.12, whereas earlier local Native acceptance used36.3.10.
+The SDK now documents `swiftshader_indirect` as deprecated since36.4.9. CI uses
+the supported `-gpu software` selection without changing the API36.1 Play image,
+display, OS font settings, application source or native acceptance assertions.
+Its real Linux before/after must be established by the next coordinated CI run.
+
+`emulator-health.mjs` verifies the exact owned AVD before reading actual logcat.
+It refuses missing evidence and core mapper assertions, SurfaceFlinger/system/
+zygote fatal signals or crash dumps, even if the OS later recovered. SDK failures
+remain failures with no retries. The workflow requires this gate before and after
+Native acceptance; receipts retain the source and fatal lines. No product input,
+ADB authorization, clipping tolerance or font ratio guard is bypassed.
+
+Core process names are exact: `zygote` and `zygote64`, excluding `zygote6` and
+longer lookalikes. Java `system_server` crashes are also rejected from the actual
+`AndroidRuntime` core-fatal marker, which AOSP RuntimeInit writes at ERROR level,
+without requiring a libc signal. WARNING messages, other tags, and ordinary
+application `FATAL EXCEPTION: main` records do not count as this core-system gate.

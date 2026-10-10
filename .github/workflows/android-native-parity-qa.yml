@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo setfacl -m "u:$USER:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader_indirect -memory 2048 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu software -memory 2048 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/emulator.pid
           # A failed emulator must produce diagnostics rather than leave ADB
           # waiting for a device until the entire job times out.
@@ -127,6 +127,11 @@ jobs:
           ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/network-isolation.mjs
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell settings put secure show_ime_with_hard_keyboard 1
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" install android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Require healthy owned Android system before Native acceptance
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
       - name: Prove the Native guard detects stacked CSS then restores single OS scale
         working-directory: app
         run: |
@@ -143,6 +148,11 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/qa/android-native-isolated/geometry-regression.mjs > artifacts/android-native-isolated/geometry-regression.log 2>&1
+      - name: Require healthy owned Android system after all Native acceptance gates
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=after node scripts/qa/android-native-isolated/emulator-health.mjs
       - name: Preserve diagnostics and stop only the owned AVD
         if: always()
         working-directory: app
