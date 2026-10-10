@@ -13,6 +13,7 @@ import {
   runtimeApiOrigins
 } from "../src/domain/publicOrigin.mjs";
 import { nativeRuntimeCompatibility } from "../src/domain/nativeRuntimeCompatibility.mjs";
+import { nativeStaticCssTemplatePattern } from "./nativeStaticCssTemplates.mjs";
 
 const root = process.cwd();
 const output = join(root, "www");
@@ -286,7 +287,7 @@ async function extractNativeStaticCss(entries, assetsDir) {
     const sourcePath = resolve(root, entry.path);
     const source = await readFile(sourcePath, "utf8");
     const staticCss = [];
-    source.replace(/const CSS = `([\s\S]*?)`;/g, (match, css) => {
+    source.replace(nativeStaticCssTemplatePattern(sourcePath), (match, _assignment, css) => {
       if (!css.includes("${")) staticCss.push(css);
       return match;
     });
@@ -352,10 +353,10 @@ function extractStaticCssTemplatesPlugin(extractedCssPaths) {
           return { contents: source, loader: "js" };
         }
         const contents = source.replace(
-          /const CSS = `([\s\S]*?)`;/g,
-          (match, css) => {
+          nativeStaticCssTemplatePattern(path),
+          (match, assignment, css) => {
             if (css.includes("${")) return match;
-            return 'const CSS = "";';
+            return `${assignment}"";`;
           }
         );
         return { contents, loader: "js" };
