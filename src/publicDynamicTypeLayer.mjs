@@ -391,6 +391,78 @@ function injectDynamicTypeStyles(document) {
       }
     }
 
+    /* On a narrow portrait phone the full event title and two-row tabs can
+       otherwise push the primary notes action behind the fixed app nav. */
+    @media (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-notes-screen {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-notes-screen > .event-notes-intro {
+        order: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-notes-screen > .event-workspace-nav {
+        order: 2 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-notes-screen > .event-notes-content {
+        order: 3 !important;
+      }
+    }
+
+    /* A short landscape phone has enough width for one header row and three
+       complete tab labels, but not enough height for the portrait stacking. */
+    @media (min-width: 600px) and (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-lockup {
+        align-items: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy {
+        grid-column: 3 !important;
+        grid-row: 1 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 12px !important;
+        text-align: start !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy :is(strong, small) {
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: auto !important;
+      }
+    }
+
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
       #app .event-share-route-backdrop .event-invite-link-actions {
       grid-template-columns: minmax(0, 1fr) max-content !important;
