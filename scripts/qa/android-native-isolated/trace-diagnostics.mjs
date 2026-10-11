@@ -81,14 +81,61 @@ set -C
 toybox inotifyd - "$trace:w" >"$events" &
 watcher=$!
 watch_ticks=''
+close_ack=0
+watcher_identity() {
+  [ -r "/proc/$watcher/stat" ] && [ -n "$watch_ticks" ] || return 1
+  fields=$(toybox sed 's/.*) //' "/proc/$watcher/stat") || return 1
+  set -- $fields
+  [ "$#" -ge 20 ] || return 1
+  watch_state=$1
+  parent=$2
+  shift 19
+  [ "$parent" = "$$" ] && [ "$1" = "$watch_ticks" ]
+}
+watcher_command() {
+  cmd=$(toybox tr '\000' '\n' <"/proc/$watcher/cmdline") || return 1
+  first=$(printf '%s\n' "$cmd" | toybox head -1)
+  case "$first" in toybox|*/toybox) ;; *) return 1;; esac
+  # Toybox splits FILE:MASK in its own argv buffer. /proc/cmdline then contains
+  # FILE<NUL>MASK. Require the complete exact argv, including program and mask.
+  [ "$cmd" = "$(printf '%s\ninotifyd\n-\n%s:w' "$first" "$trace")" ] ||
+    [ "$cmd" = "$(printf '%s\ninotifyd\n-\n%s\nw' "$first" "$trace")" ]
+}
+watcher_finished() {
+  [ ! -d "/proc/$watcher" ] && return 0
+  watcher_identity || return 1
+  [ "$watch_state" = Z ]
+}
+stop_watcher() {
+  if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
+  watcher_identity && watcher_command || return 1
+  kill -TERM "$watcher" 2>/dev/null || :
+  for n in $(toybox seq 1 20); do
+    if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
+    watcher_identity || return 1
+    toybox sleep 0.05
+  done
+  # Revalidate before escalating only this direct child. Never wait on a live
+  # child indefinitely; the existing 15s guest / 20s ADB limits stay unchanged.
+  watcher_identity && watcher_command || return 1
+  kill -KILL "$watcher" 2>/dev/null || :
+  for n in $(toybox seq 1 20); do
+    if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
+    watcher_identity || return 1
+    toybox sleep 0.05
+  done
+  return 1
+}
 cleanup() {
-  [ -r "/proc/$watcher/stat" ] || return 0
-  actual_ticks=$(toybox sed 's/.*) //' "/proc/$watcher/stat" | toybox cut -d ' ' -f20)
-  parent=$(toybox sed 's/.*) //' "/proc/$watcher/stat" | toybox cut -d ' ' -f2)
-  if [ "$parent" = "$$" ] && { [ -z "$watch_ticks" ] || [ "$actual_ticks" = "$watch_ticks" ]; } && toybox tr '\000' '\n' <"/proc/$watcher/cmdline" | toybox grep -Fx "$trace:w" >/dev/null; then
-    kill -TERM "$watcher" 2>/dev/null || :
-    wait "$watcher" 2>/dev/null || :
+  status=$?
+  trap - EXIT HUP INT TERM
+  if stop_watcher; then echo "WATCH_CLEANED $watcher $watch_ticks";
+  else
+    echo 'Owned close-watch cleanup unconfirmed' >&2
+    [ "$status" != 0 ] || status=7
   fi
+  [ "$status" != 0 ] || [ "$close_ack" = 1 ] || status=7
+  exit "$status"
 }
 trap cleanup EXIT HUP INT TERM
 watch_ticks=$(toybox sed 's/.*) //' "/proc/$watcher/stat" | toybox cut -d ' ' -f20)
@@ -113,6 +160,7 @@ kill -TERM "$pid"
 for n in $(toybox seq 1 120); do
   if toybox grep -Fx "$(printf 'w\t%s' "$trace")" "$events" >/dev/null; then
     [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed' >&2; exit 5; }
+    close_ack=1
     echo "CLOSE_WRITE $inode $trace"
     exit 0
   fi
