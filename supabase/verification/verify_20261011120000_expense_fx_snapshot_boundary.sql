@@ -3,6 +3,7 @@
 do $$
 declare
   invalid_count bigint;
+  guard_definition text;
 begin
   if not exists (
     select 1 from pg_catalog.pg_trigger as trigger
@@ -13,6 +14,23 @@ begin
       and trigger.tgenabled = 'O'
   ) then
     raise exception 'Expense FX snapshot guard is missing or disabled';
+  end if;
+
+  -- A trigger alone does not prove that first shared INSERTs consult the
+  -- creator's saved workspace before accepting an FX-omitting client.
+  select pg_catalog.regexp_replace(pg_catalog.pg_get_functiondef(procedure.oid),
+    '[[:space:]]+', ' ', 'g') into guard_definition
+  from pg_catalog.pg_proc as procedure
+  join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'private'
+    and procedure.proname = 'preserve_expense_fx_at_snapshot_boundary'
+    and procedure.pronargs = 0;
+  if guard_definition is null
+    or pg_catalog.strpos(guard_definition,
+      'if tg_op = ''INSERT'' and new.snapshot_kind = ''shared_event''') = 0
+    or pg_catalog.strpos(guard_definition,
+      'workspace.owner_user_id = auth.uid()') = 0 then
+    raise exception 'Expense FX first shared INSERT guard is missing';
   end if;
 
   select count(*) into invalid_count

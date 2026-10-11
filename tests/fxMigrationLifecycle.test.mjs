@@ -9,6 +9,10 @@ const migration = readFileSync(new URL("../supabase/migrations/20261011120000_pr
 const verification = readFileSync(new URL("../supabase/verification/verify_20261011120000_expense_fx_snapshot_boundary.sql", import.meta.url), "utf8");
 const marker = "-- Protect converted expenses at the snapshot write boundary (2026-10-11).";
 const migrationBody = migration.replace(/^begin;\r?\n/u, "").replace(/\r?\ncommit;\s*$/u, "\n");
+const withoutFirstInsertGuard = migrationBody.replace(
+  /    if tg_op = 'INSERT' and new.snapshot_kind = 'shared_event'[\s\S]*?(?=    if new.snapshot_kind = 'workspace')/u,
+  ""
+);
 
 test("FX migration rolls back atomically and installs from the previous local schema", async () => {
   assert.ok(schema.includes(marker));
@@ -41,6 +45,18 @@ test("FX migration rolls back atomically and installs from the previous local sc
       $$;
     `);
     await db.exec(schema.split(marker)[0]);
+    assert.equal(await trigger(), 0);
+    assert.notEqual(withoutFirstInsertGuard, migrationBody);
+
+    await db.exec("begin");
+    try {
+      await db.exec(withoutFirstInsertGuard);
+      assert.equal(await trigger(), 1);
+      await assert.rejects(db.exec(verification),
+        /Expense FX first shared INSERT guard is missing/u);
+    } finally {
+      await db.exec("rollback");
+    }
     assert.equal(await trigger(), 0);
 
     await db.exec("begin");

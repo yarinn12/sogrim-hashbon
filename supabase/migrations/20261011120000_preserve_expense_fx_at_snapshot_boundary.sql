@@ -127,6 +127,7 @@ declare
   prior_event jsonb;
   canonical_event jsonb;
   next_events jsonb := '[]'::jsonb;
+  matching_sources bigint;
 begin
   if new.snapshot_kind not in ('workspace', 'shared_event')
     or pg_catalog.jsonb_typeof(new.state -> 'events') <> 'array' then
@@ -141,6 +142,39 @@ begin
       select value into prior_event
       from pg_catalog.jsonb_array_elements(old.state -> 'events')
       where value ->> 'id' = candidate_event ->> 'id' limit 1;
+    end if;
+    if tg_op = 'INSERT' and new.snapshot_kind = 'shared_event'
+      and new.owner_user_id is null and auth.uid() is not null
+      and candidate_event ->> 'createdByParticipantId'
+        = private.current_actor_participant_id() then
+      -- The first shared write has no OLD row or membership yet. Only the
+      -- authenticated creator's own workspace can supply saved FX evidence.
+      select pg_catalog.count(*), pg_catalog.jsonb_agg(personal_event.value) -> 0
+        into matching_sources, prior_event
+      from public.app_snapshots as workspace
+      cross join lateral pg_catalog.jsonb_array_elements(
+        case when pg_catalog.jsonb_typeof(workspace.state -> 'events') = 'array'
+          then workspace.state -> 'events' else '[]'::jsonb end
+      ) as personal_event(value)
+      where workspace.owner_user_id = auth.uid()
+        and workspace.snapshot_kind = 'workspace'
+        and workspace.state ->> 'currentParticipantId'
+          = private.current_actor_participant_id()
+        and personal_event.value ->> 'id' = candidate_event ->> 'id'
+        and personal_event.value ->> 'createdByParticipantId'
+          = private.current_actor_participant_id()
+        and exists (
+          select 1 from pg_catalog.jsonb_array_elements(
+            case when pg_catalog.jsonb_typeof(personal_event.value -> 'expenses') = 'array'
+              then personal_event.value -> 'expenses' else '[]'::jsonb end
+          ) as source_expense(value)
+          where source_expense.value ? 'fxConversion'
+            or source_expense.value ? 'fxConversionRemovedAt'
+        );
+      if matching_sources > 1 then
+        raise exception 'Multiple creator workspaces contain FX history for this event'
+          using errcode = 'PFX01';
+      end if;
     end if;
     if new.snapshot_kind = 'workspace' and new.owner_user_id = auth.uid()
       and coalesce(candidate_event ->> 'sharedSpaceId', '') <> '' then
