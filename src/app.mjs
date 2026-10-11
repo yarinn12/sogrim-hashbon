@@ -8187,7 +8187,7 @@ function renderExpenseForm(event) {
   }
 
   return `
-    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="חלון הוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop expense-step-route-backdrop" aria-label="חלון הוצאה">
       <section class="panel expense-modal expense-step-modal" role="dialog" aria-modal="true" aria-labelledby="expense-modal-title" aria-describedby="expense-modal-description" data-event-id="${event.id}" data-currency="${eventCurrency(event)}" data-expense-step="${flowStep}" tabindex="-1">
         <div class="expense-modal-header expense-modal-step-header">
           <div>
@@ -8470,7 +8470,7 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
       : "בוחרים דרך אחת וממשיכים.";
 
   return `
-    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="הוספת משתתף להוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop expense-step-route-backdrop" aria-label="הוספת משתתף להוצאה">
       <section
         class="panel expense-modal expense-step-modal expense-participant-add-route"
         role="dialog"

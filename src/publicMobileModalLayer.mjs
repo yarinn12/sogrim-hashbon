@@ -352,6 +352,56 @@ const CSS = `
       max-height: var(--app-keyboard-viewport-height) !important;
     }
 
+    /* The step flow scrolls its title away to keep the active field above the
+       keyboard. Clip that scrollport below the status bar and retain its two
+       navigation controls while the title is offscreen. */
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-route-backdrop {
+      --app-keyboard-safe-top: max(0px, var(--app-keyboard-safe-area-top, env(safe-area-inset-top)));
+      box-sizing: border-box !important;
+      padding: calc(var(--app-keyboard-safe-top) + 1px) 0 0 !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-route-backdrop::after {
+      content: "";
+      position: fixed;
+      top: calc(var(--app-keyboard-viewport-top, 0px) + var(--app-keyboard-safe-top) + 1px);
+      left: 0;
+      right: 0;
+      height: 55px;
+      z-index: 7;
+      pointer-events: none;
+      background: #ffffff;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-route-backdrop > .expense-step-modal {
+      height: calc(var(--app-keyboard-viewport-height) - var(--app-keyboard-safe-top) - 1px) !important;
+      max-height: calc(var(--app-keyboard-viewport-height) - var(--app-keyboard-safe-top) - 1px) !important;
+      transform: none !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal .expense-modal-step-header
+      :is(.expense-accessibility-button, .modal-section-back-button) {
+      position: fixed !important;
+      top: calc(var(--app-keyboard-viewport-top, 0px) + var(--app-keyboard-safe-top) + 8px) !important;
+      z-index: 8 !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal .expense-modal-step-header .expense-accessibility-button {
+      left: 14px !important;
+      right: auto !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal .expense-modal-step-header .modal-section-back-button {
+      right: 14px !important;
+      left: auto !important;
+    }
+
     /* At accessibility text sizes the fixed header and progress row can leave
        less room than one input. Scroll those rows with the field so the input
        cannot sit underneath the progress hit target. Keep Next in view. */
@@ -359,7 +409,7 @@ const CSS = `
       .expense-step-modal {
       display: block !important;
       overflow-y: auto !important;
-      scroll-padding-block: 12px 104px !important;
+      scroll-padding-block: 72px 104px !important;
       touch-action: pan-y !important;
       -webkit-overflow-scrolling: touch;
     }
@@ -484,6 +534,8 @@ function setupKeyboardViewport() {
   let observedModal;
 
   const safeAreaTop = () => {
+    const configured = Number.parseFloat(getComputedStyle(root).getPropertyValue("--app-keyboard-safe-area-top"));
+    if (Number.isFinite(configured)) return Math.max(0, configured);
     if (!safeAreaProbe) {
       safeAreaProbe = document.createElement("span");
       safeAreaProbe.setAttribute("aria-hidden", "true");
@@ -501,9 +553,13 @@ function setupKeyboardViewport() {
     const header = modal.querySelector(".expense-modal-step-header");
     const headerStyle = header ? getComputedStyle(header) : null;
     const headerInset = headerStyle ? Number.parseFloat(headerStyle.paddingTop) || 0 : 0;
+    const controlsBottom = Math.max(0, ...[...modal.querySelectorAll(
+      ".expense-modal-step-header .expense-accessibility-button, .expense-modal-step-header .modal-section-back-button"
+    )].map(control => control.getBoundingClientRect().bottom));
     const safeTop = Math.max(
       offsetTop + Math.max(safeAreaTop(), headerInset),
-      headerStyle?.position === "sticky" ? header.getBoundingClientRect().bottom : 0
+      headerStyle?.position === "sticky" ? header.getBoundingClientRect().bottom : 0,
+      controlsBottom + 4
     ) + 4;
     const actions = modal.querySelector(".expense-modal-actions");
     // Correct the modal scrollport against its actually unobscured bounds.

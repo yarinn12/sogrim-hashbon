@@ -18908,8 +18908,23 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-heading {
     margin: 0 !important;
     padding: 12px 16px !important;
+    flex-wrap: wrap !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary {
+    min-width: min-content !important;
+    max-width: 100% !important;
+    flex: 0 1 auto !important;
+    flex-wrap: wrap !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .amount,
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .font-num {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row,
