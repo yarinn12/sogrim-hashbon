@@ -7,6 +7,7 @@ import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.m
 import {fontProbeExpression} from './font-probes.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {fontContractContextExpression,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
+import {launchForOwnedOrientation} from './orientation.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
 const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
@@ -18,9 +19,8 @@ try{
     const row={scale,orientation,checks:[],nativeTaps:[]};results.push(row);
     const check=(name,ok,detail={})=>row.checks.push({name,ok:Boolean(ok),...detail});
     try{
-      adb(['shell','settings','put','system','font_scale',String(scale)]);adb(['shell','wm','user-rotation','lock',String(rotation)]);await sleep(750);
-      page=await launch();
-      await waitFor(()=>page.evaluate(orientation==='portrait'?'innerHeight>innerWidth':'innerWidth>innerHeight'),'Actual '+orientation+' viewport',15000);
+      adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
+      const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
       row.fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
@@ -56,7 +56,7 @@ try{
       if(process.env.ANDROID_QA_INJECT_FAILURE==='1'&&results.length===1)check('Controlled QA failure injection',false);
       for(const [label,selector] of [['header','.product-app-identity'],['hero','.settlement-hero'],['transfer','.transfer-row']]){await page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);await sleep(200);screenshot(resolve(out,`${orientation}-scale-${scale}-${label}.png`));}
       row.exceptions=page.exceptions;
-    }catch(error){row.error=error.stack;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
+    }catch(error){row.error=error.stack;row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
     finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }
 }finally{

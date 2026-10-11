@@ -5,10 +5,11 @@ import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer,notePreviewFitsContainer} from './text-measurement.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {fontContractContextExpression,hasAuthoredFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
+import {launchForOwnedOrientation} from './orientation.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/pages');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),originalScale=adb(['shell','settings','get','system','font_scale']).trim(),originalRotation=adb(['shell','settings','get','system','user_rotation']).trim();
 const targets={home:['.product-brand-copy strong','.product-home-screen .top .brand h1','.home-create-event-action'],event:['.product-brand-copy strong','.event-overview-header h1','.event-header-action-label','.expense-row strong','.event-workspace-tab strong'],notes:['.product-brand-copy strong','[data-screen-kind="event-notes"] h1','.event-note-title-line strong','.event-note-preview','.event-workspace-tab strong'],profile:['.product-brand-copy strong','[data-screen-kind="profile"] h1','.profile-identity-copy strong']};
-const samples=[],checks=[];let page;
+const samples=[],checks=[],orientationAttempts=[];let page;
 async function noteDisclosure(rows,scale,orientation){
   const title=rows.find(row=>row.selector==='.event-note-title-line strong')?.text,body=rows.find(row=>row.selector==='.event-note-preview')?.text;
   await page.click('.event-note-open[data-note-id="native-seeded-note"]');
@@ -54,13 +55,13 @@ async function sample(scale,orientation,screen){
 try{
   for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
     try{
-      adb(['shell','settings','put','system','font_scale',String(scale)]);adb(['shell','wm','user-rotation','lock',String(rotation)]);await sleep(750);page=await launch();
-      await waitFor(()=>page.evaluate(orientation==='portrait'?'innerHeight>innerWidth':'innerWidth>innerHeight'),'Actual '+orientation+' viewport');
+      adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
+      const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,onPage:value=>{page=value;}});orientationAttempts.push({...oriented.receipt,scale});
       await waitFor(async()=>Math.abs((await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()')).fontScale-scale)<.01,'Actual native OS font scale');
       await sample(scale,orientation,'home');await page.click('[data-action="open-event"][data-event-id="android-native-event"]');await sample(scale,orientation,'event');
       await page.click('[data-action="open-event-notes"]');await waitFor(()=>page.evaluate(`Boolean(document.querySelector('[data-screen-kind="event-notes"]'))`),'Notes');await sample(scale,orientation,'notes');
       await page.click('[data-action="edit-profile"]');await waitFor(()=>page.evaluate(`Boolean(document.querySelector('[data-screen-kind="profile"]'))`),'Profile');await sample(scale,orientation,'profile');
-    }catch(error){checks.push({name:`${scale}/${orientation}: `+error.stack,ok:false});}
-    finally{page?.close();page=null;writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,navigationMethod:'DOM for typography measurements; Native taps tested by matrix and journey',samples,checks},null,2));}
+    }catch(error){if(error.rotationReceipt)orientationAttempts.push({...error.rotationReceipt,scale});checks.push({name:`${scale}/${orientation}: `+error.stack,ok:false});}
+    finally{page?.close();page=null;writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,navigationMethod:'DOM for typography measurements; Native taps tested by matrix and journey',orientationAttempts,samples,checks},null,2));}
   }
-}finally{page?.close();adb(['shell','settings','put','system','font_scale',originalScale]);adb(['shell','wm','user-rotation','lock',originalRotation==='null'?'0':originalRotation]);writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,samples,checks},null,2));if(samples.length!==24||checks.some(check=>!check.ok))process.exitCode=1;}
+}finally{page?.close();adb(['shell','settings','put','system','font_scale',originalScale]);adb(['shell','wm','user-rotation','lock',originalRotation==='null'?'0':originalRotation]);writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,orientationAttempts,samples,checks},null,2));if(samples.length!==24||checks.some(check=>!check.ok))process.exitCode=1;}

@@ -272,3 +272,28 @@ pass all6/24/8/font/four clipping/before-after health and packaging gates.
 wrong AX promotion, stale/missing layout readbacks, frozen text, extra OS zoom
 and a0.21px size mismatch. Existing words/glyph overflow/Native control counts,
 tap/payload/ack/relaunch and exact font-fault restoration guards are retained.
+# Rotation requests follow actual Activity readiness
+
+On public source `41748f7`, run `38096563715` recorded a real OS rotation
+`0 -> 1`, followed by `am force-stop`, the foreground launcher requesting
+orientation `5`, and a real rotation `1 -> 0` while `userRotation=1` remained.
+The matrix OS2 landscape and pages OS1/1.5 landscape viewport guards correctly
+failed. Missing normal landscape baselines also caused downstream ratio checks
+to fail; those are not evidence of a second font multiplier.
+
+`orientation.mjs` launches the QA Activity first, observes its actual focused
+Native window, and sends exactly one `wm user-rotation lock` request. It requires
+the actual OS lock/settings, the actual default display rotation/current bounds
+and the actual Native WebView viewport to agree. Display0 parsing reads its
+current `mRotation` and `cur=` bounds, separately from `mUserRotation`; missing
+or ambiguous display evidence fails. Raw display dumps accompany observations.
+The original 15s matrix and 12s page budgets cover foreground and orientation
+readiness together. Failure receipts retain focus, OS settings and viewport
+observations and `dumpsys window displays`.
+The helper does not override application orientation policy or retry an input.
+
+Permanent boundary regressions model the recorded launcher reset, reject a
+successful shell command with the wrong viewport/OS readback, and reject a
+foreign or non-Native foreground. Their controlled RED/GREEN evidence is tool
+validation. Full Native acceptance still requires a new exact-source SDK run
+with all6/24/8, font and clipping controls, both health gates and artifact audit.
