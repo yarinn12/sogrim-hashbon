@@ -64,6 +64,33 @@ function parseRate(value) {
   return { numerator, denominator: 10n ** BigInt(fraction.length), value: normalized };
 }
 
+const JSON_NUMBER = "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?";
+
+function decimalJsonRateToken(token) {
+  const match = /^(-?(?:0|[1-9]\d*))(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (!match) throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  const [, whole, fraction = "", exponent = "0"] = match;
+  const shift = Number(exponent);
+  const point = whole.length + shift;
+  if (whole.startsWith("-") || !Number.isSafeInteger(shift) || point < -16 || point > 32) {
+    throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  }
+  const digits = whole + fraction;
+  const expanded = point <= 0 ? `0.${"0".repeat(-point)}${digits}`
+    : point >= digits.length ? `${digits}${"0".repeat(point - digits.length)}`
+      : `${digits.slice(0, point)}.${digits.slice(point)}`;
+  const normalized = expanded.replace(/^0+(?=\d)/, "").replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+  parseRate(normalized);
+  return normalized;
+}
+
+function exactJsonRate(raw, key) {
+  if (!/^[A-Za-z]{3}$|^rate$/.test(key)) throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  const token = raw.match(new RegExp(`"${key}"\\s*:\\s*(${JSON_NUMBER})(?=\\s*[,}])`))?.[1];
+  if (!token) throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  return decimalJsonRateToken(token);
+}
+
 function roundHalfUp(numerator, denominator) {
   return (numerator * 2n + denominator) / (denominator * 2n);
 }
@@ -171,10 +198,10 @@ export async function fetchEcbRate(sourceCurrency, targetCurrency, { fetchImpl =
   if (!response.ok) throw new Error(response.status === 404 ? "אין שער ECB לזוג המטבעות הזה. אפשר להזין שער אישי." : "לא ניתן לקבל שער כעת. אפשר להזין שער אישי.");
   let data;
   try { data = JSON.parse(raw); } catch { throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי."); }
-  const exactRate = raw.match(/"rate"\s*:\s*(\d+(?:\.\d+)?)/)?.[1];
+  let exactRate;
+  try { exactRate = exactJsonRate(raw, "rate"); } catch { throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי."); }
   if (String(data.base).toUpperCase() !== sourceCurrency || String(data.quote).toUpperCase() !== targetCurrency || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || !exactRate) {
     throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
   }
-  parseRate(exactRate);
   return { rate: exactRate, sourceDate: data.date, fetchedAt: now().toISOString(), stale: rateIsStale(data.date, now()) };
 }

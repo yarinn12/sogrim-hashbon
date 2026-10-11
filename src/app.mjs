@@ -7713,6 +7713,7 @@ function renderEventSettingsManagementDialog(event) {
 function renderEventSettingsCurrencyDialog(event) {
   const canManage = canCurrentParticipantManage(event);
   const hasExistingExpenses = event.expenses.length > 0;
+  const hasConvertedExpenses = event.expenses.some((expense) => expense.fxConversion);
 
   return renderEventDialogShell({
     eventId: event.id,
@@ -7731,13 +7732,15 @@ function renderEventSettingsCurrencyDialog(event) {
           data-action="event-currency"
           name="eventCurrency"
           data-event-id="${event.id}"
-          ${!canManage ? "disabled" : ""}
+          ${!canManage || hasConvertedExpenses ? "disabled" : ""}
         >
           ${renderCurrencyOptions(event.currency)}
         </select>
         <small>${
           !canManage
             ? "רק מנהל האירוע יכול לשנות את המטבע."
+            : hasConvertedExpenses
+              ? "יש באירוע הוצאה שהומרה ממטבע אחר. כדי לשמור על משמעות הסכומים והחובות, אי אפשר לשנות כעת את מטבע האירוע."
             : hasExistingExpenses
               ? "אפשר לשנות. לפני העדכון נבקש אישור, כי הסכומים הקיימים לא יומרו לפי שער חליפין."
               : "המטבע יחול על כל ההוצאות וההעברות באירוע."
@@ -15112,6 +15115,11 @@ async function handleChange(event) {
   if (action === "event-currency") {
     const event = getEvent(target.dataset.eventId);
     if (!event || !canCurrentParticipantManage(event)) return;
+    if (event.expenses.some((expense) => expense.fxConversion)) {
+      notice = "מטבע האירוע לא שונה: קיימת הוצאה שהומרה ממטבע אחר. סכומים קיימים לא יפורשו מחדש.";
+      render();
+      return;
+    }
 
     const nextCurrency = normalizeCurrency(target.value);
     if (nextCurrency === eventCurrency(event)) return;
@@ -17837,6 +17845,11 @@ async function applyEventCurrencyChange(
 ) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return;
+  if (event.expenses.some((expense) => expense.fxConversion)) {
+    notice = "מטבע האירוע לא שונה: קיימת הוצאה שהומרה ממטבע אחר. סכומים קיימים לא יפורשו מחדש.";
+    render();
+    return { ok: false, blockedByConvertedExpense: true };
+  }
 
   const nextCurrency = normalizeCurrency(currency);
   if (nextCurrency === eventCurrency(event)) return { ok: true, unchanged: true };
@@ -20349,6 +20362,9 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       throw new Error("כדי לשנות סכום של הוצאה שהומרה יש לבחור מחדש מטבע מקור ושער.");
     }
     const fxConversion = conversion?.fxConversion ?? (!expenseDraft.removeFxConversion && previousFx ? previousFx : null);
+    const updatedAt = new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString();
+    const fxConversionRemovedAt = fxConversion ? null : expenseDraft.removeFxConversion && previousFx
+      ? updatedAt : recovery.existingExpense?.fxConversionRemovedAt ?? null;
 
     const expense = {
       id: recovery.expenseId || makeId("expense"),
@@ -20362,7 +20378,8 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       notes: String(expenseDraft.notes ?? "").trim().slice(0, 500),
       attachmentImage: String(expenseDraft.attachmentImage ?? ""),
       ...(fxConversion ? { fxConversion } : {}),
-      updatedAt: new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString()
+      ...(fxConversionRemovedAt ? { fxConversionRemovedAt } : {}),
+      updatedAt
     };
 
     const errors = validateExpense(expense, { participantIds: event.participantIds, currency: event.currency || "ILS" });
