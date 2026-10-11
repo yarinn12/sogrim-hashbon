@@ -33,8 +33,8 @@ final class ParityProbeUITests: XCTestCase {
             add(attachment)
             print("NATIVE_SYSTEM_SCREENSHOT: \(phase)")
         }
-        func wait(_ name: String, timeout: TimeInterval = 35, predicate: () -> Bool) {
-            let end = Date().addingTimeInterval(timeout)
+        func wait(_ name: String, timeout: TimeInterval = 35, deadline: Date? = nil, predicate: () -> Bool) {
+            let end = deadline ?? Date().addingTimeInterval(timeout)
             while Date() < end {
                 if predicate() { return }
                 if state()["phase"] as? String == "error" { break }
@@ -92,11 +92,22 @@ final class ParityProbeUITests: XCTestCase {
         }
         tap("savePoint")
         wait("acknowledged save", timeout: 45) { state()["phase"] as? String == "saved" }
+        let priorNative = state()["native"] as? [String: Any] ?? [:]
+        let priorBackgrounds = priorNative["backgrounds"] as? Int ?? 0
+        let priorForegrounds = priorNative["foregrounds"] as? Int ?? 0
+        let lifecycleDeadline = Date().addingTimeInterval(35)
         XCUIDevice.shared.press(.home)
+        wait("native background", deadline: lifecycleDeadline) {
+            app.state == .runningBackground || app.state == .runningBackgroundSuspended
+        }
         app.activate()
-        wait("native background and foreground") {
-            let native = state()["native"] as? [String: Any] ?? [:]
-            return (native["backgrounds"] as? Int ?? 0) > 0 && (native["foregrounds"] as? Int ?? 0) > 0 && state()["phase"] as? String == "resumed"
+        wait("native background and foreground", deadline: lifecycleDeadline) {
+            guard app.state == .runningForeground else { return false }
+            let current = state()
+            let native = current["native"] as? [String: Any] ?? [:]
+            return (native["backgrounds"] as? Int ?? 0) > priorBackgrounds &&
+                   (native["foregrounds"] as? Int ?? 0) > priorForegrounds &&
+                   current["phase"] as? String == "resumed"
         }
         systemScreenshot("resumed")
         app.terminate(); app.launch()

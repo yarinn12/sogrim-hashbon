@@ -9,6 +9,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var keyboardHides = 0
     private var backgrounds = 0
     private var foregrounds = 0
+    private var foregroundsAtLastBackground = 0
     private let sourceSha = "__APP_SHA__"
     private let sourceTree = "__APP_TREE__"
     private var keyboardFrame = CGRect.zero
@@ -76,7 +77,11 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         center.addObserver(forName: UIResponder.keyboardDidHideNotification, object: nil, queue: .main) { [weak self] _ in
             self?.keyboardHides += 1; self?.keyboardFrame = .zero
         }
-        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in self?.backgrounds += 1 }
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            guard let self = self else { return }
+            self.backgrounds += 1
+            self.foregroundsAtLastBackground = self.foregrounds
+        }
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.foregrounds += 1 }
         timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in self?.refreshStatus("timer") }
         observeStatus("timerScheduled")
@@ -143,7 +148,9 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             state["pointMappings"] = mappings
             self.lastPointMappings = mappings
             state["native"] = self.nativeInfo()
-            if state["phase"] as? String == "saved", self.backgrounds > 0, self.foregrounds > 0,
+            if state["phase"] as? String == "saved", self.backgrounds > 0,
+               self.foregrounds > self.foregroundsAtLastBackground,
+               UIApplication.shared.applicationState == .active,
                !self.lifecycleCaptureRequested {
                 self.lifecycleCaptureRequested = true
                 self.webView?.evaluateJavaScript("globalThis.__iosParityCaptureCurrent?.('resumed')", completionHandler: nil)
