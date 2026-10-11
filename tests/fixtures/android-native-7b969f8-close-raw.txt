@@ -1,0 +1,5 @@
+
+STDERR:
+sh: <stdin>[13]: can't create /data/misc/perfetto-traces/sogrim_ci_38113596895_1_82faf9fb4cbf5f9e.pftrace.close-events: Permission denied
+sed: /proc/9237/stat: No such file or directory
+Close-watch PID identity unavailable

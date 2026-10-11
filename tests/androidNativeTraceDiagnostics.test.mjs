@@ -4,6 +4,37 @@ import {mkdtempSync,readFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {createHash} from 'node:crypto';
+const recordedPullRaw=readFileSync(new URL('./fixtures/android-native-7b969f8-pull-raw.txt',import.meta.url),'utf8');
+const recordedCloseRaw=readFileSync(new URL('./fixtures/android-native-7b969f8-close-raw.txt',import.meta.url),'utf8');
+const recordedPath='/data/misc/perfetto-traces/sogrim_ci_38113596895_1_82faf9fb4cbf5f9e.pftrace';
+const pullProgress=(f,bytes=f.state.pullBytes.length)=>recordedPullRaw.slice('\nSTDERR:\n'.length).replace(recordedPath,f.state.guestPath).replace('189789438 bytes',bytes+' bytes');
+function progressRun(f,changes={}){return(binary,args,settings)=>{if(args[2]==='pull'){const r=f.run(binary,args,settings);return{...r,stdout:'',stderr:pullProgress(f),...changes};}return f.run(binary,args,settings);};}
+test('recorded service-only trace journal failure uses the already shell-writable owned config directory',async t=>{
+  assert.equal(createHash('sha256').update(recordedCloseRaw).digest('hex'),'5a04dadc72a0ba6836f46f004a2d35f0e2a52e7307f19d1346b4d66e945201aa');
+  const f=fixture(t),run=(binary,args,settings)=>{if(args.includes('timeout')){const events=/^events=(.+)$/m.exec(settings.input)?.[1];assert.ok(events,'Journal destination unavailable');
+    if(events.includes('$trace'))return{status:3,stderr:recordedCloseRaw.slice('\nSTDERR:\n'.length).replaceAll(recordedPath,f.state.guestPath)};
+    assert.equal(events,'"$config.close-events"');assert.ok(settings.input.includes('umask 077'));assert.ok(settings.input.indexOf('set -C')<settings.input.indexOf('toybox inotifyd'));assert.ok(settings.input.includes('[ ! -L "$events" ]'));}return f.run(binary,args,settings)};
+  await startOwnedTrace(f.options,{...f.deps,run});const finish=await finishOwnedTrace(f.options,{run,stopHost:f.stopHost});assert.equal(finish.captureComplete,true,finish.errors.join('\n'));assert.equal(finish.writerClose.verified,true);assert.equal(finish.nativeAcceptance,false);
+});
+test('recorded adb single-file pull progress on stderr requires successful exit and the actual exact file size',async t=>{
+  assert.equal(createHash('sha256').update(recordedPullRaw).digest('hex'),'10a08030b91bf98072ded426c61a5a26d7e30febf279c479bcbb974b1731f3a2');assert.equal(Buffer.byteLength(recordedPullRaw.slice('\nSTDERR:\n'.length)),142);
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);const finish=await finishOwnedTrace(f.options,{run:progressRun(f),stopHost:f.stopHost});
+  assert.equal(finish.captureComplete,true,finish.errors.join('\n'));assert.equal(finish.trace.bytes,f.state.pullBytes.length);const command=finish.commands.find(x=>x.name==='perfetto-pull');assert.equal(command.ok,true);assert.match(command.acceptedExitReason,/actual file byte count/);assert.equal(command.pullProgress.bytes,f.state.pullBytes.length);assert.equal(command.stderr.bytes,Buffer.byteLength(pullProgress(f)));assert.equal(readFileSync(command.output.path,'utf8'),'\nSTDERR:\n'+pullProgress(f));
+});
+test('successful pull progress preserves partial evidence while missing CLOSE_WRITE still rejects capture',async t=>{
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);f.state.stopFail=true;const finish=await finishOwnedTrace(f.options,{run:progressRun(f),stopHost:f.stopHost});assert.equal(finish.captureComplete,false);assert.equal(finish.writerClose,undefined);assert.equal(finish.trace.bytes,f.state.pullBytes.length);assert.match(finish.errors.join(),/Could not finalize trace/);assert.equal(finish.nativeAcceptance,false);
+});
+test('normal-looking pull output never accepts errors, wrong ownership, absent files, invalid counts or nonregular files',async t=>{
+  for(const kind of ['exit','error-prefix','error-suffix','foreign','multiple','count','zero','unsafe','missing','directory','stdout']){
+    const f=fixture(t);await startOwnedTrace(f.options,f.deps);const run=(binary,args,settings)=>{if(args[2]!=='pull')return f.run(binary,args,settings);if(kind==='directory')mkdirSync(args[4]);else if(kind!=='missing')f.run(binary,args,settings);let stderr=pullProgress(f);
+      if(kind==='error-prefix')stderr='Permission denied\n'+stderr;if(kind==='error-suffix')stderr+='Permission denied\n';if(kind==='foreign')stderr=stderr.replace(f.state.guestPath,f.state.guestPath.replace(/_[a-f0-9]{16}\.pftrace$/,'_ffffffffffffffff.pftrace'));if(kind==='multiple')stderr+=stderr;if(kind==='count')stderr=stderr.replace(f.state.pullBytes.length+' bytes',(f.state.pullBytes.length+1)+' bytes');if(kind==='zero')stderr=stderr.replace(f.state.pullBytes.length+' bytes','0 bytes');if(kind==='unsafe')stderr=stderr.replace(f.state.pullBytes.length+' bytes','9007199254740993 bytes');
+      return{status:kind==='exit'?1:0,stdout:kind==='stdout'?'unrecognized output\n':'',stderr};
+    };const finish=await finishOwnedTrace(f.options,{run,stopHost:f.stopHost});assert.equal(finish.captureComplete,false,kind);assert.ok(finish.errors.some(e=>e.includes('perfetto-pull')),kind);assert.equal(finish.commands.find(c=>c.name==='perfetto-pull').ok,false,kind);assert.equal(f.state.hostStopped,true,kind);
+  }
+});
+test('pull-like progress on an unrelated trace command remains a failure',async t=>{
+  const f=fixture(t),run=(binary,args,settings)=>args.includes('--background-wait')?{status:0,stdout:'7000\n',stderr:recordedPullRaw.slice('\nSTDERR:\n'.length)}:f.run(binary,args,settings);const start=await startOwnedTrace(f.options,{...f.deps,run});assert.equal(start.captureStarted,false);assert.match(start.errors.join(),/perfetto-start failed/);
+});
 import {parseProcStat,assertHostOwner,sampleOwnedHost,perfettoConfig,requireDataSources,guestFilesScript,closeWriteScript,verifyCloseWrite,inspectTrace,startOwnedTrace,finishOwnedTrace} from '../scripts/qa/android-native-isolated/trace-diagnostics.mjs';
 
 // Entirely synthetic protocol/ownership controls. No ADB, SDK or device is run.

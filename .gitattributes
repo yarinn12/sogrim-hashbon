@@ -1,0 +1,3 @@
+# Preserve exact recorded SDK command bytes for cross-platform hash checks.
+tests/fixtures/android-native-7b969f8-close-raw.txt -text
+tests/fixtures/android-native-7b969f8-pull-raw.txt -text

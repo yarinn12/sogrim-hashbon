@@ -1,5 +1,5 @@
 import {spawn,spawnSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSync,statSync,openSync,closeSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSync,statSync,lstatSync,openSync,closeSync} from 'node:fs';
 import {resolve,join,basename} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
@@ -69,11 +69,14 @@ config='${start.configPath}'
 identity='${start.traceIdentity}'
 pid='${start.guestPid}'
 ticks='${start.guestStartTicks}'
-events="$trace.close-events"
+# Config reservation already proved this owned directory is shell-writable.
+# traced owns the trace directory; shell cannot create its journal there.
+events="$config.close-events"
 [ ! -e "$events" ] && [ ! -L "$events" ] || { echo 'Refuse existing close-watch journal' >&2; exit 2; }
 [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before watch' >&2; exit 5; }
 inode=$(toybox stat -c %i "$trace")
 hex=$(printf '%x' "$inode")
+umask 077
 set -C
 toybox inotifyd - "$trace:w" >"$events" &
 watcher=$!
@@ -215,6 +218,20 @@ function observer(options,report,run){
     const stdout=result.stdout||'',stderr=result.stderr||'';
     row.exitCode=result.status;row.error=result.error?.message;row.completedAtUtc=now();row.ok=!result.error&&result.status===0&&!stderr.trim();
     if(name==='perfetto-help'&&!result.error&&[0,1].includes(result.status)&&report.perfettoVersion==='Perfetto v51.2 (N/A)'&&!stdout&&hash(stderr)===sdk51HelpSha){row.ok=true;row.acceptedExitReason='documented v51.2 usage exit; exact recorded stderr/version';}
+    // adb emits its successful single-file pull receipt on stderr. Accept only
+    // that exact protocol for this owned path, backed by the actual regular file.
+    if(name==='perfetto-pull'&&!result.error&&result.status===0&&!stdout&&args.length===3&&args[0]==='pull'&&args[1]===report.start?.guestPath&&args[2]===join(options.output,'guest.pftrace')){
+      const progress=/^(\/data\/misc\/perfetto-traces\/sogrim_ci_[a-z0-9_]+_[a-f0-9]{16}\.pftrace): 1 file pulled, 0 skipped\. (\d+(?:\.\d+)?) MB\/s \(([1-9]\d*) bytes in (\d+(?:\.\d+)?)s\)\r?\n?$/.exec(stderr);
+      if(progress&&progress[1]===args[1]){
+        try{
+          const file=lstatSync(args[2]),bytes=Number(progress[3]);
+          if(file.isFile()&&!file.isSymbolicLink()&&Number.isSafeInteger(bytes)&&bytes===file.size&&Number.isFinite(Number(progress[2]))&&Number.isFinite(Number(progress[4]))){
+            row.ok=true;row.acceptedExitReason='recognized adb single-file pull progress; exit0 and actual file byte count';
+            row.pullProgress={path:progress[1],bytes,megabytesPerSecond:progress[2],seconds:progress[4],actualFileSizeVerified:true};
+          }
+        }catch{/* Missing/unreadable file leaves the command rejected. */}
+      }
+    }
     row.stdout={bytes:Buffer.byteLength(stdout),sha256:hash(stdout)};row.stderr={bytes:Buffer.byteLength(stderr),sha256:hash(stderr)};
     const file=join(options.output,(report.finalizeStartedAtUtc?'finish-':'start-')+(report.commands.length+1)+'-'+name+'.txt');writeFileSync(file,stdout+(stderr?'\nSTDERR:\n'+stderr:''));row.output=fileReceipt(file);report.commands.push(row);
     if(!row.ok)throw new Error(`Trace command ${name} failed: ${row.error||stderr||stdout}`);return /^perfetto-(?:help|version)$/.test(name)?stdout+stderr:stdout;
