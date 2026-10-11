@@ -8,6 +8,9 @@ final class ParityProbeUITests: XCTestCase {
         let status = app.staticTexts["native-parity-state"]
         XCTAssertTrue(status.waitForExistence(timeout: 35))
         func state() -> [String: Any] {
+            // Relaunch hides the status until the restored capture is acknowledged.
+            // Poll absence as unready instead of resolving a nonexistent label.
+            guard status.exists else { return [:] }
             guard let data = status.label.data(using: .utf8),
                   let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
             return value
@@ -27,7 +30,7 @@ final class ParityProbeUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.3)
             }
             systemScreenshot("failure-\(name)")
-            XCTFail("Timed out: \(name). State: \(status.label)")
+            XCTFail("Timed out: \(name). State: \(state())")
         }
         func tap(_ key: String) {
             // Large accessibility text may need ordinary user scrolling before
