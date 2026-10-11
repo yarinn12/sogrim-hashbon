@@ -7,6 +7,9 @@ import {createHash,randomBytes} from 'node:crypto';
 const target='com.sogrimhashbon.app.debug',hostIntervalMs=1000,maxHostBytes=64*1024*1024,maxTraceBytes=512*1024*1024;
 const now=()=>new Date().toISOString(),delay=ms=>new Promise(done=>setTimeout(done,ms));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
+// v51.2 intentionally prints --help to stderr and returns 1 (PrintUsage then
+// return 1). Only this exact, recorded usage/version pair is a non-error exit.
+const sdk51HelpSha='c9baa85b9af0d72e9e1e532ea56842ac30ee3b9e4c5f2891e80cc024f18e2d4a';
 const readJson=file=>JSON.parse(readFileSync(file,'utf8'));
 function fileReceipt(file){const bytes=readFileSync(file);return{path:file,bytes:bytes.length,sha256:hash(bytes)};}
 
@@ -58,15 +61,20 @@ export function requireDataSources(query){
 // alone is not a writer-close ACK. The guest script has its own bounded lifetime
 // and cleans up only its child inotifyd, including on timeout/error.
 export function closeWriteScript(start){
-  if(!Number.isSafeInteger(start.guestPid)||start.guestPid<=1||!/^\d+$/.test(start.guestStartTicks||'')||!/^\/data\/misc\/perfetto-traces\/sogrim_ci_[a-z0-9_]+\.pftrace$/.test(start.guestPath||''))throw new Error('Require confirmed owned guest tracer for close-write');
+  if(!Number.isSafeInteger(start.guestPid)||start.guestPid<=1||!/^\d+$/.test(start.guestStartTicks||'')||!/^\d+:\d+$/.test(start.traceIdentity||''))throw new Error('Require confirmed owned guest tracer for close-write');
+  requireOwnedPaths(start);
   return String.raw`set -eu
 trace='${start.guestPath}'
+config='${start.configPath}'
+identity='${start.traceIdentity}'
 pid='${start.guestPid}'
 ticks='${start.guestStartTicks}'
 events="$trace.close-events"
-[ ! -e "$events" ] || { echo 'Refuse existing close-watch journal' >&2; exit 2; }
+[ ! -e "$events" ] && [ ! -L "$events" ] || { echo 'Refuse existing close-watch journal' >&2; exit 2; }
+[ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before watch' >&2; exit 5; }
 inode=$(toybox stat -c %i "$trace")
 hex=$(printf '%x' "$inode")
+set -C
 toybox inotifyd - "$trace:w" >"$events" &
 watcher=$!
 watch_ticks=''
@@ -94,13 +102,14 @@ done
 [ "$ready" = 1 ] || { echo 'Owned inode close-watch not registered' >&2; exit 3; }
 echo "WATCH_READY $inode $trace"
 [ "$(toybox sed 's/.*) //' "/proc/$pid/stat" | toybox cut -d ' ' -f20)" = "$ticks" ] || { echo 'Refuse reused tracer before signal' >&2; exit 4; }
-toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox grep -Fx "$trace" >/dev/null
+toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox grep -Fx "$config" >/dev/null
 first=$(toybox tr '\000' '\n' <"/proc/$pid/cmdline" | toybox head -1)
 case "$first" in perfetto|*/perfetto) ;; *) echo 'Refuse foreign tracer before signal' >&2; exit 4;; esac
+[ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed before signal' >&2; exit 5; }
 kill -TERM "$pid"
 for n in $(toybox seq 1 120); do
   if toybox grep -Fx "$(printf 'w\t%s' "$trace")" "$events" >/dev/null; then
-    [ "$(toybox stat -c %i "$trace")" = "$inode" ] || { echo 'Trace inode changed' >&2; exit 5; }
+    [ ! -L "$trace" ] && [ "$(toybox stat -c %d:%i "$trace")" = "$identity" ] || { echo 'Trace inode changed' >&2; exit 5; }
     echo "CLOSE_WRITE $inode $trace"
     exit 0
   fi
@@ -114,7 +123,7 @@ exit 6
 export function verifyCloseWrite(output,start){
   const lines=output.trim().split(/\r?\n/),ready=lines.find(line=>line.startsWith('WATCH_READY ')),closed=lines.find(line=>line.startsWith('CLOSE_WRITE '));
   const match=/^WATCH_READY (\d+) (.+)$/.exec(ready||'');
-  if(!match||match[2]!==start.guestPath||closed!==`CLOSE_WRITE ${match[1]} ${start.guestPath}`||lines.indexOf(ready)>=lines.indexOf(closed))throw new Error('Actual owned writer-close acknowledgement missing/mismatched');
+  if(!match||match[1]!==start.traceIdentity?.split(':')[1]||match[2]!==start.guestPath||closed!==`CLOSE_WRITE ${match[1]} ${start.guestPath}`||lines.indexOf(ready)>=lines.indexOf(closed))throw new Error('Actual owned writer-close acknowledgement missing/mismatched');
   return{verified:true,inode:match[1],path:match[2],semanticCoverageValidated:false};
 }
 export function perfettoConfig(session){
@@ -123,6 +132,7 @@ export function perfettoConfig(session){
 buffers { size_kb: 32768 fill_policy: RING_BUFFER }
 duration_ms: 1200000
 write_into_file: true
+output_path: "/data/misc/perfetto-traces/${session}.pftrace"
 file_write_period_ms: 5000
 max_file_size_bytes: ${maxTraceBytes}
 data_sources { config { name: "linux.ftrace" ftrace_config {
@@ -142,6 +152,37 @@ data_sources { config { name: "linux.ftrace" ftrace_config {
 data_sources { config { name: "linux.process_stats" process_stats_config { scan_all_processes_on_start: true } } }
 data_sources { config { name: "android.surfaceflinger.frametimeline" } }
 `;
+}
+function requireOwnedPaths(start){
+  if(!/^sogrim_ci_[a-z0-9_]+_[a-f0-9]{16}$/.test(start.session||'')||start.guestPath!==`/data/misc/perfetto-traces/${start.session}.pftrace`||start.configPath!==`/data/misc/perfetto-configs/${start.session}.pbtxt`)throw new Error('Refuse unowned guest trace/config path');
+}
+// Config is atomically created by shell noclobber. TraceConfig.output_path is
+// atomically created by traced with O_CREAT|O_EXCL, even on a collision/race.
+// Never pass -o: v51.2's CLI -o uses O_TRUNC and lacks --no-clobber.
+export function guestFilesScript(start,reserve=false){
+  requireOwnedPaths(start);const config=perfettoConfig(start.session);
+  return `set -eu
+config='${start.configPath}'
+trace='${start.guestPath}'
+${reserve?`[ ! -e "$trace" ] && [ ! -L "$trace" ] || { echo 'Refuse existing trace path' >&2; exit 2; }
+umask 077
+set -C
+cat >"$config" <<'SOGRIM_OWNED_CONFIG'
+${config}SOGRIM_OWNED_CONFIG
+`:''}[ -f "$config" ] && [ ! -L "$config" ] || { echo 'Refuse missing/nonregular config' >&2; exit 3; }
+digest=$(toybox sha256sum "$config")
+digest=\${digest%% *}
+[ "$digest" = '${hash(config)}' ] || { echo 'Owned config content changed' >&2; exit 4; }
+echo "CONFIG $(toybox stat -c %d:%i:%s "$config") $digest $config"
+${reserve?'':`[ -f "$trace" ] && [ ! -L "$trace" ] || { echo 'Refuse missing/nonregular trace' >&2; exit 5; }
+echo "TRACE $(toybox stat -c %d:%i "$trace") $trace"
+`}`;
+}
+function guestFiles(start,observe,reserve=false){
+  const text=observe(reserve?'perfetto-config-reserve':'perfetto-file-identity',['shell','sh','-s'],guestFilesScript(start,reserve)).trim().split(/\r?\n/);
+  const config=/^CONFIG (\d+:\d+:\d+) ([a-f0-9]{64}) (.+)$/.exec(text[0]||''),trace=/^TRACE (\d+:\d+) (.+)$/.exec(text[1]||'');
+  if(!config||config[2]!==start.configSha256||config[3]!==start.configPath||start.configIdentity&&config[1]!==start.configIdentity||text.length!==(reserve?1:2)||!reserve&&(!trace||trace[2]!==start.guestPath||start.traceIdentity&&trace[1]!==start.traceIdentity))throw new Error('Owned trace/config inode or provenance mismatch');
+  return{configIdentity:config[1],traceIdentity:trace?.[1],creation:'traced output_path O_CREAT|O_EXCL; config shell noclobber',configSha256:config[2]};
 }
 // Framing checks detect absent, text, truncated or metadata-only files. Semantic
 // coverage/loss and ANR causality still require Trace Processor on the real trace.
@@ -171,8 +212,11 @@ export function inspectTrace(bytes){
 function observer(options,report,run){
   return(name,args,input)=>{const row={name,args,startedAtUtc:now()};let result;
     try{result=run(options.adbPath,['-s',options.device,...args],{encoding:'utf8',input,timeout:name==='perfetto-start'?35000:name==='perfetto-stop-close'?20000:10000,killSignal:'SIGKILL',windowsHide:true,maxBuffer:1024*1024});}catch(error){result={status:null,error};}
-    row.exitCode=result.status;row.error=result.error?.message;row.completedAtUtc=now();row.ok=!result.error&&result.status===0;
-    const stdout=result.stdout||'',stderr=result.stderr||'',file=join(options.output,(report.finalizeStartedAtUtc?'finish-':'start-')+(report.commands.length+1)+'-'+name+'.txt');writeFileSync(file,stdout+(stderr?'\nSTDERR:\n'+stderr:''));row.output=fileReceipt(file);report.commands.push(row);
+    const stdout=result.stdout||'',stderr=result.stderr||'';
+    row.exitCode=result.status;row.error=result.error?.message;row.completedAtUtc=now();row.ok=!result.error&&result.status===0&&!stderr.trim();
+    if(name==='perfetto-help'&&!result.error&&[0,1].includes(result.status)&&report.perfettoVersion==='Perfetto v51.2 (N/A)'&&!stdout&&hash(stderr)===sdk51HelpSha){row.ok=true;row.acceptedExitReason='documented v51.2 usage exit; exact recorded stderr/version';}
+    row.stdout={bytes:Buffer.byteLength(stdout),sha256:hash(stdout)};row.stderr={bytes:Buffer.byteLength(stderr),sha256:hash(stderr)};
+    const file=join(options.output,(report.finalizeStartedAtUtc?'finish-':'start-')+(report.commands.length+1)+'-'+name+'.txt');writeFileSync(file,stdout+(stderr?'\nSTDERR:\n'+stderr:''));row.output=fileReceipt(file);report.commands.push(row);
     if(!row.ok)throw new Error(`Trace command ${name} failed: ${row.error||stderr||stdout}`);return /^perfetto-(?:help|version)$/.test(name)?stdout+stderr:stdout;
   };
 }
@@ -183,14 +227,14 @@ function guestOwner(report,observe){
   if(!Number.isSafeInteger(report.guestPid)||report.guestPid<=1)throw new Error('No confirmed owned Perfetto PID');
   const args=observe('perfetto-owner-cmdline',['shell','cat',`/proc/${report.guestPid}/cmdline`]).split('\0').filter(Boolean);
   const stat=parseProcStat(observe('perfetto-owner-stat',['shell','cat',`/proc/${report.guestPid}/stat`]));
-  if(basename(args[0]||'')!=='perfetto'||!args.includes(report.guestPath)||stat.pid!==report.guestPid||report.guestStartTicks&&stat.startTicks!==report.guestStartTicks)throw new Error('Refuse foreign or reused guest Perfetto PID');
+  if(basename(args[0]||'')!=='perfetto'||args.slice(1).join('\0')!==['--background-wait','--txt','-c',report.configPath].join('\0')||stat.pid!==report.guestPid||report.guestStartTicks&&stat.startTicks!==report.guestStartTicks)throw new Error('Refuse foreign or reused guest Perfetto PID');
   return stat.startTicks;
 }
 async function waitFile(file,ms=5000){const end=Date.now()+ms;while(!existsSync(file)&&Date.now()<end)await delay(50);if(!existsSync(file))throw new Error('Owned host observer did not acknowledge '+basename(file));return readJson(file);}
-async function spawnHost(options,owner){
+async function spawnHost(options,owner,onSpawn){
   const fd=openSync(join(options.output,'host-observer.log'),'a');let child;
   try{child=spawn(process.execPath,[fileURLToPath(import.meta.url),'host',options.output],{detached:true,stdio:['ignore',fd,fd],windowsHide:true});}finally{closeSync(fd);}
-  child.unref();writeFileSync(join(options.output,'host-observer.pid'),String(child.pid));
+  child.unref();writeFileSync(join(options.output,'host-observer.pid'),String(child.pid));onSpawn({pid:child.pid});
   const ready=await waitFile(join(options.output,'host-ready.json'));if(ready.source!==options.source||ready.owner.startTicks!==owner.startTicks)throw new Error('Host observer readiness ownership mismatch');
   return{pid:child.pid,ready};
 }
@@ -202,38 +246,50 @@ export async function startOwnedTrace(raw,{run=spawnSync,platform=process.platfo
     ownerReadback(options,observe);report.hostOwner=assertHostOwner(options,{read:hostRead,procRoot});
     report.perfettoVersion=observe('perfetto-version',['shell','perfetto','--version']).trim();
     const help=observe('perfetto-help',['shell','perfetto','--help']);
-    if(!help.includes('--background-wait')||!help.includes('--no-clobber'))throw new Error('Actual SDK Perfetto background/ownership options unavailable');
+    if(report.perfettoVersion!=='Perfetto v51.2 (N/A)')throw new Error('Actual SDK Perfetto version not validated for exclusive output_path protocol');
+    if(!help.includes('--background-wait')||!help.includes('--config')||!help.includes('--query')||!help.includes('--txt'))throw new Error('Actual SDK Perfetto background/config options unavailable');
     report.providers=requireDataSources(observe('perfetto-providers',['shell','perfetto','--query','--long']));
     report.guestTools=observe('guest-trace-tools',['shell','toybox']).trim();
-    for(const tool of ['inotifyd','timeout','stat','sed','cut','grep','tr','head','seq','sleep','cat'])if(!report.guestTools.split(/\s+/).includes(tool))throw new Error('Actual guest close-watch tool unavailable: '+tool);
-    report.session=`${options.avd}_${randomBytes(8).toString('hex')}`;report.guestPath=`/data/misc/perfetto-traces/${report.session}.pftrace`;
+    for(const tool of ['inotifyd','timeout','stat','sha256sum','sed','cut','grep','tr','head','seq','sleep','cat'])if(!report.guestTools.split(/\s+/).includes(tool))throw new Error('Actual guest close-watch tool unavailable: '+tool);
+    report.session=`${options.avd}_${randomBytes(8).toString('hex')}`;report.guestPath=`/data/misc/perfetto-traces/${report.session}.pftrace`;report.configPath=`/data/misc/perfetto-configs/${report.session}.pbtxt`;
     const config=perfettoConfig(report.session);writeFileSync(join(options.output,'perfetto-config.pbtxt'),config);report.configSha256=hash(config);
     writeFileSync(stateFile,JSON.stringify(report,null,2));
     ownerReadback(options,observe);
-    const started=observe('perfetto-start',['shell','perfetto','--background-wait','--no-clobber','--txt','-c','-','-o',report.guestPath],config).trim();
+    Object.assign(report,guestFiles(report,observe,true));writeFileSync(stateFile,JSON.stringify(report,null,2));
+    ownerReadback(options,observe);
+    report.guestLaunchAttempted=true;writeFileSync(stateFile,JSON.stringify(report,null,2));
+    const started=observe('perfetto-start',['shell','perfetto','--background-wait','--txt','-c',report.configPath]).trim();
     if(!/^\d+$/.test(started))throw new Error('Perfetto background PID acknowledgement is absent or ambiguous');
     report.guestPid=Number(started);writeFileSync(stateFile,JSON.stringify(report,null,2));report.guestStartTicks=guestOwner(report,observe);
-    writeFileSync(stateFile,JSON.stringify(report,null,2));report.hostObserver=await launchHost(options,report.hostOwner);report.captureStarted=true;
+    Object.assign(report,guestFiles(report,observe));
+    writeFileSync(stateFile,JSON.stringify(report,null,2));report.hostObserver=await launchHost(options,report.hostOwner,host=>{report.hostObserver=host;writeFileSync(stateFile,JSON.stringify(report,null,2));});report.captureStarted=true;
   }catch(error){report.errors.push(error.stack);}
   report.completedAtUtc=now();writeFileSync(stateFile,JSON.stringify(report,null,2));return report;
 }
 export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options=>{writeFileSync(join(options.output,'host-stop'),'stop\n');return waitFile(join(options.output,'host-summary.json'));}}={}){
   const options=context(raw);mkdirSync(options.output,{recursive:true});let start;
   const report={...options,finalizeStartedAtUtc:now(),captureComplete:false,commands:[],errors:[],nativeAcceptance:false,traceAnalysisStatus:'pending actual Trace Processor scheduling/loss/coverage analysis'};const observe=observer(options,report,run);
-  try{start=readJson(join(options.output,'trace-start.json'));for(const name of ['source','device','avd','emulatorPid'])if(start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');if(!new RegExp('^/data/misc/perfetto-traces/'+options.avd+'_[a-f0-9]{16}\\.pftrace$').test(start.guestPath||''))throw new Error('Refuse unowned guest trace path');report.start=start;}catch(error){report.errors.push(error.stack);start=undefined;}
-  // Always release our cooperative host observer even if guest ownership vanished.
-  try{report.host=await stopHost(options);if(report.host.source!==options.source||!report.host.captureComplete)throw new Error('Owned host scheduling capture is missing/incomplete');}catch(error){report.errors.push(error.stack);}
-  if(start){
+  try{start=readJson(join(options.output,'trace-start.json'));for(const name of ['source','device','avd','emulatorPid'])if(start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');report.start=start;}catch(error){report.errors.push(error.stack);start=undefined;}
+  const guestLaunchAttempted=!!start&&(start.guestLaunchAttempted||start.commands?.some(x=>x.name==='perfetto-start'));
+  if(start?.errors?.length)report.errors.push('Original startup errors: '+start.errors.join('\n'));
+  report.noCaptureStarted=!!start&&!guestLaunchAttempted&&!start.guestPid&&!start.hostObserver&&start.captureStarted===false;
+  if(report.noCaptureStarted){report.traceAnalysisStatus='unavailable: capture never started';report.errors.push('No capture started; no guest tracer or host observer was launched');}
+  else if(!start)report.traceAnalysisStatus='unavailable: no valid capture receipt';
+  else if(guestLaunchAttempted&&!start.guestPid){report.traceAnalysisStatus='unavailable: trace launch not acknowledged; no owned PID/inode';report.errors.push('Trace launch attempted without an owned acknowledgement; refuse guessed PID or file');}
+  // Release an actually launched cooperative observer even if guest ownership vanished.
+  if(start?.hostObserver){try{report.host=await stopHost(options);if(report.host.source!==options.source||!report.host.captureComplete)throw new Error('Owned host scheduling capture is missing/incomplete');}catch(error){report.errors.push(error.stack);}}
+  if(start?.guestPid){
     let owned=false;
     try{
-      ownerReadback(options,observe);owned=true;guestOwner(start,observe);ownerReadback(options,observe);
+      requireOwnedPaths(start);if(!start.session.startsWith(options.avd+'_')||!/^\d+:\d+$/.test(start.traceIdentity||''))throw new Error('Refuse unowned guest trace path or unconfirmed fresh inode');
+      ownerReadback(options,observe);guestFiles(start,observe);owned=true;guestOwner(start,observe);ownerReadback(options,observe);
       const script=closeWriteScript(start);writeFileSync(join(options.output,'close-write.sh'),script);
       report.writerClose=verifyCloseWrite(observe('perfetto-stop-close',['shell','toybox','timeout','15','sh','-s'],script),start);
     }catch(error){report.errors.push(error.stack);}
     if(owned){
       try{
         // Pull partial evidence on failure too, but never accept it without close-write.
-        ownerReadback(options,observe);const file=join(options.output,'guest.pftrace');observe('perfetto-pull',['pull',start.guestPath,file]);report.trace=fileReceipt(file);if(report.trace.bytes>=maxTraceBytes)throw new Error('Trace hit diagnostic disk cap; coverage is incomplete');report.structure=inspectTrace(readFileSync(file));
+        ownerReadback(options,observe);guestFiles(start,observe);const file=join(options.output,'guest.pftrace');if(existsSync(file))throw new Error('Refuse overwrite of pulled trace evidence');observe('perfetto-pull',['pull',start.guestPath,file]);report.trace=fileReceipt(file);if(report.trace.bytes>=maxTraceBytes)throw new Error('Trace hit diagnostic disk cap; coverage is incomplete');report.structure=inspectTrace(readFileSync(file));
       }catch(error){report.errors.push(error.stack);}
     }
   }
@@ -269,7 +325,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
     try{
       const options={adbPath:process.env.ADB_PATH,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,source:process.env.ANDROID_QA_SOURCE,emulatorPid:Number(readFileSync('artifacts/android-native-isolated/emulator.pid','utf8').trim()),output:'artifacts/android-native-isolated/trace-diagnostics'};
       const report=mode==='start'?await startOwnedTrace(options):mode==='finish'?await finishOwnedTrace(options):(()=>{throw new Error('Require trace start/finish mode');})();
-      console.log(JSON.stringify({source:report.source,captureStarted:report.captureStarted,captureComplete:report.captureComplete,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
+      console.log(JSON.stringify({source:report.source,captureStarted:report.captureStarted,captureComplete:report.captureComplete,noCaptureStarted:report.noCaptureStarted,traceAnalysisStatus:report.traceAnalysisStatus,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
     }catch(error){
       const output='artifacts/android-native-isolated/trace-diagnostics';mkdirSync(output,{recursive:true});const report={source:process.env.ANDROID_QA_SOURCE,mode,captureStarted:false,captureComplete:false,nativeAcceptance:false,error:error.stack,recordedAtUtc:now()};writeFileSync(join(output,'trace-unavailable-'+mode+'.json'),JSON.stringify(report,null,2));console.error(JSON.stringify(report));process.exitCode=1;
     }

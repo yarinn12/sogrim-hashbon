@@ -1,3 +1,5 @@
 android-native-api36-display0.txt text eol=lf whitespace=-blank-at-eof
 android-native-api36-anr-display0.txt text eol=lf whitespace=-blank-at-eof
 android-native-api36-logcat-permission-warning.txt text eol=lf
+android-native-perfetto-v51.2-help-raw.txt text eol=lf
+android-native-perfetto-v51.2-version.txt text eol=lf

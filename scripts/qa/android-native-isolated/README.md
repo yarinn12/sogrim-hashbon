@@ -425,6 +425,46 @@ unavailable evidence. Host/guest UTC correlation and real stack/lock ownership
 remain analysis work. This instrumentation has only synthetic boundary tests
 until a coordinated exact-source Linux SDK run supplies actual evidence.
 
+## API36.1 Perfetto v51.2 compatibility after f9b0844
+
+Run38109842847/job114383118130 passed before-health and renderer verification,
+then failed on `perfetto --help`: its actual version was `Perfetto v51.2 (N/A)`,
+usage was on stderr, and exit was1. The advertised options lack `--no-clobber`.
+No tracer or host observer started; font/page/journey/clipping/after-health were
+skipped. This failed run is not Native acceptance or evidence of an ANR fix.
+
+The unmodified command outputs are frozen in `tests/fixtures/` with LF preserved.
+Their raw hashes and artifact origin are recorded in the accompanying JSON.
+The v51.2 [CLI source](https://github.com/google/perfetto/blob/v51.2/src/perfetto_cmd/perfetto_cmd.cc)
+prints usage to stderr and returns1 for `--help`. Only that exact stderr hash,
+empty stdout, known version and exit0/1 are accepted as documented usage;
+other exits, errors and unexpected stderr remain failures.
+
+The config now uses `write_into_file` plus `output_path`. The v51.2
+[service source](https://github.com/google/perfetto/blob/v51.2/src/tracing/service/tracing_service_impl.cc)
+calls `CreateTraceFile` with overwrite=false and opens with `O_CREAT|O_EXCL`.
+The [config contract](https://github.com/google/perfetto/blob/v51.2/protos/perfetto/config/trace_config.proto)
+requires a new file beneath `/data/misc/perfetto-traces/`. The helper never passes
+CLI `-o`, which would truncate an existing file. A random owned AVD/session path,
+preflight rejection of existing/symlink trace paths, service atomic exclusion,
+and retained device/inode identity prevent silently replacing existing evidence.
+The separate unique config in `/data/misc/perfetto-configs/` is created with
+shell noclobber. Its exact hash, size and device/inode are checked before use
+and again before stop/pull. The actual tracer command must name that config
+exactly and retain the confirmed PID/start ticks. Close-watch checks the original
+trace device/inode before registration, before signal, and after close-write.
+
+Finalization retains original startup errors. If no launch was attempted it
+explicitly reports `noCaptureStarted` and performs no guest access or host wait.
+A dispatched but unacknowledged launch is reported separately as unknown;
+it never guesses a PID. A host observer that actually spawned is still stopped
+after a readiness failure or guest ownership loss. Missing receipts fail without
+waiting for an unlaunched host. These are diagnostic changes only: all Native,
+ANR history, health, renderer, font, geometry and original time budgets remain.
+Recorded preflight replay and synthetic collision/provenance/cleanup controls
+protect the helper. Actual Android config creation, providers, recording,
+close-write and semantic trace coverage still require a new coordinated SDK run.
+
 Successful logcat/DropBox reads may themselves contain historical system
 permission warnings. On exact source ae8ca15, the final all-buffer read returned0
 with valid threadtime data, but four recorded DisplayManagerService warnings
