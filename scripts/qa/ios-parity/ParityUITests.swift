@@ -6,7 +6,18 @@ final class ParityProbeUITests: XCTestCase {
         let app = XCUIApplication(bundleIdentifier: "com.sogrimhashbon.app")
         app.launch()
         let status = app.staticTexts["native-parity-state"]
-        XCTAssertTrue(status.waitForExistence(timeout: 35))
+        let statusExists = status.waitForExistence(timeout: 35)
+        if !statusExists {
+            let snapshot = XCTAttachment(string: app.debugDescription)
+            snapshot.name = "native-status-missing-hierarchy"; snapshot.lifetime = .keepAlways
+            add(snapshot)
+            let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            screenshot.name = "native-system-status-missing"; screenshot.lifetime = .keepAlways
+            add(screenshot)
+            let identifierCount = app.descendants(matching: .any).matching(identifier: "native-parity-state").count
+            print("NATIVE_STATUS_MISSING: app-wide identifier count=\(identifierCount)")
+        }
+        XCTAssertTrue(statusExists)
         func state() -> [String: Any] {
             // Relaunch hides the status until the restored capture is acknowledged.
             // Poll absence as unready instead of resolving a nonexistent label.

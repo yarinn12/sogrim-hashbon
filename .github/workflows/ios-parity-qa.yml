@@ -108,6 +108,10 @@ jobs:
               [[ -f "$diagnostic" ]] || continue
               cp "$diagnostic" "$out/"
             done
+            for diagnostic in "$container/Documents"/native-parity-status-*.log; do
+              [[ -f "$diagnostic" ]] || continue
+              cp "$diagnostic" "$out/"
+            done
             xcrun xcresulttool export attachments --path "$out/result.xcresult" --output-path "$out/system-screenshots" > "$out/export-attachments.log" 2>&1
             xcrun simctl io "$PROBE_UDID" screenshot "$out/final-simulator.png"
           }
