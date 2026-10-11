@@ -32,11 +32,13 @@ test("participant onboarding explains manual names and account invites", () => {
   assert.match(participants, /חשבון/);
 });
 
-test("selected friend stays visible and focused after moving to the top", () => {
+test("selected friend stays visible and focused after moving to the top without an animated scroll", () => {
   const handler = section('if (["toggle-new-event-participant", "new-event-participant"].includes(action))', 'if (action === "focus-event-offline-name")');
+  const focus = section("function focusNewEventParticipantAfterSelection", "function renderEventCreationProgress");
   assert.match(handler, /focusNewEventParticipantAfterSelection\(participantId, searchQuery\)/);
-  assert.match(app, /scrollIntoView\(\{ block: "center", behavior:/);
-  assert.match(app, /prefers-reduced-motion: reduce/);
+  assert.match(focus, /input\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(focus, /document\.activeElement !== input/);
+  assert.match(focus, /scrollIntoView\(\{ block: "center", behavior: "instant" \}\)/);
 });
 
 test("new event currency picker keeps its existing choice route and offers name and code search", () => {

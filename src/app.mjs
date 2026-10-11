@@ -4521,9 +4521,11 @@ function focusNewEventParticipantAfterSelection(participantId, searchQuery = "")
   if (!input) return;
   input.focus({ preventScroll: true });
   window.requestAnimationFrame(() => {
-    if (!input.isConnected) return;
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    input.closest(".participant-pill")?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+    if (!input.isConnected || document.activeElement !== input) return;
+    // The selected row moves to the top when the list is rendered again. An
+    // animated scroll can lose to the touch scroll that brought the old row
+    // into view in WebKit, leaving the newly focused row above the viewport.
+    input.closest(".participant-pill")?.scrollIntoView({ block: "center", behavior: "instant" });
   });
 }
 
