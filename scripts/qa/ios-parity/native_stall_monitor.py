@@ -23,6 +23,7 @@ from pathlib import Path
 MAX_BYTES = 64 * 1024 * 1024
 MAX_SECONDS = 600
 GAP_SECONDS = 5
+STARTUP_SECONDS = 20
 SESSION_FILE = re.compile(r"native-parity-status-([0-9A-Fa-f-]{36})\.log\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
 UDID = re.compile(r"[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\Z")
@@ -30,6 +31,10 @@ UDID = re.compile(r"[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\Z")
 
 class MonitorUnavailable(Exception):
     """Evidence is insufficient to identify an owned sample target."""
+
+    def __init__(self, reason, details=None):
+        super().__init__(reason)
+        self.details = details or {}
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,7 @@ class Assessment:
     gap_seconds: float = 0.0
     journal_path: Path | None = None
     first_time: float = 0.0
+    elapsed_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -68,7 +74,7 @@ def _safe_child(path, parent):
 
 
 def assess_journal(documents, source_sha, source_tree, run_started, now):
-    """Return a candidate only for a current session's >5 s pre-keyboard gap."""
+    """Identify a current session's stalled startup or pre-keyboard gap."""
     documents = Path(documents)
     if documents.is_symlink():
         return Assessment(False, "symlink-journal")
@@ -114,6 +120,18 @@ def assess_journal(documents, source_sha, source_tree, run_started, now):
     if ended:
         return Assessment(False, "phase-ended", session=session, journal_path=path, first_time=times[0])
     if not profile_seen:
+        appeared = next((row["time"] for row in rows if row.get("event") == "viewDidAppear"), None)
+        still_starting = any(row.get("event") == "decoded" and row.get("phase") in {"starting", "missing"}
+                             and row.get("nativeStatusReady") is False for row in rows)
+        ready = any((row.get("event") == "decoded" and row.get("nativeStatusReady") is True)
+                    or (row.get("event") == "captureReceived" and row.get("phase") in {"home", "restored"})
+                    for row in rows)
+        if appeared is not None and still_starting and not ready:
+            elapsed = now - appeared
+            return Assessment(elapsed > STARTUP_SECONDS,
+                              "startup-not-ready" if elapsed > STARTUP_SECONDS else "startup-under-threshold",
+                              session=session, phase="startup-not-ready", journal_path=path,
+                              first_time=times[0], elapsed_seconds=elapsed)
         return Assessment(False, "before-profile", session=session, journal_path=path, first_time=times[0])
     gap = now - times[-1]
     if gap <= GAP_SECONDS:
@@ -123,7 +141,8 @@ def assess_journal(documents, source_sha, source_tree, run_started, now):
 
 def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree,
                   device_rows, app_container, data_container, process_rows,
-                  journal_path, own_uid, device_root, journal_first_time=None, prior_identity=None):
+                  journal_path, own_uid, device_root, journal_first_time=None, prior_identity=None,
+                  process_scan=None):
     """Check exact simulator, installed bundle, source, and a unique owned PID."""
     if not UDID.fullmatch(udid) or not SHA.fullmatch(expected_sha) or not SHA.fullmatch(expected_tree):
         raise MonitorUnavailable("invalid-source-or-device-identity")
@@ -166,15 +185,20 @@ def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree
     if not executable.is_file():
         raise MonitorUnavailable("bundle-executable-missing")
     matching = [row for row in process_rows if row.command == str(executable) or row.command.startswith(str(executable) + " ")]
+    scan = process_scan or {}
+    details = {"candidateCount": len(matching),
+               "parserFailures": scan.get("parserFailures", 0),
+               "commandLength": scan.get("commandLength", max((len(row.command) for row in process_rows), default=0)),
+               "pathDigest": hashlib.sha256(str(executable).encode("utf8")).hexdigest()}
     if len(matching) != 1:
-        raise MonitorUnavailable("app-pid-not-unique")
+        raise MonitorUnavailable("app-pid-not-unique", details)
     process = matching[0]
     if process.pid <= 0 or process.uid != own_uid or not process.started or process.start_epoch <= 0:
-        raise MonitorUnavailable("app-pid-not-owned")
+        raise MonitorUnavailable("app-pid-not-owned", details)
     if journal_first_time is not None and process.start_epoch > journal_first_time + 1:
-        raise MonitorUnavailable("journal-predates-app-process")
+        raise MonitorUnavailable("journal-predates-app-process", details)
     if prior_identity is not None and process != prior_identity:
-        raise MonitorUnavailable("app-pid-reused-or-changed")
+        raise MonitorUnavailable("app-pid-reused-or-changed", details)
     return process
 
 
@@ -199,6 +223,7 @@ class DarwinProbe:
         return [row for items in payload["devices"].values() for row in items]
 
     def processes(self):
+        self.last_process_scan = {"parserFailures": 0, "commandLength": 0}
         output = self.command(["ps", "-axo", "pid=,uid=,lstart=,command="])
         rows = []
         pattern = re.compile(r"^\s*(\d+)\s+(\d+)\s+((?:\S+\s+){4}\S+)\s+(.+)$")
@@ -208,8 +233,12 @@ class DarwinProbe:
                 try:
                     start_epoch = datetime.strptime(match[3], "%a %b %d %H:%M:%S %Y").timestamp()
                 except ValueError:
+                    self.last_process_scan["parserFailures"] += 1
                     continue
                 rows.append(ProcessIdentity(int(match[1]), int(match[2]), match[3], match[4], start_epoch))
+                self.last_process_scan["commandLength"] = max(self.last_process_scan["commandLength"], len(match[4]))
+            elif line.strip():
+                self.last_process_scan["parserFailures"] += 1
         return rows
 
 
@@ -265,11 +294,23 @@ def run_observer(args, probe=None, system_name=None):
     out = Path(args.output_dir)
     report = {"sourceSha": args.source_sha, "sourceTree": args.source_tree,
               "udid": args.udid, "bundleId": args.bundle_id, "startedWall": time.time(),
-              "status": "unavailable", "lastReason": "not-started", "samples": [], "errors": []}
+              "status": "unavailable", "lastReason": "not-started", "containerState": "unresolved",
+              "samples": [], "errors": [], "diagnostics": []}
     start = time.monotonic()
     start_cpu = time.process_time()
     run_started = report["startedWall"]
     probe = probe or DarwinProbe(args.udid, args.bundle_id)
+    def record_diagnostic(reason, container_state, assessment=None, details=None):
+        row = {"reason": reason[:120], "containerState": container_state}
+        if assessment is not None:
+            row.update(session=assessment.session, phase=assessment.phase,
+                       elapsedSeconds=assessment.elapsed_seconds)
+        if details:
+            row.update({key: details[key] for key in
+                        ("candidateCount", "parserFailures", "commandLength", "pathDigest")
+                        if key in details})
+        if row not in report["diagnostics"] and len(report["diagnostics"]) < 32:
+            report["diagnostics"].append(row)
     try:
         if not platform_supported(system_name or platform.system()):
             report["lastReason"] = "unsupported-os"
@@ -285,8 +326,10 @@ def run_observer(args, probe=None, system_name=None):
             if cached is None:
                 try:
                     cached = probe.containers()
+                    report["containerState"] = "resolved"
                 except (OSError, subprocess.SubprocessError, MonitorUnavailable) as error:
                     report["lastReason"] = f"container-unavailable:{error}"
+                    record_diagnostic("container-unavailable", "lookup-failed")
                     time.sleep(0.5)
                     continue
             app, data = cached
@@ -295,15 +338,27 @@ def run_observer(args, probe=None, system_name=None):
             if assessment.eligible:
                 key = assessment.session + ":" + assessment.phase
                 if sampled.get(key, 0) < 2 and time.monotonic() - last_sample_at.get(key, 0) >= 2:
+                    container_state = "resolved"
                     try:
-                        if probe.containers() != cached:
+                        try:
+                            current_containers = probe.containers()
+                        except (OSError, subprocess.SubprocessError, MonitorUnavailable):
+                            container_state = "lookup-failed"
+                            report["containerState"] = container_state
+                            raise
+                        if current_containers != cached:
+                            container_state = "changed"
+                            report["containerState"] = container_state
                             raise MonitorUnavailable("container-changed")
+                        container_state = "stable"
+                        report["containerState"] = container_state
                         identity = verify_target(udid=args.udid, bundle_id=args.bundle_id,
                             manifest_path=args.manifest, expected_sha=args.source_sha, expected_tree=args.source_tree,
                             device_rows=probe.devices(), app_container=app, data_container=data,
                             process_rows=probe.processes(), journal_path=assessment.journal_path,
                             own_uid=os.getuid(), device_root=Path.home() / "Library/Developer/CoreSimulator/Devices" / args.udid,
-                            journal_first_time=assessment.first_time, prior_identity=identities.get(key))
+                            journal_first_time=assessment.first_time, prior_identity=identities.get(key),
+                            process_scan=getattr(probe, "last_process_scan", None))
                         identities[key] = identity
                         owned_key = key + f":{identity.pid}:{identity.started}"
                         if sampled.get(owned_key, 0) < 2:
@@ -316,11 +371,14 @@ def run_observer(args, probe=None, system_name=None):
                             sample = capture_sample(probe, identity, out, attempt_index,
                                                     MAX_SECONDS - (time.monotonic() - start), used_bytes)
                             sample.update(session=assessment.session, phase=assessment.phase,
-                                          gapSeconds=assessment.gap_seconds, process=asdict(identity))
+                                          gapSeconds=assessment.gap_seconds,
+                                          elapsedSeconds=assessment.elapsed_seconds, process=asdict(identity))
                             report["samples"].append(sample)
                             report["status"] = "sampled" if sample["exit"] == 0 else "sample-command-failed"
                     except (OSError, ValueError, subprocess.SubprocessError, MonitorUnavailable) as error:
                         message = f"{type(error).__name__}:{error}"[:400]
+                        record_diagnostic(str(error), container_state, assessment,
+                                          getattr(error, "details", None))
                         if message not in report["errors"] and len(report["errors"]) < 32:
                             report["errors"].append(message)
                         report["status"] = "unavailable"
@@ -329,7 +387,8 @@ def run_observer(args, probe=None, system_name=None):
         if time.monotonic() - start >= MAX_SECONDS:
             report["lastReason"] = "observer-time-limit"
         elif report["status"] == "unavailable" and not report["errors"] and report["lastReason"] in {
-                "no-journal", "empty-journal", "before-profile", "no-gap", "phase-ended"}:
+                "no-journal", "empty-journal", "before-profile", "startup-under-threshold",
+                "no-gap", "phase-ended"}:
             report["status"] = "no-sample"
     except Exception as error:
         traceback.print_exc()

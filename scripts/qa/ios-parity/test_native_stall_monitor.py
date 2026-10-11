@@ -1,6 +1,7 @@
 """Behavioral controls for the read-only native simulator stall observer."""
 
 import json
+import hashlib
 import os
 import plistlib
 import sys
@@ -58,6 +59,80 @@ class NativeStallMonitorTests(unittest.TestCase):
                     own_uid=self.process.uid, device_root=self.device)
         args.update(changes)
         return verify_target(**args)
+
+    def startup_journal(self, ready=False, last_time=1791691621.0, phase="starting", ended=False):
+        rows = [
+            {"event": "viewDidAppear", "time": 1791691600.0},
+            {"event": "timerScheduled", "time": 1791691600.1},
+            {"event": "decoded", "phase": phase, "nativeStatusReady": False, "time": 1791691602.0},
+            {"event": "decoded", "phase": phase, "nativeStatusReady": False, "time": last_time},
+        ]
+        if ready:
+            rows.append({"event": "decoded", "phase": "home", "nativeStatusReady": True, "time": 1791691622.0})
+        if ended:
+            rows.append({"event": "captureReceived", "phase": "keyboard-amount", "time": 1791691622.0})
+        return self.journal("".join(json.dumps(dict(row, session=SESSION, sourceSha=SHA, sourceTree=TREE)) + "\n"
+                                    for row in rows), mtime=1791691622.0)
+
+    def test_continuous_startup_not_ready_is_sample_eligible_before_xctest_timeout(self):
+        self.startup_journal(last_time=1791691618.0)
+        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
+        self.assertFalse(early.eligible)
+        self.assertEqual(early.reason, "startup-under-threshold")
+        path = self.startup_journal()
+        result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623)
+        self.assertTrue(result.eligible, result.reason)
+        self.assertEqual(result.phase, "startup-not-ready")
+        self.assertEqual(result.journal_path, path)
+        self.assertEqual(result.elapsed_seconds, 23)
+        self.assertEqual(result.gap_seconds, 0)
+        self.assertEqual(self.target(path, journal_first_time=result.first_time), self.process)
+
+    def test_ready_or_foreign_startup_is_not_sample_eligible(self):
+        self.startup_journal(ready=True)
+        self.assertFalse(assess_journal(self.documents, SHA, TREE, 1791691590, 1791691624).eligible)
+        self.assertEqual(assess_journal(self.documents, "a" * 40, TREE, 1791691590, 1791691624).reason,
+                         "source-mismatch")
+        self.assertEqual(assess_journal(self.documents, SHA, TREE, 1791691601, 1791691624).reason,
+                         "stale-or-invalid-time")
+        self.startup_journal(ended=True)
+        self.assertEqual(assess_journal(self.documents, SHA, TREE, 1791691590, 1791691624).reason,
+                         "phase-ended")
+
+    def test_missing_only_decoded_phase_is_eligible_after_twenty_seconds(self):
+        self.startup_journal(phase="missing", last_time=1791691618.0)
+        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
+        self.assertFalse(early.eligible)
+        self.assertEqual(early.reason, "startup-under-threshold")
+        self.startup_journal(phase="missing")
+        result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623)
+        self.assertTrue(result.eligible, result.reason)
+        self.assertEqual(result.phase, "startup-not-ready")
+
+    def test_startup_without_view_appearance_or_after_home_capture_is_not_sampled(self):
+        path = self.startup_journal(phase="missing")
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows if row["event"] != "viewDidAppear"))
+        self.assertEqual(assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623).reason,
+                         "before-profile")
+        rows.append(dict(rows[-1], event="captureReceived", phase="home", time=1791691622.0))
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        self.assertEqual(assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623).reason,
+                         "before-profile")
+
+    def test_pid_identity_errors_distinguish_zero_and_multiple_matches_without_raw_paths(self):
+        path = self.journal()
+        scan = {"parserFailures": 2, "commandLength": 500}
+        for rows, count in (([], 0), ([self.process, self.process], 2)):
+            with self.subTest(count=count):
+                with self.assertRaises(MonitorUnavailable) as caught:
+                    self.target(path, process_rows=rows, process_scan=scan)
+                details = caught.exception.details
+                self.assertEqual(details["candidateCount"], count)
+                self.assertEqual(details["parserFailures"], 2)
+                self.assertEqual(details["commandLength"], 500)
+                self.assertEqual(details["pathDigest"], hashlib.sha256(str(self.executable).encode()).hexdigest())
+                self.assertNotIn(str(self.executable), json.dumps(details))
 
     def test_actual_f9_journal_gap_becomes_sample_eligible(self):
         path = self.journal()
@@ -167,12 +242,76 @@ class NativeStallMonitorTests(unittest.TestCase):
 
     def test_darwin_ps_parser_keeps_start_time_and_executable(self):
         row = f"29725 {self.process.uid} Sun Oct 11 04:06:31 2026 {self.executable}"
-        with patch.object(DarwinProbe, "command", return_value=row):
-            processes = DarwinProbe(UDID, BUNDLE).processes()
+        probe = DarwinProbe(UDID, BUNDLE)
+        with patch.object(DarwinProbe, "command", return_value=row + "\nmalformed process row"):
+            processes = probe.processes()
         self.assertEqual(len(processes), 1)
         self.assertEqual(processes[0].pid, self.process.pid)
         self.assertEqual(processes[0].command, str(self.executable))
         self.assertGreater(processes[0].start_epoch, 0)
+        self.assertEqual(probe.last_process_scan,
+                         {"parserFailures": 1, "commandLength": len(str(self.executable))})
+
+    def test_rejected_startup_pid_records_bounded_structured_diagnostic_without_sampling(self):
+        candidate = Assessment(True, "startup-not-ready", SESSION, "startup-not-ready", 0,
+                               self.documents / f"native-parity-status-{SESSION}.log", 1791691600, 23)
+        class Probe:
+            def containers(_self): return self.app, self.data
+            def devices(_self): return [{"udid": UDID, "state": "Booted"}]
+            def processes(_self): return []
+
+        for count in (0, 2):
+            with self.subTest(candidate_count=count):
+                output = self.root / f"observer-{count}"
+                output.mkdir()
+                stop = output / "stop"
+                args = SimpleNamespace(output_dir=output, stop_file=stop, source_sha=SHA,
+                                       source_tree=TREE, udid=UDID, bundle_id=BUNDLE, manifest=self.manifest)
+                clock = SimpleNamespace(now=0.0)
+                def sleep(seconds):
+                    clock.now += seconds
+                    if clock.now >= 3: stop.touch()
+                details = {"candidateCount": count, "parserFailures": 2, "commandLength": 500,
+                           "pathDigest": hashlib.sha256(str(self.executable).encode()).hexdigest()}
+                with patch("native_stall_monitor.assess_journal", return_value=candidate), \
+                     patch("native_stall_monitor.verify_target",
+                           side_effect=MonitorUnavailable("app-pid-not-unique", details)), \
+                     patch("native_stall_monitor.capture_sample") as sampler, \
+                     patch("native_stall_monitor.time.monotonic", side_effect=lambda: clock.now), \
+                     patch("native_stall_monitor.time.sleep", side_effect=sleep), \
+                     patch("native_stall_monitor.os.getuid", return_value=self.process.uid, create=True):
+                    report = run_observer(args, probe=Probe(), system_name="Darwin")
+                sampler.assert_not_called()
+                self.assertEqual(report["status"], "unavailable")
+                self.assertEqual(report["containerState"], "stable")
+                self.assertEqual(len(report["diagnostics"]), 1)
+                self.assertEqual(report["diagnostics"][0]["candidateCount"], count)
+                self.assertEqual(report["diagnostics"][0]["parserFailures"], 2)
+                self.assertEqual(report["diagnostics"][0]["commandLength"], 500)
+                self.assertEqual(report["diagnostics"][0]["pathDigest"], details["pathDigest"])
+                self.assertEqual(json.loads((output / "monitor-report.json").read_text())["diagnostics"],
+                                 report["diagnostics"])
+
+    def test_container_lookup_failure_is_recorded_once_without_sampling(self):
+        output = self.root / "observer-no-container"
+        output.mkdir()
+        stop = output / "stop"
+        args = SimpleNamespace(output_dir=output, stop_file=stop, source_sha=SHA,
+                               source_tree=TREE, udid=UDID, bundle_id=BUNDLE, manifest=self.manifest)
+        class Probe:
+            def containers(_self): raise MonitorUnavailable("simctl-timeout")
+        clock = SimpleNamespace(now=0.0)
+        def sleep(seconds):
+            clock.now += seconds
+            if clock.now >= 3: stop.touch()
+        with patch("native_stall_monitor.time.monotonic", side_effect=lambda: clock.now), \
+             patch("native_stall_monitor.time.sleep", side_effect=sleep), \
+             patch("native_stall_monitor.capture_sample") as sampler:
+            report = run_observer(args, probe=Probe(), system_name="Darwin")
+        sampler.assert_not_called()
+        self.assertEqual(report["containerState"], "unresolved")
+        self.assertEqual(report["diagnostics"],
+                         [{"reason": "container-unavailable", "containerState": "lookup-failed"}])
 
     def test_sample_command_is_bounded_and_rechecks_owned_process(self):
         class Probe:
@@ -232,6 +371,36 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.assertEqual(sampler.call_count, 2)
         self.assertEqual(report["status"], "unavailable")
         self.assertTrue(any("sample-failed" in message for message in report["errors"]))
+
+    def test_owned_startup_candidate_samples_at_most_twice(self):
+        output = self.root / "observer-startup-sample"
+        output.mkdir()
+        stop = output / "stop"
+        args = SimpleNamespace(output_dir=output, stop_file=stop, source_sha=SHA,
+                               source_tree=TREE, udid=UDID, bundle_id=BUNDLE, manifest=self.manifest)
+        class Probe:
+            def containers(_self): return self.app, self.data
+            def devices(_self): return [{"udid": UDID, "state": "Booted"}]
+            def processes(_self): return [self.process]
+        clock = SimpleNamespace(now=0.0)
+        def sleep(seconds):
+            clock.now += seconds
+            if clock.now >= 7: stop.touch()
+        candidate = Assessment(True, "startup-not-ready", SESSION, "startup-not-ready", 0,
+                               self.documents / f"native-parity-status-{SESSION}.log", 1791691600, 23)
+        with patch("native_stall_monitor.assess_journal", return_value=candidate), \
+             patch("native_stall_monitor.verify_target", return_value=self.process) as verifier, \
+             patch("native_stall_monitor.capture_sample", return_value={"exit": 0}) as sampler, \
+             patch("native_stall_monitor.time.monotonic", side_effect=lambda: clock.now), \
+             patch("native_stall_monitor.time.sleep", side_effect=sleep), \
+             patch("native_stall_monitor.os.getuid", return_value=self.process.uid, create=True):
+            report = run_observer(args, probe=Probe(), system_name="Darwin")
+        self.assertEqual(verifier.call_count, 2)
+        self.assertEqual(sampler.call_count, 2)
+        self.assertEqual(report["status"], "sampled")
+        self.assertEqual([sample["phase"] for sample in report["samples"]],
+                         ["startup-not-ready", "startup-not-ready"])
+        self.assertEqual([sample["elapsedSeconds"] for sample in report["samples"]], [23, 23])
 
 
 if __name__ == "__main__":
