@@ -262,10 +262,9 @@ async function activateCurrentRelease() {
 }
 
 async function clientAllowsNavigation(client) {
-  // Updated pages can veto navigation while a draft or sync is pending.
-  // Older installed pages do not answer this message; keep their existing
-  // worker-driven recovery behavior after the brief compatibility timeout.
-  if (!client.postMessage) return true;
+  // Only an explicit, timely reply authorizes a worker-driven navigation.
+  // An old, suspended or busy page may hold work that this worker cannot see.
+  if (!client.postMessage) return false;
   if (typeof MessageChannel !== "function") return false;
   return new Promise(resolve => {
     const channel = new MessageChannel();
@@ -278,7 +277,7 @@ async function clientAllowsNavigation(client) {
       channel.port2.close();
       resolve(allowed);
     };
-    const timeout = setTimeout(() => finish(true), 500);
+    const timeout = setTimeout(() => finish(false), 500);
     channel.port1.onmessage = event => finish(event.data?.safe === true);
     try {
       client.postMessage({ type: "SOGRIM_UPDATE_NAVIGATION_CHECK" }, [channel.port2]);

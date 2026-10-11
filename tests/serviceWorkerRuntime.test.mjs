@@ -226,7 +226,7 @@ test("a waiting worker can be activated explicitly on iPhone", async () => {
   assert.equal(worker.skipWaitingCalls, 1);
 });
 
-test("an updated worker reloads open installed-app windows even when old page code is stuck", async () => {
+test("an updated worker leaves an unresponsive old page intact", async () => {
   const navigations = [];
   const staleWindow = {
     id: "stale-installed-app",
@@ -242,7 +242,47 @@ test("an updated worker reloads open installed-app windows even when old page co
 
   await worker.dispatchActivate();
 
-  assert.deepEqual(navigations, [staleWindow.url]);
+  assert.deepEqual(navigations, []);
+});
+
+test("worker navigates only after an explicit safe reply", async () => {
+  const navigations = [];
+  const client = {
+    id: "safe-client",
+    url: "https://sogrim-hesbon-app.vercel.app/",
+    postMessage(_message, [port]) { port.postMessage({ safe: true }); },
+    async navigate(url) { navigations.push(url); }
+  };
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v511"],
+    windowClients: [client]
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, [client.url]);
+});
+
+test("no reply and a reply after timeout never authorize navigation", async () => {
+  let delayedPort;
+  const navigations = [];
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v511"],
+    windowClients: [{
+      id: "busy-client",
+      url: "https://sogrim-hesbon-app.vercel.app/",
+      postMessage(_message, [port]) { delayedPort = port; },
+      async navigate(url) { navigations.push(url); }
+    }],
+    setTimeoutImpl(callback, delay) {
+      queueMicrotask(callback);
+      return delay;
+    },
+    clearTimeoutImpl() {}
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, []);
+  delayedPort.postMessage({ safe: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(navigations, []);
 });
 
 test("worker does not force a navigation when a client has unsynced work", async () => {

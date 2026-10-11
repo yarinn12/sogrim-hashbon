@@ -21,3 +21,13 @@ test("an unreadable outbox conservatively postpones a PWA reload", () => {
   const unreadable = { get length() { throw new Error("SecurityError"); } };
   assert.equal(hasUpdateSensitiveWork({ document: null, storage: unreadable, checkOutbox: true }), true);
 });
+
+test("group creation and editing remain update-sensitive after focus moves to a button", () => {
+  for (const kind of ["group-create", "group-edit"]) {
+    const document = {
+      activeElement: { matches: () => false, closest: () => ({}) },
+      querySelector: selector => selector.includes(`[data-screen-kind='${kind}']`) ? {} : null
+    };
+    assert.equal(hasUpdateSensitiveWork({ document, storage: storage() }), true, kind);
+  }
+});

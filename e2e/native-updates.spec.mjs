@@ -116,3 +116,56 @@ test("staged release, failed check and open draft never trap the app", async ({ 
   await expect(page.locator("#mandatory-update-gate")).toBeHidden();
   await expect(page.locator("html")).not.toHaveClass(/mandatory-update-checking|mandatory-update-required/);
 });
+
+test("a group draft stays open after focus moves to a button", async ({ page }) => {
+  let fullyAvailable = false;
+  const policy = () => ({ latestAvailableBuild: 188, minimumSupportedBuild: 188,
+    releaseAvailableToAll: fullyAvailable, critical: true, storeUrl: playUrl });
+  const fixture = await nativeFixture(page, "android", 187, policy);
+  await expect(page.locator("html")).not.toHaveClass(/mandatory-update-checking/);
+  fullyAvailable = true;
+  for (const kind of ["group-create", "group-edit"]) {
+    await page.evaluate(screenKind => {
+      document.querySelector(".qa-group-draft")?.remove();
+      document.querySelector("#app")?.insertAdjacentHTML("beforeend",
+        `<section class="qa-group-draft" data-screen-kind="${screenKind}"><input value="Trip friends"><button type="button">Save</button></section>`);
+      document.querySelector(".qa-group-draft button")?.focus();
+    }, kind);
+    await fixture.resume();
+    await expect(page.locator("#mandatory-update-gate")).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.tagName)).toBe("BUTTON");
+  }
+  await page.locator(".qa-group-draft").evaluate(element => element.remove());
+  await page.evaluate(() => document.dispatchEvent(new Event("settle-friends:screen-rendered")));
+  await expect(page.locator("#mandatory-update-gate")).toBeVisible();
+});
+
+test("a changed profile field remains update-sensitive after focus moves", async ({ page }) => {
+  let fullyAvailable = false;
+  const policy = () => ({ latestAvailableBuild: 188, minimumSupportedBuild: 188,
+    releaseAvailableToAll: fullyAvailable, critical: true, storeUrl: playUrl });
+  const fixture = await nativeFixture(page, "android", 187, policy);
+  const name = page.locator('[data-action="profile-name"]');
+  await name.fill("Alex Smith");
+  await page.locator('[data-action="save-profile"]').focus();
+  fullyAvailable = true;
+  await fixture.resume();
+  await expect(page.locator("#mandatory-update-gate")).toHaveCount(0);
+  await name.fill("");
+  await page.locator('[data-action="save-profile"]').focus();
+  await page.evaluate(() => document.dispatchEvent(new Event("settle-friends:screen-rendered")));
+  await expect(page.locator("#mandatory-update-gate")).toBeVisible();
+});
+
+test("a critical gate clears offline and is rechecked on reconnect", async ({ page, context }) => {
+  const policy = () => ({ latestAvailableBuild: 188, minimumSupportedBuild: 188,
+    releaseAvailableToAll: true, critical: true, storeUrl: playUrl });
+  await nativeFixture(page, "android", 187, policy);
+  const gate = page.locator("#mandatory-update-gate");
+  await expect(gate).toBeVisible();
+  await context.setOffline(true);
+  await expect(gate).toBeHidden();
+  await expect(page.locator("html")).not.toHaveClass(/mandatory-update-required/);
+  await context.setOffline(false);
+  await expect(gate).toBeVisible();
+});

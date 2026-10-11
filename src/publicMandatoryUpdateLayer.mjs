@@ -201,6 +201,7 @@ let verifiedPolicy = null;
 let verifiedBuild = 0;
 let visibleDecision = null;
 let previousFocus = null;
+let connectivityGeneration = 0;
 
 if (PLATFORM) {
   installStyles();
@@ -211,6 +212,10 @@ if (PLATFORM) {
   });
   window.addEventListener("online", () => {
     queueLifecycleCheck().catch(() => {});
+  });
+  window.addEventListener("offline", () => {
+    connectivityGeneration += 1;
+    clearVerifiedPolicy();
   });
   window.addEventListener("sogrim:sync-status", reconsiderVerifiedPolicy);
   document.addEventListener("settle-friends:screen-rendered", reconsiderVerifiedPolicy);
@@ -249,7 +254,7 @@ function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
 
   checkPromise = performUpdateCheck()
     .catch((error) => {
-      hideUpdatePrompts();
+      clearVerifiedPolicy();
       throw error;
     })
     .finally(() => {
@@ -259,6 +264,11 @@ function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
 }
 
 async function performUpdateCheck() {
+  const generation = connectivityGeneration;
+  if (navigator.onLine === false) {
+    clearVerifiedPolicy();
+    return;
+  }
   const freshRequest = Promise.all([nativeBuildNumber(), refreshRuntimeConfigNow()]);
 
   const firstResult = await Promise.race([
@@ -270,11 +280,13 @@ async function performUpdateCheck() {
   ]);
 
   if (firstResult.status === "ready") {
-    applyUpdatePolicy(firstResult.config?.updates?.[PLATFORM], firstResult.build);
+    if (generation === connectivityGeneration) {
+      applyUpdatePolicy(firstResult.config?.updates?.[PLATFORM], firstResult.build);
+    }
     return;
   }
   if (firstResult.status === "failed") {
-    hideUpdatePrompts();
+    if (generation === connectivityGeneration) clearVerifiedPolicy();
     return;
   }
 
@@ -282,10 +294,19 @@ async function performUpdateCheck() {
   releaseUpdateCheck();
   try {
     const [build, freshConfig] = await freshRequest;
-    applyUpdatePolicy(freshConfig?.updates?.[PLATFORM], build);
+    if (generation === connectivityGeneration) {
+      applyUpdatePolicy(freshConfig?.updates?.[PLATFORM], build);
+    }
   } catch {
-    hideUpdatePrompts();
+    if (generation === connectivityGeneration) clearVerifiedPolicy();
   }
+}
+
+function clearVerifiedPolicy() {
+  verifiedPolicy = null;
+  verifiedBuild = 0;
+  visibleDecision = null;
+  hideUpdatePrompts();
 }
 
 function applyUpdatePolicy(policy, build) {
@@ -295,6 +316,10 @@ function applyUpdatePolicy(policy, build) {
 }
 
 function reconsiderVerifiedPolicy() {
+  if (navigator.onLine === false) {
+    clearVerifiedPolicy();
+    return;
+  }
   if (!verifiedPolicy) {
     hideUpdatePrompts();
     return;
