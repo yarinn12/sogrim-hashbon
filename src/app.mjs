@@ -1,5 +1,5 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
-import { assignSourcePayerDifference, convertExpenseInput, fetchEcbRate, formatSourceAmount, parseSourceAmount, rateIsStale, summarizeSourcePayers } from "./domain/expenseFx.mjs";
+import { assignSourcePayerDifference, convertExpenseInput, fetchOpenAccessRate, formatSourceAmount, parseSourceAmount, rateIsStale, summarizeSourcePayers, FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE, FX_OPEN_ACCESS_ATTRIBUTION_URL } from "./domain/expenseFx.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
 import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
@@ -8369,7 +8369,7 @@ function renderExpenseForm(event) {
         ${
           flowStep === "review"
             ? `
-                <button class="primary-button" data-action="save-expense" data-event-id="${event.id}" ${canEdit && expenseFlowReady("review") ? "" : "disabled"}>${expenseDraft.id ? "שמור שינויים" : "שמור הוצאה"}</button>
+                <button class="primary-button" data-action="save-expense" data-event-id="${event.id}" ${canEdit && expenseFlowReady("review") ? "" : "disabled"}>${expenseUsesForeignCurrency(event) ? (expenseDraft.id ? "אשר סכום ושמור שינויים" : "אשר סכום ושמור הוצאה") : (expenseDraft.id ? "שמור שינויים" : "שמור הוצאה")}</button>
                 ${
                   expenseDraft.id
                     ? ""
@@ -8738,7 +8738,7 @@ function renderExpenseFlowReview(event, participants) {
     <section class="expense-flow-review" aria-label="סיכום ההוצאה לפני שמירה">
       <div class="expense-review-list">
         ${renderExpenseReviewRow("amount", "סכום", totalLabel)}
-        ${expenseUsesForeignCurrency(event) ? `<p class="muted">שער ${escapeHtml(expenseDraft.fxRate || "טרם נבחר")} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(expenseDraft.sourceCurrency)} · ${expenseDraft.fxMode === "automatic" ? `ECB דרך Frankfurter v2, ${escapeHtml(expenseDraft.fxSourceDate || "ללא תאריך")}` : "שער אישי"}</p>` : ""}
+        ${expenseUsesForeignCurrency(event) ? `<p class="muted">שער משוער ${escapeHtml(expenseDraft.fxRate || "טרם נבחר")} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(expenseDraft.sourceCurrency)} · ${expenseFxSourceDescription(expenseDraft.fxMode === "automatic" ? expenseDraft.fxRateSource : "user", expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}. יש לבדוק את הסכום המומר ולאשר אותו לפני שמירה.</p>` : ""}
         ${renderExpenseReviewRow("name", "שם ההוצאה", expenseDraft.name.trim())}
         ${renderExpenseReviewRow("payer", "שילם", values.payer)}
         ${renderExpenseReviewRow("participants", "משתתפים", values.participants)}
@@ -9037,6 +9037,21 @@ function formatExpenseInputMoney(event, amount) {
     : formatEventMoney(event, amount);
 }
 
+function formatFxUpdateTime(value) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })
+    : "טרם התקבל";
+}
+
+function expenseFxSourceDescription(source, sourceDate, sourceUpdatedAt, nextUpdateAt) {
+  if (source === FX_OPEN_ACCESS_SOURCE) {
+    return `שער אינדיקטיבי · עודכן ${escapeHtml(formatFxUpdateTime(sourceUpdatedAt))} · עדכון הבא ${escapeHtml(formatFxUpdateTime(nextUpdateAt))} · <a href="${FX_OPEN_ACCESS_ATTRIBUTION_URL}" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a>`;
+  }
+  if (source === FX_LEGACY_ECB_SOURCE) return `ECB דרך Frankfurter v2 · תאריך שער ${escapeHtml(sourceDate || "לא ידוע")}`;
+  return "שער אישי";
+}
+
 function expenseFxResult(event = getEvent(expenseDraft?.eventId)) {
   if (!expenseUsesForeignCurrency(event)) return null;
   if (!expenseDraft.fxRate || !["automatic", "manual"].includes(expenseDraft.fxMode)) throw new Error("יש לבחור שער המרה לפני שמירה.");
@@ -9047,8 +9062,11 @@ function expenseFxResult(event = getEvent(expenseDraft?.eventId)) {
     sourcePayers: expenseDraft.payers,
     rate: expenseDraft.fxRate,
     mode: expenseDraft.fxMode,
+    rateSource: expenseDraft.fxMode === "automatic" ? expenseDraft.fxRateSource : "user",
     sourceDate: expenseDraft.fxSourceDate,
-    fetchedAt: expenseDraft.fxFetchedAt
+    fetchedAt: expenseDraft.fxFetchedAt,
+    sourceUpdatedAt: expenseDraft.fxSourceUpdatedAt,
+    nextUpdateAt: expenseDraft.fxNextUpdateAt
   });
   if (expenseDraft.fxMode === "automatic" && rateIsStale(expenseDraft.fxSourceDate) &&
     JSON.stringify(result.fxConversion) !== JSON.stringify(expenseDraft.existingFxConversion ?? null)) {
@@ -9091,7 +9109,7 @@ function renderExpenseFxFields(event) {
       <label class="field"><span>שער: 1 ${escapeHtml(source)} = כמה ${escapeHtml(eventCurrency(event))}</span>
         <input data-action="expense-fx-rate" name="expenseFxRate" inputmode="decimal" dir="ltr" value="${escapeAttribute(expenseDraft.fxRate ?? "")}" ${expenseDraft.fxMode === "manual" ? "" : "readonly"} placeholder="לדוגמה 3.5" />
       </label>
-      ${expenseDraft.fxMode === "automatic" ? `<p class="muted">מקור: ECB דרך Frankfurter v2 · תאריך שער: ${escapeHtml(expenseDraft.fxSourceDate ?? "טרם התקבל")}</p><button type="button" class="secondary-button" data-action="expense-fx-refresh" ${expenseDraft.fxLoading ? "disabled" : ""}>בדוק שער עדכני</button>` : ""}
+      ${expenseDraft.fxMode === "automatic" ? `<p class="muted" data-expense-fx-source>מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}</p><button type="button" class="secondary-button" data-action="expense-fx-refresh" ${expenseDraft.fxLoading ? "disabled" : ""}>בדוק שער עדכני</button>` : ""}
       ${renderExpenseFxPreview(event)}
     </section>` : ""}
   `;
@@ -9106,26 +9124,48 @@ function syncExpenseFxPreview() {
   if (template.content.firstElementChild) current.replaceWith(template.content.firstElementChild);
 }
 
-async function requestExpenseAutomaticRate() {
+function syncExpenseFxControls() {
+  if (!expenseDraft) return;
+  const rateInput = app.querySelector('[data-action="expense-fx-rate"]');
+  if (rateInput && rateInput.value !== (expenseDraft.fxRate ?? "")) rateInput.value = expenseDraft.fxRate ?? "";
+  const source = app.querySelector("[data-expense-fx-source]");
+  if (source) source.innerHTML = `מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}`;
+  const refresh = app.querySelector('[data-action="expense-fx-refresh"]');
+  if (refresh) refresh.disabled = Boolean(expenseDraft.fxLoading);
+  syncExpenseFxPreview();
+  syncExpenseFlowActionState();
+}
+
+async function requestExpenseAutomaticRate({ forceRefresh = false } = {}) {
   const draft = expenseDraft;
   const event = getEvent(draft?.eventId);
   if (!draft || !expenseUsesForeignCurrency(event) || draft.fxLoading) return;
   const sourceCurrency = draft.sourceCurrency;
   const targetCurrency = eventCurrency(event);
   const requestId = (draft.fxRequestId ?? 0) + 1;
+  const previousMode = draft.fxMode;
   draft.fxRequestId = requestId;
-  const previousQuote = { rate: draft.fxRate, sourceDate: draft.fxSourceDate, fetchedAt: draft.fxFetchedAt };
+  const previousQuote = { rate: draft.fxRate, sourceDate: draft.fxSourceDate, fetchedAt: draft.fxFetchedAt,
+    rateSource: draft.fxRateSource, sourceUpdatedAt: draft.fxSourceUpdatedAt, nextUpdateAt: draft.fxNextUpdateAt };
   draft.fxMode = "automatic";
+  draft.fxRateSource = FX_OPEN_ACCESS_SOURCE;
   draft.fxRate = "";
+  draft.fxSourceDate = null;
+  draft.fxFetchedAt = null;
+  draft.fxSourceUpdatedAt = null;
+  draft.fxNextUpdateAt = null;
   draft.fxError = "";
   draft.fxLoading = true;
-  render();
+  if (previousMode === "automatic") syncExpenseFxControls();
+  else render();
   try {
-    const quote = await fetchEcbRate(sourceCurrency, targetCurrency);
+    const quote = await fetchOpenAccessRate(sourceCurrency, targetCurrency, { forceRefresh });
     if (expenseDraft !== draft || draft.fxRequestId !== requestId || draft.fxMode !== "automatic" || draft.sourceCurrency !== sourceCurrency || eventCurrency(getEvent(draft.eventId)) !== targetCurrency) return;
     draft.fxRate = quote.rate;
     draft.fxSourceDate = quote.sourceDate;
     draft.fxFetchedAt = quote.fetchedAt;
+    draft.fxSourceUpdatedAt = quote.sourceUpdatedAt;
+    draft.fxNextUpdateAt = quote.nextUpdateAt;
     draft.fxError = quote.stale ? `השער מתאריך ${quote.sourceDate} ישן מדי. אפשר להזין שער אישי.` : "";
   } catch (error) {
     if (expenseDraft !== draft || draft.fxRequestId !== requestId || draft.fxMode !== "automatic") return;
@@ -9133,6 +9173,9 @@ async function requestExpenseAutomaticRate() {
       draft.fxRate = previousQuote.rate;
       draft.fxSourceDate = previousQuote.sourceDate;
       draft.fxFetchedAt = previousQuote.fetchedAt;
+      draft.fxRateSource = previousQuote.rateSource;
+      draft.fxSourceUpdatedAt = previousQuote.sourceUpdatedAt;
+      draft.fxNextUpdateAt = previousQuote.nextUpdateAt;
     }
     draft.fxError = error instanceof Error && error.message !== "Failed to fetch"
       ? error.message : "לא ניתן לקבל שער כעת. אפשר להזין שער אישי.";
@@ -9140,8 +9183,7 @@ async function requestExpenseAutomaticRate() {
     if (expenseDraft === draft && draft.fxRequestId === requestId) {
       draft.fxLoading = false;
       rememberExpenseDraft();
-      render();
-      reactivateDialogAfterRender(".expense-modal", '[data-action="expense-total"]');
+      syncExpenseFxControls();
     }
   }
 }
@@ -9939,7 +9981,7 @@ function renderExpenseRow(event, expense) {
   if (expense.fxConversion) {
     try {
       const fx = expense.fxConversion;
-      fxOrigin = `<p class="expense-fx-origin">מקור: <bdi dir="ltr">${escapeHtml(formatSourceAmount(fx.sourceAmountMinorUnits, fx.sourceCurrency))} ${escapeHtml(fx.sourceCurrency)}</bdi> · שער ${escapeHtml(fx.rate)} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(fx.sourceCurrency)} · ${fx.mode === "automatic" ? `ECB, ${escapeHtml(fx.sourceDate)}` : "שער אישי"}</p>`;
+      fxOrigin = `<p class="expense-fx-origin">מקור: <bdi dir="ltr">${escapeHtml(formatSourceAmount(fx.sourceAmountMinorUnits, fx.sourceCurrency))} ${escapeHtml(fx.sourceCurrency)}</bdi> · שער ${escapeHtml(fx.rate)} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(fx.sourceCurrency)} · ${expenseFxSourceDescription(fx.source, fx.sourceDate, fx.sourceUpdatedAt, fx.nextUpdateAt)}</p>`;
     } catch { /* Invalid imported metadata never hides the expense itself. */ }
   }
 
@@ -9985,13 +10027,13 @@ function renderExpenseRow(event, expense) {
           </div>
         </details>
       </span>
+      ${fxOrigin}
       <details class="expense-participants-details" id="expense-participants-${escapeAttribute(expense.id)}">
         <summary aria-label="הצג את כל השותפים">
           <span>שותפים</span>
           <span class="expense-participants-count">${sharedParticipantIds.length}</span>
         </summary>
         ${expense.notes ? `<p class="expense-saved-notes">${escapeHtml(expense.notes)}</p>` : ""}
-        ${fxOrigin}
         ${expense.attachmentImage ? `<img class="expense-saved-image" src="${escapeAttribute(expense.attachmentImage)}" alt="תמונה מצורפת להוצאה ${escapeAttribute(expense.name)}" />` : ""}
         <p class="expense-participants-list-title" id="expense-participants-title-${escapeAttribute(expense.id)}">רשימת משתתפים</p>
         <div class="expense-participants-list" role="list" aria-labelledby="expense-participants-title-${escapeAttribute(expense.id)}"></div>
@@ -14118,7 +14160,7 @@ async function handleClick(event) {
   }
 
   if (action === "expense-fx-automatic" || action === "expense-fx-refresh") {
-    await requestExpenseAutomaticRate();
+    await requestExpenseAutomaticRate({ forceRefresh: action === "expense-fx-refresh" });
     return;
   }
 
@@ -14126,9 +14168,12 @@ async function handleClick(event) {
     expenseDraft.fxRequestId = (expenseDraft.fxRequestId ?? 0) + 1;
     expenseDraft.fxLoading = false;
     expenseDraft.fxMode = "manual";
+    expenseDraft.fxRateSource = "user";
     expenseDraft.fxRate = "";
     expenseDraft.fxSourceDate = null;
     expenseDraft.fxFetchedAt = null;
+    expenseDraft.fxSourceUpdatedAt = null;
+    expenseDraft.fxNextUpdateAt = null;
     expenseDraft.fxError = "";
     rememberExpenseDraft();
     render();
@@ -14956,9 +15001,12 @@ async function handleChange(event) {
       expenseDraft.total = "";
       expenseDraft.payers = expenseDraft.payers.map((payer) => createPayerDraft(payer.participantId));
       expenseDraft.fxMode = selected === eventCurrency(getEvent(expenseDraft.eventId)) ? "" : "automatic";
+      expenseDraft.fxRateSource = selected === eventCurrency(getEvent(expenseDraft.eventId)) ? "" : FX_OPEN_ACCESS_SOURCE;
       expenseDraft.fxRate = "";
       expenseDraft.fxSourceDate = null;
       expenseDraft.fxFetchedAt = null;
+      expenseDraft.fxSourceUpdatedAt = null;
+      expenseDraft.fxNextUpdateAt = null;
       expenseDraft.fxError = hadAmount ? "המטבע הוחלף; יש להזין מחדש את הסכום ואת סכומי המשלמים." : "";
       expenseDraft.existingFxConversion = null;
       expenseDraft.removeFxConversion = selected === eventCurrency(getEvent(expenseDraft.eventId));
@@ -19884,9 +19932,12 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
       total: editableFx ? formatSourceAmount(existingFx.sourceAmountMinorUnits, existingFx.sourceCurrency) : formatMoney(existingExpense.total),
       sourceCurrency: editableFx ? existingFx.sourceCurrency : eventCurrency(event),
       fxMode: editableFx ? existingFx.mode : "",
+      fxRateSource: editableFx ? existingFx.source : "",
       fxRate: editableFx ? existingFx.rate : "",
       fxSourceDate: editableFx ? existingFx.sourceDate : null,
       fxFetchedAt: editableFx ? existingFx.fetchedAt : null,
+      fxSourceUpdatedAt: editableFx ? existingFx.sourceUpdatedAt ?? null : null,
+      fxNextUpdateAt: editableFx ? existingFx.nextUpdateAt ?? null : null,
       existingFxConversion: existingFx ?? null,
       fxError: existingFx && !editableFx ? "פרטי משלמים השתנו מאז ההמרה. הסכום החשבונאי מוצג לעריכה; מקור ההמרה יישמר אם הסכום לא ישתנה." : "",
       occurredOn: existingExpense.occurredOn ?? dateFromIso(existingExpense.updatedAt),
@@ -19957,6 +20008,7 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
     total: "",
     sourceCurrency: eventCurrency(event),
     fxMode: "",
+    fxRateSource: "",
     fxRate: "",
     occurredOn: todayInputValue(),
     notes: "",
@@ -20496,6 +20548,7 @@ function continueExpenseEntry(event) {
     total: "",
     sourceCurrency: eventCurrency(event),
     fxMode: "",
+    fxRateSource: "",
     fxRate: "",
     occurredOn: previousDraft.occurredOn || todayInputValue(),
     payers: nextPayerIds.map(createPayerDraft),

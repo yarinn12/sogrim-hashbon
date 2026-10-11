@@ -217,9 +217,13 @@ export function parseExpenseDraftMemory(
         ? "single" : draft.mode === "items" ? "items" : "single",
       sourceCurrency: normalizeCurrency(draft.sourceCurrency ?? event?.currency),
       fxMode: ["automatic", "manual"].includes(draft.fxMode) ? draft.fxMode : "",
+      fxRateSource: typeof draft.fxRateSource === "string" && draft.fxRateSource
+        ? draft.fxRateSource : draft.existingFxConversion?.source ?? "",
       fxRate: String(draft.fxRate ?? ""),
       fxSourceDate: typeof draft.fxSourceDate === "string" ? draft.fxSourceDate : null,
       fxFetchedAt: typeof draft.fxFetchedAt === "string" ? draft.fxFetchedAt : null,
+      fxSourceUpdatedAt: typeof draft.fxSourceUpdatedAt === "string" ? draft.fxSourceUpdatedAt : null,
+      fxNextUpdateAt: typeof draft.fxNextUpdateAt === "string" ? draft.fxNextUpdateAt : null,
       fxLoading: false,
       name: String(draft.name ?? ""),
       total: String(draft.total ?? ""),

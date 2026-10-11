@@ -3603,6 +3603,13 @@ html body .status-chip.is-warn {
   color: var(--danger, #a12828);
 }
 
+.expense-row > .expense-fx-origin {
+  grid-column: 1 / -1;
+  color: var(--ledger-muted, var(--muted));
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 /* Private owner analytics */
 .profile-admin-entry {
   display: inline-flex;

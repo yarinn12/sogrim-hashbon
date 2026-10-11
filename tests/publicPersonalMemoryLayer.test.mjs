@@ -8,7 +8,7 @@ test("public personal memory layer is loaded after the product overlays", async 
   assert.match(index, /publicPersonalMemoryLayer\.mjs/);
   assert.match(
     index,
-    /publicBrandLayer\.mjs\?pwa_release=512"><\/script>\s+<script type="module" src="\.\/src\/publicEmptyHomePolishLayer\.mjs\?pwa_release=512"><\/script>\s+<script type="module" src="\.\/src\/publicPersonalMemoryLayer\.mjs\?pwa_release=512"><\/script>/
+    /publicBrandLayer\.mjs\?pwa_release=513"><\/script>\s+<script type="module" src="\.\/src\/publicEmptyHomePolishLayer\.mjs\?pwa_release=513"><\/script>\s+<script type="module" src="\.\/src\/publicPersonalMemoryLayer\.mjs\?pwa_release=513"><\/script>/
   );
 });
 

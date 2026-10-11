@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { convertExpenseInput, currencyFractionDigits, fetchEcbRate, formatSourceAmount, parseSourceAmount, rateIsStale, validateExpenseFx } from "../src/domain/expenseFx.mjs";
+import { convertExpenseInput, currencyFractionDigits, fetchOpenAccessRate, formatSourceAmount, parseSourceAmount, rateIsStale, validateExpenseFx, FX_LEGACY_ECB_SOURCE, FX_OPEN_ACCESS_SOURCE } from "../src/domain/expenseFx.mjs";
 
 test("source currency precision does not change the existing two-decimal event ledger", () => {
   assert.equal(currencyFractionDigits("JPY"), 0);
@@ -30,17 +30,59 @@ test("payer conversion uses exact decimal arithmetic and deterministic largest r
   assert.throws(() => convertExpenseInput({ ...input, rate: "0.00000001" }));
 });
 
-test("automatic fetch sends only the currency pair and rejects malformed or stale rates", async () => {
+test("Open Access fetch sends only a base currency, reads exact rate and update times, and caches until the next update", async () => {
   const requested = [];
-  const response = await fetchEcbRate("USD", "ILS", { now: () => new Date("2026-10-11T12:00:00Z"), fetchImpl: async (url, options) => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const body = JSON.stringify({ result: "success", provider: "https://www.exchangerate-api.com", base_code: "USD",
+    time_last_update_unix: Date.parse("2026-10-11T00:00:00Z") / 1000,
+    time_next_update_unix: Date.parse("2026-10-12T00:00:00Z") / 1000, time_eol_unix: 0,
+    rates: { USD: 1, ILS: 3.123456789, VND: 25855.7 } });
+  const options = { now: () => new Date("2026-10-11T12:00:00Z"), storage, fetchImpl: async (url, options) => {
     requested.push({ url, options });
-    return { ok: true, text: async () => '{"date":"2026-10-10","base":"USD","quote":"ILS","rate":3.123456789}' };
-  } });
-  assert.equal(requested[0].url, "https://api.frankfurter.dev/v2/providers/ecb/rate/usd/ils");
+    return { ok: true, text: async () => body };
+  } };
+  const response = await fetchOpenAccessRate("USD", "ILS", options);
+  assert.equal(requested[0].url, "https://open.er-api.com/v6/latest/USD");
   assert.equal(response.rate, "3.123456789");
-  assert.equal(response.sourceDate, "2026-10-10");
+  assert.equal(response.sourceDate, "2026-10-11");
+  assert.equal(response.sourceUpdatedAt, "2026-10-11T00:00:00.000Z");
+  assert.equal(response.nextUpdateAt, "2026-10-12T00:00:00.000Z");
   assert.equal(response.stale, false);
+  assert.equal((await fetchOpenAccessRate("USD", "VND", options)).rate, "25855.7");
+  assert.equal(requested.length, 1);
+  await fetchOpenAccessRate("USD", "ILS", { ...options, forceRefresh: true });
+  assert.equal(requested.length, 2);
+  assert.ok(!values.get("settle-friends-open-access-fx-v1:USD").includes("participantId"));
   assert.equal(rateIsStale("2026-09-30", new Date("2026-10-11T12:00:00Z")), true);
-  await assert.rejects(() => fetchEcbRate("USD", "ILS", { fetchImpl: async () => ({ ok: false, status: 404 }) }), /שער אישי/);
-  await assert.rejects(() => fetchEcbRate("USD", "ILS", { fetchImpl: async () => ({ ok: true, text: async () => '{"date":"2026-10-10","base":"EUR","quote":"ILS","rate":3.5}' }) }), /שער אישי/);
+  await assert.rejects(() => fetchOpenAccessRate("USD", "ILS", { storage: null, fetchImpl: async () => ({ ok: false, status: 429 }) }), /שער אישי/);
+  await assert.rejects(() => fetchOpenAccessRate("USD", "ILS", { storage: null, fetchImpl: async () => ({ ok: true, text: async () => body.replace('"base_code":"USD"', '"base_code":"EUR"') }) }), /שער אישי/);
+});
+
+test("new automatic snapshots keep only the used pair while legacy ECB snapshots remain valid", () => {
+  const input = { sourceCurrency: "USD", targetCurrency: "ILS", sourceAmount: "10",
+    sourcePayers: [{ participantId: "a", amount: "10" }], rate: "3.5", mode: "automatic",
+    sourceDate: "2026-10-11", fetchedAt: "2026-10-11T12:00:00.000Z" };
+  const current = convertExpenseInput({ ...input, rateSource: FX_OPEN_ACCESS_SOURCE,
+    sourceUpdatedAt: "2026-10-11T00:00:00.000Z", nextUpdateAt: "2026-10-12T00:00:00.000Z" });
+  assert.equal(validateExpenseFx(current, "ILS"), true);
+  assert.equal(current.fxConversion.source, FX_OPEN_ACCESS_SOURCE);
+  assert.equal("rates" in current.fxConversion, false);
+  const legacy = convertExpenseInput({ ...input, rateSource: FX_LEGACY_ECB_SOURCE });
+  assert.equal(validateExpenseFx(legacy, "ILS"), true);
+  assert.equal("sourceUpdatedAt" in legacy.fxConversion, false);
+});
+
+test("automatic JSON rate parsing expands exponents exactly and rejects unsafe range or precision", async () => {
+  const quote = (rateToken) => `{"result":"success","provider":"https://www.exchangerate-api.com","base_code":"USD","time_last_update_unix":1791676800,"time_next_update_unix":1791763200,"time_eol_unix":0,"rates":{"ILS":${rateToken}}}`;
+  const options = (token) => ({ storage: null, now: () => new Date("2026-10-11T12:00:00Z"),
+    fetchImpl: async () => ({ ok: true, text: async () => quote(token) }) });
+  assert.equal((await fetchOpenAccessRate("USD", "ILS", options("1.25E+2"))).rate, "125");
+  assert.equal((await fetchOpenAccessRate("USD", "ILS", options("1e-7"))).rate, "0.0000001");
+  for (const token of ["1e-17", "1e100", "-1e-7"]) {
+    await assert.rejects(() => fetchOpenAccessRate("USD", "ILS", options(token)), /שער אישי/);
+  }
+  assert.throws(() => convertExpenseInput({ sourceCurrency: "USD", targetCurrency: "ILS",
+    sourceAmount: "90071992547409.91", sourcePayers: [{ participantId: "a", amount: "90071992547409.91" }],
+    rate: "1000", mode: "manual" }), /טווח/);
 });

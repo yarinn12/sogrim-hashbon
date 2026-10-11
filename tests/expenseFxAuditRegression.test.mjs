@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { setEventCurrency } from "../src/domain/appActions.mjs";
 import { remapExpenseDraftAccountLinks } from "../src/domain/expenseDraftMemory.mjs";
-import { convertExpenseInput, fetchEcbRate } from "../src/domain/expenseFx.mjs";
+import { convertExpenseInput, fetchOpenAccessRate } from "../src/domain/expenseFx.mjs";
 import { mergeSharedStates, validateSharedStateFinancials } from "../src/domain/sharedStateMerge.mjs";
 
 const accountId = "account-11111111-1111-4111-8111-111111111111";
@@ -52,8 +52,8 @@ test("a legacy name edit retains FX provenance but financial edits and explicit 
 });
 
 test("an automatic JSON exponent rate is parsed as the full decimal value", async () => {
-  const quote = await fetchEcbRate("USD", "ILS", { now: () => new Date("2026-10-11T12:00:00Z"),
+  const quote = await fetchOpenAccessRate("USD", "ILS", { now: () => new Date("2026-10-11T12:00:00Z"), storage: null,
     fetchImpl: async () => ({ ok: true, text: async () =>
-      '{"date":"2026-10-10","base":"USD","quote":"ILS","rate":1e-7}' }) });
+      '{"result":"success","provider":"https://www.exchangerate-api.com","base_code":"USD","time_last_update_unix":1791676800,"time_next_update_unix":1791763200,"time_eol_unix":0,"rates":{"ILS":1e-7}}' }) });
   assert.equal(quote.rate, "0.0000001");
 });

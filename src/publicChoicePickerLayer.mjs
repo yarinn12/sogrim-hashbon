@@ -340,6 +340,11 @@ async function chooseOption(optionButton) {
     requestAnimationFrame(() => {
       if (activePicker || pickerSequence !== closingPickerSequence) return;
       enhanceChoiceSelects();
+      // The select change handler may move focus to the next field before
+      // this callback runs. Respect that newer focus choice.
+      if (document.activeElement?.isConnected &&
+          document.activeElement !== document.body &&
+          document.activeElement !== document.documentElement) return;
       findChoiceSelect(focusDescriptor)
         ?.nextElementSibling?.focus({ preventScroll: true });
     });

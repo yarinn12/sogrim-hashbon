@@ -1,5 +1,9 @@
 const MAX_MINOR_UNITS = BigInt(Number.MAX_SAFE_INTEGER);
-const RATE_ENDPOINT = "https://api.frankfurter.dev/v2/providers/ecb/rate";
+const RATE_ENDPOINT = "https://open.er-api.com/v6/latest";
+const RATE_CACHE_PREFIX = "settle-friends-open-access-fx-v1:";
+export const FX_OPEN_ACCESS_SOURCE = "ExchangeRate-API Open Access";
+export const FX_LEGACY_ECB_SOURCE = "ECB via Frankfurter v2";
+export const FX_OPEN_ACCESS_ATTRIBUTION_URL = "https://www.exchangerate-api.com";
 
 export function currencyFractionDigits(currency) {
   try {
@@ -95,7 +99,9 @@ function roundHalfUp(numerator, denominator) {
   return (numerator * 2n + denominator) / (denominator * 2n);
 }
 
-export function convertExpenseInput({ sourceCurrency, targetCurrency, sourceAmount, sourcePayers, rate, mode, sourceDate = null, fetchedAt = null }) {
+export function convertExpenseInput({ sourceCurrency, targetCurrency, sourceAmount, sourcePayers, rate, mode,
+  rateSource = mode === "automatic" ? FX_OPEN_ACCESS_SOURCE : "user", sourceDate = null, fetchedAt = null,
+  sourceUpdatedAt = null, nextUpdateAt = null }) {
   if (sourceCurrency === targetCurrency) throw new Error("אין צורך להמיר מטבע זהה.");
   const fractionDigits = currencyFractionDigits(sourceCurrency);
   currencyFractionDigits(targetCurrency);
@@ -110,8 +116,17 @@ export function convertExpenseInput({ sourceCurrency, targetCurrency, sourceAmou
   }
   const parsedRate = parseRate(rate);
   if (mode !== "manual" && mode !== "automatic") throw new Error("מצב השער אינו תקין.");
+  if (mode === "automatic" && ![FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE].includes(rateSource)) {
+    throw new Error("מקור השער האוטומטי אינו תקין.");
+  }
   if (mode === "automatic" && (!/^\d{4}-\d{2}-\d{2}$/.test(sourceDate ?? "") || !Number.isFinite(Date.parse(fetchedAt)))) {
     throw new Error("תאריך השער האוטומטי חסר.");
+  }
+  if (mode === "automatic" && rateSource === FX_OPEN_ACCESS_SOURCE &&
+      (!Number.isFinite(Date.parse(sourceUpdatedAt)) || !Number.isFinite(Date.parse(nextUpdateAt)) ||
+       Date.parse(nextUpdateAt) <= Date.parse(sourceUpdatedAt) ||
+       new Date(sourceUpdatedAt).toISOString().slice(0, 10) !== sourceDate)) {
+    throw new Error("זמני עדכון השער האוטומטי אינם תקינים.");
   }
   const denominator = parsedRate.denominator * 10n ** BigInt(fractionDigits);
   const multiplier = parsedRate.numerator * 100n; // Existing event ledger units always have two decimal places.
@@ -145,9 +160,10 @@ export function convertExpenseInput({ sourceCurrency, targetCurrency, sourceAmou
       rate: parsedRate.value,
       rateUnits: "target major units per 1 source major unit",
       mode,
-      source: mode === "automatic" ? "ECB via Frankfurter v2" : "user",
+      source: mode === "automatic" ? rateSource : "user",
       sourceDate: mode === "automatic" ? sourceDate : null,
-      fetchedAt: mode === "automatic" ? fetchedAt : null
+      fetchedAt: mode === "automatic" ? fetchedAt : null,
+      ...(mode === "automatic" && rateSource === FX_OPEN_ACCESS_SOURCE ? { sourceUpdatedAt, nextUpdateAt } : {})
     }
   };
 }
@@ -159,13 +175,14 @@ export function validateExpenseFx(expense, eventCurrency) {
     if (fx.version !== 1 || fx.targetCurrency !== eventCurrency || fx.targetFractionDigits !== 2 ||
       fx.sourceFractionDigits !== currencyFractionDigits(fx.sourceCurrency) ||
       fx.rateUnits !== "target major units per 1 source major unit" ||
-      fx.source !== (fx.mode === "automatic" ? "ECB via Frankfurter v2" : "user")) return false;
+      (fx.mode === "automatic" ? ![FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE].includes(fx.source) : fx.source !== "user")) return false;
     const result = convertExpenseInput({
       sourceCurrency: fx.sourceCurrency,
       targetCurrency: fx.targetCurrency,
       sourceAmount: formatSourceAmount(fx.sourceAmountMinorUnits, fx.sourceCurrency),
       sourcePayers: fx.sourcePayers.map((payer) => ({ participantId: payer.participantId, amount: formatSourceAmount(payer.amountMinorUnits, fx.sourceCurrency) })),
-      rate: fx.rate, mode: fx.mode, sourceDate: fx.sourceDate, fetchedAt: fx.fetchedAt
+      rate: fx.rate, mode: fx.mode, rateSource: fx.source, sourceDate: fx.sourceDate,
+      fetchedAt: fx.fetchedAt, sourceUpdatedAt: fx.sourceUpdatedAt, nextUpdateAt: fx.nextUpdateAt
     });
     // Participant merges may combine or rename payers after the original FX snapshot.
     // The event ledger remains the authority for the current payer distribution.
@@ -180,28 +197,82 @@ export function rateIsStale(sourceDate, now = new Date()) {
   return !Number.isFinite(source) || source > now.getTime() || now.getTime() - source > 7 * 24 * 60 * 60 * 1000;
 }
 
-export async function fetchEcbRate(sourceCurrency, targetCurrency, { fetchImpl = fetch, now = () => new Date(), timeoutMs = 8000 } = {}) {
+function browserRateStorage() {
+  try { return globalThis.localStorage ?? null; } catch { return null; }
+}
+
+function parseOpenAccessQuote(raw, sourceCurrency, targetCurrency, fetchedAt, currentTime) {
+  let data;
+  try { data = JSON.parse(raw); } catch { throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי."); }
+  const last = data?.time_last_update_unix;
+  const next = data?.time_next_update_unix;
+  if (data?.result !== "success" || data?.provider !== FX_OPEN_ACCESS_ATTRIBUTION_URL ||
+      data?.base_code !== sourceCurrency || !data?.rates ||
+      !Number.isSafeInteger(last) || !Number.isSafeInteger(next) || last <= 0 || next <= last ||
+      (data.time_eol_unix && currentTime.getTime() >= data.time_eol_unix * 1000)) {
+    throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  }
+  let sourceUpdatedAt, nextUpdateAt, rate;
+  try {
+    sourceUpdatedAt = new Date(last * 1000).toISOString();
+    nextUpdateAt = new Date(next * 1000).toISOString();
+    rate = exactJsonRate(raw, targetCurrency);
+  } catch {
+    throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  }
+  if (typeof data.rates[targetCurrency] !== "number" || data.rates[targetCurrency] !== Number(rate)) {
+    throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
+  }
+  const sourceDate = sourceUpdatedAt.slice(0, 10);
+  return { rate, sourceDate, sourceUpdatedAt, nextUpdateAt, fetchedAt,
+    stale: rateIsStale(sourceDate, currentTime) };
+}
+
+function cachedOpenAccessQuote(storage, sourceCurrency, targetCurrency, currentTime) {
+  try {
+    const cached = JSON.parse(storage?.getItem(`${RATE_CACHE_PREFIX}${sourceCurrency}`) ?? "null");
+    if (!cached || !Number.isFinite(Date.parse(cached.fetchedAt))) return null;
+    const fetched = Date.parse(cached.fetchedAt);
+    const quote = parseOpenAccessQuote(cached.raw, sourceCurrency, targetCurrency, cached.fetchedAt, currentTime);
+    const next = Date.parse(quote.nextUpdateAt);
+    const expires = Math.min(Math.max(next, fetched + 60 * 60 * 1000), fetched + 24 * 60 * 60 * 1000);
+    return !quote.stale && fetched <= currentTime.getTime() && currentTime.getTime() < expires ? quote : null;
+  } catch { return null; }
+}
+
+export async function fetchOpenAccessRate(sourceCurrency, targetCurrency, {
+  fetchImpl = fetch, now = () => new Date(), timeoutMs = 8000,
+  storage = browserRateStorage(), forceRefresh = false
+} = {}) {
   currencyFractionDigits(sourceCurrency);
   currencyFractionDigits(targetCurrency);
-  let response;
-  let raw;
+  if (!/^[A-Z]{3}$/.test(sourceCurrency) || !/^[A-Z]{3}$/.test(targetCurrency)) {
+    throw new Error("מטבע ההמרה אינו תקין.");
+  }
+  const currentTime = now();
+  if (!forceRefresh) {
+    const cached = cachedOpenAccessQuote(storage, sourceCurrency, targetCurrency, currentTime);
+    if (cached) return cached;
+  }
+  let response, raw;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    response = await fetchImpl(`${RATE_ENDPOINT}/${encodeURIComponent(sourceCurrency.toLowerCase())}/${encodeURIComponent(targetCurrency.toLowerCase())}`, { headers: { Accept: "application/json" }, signal: controller.signal });
+    response = await fetchImpl(`${RATE_ENDPOINT}/${sourceCurrency}`, {
+      headers: { Accept: "application/json" }, signal: controller.signal
+    });
     if (response.ok) raw = await response.text();
   } catch {
     throw new Error("לא ניתן לקבל שער כעת. אפשר להזין שער אישי.");
-  } finally {
-    clearTimeout(timeout);
+  } finally { clearTimeout(timeout); }
+  if (!response.ok) throw new Error(response.status === 429
+    ? "שירות השערים עסוק כעת. אפשר להזין שער אישי."
+    : response.status === 404 ? "אין שער אוטומטי למטבע הזה. אפשר להזין שער אישי."
+      : "לא ניתן לקבל שער כעת. אפשר להזין שער אישי.");
+  const fetchedAt = currentTime.toISOString();
+  const quote = parseOpenAccessQuote(raw, sourceCurrency, targetCurrency, fetchedAt, currentTime);
+  try { storage?.setItem(`${RATE_CACHE_PREFIX}${sourceCurrency}`, JSON.stringify({ fetchedAt, raw })); } catch {
+    // The conversion remains available when local storage is disabled or full.
   }
-  if (!response.ok) throw new Error(response.status === 404 ? "אין שער ECB לזוג המטבעות הזה. אפשר להזין שער אישי." : "לא ניתן לקבל שער כעת. אפשר להזין שער אישי.");
-  let data;
-  try { data = JSON.parse(raw); } catch { throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי."); }
-  let exactRate;
-  try { exactRate = exactJsonRate(raw, "rate"); } catch { throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי."); }
-  if (String(data.base).toUpperCase() !== sourceCurrency || String(data.quote).toUpperCase() !== targetCurrency || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) || !exactRate) {
-    throw new Error("תשובת השער אינה תקינה. אפשר להזין שער אישי.");
-  }
-  return { rate: exactRate, sourceDate: data.date, fetchedAt: now().toISOString(), stale: rateIsStale(data.date, now()) };
+  return quote;
 }

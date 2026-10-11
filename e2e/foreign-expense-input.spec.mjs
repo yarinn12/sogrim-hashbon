@@ -44,11 +44,17 @@ async function selectSourceCurrency(page, currency) {
   await page.locator(`.app-choice-option[data-choice-value="${currency}"]`).click();
 }
 
-test("automatic ECB rate previews and saves a locked snapshot; edit retains the rate", async ({ page }) => {
+function openAccessResponse(base, rates) {
+  const last = Math.floor(Date.now() / 1000) - 3600;
+  return { result: "success", provider: "https://www.exchangerate-api.com", base_code: base,
+    time_last_update_unix: last, time_next_update_unix: last + 86400, time_eol_unix: 0, rates };
+}
+
+test("automatic Open Access rate previews and saves a locked snapshot; edit retains the rate", async ({ page }) => {
   const requests = [];
-  await page.route("**/v2/providers/ecb/rate/usd/ils", route => {
+  await page.route("**/v6/latest/USD", route => {
     requests.push(route.request().url());
-    return route.fulfill({ contentType: "application/json", body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), base: "USD", quote: "ILS", rate: 3.5 }) });
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(openAccessResponse("USD", { USD: 1, ILS: 3.5, VND: 25000 })) });
   });
   await selectSourceCurrency(page, "USD");
   await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("3.5");
@@ -58,6 +64,11 @@ test("automatic ECB rate previews and saves a locked snapshot; edit retains the 
   expect(expense.payers[0].amount).toBe(3500);
   expect(expense.fxConversion.sourceAmountMinorUnits).toBe("1000");
   expect(expense.fxConversion.mode).toBe("automatic");
+  expect(expense.fxConversion.source).toBe("ExchangeRate-API Open Access");
+  expect(expense.fxConversion.sourceUpdatedAt).toBeTruthy();
+  expect(expense.fxConversion.nextUpdateAt).toBeTruthy();
+  expect(expense.fxConversion.rates).toBeUndefined();
+  await expect(page.locator(`[data-expense-id="${expense.id}"] a[href="https://www.exchangerate-api.com"]`)).toBeVisible();
   expect(requests).toHaveLength(1);
   expect(requests[0]).not.toContain("amount");
 
@@ -80,7 +91,7 @@ test("automatic ECB rate previews and saves a locked snapshot; edit retains the 
 });
 
 test("an unavailable automatic rate permits an explicit personal rate", async ({ page }) => {
-  await page.route("**/v2/providers/ecb/rate/usd/ils", route => route.abort());
+  await page.route("**/v6/latest/USD", route => route.abort());
   await selectSourceCurrency(page, "USD");
   await expect(page.locator('.expense-fx-preview')).toContainText("אפשר להזין שער אישי");
   await page.locator('[data-action="expense-fx-manual"]').click();
@@ -92,7 +103,7 @@ test("an unavailable automatic rate permits an explicit personal rate", async ({
 });
 
 test("a three-decimal source amount keeps its precision while the event ledger stays two-decimal", async ({ page }) => {
-  await page.route("**/v2/providers/ecb/rate/jod/ils", route => route.abort());
+  await page.route("**/v6/latest/JOD", route => route.abort());
   await selectSourceCurrency(page, "JOD");
   await expect(page.locator('.expense-fx-preview')).toContainText("אפשר להזין שער אישי");
   await page.locator('[data-action="expense-fx-manual"]').click();
@@ -101,4 +112,53 @@ test("a three-decimal source amount keeps its precision while the event ledger s
   expect(expense.total).toBe(617);
   expect(expense.fxConversion.sourceFractionDigits).toBe(3);
   expect(expense.fxConversion.sourceAmountMinorUnits).toBe("1234");
+});
+
+test("VND uses a zero-decimal source and saves only its applied rate", async ({ page }) => {
+  await page.route("**/v6/latest/VND", route => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify(openAccessResponse("VND", { VND: 1, ILS: 0.000119, AED: 0.000142 })) }));
+  await selectSourceCurrency(page, "VND");
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("0.000119");
+  const expense = await completeExpense(page, { amount: "10000", converted: "₪1.19" });
+  expect(expense.total).toBe(119);
+  expect(expense.fxConversion.sourceFractionDigits).toBe(0);
+  expect(expense.fxConversion.sourceAmountMinorUnits).toBe("10000");
+  expect(expense.fxConversion.rates).toBeUndefined();
+});
+
+test("an event with a converted expense explains why its currency cannot change", async ({ page }) => {
+  await page.route("**/v6/latest/USD", route => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify(openAccessResponse("USD", { USD: 1, ILS: 3.5 })) }));
+  await selectSourceCurrency(page, "USD");
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("3.5");
+  await completeExpense(page);
+  await page.locator('[data-action="open-event-settings"]').first().click();
+  await page.locator('[data-settings-section="currency"]').click();
+  await expect(page.locator('[data-action="event-currency"]')).toBeDisabled();
+  await expect(page.locator('.event-currency-field')).toContainText("אי אפשר לשנות כעת");
+});
+
+test("typing an amount while an automatic quote loads keeps the input and focus", async ({ page }) => {
+  let requestStarted, releaseQuote;
+  const started = new Promise(resolve => { requestStarted = resolve; });
+  const delayed = new Promise(resolve => { releaseQuote = resolve; });
+  await page.route("**/v6/latest/USD", async route => {
+    requestStarted();
+    await delayed;
+    await route.fulfill({ contentType: "application/json",
+      body: JSON.stringify(openAccessResponse("USD", { USD: 1, ILS: 3.5 })) });
+  });
+  const selection = selectSourceCurrency(page, "USD");
+  await started;
+  await selection;
+  const amount = page.locator('[data-action="expense-total"]');
+  await amount.fill("10");
+  await expect(amount).toHaveValue("10");
+  await expect(amount).toBeFocused();
+  releaseQuote();
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("3.5");
+  await expect(amount).toHaveValue("10");
+  await expect(amount).toBeFocused();
+  await page.locator('[data-action="expense-step-next"]').click();
+  await expect(page.locator('.expense-step-modal')).toHaveAttribute("data-expense-step", "name");
 });
