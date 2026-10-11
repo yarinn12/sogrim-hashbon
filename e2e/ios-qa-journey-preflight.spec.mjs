@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { openRenderedHome } from './helpers/typographyReadiness.mjs';
+import { holdNonessentialHomeDefer } from './helpers/heldHomeDefer.mjs';
 
 // Run the QA fixture and navigation script themselves. Only the Capacitor
 // identity and screenshot acknowledgement are simulated in this browser test.
@@ -195,7 +196,7 @@ test('the isolated iOS QA journey reaches keyboard-ready through the real DOM co
   expect(fixtureHealth).toEqual({ blocked: [], unhandled: [] });
 });
 
-test('the accessibility XL expense fields stay hittable below the status bar and above the iOS keyboard', async ({ page }, testInfo) => {
+test('the accessibility XL expense fields stay hittable below the status bar and above the iOS keyboard', async ({ page, baseURL }, testInfo) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript({ content: syntheticService });
   await page.addInitScript(() => {
@@ -207,7 +208,15 @@ test('the accessibility XL expense fields stay hittable below the status bar and
       viewport.dispatchEvent(new Event('resize'));
     };
   });
-  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+  const heldScript = await holdNonessentialHomeDefer(page, baseURL);
+  try {
+    await openPreflightHome(page);
+    expect(heldScript.requested, 'the unrelated deferred script is actually pending').toBe(true);
+    expect(await page.evaluate(() => window.__qaHeldHomeDomContentLoaded),
+      'home readiness must not depend on DOMContentLoaded').toBe(false);
+  } finally {
+    heldScript.release();
+  }
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
   await page.evaluate(() => {
     const root = document.documentElement;

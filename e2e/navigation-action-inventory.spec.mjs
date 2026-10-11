@@ -11,7 +11,7 @@ const state = {
     { id: OWNER, displayName: "בדיקת ניווט", kind: "user", avatarPreset: "avatar-1" },
     { id: FRIEND, displayName: "חבר לבדיקה", kind: "user", avatarPreset: "avatar-2" }
   ],
-  friendContacts: [{ participantId: FRIEND, createdAt: "2026-10-01T08:00:00.000Z" }],
+  friendContacts: [{ id: "friend-navigation-owner-friend", participantId: FRIEND, createdAt: "2026-10-01T08:00:00.000Z" }],
   groups: [], deletedEvents: [], deletedParticipants: [],
   events: [{
     id: EVENT, name: "אירוע ניווט", eventType: "outing", currency: "ILS",
@@ -24,7 +24,11 @@ const state = {
 test.use({ serviceWorkers: "block" });
 test.beforeEach(async ({ page, request }) => {
   await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  const seed = await request.put("/api/state", { data: state });
+  expect(seed.ok(), `navigation fixture seed failed: ${await seed.text()}`).toBe(true);
+  const stored = await request.get("/api/state");
+  expect(stored.ok()).toBe(true);
+  expect(await stored.json(), "the server acknowledged and retained the exact navigation fixture").toEqual(state);
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear();
     sessionStorage.clear();
@@ -132,8 +136,15 @@ test("repeated home back taps return to one previous screen", async ({ page }) =
   await expect(page.locator('.screen[data-screen-kind="event-notes"]')).toBeVisible();
 });
 
-test("permission feedback for an unavailable event has no broken review action", async ({ page }) => {
-  await page.goto("/");
+test("permission feedback for an unavailable event has no broken review action", async ({ page, baseURL }) => {
+  const heldImage = await holdNonessentialHomeImage(page, baseURL);
+  try {
+    await openRenderedHome(page);
+    expect(heldImage.requested, "the nonessential image is actually pending").toBe(true);
+    expect(await page.evaluate(() => document.readyState), "load must still be pending").not.toBe("complete");
+  } finally {
+    heldImage.release();
+  }
   const home = page.locator('.screen[data-screen-kind="home"]');
   await expect(home.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first()).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("sogrim:sync-status", { detail: {
