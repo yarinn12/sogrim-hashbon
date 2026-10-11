@@ -8,6 +8,7 @@ import {
   redactStateBackup,
   serializeStateBackup
 } from "../src/domain/stateBackup.mjs";
+import { convertExpenseInput } from "../src/domain/expenseFx.mjs";
 
 function sampleState() {
   return {
@@ -17,6 +18,19 @@ function sampleState() {
     events: []
   };
 }
+
+test("backup export and import preserve the exact FX snapshot and converted ledger", () => {
+  const state = sampleState();
+  const converted = convertExpenseInput({ sourceCurrency: "KWD", targetCurrency: "ILS", sourceAmount: "1.234",
+    sourcePayers: [{ participantId: "owner", amount: "1.234" }], rate: "11.123456", mode: "manual" });
+  state.events.push({ id: "event-fx", currency: "ILS", participantIds: ["owner"],
+    expenses: [{ id: "expense-fx", name: "Taxi", ...converted, sharedByParticipantIds: ["owner"],
+      createdByParticipantId: "owner", updatedAt: "2026-10-11T10:00:00.000Z" }], transfers: [] });
+  const restored = parseStateBackup(serializeStateBackup(state));
+  assert.deepEqual(restored.events[0].expenses[0], state.events[0].expenses[0]);
+  state.events[0].expenses[0].fxConversion.rate = "12";
+  assert.throws(() => parseStateBackup(serializeStateBackup(state)), /fxConversion/);
+});
 
 test("serializeStateBackup wraps the current state with version and export time", () => {
   const exportedAt = "2026-05-23T12:00:00.000Z";

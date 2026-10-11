@@ -7,6 +7,8 @@ import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { validateExpenseFx } from "./expenseFx.mjs";
+import { normalizeCurrency } from "./currencies.mjs";
 import { mergeAccountEventPins } from "../data/personalEventPins.mjs";
 import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 
@@ -389,6 +391,9 @@ export function validateSharedStateFinancials(state, label = "state") {
       }
       if (Number.isSafeInteger(expense.total) && payerTotal !== null && payerTotal !== expense.total) {
         errors.push(`${expenseLabel}.payers must add up to total.`);
+      }
+      if (expense.fxConversion && !validateExpenseFx(expense, normalizeCurrency(event.currency))) {
+        errors.push(`${expenseLabel}.fxConversion must match the event currency and converted total.`);
       }
     }
 

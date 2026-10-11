@@ -1329,7 +1329,7 @@ function securityHeaders() {
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https://*.googleusercontent.com",
-      "connect-src 'self' https://*.supabase.co https://accounts.google.com",
+      "connect-src 'self' https://*.supabase.co https://accounts.google.com https://api.frankfurter.dev",
       "frame-src https://accounts.google.com https://*.supabase.co",
       "manifest-src 'self'",
       "worker-src 'self'"

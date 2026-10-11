@@ -3569,6 +3569,40 @@ html body .status-chip.is-warn {
   border: 0;
 }
 
+.expense-fx-fields {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface, white) 94%, var(--text, #172228));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.expense-fx-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.expense-fx-mode button {
+  min-height: 44px;
+}
+
+.expense-fx-mode button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+.expense-fx-preview,
+.expense-fx-origin {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.expense-fx-preview.is-error {
+  color: var(--danger, #a12828);
+}
+
 /* Private owner analytics */
 .profile-admin-entry {
   display: inline-flex;

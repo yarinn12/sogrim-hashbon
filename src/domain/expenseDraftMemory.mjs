@@ -1,4 +1,5 @@
 import { parseMoneyInput, formatMoney, sumMoneyAmounts } from "./money.mjs";
+import { normalizeCurrency } from "./currencies.mjs";
 
 export const EXPENSE_DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const EXPENSE_DRAFT_STORAGE_PREFIX = "settle-friends-expense-draft";
@@ -117,7 +118,7 @@ function expenseContentKey(expense) {
   return JSON.stringify([expense.name, expense.total,
     expense.payers.map(payer => [payer.participantId, payer.amount]).sort(),
     [...expense.sharedByParticipantIds].sort(), expense.createdByParticipantId ?? "",
-    expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? ""]);
+    expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? "", expense.fxConversion ?? null]);
 }
 
 function sameExpenseRevision(left, right) {
@@ -209,7 +210,14 @@ export function parseExpenseDraftMemory(
 
     return {
       ...draft,
-      mode: draft.mode === "items" ? "items" : "single",
+      mode: draft.sourceCurrency && normalizeCurrency(draft.sourceCurrency) !== normalizeCurrency(event?.currency)
+        ? "single" : draft.mode === "items" ? "items" : "single",
+      sourceCurrency: normalizeCurrency(draft.sourceCurrency ?? event?.currency),
+      fxMode: ["automatic", "manual"].includes(draft.fxMode) ? draft.fxMode : "",
+      fxRate: String(draft.fxRate ?? ""),
+      fxSourceDate: typeof draft.fxSourceDate === "string" ? draft.fxSourceDate : null,
+      fxFetchedAt: typeof draft.fxFetchedAt === "string" ? draft.fxFetchedAt : null,
+      fxLoading: false,
       name: String(draft.name ?? ""),
       total: String(draft.total ?? ""),
       occurredOn: String(draft.occurredOn ?? ""),

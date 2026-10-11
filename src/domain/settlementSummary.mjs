@@ -4,6 +4,7 @@ import {
   normalizeCurrency
 } from "./currencies.mjs";
 import { participantEventDisplayName } from "./participantIdentity.mjs";
+import { formatSourceAmount } from "./expenseFx.mjs";
 
 const LEFT_TO_RIGHT_ISOLATE = "\u2066";
 const RIGHT_TO_LEFT_ISOLATE = "\u2067";
@@ -112,7 +113,14 @@ function formatExpenseLine(expense, participantNames, currency) {
     .map((participantId) => participantNames.get(participantId) ?? "משתתף")
     .join(", ");
 
-  return `- ${expense.name}: ${formatCurrency(expense.total, currency)} | שילמו: ${payers} | שותפים: ${sharedBy}`;
+  let conversion = "";
+  if (expense.fxConversion) {
+    try {
+      const fx = expense.fxConversion;
+      conversion = ` | מקור: ${formatSourceAmount(fx.sourceAmountMinorUnits, fx.sourceCurrency)} ${fx.sourceCurrency}; שער: 1 ${fx.sourceCurrency} = ${fx.rate} ${fx.targetCurrency}; ${fx.mode === "automatic" ? `ECB / Frankfurter v2, ${fx.sourceDate}` : "שער אישי"}`;
+    } catch { /* Keep the accounting report usable for old or malformed backups. */ }
+  }
+  return `- ${expense.name}: ${formatCurrency(expense.total, currency)} | שילמו: ${payers} | שותפים: ${sharedBy}${conversion}`;
 }
 
 function buildParticipantNames(

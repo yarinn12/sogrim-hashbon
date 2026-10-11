@@ -7,7 +7,8 @@ const PICKER_CLASS = "app-choice-picker-backdrop";
 const PICKER_HISTORY_KEY = "settleFriendsChoicePicker";
 const SEARCHABLE_CHOICE_ACTIONS = new Set([
   "new-event-currency",
-  "event-currency"
+  "event-currency",
+  "expense-source-currency"
 ]);
 
 let activeSelect = null;
