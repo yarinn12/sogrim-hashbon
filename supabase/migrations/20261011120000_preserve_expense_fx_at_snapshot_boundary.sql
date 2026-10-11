@@ -32,6 +32,9 @@ declare
   old_fx jsonb;
   old_removal text;
   candidate_removal text;
+  restored_at text;
+  restored_clock timestamptz;
+  removed_clock timestamptz;
 begin
   if pg_catalog.jsonb_typeof(p_new_event -> 'expenses') <> 'array' then
     return p_new_event;
@@ -93,10 +96,30 @@ begin
       end if;
     elsif old_removal is not null then
       if candidate -> 'fxConversion' is not null then
-        if candidate ->> 'fxConversionRestoredAt' is distinct from candidate ->> 'updatedAt'
-          or candidate ->> 'fxConversionRestoredAt' = old_removal
+        restored_at := candidate ->> 'fxConversionRestoredAt';
+        if restored_at is null
+          or restored_at is distinct from candidate ->> 'updatedAt'
           or candidate_removal is not null then
           raise exception 'Previously removed FX conversion cannot be restored by a stale expense'
+            using errcode = 'PFX01';
+        end if;
+        if restored_at !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$'
+          or old_removal !~ '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$' then
+          raise exception 'FX restoration timestamp is invalid'
+            using errcode = 'PFX01';
+        end if;
+        begin
+          restored_clock := restored_at::timestamptz;
+          removed_clock := old_removal::timestamptz;
+        exception
+          when invalid_datetime_format or datetime_field_overflow then
+            raise exception 'FX restoration timestamp is invalid'
+              using errcode = 'PFX01';
+        end;
+        if not pg_catalog.isfinite(restored_clock)
+          or not pg_catalog.isfinite(removed_clock)
+          or restored_clock <= removed_clock then
+          raise exception 'FX restoration must follow its explicit removal'
             using errcode = 'PFX01';
         end if;
       else
@@ -106,6 +129,11 @@ begin
       end if;
     end if;
 
+    if candidate -> 'fxConversion' is not null
+      and candidate ? 'fxConversionRemovedAt' then
+      raise exception 'Expense cannot contain FX conversion and removal marker together'
+        using errcode = 'PFX01';
+    end if;
     if candidate -> 'fxConversion' is not null
       and ((candidate -> 'fxConversion' ->> 'targetCurrency')
         is distinct from p_new_event ->> 'currency'

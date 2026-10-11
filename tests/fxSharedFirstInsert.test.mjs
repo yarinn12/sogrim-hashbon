@@ -16,11 +16,11 @@ const participant = { id: actor, kind: "user", displayName: "Synthetic", account
 const expense = includeFx => ({ id: "expense-probe", name: "Lunch", total: 3500,
   payers: [{ participantId: actor, amount: 3500 }], sharedByParticipantIds: [actor],
   createdByParticipantId: actor, ...(includeFx ? { fxConversion: fx } : {}) });
-const state = (includeFx, currentParticipantId = "") => ({ currentParticipantId,
+const state = (includeFx, currentParticipantId = "", eventId = "event-probe") => ({ currentParticipantId,
   participants: currentParticipantId && currentParticipantId !== actor
     ? [participant, { id: currentParticipantId, kind: "user", displayName: "Other" }]
     : [participant], groups: [], deletedEvents: [], deletedParticipants: [],
-  events: [{ id: "event-probe", name: "Synthetic event", currency: "ILS",
+  events: [{ id: eventId, name: "Synthetic event", currency: "ILS",
     eventType: "standard", participantIds: currentParticipantId && currentParticipantId !== actor
       ? [actor, currentParticipantId] : [actor], adminIds: [actor],
     createdByParticipantId: actor, locked: false, expenses: [expense(includeFx)],
@@ -47,19 +47,32 @@ async function fixture() {
   return db;
 }
 
-async function workspace(db, ownerId, id, includeFx = true) {
+async function workspace(db, ownerId, id, includeFx = true, candidate = state(includeFx, `account-${ownerId}`)) {
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [ownerId]);
   await db.query(`insert into public.app_snapshots (id,access_key_hash,owner_user_id,state)
     values ($1,encode(extensions.digest($2,'sha256'),'hex'),$3::uuid,$4::jsonb)`,
-    [id, key, ownerId, JSON.stringify(state(includeFx, `account-${ownerId}`))]);
+    [id, key, ownerId, JSON.stringify(candidate)]);
 }
 
-async function createAs(db, userId, candidate = state(false)) {
+async function createAs(db, userId, candidate = state(false), snapshotId = "shared-probe") {
   await db.query("select set_config('request.jwt.claim.sub',$1,false)", [userId]);
   await db.exec("set role authenticated");
   try {
     return (await db.query(`select public.create_shared_event_snapshot($1,$2,$3::jsonb) as value`,
-      ["shared-probe", key, JSON.stringify(candidate)])).rows[0].value;
+      [snapshotId, key, JSON.stringify(candidate)])).rows[0].value;
+  } finally {
+    await db.exec("reset role");
+  }
+}
+
+async function updateAs(db, userId, candidate, snapshotId) {
+  const version = (await db.query("select to_jsonb(updated_at) as version from public.app_snapshots where id=$1",
+    [snapshotId])).rows[0].version;
+  await db.query("select set_config('request.jwt.claim.sub',$1,false)", [userId]);
+  await db.exec("set role authenticated");
+  try {
+    return (await db.query(`select public.update_shared_event_snapshot($1,$2,$3::timestamptz,$4::jsonb) as value`,
+      [snapshotId, key, version, JSON.stringify(candidate)])).rows[0].value;
   } finally {
     await db.exec("reset role");
   }
@@ -101,3 +114,168 @@ test("first shared INSERT rejects a changed ledger that omits the creator's save
     assert.equal((await db.query("select count(*)::int as count from public.app_snapshots where id='shared-probe'")).rows[0].count, 0);
   } finally { await db.close(); }
 });
+
+const removedAt = "2026-10-11T18:00:00.000Z";
+const oldAt = "2026-10-11T17:00:00.000Z";
+const newAt = "2026-10-11T19:00:00.000Z";
+const restoreCases = [
+  { name: "missing-both" },
+  { name: "null-both", updatedAt: null, restoredAt: null },
+  { name: "missing-update", restoredAt: newAt },
+  { name: "missing-restore", updatedAt: newAt },
+  { name: "null-update", updatedAt: null, restoredAt: newAt },
+  { name: "null-restore", updatedAt: newAt, restoredAt: null },
+  { name: "invalid-both", updatedAt: "not-a-date", restoredAt: "not-a-date" },
+  { name: "old-both", updatedAt: oldAt, restoredAt: oldAt },
+  { name: "equal-both", updatedAt: removedAt, restoredAt: removedAt },
+  { name: "mismatched", updatedAt: newAt, restoredAt: oldAt },
+  { name: "new-both", updatedAt: newAt, restoredAt: newAt, accepted: true }
+];
+function applyClock(expenseRecord, { updatedAt, restoredAt }) {
+  if (updatedAt !== undefined) expenseRecord.updatedAt = updatedAt;
+  if (restoredAt !== undefined) expenseRecord.fxConversionRestoredAt = restoredAt;
+}
+
+for (const route of ["insert", "update"]) {
+  test(`${route} requires an explicit newer restoration clock after FX removal`, async () => {
+    const db = await fixture();
+    try {
+      const personal = state(false, actor);
+      personal.events = restoreCases.map(({ name }) => {
+        const event = state(false, actor, `event-${route}-${name}`).events[0];
+        event.expenses[0].fxConversionRemovedAt = removedAt;
+        event.expenses[0].updatedAt = removedAt;
+        return event;
+      });
+      await workspace(db, creatorId, "workspace-creator", false, personal);
+      for (const { name, updatedAt, restoredAt, accepted } of restoreCases) {
+        const eventId = `event-${route}-${name}`;
+        const snapshotId = `shared-${route}-${name}`;
+        const candidate = state(true, "", eventId);
+        applyClock(candidate.events[0].expenses[0], { updatedAt, restoredAt });
+        if (route === "update") {
+          assert.equal((await createAs(db, creatorId, state(false, "", eventId), snapshotId)).status, "created");
+        }
+        const save = () => route === "insert"
+          ? createAs(db, creatorId, candidate, snapshotId)
+          : updateAs(db, creatorId, candidate, snapshotId);
+        if (accepted) {
+          assert.equal((await save()).status, route === "insert" ? "created" : "updated", name);
+          const saved = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+          assert.deepEqual(saved.events[0].expenses[0].fxConversion, fx, name);
+          assert.equal(saved.events[0].expenses[0].fxConversionRemovedAt, undefined, name);
+        } else {
+          await assert.rejects(save(), { code: "PFX01" }, name);
+        }
+      }
+    } finally { await db.close(); }
+  });
+}
+
+for (const route of ["insert", "update"]) {
+  test(`${route} leaves untombstoned FX eligible across optional expense clocks`, async () => {
+    const db = await fixture();
+    try {
+      const personal = state(false, actor);
+      personal.events = restoreCases.map(({ name }) =>
+        state(false, actor, `event-${route}-fresh-${name}`).events[0]);
+      await workspace(db, creatorId, "workspace-creator", false, personal);
+      for (const clock of restoreCases) {
+        const eventId = `event-${route}-fresh-${clock.name}`;
+        const snapshotId = `shared-${route}-fresh-${clock.name}`;
+        const candidate = state(true, "", eventId);
+        applyClock(candidate.events[0].expenses[0], clock);
+        if (route === "update") {
+          assert.equal((await createAs(db, creatorId, state(false, "", eventId), snapshotId)).status, "created");
+        }
+        const saved = route === "insert"
+          ? await createAs(db, creatorId, candidate, snapshotId)
+          : await updateAs(db, creatorId, candidate, snapshotId);
+        assert.equal(saved.status, route === "insert" ? "created" : "updated", clock.name);
+        const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+        assert.deepEqual(committed.events[0].expenses[0].fxConversion, fx, clock.name);
+      }
+    } finally { await db.close(); }
+  });
+}
+
+for (const route of ["insert", "update"]) {
+  test(`${route} retains a tombstone when a legacy expense omits FX across clock variants`, async () => {
+    const db = await fixture();
+    try {
+      const personal = state(false, actor);
+      personal.events = restoreCases.map(({ name }) => {
+        const event = state(false, actor, `event-${route}-removed-${name}`).events[0];
+        event.expenses[0].fxConversionRemovedAt = removedAt;
+        event.expenses[0].updatedAt = removedAt;
+        return event;
+      });
+      await workspace(db, creatorId, "workspace-creator", false, personal);
+      for (const clock of restoreCases) {
+        const eventId = `event-${route}-removed-${clock.name}`;
+        const snapshotId = `shared-${route}-removed-${clock.name}`;
+        const candidate = state(false, "", eventId);
+        applyClock(candidate.events[0].expenses[0], clock);
+        if (route === "update") {
+          assert.equal((await createAs(db, creatorId, state(false, "", eventId), snapshotId)).status, "created");
+        }
+        const saved = route === "insert"
+          ? await createAs(db, creatorId, candidate, snapshotId)
+          : await updateAs(db, creatorId, candidate, snapshotId);
+        assert.equal(saved.status, route === "insert" ? "created" : "updated", clock.name);
+        const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+        assert.equal(committed.events[0].expenses[0].fxConversion, undefined, clock.name);
+        assert.equal(committed.events[0].expenses[0].fxConversionRemovedAt, removedAt, clock.name);
+      }
+    } finally { await db.close(); }
+  });
+}
+
+for (const route of ["insert", "update"]) {
+  for (const hadTombstone of [false, true]) {
+    test(`${route} rejects an FX record with an explicit null removal key ${hadTombstone ? "after" : "without"} a tombstone`, async () => {
+      const db = await fixture();
+      try {
+        const personal = state(false, actor);
+        if (hadTombstone) {
+          personal.events[0].expenses[0].fxConversionRemovedAt = removedAt;
+          personal.events[0].expenses[0].updatedAt = removedAt;
+        }
+        await workspace(db, creatorId, "workspace-creator", false, personal);
+        const candidate = state(true);
+        candidate.events[0].expenses[0].updatedAt = newAt;
+        candidate.events[0].expenses[0].fxConversionRestoredAt = newAt;
+        candidate.events[0].expenses[0].fxConversionRemovedAt = null;
+        if (route === "update") {
+          assert.equal((await createAs(db, creatorId)).status, "created");
+        }
+        await assert.rejects(route === "insert"
+          ? createAs(db, creatorId, candidate)
+          : updateAs(db, creatorId, candidate, "shared-probe"), { code: "PFX01" });
+      } finally { await db.close(); }
+    });
+  }
+}
+
+for (const route of ["insert", "update"]) {
+  test(`${route} keeps ordinary untimestamped legacy expenses when there is no FX tombstone`, async () => {
+    const db = await fixture();
+    try {
+      const personal = state(false, actor, `event-${route}-legacy`);
+      await workspace(db, creatorId, "workspace-creator", false, personal);
+      const snapshotId = `shared-${route}-legacy`;
+      const candidate = state(false, "", `event-${route}-legacy`);
+      if (route === "update") {
+        assert.equal((await createAs(db, creatorId, candidate, snapshotId)).status, "created");
+        candidate.events[0].expenses[0].name = "Renamed by legacy client";
+      }
+      const saved = route === "insert"
+        ? await createAs(db, creatorId, candidate, snapshotId)
+        : await updateAs(db, creatorId, candidate, snapshotId);
+      assert.equal(saved.status, route === "insert" ? "created" : "updated");
+      const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+      assert.equal(committed.events[0].expenses[0].fxConversion, undefined);
+      assert.equal(committed.events[0].expenses[0].fxConversionRemovedAt, undefined);
+    } finally { await db.close(); }
+  });
+}
