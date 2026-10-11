@@ -14,7 +14,11 @@ This worktree combines the account upgrades and foreign-expense work with the cu
 
 - Focused Node suite covering database integrity, account UI, FX, cloud writes, save feedback and PWA behavior: **338/338 passed**.
 - Focused Playwright account UI, foreign-expense and friend visibility specs in Android Chromium and iPhone WebKit profiles: **20/20 passed**.
-- A broader `npm test` attempt reported a failure in PR55's `androidNativeCloseWatchCleanup.test.mjs` late-startticks/TERM timing assertion while other QA was running. That run was stopped and is not a full-suite pass. PR55's separate native QA results do not certify this combined tree.
+- An earlier sandboxed broad run stopped at `androidNativeCloseWatchCleanup.test.mjs`. A focused, no-retry reproduction showed Git Bash could not create an MSYS named object (`NtCreateDirectoryObject`, `0xC0000022`) before the fixture script started. The same case passed outside the sandbox; the entire cleanup file passed **42/42** there. The assertion now includes process diagnostics if startup fails again.
+- The complete local Node suite then passed **3,596/3,596**, without retries and with two workers, outside that Windows sandbox. This runs the repository's 360 `*.test.mjs` files; it is not native/device QA.
+- Disposable PGlite database checks passed **202/202** on the fresh schema and **202/202** on the upgrade path. A separate migration lifecycle test verified that the FX trigger installs inside a transaction, disappears on rollback and installs again from the previous local schema. Both database modes exercise legacy and current save payloads and acknowledged writes using the real SQL RPC/trigger with an in-process HTTP adapter.
+
+PGlite executes PostgreSQL SQL, PL/pgSQL and local policy checks with a small Supabase Auth schema shim. No local `psql`, PostgreSQL server or Docker runtime was available. These tests cannot establish actual hosted Supabase Auth, PostgREST, RLS integration or operational migration behavior; those still need staging verification.
 
 ## Release checks remaining
 
