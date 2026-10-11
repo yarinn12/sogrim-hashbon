@@ -3,7 +3,7 @@ import { recordPersonalPinsCloudErrors } from "./personalPinsCloudErrors.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // The private account snapshot is shared by independently connected contexts.
-export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner" } = {}) {
+export async function personalPinsCloud(page, baseURL, initialState, { legacyPins = [], accountId = "personal-pins-cloud-owner", rejectWrites = false } = {}) {
   const userId = accountId, participantId = `account-${userId}`;
   const space = `personal-pins-cloud-space-${userId}`, key = "synthetic-personal-pins-key-123456";
   const origin = "https://personal-pins-qa.supabase.co";
@@ -14,6 +14,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
   const reads = [], writes = [];
   const offlinePages = new WeakSet();
   let conflicts = 0;
+  let writesRejected = rejectWrites;
   let clock = Date.parse(current.updated_at);
   const stamp = () => new Date(clock = Math.max(Date.now(), clock + 1)).toISOString();
   const errorMonitor = recordPersonalPinsCloudErrors(page, {
@@ -42,6 +43,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
         return reply([Object.fromEntries(fields.map(field => [field, current[field]]))]);
       }
       const payload = request.postDataJSON();
+      if (writesRejected) return reply({ message: "Synthetic rejected workspace write" }, 403);
       expect(url.searchParams.get("id") === `eq.${space}` || payload.id === space).toBe(true);
       if (request.method() === "PATCH" && url.searchParams.get("updated_at") !== `eq.${current.updated_at}`) {
         conflicts += 1;
@@ -77,6 +79,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
     reload: () => errorMonitor.withReload(() => page.reload()), state: () => structuredClone(current.state),
     update: next => { current = { ...current, state: structuredClone(next), updated_at: stamp() }; },
     conflicts: () => conflicts,
+    setWriteFailure: reject => { writesRejected = reject; },
     setOffline: (clientPage, offline) => offline ? offlinePages.add(clientPage) : offlinePages.delete(clientPage),
     connectPage };
 }

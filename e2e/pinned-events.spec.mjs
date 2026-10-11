@@ -284,6 +284,32 @@ test("legacy device pins migrate into the account snapshot after hydration", asy
   await order(page, [OLD, NEW, CLOSED]);
 });
 
+test("a legacy device pin joins existing cloud pins after a rejected migration is retried", async ({ page }) => {
+  const accountId = "personal-pins-cloud-owner";
+  const initial = {
+    ...state,
+    personalEventPinPreferences: {
+      ownerParticipantId: `account-${accountId}`,
+      updates: { [CLOSED]: { pinned: true, updatedAt: "2026-09-03T08:00:00.000Z" } }
+    }
+  };
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, initial,
+    { legacyPins: [OLD], rejectWrites: true });
+  await order(page, [OLD, CLOSED, NEW]);
+  expect(cloud.state().personalEventPinPreferences.updates[OLD]).toBeUndefined();
+  expect(await page.evaluate(() => localStorage.getItem(
+    "settle-friends-personal-event-pins-migrated-v1:account-personal-pins-cloud-owner"
+  ))).toBeNull();
+  cloud.setWriteFailure(false);
+  await cloud.reload();
+  await expect.poll(() => cloud.state().personalEventPinPreferences.updates[OLD]?.pinned).toBe(true);
+  await order(page, [OLD, CLOSED, NEW]);
+  expect(cloud.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem(
+    "settle-friends-personal-event-pins-migrated-v1:account-personal-pins-cloud-owner"
+  ) || "[]"))).toContain(OLD);
+});
+
 test("a different authenticated account has independent pin preferences", async ({ page, browser }) => {
   const first = await personalPinsCloud(page, test.info().project.use.baseURL, state);
   await pin(page, OLD, true);

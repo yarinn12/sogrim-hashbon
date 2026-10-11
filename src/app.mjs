@@ -1,7 +1,7 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
-import { personalEventPinsKey, pinnedEventIdsForState, migrateLegacyAccountPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
@@ -12200,7 +12200,7 @@ async function handleClick(event) {
       const synced = (result?.ok && result.mode === "cloud") || result?.personalWorkspacePersisted === true;
       const pending = result?.pending === true || result?.mode === "queued";
       if (!synced && !pending) {
-        if (state.personalEventPinPreferences?.updates?.[selectedEvent.id]?.updatedAt === attemptedUpdate.updatedAt) {
+        if (state.personalEventPinPreferences?.updates?.[selectedEvent.id]?.mutationId === attemptedUpdate.mutationId) {
           state = { ...state };
           if (priorPreferences === undefined) delete state.personalEventPinPreferences;
           else state.personalEventPinPreferences = priorPreferences;
@@ -24093,20 +24093,40 @@ function settlementTransferPlanKey(transfers) {
     .join("|");
 }
 
+let legacyAccountPinMigrationRequest = null;
 function queueLegacyAccountPinMigration() {
   const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
   if (!accountUserId || state.currentParticipantId !== `account-${accountUserId}`) return;
-  let migratedState;
+  if (legacyAccountPinMigrationRequest) return;
+  const participantId = state.currentParticipantId;
+  let migratedState, pending;
   try {
+    pending = pendingLegacyAccountPins(participantId);
+    if (!pending.size) return;
     migratedState = migrateLegacyAccountPins(state);
   } catch {
     // The existing local pins remain visible until storage can be read again.
     return;
   }
-  if (migratedState === state) return;
-  state = migratedState;
-  void saveSharedState(state, { suppressRevertNotice: true, foregroundMutation: false })
-    .catch(() => {});
+  // An optimistic local snapshot does not prove that the workspace received
+  // the migration. Retry on later hydration until the cloud save confirms it.
+  legacyAccountPinMigrationRequest = saveSharedState(migratedState, {
+    awaitCloud: true, suppressRevertNotice: true, foregroundMutation: false,
+    handlesSaveFailure: true
+  }).then(result => {
+    if (state.currentParticipantId !== participantId ||
+        String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() !== accountUserId ||
+        !result?.ok || result.mode !== "cloud") return;
+    const confirmed = result.persistedState?.personalEventPinPreferences;
+    if (confirmed?.ownerParticipantId !== participantId ||
+        [...pending].some(id => typeof confirmed.updates?.[id]?.pinned !== "boolean")) return;
+    const merged = mergeAccountEventPins(result.persistedState, state);
+    if (merged) {
+      state = { ...state, personalEventPinPreferences: merged };
+    }
+    acknowledgeLegacyAccountPins(participantId, pending);
+    render();
+  }).catch(() => {}).finally(() => { legacyAccountPinMigrationRequest = null; });
 }
 
 function refreshStartupSharedState(refreshRequest) {

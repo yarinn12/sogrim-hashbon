@@ -40,6 +40,33 @@ export function setPersonalEventPin(participantId, eventId, pinned, storage) {
 // an older device cannot restore a pin when its offline snapshot is merged.
 const LEGACY_PIN_TIMESTAMP = "1970-01-01T00:00:00.000Z";
 const SAFE_EVENT_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const MIGRATION_RECEIPT_PREFIX = "settle-friends-personal-event-pins-migrated-v1";
+const MAX_PIN_ANCESTORS = 64;
+
+function migrationReceiptKey(participantId) {
+  return `${MIGRATION_RECEIPT_PREFIX}:${participantId}`;
+}
+
+// A receipt is device-local and written only after the private workspace has
+// acknowledged every migrated event. A failed upload must remain retryable.
+export function pendingLegacyAccountPins(participantId, storage) {
+  if (!participantId?.startsWith("account-")) return new Set();
+  const target = storage ?? globalThis.localStorage;
+  if (!target) return new Set();
+  const legacy = parsePins(target.getItem(personalEventPinsKey(participantId)));
+  const acknowledged = parsePins(target.getItem(migrationReceiptKey(participantId)));
+  return new Set([...legacy].filter(id => SAFE_EVENT_ID.test(id) && !acknowledged.has(id)));
+}
+
+export function acknowledgeLegacyAccountPins(participantId, eventIds, storage) {
+  if (!participantId?.startsWith("account-")) throw new Error("Account pin identity is missing");
+  const target = storage ?? globalThis.localStorage;
+  if (!target) throw new Error("Account pin storage is unavailable");
+  const key = migrationReceiptKey(participantId);
+  const acknowledged = parsePins(target.getItem(key));
+  for (const id of eventIds) if (SAFE_EVENT_ID.test(id)) acknowledged.add(id);
+  target.setItem(key, JSON.stringify([...acknowledged]));
+}
 
 function accountParticipantId(state) {
   const id = String(state?.currentParticipantId ?? "").trim();
@@ -63,22 +90,29 @@ export function pinnedEventIdsForState(state, storage) {
   const participantId = accountParticipantId(state);
   if (!participantId) return loadPersonalEventPins(state?.currentParticipantId, storage);
   const updates = pinUpdatesForOwner(state.personalEventPinPreferences, participantId);
-  if (!updates) return loadPersonalEventPins(participantId, storage);
-  return new Set(Object.entries(updates)
+  const pinned = new Set(Object.entries(updates ?? {})
     .filter(([eventId, update]) => SAFE_EVENT_ID.test(eventId) && validPinUpdate(update) && update.pinned)
     .map(([eventId]) => eventId));
+  try {
+    for (const id of pendingLegacyAccountPins(participantId, storage)) {
+      if (!validPinUpdate(updates?.[id])) pinned.add(id);
+    }
+  } catch { /* Keep confirmed cloud pins visible if device storage is unreadable. */ }
+  return pinned;
 }
 
 export function migrateLegacyAccountPins(state, storage) {
   const participantId = accountParticipantId(state);
-  if (!participantId || pinUpdatesForOwner(state.personalEventPinPreferences, participantId)) return state;
-  const legacyPins = parsePins((storage ?? globalThis.localStorage).getItem(personalEventPinsKey(participantId)));
-  const updates = Object.fromEntries(
-    [...legacyPins].filter((id) => SAFE_EVENT_ID.test(id)).map((id) => [
-      id, { pinned: true, updatedAt: LEGACY_PIN_TIMESTAMP }
-    ])
-  );
-  if (!Object.keys(updates).length) return state;
+  if (!participantId) return state;
+  const existing = pinUpdatesForOwner(state.personalEventPinPreferences, participantId) ?? {};
+  const updates = { ...existing };
+  let changed = false;
+  for (const id of pendingLegacyAccountPins(participantId, storage)) {
+    if (validPinUpdate(updates[id])) continue;
+    updates[id] = { pinned: true, updatedAt: LEGACY_PIN_TIMESTAMP };
+    changed = true;
+  }
+  if (!changed) return state;
   return {
     ...state,
     personalEventPinPreferences: { ownerParticipantId: participantId, updates }
@@ -89,10 +123,9 @@ export function updateAccountEventPin(state, eventId, pinned, storage, now = Dat
   const participantId = accountParticipantId(state);
   const id = typeof eventId === "string" ? eventId.trim() : "";
   if (!participantId || !SAFE_EVENT_ID.test(id)) throw new Error("Account event pin identity is missing or invalid");
-  const existing = pinUpdatesForOwner(state.personalEventPinPreferences, participantId);
   // A failed migration read must never become an empty cloud preference.
-  const migrated = existing ? state : migrateLegacyAccountPins(state, storage);
-  const updates = existing ?? pinUpdatesForOwner(migrated.personalEventPinPreferences, participantId) ?? {};
+  const migrated = migrateLegacyAccountPins(state, storage);
+  const updates = pinUpdatesForOwner(migrated.personalEventPinPreferences, participantId) ?? {};
   const previousTime = Date.parse(updates[id]?.updatedAt);
   const updatedAt = new Date(Math.max(
     Number.isFinite(Number(now)) ? Number(now) : Date.now(),
@@ -102,7 +135,13 @@ export function updateAccountEventPin(state, eventId, pinned, storage, now = Dat
     ...state,
     personalEventPinPreferences: {
       ownerParticipantId: participantId,
-      updates: { ...updates, [id]: { pinned: Boolean(pinned), updatedAt } }
+      updates: { ...updates, [id]: {
+        pinned: Boolean(pinned), updatedAt,
+        mutationId: newMutationId(),
+        ancestors: validPinUpdate(updates[id])
+          ? [pinMutationId(updates[id]), ...validAncestors(updates[id])].slice(0, MAX_PIN_ANCESTORS)
+          : []
+      } }
     }
   };
 }
@@ -118,16 +157,45 @@ export function mergeAccountEventPins(remoteState, localState) {
     if (!SAFE_EVENT_ID.test(id)) continue;
     const remoteUpdate = remote?.[id];
     const localUpdate = local?.[id];
-    const remoteTime = validPinUpdate(remoteUpdate) ? Date.parse(remoteUpdate.updatedAt) : -1;
-    const localTime = validPinUpdate(localUpdate) ? Date.parse(localUpdate.updatedAt) : -1;
-    if (remoteTime < 0 && localTime < 0) continue;
-    // An unpin wins an exact timestamp tie, avoiding accidental resurrection.
-    const selected = localTime > remoteTime ? localUpdate
-      : remoteTime > localTime ? remoteUpdate
-      : localUpdate?.pinned === false ? localUpdate : remoteUpdate;
-    merged[id] = { pinned: selected.pinned, updatedAt: selected.updatedAt };
+    if (!validPinUpdate(remoteUpdate) && !validPinUpdate(localUpdate)) continue;
+    const selected = selectPinUpdate(remoteUpdate, localUpdate);
+    merged[id] = { ...selected };
   }
   return { ownerParticipantId: participantId, updates: merged };
+}
+
+function newMutationId() {
+  return globalThis.crypto?.randomUUID?.() ??
+    `random-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function pinMutationId(update) {
+  return typeof update.mutationId === "string" && update.mutationId.length <= 128 && update.mutationId
+    ? update.mutationId
+    : `legacy:${update.pinned ? 1 : 0}:${update.updatedAt}`;
+}
+
+function validAncestors(update) {
+  return Array.isArray(update.ancestors)
+    ? update.ancestors.filter(id => typeof id === "string" && id.length > 0 && id.length <= 128)
+      .slice(0, MAX_PIN_ANCESTORS)
+    : [];
+}
+
+function selectPinUpdate(remote, local) {
+  if (!validPinUpdate(remote)) return local;
+  if (!validPinUpdate(local)) return remote;
+  const remoteId = pinMutationId(remote);
+  const localId = pinMutationId(local);
+  if (remoteId === localId) {
+    return validAncestors(local).length > validAncestors(remote).length ? local : remote;
+  }
+  if (validAncestors(local).includes(remoteId)) return local;
+  if (validAncestors(remote).includes(localId)) return remote;
+  // Neither operation knows the other. Their real-time order is unknowable,
+  // including for old timestamp-only records or truncated ancestry.
+  if (local.pinned !== remote.pinned) return local.pinned ? remote : local;
+  return localId > remoteId ? local : remote;
 }
 
 export function pinnedEventsFirst(events, pinnedIds) {
