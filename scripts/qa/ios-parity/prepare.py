@@ -155,6 +155,18 @@ def validate(out: Path, source_sha: str) -> None:
             # covered by the wizard's sticky header or action footer.
             layout = record["keyboardLayout"]
             assert layout["fieldHittable"] is True and layout["nextHittable"] is True
+            # The title may scroll to make room for AX text, but the user
+            # must retain usable Back/accessibility controls above the IME.
+            controls = layout["headerControls"]
+            frame, offset, scroll = record["native"]["scrollViewFrame"], record["native"]["nativeContentOffset"], record["documentScroll"]
+            control_dx, control_dy = frame["x"] + scroll["x"] - offset["x"], frame["y"] + scroll["y"] - offset["y"]
+            for key in ["back", "accessibility"]:
+                assert controls[key + "Hittable"] is True, (mode, phase, key, "header control not hittable")
+                bounds = controls[key]
+                assert bounds["right"] > bounds["left"] and bounds["bottom"] > bounds["top"]
+                assert bounds["left"] + control_dx >= -1 and bounds["right"] + control_dx <= record["native"]["windowBounds"]["width"] + 1
+                assert bounds["top"] + control_dy >= record["native"]["statusBarFrame"]["y"] + record["native"]["statusBarFrame"]["height"] - 1, (mode, phase, key, "header control under status bar")
+                assert bounds["bottom"] + control_dy <= record["native"]["keyboardFrame"]["y"] + 1, (mode, phase, key, "header control under keyboard")
             assert record["metrics"][field]["bounds"]["top"] >= layout["header"]["bottom"] - 1
             assert record["metrics"][field]["bounds"]["bottom"] <= layout["footer"]["top"] + 1
             assert record["metrics"]["next"]["bounds"]["top"] >= layout["footer"]["top"] - 1
@@ -181,6 +193,12 @@ def validate(out: Path, source_sha: str) -> None:
         for phase in ["saved", "restored"]:
             assert any(expense["name"] == "QA iOS" and expense["total"] == 12000 for expense in records[phase]["saved"]["state"]["events"][0]["expenses"])
         assert "QA iOS" in records["restored"]["metrics"]["expense"]["text"]
+        # A numeric amount/currency is one visual unit, even at OS AX size.
+        # General glyph overflow checks do not detect a digit wrapped inside
+        # its box; require the actual group amount, not only the expense name.
+        group_total = records["restored"]["metrics"]["groupTotal"]
+        assert group_total["textRows"] == 1, (mode, "groupTotal", "currency split across rows")
+        assert group_total["words"] and all(word["rows"] == 1 for word in group_total["words"]), (mode, "groupTotal", "digit split across rows")
         reports[mode] = report
     normal, enlarged = reports["default"], reports["accessibility-extra-large"]
     assert normal["preferredContentSizeCategory"] == "UICTContentSizeCategoryL"

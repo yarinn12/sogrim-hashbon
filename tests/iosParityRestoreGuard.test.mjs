@@ -24,6 +24,7 @@ async function runJourney(script, renderedExpensePresent) {
   const opener = makeElement('Open');
   const heading = makeElement('אירוע בדיקה');
   const expense = makeElement('QA iOS');
+  const groupTotal = makeElement('₪120.00');
   const row = { state: { events: [{ expenses: [{ id: 'qa-expense-id', name: 'QA iOS', total: 12000 }] }] } };
   const storage = {
     'qa-ios-parity-complete': '1',
@@ -40,6 +41,7 @@ async function runJourney(script, renderedExpensePresent) {
       if (selector === '[data-screen-kind="home"]') return [opener];
       if (selector === '[data-action="open-event"][data-event-id="ios-native-event"]') return [opener];
       if (selector === '.event-overview-header h1') return [heading];
+      if (selector === '.expense-day-summary .amount') return [groupTotal];
       if (selector === '.expense-row[data-expense-id="qa-expense-id"] strong') {
         return renderedExpensePresent ? [expense] : [];
       }
@@ -95,10 +97,11 @@ assert.equal(missing.nativeStatus.nativeStatusReady, true, 'A failed relaunch mu
 const present = await runJourney(source, true);
 assert.equal(present.phase, 'restored', 'Rendered expense must pass relaunch QA');
 assert.equal(present.metrics.expense.text, 'QA iOS');
+assert.equal(present.metrics.groupTotal.text, '₪120.00', 'The restored capture must include the real group amount');
 assert.equal(present.nativeStatus.nativeStatusReady, true, 'Acknowledged restored capture must expose native status');
 
 const mutated = source.replace(
-  /      const expenseSelector = `[\s\S]*?      await capture\('restored', \{ heading: '\.event-overview-header h1', expense: expenseSelector \}\);/,
+  /      const expenseSelector = `[\s\S]*?      await capture\('restored', \{[\s\S]*?\}\);/,
   "      await capture('restored', { heading: '.event-overview-header h1' });"
 );
 assert.notEqual(mutated, source, 'Controlled mutation did not remove the rendered-row assertion');

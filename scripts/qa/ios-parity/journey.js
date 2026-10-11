@@ -110,12 +110,13 @@
     const style = getComputedStyle(element), bounds = element.getBoundingClientRect();
     const tabBounds = element.closest('.event-workspace-tab')?.getBoundingClientRect();
     let horizontalGlyphOverflow = false, clippedByAncestor = false;
-    const words = [], walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const words = [], textRows = new Set(), walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       for (const word of node.textContent.matchAll(/\S+/gu)) {
         const range = document.createRange();
         range.setStart(node, word.index); range.setEnd(node, word.index + word[0].length);
         const rects = [...range.getClientRects()].filter(rect => rect.width && rect.height);
+        for (const rect of rects) textRows.add(Math.round(rect.top));
         horizontalGlyphOverflow ||= rects.some(rect => rect.left < bounds.left - 1 || rect.right > bounds.right + 1);
         for (let parent = element.parentElement; parent; parent = parent.parentElement) {
           const parentStyle = getComputedStyle(parent);
@@ -130,7 +131,7 @@
       }
     }
     return { text: element.value || element.textContent.trim(), fontSize: parseFloat(style.fontSize),
-      width: bounds.width, height: bounds.height, words, fontFamily: style.fontFamily,
+      width: bounds.width, height: bounds.height, words, textRows: textRows.size, fontFamily: style.fontFamily,
       scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, horizontalGlyphOverflow,
       clippedByAncestor, isTextControl: ['INPUT', 'TEXTAREA'].includes(element.tagName),
       textOverflow: style.textOverflow, overflowX: style.overflowX,
@@ -150,6 +151,12 @@
     };
     return {
       header: bounds('.expense-modal-step-header'), footer: bounds('.expense-modal-actions'),
+      headerControls: {
+        back: bounds('.expense-modal-header-actions .modal-section-back-button'),
+        accessibility: bounds('.expense-modal-header-actions .expense-accessibility-button'),
+        backHittable: Boolean(point('.expense-modal-header-actions .modal-section-back-button')),
+        accessibilityHittable: Boolean(point('.expense-modal-header-actions .expense-accessibility-button'))
+      },
       fieldHittable: Boolean(point(selectors[field])), nextHittable: Boolean(point(selectors.next))
     };
   }
@@ -220,7 +227,8 @@
       const rendered = await until(() => first(expenseSelector), 'restored expense rendered in the native UI');
       if (!rendered.textContent.includes('QA iOS')) throw new Error('The restored expense name differs in the UI');
       rendered.scrollIntoView({ block: 'center' });
-      await capture('restored', { heading: '.event-overview-header h1', expense: expenseSelector });
+      await capture('restored', { heading: '.event-overview-header h1', expense: expenseSelector,
+        groupTotal: '.expense-day-summary .amount' });
       return;
     }
     await capture('home', { brand: '.product-brand-copy strong', description: '.product-home-screen .top .brand .muted' });
@@ -256,9 +264,11 @@
     await until(() => first('[data-action="expense-total"]'), 'expense amount field');
     await capture('keyboard-ready', { amount: '[data-action="expense-total"]' });
     await until(() => first('[data-action="expense-total"]')?.value === '120', 'real native amount typing', 90000);
-    await capture('keyboard-amount', { amount: '[data-action="expense-total"]', next: '[data-action="expense-step-next"]' });
+    await capture('keyboard-amount', { amount: '[data-action="expense-total"]', next: '[data-action="expense-step-next"]',
+      wizardTitle: '.expense-modal-step-header h2', wizardStep: '.expense-modal-step-header .eyebrow' });
     await until(() => first('[data-action="expense-name"]')?.value === 'QA iOS', 'real native name typing', 90000);
-    await capture('keyboard-name', { name: '[data-action="expense-name"]', next: '[data-action="expense-step-next"]' });
+    await capture('keyboard-name', { name: '[data-action="expense-name"]', next: '[data-action="expense-step-next"]',
+      wizardTitle: '.expense-modal-step-header h2', wizardStep: '.expense-modal-step-header .eyebrow' });
     await until(() => {
       const row = JSON.parse(localStorage.getItem('qa-native-server-row'));
       return row?.state.events[0].expenses.some(expense => expense.name === 'QA iOS' && expense.total === 12000);

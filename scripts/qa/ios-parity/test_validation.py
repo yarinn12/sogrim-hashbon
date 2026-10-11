@@ -53,12 +53,19 @@ def report(enlarged=False):
         if phase == "restored":
             metrics["expense"] = deepcopy(metric)
             metrics["expense"]["text"] = "QA iOS"
+            metrics["groupTotal"] = deepcopy(metric)
+            metrics["groupTotal"]["text"] = "₪120.00"
+            metrics["groupTotal"]["textRows"] = 1
+            metrics["groupTotal"]["words"] = [{"text": "₪120.00", "rows": 1, "outsideTab": False}]
         result["records"].append({"phase": phase, "native": deepcopy(native), "nativeShell": True, "platform": "ios",
                                   "appUrl": "capacitor://localhost/", "nativeAppInfo": {"id": "com.sogrimhashbon.app"},
                                   "errors": [], "documentWidth": 393, "rootFontSize": 16 * factor,
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
                                   "metrics": metrics, "writes": [{"ok": True}], "pendingOutbox": [],
                                   "keyboardLayout": {"header": {"top": 0, "bottom": 120},
+                                                     "headerControls": {"back": {"top": 64, "bottom": 112, "left": 280, "right": 328},
+                                                                        "accessibility": {"top": 64, "bottom": 112, "left": 224, "right": 272},
+                                                                        "backHittable": True, "accessibilityHittable": True},
                                                      "footer": {"top": 250, "bottom": 476},
                                                      "fieldHittable": True, "nextHittable": True},
                                   "openedNote": {"title": "טקסט תקין", "body": "טקסט תקין"},
@@ -173,6 +180,21 @@ class AcceptanceTests(unittest.TestCase):
     def test_keyboard_next_center_covered_fails(self):
         self.record("keyboard-amount")["keyboardLayout"]["nextHittable"] = False
         self.rejects()
+    def test_keyboard_back_inaccessible_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["headerControls"]["backHittable"] = False
+        self.rejects()
+    def test_keyboard_accessibility_control_inaccessible_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["headerControls"]["accessibilityHittable"] = False
+        self.rejects()
+    def test_keyboard_back_under_native_status_bar_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["headerControls"]["back"].update({"top": 10, "bottom": 58})
+        self.rejects()
+    def test_keyboard_back_under_native_keyboard_fails(self):
+        self.record("keyboard-name")["keyboardLayout"]["headerControls"]["back"].update({"top": 480, "bottom": 528})
+        self.rejects()
+    def test_missing_keyboard_header_controls_fails(self):
+        del self.record("keyboard-name")["keyboardLayout"]["headerControls"]
+        self.rejects()
     def test_native_name_scroll_above_viewport_fails(self):
         # The real AX run accepted typing with a DOM-hit-tested center while
         # UIKit's additional scroll left the top of the name field at -19px.
@@ -195,6 +217,19 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
     def test_missing_rendered_restore_fails(self):
         del self.record("restored")["metrics"]["expense"]
+        self.rejects()
+    def test_wrapped_group_currency_fails(self):
+        # UIKit AX screenshot showed the final digit on its own second row.
+        self.record("restored")["metrics"]["groupTotal"]["words"][0]["rows"] = 2
+        self.rejects()
+    def test_missing_group_currency_fails(self):
+        del self.record("restored")["metrics"]["groupTotal"]
+        self.rejects()
+    def test_currency_symbol_on_separate_row_fails(self):
+        metric = self.record("restored")["metrics"]["groupTotal"]
+        metric["textRows"] = 2
+        metric["words"] = [{"text": "₪", "rows": 1, "outsideTab": False},
+                           {"text": "120.00", "rows": 1, "outsideTab": False}]
         self.rejects()
 
 
