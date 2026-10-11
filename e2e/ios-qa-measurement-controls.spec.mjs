@@ -30,7 +30,12 @@ test('actual QA keyboard measurement distinguishes a covered edge from a covered
   // This is the DOM measurement boundary, without any Capacitor or OS mock.
   await page.setContent(`
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <header class="expense-modal-step-header" style="position:fixed;inset:0 0 auto;height:50px">Header</header>
+    <header class="expense-modal-step-header" style="position:fixed;inset:0 0 auto;height:50px;z-index:3">
+      <div class="expense-modal-header-actions">
+        <button class="modal-section-back-button" style="position:absolute;left:20px;top:5px;width:40px;height:40px">Back</button>
+        <button class="expense-accessibility-button" style="position:absolute;left:80px;top:5px;width:40px;height:40px">Accessibility</button>
+      </div>
+    </header>
     <input id="field" style="position:fixed;left:20px;top:100px;width:200px;height:60px;box-sizing:border-box" />
     <footer class="expense-modal-actions" style="position:fixed;left:0;right:0;top:200px;height:100px;z-index:2;background:white">
       <button id="next" style="position:absolute;left:20px;top:20px;width:200px;height:40px">Next</button>
@@ -42,6 +47,17 @@ test('actual QA keyboard measurement distinguishes a covered edge from a covered
   const read = () => page.evaluate(() => globalThis.__iosQaKeyboardLayout('keyboard-name', { name: '#field', next: '#next' }));
   const normal = await read();
   expect(normal).toMatchObject({ header: { bottom: 50 }, footer: { top: 200 }, fieldHittable: true, nextHittable: true });
+  expect(normal.headerControls).toMatchObject({ backHittable: true, accessibilityHittable: true });
+
+  await page.evaluate(() => {
+    const cover = document.createElement('div');
+    cover.id = 'header-control-cover';
+    cover.style.cssText = 'position:fixed;left:20px;top:5px;width:40px;height:40px;z-index:4;background:white';
+    document.body.append(cover);
+  });
+  expect((await read()).headerControls).toMatchObject({ backHittable: false, accessibilityHittable: true });
+  await page.locator('#header-control-cover').evaluate(element => element.remove());
+  expect(await read()).toEqual(normal);
 
   await page.locator('footer').evaluate(element => { element.style.top = '150px'; });
   const edgeCovered = await read();
