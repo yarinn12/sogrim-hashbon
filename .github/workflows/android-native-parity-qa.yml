@@ -171,9 +171,9 @@ jobs:
           mkdir -p artifacts/android-native-isolated
           # Finalize our trace/host observer on every failure before the original ANR gate.
           trace_status=0
-          node scripts/qa/android-native-isolated/trace-diagnostics.mjs finish || trace_status=$?
+          ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/trace-diagnostics.mjs finish || trace_status=$?
           diagnostic_status=1
-          if [[ -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
+          if [[ -s artifacts/android-native-isolated/emulator.pid && -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
             timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -d -v threadtime > artifacts/android-native-isolated/logcat.txt 2>&1 || true
             timeout 10 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
             diagnostic_status=0

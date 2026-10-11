@@ -335,13 +335,33 @@ async function watchHost(output){
   }catch(error){summary.errors.push(error.stack);}
   summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();if(existsSync(data))summary.data=fileReceipt(data);writeFileSync(join(output,'host-summary.json'),JSON.stringify(summary,null,2));
 }
+// Cleanup also runs after an APK build failure, before an emulator PID exists.
+// Classify that absence without inventing a PID or entering guest/host cleanup.
+// Any recorded/residual capture remains unconfirmed and unsuccessful.
+function finishWithoutEmulatorPid(options){
+  mkdirSync(options.output,{recursive:true});
+  const report={...options,mode:'finish',emulatorPidUnavailable:true,jobStatus:process.env.ANDROID_QA_JOB_STATUS,finalizeStartedAtUtc:now(),captureStarted:false,captureComplete:false,nativeAcceptance:false,noCaptureStarted:false,commands:[],errors:[]};
+  const validIdentity=!!options.adbPath&&/^emulator-\d+$/.test(options.device||'')&&/^sogrim_ci_[a-z0-9_]+$/.test(options.avd||'')&&/^[a-f0-9]{40}$/.test(options.source||'');
+  if(!validIdentity)report.errors.push('Require exact source and explicit owned CI emulator identity');
+  const startFile=join(options.output,'trace-start.json'),hasStart=existsSync(startFile);
+  if(hasStart){try{report.start=readJson(startFile);for(const name of ['source','device','avd'])if(report.start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');if(report.start.errors?.length)report.errors.push('Original startup errors: '+report.start.errors.join('\n'));}catch(error){report.errors.push(error.stack);}}
+  const unavailableStart=join(options.output,'trace-unavailable-start.json');
+  if(existsSync(unavailableStart)){try{report.originalStartupUnavailable=readJson(unavailableStart);if(report.originalStartupUnavailable.error)report.errors.push('Original startup error: '+report.originalStartupUnavailable.error);}catch(error){report.errors.push(error.stack);}}
+  const residue=readdirSync(options.output).filter(name=>!['trace-unavailable-start.json','trace-unavailable-finish.json','trace-diagnostics.json'].includes(name));
+  report.noCaptureStarted=validIdentity&&!hasStart&&residue.length===0;
+  report.traceAnalysisStatus=report.noCaptureStarted?'unavailable: capture never started; emulator was not launched':'unavailable: emulator PID missing; capture state unconfirmed';
+  report.errors.push(report.noCaptureStarted?'No emulator PID or capture evidence; no guest tracer/host observer cleanup attempted':'Missing explicit emulator PID; refuse receipt PID adoption, guest calls or observer waits');
+  report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   const mode=process.argv[2];
   if(mode==='host')await watchHost(resolve(process.argv[3]));
   else{
     try{
-      const options={adbPath:process.env.ADB_PATH,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,source:process.env.ANDROID_QA_SOURCE,emulatorPid:Number(readFileSync('artifacts/android-native-isolated/emulator.pid','utf8').trim()),output:'artifacts/android-native-isolated/trace-diagnostics'};
-      const report=mode==='start'?await startOwnedTrace(options):mode==='finish'?await finishOwnedTrace(options):(()=>{throw new Error('Require trace start/finish mode');})();
+      const options={adbPath:process.env.ADB_PATH,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,source:process.env.ANDROID_QA_SOURCE,output:'artifacts/android-native-isolated/trace-diagnostics'},pidFile='artifacts/android-native-isolated/emulator.pid';
+      const noEmulatorPid=mode==='finish'&&!existsSync(pidFile);
+      if(!noEmulatorPid)options.emulatorPid=Number(readFileSync(pidFile,'utf8').trim());
+      const report=noEmulatorPid?finishWithoutEmulatorPid(options):mode==='start'?await startOwnedTrace(options):mode==='finish'?await finishOwnedTrace(options):(()=>{throw new Error('Require trace start/finish mode');})();
       console.log(JSON.stringify({source:report.source,captureStarted:report.captureStarted,captureComplete:report.captureComplete,noCaptureStarted:report.noCaptureStarted,traceAnalysisStatus:report.traceAnalysisStatus,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
     }catch(error){
       const output='artifacts/android-native-isolated/trace-diagnostics';mkdirSync(output,{recursive:true});const report={source:process.env.ANDROID_QA_SOURCE,mode,captureStarted:false,captureComplete:false,nativeAcceptance:false,error:error.stack,recordedAtUtc:now()};writeFileSync(join(output,'trace-unavailable-'+mode+'.json'),JSON.stringify(report,null,2));console.error(JSON.stringify(report));process.exitCode=1;
