@@ -34,18 +34,13 @@ test("shared notes are a first-class synchronized event workspace", () => {
   assert.doesNotMatch(deleteHandler, /event-note/);
 });
 
-test("the approved notes layout includes pinned, empty and editor states", () => {
-  const emptyState = app.match(
-    /function renderEventNotesEmptyState\(\) \{([\s\S]*?)\n\}/
-  )?.[1] ?? "";
-
+test("shared notes retain pinned and editor states without an empty-state message", () => {
   assert.match(app, /event-notes-intro/);
   assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
   assert.match(app, /renderEventWorkspaceNav\(event, "notes"\)/);
   assert.match(app, /event-notes-section-label/);
-  assert.match(app, /עוד אין פתקים משותפים/);
-  assert.doesNotMatch(emptyState, /data-action="new-event-note"/);
-  assert.doesNotMatch(emptyState, /כתבו את הפתק הראשון/);
+  assert.doesNotMatch(app, /עוד אין פתקים משותפים/);
+  assert.match(app, /data-action="new-event-note"/);
   assert.match(app, /event-note-pin-toggle/);
   assert.match(layer, /Shared event notes — approved mobile direction/);
   assert.match(layer, /\.event-notes-hero/);

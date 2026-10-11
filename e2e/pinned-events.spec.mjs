@@ -243,3 +243,62 @@ test("another tab updates personal pins without losing a newer pin or reopening 
   await expect(page.locator(".event-status-menu")).toHaveCount(0);
   await expect(other.locator(".event-status-menu")).toHaveCount(0);
 });
+
+test("two independent account contexts sync pin and unpin through the private workspace", async ({ page, browser }) => {
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state);
+  const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  try {
+    const second = await secondContext.newPage();
+    await cloud.connectPage(second);
+    await order(second, [NEW, OLD, CLOSED]);
+    await pin(page, OLD, true);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    // The second device still has its older snapshot: its save must retry CAS.
+    await pin(second, CLOSED, true);
+    expect(cloud.conflicts()).toBeGreaterThan(0);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    await cloud.reload();
+    await order(page, [OLD, CLOSED, NEW]);
+    await pin(page, OLD, false);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(false);
+    await second.reload();
+    await order(second, [CLOSED, NEW, OLD]);
+    cloud.setOffline(second, true);
+    await secondContext.setOffline(true);
+    await pin(second, CLOSED, false);
+    expect(cloud.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+    cloud.setOffline(second, false);
+    await secondContext.setOffline(false);
+    await expect.poll(() => cloud.state().personalEventPinPreferences.updates[CLOSED].pinned,
+      { timeout: 20000 }).toBe(false);
+    await cloud.reload();
+    await order(page, [NEW, OLD, CLOSED]);
+  } finally { await secondContext.close(); }
+});
+
+test("legacy device pins migrate into the account snapshot after hydration", async ({ page }) => {
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state, { legacyPins: [OLD] });
+  await order(page, [OLD, NEW, CLOSED]);
+  await expect.poll(() => cloud.state().personalEventPinPreferences?.updates?.[OLD]?.pinned).toBe(true);
+  await cloud.reload();
+  await order(page, [OLD, NEW, CLOSED]);
+});
+
+test("a different authenticated account has independent pin preferences", async ({ page, browser }) => {
+  const first = await personalPinsCloud(page, test.info().project.use.baseURL, state);
+  await pin(page, OLD, true);
+  const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  try {
+    const other = await secondContext.newPage();
+    const second = await personalPinsCloud(other, test.info().project.use.baseURL, state,
+      { accountId: "personal-pins-other-owner" });
+    await order(other, [NEW, OLD, CLOSED]);
+    await pin(other, CLOSED, true);
+    await first.reload();
+    await order(page, [OLD, NEW, CLOSED]);
+    expect(first.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    expect(first.state().personalEventPinPreferences.updates[CLOSED]).toBeUndefined();
+    expect(second.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+    expect(second.state().personalEventPinPreferences.updates[OLD]).toBeUndefined();
+  } finally { await secondContext.close(); }
+});

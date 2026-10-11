@@ -10574,7 +10574,7 @@ const CSS = `
   html.ledger-workspace-v1 .event-participant-primary-actions {
     min-width: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 3fr) minmax(136px, 2fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 8px !important;
     margin: 13px 0 4px !important;
   }
@@ -16572,6 +16572,20 @@ const CSS = `
     box-shadow: 0 12px 28px rgba(16, 35, 33, 0.12) !important;
   }
 
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search {
+    display: block !important;
+    padding: 4px 6px 8px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search input {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu button[hidden] {
+    display: none !important;
+  }
+
   html.ledger-workspace-v1 .new-event-inline-picker-menu button {
     min-height: 44px !important;
     display: flex !important;
@@ -17100,6 +17114,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .new-event-selected-participant.is-current-participant {
+    grid-template-columns: 48px minmax(0, 1fr) auto !important;
     cursor: default !important;
   }
 
@@ -17482,6 +17497,16 @@ const CSS = `
     box-shadow:
       0 14px 32px rgba(18, 58, 46, 0.12),
       0 3px 9px rgba(18, 58, 46, 0.06) !important;
+  }
+
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action {
+    gap: 2px !important;
+    padding-inline: 10px 14px !important;
+  }
+
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action .home-quick-action-icon {
+    width: 34px !important;
+    min-width: 34px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary > span:nth-child(2) {

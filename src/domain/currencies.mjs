@@ -29,13 +29,17 @@ const CURRENCIES = [
   { id: "MAD", label: "דירהם מרוקאי", country: "מרוקו", symbol: "MAD" },
   { id: "EGP", label: "לירה מצרית", country: "מצרים", symbol: "E£" },
   { id: "JOD", label: "דינר ירדני", country: "ירדן", symbol: "JD" },
-  { id: "ZAR", label: "ראנד", country: "דרום אפריקה", symbol: "R" }
+  { id: "ZAR", label: "ראנד", country: "דרום אפריקה", symbol: "R" },
+  { id: "BRL", label: "ריאל ברזילאי", country: "ברזיל", symbol: "R$" },
+  { id: "HKD", label: "דולר הונג קונגי", country: "הונג קונג", symbol: "HK$" },
+  { id: "MXN", label: "פסו מקסיקני", country: "מקסיקו", symbol: "MX$" }
 ];
 
 const CURRENCY_BY_ID = new Map(CURRENCIES.map((currency) => [currency.id, currency]));
 
 export function currencyOptions() {
-  return CURRENCIES.map((currency) => ({ ...currency }));
+  return CURRENCIES.map((currency) => ({ ...currency }))
+    .sort((left, right) => left.label.localeCompare(right.label, "he"));
 }
 
 export function normalizeCurrency(value) {

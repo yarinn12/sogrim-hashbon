@@ -83,11 +83,21 @@ test("a new user completes the first useful loop without help", async ({ page })
   const currencyPicker = page.locator(".new-event-inline-picker").filter({
     hasText: "מטבע האירוע"
   });
+  await page.locator('[data-action="new-event-name"]').press("Enter");
+  await expect(currencyPicker.locator("summary")).toBeFocused();
   await expect(currencyPicker.locator("summary")).toContainText("שקל ישראלי");
   await currencyPicker.locator("summary").click();
   await expect(
     currencyPicker.locator('[data-action="new-event-currency-choice"]')
-  ).toHaveCount(29);
+  ).toHaveCount(32);
+  const currencySearch = currencyPicker.locator('[data-action="new-event-currency-search"]');
+  await currencySearch.fill("MXN");
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"]:visible')).toHaveCount(1);
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="MXN"]')).toBeVisible();
+  await currencySearch.fill("ברזילאי");
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"]:visible')).toHaveCount(1);
+  await expect(currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="BRL"]')).toBeVisible();
+  await currencySearch.clear();
   await expect(
     currencyPicker.locator('[data-action="new-event-currency-choice"][data-choice-value="USD"]')
   ).toContainText("דולר אמריקאי");

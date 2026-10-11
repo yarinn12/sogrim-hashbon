@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "../src/data/personalEventPins.mjs";
+import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventIdsForState, migrateLegacyAccountPins, updateAccountEventPin, pinnedEventsFirst } from "../src/data/personalEventPins.mjs";
+import { mergeSharedStates } from "../src/domain/sharedStateMerge.mjs";
+import { saveCloudStateWithConflictRetry } from "../src/data/cloudConflictRetry.mjs";
 
 function storageFixture() {
   const values = new Map(), writes = [];
@@ -91,4 +93,69 @@ test("missing participant or event identity never writes a shared anonymous pref
     assert.throws(() => setPersonalEventPin(participantId, eventId, true, storage), /identity/i);
   }
   assert.deepEqual(storage.writes, []);
+});
+
+test("two account devices merge pin and unpin records without changing another account", () => {
+  const firstStorage = storageFixture();
+  const secondStorage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const first = updateAccountEventPin(base, "trip", true, firstStorage, 1000);
+  const second = updateAccountEventPin(base, "dinner", true, secondStorage, 2000);
+  const combined = mergeSharedStates(first, second);
+  assert.deepEqual([...pinnedEventIdsForState(combined)].sort(), ["dinner", "trip"]);
+
+  const unpinned = updateAccountEventPin(combined, "trip", false, firstStorage, 3000);
+  const staleReplica = mergeSharedStates(unpinned, first);
+  assert.deepEqual([...pinnedEventIdsForState(staleReplica)], ["dinner"]);
+  assert.equal(staleReplica.personalEventPinPreferences.updates.trip.pinned, false);
+
+  const otherAccount = { currentParticipantId: "account-bob", participants: [], events: [] };
+  const isolated = mergeSharedStates(unpinned, otherAccount);
+  assert.equal(isolated.personalEventPinPreferences, undefined);
+  assert.deepEqual([...pinnedEventIdsForState(isolated, secondStorage)], []);
+});
+
+test("conflict retry sends and acknowledges the final per-account pin payload", async () => {
+  const storage = storageFixture();
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  const remote = updateAccountEventPin(base, "remote", true, storage, 1000);
+  const local = updateAccountEventPin(base, "offline", true, storage, 2000);
+  let attempts = 0;
+  let finalWrite;
+  const result = await saveCloudStateWithConflictRetry({
+    state: local,
+    loadLatest: async () => remote,
+    save: async (candidate) => {
+      attempts += 1;
+      if (attempts === 1) throw Object.assign(new Error("conflict"), { code: "CLOUD_STATE_CONFLICT" });
+      finalWrite = structuredClone(candidate);
+    },
+    retryDelay: () => 0
+  });
+  assert.equal(attempts, 2);
+  assert.deepEqual([...pinnedEventIdsForState(finalWrite)].sort(), ["offline", "remote"]);
+  assert.deepEqual(result.state.personalEventPinPreferences, finalWrite.personalEventPinPreferences);
+  assert.equal(result.conflictCount, 1);
+});
+
+test("legacy local pins migrate only when the authenticated snapshot has no synced preferences", () => {
+  const storage = storageFixture();
+  setPersonalEventPin("account-alice", "legacy", true, storage);
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  assert.deepEqual([...pinnedEventIdsForState(base, storage)], ["legacy"]);
+  const migrated = migrateLegacyAccountPins(base, storage);
+  assert.deepEqual([...pinnedEventIdsForState(migrated, storage)], ["legacy"]);
+  assert.equal(migrateLegacyAccountPins(migrated, storage), migrated);
+  const updated = updateAccountEventPin(base, "new", true, storage, 2000);
+  assert.deepEqual([...pinnedEventIdsForState(updated, storage)].sort(), ["legacy", "new"]);
+  const remoteUnpin = updateAccountEventPin(base, "legacy", false, storage, 3000);
+  assert.deepEqual([...pinnedEventIdsForState(mergeSharedStates(remoteUnpin, updated))], ["new"]);
+});
+
+test("unreadable legacy pins cannot be silently replaced by an empty account preference", () => {
+  const storage = { getItem() { throw new Error("SecurityError"); } };
+  const base = { currentParticipantId: "account-alice", participants: [], events: [] };
+  assert.throws(() => migrateLegacyAccountPins(base, storage), /SecurityError/);
+  assert.throws(() => updateAccountEventPin(base, "event", true, storage, 1000), /SecurityError/);
+  assert.equal(base.personalEventPinPreferences, undefined);
 });
