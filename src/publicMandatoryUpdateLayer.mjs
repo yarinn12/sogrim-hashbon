@@ -1,20 +1,20 @@
-import {
-  loadRuntimeConfig,
-  refreshRuntimeConfigNow
-} from "./data/localStore.mjs";
+import { refreshRuntimeConfigNow, pendingSharedSyncStatus } from "./data/localStore.mjs";
+import { decideNativeUpdate } from "./domain/appUpdatePolicy.mjs";
+import { hasUpdateSensitiveWork } from "./domain/updateSafety.mjs";
 
 const CHECKING_CLASS = "mandatory-update-checking";
 const REQUIRED_CLASS = "mandatory-update-required";
 const GATE_ID = "mandatory-update-gate";
+const OPTIONAL_ID = "available-update-prompt";
 const STYLE_ID = "mandatory-update-styles";
 const UPDATE_CHECK_EVENT = "sogrim:mandatory-update-check";
 const NATIVE_BACK_EVENT = "settle-friends:native-back";
 const NATIVE_RESUME_EVENT = "settle-friends:native-resume";
 const ANDROID_PACKAGE_ID = "com.sogrimhashbon.app";
-const PLAY_STORE_URL =
-  `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE_ID}`;
 const PLAY_MARKET_URL = `market://details?id=${ANDROID_PACKAGE_ID}`;
 const INITIAL_UPDATE_CHECK_BUDGET_MS = 1_200;
+const LATER_MS = 24 * 60 * 60 * 1_000;
+const PLATFORM = nativePlatform();
 
 const CSS = `
   html.mandatory-update-checking body {
@@ -51,6 +51,10 @@ const CSS = `
     color: #10221f;
     background: #f6f9f8;
     font-family: "Rubik", "Heebo", "Assistant", sans-serif;
+  }
+
+  .mandatory-update-gate[hidden] {
+    display: none !important;
   }
 
   .mandatory-update-panel {
@@ -141,6 +145,32 @@ const CSS = `
     line-height: 1.45;
   }
 
+  .available-update-actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 28px;
+  }
+
+  .available-update-actions .mandatory-update-button {
+    margin-top: 0;
+  }
+
+  .available-update-later {
+    min-height: 48px;
+    border: 1px solid #b9cbc5;
+    border-radius: 12px;
+    background: #fff;
+    color: #075a48;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .available-update-later:focus-visible {
+    outline: 3px solid rgba(17, 145, 116, 0.34);
+    outline-offset: 3px;
+  }
+
   @media (max-height: 560px) {
     .mandatory-update-gate {
       place-items: start center;
@@ -166,16 +196,26 @@ const CSS = `
 
 let updateRequired = false;
 let checkPromise = null;
+let lifecycleCheckChain = Promise.resolve();
+let verifiedPolicy = null;
+let verifiedBuild = 0;
+let visibleDecision = null;
+let previousFocus = null;
 
-if (isNativeAndroidRuntime()) {
+if (PLATFORM) {
   installStyles();
   document.documentElement.classList.add(CHECKING_CLASS);
   checkForMandatoryUpdate().catch(releaseUpdateCheck);
   window.addEventListener(NATIVE_RESUME_EVENT, () => {
-    checkForMandatoryUpdate({ showCheckingState: false }).catch(() => {});
+    queueLifecycleCheck().catch(() => {});
   });
   window.addEventListener("online", () => {
-    checkForMandatoryUpdate({ showCheckingState: false }).catch(() => {});
+    queueLifecycleCheck().catch(() => {});
+  });
+  window.addEventListener("sogrim:sync-status", reconsiderVerifiedPolicy);
+  document.addEventListener("settle-friends:screen-rendered", reconsiderVerifiedPolicy);
+  window.addEventListener("keydown", event => {
+    if (event.key === "Escape" && visibleDecision?.kind === "optional") deferOptionalUpdate();
   });
   window.addEventListener(
     NATIVE_BACK_EVENT,
@@ -193,6 +233,14 @@ if (isNativeAndroidRuntime()) {
   );
 }
 
+function queueLifecycleCheck() {
+  lifecycleCheckChain = lifecycleCheckChain.catch(() => {}).then(async () => {
+    if (checkPromise) await checkPromise.catch(() => {});
+    return checkForMandatoryUpdate({ showCheckingState: false });
+  });
+  return lifecycleCheckChain;
+}
+
 function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
   if (checkPromise) return checkPromise;
   if (showCheckingState) {
@@ -201,7 +249,7 @@ function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
 
   checkPromise = performUpdateCheck()
     .catch((error) => {
-      if (!updateRequired) releaseUpdateCheck();
+      hideUpdatePrompts();
       throw error;
     })
     .finally(() => {
@@ -211,88 +259,63 @@ function checkForMandatoryUpdate({ showCheckingState = true } = {}) {
 }
 
 async function performUpdateCheck() {
-  let initialConfig = null;
-  let initialPolicyRequired = false;
-  let initialPolicyKnown = false;
-  try {
-    initialConfig = await loadRuntimeConfig();
-    initialPolicyKnown = toBuildNumber(
-      initialConfig?.updates?.android?.currentBuild
-    ) > 0;
-    initialPolicyRequired = applyUpdatePolicy(
-      initialConfig?.updates?.android,
-      { final: false }
-    );
-  } catch {}
-
-  const freshConfigRequest = refreshRuntimeConfigNow();
-  if (initialPolicyRequired) {
-    try {
-      const freshConfig = await freshConfigRequest;
-      applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
-    } catch {
-      // A locally known mandatory update remains blocking while offline.
-    }
-    return;
-  }
-
-  if (initialPolicyKnown) {
-    // Native store builds embed a validated policy. Let the first screen open
-    // immediately, while the network refresh can still present a newer gate.
-    releaseUpdateCheck();
-    try {
-      const freshConfig = await freshConfigRequest;
-      applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
-    } catch {
-      releaseUpdateCheck();
-    }
-    return;
-  }
+  const freshRequest = Promise.all([nativeBuildNumber(), refreshRuntimeConfigNow()]);
 
   const firstResult = await Promise.race([
-    freshConfigRequest.then(
-      (config) => ({ status: "ready", config }),
+    freshRequest.then(
+      ([build, config]) => ({ status: "ready", build, config }),
       () => ({ status: "failed" })
     ),
     wait(INITIAL_UPDATE_CHECK_BUDGET_MS).then(() => ({ status: "timeout" }))
   ]);
 
   if (firstResult.status === "ready") {
-    applyUpdatePolicy(firstResult.config?.updates?.android, { final: true });
+    applyUpdatePolicy(firstResult.config?.updates?.[PLATFORM], firstResult.build);
     return;
   }
   if (firstResult.status === "failed") {
-    hideUpdateGate();
+    hideUpdatePrompts();
     return;
   }
 
-  // Do not keep the branded launch screen waiting on a slow failover host.
-  // The same in-flight request can still present the mandatory gate later.
+  // A slow or failed check never holds the app behind the launch screen.
   releaseUpdateCheck();
   try {
-    const freshConfig = await freshConfigRequest;
-    applyUpdatePolicy(freshConfig?.updates?.android, { final: true });
+    const [build, freshConfig] = await freshRequest;
+    applyUpdatePolicy(freshConfig?.updates?.[PLATFORM], build);
   } catch {
-    releaseUpdateCheck();
+    hideUpdatePrompts();
   }
 }
 
-function applyUpdatePolicy(policy, { final = true } = {}) {
-  const minimumSupportedBuild = toBuildNumber(policy?.minimumSupportedBuild);
-  const currentBuild = toBuildNumber(policy?.currentBuild);
-  const required = Boolean(
-    policy?.required === true &&
-    minimumSupportedBuild > 0 &&
-    currentBuild > 0 &&
-    currentBuild < minimumSupportedBuild
-  );
+function applyUpdatePolicy(policy, build) {
+  verifiedPolicy = policy ?? null;
+  verifiedBuild = build;
+  reconsiderVerifiedPolicy();
+}
 
-  if (required) {
-    showUpdateGate();
-    return true;
+function reconsiderVerifiedPolicy() {
+  if (!verifiedPolicy) {
+    hideUpdatePrompts();
+    return;
   }
-  if (final) hideUpdateGate();
-  return false;
+  const decision = decideNativeUpdate(PLATFORM, verifiedBuild, verifiedPolicy, {
+    deferredBuild: deferredOptionalBuild(),
+    unsafeWork: hasUnsyncedOrOpenWork()
+  });
+  if (decision.kind === "required") {
+    visibleDecision = decision;
+    hideOptionalUpdate();
+    showUpdateGate();
+  } else if (decision.kind === "optional") {
+    visibleDecision = decision;
+    hideUpdateGate();
+    showOptionalUpdate();
+  } else {
+    visibleDecision = null;
+    hideUpdatePrompts();
+  }
+  releaseUpdateCheck();
 }
 
 function showUpdateGate() {
@@ -322,12 +345,18 @@ function showUpdateGate() {
     `;
     gate.querySelector(".mandatory-update-button")?.addEventListener(
       "click",
-      openPlayStore
+      openNativeStore
     );
     document.body.append(gate);
   }
   gate.removeAttribute("inert");
   gate.hidden = false;
+  gate.querySelector(".mandatory-update-copy").textContent = PLATFORM === "ios"
+    ? "כדי להמשיך להשתמש בסוגרים חשבון, יש לעדכן לגרסה החדשה דרך App Store."
+    : "כדי להמשיך להשתמש בסוגרים חשבון, יש לעדכן לגרסה החדשה דרך Google Play.";
+  gate.querySelector(".mandatory-update-note").textContent =
+    "אם יש עבודה שלא סונכרנה, השלימו אותה לפני העדכון.";
+  setAppUpdateInert(true);
   gate.focus({ preventScroll: true });
   announceUpdateCheckComplete();
 }
@@ -340,32 +369,154 @@ function hideUpdateGate() {
     gate.hidden = true;
     gate.setAttribute("inert", "");
   }
+  restoreAppInteractionIfClear();
   releaseUpdateCheck();
 }
 
-async function openPlayStore() {
-  const button = document.querySelector(".mandatory-update-button");
-  const note = document.querySelector(".mandatory-update-note");
-  if (!button || button.getAttribute("aria-busy") === "true") return;
-
-  button.setAttribute("aria-busy", "true");
-  if (note) note.textContent = "פותחים את Google Play…";
-  try {
-    const opened = await globalThis.SogrimNative?.app?.openStore?.({
-      marketUrl: PLAY_MARKET_URL,
-      storeUrl: PLAY_STORE_URL
-    });
-    if (!opened) window.location.assign(PLAY_STORE_URL);
-  } catch {
-    window.location.assign(PLAY_STORE_URL);
-  } finally {
-    window.setTimeout(() => {
-      button.removeAttribute("aria-busy");
-      if (note) note.textContent = "האירועים והמידע שלך נשמרים.";
-    }, 1200);
+function showOptionalUpdate() {
+  let prompt = document.querySelector(`#${OPTIONAL_ID}`);
+  const wasVisible = Boolean(prompt && !prompt.hidden);
+  if (!prompt) {
+    prompt = document.createElement("section");
+    prompt.id = OPTIONAL_ID;
+    prompt.className = "mandatory-update-gate";
+    prompt.setAttribute("role", "dialog");
+    prompt.setAttribute("aria-modal", "true");
+    prompt.setAttribute("aria-labelledby", "available-update-title");
+    prompt.setAttribute("tabindex", "-1");
+    prompt.innerHTML = `
+      <div class="mandatory-update-panel">
+        <img class="mandatory-update-brand" src="./brand-mark-v3.png" alt="" width="72" height="72">
+        <p class="mandatory-update-eyebrow">עדכון חדש זמין</p>
+        <h1 class="mandatory-update-title" id="available-update-title">אפשר לעדכן את האפליקציה</h1>
+        <p class="mandatory-update-copy">הגרסה החדשה זמינה בחנות. אפשר להמשיך עכשיו ולעדכן מאוחר יותר.</p>
+        <div class="available-update-actions">
+          <button class="mandatory-update-button" type="button">עדכון עכשיו</button>
+          <button class="available-update-later" type="button">מאוחר יותר</button>
+        </div>
+        <p class="mandatory-update-note" role="status" aria-live="polite"></p>
+      </div>`;
+    prompt.querySelector(".mandatory-update-button")?.addEventListener("click", openNativeStore);
+    prompt.querySelector(".available-update-later")?.addEventListener("click", deferOptionalUpdate);
+    document.body.append(prompt);
+  }
+  if (!wasVisible) {
+    previousFocus = document.activeElement;
+    prompt.removeAttribute("inert");
+    prompt.hidden = false;
+    setAppUpdateInert(true);
+    prompt.querySelector(".mandatory-update-button")?.focus({ preventScroll: true });
   }
 }
 
+function hideOptionalUpdate() {
+  const prompt = document.querySelector(`#${OPTIONAL_ID}`);
+  const hadFocus = prompt?.contains(document.activeElement);
+  if (prompt) {
+    prompt.hidden = true;
+    prompt.setAttribute("inert", "");
+  }
+  restoreAppInteractionIfClear();
+  if (hadFocus && previousFocus?.isConnected && !updateRequired) {
+    previousFocus.focus?.({ preventScroll: true });
+  }
+  previousFocus = null;
+}
+
+function hideUpdatePrompts() {
+  hideUpdateGate();
+  hideOptionalUpdate();
+  releaseUpdateCheck();
+}
+
+function deferOptionalUpdate() {
+  if (visibleDecision?.kind !== "optional") return;
+  try {
+    window.localStorage.setItem(laterKey(), JSON.stringify({
+      build: visibleDecision.targetBuild,
+      until: Date.now() + LATER_MS
+    }));
+  } catch {}
+  visibleDecision = null;
+  hideOptionalUpdate();
+}
+
+function deferredOptionalBuild() {
+  try {
+    const record = JSON.parse(window.localStorage.getItem(laterKey()) || "null");
+    const now = Date.now();
+    return Number.isSafeInteger(record?.build) && record.until > now &&
+      record.until <= now + LATER_MS ? record.build : 0;
+  } catch { return 0; }
+}
+
+function laterKey() {
+  return `settle-friends-native-update-later-v1:${PLATFORM}`;
+}
+
+function hasUnsyncedOrOpenWork() {
+  try {
+    return hasUpdateSensitiveWork({
+      document, storage: window.localStorage,
+      pending: pendingSharedSyncStatus().pending,
+      checkOutbox: true
+    });
+  } catch { return true; }
+}
+
+async function nativeBuildNumber() {
+  try {
+    const info = await globalThis.SogrimNative?.app?.getInfo?.() ??
+      await globalThis.Capacitor?.Plugins?.App?.getInfo?.();
+    const build = toBuildNumber(info?.build);
+    if (build) return build;
+  } catch {}
+  return toBuildNumber(globalThis.SogrimNativeRuntimeConfig?.updates?.[PLATFORM]?.currentBuild);
+}
+
+function setAppUpdateInert(enabled) {
+  const app = document.querySelector("#app");
+  if (!app) return;
+  if (enabled && !app.hasAttribute("inert")) {
+    app.setAttribute("inert", "");
+    app.dataset.updateInert = "1";
+  } else if (!enabled && app.dataset.updateInert === "1") {
+    app.removeAttribute("inert");
+    delete app.dataset.updateInert;
+  }
+}
+
+function restoreAppInteractionIfClear() {
+  if (document.querySelector(`#${GATE_ID}:not([hidden]), #${OPTIONAL_ID}:not([hidden])`)) return;
+  setAppUpdateInert(false);
+}
+
+async function openNativeStore(event) {
+  const button = event.currentTarget;
+  const note = button.closest(".mandatory-update-panel")?.querySelector(".mandatory-update-note");
+  if (!button || button.getAttribute("aria-busy") === "true") return;
+  const decision = visibleDecision;
+  if (!decision || hasUnsyncedOrOpenWork()) {
+    if (note) note.textContent = "יש להשלים שמירה וסנכרון לפני פתיחת החנות.";
+    return;
+  }
+
+  button.setAttribute("aria-busy", "true");
+  if (note) note.textContent = "פותחים את החנות.";
+  try {
+    const opened = await globalThis.SogrimNative?.app?.openStore?.({
+      marketUrl: PLATFORM === "android" ? PLAY_MARKET_URL : "",
+      storeUrl: decision.storeUrl
+    });
+    if (!opened && note) note.textContent = "לא ניתן לפתוח את החנות כרגע. נסו שוב מאוחר יותר.";
+    if (opened && decision.kind === "optional" &&
+        visibleDecision?.targetBuild === decision.targetBuild) deferOptionalUpdate();
+  } catch {
+    if (note) note.textContent = "לא ניתן לפתוח את החנות כרגע. נסו שוב מאוחר יותר.";
+  } finally {
+    window.setTimeout(() => button.removeAttribute("aria-busy"), 1200);
+  }
+}
 function releaseUpdateCheck() {
   document.documentElement.classList.remove(CHECKING_CLASS);
   announceUpdateCheckComplete();
@@ -388,14 +539,13 @@ function installStyles() {
 }
 
 function toBuildNumber(value) {
-  const build = Number.parseInt(value, 10);
+  const build = Number(value);
   return Number.isSafeInteger(build) && build > 0 ? build : 0;
 }
 
-function isNativeAndroidRuntime() {
+function nativePlatform() {
   const capacitor = globalThis.Capacitor;
-  return Boolean(
-    capacitor?.isNativePlatform?.() &&
-    String(capacitor?.getPlatform?.() ?? "").toLowerCase() === "android"
-  );
+  const platform = String(capacitor?.getPlatform?.() ?? "").toLowerCase();
+  return capacitor?.isNativePlatform?.() && ["android", "ios"].includes(platform)
+    ? platform : "";
 }

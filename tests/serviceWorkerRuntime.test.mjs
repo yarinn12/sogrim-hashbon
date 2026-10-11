@@ -76,6 +76,7 @@ async function createWorker({
     Response,
     Promise,
     AbortController,
+    MessageChannel,
     setTimeout: setTimeoutImpl,
     clearTimeout: clearTimeoutImpl
   });
@@ -242,6 +243,21 @@ test("an updated worker reloads open installed-app windows even when old page co
   await worker.dispatchActivate();
 
   assert.deepEqual(navigations, [staleWindow.url]);
+});
+
+test("worker does not force a navigation when a client has unsynced work", async () => {
+  const navigations = [];
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v511"],
+    windowClients: [{
+      id: "unsynced-client",
+      url: "https://sogrim-hesbon-app.vercel.app/",
+      postMessage(_message, [port]) { port.postMessage({ safe: false }); },
+      async navigate(url) { navigations.push(url); }
+    }]
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, []);
 });
 
 test("a first service-worker install does not reload the open page", async () => {

@@ -80,6 +80,8 @@ const CACHE_FILES = [
   "/src/data/friendsStore.mjs",
   "/src/data/sharedEventStore.mjs",
   "/src/domain/appActions.mjs",
+  "/src/domain/appUpdatePolicy.mjs",
+  "/src/domain/updateSafety.mjs",
   "/src/domain/adminAnalytics.mjs",
   "/src/domain/avatarPresets.mjs",
   "/src/domain/profileAvatarSync.mjs",
@@ -250,12 +252,38 @@ async function activateCurrentRelease() {
     try {
       const currentClient = await self.clients.get(client.id);
       if (!currentClient) continue;
+      if (!await clientAllowsNavigation(currentClient)) continue;
       const navigation = currentClient.navigate?.(clientUrl.href);
       navigation?.catch?.(() => {});
     } catch {
       // Activation must finish even if one stale window cannot be navigated.
     }
   }
+}
+
+async function clientAllowsNavigation(client) {
+  // Updated pages can veto navigation while a draft or sync is pending.
+  // Older installed pages do not answer this message; keep their existing
+  // worker-driven recovery behavior after the brief compatibility timeout.
+  if (!client.postMessage) return true;
+  if (typeof MessageChannel !== "function") return false;
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    let settled = false;
+    const finish = allowed => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      channel.port1.close();
+      channel.port2.close();
+      resolve(allowed);
+    };
+    const timeout = setTimeout(() => finish(true), 500);
+    channel.port1.onmessage = event => finish(event.data?.safe === true);
+    try {
+      client.postMessage({ type: "SOGRIM_UPDATE_NAVIGATION_CHECK" }, [channel.port2]);
+    } catch { finish(false); }
+  });
 }
 
 self.addEventListener("message", (event) => {
