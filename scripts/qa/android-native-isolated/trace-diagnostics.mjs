@@ -84,7 +84,13 @@ watch_ticks=''
 close_ack=0
 watcher_identity() {
   [ -r "/proc/$watcher/stat" ] && [ -n "$watch_ticks" ] || return 1
-  fields=$(toybox sed 's/.*) //' "/proc/$watcher/stat") || return 1
+  if fields=$(toybox sed 's/.*) //' "/proc/$watcher/stat" 2>&1); then :;
+  else
+    # Exit may remove proc after the readable guard. Preserve a real read
+    # failure when the PID still exists; absence is rechecked before reaping.
+    [ ! -d "/proc/$watcher" ] || printf '%s\n' "$fields" >&2
+    return 1
+  fi
   set -- $fields
   [ "$#" -ge 20 ] || return 1
   watch_state=$1
@@ -93,7 +99,11 @@ watcher_identity() {
   [ "$parent" = "$$" ] && [ "$1" = "$watch_ticks" ]
 }
 watcher_command() {
-  cmd=$(toybox tr '\000' '\n' <"/proc/$watcher/cmdline") || return 1
+  if cmd=$(toybox tr '\000' '\n' 2>&1 <"/proc/$watcher/cmdline"); then :;
+  else
+    [ ! -d "/proc/$watcher" ] || printf '%s\n' "$cmd" >&2
+    return 1
+  fi
   first=$(printf '%s\n' "$cmd" | toybox head -1)
   case "$first" in toybox|*/toybox) ;; *) return 1;; esac
   # Toybox splits FILE:MASK in its own argv buffer. /proc/cmdline then contains
@@ -103,25 +113,29 @@ watcher_command() {
 }
 watcher_finished() {
   [ ! -d "/proc/$watcher" ] && return 0
-  watcher_identity || return 1
+  watcher_identity || { [ ! -d "/proc/$watcher" ]; return $?; }
   [ "$watch_state" = Z ]
 }
+reap_finished_watcher() {
+  watcher_finished || return 1
+  wait "$watcher" 2>/dev/null || :
+}
 stop_watcher() {
-  if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
-  watcher_identity && watcher_command || return 1
+  if reap_finished_watcher; then return 0; fi
+  watcher_identity && watcher_command && watcher_identity || { reap_finished_watcher; return $?; }
   kill -TERM "$watcher" 2>/dev/null || :
   for n in $(toybox seq 1 20); do
-    if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
-    watcher_identity || return 1
+    if reap_finished_watcher; then return 0; fi
+    watcher_identity || { reap_finished_watcher; return $?; }
     toybox sleep 0.05
   done
   # Revalidate before escalating only this direct child. Never wait on a live
   # child indefinitely; the existing 15s guest / 20s ADB limits stay unchanged.
-  watcher_identity && watcher_command || return 1
+  watcher_identity && watcher_command && watcher_identity || { reap_finished_watcher; return $?; }
   kill -KILL "$watcher" 2>/dev/null || :
   for n in $(toybox seq 1 20); do
-    if watcher_finished; then wait "$watcher" 2>/dev/null || :; return 0; fi
-    watcher_identity || return 1
+    if reap_finished_watcher; then return 0; fi
+    watcher_identity || { reap_finished_watcher; return $?; }
     toybox sleep 0.05
   done
   return 1
