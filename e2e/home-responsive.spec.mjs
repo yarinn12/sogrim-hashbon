@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test, {
+  skipTitles: ["a newly joined old event appears first before a nonessential image loads"]
+});
 
 const OWNER_ID = "person-home-responsive-owner";
 const emptyAccountState = {
@@ -103,7 +108,7 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
 
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await page.goto("/");
+    await openHeldRenderedHome(page);
     await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
     await waitForHomePresentation(page);
     await expect(page.locator(".home-create-event-action")).toBeVisible();
@@ -188,7 +193,7 @@ test("home centers new-event across the hero edge in narrow and tablet layouts",
 });
 
 test("the first-event action is identical to the regular new-event action", async ({ page, request }, testInfo) => {
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   const emptyAction = await homeCreateActionPresentation(page);
   await expectCenteredHomeCreateAction(page);
 
@@ -209,7 +214,7 @@ test("the first-event action is identical to the regular new-event action", asyn
     localStorage.setItem("settle-friends-current-participant", state.currentParticipantId);
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, populatedAccountState);
-  await populatedPage.goto("/");
+  await openRenderedHome(populatedPage);
   await expect(populatedPage.locator(".event-row")).toHaveCount(1);
   const populatedAction = await homeCreateActionPresentation(populatedPage);
   await expectCenteredHomeCreateAction(populatedPage);
@@ -224,7 +229,7 @@ test("the first-event action is identical to the regular new-event action", asyn
 });
 
 test("hero-edge action respects large text and inline feedback", async ({ page }, testInfo) => {
-  await page.goto("/?dynamic-type-preview=28");
+  await openHeldRenderedHome(page, { path: "/?dynamic-type-preview=28" });
   await waitForHomePresentation(page);
   await expect(page.locator("html")).toHaveClass(/dynamic-type-preview/);
   await page.locator(".home-create-event-action").scrollIntoViewIfNeeded();
@@ -290,7 +295,7 @@ test("home status labels and counts fit their touch targets at narrow widths", a
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   for (const width of [320, 375, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
-    await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
+    await openHeldRenderedHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/" });
     await waitForHomePresentation(page);
     const filters = page.locator('.event-lifecycle-filter [data-action="event-lifecycle-filter"]');
     await expect(filters).toHaveCount(4);

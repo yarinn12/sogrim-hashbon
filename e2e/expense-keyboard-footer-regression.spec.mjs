@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
+
+requireHeldHomeReadiness(test, { resource: 'defer' });
 
 test.use({ serviceWorkers: 'block' });
 const owner = 'person-keyboard-footer';
@@ -36,7 +39,7 @@ for (const font of [16, 37.64706]) {
         viewport.dispatchEvent(new Event('resize'));
       };
     }, { state, owner });
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openHeldRenderedHome(page);
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
     expect(await page.evaluate(async () => {
       const faces = await Promise.all([400, 500, 600, 700].map(weight =>

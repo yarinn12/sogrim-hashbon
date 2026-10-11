@@ -1,4 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
+
+requireHeldHomeReadiness(test);
 
 test.use({ serviceWorkers: 'block' });
 
@@ -142,7 +145,7 @@ async function seed(page, request) {
 }
 
 async function openAtSize(page, mode) {
-  await page.goto(mode === '32' ? '/?dynamic-type-preview=32' : '/');
+  await openHeldRenderedHome(page, { path: mode === '32' ? '/?dynamic-type-preview=32' : '/' });
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   if (mode === 'AX-active') {
     await page.evaluate(() => {

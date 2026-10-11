@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 test.use({ reducedMotion: "no-preference", serviceWorkers: "block" });
 const runtimeErrors = new WeakMap();
@@ -49,7 +52,7 @@ test.beforeEach(async ({ page, request }) => {
   const errors = [];
   runtimeErrors.set(page, errors);
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await expect(page.locator('#app .screen[data-screen-kind="home"]')).toBeVisible();
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();
