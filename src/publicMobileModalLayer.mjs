@@ -363,6 +363,12 @@ const CSS = `
     }
 
     html.app-software-keyboard-open.ledger-workspace-v1 body #app
+      .expense-step-modal .expense-modal-step-header {
+      position: static !important;
+      padding-top: 32px !important;
+    }
+
+    html.app-software-keyboard-open.ledger-workspace-v1 body #app
       .expense-step-modal .expense-modal-step-header::after {
       content: "";
       position: fixed;

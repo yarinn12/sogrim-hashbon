@@ -183,8 +183,8 @@ for (const mode of ['normal', '32', 'AX']) {
   });
 }
 
-for (const mode of ['normal', 'AX']) {
-  test(`native-size amount keyboard keeps controls above its cover at ${mode} text size`, async ({ page }, testInfo) => {
+for (const mode of ['normal', '32', 'AX']) {
+  test(`native-size amount keyboard keeps controls reachable and title whole at ${mode} text size`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 393, height: 793 });
     await openAtSize(page, mode);
     await page.evaluate(() => {
@@ -203,6 +203,7 @@ for (const mode of ['normal', 'AX']) {
       ).map(animation => animation.finished.catch(() => {})));
     });
     await page.locator('.expense-step-modal').evaluate(modal => { modal.scrollTop = Math.max(102, modal.scrollTop); });
+    await page.evaluate(() => window.visualViewport.dispatchEvent(new Event('resize')));
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
     const geometry = await page.evaluate(() => {
@@ -217,6 +218,17 @@ for (const mode of ['normal', 'AX']) {
       const controlBounds = controls.map(bounds);
       const field = bounds(modal.querySelector('[data-action="expense-total"]'));
       const next = bounds(modal.querySelector('[data-action="expense-step-next"]'));
+      const header = modal.querySelector('.expense-modal-step-header');
+      const title = modal.querySelector('#expense-modal-title');
+      const titleRange = document.createRange();
+      titleRange.selectNodeContents(title);
+      const titleRects = [...titleRange.getClientRects()].map(rect => ({ top: rect.top, bottom: rect.bottom }));
+      const coverStyle = getComputedStyle(header, '::after');
+      const cover = {
+        top: parseFloat(coverStyle.top),
+        bottom: parseFloat(coverStyle.top) + parseFloat(coverStyle.height),
+        background: coverStyle.backgroundColor
+      };
       const probe = document.createElement('style');
       // The white cover ignores pointer events in production. Enable hit
       // testing just for this probe so the top painted layer is observable.
@@ -227,7 +239,7 @@ for (const mode of ['normal', 'AX']) {
         viewport: { layout: innerHeight, visual: visualViewport.height },
         modalTop: modal.getBoundingClientRect().top,
         scrollTop: modal.scrollTop,
-        field, next,
+        field, next, cover, titleRects,
         controls: controls.map((control, index) => {
           const rect = control.getBoundingClientRect();
           const paintedTop = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -245,10 +257,22 @@ for (const mode of ['normal', 'AX']) {
     await testInfo.attach('native-size-keyboard-screenshot', {
       body: await page.screenshot(), contentType: 'image/png'
     });
-    expect(geometry.rootFont).toBeCloseTo(mode === 'normal' ? 16 : 37.64706, 3);
+    expect(geometry.rootFont).toBeCloseTo(mode === 'normal' ? 16 : mode === '32' ? 32 : 37.64706, 3);
     expect(geometry.viewport).toEqual({ layout: 793, visual: 417 });
     expect(geometry.modalTop).toBeGreaterThanOrEqual(59);
     expect(geometry.scrollTop).toBeGreaterThan(0);
+    expect(geometry.cover.background).toBe('rgb(255, 255, 255)');
+    expect(geometry.titleRects.length).toBeGreaterThan(0);
+    for (const rect of geometry.titleRects) {
+      const visibleTop = Math.max(rect.top, geometry.modalTop);
+      const visibleBottom = Math.min(rect.bottom, geometry.viewport.visual);
+      const aboveCover = Math.max(0, Math.min(visibleBottom, geometry.cover.top) - visibleTop);
+      const belowCover = Math.max(0, visibleBottom - Math.max(visibleTop, geometry.cover.bottom));
+      const paintedHeight = aboveCover + belowCover;
+      expect(paintedHeight < 0.5 || paintedHeight >= rect.bottom - rect.top - 0.5,
+        `title line ${JSON.stringify(rect)} is only partly painted outside the white cover ${JSON.stringify(geometry.cover)}; paintedHeight ${paintedHeight}`
+      ).toBe(true);
+    }
     expect(geometry.controls).toHaveLength(2);
     for (const control of [...geometry.controls, geometry.field, geometry.next]) {
       expect(control.top).toBeGreaterThanOrEqual(59);
@@ -258,6 +282,20 @@ for (const mode of ['normal', 'AX']) {
     for (const control of geometry.controls) {
       expect(control.visibleAboveCover, `control is hidden by ${control.paintedTop}`).toBe(true);
     }
+    await page.locator('.expense-step-modal').evaluate(modal => { modal.scrollTop = 0; });
+    const readableTitle = await page.locator('#expense-modal-title').evaluate(title => {
+      const range = document.createRange();
+      range.selectNodeContents(title);
+      return [...range.getClientRects()].map(rect => ({ top: rect.top, bottom: rect.bottom }));
+    });
+    expect(readableTitle.length).toBeGreaterThan(0);
+    for (const rect of readableTitle) {
+      expect(rect.top, `title line ${JSON.stringify(rect)} must be readable after scrolling back`).toBeGreaterThanOrEqual(geometry.cover.bottom);
+      if (mode !== 'AX') expect(rect.bottom).toBeLessThanOrEqual(geometry.viewport.visual);
+    }
+    await testInfo.attach('native-size-title-after-scrollback', {
+      body: await page.screenshot(), contentType: 'image/png'
+    });
     await page.locator('.expense-accessibility-button').click();
     await expect(page.locator('.accessibility-center[role="dialog"]')).toBeVisible();
     await page.locator('[data-close-accessibility]').first().click();
