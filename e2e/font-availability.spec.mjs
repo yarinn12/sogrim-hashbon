@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 const participantId = "person-offline-fonts";
 const seededState = {
@@ -24,7 +27,7 @@ test("Hebrew and numeric brand fonts load when Google Fonts is unreachable", asy
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { state: seededState, participantId });
 
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
   const fonts = await page.evaluate(async () => {
     await document.fonts.load('600 24px Rubik', 'מה סוגרים היום?');

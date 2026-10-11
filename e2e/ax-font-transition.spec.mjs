@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 const OWNER = "person-ax-font-transition";
 const state = {
@@ -42,7 +45,7 @@ test("large and normal text take effect immediately with reduced motion", async 
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { owner: OWNER, initialState: state });
 
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
   const sizes = await page.evaluate(() => {
     const root = document.documentElement;
@@ -99,7 +102,7 @@ test("large and normal text take effect immediately with reduced motion", async 
   expect(sizes.restoredRootFontTransition).toBe(false);
   expect(sizes.restoredDescriptionFontTransition).toBe(false);
 
-  await page.goto("/?dynamic-type-preview=28");
+  await openHeldRenderedHome(page, { path: "/?dynamic-type-preview=28" });
   await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
   const previewReturn = await page.evaluate(() => {
     const root = document.documentElement;
