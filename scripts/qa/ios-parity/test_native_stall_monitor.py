@@ -102,10 +102,18 @@ class NativeStallMonitorTests(unittest.TestCase):
 
     def test_bom_and_crlf_keep_the_same_source_and_gap(self):
         path = self.journal()
-        path.write_bytes(b"\xef\xbb\xbf" + FIXTURE.read_bytes().replace(b"\n", b"\r\n"))
-        result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691618)
-        self.assertTrue(result.eligible, result.reason)
-        self.assertEqual(result.session, SESSION)
+        source = self.root / "line-ending-source.jsonl"
+        content = FIXTURE.read_text(encoding="utf-8-sig").encode("utf8")
+        for newline in (b"\n", b"\r\n"):
+            with self.subTest(source_newline=newline):
+                source.write_bytes(content.replace(b"\n", newline))
+                # Universal newlines avoid CRCRLF when a Windows checkout
+                # already contains CRLF. The generated journal is real CRLF.
+                text = source.read_text(encoding="utf-8-sig")
+                path.write_bytes(b"\xef\xbb\xbf" + text.replace("\n", "\r\n").encode("utf8"))
+                result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691618)
+                self.assertTrue(result.eligible, result.reason)
+                self.assertEqual(result.session, SESSION)
 
     def test_symlink_journal_rejected(self):
         path = self.journal()
