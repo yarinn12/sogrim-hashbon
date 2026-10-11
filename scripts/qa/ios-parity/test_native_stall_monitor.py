@@ -75,10 +75,6 @@ class NativeStallMonitorTests(unittest.TestCase):
                                     for row in rows), mtime=1791691622.0)
 
     def test_continuous_startup_not_ready_is_sample_eligible_before_xctest_timeout(self):
-        self.startup_journal(last_time=1791691618.0)
-        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
-        self.assertFalse(early.eligible)
-        self.assertEqual(early.reason, "startup-under-threshold")
         path = self.startup_journal()
         result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623)
         self.assertTrue(result.eligible, result.reason)
@@ -87,6 +83,10 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.assertEqual(result.elapsed_seconds, 23)
         self.assertEqual(result.gap_seconds, 0)
         self.assertEqual(self.target(path, journal_first_time=result.first_time), self.process)
+        self.startup_journal(last_time=1791691618.0)
+        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
+        self.assertFalse(early.eligible)
+        self.assertEqual(early.reason, "startup-under-threshold")
 
     def test_ready_or_foreign_startup_is_not_sample_eligible(self):
         self.startup_journal(ready=True)
@@ -100,14 +100,14 @@ class NativeStallMonitorTests(unittest.TestCase):
                          "phase-ended")
 
     def test_missing_only_decoded_phase_is_eligible_after_twenty_seconds(self):
-        self.startup_journal(phase="missing", last_time=1791691618.0)
-        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
-        self.assertFalse(early.eligible)
-        self.assertEqual(early.reason, "startup-under-threshold")
         self.startup_journal(phase="missing")
         result = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691623)
         self.assertTrue(result.eligible, result.reason)
         self.assertEqual(result.phase, "startup-not-ready")
+        self.startup_journal(phase="missing", last_time=1791691618.0)
+        early = assess_journal(self.documents, SHA, TREE, 1791691590, 1791691619)
+        self.assertFalse(early.eligible)
+        self.assertEqual(early.reason, "startup-under-threshold")
 
     def test_startup_without_view_appearance_or_after_home_capture_is_not_sampled(self):
         path = self.startup_journal(phase="missing")
