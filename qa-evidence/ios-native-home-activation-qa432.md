@@ -71,7 +71,7 @@ case covers the native bridge requesting capture only after a fresh active
 callback. The model is a local source/timing control; it does **not** execute
 Swift, XCTest, UIKit or WebKit.
 
-- OLD RED: on the original XCTest blob, five of six timing cases failed; one
+- Earlier OLD RED: on the original XCTest blob, five of six timing cases failed; one
   passed. The bridge case failed separately on the original bridge blob because
   background polling consumed the capture request.
 - GREEN: all seven timing cases passed after the correction. Two nearby iOS
@@ -81,7 +81,7 @@ Swift, XCTest, UIKit or WebKit.
   denied writes to its default temporary directory.
 - Full local `npm test` after the Swift correction: 3,509 passed, zero failed
   or skipped. An earlier sandboxed run failed on localhost `EACCES`; one
-  escalated run had two unrelated Android cleanup timeouts; the following
+  escalated run had two Android cleanup failures retained for investigation; the following
   escalated run passed. A later full rerun after a small test-only assertion
   change was interrupted and its incomplete log is not acceptance evidence.
 - No macOS/Xcode SDK is installed in this Windows workspace. The fixed commit
@@ -89,6 +89,15 @@ Swift, XCTest, UIKit or WebKit.
   accessibility-size acceptance remain open. A fresh exact-source iOS job must
   confirm the complete normal and accessibility journeys, including `resumed`
   and `restored` captures, screenshot acknowledgements and the strict validator.
+
+The coordinator separately ran the canonical final seven test cases against
+both original Swift blobs: seven failed; all seven passed with the corrected
+blobs. One old-source failure is a secondary foreground-mutation assertion whose
+scenario is not established by the old ordering; it is not an independent
+reproduction of the SDK failure. These remain source-derived timing/guard
+controls and do not execute Swift. The two earlier Android cleanup failures
+remain stability evidence, not unrelated failures established by this note;
+the Android evidence document preserves their fixture investigation and limits.
 
 The original source's separate two-client sync job passed 91/91. Its five
 browser mobile profiles passed 1,542 tests with 38 skips. Those were synthetic
