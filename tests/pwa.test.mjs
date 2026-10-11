@@ -253,8 +253,9 @@ test("an installed app reloads once when a new service worker takes control", as
   const registration = await readFile("src/pwaBootstrap.mjs", "utf8");
 
   assert.match(registration, /const hadActiveController = Boolean\(navigator\.serviceWorker\.controller\)/);
-  assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
-  assert.match(registration, /if \(reloadingForUpdate\) return/);
+  assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadWhenSafe\(\)/);
+  assert.match(registration, /hasUpdateSensitiveWork[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
+  assert.match(registration, /if \(!updateAwaitingReload \|\| reloadingForUpdate \|\| !safeToReload\(\)\) return/);
   assert.doesNotMatch(
     registration,
     /sessionStorage[\s\S]*?PWA_RELEASE/,

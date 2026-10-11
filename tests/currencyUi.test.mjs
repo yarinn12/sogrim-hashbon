@@ -6,7 +6,8 @@ test("event creation and settings expose an event-level currency", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /currency: "ILS"/);
-  assert.match(app, /data-action="new-event-currency"/);
+  assert.match(app, /action: "new-event-currency-choice"/);
+  assert.match(app, /data-action="new-event-currency-search"/);
   assert.match(app, /data-action="event-currency"/);
   assert.match(app, /currency: normalizeCurrency\(newEventDraft\.currency\)/);
   assert.match(app, /const hasExistingExpenses = event\.expenses\.length > 0/);

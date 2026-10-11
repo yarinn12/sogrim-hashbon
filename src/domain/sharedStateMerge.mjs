@@ -7,6 +7,7 @@ import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { mergeAccountEventPins } from "../data/personalEventPins.mjs";
 import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -113,6 +114,13 @@ export function mergeSharedStates(remoteState, localState) {
       local.currentParticipantId,
       participantRedirects
     );
+  }
+
+  const personalEventPinPreferences = mergeAccountEventPins(remote, local);
+  if (personalEventPinPreferences) {
+    merged.personalEventPinPreferences = personalEventPinPreferences;
+  } else {
+    delete merged.personalEventPinPreferences;
   }
 
   return merged;

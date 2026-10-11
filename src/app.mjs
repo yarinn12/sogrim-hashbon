@@ -1,7 +1,8 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
-import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { createAccountPinMigrationQueue } from "./data/accountPinMigrationQueue.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
@@ -2462,7 +2463,7 @@ function renderHomeEventHydrationState() {
 }
 
 function renderHome() {
-  const pinnedEventIds = loadPersonalEventPins(state.currentParticipantId);
+  const pinnedEventIds = pinnedEventIdsForState(state);
   const sortedEvents = pinnedEventsFirst(visibleEventsForParticipant(state, state.currentParticipantId)
     .sort(
       (a, b) =>
@@ -4458,7 +4459,8 @@ function renderNewEvent() {
           action: "new-event-currency-choice",
           selectedValue: newEventDraft.currency,
           options: currencyOptions().map((currency) => ({ value: currency.id, label: currencySelectLabel(currency.id) })),
-          hint: "כל ההוצאות וההעברות באירוע יוצגו במטבע הזה."
+          searchable: true,
+          hint: "כל ההוצאות וההעברות באירוע יוצגו במטבע הזה. אפשר לחפש לפי שם או קוד."
         })}
 
         <div class="actions section">
@@ -4502,6 +4504,25 @@ function syncNewEventParticipantControls() {
 
   const createButton = app.querySelector('[data-action="create-event"]');
   if (createButton) createButton.disabled = count === 0;
+}
+
+function focusNewEventParticipantAfterSelection(participantId, searchQuery = "") {
+  const picker = app.querySelector('[data-participant-checks-for="new-event-participant"]');
+  if (!picker) return;
+  const search = picker.querySelector('[data-action="participant-search"]');
+  if (search && searchQuery) {
+    search.value = searchQuery;
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  const input = [...picker.querySelectorAll('[data-action="new-event-participant"]')]
+    .find((candidate) => candidate.dataset.participantId === participantId);
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  window.requestAnimationFrame(() => {
+    if (!input.isConnected) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    input.closest(".participant-pill")?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+  });
 }
 
 function renderEventCreationProgress(activeStep) {
@@ -4884,7 +4905,7 @@ function renderEventWorkspaceNav(event, activeView = "expenses") {
         aria-label="${notesAreActive ? "פתקים, המסך הנוכחי" : "פתיחת פתקים משותפים"}"
       >
         <span class="command-card-icon" aria-hidden="true">${iconSvg("message")}</span>
-        <strong>פתקים</strong>
+        <strong>פתקים משותפים</strong>
       </button>
     </nav>
   `;
@@ -4929,8 +4950,8 @@ function renderEventNotes(event) {
       <section class="event-notes-content" aria-labelledby="event-notes-list-title">
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
         ${notes.length
-          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים", false)}`
-          : renderEventNotesEmptyState()}
+          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים משותפים", false)}`
+          : ""}
       </section>
 
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
@@ -4983,16 +5004,6 @@ function renderEventNoteRow(event, note) {
       <span class="event-note-avatars">${renderAvatarStack(participantIds, event, { suppressParticipantAction: true })}</span>
       <button class="event-note-chevron" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">${iconSvg("chevron-left")}</button>
     </article>
-  `;
-}
-
-function renderEventNotesEmptyState() {
-  return `
-    <section class="panel event-notes-empty">
-      <span class="event-notes-empty-icon" aria-hidden="true">${iconSvg("message")}</span>
-      <h2>עוד אין פתקים משותפים</h2>
-      <p>אפשר לשמור כאן פרטי טיסה, רשימת ציוד, כתובות וכל דבר שחשוב לכל משתתפי האירוע.</p>
-    </section>
   `;
 }
 
@@ -5219,7 +5230,7 @@ function renderEventStatusMenu() {
       ? "כדי להזמין משתתפים צריך לפתוח את האירוע מחדש"
       : "רק מנהל יכול להזמין משתתפים במצב הנוכחי";
   const isPersonallyArchived = isEventPersonallyArchived(event.id);
-  const isPersonallyPinned = loadPersonalEventPins(state.currentParticipantId).has(event.id);
+  const isPersonallyPinned = pinnedEventIdsForState(state).has(event.id);
 
   return `
     <section class="event-status-menu-backdrop" aria-label="אפשרויות לאירוע ${escapeAttribute(event.name)}">
@@ -5447,15 +5458,15 @@ function renderNewEventSettlement() {
       ${renderNotice()}
       ${renderEventCreationProgress("settlement")}
       <section class="panel create-event-panel new-event-settlement-panel">
-        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "משפיע רק על ההעברות הסופיות, לא על ההוצאות." })}
-        ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "אפשר לשנות גם אחר כך בהגדרות האירוע." })}
+        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "מעגלים העברות ליחידות מטבע שלמות ומאזנים את ההפרש. ההוצאות נשארות מדויקות." })}
+        ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "קיזוז חכם מאזן חובות בין כולם ומצמצם העברות; החזר ישיר משלם למי שהוציא. אפשר לשנות בהגדרות האירוע." })}
         <div class="actions section"><button class="primary-button" data-action="open-new-event-participants">המשך למשתתפים</button></div>
       </section>
     </section>`;
 }
 
-function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint }) {
-  return `<div class="field new-event-inline-picker"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}</div></details><small>${escapeHtml(hint)}</small></div>`;
+function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint, searchable = false }) {
+  return `<div class="field new-event-inline-picker" data-picker-action="${escapeAttribute(action)}"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${searchable ? `<label class="new-event-currency-search"><span class="visually-hidden">חיפוש מטבע לפי שם או קוד</span><input type="search" data-action="new-event-currency-search" aria-label="חיפוש מטבע לפי שם או קוד" placeholder="חיפוש שם או קוד מטבע" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" data-search-text="${escapeAttribute(`${option.label} ${option.value}`)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}${searchable ? `<p class="muted" data-currency-search-empty hidden>לא נמצאו מטבעות</p>` : ""}</div></details><small>${escapeHtml(hint)}</small></div>`;
 }
 
 function closeNewEventInlinePicker(target) {
@@ -5515,6 +5526,7 @@ function renderEventParticipantsDialog(event) {
       }
       ${renderEventIdentityNotice(event)}
       ${renderCurrentEventParticipants(event, currentParticipants, canEdit)}
+      ${renderInactiveEventParticipants(event, inactiveParticipants, canEdit)}
       <div class="event-participant-primary-actions">
         <button
           class="primary-button event-participant-add-launch"
@@ -5523,11 +5535,10 @@ function renderEventParticipantsDialog(event) {
           data-event-id="${escapeAttribute(event.id)}"
           ${canEdit ? "" : "disabled"}
         >
-          ${renderCommandIcon("participants")}
+          <span class="command-card-icon" aria-hidden="true">${iconSvg("user-plus")}</span>
           <span>הוסף משתתפים</span>
         </button>
       </div>
-      ${renderInactiveEventParticipants(event, inactiveParticipants, canEdit)}
     `
   });
 }
@@ -7170,7 +7181,6 @@ function renderNewEventSelectedParticipant(participant) {
           ${renderParticipantUsername(participant)}
         </span>
         <small class="new-event-selected-participant-self">אתה · יוצר האירוע</small>
-        <span class="new-event-selected-participant-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
       </div>
     `;
   }
@@ -7308,6 +7318,7 @@ function renderNewEventParticipants() {
 
       <section class="new-event-participant-additions" aria-labelledby="new-event-additions-title">
         <h2 id="new-event-additions-title">הוספת משתתפים</h2>
+        <p class="muted">שם ידני מיועד לאדם ללא חשבון באפליקציה; הוא לא יקבל גישה לאירוע. כדי שחבר יצטרף מהחשבון שלו, בחרו ״הזמן בקישור״ ושלחו לו את הקישור לאחר שמירת האירוע.</p>
         <div class="new-event-participant-actions" aria-label="דרכים להוספת משתתפים">
           ${renderNewEventParticipantAction({
             action: "create-event-and-open-invite",
@@ -7431,25 +7442,25 @@ function renderEventSettingsDialog(event) {
           eventId: event.id,
           section: "management",
           title: "אופן ניהול",
-          description: `${managementStatus} · מנהל: ${adminNames}`
+          description: `${managementStatus} · קובע מי יכול לעדכן הוצאות. מנהל: ${adminNames}`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "currency",
           title: "מטבע האירוע",
-          description: currencyStatus
+          description: `${currencyStatus} · משותף לכל סכומי האירוע, ללא המרת שערים`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "repayment",
           title: "חלוקת ההחזרים",
-          description: repaymentStatus
+          description: `${repaymentStatus} · קיזוז בין כולם או החזר ישיר למי ששילם`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "rounding",
           title: "עיגול סכומים",
-          description: roundingStatus
+          description: `${roundingStatus} · העברות בלבד; ההוצאות נשארות מדויקות`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
@@ -7461,13 +7472,13 @@ function renderEventSettingsDialog(event) {
           eventId: event.id,
           section: "lock",
           title: "עריכת האירוע",
-          description: lockStatus
+          description: `${lockStatus} · נעילה מונעת עריכת האירוע`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "danger",
           title: "עזיבה ומחיקה",
-          description: dangerStatus,
+          description: `${dangerStatus} · משפיע על הגישה לאירוע`,
           danger: true
         })}
       </div>
@@ -12155,8 +12166,10 @@ async function handleClick(event) {
     if (newEventDraft.participantIds.includes(participantId)) {
       requestNewEventParticipantRemoval(participantId, target);
     } else {
+      const searchQuery = app.querySelector('[data-participant-checks-for="new-event-participant"] [data-action="participant-search"]')?.value ?? "";
       toggleId(newEventDraft.participantIds, participantId, true);
       render();
+      focusNewEventParticipantAfterSelection(participantId, searchQuery);
     }
     return;
   }
@@ -12227,18 +12240,65 @@ async function handleClick(event) {
     const selectedEvent = visibleEventsForParticipant(state, state.currentParticipantId)
       .find(candidate => candidate.id === target.dataset.eventId);
     if (!selectedEvent || eventStatusMenu?.eventId !== selectedEvent.id) return;
-    const pinned = !loadPersonalEventPins(state.currentParticipantId).has(selectedEvent.id);
-    try {
-      setPersonalEventPin(state.currentParticipantId, selectedEvent.id, pinned);
-    } catch {
-      eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה במכשיר. אפשר לנסות שוב.";
-      // Validation feedback is the same menu, not another navigation step.
-      renderReplacingBrowserHistory();
-      activateDialog(".event-status-menu");
-      return;
+    const pinned = !pinnedEventIdsForState(state).has(selectedEvent.id);
+    let pinNotice = pinned
+      ? `"${selectedEvent.name}" הוצמד לראש הרשימה.`
+      : `ההצמדה של "${selectedEvent.name}" בוטלה.`;
+    const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+    const isOwnAccount = Boolean(accountUserId && state.currentParticipantId === `account-${accountUserId}`);
+    if (isOwnAccount) {
+      const priorPreferences = state.personalEventPinPreferences;
+      const ownerParticipantId = state.currentParticipantId;
+      let nextState;
+      try {
+        nextState = updateAccountEventPin(state, selectedEvent.id, pinned);
+      } catch {
+        eventStatusMenu.pinError = "לא הצלחנו לקרוא את ההצמדות השמורות במכשיר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
+      const attemptedUpdate = nextState.personalEventPinPreferences.updates[selectedEvent.id];
+      state = nextState;
+      const result = await persistState({ awaitCloud: true, handlesSaveFailure: true });
+      if (state.currentParticipantId !== ownerParticipantId ||
+          String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() !== accountUserId) return;
+      const synced = (result?.ok && result.mode === "cloud") || result?.personalWorkspacePersisted === true;
+      const pending = result?.pending === true || result?.mode === "queued";
+      if (!synced && !pending) {
+        if (state.personalEventPinPreferences?.updates?.[selectedEvent.id]?.mutationId === attemptedUpdate.mutationId) {
+          state = { ...state };
+          if (priorPreferences === undefined) delete state.personalEventPinPreferences;
+          else state.personalEventPinPreferences = priorPreferences;
+          saveState(state);
+        }
+        if (eventStatusMenu?.eventId === selectedEvent.id) {
+          eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה בחשבון. אפשר לנסות שוב.";
+          renderReplacingBrowserHistory();
+          activateDialog(".event-status-menu");
+        }
+        return;
+      }
+      if (eventStatusMenu?.eventId !== selectedEvent.id) return;
+      if (synced && pinnedEventIdsForState(result.persistedState ?? state).has(selectedEvent.id) !== pinned) {
+        eventStatusMenu.pinError = "ההצמדה השתנתה במכשיר אחר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
+      if (pending) pinNotice = "";
+    } else {
+      try {
+        setPersonalEventPin(state.currentParticipantId, selectedEvent.id, pinned);
+      } catch {
+        eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה במכשיר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
     }
     eventStatusMenu = null;
-    notice = pinned ? `"${selectedEvent.name}" הוצמד לראש הרשימה.` : `ההצמדה של "${selectedEvent.name}" בוטלה.`;
+    notice = pinNotice;
     closeDialogWithHistory();
     return;
   }
@@ -14554,6 +14614,18 @@ function closeDialogWithHistory(rewindSteps = 1) {
 function handleInput(event) {
   const target = event.target;
   const action = target.dataset.action;
+  if (action === "new-event-currency-search") {
+    const menu = target.closest(".new-event-inline-picker-menu");
+    const query = target.value.trim().toLocaleLowerCase("he");
+    let visible = 0;
+    for (const option of menu?.querySelectorAll('[data-action="new-event-currency-choice"]') ?? []) {
+      option.hidden = !String(option.dataset.searchText ?? "").toLocaleLowerCase("he").includes(query);
+      if (!option.hidden) visible += 1;
+    }
+    const empty = menu?.querySelector("[data-currency-search-empty]");
+    if (empty) empty.hidden = visible > 0;
+    return;
+  }
   if (["event-guest-name", "new-event-guest-name", "friends-new-offline-name"].includes(action)) {
     clearParticipantNameError(target);
   }
@@ -23520,7 +23592,7 @@ function handleInputKeyboardShortcut(event) {
   }
   if (action === "group-name") return focusAction('[data-action="group-member-name"]');
   if (action === "edit-group-name") return focusAction('[data-action="edit-group-member-name"]');
-  if (action === "new-event-name") return focusAction('[data-action="new-event-currency"]');
+  if (action === "new-event-name") return focusAction('.new-event-inline-picker[data-picker-action="new-event-currency-choice"] summary');
   if (action === "quick-item-name") {
     return focusAction(`[data-action="quick-item-amount"][data-index="${index}"]`);
   }
@@ -24110,6 +24182,44 @@ function settlementTransferPlanKey(transfers) {
     .join("|");
 }
 
+function activeAccountPinOwner() {
+  const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const participantId = `account-${accountUserId}`;
+  return accountUserId && state.currentParticipantId === participantId ? participantId : "";
+}
+
+const queueAccountPinMigration = createAccountPinMigrationQueue(activeAccountPinOwner);
+function queueLegacyAccountPinMigration() {
+  const participantId = activeAccountPinOwner();
+  if (!participantId) return;
+  let migratedState, pending;
+  try {
+    pending = pendingLegacyAccountPins(participantId);
+    if (!pending.size) return;
+    migratedState = migrateLegacyAccountPins(state);
+  } catch {
+    // The existing local pins remain visible until storage can be read again.
+    return;
+  }
+  // An optimistic local snapshot does not prove that the workspace received
+  // the migration. Retry on later hydration until the cloud save confirms it.
+  void queueAccountPinMigration(participantId, () => saveSharedState(migratedState, {
+    awaitCloud: true, suppressRevertNotice: true, foregroundMutation: false,
+    handlesSaveFailure: true
+  }), result => {
+    if (!result?.ok || result.mode !== "cloud") return;
+    const confirmed = result.persistedState?.personalEventPinPreferences;
+    if (confirmed?.ownerParticipantId !== participantId ||
+        [...pending].some(id => typeof confirmed.updates?.[id]?.pinned !== "boolean")) return;
+    const merged = mergeAccountEventPins(result.persistedState, state);
+    if (merged) {
+      state = { ...state, personalEventPinPreferences: merged };
+    }
+    acknowledgeLegacyAccountPins(participantId, pending);
+    render();
+  }).catch(() => {});
+}
+
 function refreshStartupSharedState(refreshRequest) {
   if (!refreshRequest) return Promise.resolve();
   const saveRevisionAtRequest = sharedStateSaveRevision();
@@ -24145,10 +24255,12 @@ function refreshStartupSharedState(refreshRequest) {
       accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
       const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) {
+        queueLegacyAccountPinMigration();
         if (hydrationStatusChanged) render();
         return;
       }
       state = nextState;
+      queueLegacyAccountPinMigration();
       render();
     })
     .catch(() => {
