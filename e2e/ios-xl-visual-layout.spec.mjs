@@ -182,3 +182,87 @@ for (const mode of ['normal', '32', 'AX']) {
     await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step', 'amount');
   });
 }
+
+for (const mode of ['normal', 'AX']) {
+  test(`native-size amount keyboard keeps controls above its cover at ${mode} text size`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: 393, height: 793 });
+    await openAtSize(page, mode);
+    await page.evaluate(() => {
+      document.documentElement.classList.add('native-app');
+      document.documentElement.style.setProperty('--app-keyboard-safe-area-top', '59px');
+    });
+    await page.locator('[data-action="show-expense-form"]').first().click();
+    await page.locator('[data-action="expense-total"]').focus();
+    await page.evaluate(() => window.__setLayoutKeyboardHeight(417));
+    await expect(page.locator('html')).toHaveClass(/app-software-keyboard-open/);
+    await page.evaluate(async () => {
+      const backdrop = document.querySelector('.expense-step-route-backdrop');
+      const modal = backdrop.querySelector('.expense-step-modal');
+      await Promise.all([backdrop, modal].flatMap(element => element.getAnimations()).filter(animation =>
+        animation.playState === 'running' && Number.isFinite(animation.effect.getComputedTiming().endTime)
+      ).map(animation => animation.finished.catch(() => {})));
+    });
+    await page.locator('.expense-step-modal').evaluate(modal => { modal.scrollTop = Math.max(102, modal.scrollTop); });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+    const geometry = await page.evaluate(() => {
+      const modal = document.querySelector('.expense-step-modal');
+      const bounds = element => {
+        const rect = element.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return { top: rect.top, bottom: rect.bottom,
+          hittable: hit === element || element.contains(hit) };
+      };
+      const controls = [...modal.querySelectorAll('.expense-accessibility-button, .modal-section-back-button')];
+      const controlBounds = controls.map(bounds);
+      const field = bounds(modal.querySelector('[data-action="expense-total"]'));
+      const next = bounds(modal.querySelector('[data-action="expense-step-next"]'));
+      const probe = document.createElement('style');
+      // The white cover ignores pointer events in production. Enable hit
+      // testing just for this probe so the top painted layer is observable.
+      probe.textContent = ':is(.expense-step-route-backdrop, .expense-step-modal .expense-modal-step-header)::after { pointer-events: auto !important; }';
+      document.head.append(probe);
+      const result = {
+        rootFont: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        viewport: { layout: innerHeight, visual: visualViewport.height },
+        modalTop: modal.getBoundingClientRect().top,
+        scrollTop: modal.scrollTop,
+        field, next,
+        controls: controls.map((control, index) => {
+          const rect = control.getBoundingClientRect();
+          const paintedTop = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+          return { ...controlBounds[index],
+            visibleAboveCover: paintedTop === control || control.contains(paintedTop),
+            paintedTop: paintedTop?.className || paintedTop?.tagName };
+        })
+      };
+      probe.remove();
+      return result;
+    });
+    await testInfo.attach('native-size-keyboard-controls', {
+      body: JSON.stringify({ mode, geometry }, null, 2), contentType: 'application/json'
+    });
+    await testInfo.attach('native-size-keyboard-screenshot', {
+      body: await page.screenshot(), contentType: 'image/png'
+    });
+    expect(geometry.rootFont).toBeCloseTo(mode === 'normal' ? 16 : 37.64706, 3);
+    expect(geometry.viewport).toEqual({ layout: 793, visual: 417 });
+    expect(geometry.modalTop).toBeGreaterThanOrEqual(59);
+    expect(geometry.scrollTop).toBeGreaterThan(0);
+    expect(geometry.controls).toHaveLength(2);
+    for (const control of [...geometry.controls, geometry.field, geometry.next]) {
+      expect(control.top).toBeGreaterThanOrEqual(59);
+      expect(control.bottom).toBeLessThanOrEqual(417);
+      expect(control.hittable).toBe(true);
+    }
+    for (const control of geometry.controls) {
+      expect(control.visibleAboveCover, `control is hidden by ${control.paintedTop}`).toBe(true);
+    }
+    await page.locator('.expense-accessibility-button').click();
+    await expect(page.locator('.accessibility-center[role="dialog"]')).toBeVisible();
+    await page.locator('[data-close-accessibility]').first().click();
+    await expect(page.locator('.accessibility-center')).toBeHidden();
+    await page.locator('[data-action="cancel-expense"]').click();
+    await expect(page.locator('.expense-step-modal')).toBeHidden();
+  });
+}

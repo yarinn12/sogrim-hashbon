@@ -363,7 +363,7 @@ const CSS = `
     }
 
     html.app-software-keyboard-open.ledger-workspace-v1 body #app
-      .expense-step-route-backdrop::after {
+      .expense-step-modal .expense-modal-step-header::after {
       content: "";
       position: fixed;
       top: calc(var(--app-keyboard-viewport-top, 0px) + var(--app-keyboard-safe-top) + 1px);
