@@ -17,6 +17,93 @@ const fields = {
   'keyboard-ready': ['amount']
 };
 
+async function installNativeReadinessAdapter(page, mode = 'held-info') {
+  await page.evaluate(mode => {
+    const original = globalThis.Capacitor || {};
+    globalThis.__iosQaBrowserCaptures = [];
+    globalThis.__iosQaAdapterStatuses = [];
+    let releaseInfo;
+    const info = new Promise((resolve, reject) => {
+      releaseInfo = () => mode === 'rejected-info'
+        ? reject(new Error('Synthetic native info failure before home'))
+        : resolve({ id: 'com.sogrimhashbon.app', name: 'Readiness Adapter', version: '0', build: '0' });
+    });
+    globalThis.__iosQaReleaseInfo = releaseInfo;
+    globalThis.Capacitor = {
+      ...original, isNativePlatform: () => true, getPlatform: () => 'ios',
+      Plugins: { ...original.Plugins, App: { ...original.Plugins?.App, getInfo: () => info } }
+    };
+    globalThis.webkit ??= {};
+    globalThis.webkit.messageHandlers ??= {};
+    globalThis.webkit.messageHandlers.iosParity = { postMessage(record) {
+      globalThis.__iosQaBrowserCaptures.push(record);
+      if (record.phase !== 'home') queueMicrotask(() => globalThis.__iosParityCaptureAck?.(record.index));
+      else globalThis.__iosQaReleaseHomeCapture = () => globalThis.__iosParityCaptureAck?.(record.index);
+    } };
+    // This is the read-only status boundary, not UIKit or Native acceptance.
+    // The legacy bridge exposed every parsed state, including "starting".
+    globalThis.__iosQaReadStatus = () => {
+      const live = globalThis.__iosParityLive?.();
+      const exposed = live && (live.nativeStatusReady === undefined
+        || live.nativeStatusReady === true || live.phase === 'error');
+      const result = exposed ? live : null;
+      globalThis.__iosQaAdapterStatuses.push({ phase: live?.phase, exposed: Boolean(exposed) });
+      return result;
+    };
+  }, mode);
+}
+
+test('native status stays unavailable through bootstrap and an unacknowledged first capture', async ({ page }, testInfo) => {
+  await page.addInitScript({ content: syntheticService });
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await installNativeReadinessAdapter(page);
+  await page.evaluate(journey);
+  const starting = await page.evaluate(() => ({
+    phase: globalThis.__iosParityLive().phase,
+    status: globalThis.__iosQaReadStatus(),
+    captures: globalThis.__iosQaBrowserCaptures.length
+  }));
+  expect(starting).toEqual({ phase: 'starting', status: null, captures: 0 });
+  await page.evaluate(() => globalThis.__iosQaReleaseInfo());
+  await page.waitForFunction(() => globalThis.__iosQaBrowserCaptures[0]?.phase === 'home', null, { timeout: 10_000 });
+  expect(await page.evaluate(() => globalThis.__iosQaReadStatus())).toBeNull();
+  await page.evaluate(() => globalThis.__iosQaReleaseHomeCapture());
+  await page.waitForFunction(() => globalThis.__iosQaReadStatus() !== null, null, { timeout: 10_000 });
+  await page.waitForFunction(() => ['keyboard-ready', 'error'].includes(globalThis.__iosParityLive().phase),
+    null, { timeout: 35_000 });
+  const final = await page.evaluate(() => ({
+    live: globalThis.__iosQaReadStatus(),
+    captures: globalThis.__iosQaBrowserCaptures,
+    statuses: globalThis.__iosQaAdapterStatuses
+  }));
+  await testInfo.attach('native-readiness-adapter', {
+    body: JSON.stringify(final, null, 2), contentType: 'application/json'
+  });
+  expect(final.captures.map(record => record.phase), JSON.stringify(final.live?.errors)).toEqual(phases);
+  expect(final.live.errors).toEqual([]);
+  expect(final.live.phase).toBe('keyboard-ready');
+  expect(final.live.nativeStatusReady).toBe(true);
+  expect(final.captures.every(record => record.errors.length === 0)).toBe(true);
+  expect(final.statuses.filter(record => record.phase === 'starting').every(record => !record.exposed)).toBe(true);
+});
+
+test('a native bootstrap error is exposed before the first capture rather than hidden behind readiness', async ({ page }) => {
+  await page.addInitScript({ content: syntheticService });
+  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await installNativeReadinessAdapter(page, 'rejected-info');
+  await page.evaluate(journey);
+  await page.evaluate(() => globalThis.__iosQaReleaseInfo());
+  await page.waitForFunction(() => globalThis.__iosParityLive().phase === 'error', null, { timeout: 5_000 });
+  const live = await page.evaluate(() => globalThis.__iosQaReadStatus());
+  expect(live).not.toBeNull();
+  expect(live.phase).toBe('error');
+  expect(live.errors.join(' ')).toContain('Synthetic native info failure before home');
+  expect(await page.evaluate(() => globalThis.__iosQaBrowserCaptures.map(record => record.phase))).toEqual(['error']);
+});
+
+
 test('the isolated iOS QA journey reaches keyboard-ready through the real DOM controls', async ({ page }, testInfo) => {
   await page.addInitScript({ content: syntheticService });
   await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });

@@ -45,6 +45,10 @@
     return hit && (element === hit || element.contains(hit)) ? { x, y } : null;
   }
   let phase = 'starting';
+  // The XCTest status must not announce a usable journey during bootstrap.
+  // Both existing 35-second waits keep their own boundary: first committed
+  // home (or restored) capture, then the native form/actions.
+  let nativeStatusReady = false;
   let openedNote = null;
   function controlGeometry(selector) {
     const element = first(selector);
@@ -72,7 +76,8 @@
       rootClasses: document.documentElement.className };
   }
   globalThis.__iosParityLive = () => ({
-    phase, errors, screen: document.querySelector('#app')?.dataset.screen,
+    phase, nativeStatusReady: nativeStatusReady || phase === 'error',
+    errors, screen: document.querySelector('#app')?.dataset.screen,
     amount: first('[data-action="expense-total"]')?.value || '',
     name: first('[data-action="expense-name"]')?.value || '',
     amountPoint: point('[data-action="expense-total"]'),
@@ -191,6 +196,7 @@
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
     });
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
+    if (name === 'home' || name === 'restored') nativeStatusReady = true;
     // Observe subsequent geometry without replacing the sealed original
     // capture or delaying the trusted XCTest actions that consume its phase.
     if (name === 'keyboard-amount' || name === 'keyboard-name') {

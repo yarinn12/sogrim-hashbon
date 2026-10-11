@@ -39,8 +39,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         status.frame = CGRect(x: 2, y: view.safeAreaInsets.top + 2, width: 1, height: 1)
         status.textColor = .clear
         status.isUserInteractionEnabled = false
-        status.accessibilityIdentifier = "native-parity-state"
-        status.isAccessibilityElement = true
+        status.isAccessibilityElement = false
         view.addSubview(status)
         let center = NotificationCenter.default
         center.addObserver(forName: UIResponder.keyboardDidShowNotification, object: nil, queue: .main) { [weak self] note in
@@ -83,6 +82,10 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         webView?.evaluateJavaScript("JSON.stringify(globalThis.__iosParityLive?.() || {})") { [weak self] value, error in
             guard let self = self, let text = value as? String, let data = text.data(using: .utf8),
                   var state = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            // UILabel existence is the first XCTest readiness boundary.
+            // A bootstrap placeholder must not start the later form deadline.
+            // Expose errors immediately so failures remain actionable.
+            guard state["nativeStatusReady"] as? Bool == true || state["phase"] as? String == "error" else { return }
             let documentScroll = state["documentScroll"] as? [String: Double] ?? [:]
             var mappings: [String: Any] = [:]
             for key in ["amountPoint", "namePoint", "nextPoint", "savePoint"] {
@@ -108,6 +111,8 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             if let encoded = try? JSONSerialization.data(withJSONObject: state, options: [.sortedKeys]),
                let result = String(data: encoded, encoding: .utf8) {
                 self.status.text = result; self.status.accessibilityLabel = result
+                self.status.accessibilityIdentifier = "native-parity-state"
+                self.status.isAccessibilityElement = true
             }
         }
     }

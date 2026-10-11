@@ -80,17 +80,22 @@ async function runJourney(script, renderedExpensePresent) {
   runInNewContext(script, sandbox, { filename: 'journey.js' });
   for (let index = 0; index < 100 && phases.length === 0; index++) await new Promise(resolve => setImmediate(resolve));
   assert.ok(phases.length > 0, 'Journey did not post a native result');
-  return phases.at(-1);
+  // The first screenshot acknowledgement must release native status on the
+  // restored path too; bootstrap failures must remain visible before capture.
+  await new Promise(resolve => setImmediate(resolve));
+  return { ...phases.at(-1), nativeStatus: sandbox.__iosParityLive() };
 }
 
 test('iOS relaunch QA rejects a missing rendered expense while acknowledged server and local data survive', async () => {
 const missing = await runJourney(source, false);
 assert.equal(missing.phase, 'error', 'Missing rendered expense must fail relaunch QA');
 assert.match(missing.errors.join(' '), /restored expense rendered in the native UI/);
+assert.equal(missing.nativeStatus.nativeStatusReady, true, 'A failed relaunch must expose its error');
 
 const present = await runJourney(source, true);
 assert.equal(present.phase, 'restored', 'Rendered expense must pass relaunch QA');
 assert.equal(present.metrics.expense.text, 'QA iOS');
+assert.equal(present.nativeStatus.nativeStatusReady, true, 'Acknowledged restored capture must expose native status');
 
 const mutated = source.replace(
   /      const expenseSelector = `[\s\S]*?      await capture\('restored', \{ heading: '\.event-overview-header h1', expense: expenseSelector \}\);/,
