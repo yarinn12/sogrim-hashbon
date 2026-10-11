@@ -141,6 +141,8 @@ jobs:
           # Keep every Native-run event even if a later force-stop closes an ANR dialog.
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/logcat-live.pid
+          # Start diagnostics before the first cold launch; this does not accept Native QA.
+          node scripts/qa/android-native-isolated/trace-diagnostics.mjs start
       - name: Prove the Native guard detects stacked CSS then restores single OS scale
         working-directory: app
         run: |
@@ -167,6 +169,9 @@ jobs:
         working-directory: app
         run: |
           mkdir -p artifacts/android-native-isolated
+          # Finalize our trace/host observer on every failure before the original ANR gate.
+          trace_status=0
+          node scripts/qa/android-native-isolated/trace-diagnostics.mjs finish || trace_status=$?
           diagnostic_status=1
           if [[ -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
             timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -d -v threadtime > artifacts/android-native-isolated/logcat.txt 2>&1 || true
@@ -175,7 +180,8 @@ jobs:
             ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/anr-diagnostics.mjs || diagnostic_status=$?
             timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
           fi
-          exit "$diagnostic_status"
+          if [[ "$diagnostic_status" != 0 ]]; then exit "$diagnostic_status"; fi
+          exit "$trace_status"
       - uses: actions/upload-artifact@v6
         if: always()
         with:

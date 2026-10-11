@@ -361,6 +361,70 @@ rejecting a dialog does not resolve the historical4acd ANR; its root cause is
 still open until exact PID/time/phase thread evidence or a faithful cause proof
 is obtained.
 
+## Diagnostic scheduling trace around cold launches
+
+`trace-diagnostics.mjs` starts before the font fault and acceptance cold launches
+on the owned Linux CI AVD. It requests guest scheduling, process identity,
+gfx/view/window/input atrace and SurfaceFlinger FrameTimeline data. The actual
+Perfetto version/help, registered provider names and toybox tools must be read
+successfully; an absent provider/tool prevents startup and remains an explicit
+error. Advertising a provider does not prove its events or interval coverage.
+The name matcher follows the first table column emitted by the primary
+[Perfetto CLI implementation](https://github.com/google/perfetto/blob/main/src/perfetto_cmd/perfetto_cmd.cc)
+(`PrintServiceState`), with a synthetic table-format regression. Human query
+output is not a stable machine protocol; unexpected formatting fails explicitly
+and retains raw stdout/stderr for review. No actual API36.1 query output has yet
+been captured by this new helper.
+
+The host observer reads only the explicitly supplied emulator PID and its
+`/proc/PID/task` entries. Both command-line AVD/port and process start ticks must
+match; there is no PID search or fallback to a different process. Linux's
+launcher execs the architecture-specific QEMU engine with the same arguments;
+the observer accepts either binary name but still checks actual ownership.
+It samples main, renderer/GPU and vCPU counters every1second, recording thread
+identity, CPU ticks, scheduler runtime/runqueue delay and available wait channels.
+Unusable counters fail collection; unavailable kernel wait channels and vanished
+tasks remain enumerated. This is not a host stack profiler and cannot alone name
+the ultimate renderer call, lock owner or shared host resource.
+
+Cleanup runs on failure before the existing ANR collector and owned AVD shutdown.
+The host observer stops cooperatively even if guest ownership is lost. For guest
+finalization, a toybox inotifyd watch must be registered on the exact trace inode
+before signalling the exact Perfetto PID, whose command/path/start ticks are
+rechecked. A matching `close_write` event with unchanged inode is required before
+the pulled file may be called transport-complete. PID exit, a successful signal,
+nonempty bytes or valid protobuf framing alone are insufficient. This follows
+the [official background tracing procedure](https://perfetto.dev/docs/learning-more/tracing-in-background).
+Partial files and failures are retained for diagnosis. The watcher cleanup checks
+its own child PID, parent, unique path and start ticks; it never signals a global
+Perfetto process or another emulator. Missing finalization still fails explicitly.
+
+Diagnostic limits are separate from acceptance budgets: 32MiB Perfetto buffer,
+5second drains, 512MiB trace file, 64MiB host JSONL and20minutes maximum recording.
+The job remains45minutes, so reaching a diagnostic cap before cleanup is explicit
+incomplete coverage, not a successful full-job recording. The guest close watch
+has2seconds registration and6seconds event polling inside a15second guest timeout
+and20second host command limit. These do not extend app foreground, launch,
+orientation or ANR deadlines. No renderer, core count or AVD memory is changed.
+
+Each host sample retains read/scanned/selected-thread counts and measured sampling
+time. Its summary retains observer CPU microseconds, RSS, elapsed time, peak thread
+counts, byte/hash receipt and unavailable-field counts. Actual SDK overhead has
+not yet been measured; the observer and guest ftrace can perturb scheduling.
+Native acceptance must still pass all original font/geometry/history/health gates.
+`nativeAcceptance` is always false in these diagnostic receipts.
+
+`captureComplete` means acknowledged diagnostic transport only. The bounded
+protobuf check rejects empty, text, truncated and metadata-only files; it does
+not validate semantic coverage or losses. Before drawing a cause conclusion,
+use Trace Processor on the real trace to verify parser/ftrace/buffer-loss stats,
+clock mapping, sched_switch/waking data, target main/RenderThread/GPU identities,
+SystemUI/SurfaceFlinger/ranchu tracks, requested FrameTimeline events and coverage
+from each cold start through its ANR. Missing events, clocks or overflow are
+unavailable evidence. Host/guest UTC correlation and real stack/lock ownership
+remain analysis work. This instrumentation has only synthetic boundary tests
+until a coordinated exact-source Linux SDK run supplies actual evidence.
+
 Successful logcat/DropBox reads may themselves contain historical system
 permission warnings. On exact source ae8ca15, the final all-buffer read returned0
 with valid threadtime data, but four recorded DisplayManagerService warnings
