@@ -42,7 +42,7 @@ toybox() {
    printf 'inotify wd:1 ino:7b sdev:fe38 mask:8\n' >"./proc/$BASHPID/fdinfo/3"
    printf '%s\n' "$BASHPID" >./watcher.pid
    trap 'mock_stat "$BASHPID" Z "$$" 3000 >|"./proc/$BASHPID/stat"; printf ended >./watcher-ended' EXIT
-   if [ "$mode" = ignore-term ] || [ "$mode" = intact-ignore-term ]; then trap '' TERM; else trap 'exit 0' TERM; fi
+   case "$mode" in ignore-term|intact-ignore-term|late-cmdline|late-startticks|late-parent) trap '' TERM;; *) trap 'exit 0' TERM;; esac
    while [ ! -e ./harness-stop ]; do command sleep .005; done
    ;;
   stat) if [ "$2" = '%i' ]; then printf '123\n'; elif [ -e ./inode-changed ]; then printf '65080:124\n'; else printf '65080:123\n'; fi ;;
@@ -72,6 +72,17 @@ kill() {
   return 0
  fi
  [ "$2" = "$(cat ./watcher.pid)" ] || return 99
+ if [ "$1" = -TERM ]; then
+  builtin kill "$@" || return
+  # Change the observation synchronously after TERM, before the shell resumes
+  # polling/escalation. No sleep or performance-dependent race selects it.
+  case "$mode" in
+   late-cmdline) cp "./proc/$2/cmdline" ./pre-change-cmdline; printf 'toybox\000inotifyd\000-\000%s\000a\000' "$trace" >|"./proc/$2/cmdline"; printf changed >./late-identity-change ;;
+   late-startticks) mock_stat "$2" S "$$" 4000 >|"./proc/$2/stat"; printf changed >./late-identity-change ;;
+   late-parent) mock_stat "$2" S 1 3000 >|"./proc/$2/stat"; printf changed >./late-identity-change ;;
+  esac
+  return 0
+ fi
  if [ "$1" = -KILL ]; then mock_stat "$2" Z "$$" 3000 >|"./proc/$2/stat"; printf ended >./watcher-ended; fi
  builtin kill "$@"
 }
@@ -79,7 +90,7 @@ kill() {
  const script=control+closeWriteScript(start).replaceAll(start.guestPath,'./traces/trace.pftrace').replaceAll(start.configPath,'./config/config.pbtxt').replaceAll('/proc/','./proc/');writeFileSync(join(directory,'run.sh'),script);
  const result=await runShell(directory);const signals=existsSync(join(directory,'signals.log'))?readFileSync(join(directory,'signals.log'),'utf8').trim().split(/\r?\n/):[];
  const child=existsSync(join(directory,'watcher.pid'))?readFileSync(join(directory,'watcher.pid'),'utf8').trim():null;
- return {...result,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child?readFileSync(join(directory,'proc',child,'cmdline')):null};
+ return {...result,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child?readFileSync(join(directory,'proc',child,'cmdline')):null,lateChange:existsSync(join(directory,'late-identity-change')),cmdlineBeforeLateChange:existsSync(join(directory,'pre-change-cmdline'))?readFileSync(join(directory,'pre-change-cmdline')):null};
 }
 
 for(const mode of ['intact','mutated'])test(`owned watcher with ${mode} Toybox argv is cleaned after the actual close event`,async t=>{
@@ -91,3 +102,7 @@ for(const mode of ['reused','foreign-parent','foreign-program','extra-argument',
 test('missing writer-close ACK preserves exit6 and cleans only the confirmed owned watcher',async t=>{const r=await exercise(t,'no-ack');assert.equal(r.status,6);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Writer-close ACK unavailable/);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);});
 test('changed trace inode preserves exit5 even when the event is present and the watcher is cleaned',async t=>{const r=await exercise(t,'inode-changed');assert.equal(r.status,5);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Trace inode changed/);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);});
 test('unconfirmed watcher cleanup preserves the original exit6 and never signals a reused child',async t=>{const r=await exercise(t,'no-ack-reused');assert.equal(r.bashExitCode,6);assert.equal(r.status,6);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Writer-close ACK unavailable/);assert.match(r.stderr,/cleanup unconfirmed/);assert.deepEqual(r.watchSignals,[]);});
+for(const mode of ['late-cmdline','late-startticks','late-parent'])test(`identity changed after TERM (${mode}) prevents KILL and rejects cleanup deterministically`,async t=>{
+ const r=await exercise(t,mode);assert.equal(r.lateChange,true,'The change must occur after the actual TERM call');assert.deepEqual(r.watchSignals,['-TERM '+r.child],'Never send KILL after the confirmed child identity changes');assert.equal(r.bashExitCode,7);assert.equal(r.status,7);assert.match(r.stderr,/cleanup unconfirmed/);
+ if(mode==='late-cmdline'){assert.deepEqual(r.cmdlineBeforeLateChange.toString().split('\0').filter(Boolean),['toybox','inotifyd','-','./traces/trace.pftrace','w']);assert.deepEqual(r.cmdline.toString().split('\0').filter(Boolean),['toybox','inotifyd','-','./traces/trace.pftrace','a']);}
+});
