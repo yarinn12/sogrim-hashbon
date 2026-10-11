@@ -35,8 +35,12 @@ workflow gate, product code, 35-second XCTest assertion or retry policy changed.
 
 Behavioral controls using synthetic journals reproduce the old
 `before-profile` result for both `starting` and `missing`, then pass with the
-observer change. A separate control distinguishes zero from multiple matching
-PIDs; rejected candidates never reach sampling. The final local run passed 21
+observer change. A separate control calls the baseline-compatible
+`verify_target` boundary and requires `candidateCount=0` and `candidateCount=2`
+for the respective rejected PID sets. Against the exact old observer, both
+subcases fail because that metadata is absent; they pass with the observer
+change. Parser-failure metadata is checked separately through the new optional
+argument. Rejected candidates never reach sampling. The final local run passed 22
 monitor controls, 38 adjacent validator controls and 3,481 normal JavaScript
 unit/integration tests. The handoff receipt stores the exact patch, RED/GREEN
 logs and byte hashes. No Mac simulator or physical iOS device has run this

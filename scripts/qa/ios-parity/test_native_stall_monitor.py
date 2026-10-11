@@ -122,17 +122,23 @@ class NativeStallMonitorTests(unittest.TestCase):
 
     def test_pid_identity_errors_distinguish_zero_and_multiple_matches_without_raw_paths(self):
         path = self.journal()
-        scan = {"parserFailures": 2, "commandLength": 500}
         for rows, count in (([], 0), ([self.process, self.process], 2)):
             with self.subTest(count=count):
                 with self.assertRaises(MonitorUnavailable) as caught:
-                    self.target(path, process_rows=rows, process_scan=scan)
-                details = caught.exception.details
-                self.assertEqual(details["candidateCount"], count)
-                self.assertEqual(details["parserFailures"], 2)
-                self.assertEqual(details["commandLength"], 500)
+                    self.target(path, process_rows=rows)
+                details = getattr(caught.exception, "details", {})
+                self.assertEqual(details.get("candidateCount"), count)
+                self.assertEqual(details["parserFailures"], 0)
+                self.assertEqual(details["commandLength"], max((len(row.command) for row in rows), default=0))
                 self.assertEqual(details["pathDigest"], hashlib.sha256(str(self.executable).encode()).hexdigest())
                 self.assertNotIn(str(self.executable), json.dumps(details))
+
+    def test_pid_parser_metadata_is_preserved_in_identity_diagnostics(self):
+        path = self.journal()
+        with self.assertRaises(MonitorUnavailable) as caught:
+            self.target(path, process_rows=[], process_scan={"parserFailures": 2, "commandLength": 500})
+        self.assertEqual(caught.exception.details["parserFailures"], 2)
+        self.assertEqual(caught.exception.details["commandLength"], 500)
 
     def test_actual_f9_journal_gap_becomes_sample_eligible(self):
         path = self.journal()
