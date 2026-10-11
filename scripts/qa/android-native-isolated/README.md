@@ -338,3 +338,25 @@ records an input-dispatch focus-event timeout at00:45:48 UTC and also a GMS
 broadcast ANR earlier in the run. The full Java/native ANR stack file was not
 retained, so the app/system root cause remains unresolved; this schema fix
 does not claim to repair that separate Native ANR.
+
+## Preserve and gate the entire Native-run ANR history
+
+CI starts explicit-device `logcat -b all -v threadtime` before the first Native
+acceptance launch and retains the continuous file through cleanup. A later
+force-stop/relaunch cannot remove an earlier target-app ANR from the gate.
+`anr-diagnostics.mjs` verifies the owned CI AVD before reading diagnostic data,
+captures last-ANR and full `data_app_anr`/`system_app_anr` DropBox entries, and
+requests a bounded180-second `adb bugreport` ZIP on failed runs or a recorded
+target-app ANR. Foreign events remain recorded without target attribution.
+Commands, failures, raw text, ZIP hash and collection times are saved.
+Missing/invalid continuous history or incomplete collection fails the gate.
+
+The gate rejects target app events from ActivityManager, WindowManager and
+the events buffer; foreign app events remain in raw evidence with separate
+attribution. Continuous history and the final all-buffer snapshot are checked
+before the owned emulator is killed. Cleanup retains a nonzero diagnostic/ANR
+status, stops the owned AVD, then fails the job. Existing glyph/font/journey,
+health and source/APK requirements remain in place. Collecting a report or
+rejecting a dialog does not resolve the historical4acd ANR; its root cause is
+still open until exact PID/time/phase thread evidence or a faithful cause proof
+is obtained.

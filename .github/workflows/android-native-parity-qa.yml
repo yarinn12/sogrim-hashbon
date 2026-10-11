@@ -138,6 +138,9 @@ jobs:
           set -euo pipefail
           ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
           ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
+          # Keep every Native-run event even if a later force-stop closes an ANR dialog.
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
+          echo "$!" > artifacts/android-native-isolated/logcat-live.pid
       - name: Prove the Native guard detects stacked CSS then restores single OS scale
         working-directory: app
         run: |
@@ -164,11 +167,15 @@ jobs:
         working-directory: app
         run: |
           mkdir -p artifacts/android-native-isolated
+          diagnostic_status=1
           if [[ -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
-            timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -d > artifacts/android-native-isolated/logcat.txt 2>&1 || true
+            timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -d -v threadtime > artifacts/android-native-isolated/logcat.txt 2>&1 || true
             timeout 10 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
+            diagnostic_status=0
+            ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/anr-diagnostics.mjs || diagnostic_status=$?
             timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
           fi
+          exit "$diagnostic_status"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
