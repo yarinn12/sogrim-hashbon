@@ -19,6 +19,7 @@ const journeys = [
   "e2e/ax-font-transition.spec.mjs",
   "e2e/paused-zero-screenshot.spec.mjs",
   "e2e/ios-qa-measurement-controls.spec.mjs",
+  "e2e-parity/ios-input-trace.spec.mjs",
   "e2e/ios-qa-journey-preflight.spec.mjs",
   "e2e/expense-keyboard-footer-regression.spec.mjs",
   "e2e/ios-xl-visual-layout.spec.mjs",

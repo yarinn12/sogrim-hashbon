@@ -80,6 +80,7 @@
     errors, screen: document.querySelector('#app')?.dataset.screen,
     amount: first('[data-action="expense-total"]')?.value || '',
     name: first('[data-action="expense-name"]')?.value || '',
+    inputTrace: globalThis.__iosParityInputTrace?.snapshot() || null,
     amountPoint: point('[data-action="expense-total"]'),
     namePoint: point('[data-action="expense-name"]'),
     amountGeometry: controlGeometry('[data-action="expense-total"]'),
@@ -185,6 +186,8 @@
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]));
     phase = name;
+    globalThis.__iosParityInputTrace?.setPhase(name);
+    if (name === 'keyboard-ready') globalThis.__iosParityInputTrace?.arm();
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
     webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, keyboardLayout: keyboardLayout(name, selectors),

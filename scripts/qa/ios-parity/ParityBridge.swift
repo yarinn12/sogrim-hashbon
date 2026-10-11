@@ -46,7 +46,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         super.capacitorDidLoad()
         let controller = webView!.configuration.userContentController
         controller.add(self, name: "iosParity")
-        for name in ["synthetic-service", "journey"] {
+        for name in ["synthetic-service", "input-trace", "journey"] {
             let url = Bundle.main.resourceURL!.appendingPathComponent("public/ios-parity-\(name).js")
             let script = try! String(contentsOf: url, encoding: .utf8)
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -147,6 +147,17 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             }
             state["pointMappings"] = mappings
             self.lastPointMappings = mappings
+            if ["keyboard-ready", "keyboard-amount", "keyboard-name"].contains(state["phase"] as? String ?? "") {
+                let key = state["phase"] as? String == "keyboard-ready" ? "amountPoint" :
+                    (state["phase"] as? String == "keyboard-amount" ? "nextPoint" : "namePoint")
+                if let point = state[key] as? [String: Double], let x = point["x"], let y = point["y"],
+                   let window = self.view.window {
+                    let target = window.hitTest(CGPoint(x: x, y: y), with: nil)
+                    state["nativeHitTest"] = ["key": key, "x": x, "y": y,
+                        "viewClass": target.map { String(describing: type(of: $0)) } ?? "none",
+                        "insideWebView": target.map { $0 === self.webView! || $0.isDescendant(of: self.webView!) } ?? false]
+                }
+            }
             state["native"] = self.nativeInfo()
             if state["phase"] as? String == "saved", self.backgrounds > 0,
                self.foregrounds > self.foregroundsAtLastBackground,
@@ -179,7 +190,37 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
         }
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard var record = message.body as? [String: Any], let index = record["index"] as? Int else { return }
+        guard var record = message.body as? [String: Any] else { return }
+        if record["kind"] as? String == "input-event" {
+            guard let item = record["inputEvent"] as? [String: Any],
+                  let sequence = item["sequence"] as? Int, (1...48).contains(sequence),
+                  let type = item["type"] as? String,
+                  ["pointerdown", "pointerup", "pointercancel", "touchstart", "touchend",
+                   "touchcancel", "mousedown", "mouseup", "click"].contains(type),
+                  let trusted = item["trusted"] as? Bool,
+                  let epochMs = item["epochMs"] as? Int,
+                  let phase = item["phase"] as? String,
+                  ["keyboard-ready", "keyboard-amount", "keyboard-name", "saved"].contains(phase) else { return }
+            let target = item["target"] as? [String: String] ?? [:]
+            let hit = item["hit"] as? [String: String] ?? [:]
+            let allowedActions = ["expense-total", "expense-step-next", "expense-name", "save-expense", "other"]
+            let allowedTags = ["button", "input", "span", "div", "label", "section", "svg", "path", "none"]
+            func safe(_ value: String?, allowed: [String]) -> String {
+                guard let value = value, allowed.contains(value) else { return "other" }
+                return value
+            }
+            var fields: [String: Any] = ["sequence": sequence, "eventType": type, "trusted": trusted,
+                "epochMs": epochMs, "phase": phase,
+                "targetAction": safe(target["action"], allowed: allowedActions),
+                "targetTag": safe(target["tag"], allowed: allowedTags),
+                "hitAction": safe(hit["action"], allowed: allowedActions),
+                "hitTag": safe(hit["tag"], allowed: allowedTags)]
+            if let x = item["x"] as? Double, x.isFinite { fields["x"] = x }
+            if let y = item["y"] as? Double, y.isFinite { fields["y"] = y }
+            observeStatus("webInput", fields)
+            return
+        }
+        guard let index = record["index"] as? Int else { return }
         if record["kind"] as? String == "keyboard-geometry-diagnostic" {
             guard let phase = record["phase"] as? String,
                   ["keyboard-amount", "keyboard-name"].contains(phase),

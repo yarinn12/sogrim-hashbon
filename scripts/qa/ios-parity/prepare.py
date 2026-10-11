@@ -30,7 +30,7 @@ def prepare(app: Path, source_sha: str) -> None:
         if path.is_file():
             manifest["www"][str(path.relative_to(public))] = sha256(path.read_bytes()).hexdigest()
     (out / "package-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf8")
-    for name in ["synthetic-service", "journey"]:
+    for name in ["synthetic-service", "input-trace", "journey"]:
         (public / f"ios-parity-{name}.js").write_bytes((FIXTURES / f"{name}.js").read_bytes())
     delegate = app / "ios/App/App/AppDelegate.swift"
     source = delegate.read_text(encoding="utf8")
