@@ -23,6 +23,7 @@ const journeys = [
   "e2e/expense-keyboard-footer-regression.spec.mjs",
   "e2e/platform-coherence-regression.spec.mjs"
 ];
+const firefoxNavigationReadiness = "e2e-parity/firefox-navigation-readiness.spec.mjs";
 
 export default defineConfig({
   ...base,
@@ -46,12 +47,12 @@ export default defineConfig({
       ["desktop-webkit", "Desktop Safari"]
     ].map(([name, device]) => ({
       name,
-      testMatch: journeys,
+      testMatch: name === "desktop-firefox" ? [...journeys, firefoxNavigationReadiness] : journeys,
       use: { ...devices[device], viewport: { width: 1280, height: 900 } }
     })),
     {
       name: "compact-firefox",
-      testMatch: [...journeys, "e2e-parity/typography-navigation-readiness.spec.mjs"],
+      testMatch: [...journeys, "e2e-parity/typography-navigation-readiness.spec.mjs", firefoxNavigationReadiness],
       use: { ...devices["Desktop Firefox"], viewport: { width: 390, height: 844 } }
     },
     {
