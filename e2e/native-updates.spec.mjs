@@ -157,6 +157,20 @@ test("a changed profile field remains update-sensitive after focus moves", async
   await expect(page.locator("#mandatory-update-gate")).toBeVisible();
 });
 
+test("a filled friends search remains a filter after focus moves", async ({ page }) => {
+  let fullyAvailable = false;
+  const policy = () => ({ latestAvailableBuild: 188, minimumSupportedBuild: 188,
+    releaseAvailableToAll: fullyAvailable, critical: true, storeUrl: playUrl });
+  const fixture = await nativeFixture(page, "android", 187, policy);
+  await page.evaluate(() => document.querySelector("#app")?.insertAdjacentHTML("beforeend",
+    '<label><input data-action="friends-search" name="friendSearch" type="search"></label>'));
+  await page.locator('[data-action="friends-search"]').fill("Dana");
+  await page.locator('[data-action="save-profile"]').focus();
+  fullyAvailable = true;
+  await fixture.resume();
+  await expect(page.locator("#mandatory-update-gate")).toBeVisible();
+});
+
 test("a critical gate clears offline and is rechecked on reconnect", async ({ page, context }) => {
   const policy = () => ({ latestAvailableBuild: 188, minimumSupportedBuild: 188,
     releaseAvailableToAll: true, critical: true, storeUrl: playUrl });

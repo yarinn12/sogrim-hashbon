@@ -1,3 +1,10 @@
+// These controls only filter rendered rows or choices; they hold no draft data.
+const FILTER_FIELD_SELECTOR = [
+  "input[type='search'][data-action='friends-search']",
+  "input[type='search'][data-action='participant-search']",
+  "input[type='search'][data-action='new-event-currency-search']"
+].join(", ");
+
 export function hasUpdateSensitiveWork({ document, storage, pending = false, checkOutbox = false }) {
   if (pending) return true;
   if (document?.querySelector?.([
@@ -10,7 +17,8 @@ export function hasUpdateSensitiveWork({ document, storage, pending = false, che
     "#app [data-screen-kind='join-event']"
   ].join(", "))) return true;
   for (const field of document?.querySelectorAll?.("#app input, #app textarea, #app select, #app [contenteditable='true']") ?? []) {
-    if (field.disabled || field.readOnly || field.closest?.("[hidden], [inert]")) continue;
+    if (field.disabled || field.readOnly || field.closest?.("[hidden], [inert]") ||
+        isFilterField(field)) continue;
     if (field.matches?.("input[type='checkbox'], input[type='radio']")) {
       if (field.checked !== field.defaultChecked) return true;
     } else if (field.matches?.("select")) {
@@ -22,7 +30,7 @@ export function hasUpdateSensitiveWork({ document, storage, pending = false, che
     } else if (field.value !== field.defaultValue) return true;
   }
   const focused = document?.activeElement;
-  if (focused?.closest?.("#app") &&
+  if (focused?.closest?.("#app") && !isFilterField(focused) &&
       focused.matches?.("input, textarea, [contenteditable='true']") &&
       String(focused.value ?? focused.textContent ?? "").trim()) return true;
   if (!checkOutbox) return false;
@@ -33,4 +41,8 @@ export function hasUpdateSensitiveWork({ document, storage, pending = false, che
     }
   } catch { return true; }
   return false;
+}
+
+function isFilterField(field) {
+  return field?.matches?.(FILTER_FIELD_SELECTOR) === true;
 }
