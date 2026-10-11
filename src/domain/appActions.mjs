@@ -141,6 +141,7 @@ export function setEventCurrency(
     ...state,
     events: state.events.map((event) =>
       event.id === eventId &&
+      !event.expenses.some((expense) => expense.fxConversion) &&
       (event.expenses.length === 0 || allowExistingExpenses)
         ? {
             ...event,

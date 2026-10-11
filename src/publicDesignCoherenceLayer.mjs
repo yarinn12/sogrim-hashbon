@@ -2086,7 +2086,7 @@ const CSS = `
 
   html.design-coherence-v1 .event-participant-primary-actions {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 9px !important;
     margin: 0 !important;
   }

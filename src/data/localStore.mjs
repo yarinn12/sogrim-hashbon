@@ -83,9 +83,21 @@ const LOCAL_RUNTIME_CONFIG = {
   updates: {
     android: {
       minimumSupportedBuild: 0,
+      latestAvailableBuild: 0,
+      releaseAvailableToAll: false,
+      critical: false,
       currentBuild: 0,
       required: false,
       storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
+    },
+    ios: {
+      minimumSupportedBuild: 0,
+      latestAvailableBuild: 0,
+      releaseAvailableToAll: false,
+      critical: false,
+      currentBuild: 0,
+      required: false,
+      storeUrl: ""
     }
   },
   monetization: {

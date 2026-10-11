@@ -12,6 +12,8 @@ import { repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture } f
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 import { restoreRememberedSettlementPlan } from "../src/domain/settlementPlanMemory.mjs";
 import { sendEventActivityNotification } from "../src/server/eventActivityNotifications.mjs";
+import { convertExpenseInput } from "../src/domain/expenseFx.mjs";
+import { saveCloudState } from "../src/data/cloudStore.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -33,6 +35,9 @@ const attributionVerification = readFileSync(new URL("../supabase/verification/v
 const selfLeaveMigration = readFileSync(new URL("../supabase/migrations/20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
 const selfLeaveMarker = "-- Guarded self-leave receipt (2026-10-03).";
 const selfLeaveVerification = readFileSync(new URL("../supabase/verification/verify_20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
+const fxBoundaryMigration = readFileSync(new URL("../supabase/migrations/20261011120000_preserve_expense_fx_at_snapshot_boundary.sql", import.meta.url), "utf8");
+const fxBoundaryVerification = readFileSync(new URL("../supabase/verification/verify_20261011120000_expense_fx_snapshot_boundary.sql", import.meta.url), "utf8");
+const fxBoundaryMarker = "-- Protect converted expenses at the snapshot write boundary (2026-10-11).";
 before(async () => {
   db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
@@ -67,6 +72,7 @@ before(async () => {
     await db.exec(accountLinkReceiptMigration);
     await db.exec(selfLeaveMigration);
     await db.exec(selfLeaveVerification);
+    await db.exec(fxBoundaryMigration);
     if (process.env.DATABASE_INTEGRITY_INSTALL_MODE === "upgrade") {
       await db.exec(referralRecoveryMigration);
       await db.exec(referralRecoveryMigration);
@@ -564,6 +570,172 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+
+function convertedSnapshot(baseline) {
+  baseline.events[0].expenses[0] = { ...baseline.events[0].expenses[0],
+    name: "Lunch", ...convertExpenseInput({ sourceCurrency: "USD", targetCurrency: "ILS",
+      sourceAmount: "10", sourcePayers: [{ participantId: ids.recipient, amount: "10" }],
+      rate: "0.2", mode: "manual" }), updatedAt: new Date(Date.now() - 1000).toISOString() };
+  return baseline;
+}
+
+test("SQL canonical write keeps FX provenance when a legacy client changes only the expense name", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const candidate = structuredClone(previous);
+    candidate.events[0].expenses[0].name = "Renamed by old client";
+    candidate.events[0].expenses[0].updatedAt = new Date(Date.now() + 2000).toISOString();
+    delete candidate.events[0].expenses[0].fxConversion;
+    const version = (await db.query("select to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0].version;
+    const config = { storage: { mode: "supabase", url: "https://fixture.invalid", table: "app_snapshots",
+      spaceId: snapshotId, spaceKey, anonKey: "fixture-anon", snapshotKind: "shared_event",
+      account: { userId: ids.admin.slice(8), accessToken: "fixture-token", spaceId: "workspace-1" } } };
+    let wirePayload, receipt;
+    await saveCloudState(config, candidate, async (url, options) => {
+      assert.match(url, /\/rpc\/update_shared_event_snapshot$/);
+      wirePayload = JSON.parse(options.body);
+      receipt = await save(wirePayload.p_state, wirePayload.p_expected_updated_at);
+      return new Response(JSON.stringify(receipt), { status: 200,
+        headers: { "content-type": "application/json" } });
+    }, { expectedVersion: version });
+    assert.equal(wirePayload.p_state.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(receipt.status, "updated");
+    const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+    assert.equal(committed.events[0].expenses[0].name, "Renamed by old client");
+    assert.deepEqual(committed.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write keeps explicit FX removal through a legacy edit and rejects stale resurrection", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const removed = structuredClone(previous);
+    const firstEdit = new Date(Date.now() + 1000).toISOString();
+    delete removed.events[0].expenses[0].fxConversion;
+    removed.events[0].expenses[0].fxConversionRemovedAt = firstEdit;
+    removed.events[0].expenses[0].updatedAt = firstEdit;
+    assert.equal((await save(removed)).status, "updated");
+    const read = async () => (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+    const afterRemoval = await read();
+    assert.equal(afterRemoval.state.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(afterRemoval.state.events[0].expenses[0].fxConversionRemovedAt, firstEdit);
+
+    const legacyEdit = structuredClone(afterRemoval.state);
+    legacyEdit.events[0].expenses[0].name = "Old client renamed";
+    legacyEdit.events[0].expenses[0].updatedAt = new Date(Date.now() + 2000).toISOString();
+    delete legacyEdit.events[0].expenses[0].fxConversionRemovedAt;
+    assert.equal((await save(legacyEdit, afterRemoval.version)).status, "updated");
+    const afterLegacy = await read();
+    assert.equal(afterLegacy.state.events[0].expenses[0].fxConversionRemovedAt, firstEdit);
+
+    const stale = structuredClone(previous);
+    stale.events[0].expenses[0].updatedAt = new Date(Date.now() + 3000).toISOString();
+    stale.events[0].expenses[0].name = "Stale FX copy";
+    await db.exec("savepoint stale_fx_rejected");
+    await assert.rejects(save(stale, afterLegacy.version), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint stale_fx_rejected");
+    assert.deepEqual((await read()).state, afterLegacy.state);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write rejects a contradictory monetary edit without a replacement conversion", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const changed = structuredClone(previous);
+    const expense = changed.events[0].expenses[0];
+    delete expense.fxConversion;
+    expense.total = 202;
+    expense.payers[0].amount = 202;
+    expense.updatedAt = new Date(Date.now() + 2000).toISOString();
+    await db.exec("savepoint conflicting_fx_rejected");
+    await assert.rejects(save(changed), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint conflicting_fx_rejected");
+    assert.deepEqual((await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state, previous);
+  }, baseline => {
+    convertedSnapshot(baseline);
+    baseline.events[0].expenses[0].sharedByParticipantIds = [ids.recipient];
+    baseline.events[0].transfers = [];
+    return baseline;
+  });
+});
+
+test("SQL canonical write rejects a currency change while a converted expense exists", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const changed = structuredClone(previous);
+    changed.events[0].currency = "USD";
+    await db.exec("savepoint currency_fx_rejected");
+    await assert.rejects(save(changed), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint currency_fx_rejected");
+    assert.deepEqual((await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state, previous);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write permits a deliberate new conversion after explicit removal", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const removed = structuredClone(previous);
+    const removedAt = new Date(Date.now() + 1000).toISOString();
+    delete removed.events[0].expenses[0].fxConversion;
+    removed.events[0].expenses[0].fxConversionRemovedAt = removedAt;
+    removed.events[0].expenses[0].updatedAt = removedAt;
+    assert.equal((await save(removed)).status, "updated");
+    const afterRemoval = (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+    const reapplied = structuredClone(previous);
+    const restoredAt = new Date(Date.now() + 2000).toISOString();
+    reapplied.events[0].expenses[0].fxConversionRestoredAt = restoredAt;
+    reapplied.events[0].expenses[0].updatedAt = restoredAt;
+    assert.equal((await save(reapplied, afterRemoval.version)).status, "updated");
+    const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+    assert.deepEqual(committed.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+    assert.equal(committed.events[0].expenses[0].fxConversionRemovedAt, undefined);
+  }, convertedSnapshot);
+});
+
+test("SQL personal PATCH projects canonical FX for an old client even when its workspace lacks the field", async () => {
+  await withSnapshot(ids.admin, async previous => {
+    const workspaceId = `workspace-${ids.admin.slice(-1)}`;
+    const workspace = (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [workspaceId])).rows[0];
+    const candidate = structuredClone(workspace.state);
+    candidate.events = [structuredClone(previous.events[0])];
+    candidate.events[0].sharedSpaceId = snapshotId;
+    candidate.events[0].expenses[0].name = "Old client personal edit";
+    delete candidate.events[0].expenses[0].fxConversion;
+    const config = { storage: { mode: "supabase", url: "https://fixture.invalid", table: "app_snapshots",
+      spaceId: workspaceId, spaceKey, anonKey: "fixture-anon",
+      account: { userId: ids.admin.slice(8), accessToken: "fixture-token", spaceId: workspaceId } } };
+    let wirePayload, acknowledged = false;
+    await saveCloudState(config, candidate, async (url, options) => {
+      assert.match(url, /\/app_snapshots\?/);
+      wirePayload = JSON.parse(options.body).state;
+      const rows = (await db.query(`update public.app_snapshots
+        set state=$1::jsonb,updated_at=now()+interval '1 second'
+        where id=$2 and updated_at=$3::timestamptz
+        returning state,to_jsonb(updated_at) as updated_at`,
+      [JSON.stringify(wirePayload), workspaceId, workspace.version])).rows;
+      acknowledged = rows.length === 1;
+      return new Response(JSON.stringify(rows), { status: 200,
+        headers: { "content-type": "application/json" } });
+    }, { expectedVersion: workspace.version });
+    assert.equal(wirePayload.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(acknowledged, true);
+    const saved = (await db.query("select state from public.app_snapshots where id=$1", [workspaceId])).rows[0].state;
+    assert.equal(saved.events[0].expenses[0].name, "Old client personal edit");
+    assert.deepEqual(saved.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+  }, convertedSnapshot);
+});
+
+test("SQL FX rollout check sees the installed guard and consistent saved snapshots", async () => {
+  const result = await db.exec(fxBoundaryVerification);
+  assert.equal(result.at(-1).rows[0].verification_status, "ready");
+});
+
+test("SQL FX migration reapply leaves snapshot policies and table grants unchanged", async () => {
+  const privileges = async () => ({
+    policies: (await db.query("select * from pg_catalog.pg_policies where schemaname='public' and tablename='app_snapshots' order by policyname")).rows,
+    grants: (await db.query("select grantee,privilege_type from information_schema.table_privileges where table_schema='public' and table_name='app_snapshots' order by grantee,privilege_type")).rows
+  });
+  const before = await privileges();
+  await db.exec(fxBoundaryMigration);
+  await db.exec(fxBoundaryMigration);
+  assert.deepEqual(await privileges(), before);
+  assert.equal((await db.exec(fxBoundaryVerification)).at(-1).rows[0].verification_status, "ready");
+});
 
 test("SQL notification retry acknowledges real committed inbox receipts without creating duplicates", async () => {
   await withSnapshot(ids.admin, async baseline => {
@@ -1660,7 +1832,9 @@ test("SQL fresh schema and incremental migration install exactly the same defini
   assert.equal(schema.slice(schema.indexOf(profileVersionMarker),schema.indexOf(accountLinkReceiptMarker)).trim(), profileVersionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker), schema.indexOf(selfLeaveMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
   assert.equal(sameSql(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length, schema.indexOf(referralTriggerMarker))), sameSql(selfLeaveMigration));
-  assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
+  assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker), schema.indexOf(fxBoundaryMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
+  assert.equal(sameSql(schema.slice(schema.indexOf(fxBoundaryMarker) + fxBoundaryMarker.length)),
+    sameSql(fxBoundaryMigration.replace(/^begin;\r?\n/, "").replace(/\r?\ncommit;\s*$/, "\n")));
   const statusDefinition = source => source.match(/create or replace function public\.get_referral_program_status\(\)[\s\S]*?\$\$;/)?.[0];
   assert.equal(sameSql(statusDefinition(schema)), sameSql(statusDefinition(referralRecoveryMigration)));
 });

@@ -35,6 +35,18 @@ test("currency options are unique and expose readable labels", () => {
   assert.equal(currencySelectLabel("JPY"), "ין (יפן) · ¥");
 });
 
+test("currency choices sort by Hebrew name and include supported two-decimal currencies", () => {
+  const options = currencyOptions();
+  const collator = new Intl.Collator("he");
+  assert.deepEqual(options.map(({ label }) => label),
+    options.map(({ label }) => label).sort(collator.compare));
+  for (const id of ["BRL", "HKD", "MXN"]) {
+    assert.equal(normalizeCurrency(id.toLowerCase()), id);
+    assert.match(formatCurrency(1234, id), /12\.34$/);
+  }
+  assert.equal(normalizeCurrency(), "ILS");
+});
+
 test("an event currency with expenses changes only after explicit approval", () => {
   const emptyEvent = {
     id: "event-1",

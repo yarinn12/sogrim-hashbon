@@ -25,6 +25,15 @@ export class CloudStateAuthError extends Error {
   }
 }
 
+export class CloudExpenseFxConflictError extends Error {
+  constructor() {
+    super("Converted expense conflicts with the saved exchange-rate record");
+    this.name = "CloudExpenseFxConflictError";
+    this.code = "CLOUD_FX_CONFLICT";
+    this.status = 400;
+  }
+}
+
 export async function loadCloudState(config, fallbackState, fetchImpl = fetch, options = {}) {
   if (config.storage?.mode !== "supabase") return fallbackState;
 
@@ -293,7 +302,7 @@ export async function saveCloudState(config, state, fetchImpl = fetch, { expecte
     }
   );
 
-  if (!response.ok) throw cloudResponseError(response, "Cloud state save failed");
+  if (!response.ok) throw await cloudSaveResponseError(response, "Cloud state save failed");
 
   if (isUpdate && (!Array.isArray(rows) || rows.length === 0)) {
     throw new CloudStateConflictError();
@@ -450,7 +459,7 @@ async function saveSharedEventStateAtomically(
     undefined,
     true
   );
-  if (!response.ok) throw cloudResponseError(response, "Shared event save failed");
+  if (!response.ok) throw await cloudSaveResponseError(response, "Shared event save failed");
 
   if (result?.status === "conflict") throw new CloudStateConflictError();
   if (result?.status !== "updated" || !result?.updatedAt) {
@@ -573,6 +582,14 @@ function cloudResponseError(response, message) {
   const error = new Error(message);
   error.status = Number(response?.status ?? 0) || 0;
   return error;
+}
+
+async function cloudSaveResponseError(response, message) {
+  if (response?.status === 400) {
+    const body = await response.json?.().catch(() => null);
+    if (body?.code === "PFX01") return new CloudExpenseFxConflictError();
+  }
+  return cloudResponseError(response, message);
 }
 
 async function hashSpaceKey(spaceKey) {

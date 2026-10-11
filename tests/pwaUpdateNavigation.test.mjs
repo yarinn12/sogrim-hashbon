@@ -5,7 +5,7 @@ import { runInNewContext } from "node:vm";
 
 const workerSource = await readFile(new URL("../sw.js", import.meta.url), "utf8");
 
-async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true }) {
+async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true, safeReply = null }) {
   const listeners = new Map();
   const responses = [];
   const navigationCalls = [];
@@ -17,6 +17,9 @@ async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true })
       return Promise.resolve(client);
     }
   };
+  if (safeReply !== null) {
+    client.postMessage = (_message, [port]) => port.postMessage({ safe: safeReply });
+  }
   const self = {
     location: { origin: "https://pwa-qa.example.test" },
     addEventListener(type, listener) { listeners.set(type, listener); },
@@ -37,13 +40,13 @@ async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true })
     }
   };
   const caches = {
-    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v511"]; },
+    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v514"]; },
     async delete() { return true; },
     async match() { return null; },
     async open() { return { put: async () => {} }; }
   };
   runInNewContext(workerSource, {
-    self, caches, URL, Response, AbortController, setTimeout, clearTimeout,
+    self, caches, URL, Response, AbortController, MessageChannel, setTimeout, clearTimeout,
     fetch: async () => new Response("<html></html>", {
       status: 200, headers: { "content-type": "text/html" }
     })
@@ -59,8 +62,12 @@ test("an updating worker does not navigate a page already reloading on controlle
   assert.deepEqual(await activateUpdatedWorker({ oldPageReloads: true }), []);
 });
 
-test("an updating worker navigates an older page that suppresses controllerchange reload", async () => {
-  assert.deepEqual(await activateUpdatedWorker({ oldPageReloads: false }), [
+test("an updating worker leaves an unresponsive older page open", async () => {
+  assert.deepEqual(await activateUpdatedWorker({ oldPageReloads: false }), []);
+});
+
+test("an updating worker navigates a page after an explicit safe reply", async () => {
+  assert.deepEqual(await activateUpdatedWorker({ oldPageReloads: false, safeReply: true }), [
     "https://pwa-qa.example.test/"
   ]);
 });

@@ -16,7 +16,17 @@ test("getRuntimeConfig stays in local mode without cloud environment values", ()
   assert.deepEqual(config.updates, {
     android: {
       minimumSupportedBuild: 0,
+      latestAvailableBuild: 0,
+      releaseAvailableToAll: false,
+      critical: false,
       storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
+    },
+    ios: {
+      minimumSupportedBuild: 0,
+      latestAvailableBuild: 0,
+      releaseAvailableToAll: false,
+      critical: false,
+      storeUrl: ""
     }
   });
   assert.deepEqual(config.monetization, {
@@ -181,6 +191,9 @@ test("mandatory Android updates are disabled until a minimum build is configured
 
   assert.deepEqual(scoped.updates.android, {
     minimumSupportedBuild: 0,
+    latestAvailableBuild: 0,
+    releaseAvailableToAll: false,
+    critical: false,
     currentBuild: 75,
     required: false,
     storeUrl: "https://play.google.com/store/apps/details?id=com.sogrimhashbon.app"
@@ -189,7 +202,10 @@ test("mandatory Android updates are disabled until a minimum build is configured
 
 test("mandatory Android updates block only known Android builds below the minimum", () => {
   const config = getRuntimeConfig({
-    ANDROID_MIN_SUPPORTED_BUILD: "77"
+    ANDROID_MIN_SUPPORTED_BUILD: "77",
+    ANDROID_LATEST_AVAILABLE_BUILD: "77",
+    ANDROID_UPDATE_FULLY_AVAILABLE: "true",
+    ANDROID_UPDATE_CRITICAL: "true"
   });
 
   assert.equal(
@@ -220,6 +236,22 @@ test("mandatory Android updates block only known Android builds below the minimu
     }).updates.android.required,
     false
   );
+});
+
+test("staged and unverified native releases never block; iOS uses its own build and store URL", () => {
+  const env = {
+    ANDROID_MIN_SUPPORTED_BUILD: "78", ANDROID_LATEST_AVAILABLE_BUILD: "78",
+    ANDROID_UPDATE_CRITICAL: "true", ANDROID_UPDATE_FULLY_AVAILABLE: "false",
+    IOS_MIN_SUPPORTED_BUILD: "5", IOS_LATEST_AVAILABLE_BUILD: "5",
+    IOS_UPDATE_CRITICAL: "true", IOS_UPDATE_FULLY_AVAILABLE: "true",
+    IOS_APP_STORE_URL: "https://apps.apple.com/il/app/sogrim-hashbon/id1234567890"
+  };
+  const config = getRuntimeConfig(env);
+  assert.equal(getClientRuntimeConfig(config, { platform: "android", build: "77" }).updates.android.required, false);
+  assert.equal(getClientRuntimeConfig(config, { platform: "ios", build: "4" }).updates.ios.required, true);
+  assert.equal(getClientRuntimeConfig(config, { platform: "android", build: "4" }).updates.ios.required, false);
+  assert.equal(getClientRuntimeConfig(getRuntimeConfig({ ...env, IOS_APP_STORE_URL: "" }),
+    { platform: "ios", build: "4" }).updates.ios.required, false);
 });
 
 test("Firebase push delivery can be disabled without removing recovery credentials", () => {

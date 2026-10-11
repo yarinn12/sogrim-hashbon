@@ -186,3 +186,17 @@ test("admin analytics view model keeps the daily overview concise", () => {
   assert.equal(viewModel.delivery.title, "משלוחי Push ללא תקיעות");
   assert.equal(formatBytes(14380179), "13.7 MB");
 });
+
+test("new admin fields distinguish an absent metric from a measured zero", () => {
+  const absent = normalizeAdminAnalyticsOverview({ push: {}, feedback: {}, telemetry: {} });
+  assert.equal(absent.push.disabledDevices, null);
+  assert.equal(absent.feedback.resolved, null);
+  assert.equal(absent.telemetry.clientErrorsDuringWindow, null);
+  const measured = normalizeAdminAnalyticsOverview({
+    push: { disabledDevices: 0 }, feedback: { resolved: "0" },
+    telemetry: { clientErrorsDuringWindow: 0 }
+  });
+  assert.equal(measured.push.disabledDevices, 0);
+  assert.equal(measured.feedback.resolved, 0);
+  assert.equal(measured.telemetry.clientErrorsDuringWindow, 0);
+});

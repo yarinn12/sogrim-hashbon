@@ -1,7 +1,9 @@
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
+import { assignSourcePayerDifference, convertExpenseInput, fetchOpenAccessRate, formatSourceAmount, parseSourceAmount, rateIsStale, summarizeSourcePayers, FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE, FX_OPEN_ACCESS_ATTRIBUTION_URL } from "./domain/expenseFx.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
-import { personalEventPinsKey, loadPersonalEventPins, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { createAccountPinMigrationQueue } from "./data/accountPinMigrationQueue.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
@@ -58,6 +60,7 @@ import {
   assignPayerDifference,
   balancePayerAmounts,
   createPayerDraft,
+  findAutoPayerIndex,
   markPayerAmountEdited,
   summarizePayerDraft
 } from "./domain/expenseDraft.mjs";
@@ -2462,7 +2465,7 @@ function renderHomeEventHydrationState() {
 }
 
 function renderHome() {
-  const pinnedEventIds = loadPersonalEventPins(state.currentParticipantId);
+  const pinnedEventIds = pinnedEventIdsForState(state);
   const sortedEvents = pinnedEventsFirst(visibleEventsForParticipant(state, state.currentParticipantId)
     .sort(
       (a, b) =>
@@ -4458,7 +4461,8 @@ function renderNewEvent() {
           action: "new-event-currency-choice",
           selectedValue: newEventDraft.currency,
           options: currencyOptions().map((currency) => ({ value: currency.id, label: currencySelectLabel(currency.id) })),
-          hint: "כל ההוצאות וההעברות באירוע יוצגו במטבע הזה."
+          searchable: true,
+          hint: "כל ההוצאות וההעברות באירוע יוצגו במטבע הזה. אפשר לחפש לפי שם או קוד."
         })}
 
         <div class="actions section">
@@ -4502,6 +4506,25 @@ function syncNewEventParticipantControls() {
 
   const createButton = app.querySelector('[data-action="create-event"]');
   if (createButton) createButton.disabled = count === 0;
+}
+
+function focusNewEventParticipantAfterSelection(participantId, searchQuery = "") {
+  const picker = app.querySelector('[data-participant-checks-for="new-event-participant"]');
+  if (!picker) return;
+  const search = picker.querySelector('[data-action="participant-search"]');
+  if (search && searchQuery) {
+    search.value = searchQuery;
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+  const input = [...picker.querySelectorAll('[data-action="new-event-participant"]')]
+    .find((candidate) => candidate.dataset.participantId === participantId);
+  if (!input) return;
+  input.focus({ preventScroll: true });
+  window.requestAnimationFrame(() => {
+    if (!input.isConnected) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    input.closest(".participant-pill")?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+  });
 }
 
 function renderEventCreationProgress(activeStep) {
@@ -4884,7 +4907,7 @@ function renderEventWorkspaceNav(event, activeView = "expenses") {
         aria-label="${notesAreActive ? "פתקים, המסך הנוכחי" : "פתיחת פתקים משותפים"}"
       >
         <span class="command-card-icon" aria-hidden="true">${iconSvg("message")}</span>
-        <strong>פתקים</strong>
+        <strong>פתקים משותפים</strong>
       </button>
     </nav>
   `;
@@ -4929,8 +4952,8 @@ function renderEventNotes(event) {
       <section class="event-notes-content" aria-labelledby="event-notes-list-title">
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
         ${notes.length
-          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים", false)}`
-          : renderEventNotesEmptyState()}
+          ? `${renderEventNotesSection(event, pinnedNotes, "מוצמד", true)}${renderEventNotesSection(event, otherNotes, pinnedNotes.length ? "" : "פתקים משותפים", false)}`
+          : ""}
       </section>
 
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
@@ -4983,16 +5006,6 @@ function renderEventNoteRow(event, note) {
       <span class="event-note-avatars">${renderAvatarStack(participantIds, event, { suppressParticipantAction: true })}</span>
       <button class="event-note-chevron" type="button" data-action="open-event-note" data-event-id="${escapeAttribute(event.id)}" data-note-id="${escapeAttribute(note.id)}" aria-label="פתיחת הפתק ${escapeAttribute(title)}">${iconSvg("chevron-left")}</button>
     </article>
-  `;
-}
-
-function renderEventNotesEmptyState() {
-  return `
-    <section class="panel event-notes-empty">
-      <span class="event-notes-empty-icon" aria-hidden="true">${iconSvg("message")}</span>
-      <h2>עוד אין פתקים משותפים</h2>
-      <p>אפשר לשמור כאן פרטי טיסה, רשימת ציוד, כתובות וכל דבר שחשוב לכל משתתפי האירוע.</p>
-    </section>
   `;
 }
 
@@ -5219,7 +5232,7 @@ function renderEventStatusMenu() {
       ? "כדי להזמין משתתפים צריך לפתוח את האירוע מחדש"
       : "רק מנהל יכול להזמין משתתפים במצב הנוכחי";
   const isPersonallyArchived = isEventPersonallyArchived(event.id);
-  const isPersonallyPinned = loadPersonalEventPins(state.currentParticipantId).has(event.id);
+  const isPersonallyPinned = pinnedEventIdsForState(state).has(event.id);
 
   return `
     <section class="event-status-menu-backdrop" aria-label="אפשרויות לאירוע ${escapeAttribute(event.name)}">
@@ -5447,15 +5460,15 @@ function renderNewEventSettlement() {
       ${renderNotice()}
       ${renderEventCreationProgress("settlement")}
       <section class="panel create-event-panel new-event-settlement-panel">
-        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "משפיע רק על ההעברות הסופיות, לא על ההוצאות." })}
-        ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "אפשר לשנות גם אחר כך בהגדרות האירוע." })}
+        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "מעגלים העברות ליחידות מטבע שלמות ומאזנים את ההפרש. ההוצאות נשארות מדויקות." })}
+        ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "קיזוז חכם מאזן חובות בין כולם ומצמצם העברות; החזר ישיר משלם למי שהוציא. אפשר לשנות בהגדרות האירוע." })}
         <div class="actions section"><button class="primary-button" data-action="open-new-event-participants">המשך למשתתפים</button></div>
       </section>
     </section>`;
 }
 
-function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint }) {
-  return `<div class="field new-event-inline-picker"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}</div></details><small>${escapeHtml(hint)}</small></div>`;
+function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint, searchable = false }) {
+  return `<div class="field new-event-inline-picker" data-picker-action="${escapeAttribute(action)}"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${searchable ? `<label class="new-event-currency-search"><span class="visually-hidden">חיפוש מטבע לפי שם או קוד</span><input type="search" data-action="new-event-currency-search" aria-label="חיפוש מטבע לפי שם או קוד" placeholder="חיפוש שם או קוד מטבע" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" data-search-text="${escapeAttribute(`${option.label} ${option.value}`)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}${searchable ? `<p class="muted" data-currency-search-empty hidden>לא נמצאו מטבעות</p>` : ""}</div></details><small>${escapeHtml(hint)}</small></div>`;
 }
 
 function closeNewEventInlinePicker(target) {
@@ -5515,6 +5528,7 @@ function renderEventParticipantsDialog(event) {
       }
       ${renderEventIdentityNotice(event)}
       ${renderCurrentEventParticipants(event, currentParticipants, canEdit)}
+      ${renderInactiveEventParticipants(event, inactiveParticipants, canEdit)}
       <div class="event-participant-primary-actions">
         <button
           class="primary-button event-participant-add-launch"
@@ -5523,11 +5537,10 @@ function renderEventParticipantsDialog(event) {
           data-event-id="${escapeAttribute(event.id)}"
           ${canEdit ? "" : "disabled"}
         >
-          ${renderCommandIcon("participants")}
+          <span class="command-card-icon" aria-hidden="true">${iconSvg("user-plus")}</span>
           <span>הוסף משתתפים</span>
         </button>
       </div>
-      ${renderInactiveEventParticipants(event, inactiveParticipants, canEdit)}
     `
   });
 }
@@ -7170,7 +7183,6 @@ function renderNewEventSelectedParticipant(participant) {
           ${renderParticipantUsername(participant)}
         </span>
         <small class="new-event-selected-participant-self">אתה · יוצר האירוע</small>
-        <span class="new-event-selected-participant-check app-selection-check" aria-hidden="true">${iconSvg("check")}</span>
       </div>
     `;
   }
@@ -7308,6 +7320,7 @@ function renderNewEventParticipants() {
 
       <section class="new-event-participant-additions" aria-labelledby="new-event-additions-title">
         <h2 id="new-event-additions-title">הוספת משתתפים</h2>
+        <p class="muted">שם ידני מיועד לאדם ללא חשבון באפליקציה; הוא לא יקבל גישה לאירוע. כדי שחבר יצטרף מהחשבון שלו, בחרו ״הזמן בקישור״ ושלחו לו את הקישור לאחר שמירת האירוע.</p>
         <div class="new-event-participant-actions" aria-label="דרכים להוספת משתתפים">
           ${renderNewEventParticipantAction({
             action: "create-event-and-open-invite",
@@ -7431,25 +7444,25 @@ function renderEventSettingsDialog(event) {
           eventId: event.id,
           section: "management",
           title: "אופן ניהול",
-          description: `${managementStatus} · מנהל: ${adminNames}`
+          description: `${managementStatus} · קובע מי יכול לעדכן הוצאות. מנהל: ${adminNames}`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "currency",
           title: "מטבע האירוע",
-          description: currencyStatus
+          description: `${currencyStatus} · משותף לכל סכומי האירוע, ללא המרת שערים`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "repayment",
           title: "חלוקת ההחזרים",
-          description: repaymentStatus
+          description: `${repaymentStatus} · קיזוז בין כולם או החזר ישיר למי ששילם`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "rounding",
           title: "עיגול סכומים",
-          description: roundingStatus
+          description: `${roundingStatus} · העברות בלבד; ההוצאות נשארות מדויקות`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
@@ -7461,13 +7474,13 @@ function renderEventSettingsDialog(event) {
           eventId: event.id,
           section: "lock",
           title: "עריכת האירוע",
-          description: lockStatus
+          description: `${lockStatus} · נעילה מונעת עריכת האירוע`
         })}
         ${renderEventSettingsMenuItem({
           eventId: event.id,
           section: "danger",
           title: "עזיבה ומחיקה",
-          description: dangerStatus,
+          description: `${dangerStatus} · משפיע על הגישה לאירוע`,
           danger: true
         })}
       </div>
@@ -7700,6 +7713,7 @@ function renderEventSettingsManagementDialog(event) {
 function renderEventSettingsCurrencyDialog(event) {
   const canManage = canCurrentParticipantManage(event);
   const hasExistingExpenses = event.expenses.length > 0;
+  const hasConvertedExpenses = event.expenses.some((expense) => expense.fxConversion);
 
   return renderEventDialogShell({
     eventId: event.id,
@@ -7718,13 +7732,15 @@ function renderEventSettingsCurrencyDialog(event) {
           data-action="event-currency"
           name="eventCurrency"
           data-event-id="${event.id}"
-          ${!canManage ? "disabled" : ""}
+          ${!canManage || hasConvertedExpenses ? "disabled" : ""}
         >
           ${renderCurrencyOptions(event.currency)}
         </select>
         <small>${
           !canManage
             ? "רק מנהל האירוע יכול לשנות את המטבע."
+            : hasConvertedExpenses
+              ? "יש באירוע הוצאה שהומרה ממטבע אחר. כדי לשמור על משמעות הסכומים והחובות, אי אפשר לשנות כעת את מטבע האירוע."
             : hasExistingExpenses
               ? "אפשר לשנות. לפני העדכון נבקש אישור, כי הסכומים הקיימים לא יומרו לפי שער חליפין."
               : "המטבע יחול על כל ההוצאות וההעברות באירוע."
@@ -8212,8 +8228,9 @@ function renderExpenseForm(event) {
       ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
       <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
       <div class="expense-flow-body">
+      ${renderExpenseFxFields(event)}
       <label class="field expense-total-field">
-        <span>סכום כולל <span class="currency-input-badge font-num" dir="ltr">${escapeHtml(currencyCompactLabel(event))}</span></span>
+        <span>סכום כולל <span class="currency-input-badge font-num" dir="ltr">${escapeHtml(expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : currencyCompactLabel(event))}</span></span>
         <input data-action="expense-total" name="expenseTotal" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" value="${escapeAttribute(expenseDraft.total)}" placeholder="0.00" ${expenseFlowFieldErrorAttributes("amount")} />
       </label>
       <label class="field expense-name-field">
@@ -8267,7 +8284,7 @@ function renderExpenseForm(event) {
                           + הוסף שם חדש
                         </option>
                       </select>
-                      <input data-action="expense-payer-amount" data-index="${index}" name="expensePayerAmount-${index}" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" aria-label="סכום ששילם משלם ${index + 1}" value="${escapeAttribute(payer.amount)}" placeholder="כמה שילם" />
+                      <input data-action="expense-payer-amount" data-index="${index}" name="expensePayerAmount-${index}" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" aria-label="סכום ששילם משלם ${index + 1} ב־${escapeAttribute(expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : eventCurrency(event))}" value="${escapeAttribute(payer.amount)}" placeholder="כמה שילם" />
                       ${
                         expenseDraft.payers.length > 1
                           ? `<button class="secondary-button" data-action="remove-payer" data-index="${index}">הסר</button>`
@@ -8352,7 +8369,7 @@ function renderExpenseForm(event) {
         ${
           flowStep === "review"
             ? `
-                <button class="primary-button" data-action="save-expense" data-event-id="${event.id}" ${canEdit && expenseFlowReady("review") ? "" : "disabled"}>${expenseDraft.id ? "שמור שינויים" : "שמור הוצאה"}</button>
+                <button class="primary-button" data-action="save-expense" data-event-id="${event.id}" ${canEdit && expenseFlowReady("review") ? "" : "disabled"}>${expenseUsesForeignCurrency(event) ? (expenseDraft.id ? "אשר סכום ושמור שינויים" : "אשר סכום ושמור הוצאה") : (expenseDraft.id ? "שמור שינויים" : "שמור הוצאה")}</button>
                 ${
                   expenseDraft.id
                     ? ""
@@ -8710,7 +8727,9 @@ function renderExpenseFlowReview(event, participants) {
   const values = expenseDetailsSummaryValues(event, participants);
   let totalLabel = expenseDraft.total;
   try {
-    totalLabel = formatEventMoney(event, parseMoneyInput(expenseDraft.total));
+    totalLabel = expenseUsesForeignCurrency(event)
+      ? `${expenseDraft.total} ${expenseDraft.sourceCurrency} → ${formatEventMoney(event, expenseFxResult(event).total)}`
+      : formatEventMoney(event, parseMoneyInput(expenseDraft.total));
   } catch {
     // The amount step owns validation.
   }
@@ -8719,6 +8738,7 @@ function renderExpenseFlowReview(event, participants) {
     <section class="expense-flow-review" aria-label="סיכום ההוצאה לפני שמירה">
       <div class="expense-review-list">
         ${renderExpenseReviewRow("amount", "סכום", totalLabel)}
+        ${expenseUsesForeignCurrency(event) ? `<p class="muted">שער משוער ${escapeHtml(expenseDraft.fxRate || "טרם נבחר")} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(expenseDraft.sourceCurrency)} · ${expenseFxSourceDescription(expenseDraft.fxMode === "automatic" ? expenseDraft.fxRateSource : "user", expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}. יש לבדוק את הסכום המומר ולאשר אותו לפני שמירה.</p>` : ""}
         ${renderExpenseReviewRow("name", "שם ההוצאה", expenseDraft.name.trim())}
         ${renderExpenseReviewRow("payer", "שילם", values.payer)}
         ${renderExpenseReviewRow("participants", "משתתפים", values.participants)}
@@ -8768,7 +8788,7 @@ function expenseFlowReady(step = normalizeExpenseFlowStep(expenseDraft?.flowStep
   const normalizedStep = normalizeExpenseFlowStep(step);
   const event = getEvent(expenseDraft.eventId);
   const participantIds = new Set(event?.participantIds ?? []);
-  const payerSummary = summarizePayerDraft(expenseDraft.total, expenseDraft.payers);
+  const payerSummary = expensePayerSummary();
   const payerIds = expenseDraft.payers.map((payer) => payer.participantId).filter(Boolean);
   const payersAreKnown =
     payerIds.length > 0 &&
@@ -8790,7 +8810,9 @@ function expenseFlowReady(step = normalizeExpenseFlowStep(expenseDraft?.flowStep
   };
 
   if (normalizedStep === "review") {
-    return Object.values(readiness).every(Boolean);
+    if (!Object.values(readiness).every(Boolean)) return false;
+    try { if (expenseUsesForeignCurrency(event)) expenseFxResult(event); } catch { return false; }
+    return true;
   }
   return Boolean(readiness[normalizedStep]);
 }
@@ -8854,13 +8876,13 @@ function expenseFlowValidationMessage(step) {
 
     if (!payersAreKnown) return "יש לבחור משלם שונה לכל שורת תשלום.";
 
-    const summary = summarizePayerDraft(expenseDraft?.total, expenseDraft?.payers);
+    const summary = expensePayerSummary();
     if (!summary.valid) return "יש להזין סכום תקין לכל משלם.";
     if (summary.remaining > 0) {
-      return `נשאר לשייך ${formatEventMoney(event, summary.remaining)} למי ששילם.`;
+      return `נשאר לשייך ${formatExpenseInputMoney(event, summary.remaining)} למי ששילם.`;
     }
     if (summary.overpaid > 0) {
-      return `סכומי המשלמים גבוהים ב-${formatEventMoney(event, summary.overpaid)} מהסכום הכולל.`;
+      return `סכומי המשלמים גבוהים ב-${formatExpenseInputMoney(event, summary.overpaid)} מהסכום הכולל.`;
     }
   }
 
@@ -8888,6 +8910,7 @@ function syncExpenseFlowActionState() {
   if (nextButton instanceof HTMLButtonElement) {
     nextButton.disabled = !expenseFlowReady(expenseDraft.flowStep);
   }
+  syncExpenseSaveState();
 }
 
 function renderExpenseDateField(extraClass = "", label = "תאריך ההוצאה") {
@@ -8909,7 +8932,7 @@ function renderExpenseConfirmationSummary(event, participants) {
 
   let total = 0;
   try {
-    total = parseMoneyInput(expenseDraft.total);
+    total = expenseUsesForeignCurrency(event) ? expenseFxResult(event).total : parseMoneyInput(expenseDraft.total);
   } catch {
     // The amount field owns validation; the summary stays quiet until it is valid.
   }
@@ -8998,9 +9021,176 @@ function expenseDetailsSummaryValues(event, participants) {
   };
 }
 
+function expenseUsesForeignCurrency(event = getEvent(expenseDraft?.eventId)) {
+  return Boolean(expenseDraft && event && expenseDraft.sourceCurrency && expenseDraft.sourceCurrency !== eventCurrency(event));
+}
+
+function expensePayerSummary() {
+  return expenseUsesForeignCurrency()
+    ? summarizeSourcePayers(expenseDraft.total, expenseDraft.payers, expenseDraft.sourceCurrency)
+    : summarizePayerDraft(expenseDraft.total, expenseDraft.payers);
+}
+
+function formatExpenseInputMoney(event, amount) {
+  return expenseUsesForeignCurrency(event)
+    ? `${formatSourceAmount(amount, expenseDraft.sourceCurrency)} ${expenseDraft.sourceCurrency}`
+    : formatEventMoney(event, amount);
+}
+
+function formatFxUpdateTime(value) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp)
+    ? new Date(timestamp).toLocaleString("he-IL", { dateStyle: "short", timeStyle: "short" })
+    : "טרם התקבל";
+}
+
+function expenseFxSourceDescription(source, sourceDate, sourceUpdatedAt, nextUpdateAt) {
+  if (source === FX_OPEN_ACCESS_SOURCE) {
+    return `שער אינדיקטיבי · עודכן ${escapeHtml(formatFxUpdateTime(sourceUpdatedAt))} · עדכון הבא ${escapeHtml(formatFxUpdateTime(nextUpdateAt))} · <a href="${FX_OPEN_ACCESS_ATTRIBUTION_URL}" target="_blank" rel="noopener noreferrer">Rates By Exchange Rate API</a>`;
+  }
+  if (source === FX_LEGACY_ECB_SOURCE) return `ECB דרך Frankfurter v2 · תאריך שער ${escapeHtml(sourceDate || "לא ידוע")}`;
+  return "שער אישי";
+}
+
+function expenseFxResult(event = getEvent(expenseDraft?.eventId)) {
+  if (!expenseUsesForeignCurrency(event)) return null;
+  if (!expenseDraft.fxRate || !["automatic", "manual"].includes(expenseDraft.fxMode)) throw new Error("יש לבחור שער המרה לפני שמירה.");
+  const result = convertExpenseInput({
+    sourceCurrency: expenseDraft.sourceCurrency,
+    targetCurrency: eventCurrency(event),
+    sourceAmount: expenseDraft.total,
+    sourcePayers: expenseDraft.payers,
+    rate: expenseDraft.fxRate,
+    mode: expenseDraft.fxMode,
+    rateSource: expenseDraft.fxMode === "automatic" ? expenseDraft.fxRateSource : "user",
+    sourceDate: expenseDraft.fxSourceDate,
+    fetchedAt: expenseDraft.fxFetchedAt,
+    sourceUpdatedAt: expenseDraft.fxSourceUpdatedAt,
+    nextUpdateAt: expenseDraft.fxNextUpdateAt
+  });
+  if (expenseDraft.fxMode === "automatic" && rateIsStale(expenseDraft.fxSourceDate) &&
+    JSON.stringify(result.fxConversion) !== JSON.stringify(expenseDraft.existingFxConversion ?? null)) {
+    throw new Error(`השער מתאריך ${expenseDraft.fxSourceDate} ישן מדי. אפשר להזין שער אישי.`);
+  }
+  return result;
+}
+
+function renderExpenseFxPreview(event) {
+  if (!expenseUsesForeignCurrency(event)) return "";
+  let preview = expenseDraft.fxLoading ? "בודקים שער יומי…" : expenseDraft.fxError || "יש לבחור שער כדי להציג את הסכום במטבע האירוע.";
+  if (!expenseDraft.fxLoading && !expenseDraft.fxError && expenseDraft.fxRate) {
+    try {
+      const result = expenseFxResult(event);
+      preview = `${formatSourceAmount(result.fxConversion.sourceAmountMinorUnits, expenseDraft.sourceCurrency)} ${expenseDraft.sourceCurrency} = ${formatEventMoney(event, result.total)} במטבע האירוע`;
+    } catch (error) {
+      preview = error.message;
+    }
+  }
+  return `<p class="expense-fx-preview ${expenseDraft.fxError ? "is-error" : ""}" role="status" aria-live="polite">${escapeHtml(preview)}</p>`;
+}
+
+function renderExpenseFxFields(event) {
+  const source = expenseDraft.sourceCurrency || eventCurrency(event);
+  const foreign = source !== eventCurrency(event);
+  return `
+    <label class="field expense-source-currency-field">
+      <span>מטבע ההוצאה</span>
+      <select data-action="expense-source-currency" name="expenseSourceCurrency">
+        ${currencyOptions().map((currency) => `<option value="${currency.id}" ${source === currency.id ? "selected" : ""}>${escapeHtml(currency.label)} (${currency.id})</option>`).join("")}
+      </select>
+    </label>
+    ${!foreign && expenseDraft.fxError ? `<p class="notice" role="status">${escapeHtml(expenseDraft.fxError)}</p>` : ""}
+    ${foreign ? `<section class="expense-fx-fields" aria-label="המרת מטבע">
+      <p class="muted">הסכום והמשלמים מוזנים ב־${escapeHtml(source)}. החשבון והחובות יישמרו ב־${escapeHtml(eventCurrency(event))}. שער אוטומטי הוא שער ייחוס יומי, לא שער עסקה.</p>
+      <div class="expense-fx-mode" role="group" aria-label="בחירת שער המרה">
+        <button type="button" class="secondary-button" data-action="expense-fx-automatic" aria-pressed="${expenseDraft.fxMode === "automatic"}">שער יומי אוטומטי</button>
+        <button type="button" class="secondary-button" data-action="expense-fx-manual" aria-pressed="${expenseDraft.fxMode === "manual"}">שער אישי</button>
+      </div>
+      <label class="field"><span>שער: 1 ${escapeHtml(source)} = כמה ${escapeHtml(eventCurrency(event))}</span>
+        <input data-action="expense-fx-rate" name="expenseFxRate" inputmode="decimal" dir="ltr" value="${escapeAttribute(expenseDraft.fxRate ?? "")}" ${expenseDraft.fxMode === "manual" ? "" : "readonly"} placeholder="לדוגמה 3.5" />
+      </label>
+      ${expenseDraft.fxMode === "automatic" ? `<p class="muted" data-expense-fx-source>מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}</p><button type="button" class="secondary-button" data-action="expense-fx-refresh" ${expenseDraft.fxLoading ? "disabled" : ""}>בדוק שער עדכני</button>` : ""}
+      ${renderExpenseFxPreview(event)}
+    </section>` : ""}
+  `;
+}
+
+function syncExpenseFxPreview() {
+  const event = getEvent(expenseDraft?.eventId);
+  const current = app.querySelector(".expense-fx-preview");
+  if (!event || !current) return;
+  const template = document.createElement("template");
+  template.innerHTML = renderExpenseFxPreview(event).trim();
+  if (template.content.firstElementChild) current.replaceWith(template.content.firstElementChild);
+}
+
+function syncExpenseFxControls() {
+  if (!expenseDraft) return;
+  const rateInput = app.querySelector('[data-action="expense-fx-rate"]');
+  if (rateInput && rateInput.value !== (expenseDraft.fxRate ?? "")) rateInput.value = expenseDraft.fxRate ?? "";
+  const source = app.querySelector("[data-expense-fx-source]");
+  if (source) source.innerHTML = `מקור: ${expenseFxSourceDescription(expenseDraft.fxRateSource, expenseDraft.fxSourceDate, expenseDraft.fxSourceUpdatedAt, expenseDraft.fxNextUpdateAt)}`;
+  const refresh = app.querySelector('[data-action="expense-fx-refresh"]');
+  if (refresh) refresh.disabled = Boolean(expenseDraft.fxLoading);
+  syncExpenseFxPreview();
+  syncExpenseFlowActionState();
+}
+
+async function requestExpenseAutomaticRate({ forceRefresh = false } = {}) {
+  const draft = expenseDraft;
+  const event = getEvent(draft?.eventId);
+  if (!draft || !expenseUsesForeignCurrency(event) || draft.fxLoading) return;
+  const sourceCurrency = draft.sourceCurrency;
+  const targetCurrency = eventCurrency(event);
+  const requestId = (draft.fxRequestId ?? 0) + 1;
+  const previousMode = draft.fxMode;
+  draft.fxRequestId = requestId;
+  const previousQuote = { rate: draft.fxRate, sourceDate: draft.fxSourceDate, fetchedAt: draft.fxFetchedAt,
+    rateSource: draft.fxRateSource, sourceUpdatedAt: draft.fxSourceUpdatedAt, nextUpdateAt: draft.fxNextUpdateAt };
+  draft.fxMode = "automatic";
+  draft.fxRateSource = FX_OPEN_ACCESS_SOURCE;
+  draft.fxRate = "";
+  draft.fxSourceDate = null;
+  draft.fxFetchedAt = null;
+  draft.fxSourceUpdatedAt = null;
+  draft.fxNextUpdateAt = null;
+  draft.fxError = "";
+  draft.fxLoading = true;
+  if (previousMode === "automatic") syncExpenseFxControls();
+  else render();
+  try {
+    const quote = await fetchOpenAccessRate(sourceCurrency, targetCurrency, { forceRefresh });
+    if (expenseDraft !== draft || draft.fxRequestId !== requestId || draft.fxMode !== "automatic" || draft.sourceCurrency !== sourceCurrency || eventCurrency(getEvent(draft.eventId)) !== targetCurrency) return;
+    draft.fxRate = quote.rate;
+    draft.fxSourceDate = quote.sourceDate;
+    draft.fxFetchedAt = quote.fetchedAt;
+    draft.fxSourceUpdatedAt = quote.sourceUpdatedAt;
+    draft.fxNextUpdateAt = quote.nextUpdateAt;
+    draft.fxError = quote.stale ? `השער מתאריך ${quote.sourceDate} ישן מדי. אפשר להזין שער אישי.` : "";
+  } catch (error) {
+    if (expenseDraft !== draft || draft.fxRequestId !== requestId || draft.fxMode !== "automatic") return;
+    if (draft.existingFxConversion && previousQuote.rate) {
+      draft.fxRate = previousQuote.rate;
+      draft.fxSourceDate = previousQuote.sourceDate;
+      draft.fxFetchedAt = previousQuote.fetchedAt;
+      draft.fxRateSource = previousQuote.rateSource;
+      draft.fxSourceUpdatedAt = previousQuote.sourceUpdatedAt;
+      draft.fxNextUpdateAt = previousQuote.nextUpdateAt;
+    }
+    draft.fxError = error instanceof Error && error.message !== "Failed to fetch"
+      ? error.message : "לא ניתן לקבל שער כעת. אפשר להזין שער אישי.";
+  } finally {
+    if (expenseDraft === draft && draft.fxRequestId === requestId) {
+      draft.fxLoading = false;
+      rememberExpenseDraft();
+      syncExpenseFxControls();
+    }
+  }
+}
+
 function hasPositiveExpenseTotal(value) {
   try {
-    return parseMoneyInput(value) > 0;
+    return expenseUsesForeignCurrency() ? parseSourceAmount(value, expenseDraft.sourceCurrency) > 0n : parseMoneyInput(value) > 0;
   } catch {
     return false;
   }
@@ -9012,6 +9202,7 @@ function formatExpenseDetailsDate(value) {
 
 function renderExpenseModeSwitch(event) {
   if (
+    expenseUsesForeignCurrency(event) ||
     eventTypeConfig(event?.eventType).id !== EVENT_TYPE_RESTAURANT ||
     expenseDraft.id ||
     expenseDraft.restaurantEqualSplit
@@ -9114,6 +9305,7 @@ function renderRestaurantQuickExpenseForm(event, participants, canEdit) {
         ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
         <fieldset class="expense-flow-fields restaurant-quick-fields" ${!canEdit ? "disabled" : ""}>
           ${renderRestaurantQuickStage(event, participants, stage, summary)}
+          ${stage === "method" ? `<button class="secondary-button" type="button" data-action="expense-mode" data-mode="single">הוצאה אחת או תשלום במטבע זר</button>` : ""}
           ${expenseDraft.error ? `<p class="error" id="expense-form-error" role="alert" tabindex="-1">${escapeHtml(expenseDraft.error)}</p>` : ""}
         </fieldset>
         ${renderRestaurantQuickActions(event, stage, ready, canEdit)}
@@ -9725,7 +9917,7 @@ function renderEventExpenseGroups(event) {
 }
 
 function renderExpensePayerSummary() {
-  const summary = summarizePayerDraft(expenseDraft.total, expenseDraft.payers);
+  const summary = expensePayerSummary();
   const event = getEvent(expenseDraft.eventId);
   if (summary.total <= 0) return `<p class="expense-payer-summary" aria-live="polite" hidden></p>`;
 
@@ -9738,16 +9930,16 @@ function renderExpensePayerSummary() {
   }
 
   if (summary.remaining > 0) {
-    return `<p class="expense-payer-summary is-warning" aria-live="polite">נשאר לשייך ${formatEventMoney(event, summary.remaining)} למי ששילם.</p>`;
+    return `<p class="expense-payer-summary is-warning" aria-live="polite">נשאר לשייך ${formatExpenseInputMoney(event, summary.remaining)} למי ששילם.</p>`;
   }
 
-  return `<p class="expense-payer-summary is-error" aria-live="polite">סכומי המשלמים גבוהים ב-${formatEventMoney(event, summary.overpaid)} מהסכום הכולל.</p>`;
+  return `<p class="expense-payer-summary is-error" aria-live="polite">סכומי המשלמים גבוהים ב-${formatExpenseInputMoney(event, summary.overpaid)} מהסכום הכולל.</p>`;
 }
 
 function renderExpensePayerDifferenceAssignment(event) {
   if (!expenseDraft || expenseDraft.payers.length < 2) return "";
 
-  const summary = summarizePayerDraft(expenseDraft.total, expenseDraft.payers);
+  const summary = expensePayerSummary();
   if (!summary.valid || summary.balanced) return "";
 
   const difference = summary.remaining || summary.overpaid;
@@ -9758,7 +9950,7 @@ function renderExpensePayerDifferenceAssignment(event) {
         <strong id="payer-difference-title">
           ${isIncrease ? "למי לשייך את התוספת?" : "ממי להפחית את ההפרש?"}
         </strong>
-        <span class="amount"><span class="font-num">${formatEventMoney(event, difference)}</span></span>
+        <span class="amount"><span class="font-num">${formatExpenseInputMoney(event, difference)}</span></span>
       </div>
       <div class="payer-difference-options" role="group" aria-label="בחירת משלם לשיוך ההפרש">
         ${expenseDraft.payers
@@ -9785,6 +9977,13 @@ function renderExpenseRow(event, expense) {
     .map((payer) => participantName(payer.participantId, event))
     .join(", ");
   const sharedParticipantIds = [...new Set(expense.sharedByParticipantIds)];
+  let fxOrigin = "";
+  if (expense.fxConversion) {
+    try {
+      const fx = expense.fxConversion;
+      fxOrigin = `<p class="expense-fx-origin">מקור: <bdi dir="ltr">${escapeHtml(formatSourceAmount(fx.sourceAmountMinorUnits, fx.sourceCurrency))} ${escapeHtml(fx.sourceCurrency)}</bdi> · שער ${escapeHtml(fx.rate)} ${escapeHtml(eventCurrency(event))} ל־1 ${escapeHtml(fx.sourceCurrency)} · ${expenseFxSourceDescription(fx.source, fx.sourceDate, fx.sourceUpdatedAt, fx.nextUpdateAt)}</p>`;
+    } catch { /* Invalid imported metadata never hides the expense itself. */ }
+  }
 
   return `
     <article class="expense-row${needsReview ? " is-review" : ""}" data-expense-id="${escapeAttribute(expense.id)}" data-expense-search="${escapeAttribute(`${expense.name} ${payers}`.toLocaleLowerCase("he"))}" role="listitem">
@@ -9828,6 +10027,7 @@ function renderExpenseRow(event, expense) {
           </div>
         </details>
       </span>
+      ${fxOrigin}
       <details class="expense-participants-details" id="expense-participants-${escapeAttribute(expense.id)}">
         <summary aria-label="הצג את כל השותפים">
           <span>שותפים</span>
@@ -12155,8 +12355,10 @@ async function handleClick(event) {
     if (newEventDraft.participantIds.includes(participantId)) {
       requestNewEventParticipantRemoval(participantId, target);
     } else {
+      const searchQuery = app.querySelector('[data-participant-checks-for="new-event-participant"] [data-action="participant-search"]')?.value ?? "";
       toggleId(newEventDraft.participantIds, participantId, true);
       render();
+      focusNewEventParticipantAfterSelection(participantId, searchQuery);
     }
     return;
   }
@@ -12227,18 +12429,65 @@ async function handleClick(event) {
     const selectedEvent = visibleEventsForParticipant(state, state.currentParticipantId)
       .find(candidate => candidate.id === target.dataset.eventId);
     if (!selectedEvent || eventStatusMenu?.eventId !== selectedEvent.id) return;
-    const pinned = !loadPersonalEventPins(state.currentParticipantId).has(selectedEvent.id);
-    try {
-      setPersonalEventPin(state.currentParticipantId, selectedEvent.id, pinned);
-    } catch {
-      eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה במכשיר. אפשר לנסות שוב.";
-      // Validation feedback is the same menu, not another navigation step.
-      renderReplacingBrowserHistory();
-      activateDialog(".event-status-menu");
-      return;
+    const pinned = !pinnedEventIdsForState(state).has(selectedEvent.id);
+    let pinNotice = pinned
+      ? `"${selectedEvent.name}" הוצמד לראש הרשימה.`
+      : `ההצמדה של "${selectedEvent.name}" בוטלה.`;
+    const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+    const isOwnAccount = Boolean(accountUserId && state.currentParticipantId === `account-${accountUserId}`);
+    if (isOwnAccount) {
+      const priorPreferences = state.personalEventPinPreferences;
+      const ownerParticipantId = state.currentParticipantId;
+      let nextState;
+      try {
+        nextState = updateAccountEventPin(state, selectedEvent.id, pinned);
+      } catch {
+        eventStatusMenu.pinError = "לא הצלחנו לקרוא את ההצמדות השמורות במכשיר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
+      const attemptedUpdate = nextState.personalEventPinPreferences.updates[selectedEvent.id];
+      state = nextState;
+      const result = await persistState({ awaitCloud: true, handlesSaveFailure: true });
+      if (state.currentParticipantId !== ownerParticipantId ||
+          String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() !== accountUserId) return;
+      const synced = (result?.ok && result.mode === "cloud") || result?.personalWorkspacePersisted === true;
+      const pending = result?.pending === true || result?.mode === "queued";
+      if (!synced && !pending) {
+        if (state.personalEventPinPreferences?.updates?.[selectedEvent.id]?.mutationId === attemptedUpdate.mutationId) {
+          state = { ...state };
+          if (priorPreferences === undefined) delete state.personalEventPinPreferences;
+          else state.personalEventPinPreferences = priorPreferences;
+          saveState(state);
+        }
+        if (eventStatusMenu?.eventId === selectedEvent.id) {
+          eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה בחשבון. אפשר לנסות שוב.";
+          renderReplacingBrowserHistory();
+          activateDialog(".event-status-menu");
+        }
+        return;
+      }
+      if (eventStatusMenu?.eventId !== selectedEvent.id) return;
+      if (synced && pinnedEventIdsForState(result.persistedState ?? state).has(selectedEvent.id) !== pinned) {
+        eventStatusMenu.pinError = "ההצמדה השתנתה במכשיר אחר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
+      if (pending) pinNotice = "";
+    } else {
+      try {
+        setPersonalEventPin(state.currentParticipantId, selectedEvent.id, pinned);
+      } catch {
+        eventStatusMenu.pinError = "לא הצלחנו לשמור את ההצמדה במכשיר. אפשר לנסות שוב.";
+        renderReplacingBrowserHistory();
+        activateDialog(".event-status-menu");
+        return;
+      }
     }
     eventStatusMenu = null;
-    notice = pinned ? `"${selectedEvent.name}" הוצמד לראש הרשימה.` : `ההצמדה של "${selectedEvent.name}" בוטלה.`;
+    notice = pinNotice;
     closeDialogWithHistory();
     return;
   }
@@ -13719,11 +13968,9 @@ async function handleClick(event) {
   if (action === "assign-payer-difference") {
     const payerIndex = Number(target.dataset.index);
     const dialogScrollTop = app.querySelector(".expense-modal")?.scrollTop ?? 0;
-    expenseDraft.payers = assignPayerDifference(
-      expenseDraft.total,
-      expenseDraft.payers,
-      payerIndex
-    );
+    expenseDraft.payers = expenseUsesForeignCurrency()
+      ? assignSourcePayerDifference(expenseDraft.total, expenseDraft.payers, payerIndex, expenseDraft.sourceCurrency)
+      : assignPayerDifference(expenseDraft.total, expenseDraft.payers, payerIndex);
     expenseDraft.error = "";
     render();
     reactivateDialogAfterRender(
@@ -13910,6 +14157,28 @@ async function handleClick(event) {
 
   if (action === "save-expense") {
     saveExpense(target.dataset.eventId);
+  }
+
+  if (action === "expense-fx-automatic" || action === "expense-fx-refresh") {
+    await requestExpenseAutomaticRate({ forceRefresh: action === "expense-fx-refresh" });
+    return;
+  }
+
+  if (action === "expense-fx-manual") {
+    expenseDraft.fxRequestId = (expenseDraft.fxRequestId ?? 0) + 1;
+    expenseDraft.fxLoading = false;
+    expenseDraft.fxMode = "manual";
+    expenseDraft.fxRateSource = "user";
+    expenseDraft.fxRate = "";
+    expenseDraft.fxSourceDate = null;
+    expenseDraft.fxFetchedAt = null;
+    expenseDraft.fxSourceUpdatedAt = null;
+    expenseDraft.fxNextUpdateAt = null;
+    expenseDraft.fxError = "";
+    rememberExpenseDraft();
+    render();
+    reactivateDialogAfterRender(".expense-modal", '[data-action="expense-fx-rate"]');
+    return;
   }
 
   if (action === "save-expense-and-continue") {
@@ -14554,6 +14823,18 @@ function closeDialogWithHistory(rewindSteps = 1) {
 function handleInput(event) {
   const target = event.target;
   const action = target.dataset.action;
+  if (action === "new-event-currency-search") {
+    const menu = target.closest(".new-event-inline-picker-menu");
+    const query = target.value.trim().toLocaleLowerCase("he");
+    let visible = 0;
+    for (const option of menu?.querySelectorAll('[data-action="new-event-currency-choice"]') ?? []) {
+      option.hidden = !String(option.dataset.searchText ?? "").toLocaleLowerCase("he").includes(query);
+      if (!option.hidden) visible += 1;
+    }
+    const empty = menu?.querySelector("[data-currency-search-empty]");
+    if (empty) empty.hidden = visible > 0;
+    return;
+  }
   if (["event-guest-name", "new-event-guest-name", "friends-new-offline-name"].includes(action)) {
     clearParticipantNameError(target);
   }
@@ -14651,12 +14932,9 @@ function handleInput(event) {
   if (action === "expense-total") {
     expenseDraft.total = target.value;
     if (expenseDraft.payers.length === 1) {
-      expenseDraft.payers = assignPayerDifference(
-        expenseDraft.total,
-        expenseDraft.payers,
-        0,
-        { automatic: true }
-      );
+      expenseDraft.payers = expenseUsesForeignCurrency()
+        ? assignSourcePayerDifference(expenseDraft.total, expenseDraft.payers, 0, expenseDraft.sourceCurrency, { automatic: true })
+        : assignPayerDifference(expenseDraft.total, expenseDraft.payers, 0, { automatic: true });
     } else {
       rebalanceExpenseDraftPayers();
     }
@@ -14665,6 +14943,7 @@ function handleInput(event) {
     syncExpenseConfirmationSummary();
     syncExpenseSaveState();
     syncExpenseFlowActionState();
+    syncExpenseFxPreview();
   }
   if (action === "expense-payer-amount") {
     const index = Number(target.dataset.index);
@@ -14672,6 +14951,13 @@ function handleInput(event) {
     rebalanceExpenseDraftPayers();
     syncExpensePayerAmountInputs(index);
     syncExpensePayerSummary();
+    syncExpenseFlowActionState();
+    syncExpenseFxPreview();
+  }
+  if (action === "expense-fx-rate" && expenseDraft?.fxMode === "manual") {
+    expenseDraft.fxRate = target.value;
+    expenseDraft.fxError = "";
+    syncExpenseFxPreview();
     syncExpenseFlowActionState();
   }
   if (action === "expense-new-payer-name") {
@@ -14703,6 +14989,34 @@ function handleInput(event) {
 async function handleChange(event) {
   const target = event.target;
   const action = target.dataset.action;
+
+  if (action === "expense-source-currency" && expenseDraft) {
+    const selected = normalizeCurrency(target.value);
+    const previous = expenseDraft.sourceCurrency || eventCurrency(getEvent(expenseDraft.eventId));
+    if (selected !== previous) {
+      const hadAmount = Boolean(expenseDraft.total || expenseDraft.payers.some((payer) => payer.amount));
+      expenseDraft.sourceCurrency = selected;
+      expenseDraft.fxRequestId = (expenseDraft.fxRequestId ?? 0) + 1;
+      expenseDraft.fxLoading = false;
+      expenseDraft.total = "";
+      expenseDraft.payers = expenseDraft.payers.map((payer) => createPayerDraft(payer.participantId));
+      expenseDraft.fxMode = selected === eventCurrency(getEvent(expenseDraft.eventId)) ? "" : "automatic";
+      expenseDraft.fxRateSource = selected === eventCurrency(getEvent(expenseDraft.eventId)) ? "" : FX_OPEN_ACCESS_SOURCE;
+      expenseDraft.fxRate = "";
+      expenseDraft.fxSourceDate = null;
+      expenseDraft.fxFetchedAt = null;
+      expenseDraft.fxSourceUpdatedAt = null;
+      expenseDraft.fxNextUpdateAt = null;
+      expenseDraft.fxError = hadAmount ? "המטבע הוחלף; יש להזין מחדש את הסכום ואת סכומי המשלמים." : "";
+      expenseDraft.existingFxConversion = null;
+      expenseDraft.removeFxConversion = selected === eventCurrency(getEvent(expenseDraft.eventId));
+      rememberExpenseDraft();
+      render();
+      reactivateDialogAfterRender(".expense-modal", '[data-action="expense-total"]');
+      if (expenseUsesForeignCurrency()) await requestExpenseAutomaticRate();
+    }
+    return;
+  }
 
   if (action === "event-cover-image") {
     const file = target.files?.[0];
@@ -14849,6 +15163,11 @@ async function handleChange(event) {
   if (action === "event-currency") {
     const event = getEvent(target.dataset.eventId);
     if (!event || !canCurrentParticipantManage(event)) return;
+    if (event.expenses.some((expense) => expense.fxConversion)) {
+      notice = "מטבע האירוע לא שונה: קיימת הוצאה שהומרה ממטבע אחר. סכומים קיימים לא יפורשו מחדש.";
+      render();
+      return;
+    }
 
     const nextCurrency = normalizeCurrency(target.value);
     if (nextCurrency === eventCurrency(event)) return;
@@ -17574,6 +17893,11 @@ async function applyEventCurrencyChange(
 ) {
   const event = getEvent(eventId);
   if (!event || !canCurrentParticipantManage(event)) return;
+  if (event.expenses.some((expense) => expense.fxConversion)) {
+    notice = "מטבע האירוע לא שונה: קיימת הוצאה שהומרה ממטבע אחר. סכומים קיימים לא יפורשו מחדש.";
+    render();
+    return { ok: false, blockedByConvertedExpense: true };
+  }
 
   const nextCurrency = normalizeCurrency(currency);
   if (nextCurrency === eventCurrency(event)) return { ok: true, unchanged: true };
@@ -19594,6 +19918,9 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
   rememberDialogReturnFocus(trigger);
 
   if (existingExpense) {
+    const existingFx = existingExpense.fxConversion;
+    const sourcePayerById = new Map(existingFx?.sourcePayers?.map((payer) => [payer.participantId, payer.amountMinorUnits]) ?? []);
+    const editableFx = Boolean(existingFx && existingExpense.payers.every((payer) => sourcePayerById.has(payer.participantId)) && sourcePayerById.size === existingExpense.payers.length);
     expenseDraft = {
       id: existingExpense.id,
       baseExpenseUpdatedAt: existingExpense.updatedAt ?? "",
@@ -19602,11 +19929,21 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
       flowStep: "review",
       historyBaseDepth: appHistoryDepth,
       name: existingExpense.name,
-      total: formatMoney(existingExpense.total),
+      total: editableFx ? formatSourceAmount(existingFx.sourceAmountMinorUnits, existingFx.sourceCurrency) : formatMoney(existingExpense.total),
+      sourceCurrency: editableFx ? existingFx.sourceCurrency : eventCurrency(event),
+      fxMode: editableFx ? existingFx.mode : "",
+      fxRateSource: editableFx ? existingFx.source : "",
+      fxRate: editableFx ? existingFx.rate : "",
+      fxSourceDate: editableFx ? existingFx.sourceDate : null,
+      fxFetchedAt: editableFx ? existingFx.fetchedAt : null,
+      fxSourceUpdatedAt: editableFx ? existingFx.sourceUpdatedAt ?? null : null,
+      fxNextUpdateAt: editableFx ? existingFx.nextUpdateAt ?? null : null,
+      existingFxConversion: existingFx ?? null,
+      fxError: existingFx && !editableFx ? "פרטי משלמים השתנו מאז ההמרה. הסכום החשבונאי מוצג לעריכה; מקור ההמרה יישמר אם הסכום לא ישתנה." : "",
       occurredOn: existingExpense.occurredOn ?? dateFromIso(existingExpense.updatedAt),
       payers: existingExpense.payers.map((payer) => ({
         participantId: payer.participantId,
-        amount: formatMoney(payer.amount),
+        amount: editableFx ? formatSourceAmount(sourcePayerById.get(payer.participantId), existingFx.sourceCurrency) : formatMoney(payer.amount),
         amountTouched: true,
         autoAmount: false
       })),
@@ -19669,6 +20006,10 @@ function startExpenseDraft(eventId, expenseId = null, trigger = document.activeE
     historyBaseDepth: appHistoryDepth,
     name: "",
     total: "",
+    sourceCurrency: eventCurrency(event),
+    fxMode: "",
+    fxRateSource: "",
+    fxRate: "",
     occurredOn: todayInputValue(),
     notes: "",
     attachmentImage: "",
@@ -19928,12 +20269,12 @@ function nextExpensePayerId(event) {
 
 function rebalanceExpenseDraftPayers(preferredIndex = undefined) {
   if (!expenseDraft) return;
-
-  expenseDraft.payers = balancePayerAmounts(
-    expenseDraft.total,
-    expenseDraft.payers,
-    preferredIndex
-  );
+  if (expenseUsesForeignCurrency()) {
+    const index = findAutoPayerIndex(expenseDraft.payers, preferredIndex);
+    if (index >= 0) expenseDraft.payers = assignSourcePayerDifference(expenseDraft.total, expenseDraft.payers, index, expenseDraft.sourceCurrency, { automatic: true });
+  } else {
+    expenseDraft.payers = balancePayerAmounts(expenseDraft.total, expenseDraft.payers, preferredIndex);
+  }
 }
 
 function syncExpensePayerAmountInputs(skipIndex = null) {
@@ -19997,7 +20338,7 @@ function syncExpenseConfirmationSummary() {
 function syncExpenseSaveState() {
   if (!expenseDraft) return;
   const isDisabled =
-    expenseSaveInProgress || !hasPositiveExpenseTotal(expenseDraft.total);
+    expenseSaveInProgress || !expenseFlowReady("review");
   app
     .querySelectorAll('[data-action="save-expense"], [data-action="save-expense-and-continue"]')
     .forEach((button) => {
@@ -20057,8 +20398,10 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
   expenseSaveInProgress = true;
   syncExpenseSaveState();
   try {
-    const total = parseMoneyInput(expenseDraft.total);
-    const payers = mergePayers(
+    const conversion = expenseDraft.sourceCurrency && expenseDraft.sourceCurrency !== (event.currency || "ILS")
+      ? expenseFxResult(event) : null;
+    const total = conversion?.total ?? parseMoneyInput(expenseDraft.total);
+    const payers = conversion?.payers ?? mergePayers(
       expenseDraft.payers
         .map((payer) => ({
           participantId: payer.participantId,
@@ -20066,6 +20409,18 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
         }))
         .filter((payer) => payer.amount > 0)
     );
+    const previousFx = recovery.existingExpense?.fxConversion;
+    if (previousFx && !conversion && !expenseDraft.removeFxConversion && total !== Number(previousFx.targetAmountMinorUnits)) {
+      throw new Error("כדי לשנות סכום של הוצאה שהומרה יש לבחור מחדש מטבע מקור ושער.");
+    }
+    const fxConversion = conversion?.fxConversion ?? (!expenseDraft.removeFxConversion && previousFx ? previousFx : null);
+    const updatedAt = new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString();
+    const fxConversionRemovedAt = fxConversion ? null : expenseDraft.removeFxConversion && previousFx
+      ? updatedAt : recovery.existingExpense?.fxConversionRemovedAt ?? null;
+    const fxConversionRestoredAt = fxConversion
+      ? (recovery.existingExpense?.fxConversionRemovedAt ? updatedAt
+        : recovery.existingExpense?.fxConversionRestoredAt ?? null)
+      : null;
 
     const expense = {
       id: recovery.expenseId || makeId("expense"),
@@ -20078,10 +20433,13 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       occurredOn: expenseDraft.occurredOn || todayInputValue(),
       notes: String(expenseDraft.notes ?? "").trim().slice(0, 500),
       attachmentImage: String(expenseDraft.attachmentImage ?? ""),
-      updatedAt: new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString()
+      ...(fxConversion ? { fxConversion } : {}),
+      ...(fxConversionRemovedAt ? { fxConversionRemovedAt } : {}),
+      ...(fxConversionRestoredAt ? { fxConversionRestoredAt } : {}),
+      updatedAt
     };
 
-    const errors = validateExpense(expense, { participantIds: event.participantIds });
+    const errors = validateExpense(expense, { participantIds: event.participantIds, currency: event.currency || "ILS" });
     if (errors.length) {
       expenseDraft.error = errors[0];
       render();
@@ -20193,6 +20551,10 @@ function continueExpenseEntry(event) {
     historyBaseDepth: previousDraft.historyBaseDepth,
     name: "",
     total: "",
+    sourceCurrency: eventCurrency(event),
+    fxMode: "",
+    fxRateSource: "",
+    fxRate: "",
     occurredOn: previousDraft.occurredOn || todayInputValue(),
     payers: nextPayerIds.map(createPayerDraft),
     sharedByParticipantIds: previousDraft.sharedByParticipantIds.filter((participantId) =>
@@ -23520,7 +23882,7 @@ function handleInputKeyboardShortcut(event) {
   }
   if (action === "group-name") return focusAction('[data-action="group-member-name"]');
   if (action === "edit-group-name") return focusAction('[data-action="edit-group-member-name"]');
-  if (action === "new-event-name") return focusAction('[data-action="new-event-currency"]');
+  if (action === "new-event-name") return focusAction('.new-event-inline-picker[data-picker-action="new-event-currency-choice"] summary');
   if (action === "quick-item-name") {
     return focusAction(`[data-action="quick-item-amount"][data-index="${index}"]`);
   }
@@ -24110,6 +24472,44 @@ function settlementTransferPlanKey(transfers) {
     .join("|");
 }
 
+function activeAccountPinOwner() {
+  const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
+  const participantId = `account-${accountUserId}`;
+  return accountUserId && state.currentParticipantId === participantId ? participantId : "";
+}
+
+const queueAccountPinMigration = createAccountPinMigrationQueue(activeAccountPinOwner);
+function queueLegacyAccountPinMigration() {
+  const participantId = activeAccountPinOwner();
+  if (!participantId) return;
+  let migratedState, pending;
+  try {
+    pending = pendingLegacyAccountPins(participantId);
+    if (!pending.size) return;
+    migratedState = migrateLegacyAccountPins(state);
+  } catch {
+    // The existing local pins remain visible until storage can be read again.
+    return;
+  }
+  // An optimistic local snapshot does not prove that the workspace received
+  // the migration. Retry on later hydration until the cloud save confirms it.
+  void queueAccountPinMigration(participantId, () => saveSharedState(migratedState, {
+    awaitCloud: true, suppressRevertNotice: true, foregroundMutation: false,
+    handlesSaveFailure: true
+  }), result => {
+    if (!result?.ok || result.mode !== "cloud") return;
+    const confirmed = result.persistedState?.personalEventPinPreferences;
+    if (confirmed?.ownerParticipantId !== participantId ||
+        [...pending].some(id => typeof confirmed.updates?.[id]?.pinned !== "boolean")) return;
+    const merged = mergeAccountEventPins(result.persistedState, state);
+    if (merged) {
+      state = { ...state, personalEventPinPreferences: merged };
+    }
+    acknowledgeLegacyAccountPins(participantId, pending);
+    render();
+  }).catch(() => {});
+}
+
 function refreshStartupSharedState(refreshRequest) {
   if (!refreshRequest) return Promise.resolve();
   const saveRevisionAtRequest = sharedStateSaveRevision();
@@ -24145,10 +24545,12 @@ function refreshStartupSharedState(refreshRequest) {
       accountEventsHydrationStatus = ACCOUNT_EVENT_HYDRATION_READY;
       const nextState = syncLocalProfile(sharedState);
       if (!hasSharedStateChanged(state, nextState)) {
+        queueLegacyAccountPinMigration();
         if (hydrationStatusChanged) render();
         return;
       }
       state = nextState;
+      queueLegacyAccountPinMigration();
       render();
     })
     .catch(() => {

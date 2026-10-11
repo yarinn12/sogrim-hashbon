@@ -1,5 +1,5 @@
-const PWA_RELEASE = "511";
-const CACHE_NAME = "settle-friends-live-v511";
+const PWA_RELEASE = "514";
+const CACHE_NAME = "settle-friends-live-v514";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -73,6 +73,7 @@ const CACHE_FILES = [
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
   "/src/data/personalEventPins.mjs",
+  "/src/data/accountPinMigrationQueue.mjs",
   "/src/data/noteSaveRollback.mjs",
   "/src/data/settingsSaveRollback.mjs",
   "/src/data/eventControlRollback.mjs",
@@ -93,6 +94,8 @@ const CACHE_FILES = [
   "/src/data/friendsStore.mjs",
   "/src/data/sharedEventStore.mjs",
   "/src/domain/appActions.mjs",
+  "/src/domain/appUpdatePolicy.mjs",
+  "/src/domain/updateSafety.mjs",
   "/src/domain/adminAnalytics.mjs",
   "/src/domain/avatarPresets.mjs",
   "/src/domain/profileAvatarSync.mjs",
@@ -109,6 +112,7 @@ const CACHE_FILES = [
   "/src/domain/eventNotes.mjs",
   "/src/domain/eventTypes.mjs",
   "/src/domain/expenseDraft.mjs",
+  "/src/domain/expenseFx.mjs",
   "/src/domain/expenseDraftMemory.mjs",
   "/src/domain/noteDraftMemory.mjs",
   "/src/domain/friendContacts.mjs",
@@ -262,12 +266,37 @@ async function activateCurrentRelease() {
     try {
       const currentClient = await self.clients.get(client.id);
       if (!currentClient) continue;
+      if (!await clientAllowsNavigation(currentClient)) continue;
       const navigation = currentClient.navigate?.(clientUrl.href);
       navigation?.catch?.(() => {});
     } catch {
       // Activation must finish even if one stale window cannot be navigated.
     }
   }
+}
+
+async function clientAllowsNavigation(client) {
+  // Only an explicit, timely reply authorizes a worker-driven navigation.
+  // An old, suspended or busy page may hold work that this worker cannot see.
+  if (!client.postMessage) return false;
+  if (typeof MessageChannel !== "function") return false;
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    let settled = false;
+    const finish = allowed => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      channel.port1.close();
+      channel.port2.close();
+      resolve(allowed);
+    };
+    const timeout = setTimeout(() => finish(false), 500);
+    channel.port1.onmessage = event => finish(event.data?.safe === true);
+    try {
+      client.postMessage({ type: "SOGRIM_UPDATE_NAVIGATION_CHECK" }, [channel.port2]);
+    } catch { finish(false); }
+  });
 }
 
 self.addEventListener("message", (event) => {

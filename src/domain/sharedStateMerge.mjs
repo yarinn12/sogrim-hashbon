@@ -7,6 +7,9 @@ import { mergeEventActivityLogs } from "./eventActivityLog.mjs";
 import { resolveProfileAvatar } from "./profileAvatarSync.mjs";
 import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
+import { validateExpenseFx } from "./expenseFx.mjs";
+import { normalizeCurrency } from "./currencies.mjs";
+import { mergeAccountEventPins } from "../data/personalEventPins.mjs";
 import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
@@ -113,6 +116,13 @@ export function mergeSharedStates(remoteState, localState) {
       local.currentParticipantId,
       participantRedirects
     );
+  }
+
+  const personalEventPinPreferences = mergeAccountEventPins(remote, local);
+  if (personalEventPinPreferences) {
+    merged.personalEventPinPreferences = personalEventPinPreferences;
+  } else {
+    delete merged.personalEventPinPreferences;
   }
 
   return merged;
@@ -381,6 +391,9 @@ export function validateSharedStateFinancials(state, label = "state") {
       }
       if (Number.isSafeInteger(expense.total) && payerTotal !== null && payerTotal !== expense.total) {
         errors.push(`${expenseLabel}.payers must add up to total.`);
+      }
+      if (expense.fxConversion && !validateExpenseFx(expense, normalizeCurrency(event.currency))) {
+        errors.push(`${expenseLabel}.fxConversion must match the event currency and converted total.`);
       }
     }
 
@@ -848,7 +861,19 @@ function membershipStateRank(state) {
 function chooseNewerExpense(remoteExpense, localExpense) {
   const remoteTime = timestamp(remoteExpense.updatedAt);
   const localTime = timestamp(localExpense.updatedAt);
-  return cloneValue(remoteTime > localTime ? remoteExpense : localExpense);
+  const newer = remoteTime > localTime ? remoteExpense : localExpense;
+  const older = newer === remoteExpense ? localExpense : remoteExpense;
+  const chosen = cloneValue(newer);
+  // Older clients rebuild expense records without the FX field. Retain an
+  // unchanged ledger's provenance, while respecting an explicit removal.
+  if (!chosen.fxConversion && !chosen.fxConversionRemovedAt && older.fxConversion &&
+      chosen.total === older.total && Array.isArray(chosen.payers) && Array.isArray(older.payers) &&
+      JSON.stringify(chosen.payers.map((payer) => [payer.participantId, payer.amount]).sort()) ===
+      JSON.stringify(older.payers.map((payer) => [payer.participantId, payer.amount]).sort()) &&
+      validateExpenseFx(older, older.fxConversion.targetCurrency)) {
+    chosen.fxConversion = cloneValue(older.fxConversion);
+  }
+  return chosen;
 }
 
 function chooseNewerUpdatedEntity(remoteItem, localItem) {

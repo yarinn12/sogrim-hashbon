@@ -1,6 +1,7 @@
 import "./platformCompatibility.mjs";
+import { hasUpdateSensitiveWork } from "./domain/updateSafety.mjs";
 
-const PWA_RELEASE = "511";
+const PWA_RELEASE = "514";
 const SERVICE_WORKER_URL = `/sw.js?pwa_release=${PWA_RELEASE}`;
 const standaloneQuery = window.matchMedia?.("(display-mode: standalone)");
 
@@ -33,12 +34,27 @@ async function startPwaLifecycle() {
   try {
     const hadActiveController = Boolean(navigator.serviceWorker.controller);
     let reloadingForUpdate = false;
+    let updateAwaitingReload = false;
+    const safeToReload = () => !hasUpdateSensitiveWork({
+      document, storage: window.localStorage, checkOutbox: true
+    });
+    const reloadWhenSafe = () => {
+      if (!updateAwaitingReload || reloadingForUpdate || !safeToReload()) return;
+      reloadingForUpdate = true;
+      window.location.reload();
+    };
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (event.data?.type !== "SOGRIM_UPDATE_NAVIGATION_CHECK") return;
+      event.ports?.[0]?.postMessage({ safe: safeToReload() });
+    });
     if (hadActiveController) {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (reloadingForUpdate) return;
-        reloadingForUpdate = true;
-        window.location.reload();
+        updateAwaitingReload = true;
+        reloadWhenSafe();
       });
+      window.addEventListener("sogrim:sync-status", reloadWhenSafe);
+      document.addEventListener("settle-friends:screen-rendered", reloadWhenSafe);
+      window.addEventListener("focus", reloadWhenSafe);
     }
 
     const registration = await navigator.serviceWorker.register(
@@ -66,6 +82,7 @@ async function startPwaLifecycle() {
     checkForUpdate();
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
+      reloadWhenSafe();
       checkForUpdate();
     });
     window.addEventListener("pageshow", checkForUpdate);

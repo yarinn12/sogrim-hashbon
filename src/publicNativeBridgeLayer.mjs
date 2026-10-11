@@ -57,9 +57,9 @@ function setupNativeBridge() {
         };
       },
       async openStore({ marketUrl = "", storeUrl = "" } = {}) {
-        if (appLauncherPlugin?.openUrl && marketUrl) {
+        if (appLauncherPlugin?.openUrl && (marketUrl || storeUrl)) {
           try {
-            const result = await appLauncherPlugin.openUrl({ url: marketUrl });
+            const result = await appLauncherPlugin.openUrl({ url: marketUrl || storeUrl });
             if (result?.completed !== false) return true;
           } catch {}
         }
