@@ -8,7 +8,7 @@ test("public visual refresh layer loads after the expense guest layer", async ()
   assert.match(index, /publicVisualRefreshLayer\.mjs/);
   assert.match(
     index,
-    /publicExpenseGuestLayer\.mjs\?pwa_release=513"><\/script>[\s\S]*publicVisualRefreshLayer\.mjs\?pwa_release=513"><\/script>/
+    /publicExpenseGuestLayer\.mjs\?pwa_release=514"><\/script>[\s\S]*publicVisualRefreshLayer\.mjs\?pwa_release=514"><\/script>/
   );
 });
 

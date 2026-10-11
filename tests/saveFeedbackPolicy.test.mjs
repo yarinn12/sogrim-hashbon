@@ -8,6 +8,7 @@ for (const [error, kind] of [
   [{ status: 403 }, "permission"], [{ cause: { status: 401 } }, "auth"],
   [{ code: "LOCAL_STORAGE_UNAVAILABLE" }, "storage"], [{ name: "QuotaExceededError" }, "storage"],
   [{ code: "CLOUD_STATE_CONFLICT" }, "conflict"], [{ status: 422 }, "rejected"],
+  [{ code: "CLOUD_FX_CONFLICT", status: 400 }, "fx-conflict"],
   [{ status: 404 }, "missing"], [{ status: 503 }, "server"], [{ status: 429 }, "server"],
   [{ code: "NETWORK_TIMEOUT" }, "connection"], [new TypeError("Failed to fetch"), "connection"],
   [new TypeError("Cannot read properties of null (reading 'connection')"), "unavailable"],
@@ -37,6 +38,14 @@ test("error wording preserves drafts without leaking server text", () => {
   const message = saveFailureMessage({ error: { status: 403, message: "private-payload" } }, "הפתק לא נשמר.", { draft: true });
   assert.match(message, /הטיוטה נשארה כאן/); assert.doesNotMatch(message, /private-payload|בדקו את החיבור/);
   assert.equal(noticePresentation(message).kind, "error");
+});
+
+test("FX conflict explains the safe next step and keeps the draft", () => {
+  const error = { code: "CLOUD_FX_CONFLICT", status: 400, message: "private server detail" };
+  const message = saveFailureMessage({ error }, "ההוצאה לא נשמרה.", { draft: true });
+  assert.match(message, /בדקו את הסכום והשער/);
+  assert.match(message, /הטיוטה נשארה כאן/);
+  assert.doesNotMatch(message, /private server detail/);
 });
 test("pending authentication is actionable and never promises automatic completion", () => {
   assert.match(pendingSaveMessage("auth"), /התחברו מחדש/);

@@ -162,3 +162,33 @@ test("typing an amount while an automatic quote loads keeps the input and focus"
   await page.locator('[data-action="expense-step-next"]').click();
   await expect(page.locator('.expense-step-modal')).toHaveAttribute("data-expense-step", "name");
 });
+
+test("deliberately re-converting an edited expense records a fresh intent after FX removal", async ({ page }) => {
+  await page.route("**/v6/latest/USD", route => route.fulfill({ contentType: "application/json",
+    body: JSON.stringify(openAccessResponse("USD", { USD: 1, ILS: 3.5 })) }));
+  await selectSourceCurrency(page, "USD");
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("3.5");
+  const first = await completeExpense(page);
+
+  const edit = async () => {
+    const row = page.locator(`[data-expense-id="${first.id}"]`);
+    await row.locator(".expense-row-actions-menu > summary").click();
+    await row.locator('[data-action="edit-expense"]').click();
+    await page.locator('[data-action="expense-step-edit"][data-step="amount"]').click();
+  };
+  await edit();
+  await selectSourceCurrency(page, "ILS");
+  await completeExpense(page, { amount: "35", converted: "₪35.00" });
+  const removed = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events[0].expenses[0]);
+  expect(removed.fxConversion).toBeUndefined();
+  expect(removed.fxConversionRemovedAt).toBe(removed.updatedAt);
+
+  await edit();
+  await selectSourceCurrency(page, "USD");
+  await expect(page.locator('[data-action="expense-fx-rate"]')).toHaveValue("3.5");
+  await completeExpense(page);
+  const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events[0].expenses[0]);
+  expect(restored.fxConversion.mode).toBe("automatic");
+  expect(restored.fxConversionRestoredAt).toBe(restored.updatedAt);
+  expect(restored.fxConversionRemovedAt).toBeUndefined();
+});

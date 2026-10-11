@@ -20417,6 +20417,10 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
     const updatedAt = new Date(Math.max(Date.now(), (Date.parse(recovery.existingExpense?.updatedAt) || 0) + 1)).toISOString();
     const fxConversionRemovedAt = fxConversion ? null : expenseDraft.removeFxConversion && previousFx
       ? updatedAt : recovery.existingExpense?.fxConversionRemovedAt ?? null;
+    const fxConversionRestoredAt = fxConversion
+      ? (recovery.existingExpense?.fxConversionRemovedAt ? updatedAt
+        : recovery.existingExpense?.fxConversionRestoredAt ?? null)
+      : null;
 
     const expense = {
       id: recovery.expenseId || makeId("expense"),
@@ -20431,6 +20435,7 @@ async function saveExpense(eventId, { continueAdding = false } = {}) {
       attachmentImage: String(expenseDraft.attachmentImage ?? ""),
       ...(fxConversion ? { fxConversion } : {}),
       ...(fxConversionRemovedAt ? { fxConversionRemovedAt } : {}),
+      ...(fxConversionRestoredAt ? { fxConversionRestoredAt } : {}),
       updatedAt
     };
 

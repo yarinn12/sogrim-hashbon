@@ -40,7 +40,7 @@ async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true, s
     }
   };
   const caches = {
-    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v513"]; },
+    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v514"]; },
     async delete() { return true; },
     async match() { return null; },
     async open() { return { put: async () => {} }; }

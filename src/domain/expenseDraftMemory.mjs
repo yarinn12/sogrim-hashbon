@@ -121,7 +121,7 @@ function expenseContentKey(expense) {
     expense.payers.map(payer => [payer.participantId, payer.amount]).sort(),
     [...expense.sharedByParticipantIds].sort(), expense.createdByParticipantId ?? "",
     expense.occurredOn ?? "", expense.notes ?? "", expense.attachmentImage ?? "", expense.fxConversion ?? null,
-    expense.fxConversionRemovedAt ?? null]);
+    expense.fxConversionRemovedAt ?? null, expense.fxConversionRestoredAt ?? null]);
 }
 
 function sameExpenseRevision(left, right) {
