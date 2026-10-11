@@ -297,3 +297,44 @@ successful shell command with the wrong viewport/OS readback, and reject a
 foreign or non-Native foreground. Their controlled RED/GREEN evidence is tool
 validation. Full Native acceptance still requires a new exact-source SDK run
 with all6/24/8, font and clipping controls, both health gates and artifact audit.
+
+## Read foreground ownership from actual Display0 on API36.1
+
+Exact source `4acd8b3`, run `38098916803`, retained real API36.1 display dumps
+containing the owned QA Activity in Display0 `mCurrentFocus`. The helper looked
+for that field in `dumpsys window windows` and recorded empty focus in all12
+matrix/page orientation attempts; they failed before any rotation input. The actual
+`mRotation`/`cur` parser succeeded; this was a foreground observation schema
+error. Original source4acd acceptance remains rejected with0 matrix checks and
+0 page samples; the separate journey passed8/8. Clipping and after-health did
+not run.
+
+Foreground ownership now comes from exactly one `mCurrentFocus` field scoped
+to the same actual Display0 dump used for rotation and physical bounds. Focus
+from another display or `mFocusedApp` never substitutes for current window
+focus. Missing/ambiguous focus retains raw evidence and a parsing error, and
+fails before rotation. Existing Native/foreground/OS-lock/viewport guards,
+single-input ordering and original time budgets remain unchanged.
+
+`tests/fixtures/android-native-api36-display0.txt` is the unmodified first
+actual display observation from the digest-verified4acd matrix artifact:
+ZIP SHA256 `9f5320f75f18aa6c19e11c126f6fb7cb0df536d6a9405f80240942bcca46f106`;
+raw UTF-8 SHA256 `8f0639c2aa6dc1632d9c4646b225bfbc32afb95d39dfd02db0a1a8832b69e60f`.
+Its fixture attribute preserves LF and emitted blank EOF lines on all hosts.
+A controlled boundary
+test with this exact display dump and the recorded empty focus-listing result
+fails with the old helper, then passes with the corrected helper. Exact raw
+windows-listing text was not retained by that failed helper. These are local
+regression controls; complete Native acceptance still requires a fresh SDK
+run on the next combined exact source.
+
+One4acd page attempt also recorded an actual ANR window (OS1.5 portrait),
+while `mFocusedApp` still named MainActivity and CDP remained available. The
+second frozen fixture `android-native-api36-anr-display0.txt` has raw SHA256
+`e708aa23f1314e87f90c5ffbbec8293bbd1d7bb6245db7b974bfe71b55d5241c`.
+Its regression requires rejection before rotation; an owned focused app or
+responsive WebView must not substitute for the actual current window. Logcat
+records an input-dispatch focus-event timeout at00:45:48 UTC and also a GMS
+broadcast ANR earlier in the run. The full Java/native ANR stack file was not
+retained, so the app/system root cause remains unresolved; this schema fix
+does not claim to repair that separate Native ANR.

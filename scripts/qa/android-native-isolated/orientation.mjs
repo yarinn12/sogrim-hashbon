@@ -1,15 +1,26 @@
 export const nativeOrientationExpression=`(() => ({width:innerWidth,height:innerHeight,orientation:matchMedia('(orientation: portrait)').matches?'portrait':'landscape',native:Capacitor.isNativePlatform(),platform:Capacitor.getPlatform()}))()`;
 const activity='com.sogrimhashbon.app.debug/com.sogrimhashbon.app.MainActivity';
 
-export function actualDefaultDisplay(raw){
+function defaultDisplayBlock(raw){
   const headers=[...raw.matchAll(/^\s*Display:\s*mDisplayId=(\d+)(?=\s|$)/gm)],defaults=headers.filter(match=>match[1]==='0');
   if(defaults.length!==1)throw new Error('Require one actual default display section');
-  const start=defaults[0].index,end=headers.find(match=>match.index>start)?.index??raw.length,block=raw.slice(start,end);
+  const start=defaults[0].index,end=headers.find(match=>match.index>start)?.index??raw.length;
+  return raw.slice(start,end);
+}
+
+export function actualDefaultDisplay(raw){
+  const block=defaultDisplayBlock(raw);
   const rotations=[...block.matchAll(/^\s*mRotation=(ROTATION_(?:0|90|180|270)|[0-3])(?=\s|$)/gm)],bounds=[...block.matchAll(/\bcur=(\d+)x(\d+)\b/g)];
   if(rotations.length!==1||bounds.length!==1)throw new Error('Actual default display rotation/bounds are missing or ambiguous');
   const value=rotations[0][1],rotation=value.startsWith('ROTATION_')?Number(value.slice(9))/90:Number(value),width=Number(bounds[0][1]),height=Number(bounds[0][2]);
   if(width<=0||height<=0)throw new Error('Actual default display bounds are invalid');
   return {displayId:0,rotation,width,height};
+}
+
+export function actualDefaultDisplayFocus(raw){
+  const rows=[...defaultDisplayBlock(raw).matchAll(/^\s*(mCurrentFocus=[^\r\n]*)$/gm)];
+  if(rows.length!==1)throw new Error('Actual default display focus is missing or ambiguous');
+  return rows[0][1].trim();
 }
 
 // The launch force-stop exposes a NOSENSOR launcher. Request rotation only after
@@ -21,12 +32,11 @@ export async function launchForOwnedOrientation({launch,adb,waitFor,orientation,
   const deadline=Date.now()+timeout;
   const remaining=()=>{const value=deadline-Date.now();if(value<=0)throw new Error('Actual owned orientation deadline exceeded');return value;};
   async function observe(phase){
-    const windows=adb(['shell','dumpsys','window','windows']);
-    const focus=windows.split(/\r?\n/).find(line=>line.includes('mCurrentFocus='))?.trim()||'';
     const viewport=await page.evaluate(nativeOrientationExpression);
-    const nativeDisplayRaw=adb(['shell','dumpsys','window','displays']);let actualDisplay,displayParseError;
+    const nativeDisplayRaw=adb(['shell','dumpsys','window','displays']);let actualDisplay,displayParseError,focus='',focusParseError;
     try{actualDisplay=actualDefaultDisplay(nativeDisplayRaw);}catch(error){displayParseError=error.message;}
-    const observation={phase,atUtc:new Date().toISOString(),focus,viewport,nativeDisplayRaw,actualDisplay,displayParseError,userRotation:adb(['shell','wm','user-rotation']).trim(),settingRotation:adb(['shell','settings','get','system','user_rotation']).trim(),accelerometer:adb(['shell','settings','get','system','accelerometer_rotation']).trim()};
+    try{focus=actualDefaultDisplayFocus(nativeDisplayRaw);}catch(error){focusParseError=error.message;}
+    const observation={phase,atUtc:new Date().toISOString(),focus,focusParseError,viewport,nativeDisplayRaw,actualDisplay,displayParseError,userRotation:adb(['shell','wm','user-rotation']).trim(),settingRotation:adb(['shell','settings','get','system','user_rotation']).trim(),accelerometer:adb(['shell','settings','get','system','accelerometer_rotation']).trim()};
     receipt.observations.push(observation);
     return observation;
   }
