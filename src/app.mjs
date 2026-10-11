@@ -2,6 +2,7 @@ import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mj
 import { iconSvg } from "./uiIcons.mjs";
 import { rollbackEventControlStateChange } from "./data/eventControlRollback.mjs";
 import { personalEventPinsKey, pinnedEventIdsForState, pendingLegacyAccountPins, acknowledgeLegacyAccountPins, migrateLegacyAccountPins, mergeAccountEventPins, updateAccountEventPin, setPersonalEventPin, pinnedEventsFirst } from "./data/personalEventPins.mjs";
+import { createAccountPinMigrationQueue } from "./data/accountPinMigrationQueue.mjs";
 import { noticePresentation, saveFailureMessage } from "./domain/userNoticePolicy.mjs";
 import { runGuardedInteraction } from "./interactionBoundary.mjs";
 import { resumeAfterAccountSessionRefresh } from "./accountSessionResume.mjs";
@@ -24093,12 +24094,16 @@ function settlementTransferPlanKey(transfers) {
     .join("|");
 }
 
-let legacyAccountPinMigrationRequest = null;
-function queueLegacyAccountPinMigration() {
+function activeAccountPinOwner() {
   const accountUserId = String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim();
-  if (!accountUserId || state.currentParticipantId !== `account-${accountUserId}`) return;
-  if (legacyAccountPinMigrationRequest) return;
-  const participantId = state.currentParticipantId;
+  const participantId = `account-${accountUserId}`;
+  return accountUserId && state.currentParticipantId === participantId ? participantId : "";
+}
+
+const queueAccountPinMigration = createAccountPinMigrationQueue(activeAccountPinOwner);
+function queueLegacyAccountPinMigration() {
+  const participantId = activeAccountPinOwner();
+  if (!participantId) return;
   let migratedState, pending;
   try {
     pending = pendingLegacyAccountPins(participantId);
@@ -24110,13 +24115,11 @@ function queueLegacyAccountPinMigration() {
   }
   // An optimistic local snapshot does not prove that the workspace received
   // the migration. Retry on later hydration until the cloud save confirms it.
-  legacyAccountPinMigrationRequest = saveSharedState(migratedState, {
+  void queueAccountPinMigration(participantId, () => saveSharedState(migratedState, {
     awaitCloud: true, suppressRevertNotice: true, foregroundMutation: false,
     handlesSaveFailure: true
-  }).then(result => {
-    if (state.currentParticipantId !== participantId ||
-        String(loadStoredAccountSession(window.localStorage)?.user?.id ?? "").trim() !== accountUserId ||
-        !result?.ok || result.mode !== "cloud") return;
+  }), result => {
+    if (!result?.ok || result.mode !== "cloud") return;
     const confirmed = result.persistedState?.personalEventPinPreferences;
     if (confirmed?.ownerParticipantId !== participantId ||
         [...pending].some(id => typeof confirmed.updates?.[id]?.pinned !== "boolean")) return;
@@ -24126,7 +24129,7 @@ function queueLegacyAccountPinMigration() {
     }
     acknowledgeLegacyAccountPins(participantId, pending);
     render();
-  }).catch(() => {}).finally(() => { legacyAccountPinMigrationRequest = null; });
+  }).catch(() => {});
 }
 
 function refreshStartupSharedState(refreshRequest) {

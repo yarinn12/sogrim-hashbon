@@ -59,6 +59,7 @@ const CACHE_FILES = [
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
   "/src/data/personalEventPins.mjs",
+  "/src/data/accountPinMigrationQueue.mjs",
   "/src/data/noteSaveRollback.mjs",
   "/src/data/settingsSaveRollback.mjs",
   "/src/data/eventControlRollback.mjs",
