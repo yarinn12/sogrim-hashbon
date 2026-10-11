@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 
 test.use({ reducedMotion: "no-preference" });
 
@@ -25,7 +27,7 @@ const state = {
 };
 
 for (const orientation of ["portrait", "landscape"]) {
-  test(`a long event title leaves the entire participant roster reachable in ${orientation}`, async ({ page, request, browserName }, testInfo) => {
+  test(`a long event title leaves the entire participant roster reachable in ${orientation}`, async ({ page, request, browserName, baseURL }, testInfo) => {
     await request.post("/api/reset");
     await request.put("/api/state", { data: state });
     await page.addInitScript(({ state, ownerId }) => {
@@ -38,8 +40,17 @@ for (const orientation of ["portrait", "landscape"]) {
       sessionStorage.setItem("settle-friends-skip-next-splash", "1");
     }, { state, ownerId });
     if (orientation === "landscape") await page.setViewportSize({ width: 667, height: 375 });
-    await page.goto("/?dynamic-type-preview=32");
-    await page.bringToFront();
+    // Keep load pending while the real home renders. The roster journey must
+    // use app readiness rather than an unrelated resource or Firefox's
+    // navigation waiter; retain every motion, font and geometry check below.
+    const heldImage = await holdNonessentialHomeImage(page, baseURL);
+    try {
+      await openRenderedHome(page, { path: "/?dynamic-type-preview=32" });
+      expect(heldImage.requested, "the nonessential image is actually pending").toBe(true);
+      expect(await page.evaluate(() => document.readyState), "load must still be pending").not.toBe("complete");
+    } finally {
+      heldImage.release();
+    }
     await expect(page.locator("#app-splash")).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => document.visibilityState)).toBe("visible");
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
