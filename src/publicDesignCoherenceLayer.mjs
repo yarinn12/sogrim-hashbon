@@ -46,6 +46,12 @@ const CSS = `
     letter-spacing: 0 !important;
   }
 
+  /* Blink leaves some nested labels at auto when only body sets this property. */
+  html.design-coherence-v1 body,
+  html.design-coherence-v1 body #app * {
+    text-rendering: geometricPrecision !important;
+  }
+
   html.design-coherence-v1 .font-num,
   html.design-coherence-v1 .font-num *,
   html.design-coherence-v1 .currency-input-badge {
@@ -3131,7 +3137,7 @@ const CSS = `
     color: var(--app-muted) !important;
     background: transparent !important;
     box-shadow: none !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
   }
@@ -3152,7 +3158,7 @@ const CSS = `
     .settlement-hero-title-row h2 {
     margin: 0 0 3px !important;
     color: var(--app-ink) !important;
-    font-size: clamp(19px, 5.2vw, 22px) !important;
+    font-size: clamp(1.1875rem, 5.2vw, 1.375rem) !important;
     font-weight: 650 !important;
     line-height: 1.22 !important;
   }
@@ -3163,7 +3169,7 @@ const CSS = `
     .settlement-hero-title-row .muted {
     margin: 0 !important;
     color: var(--app-muted) !important;
-    font-size: 12px !important;
+    font-size: var(--dynamic-text-12, 12px) !important;
     font-weight: 500 !important;
     line-height: 1.4 !important;
   }
@@ -4052,7 +4058,7 @@ const CSS = `
       .screen[data-screen-kind="event"]
       > .event-overview-header
       h1 {
-      font-size: 28px !important;
+      font-size: var(--dynamic-text-28, 28px) !important;
       line-height: 1.08 !important;
     }
 
@@ -4586,7 +4592,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .profile-edit-screen .profile-identity-entry .profile-identity-copy > strong {
     color: var(--app-muted) !important;
-    font-size: 13px !important;
+    font-size: var(--dynamic-text-13, 13px) !important;
     font-weight: 500 !important;
   }
 

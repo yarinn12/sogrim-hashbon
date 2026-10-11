@@ -30,13 +30,8 @@
     <link rel="manifest" href="./manifest.webmanifest?pwa_release=511" />
     <link rel="icon" href="./app-icon-exterior-192.png" type="image/png" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" as="style" />
-    <link id="app-font-stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet" media="print" />
-    <noscript>
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800;900&amp;family=Rubik:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet" />
-    </noscript>
+    <link rel="preload" href="./assets/fonts/rubik-hebrew-v31.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="./assets/fonts/local.css?pwa_release=511" />
     <style id="app-splash-critical">
       .app-splash {
         position: fixed;
@@ -131,7 +126,6 @@
       </section>
     </main>
     <script type="module" src="./src/pwaBootstrap.mjs?pwa_release=511"></script>
-    <script type="module" src="./src/publicFontLoader.mjs?pwa_release=511"></script>
     <script type="module" src="./src/publicAppSplashLayer.mjs?pwa_release=511"></script>
     <script type="module" src="./src/publicMutationThrottleLayer.mjs?pwa_release=511"></script>
     <script type="module" src="./src/publicScrollIntentLayer.mjs?pwa_release=511"></script>

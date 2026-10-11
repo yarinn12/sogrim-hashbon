@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 
 // These scenarios are phone touch layouts, including when the surrounding
 // suite also runs a desktop profile for other reflow checks.
@@ -26,15 +27,50 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     localStorage.setItem('settle-friends-current-participant', owner);
     sessionStorage.setItem('settle-friends-skip-next-splash', '1');
   }, { owner, state });
-  const size = testInfo.project.metadata?.dynamicTypePreview;
-  await page.goto(size ? `/?dynamic-type-preview=${size}` : '/');
+  const size = requestedTextSize(testInfo);
+  await page.goto(size > 32 ? '/' : size ? `/?dynamic-type-preview=${size}` : '/');
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  if (size > 32) {
+    // The local preview intentionally clamps at 32px; emulate the iOS AX root
+    // measured by the native parity suite without changing product behavior.
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.classList.add('dynamic-type-active', 'dynamic-type-apple', 'dynamic-type-extra-large');
+      root.style.setProperty('--apple-font-scale', String(40 / 17));
+      root.style.setProperty('font-size', '37.64706px', 'important');
+    });
+  }
+  await assertRootTextSize(page, testInfo, 'opening');
 });
+
+function requestedTextSize(testInfo) {
+  return Number(process.env.PW_DYNAMIC_TYPE_SIZE ?? testInfo.project.metadata?.dynamicTypePreview ?? 0);
+}
+
+async function assertRootTextSize(page, testInfo, label) {
+  const requested = requestedTextSize(testInfo);
+  if (!requested) return;
+  const root = await page.locator('html').evaluate(node => ({
+    fontSize: getComputedStyle(node).fontSize,
+    classes: [...node.classList],
+    appleFontScale: getComputedStyle(node).getPropertyValue('--apple-font-scale').trim()
+  }));
+  expect(Number.parseFloat(root.fontSize), `${label}: the requested root text size must survive navigation and rotation`)
+    .toBeCloseTo(requested, 2);
+  expect(root.classes).toContain(requested > 32 ? 'dynamic-type-extra-large' : 'dynamic-type-preview');
+  if (requested > 32) {
+    expect(root.classes).toEqual(expect.arrayContaining(['dynamic-type-active', 'dynamic-type-apple']));
+  }
+  const path = testInfo.outputPath(`${label}-dynamic-type-root.json`);
+  await writeFile(path, JSON.stringify({ requested, ...root }));
+  await testInfo.attach(`${label}-dynamic-type-root`, { path, contentType: 'application/json' });
+}
 
 async function recordGeometry(page, target, label, testInfo) {
   await page.evaluate(() => document.fonts.ready);
   await expect(target).toBeVisible();
   await page.waitForTimeout(100);
+  await assertRootTextSize(page, testInfo, label);
   const geometry = await target.evaluate(element => {
     const rect = element.getBoundingClientRect();
     const body = element.closest('.expense-flow-body');
@@ -116,6 +152,28 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }
     expect(geometry.top).toBeGreaterThanOrEqual(0);
     expect(geometry.bottom, 'a long event title must leave room for the first notes action above navigation').toBeLessThanOrEqual(geometry.clipBottom + 1);
     expect(geometry.receivesTap).toBe(true);
+    const heading = page.locator('.event-notes-screen > .top h1');
+    await expect(heading).toHaveText(state.events[0].name);
+    for (const selector of ['.product-brand-copy strong', '.event-notes-screen > .top h1']) {
+      const linesFit = await page.locator(selector).evaluate(element => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return [...range.getClientRects()].filter(rect => rect.width && rect.height)
+          .every(rect => rect.left >= -1 && rect.right <= innerWidth + 1);
+      });
+      expect(linesFit, `${selector} must keep every rendered word inside the viewport`).toBe(true);
+    }
+    const order = await page.locator('.event-notes-screen').evaluate(screen => {
+      const children = [...screen.children];
+      return {
+        action: children.indexOf(screen.querySelector(':scope > [data-action="new-event-note"]')),
+        tabs: children.indexOf(screen.querySelector(':scope > .event-workspace-nav')),
+        utilities: children.indexOf(screen.querySelector(':scope > .event-header-actions'))
+      };
+    });
+    expect(order.action).toBeGreaterThanOrEqual(0);
+    expect(order.action, 'the notes action must precede tabs in visual and keyboard order').toBeLessThan(order.tabs);
+    expect(order.tabs, 'workspace tabs must precede secondary event controls').toBeLessThan(order.utilities);
     for (const tab of await page.locator('.event-workspace-tab').all()) {
       const fits = await tab.evaluate(element => {
         const button = element.getBoundingClientRect();

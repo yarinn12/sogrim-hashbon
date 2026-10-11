@@ -23,8 +23,11 @@ audit/backups/
 work/*backup*.json
 playwright-report/
 playwright-report-sync/
+playwright-report-cross-platform/
 test-results/
 test-results-sync/
+test-results-cross-platform*/
+test-results-cross-engine-*/
 .qa-playwright/
 .agents/
 .impeccable/
@@ -80,3 +83,4 @@ tmp-*.png
 mobile-*-receipt*.png
 ux-*.png
 .vercel
+scripts/qa/**/__pycache__/

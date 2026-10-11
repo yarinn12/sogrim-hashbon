@@ -602,6 +602,7 @@ let appHistoryDepth = 0;
 let homeBackNavigationPending = false;
 let lastNavigationViewKey = "";
 let scheduledBrowserHistoryReplacement = null;
+let pendingDialogHistoryRewind = null;
 let lastRenderedScreenKey = "";
 let lastCommittedScreenMarkup = "";
 let renderGeneration = 0;
@@ -1175,11 +1176,18 @@ function syncBrowserHistory() {
     return;
   }
 
-  if (key === lastNavigationViewKey) return;
+  if (key === lastNavigationViewKey) {
+    if (pendingDialogHistoryRewind?.entries.length) {
+      pendingDialogHistoryRewind.entries.at(-1).view = currentHistoryView();
+    }
+    return;
+  }
 
   appHistoryDepth += 1;
   try {
-    window.history.pushState(createBrowserHistoryState(), "", window.location.href);
+    const nextState = createBrowserHistoryState();
+    window.history.pushState(nextState, "", window.location.href);
+    if (pendingDialogHistoryRewind) pendingDialogHistoryRewind.entries.push(nextState);
   } catch (error) {
     appHistoryDepth = Math.max(0, appHistoryDepth - 1);
     if (error?.name !== "SecurityError") throw error;
@@ -1194,6 +1202,9 @@ function renderDetachedEventDialog() {
 }
 
 function scheduleBrowserHistoryReplacement() {
+  if (pendingDialogHistoryRewind?.entries.length) {
+    pendingDialogHistoryRewind.entries.at(-1).view = currentHistoryView();
+  }
   if (!window.history?.replaceState || scheduledBrowserHistoryReplacement !== null) return;
 
   scheduledBrowserHistoryReplacement = window.setTimeout(() => {
@@ -1218,8 +1229,12 @@ function replaceBrowserHistoryState() {
     scheduledBrowserHistoryReplacement = null;
   }
   const key = navigationViewKey();
+  const nextState = createBrowserHistoryState();
   try {
-    window.history.replaceState(createBrowserHistoryState(), "", window.location.href);
+    window.history.replaceState(nextState, "", window.location.href);
+    if (pendingDialogHistoryRewind?.entries.length) {
+      pendingDialogHistoryRewind.entries[pendingDialogHistoryRewind.entries.length - 1] = nextState;
+    }
   } catch (error) {
     if (error?.name !== "SecurityError") throw error;
   }
@@ -1264,6 +1279,36 @@ function handleBrowserHistoryBack(event) {
   homeBackNavigationPending = false;
   if (hasIndependentHistoryDialog()) return;
   if (!event.state?.[APP_HISTORY_STATE_KEY]) return;
+
+  const pendingRewind = pendingDialogHistoryRewind;
+  if (pendingRewind && event.state.depth === pendingRewind.depth) {
+    pendingDialogHistoryRewind = null;
+    if (navigationViewKey() !== pendingRewind.closedViewKey) {
+      // A newer route won the race against the dialog's history rewind.
+      // Rebuild those routes from the actual base entry, cutting the closed
+      // dialog steps out of the Back chain without rerendering the current UI.
+      for (const entry of pendingRewind.entries) {
+        try {
+          window.history.pushState(entry, "", window.location.href);
+        } catch (error) {
+          if (error?.name !== "SecurityError") throw error;
+          break;
+        }
+      }
+      replaceBrowserHistoryState();
+      return;
+    }
+  }
+  if (
+    pendingRewind && event.state.depth > pendingRewind.depth &&
+    ((event.state.view?.eventDialog && !eventDialog) ||
+      (event.state.view?.expenseDraft && !expenseDraft))
+  ) {
+    // Another close can finish while an earlier browser rewind is still in
+    // flight. Its intermediate entry still describes the closed editor.
+    replaceBrowserHistoryState();
+    return;
+  }
 
   const previousEventDialog = cloneNavigationValue(eventDialog);
   // Completed links can leave history entries for the removed source identity.
@@ -4546,9 +4591,10 @@ function renderEvent(event) {
 
   return `
     <section class="screen font-hebrew${isEmptyEvent ? "" : " event-has-action-dock"}" data-screen-kind="event" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeParticipants)}
+      ${renderEventHeader(event, activeParticipants, { showActions: false })}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "expenses")}
+      ${renderEventHeaderActions(event, activeParticipants)}
       ${renderEventCover(event)}
       ${isEmptyEvent ? `<p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>` : ""}
       ${isEmptyEvent ? renderEventStartPanel(event) : ""}
@@ -4586,24 +4632,34 @@ function renderEvent(event) {
   `;
 }
 
-function renderEventHeader(event, participants = activeEventParticipants(event)) {
+function renderEventHeaderActions(event, participants = activeEventParticipants(event)) {
   const shareLabel = participants.length === 1 ? "הזמנת חברים" : "שיתוף";
   const shareAccessibleLabel = participants.length === 1
     ? "הזמנת חברים לאירוע"
     : "שיתוף והצטרפות לאירוע";
+  return `
+    <div class="hero-actions event-header-actions">
+      <button class="secondary-button event-header-utility-button" data-action="open-event-participants" data-event-id="${event.id}" aria-label="משתתפים באירוע" title="משתתפים באירוע"><span class="event-header-action-label">משתתפים</span></button>
+      <button class="secondary-button event-header-utility-button" data-action="open-event-participant-add" data-event-id="${event.id}" aria-label="${shareAccessibleLabel}" title="${shareAccessibleLabel}"><span class="button-action-icon" aria-hidden="true">${iconSvg("share")}</span><span class="event-header-action-label">${shareLabel}</span></button>
+      <button class="secondary-button event-settings-button event-header-utility-button" data-action="open-event-settings" data-event-id="${event.id}" aria-label="הגדרות האירוע" title="הגדרות האירוע"><span class="event-settings-label event-header-action-label">הגדרות</span></button>
+    </div>
+  `;
+}
+
+function renderEventHeaderMeta(event, participants = activeEventParticipants(event)) {
+  return `<p class="muted event-header-meta">${escapeHtml(currencySelectLabel(event.currency))} · ${formatCount(participants.length, "משתתף", "משתתפים")}</p>`;
+}
+
+function renderEventHeader(event, participants = activeEventParticipants(event), { showActions = true, showMeta = true } = {}) {
   return `
     <header class="top event-overview-header">
       ${renderAppBackButton()}
       <div class="brand">
         <p class="eyebrow">אירוע</p>
         <h1>${escapeHtml(event.name)}</h1>
-        <p class="muted">${escapeHtml(currencySelectLabel(event.currency))} · ${formatCount(participants.length, "משתתף", "משתתפים")}</p>
+        ${showMeta ? renderEventHeaderMeta(event, participants) : ""}
       </div>
-      <div class="hero-actions event-header-actions">
-        <button class="secondary-button event-header-utility-button" data-action="open-event-participants" data-event-id="${event.id}" aria-label="משתתפים באירוע" title="משתתפים באירוע"><span class="event-header-action-label">משתתפים</span></button>
-        <button class="secondary-button event-header-utility-button" data-action="open-event-participant-add" data-event-id="${event.id}" aria-label="${shareAccessibleLabel}" title="${shareAccessibleLabel}"><span class="button-action-icon" aria-hidden="true">${iconSvg("share")}</span><span class="event-header-action-label">${shareLabel}</span></button>
-        <button class="secondary-button event-settings-button event-header-utility-button" data-action="open-event-settings" data-event-id="${event.id}" aria-label="הגדרות האירוע" title="הגדרות האירוע"><span class="event-settings-label event-header-action-label">הגדרות</span></button>
-      </div>
+      ${showActions ? renderEventHeaderActions(event, participants) : ""}
     </header>
   `;
 }
@@ -4853,9 +4909,15 @@ function renderEventNotes(event) {
 
   return `
     <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event))}
+      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false, showMeta: false })}
       ${renderNotice()}
+      <button class="primary-button event-notes-entry-action" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
+        <span aria-hidden="true">${iconSvg("edit")}</span>
+        <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
+      </button>
       ${renderEventWorkspaceNav(event, "notes")}
+      ${renderEventHeaderMeta(event, activeEventParticipants(event))}
+      ${renderEventHeaderActions(event, activeEventParticipants(event))}
       <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
       <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
         <div>
@@ -4863,10 +4925,6 @@ function renderEventNotes(event) {
           <h2 id="event-notes-title">כל מה שחשוב לאירוע, במקום אחד</h2>
           <p class="muted">כל משתתף באירוע רואה את העדכונים.</p>
         </div>
-        <button class="primary-button" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
-          <span aria-hidden="true">${iconSvg("edit")}</span>
-          <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
-        </button>
       </section>
       <section class="event-notes-content" aria-labelledby="event-notes-list-title">
         <h2 class="visually-hidden" id="event-notes-list-title">הפתקים באירוע</h2>
@@ -8129,7 +8187,7 @@ function renderExpenseForm(event) {
   }
 
   return `
-    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="חלון הוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop expense-step-route-backdrop" aria-label="חלון הוצאה">
       <section class="panel expense-modal expense-step-modal" role="dialog" aria-modal="true" aria-labelledby="expense-modal-title" aria-describedby="expense-modal-description" data-event-id="${event.id}" data-currency="${eventCurrency(event)}" data-expense-step="${flowStep}" tabindex="-1">
         <div class="expense-modal-header expense-modal-step-header">
           <div>
@@ -8412,7 +8470,7 @@ function renderExpenseParticipantAddRoute(event, canEdit) {
       : "בוחרים דרך אחת וממשיכים.";
 
   return `
-    <section class="expense-modal-backdrop expense-route-backdrop" aria-label="הוספת משתתף להוצאה">
+    <section class="expense-modal-backdrop expense-route-backdrop expense-step-route-backdrop" aria-label="הוספת משתתף להוצאה">
       <section
         class="panel expense-modal expense-step-modal expense-participant-add-route"
         role="dialog"
@@ -9849,9 +9907,10 @@ function renderSettlement(event) {
 
   return `
     <section class="screen font-hebrew settlement-screen" data-screen-kind="event" data-event-view="summary" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event))}
+      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false })}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "summary")}
+      ${renderEventHeaderActions(event, activeEventParticipants(event))}
 
       ${expenseDraft?.eventId === event.id ? renderExpenseForm(event) : ""}
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}
@@ -14473,6 +14532,22 @@ function closeDialogWithHistory(rewindSteps = 1) {
   const deferFocus = historyDistance > 0 &&
     Boolean(historyDistance === 1 ? window.history?.back : window.history?.go);
   deactivateDialog({ deferFocus });
+  if (deferFocus) {
+    if (pendingDialogHistoryRewind) {
+      pendingDialogHistoryRewind.depth = Math.min(
+        pendingDialogHistoryRewind.depth,
+        appHistoryDepth - historyDistance
+      );
+      pendingDialogHistoryRewind.closedViewKey = navigationViewKey();
+      pendingDialogHistoryRewind.entries.splice(-historyDistance);
+    } else {
+      pendingDialogHistoryRewind = {
+        depth: appHistoryDepth - historyDistance,
+        closedViewKey: navigationViewKey(),
+        entries: []
+      };
+    }
+  }
   renderHistoryFallback(historyDistance);
 }
 

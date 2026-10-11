@@ -47,6 +47,7 @@ const contentTypes = {
   ".jpg": "image/jpeg",
   ".mp4": "video/mp4",
   ".png": "image/png",
+  ".woff2": "font/woff2",
   ".svg": "image/svg+xml; charset=utf-8",
   ".txt": "text/plain; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
@@ -92,7 +93,7 @@ const publicRootFiles = new Set([
 const publicStaticPrefixes = ["/.well-known/", "/assets/", "/icons/", "/src/"];
 const publicStaticExtensions = new Set([
   ".apk", ".css", ".ico", ".jpeg", ".jpg", ".js", ".json", ".mjs",
-  ".mp4", ".png", ".svg", ".ttf", ".txt", ".webmanifest", ".webp"
+  ".mp4", ".png", ".svg", ".ttf", ".txt", ".webmanifest", ".webp", ".woff2"
 ]);
 const MAX_JSON_BODY_BYTES = 1_000_000;
 const GOOGLE_AUTH_RATE_LIMIT = {

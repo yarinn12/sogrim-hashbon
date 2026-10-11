@@ -4,6 +4,7 @@ const APPLE_CLASS = "dynamic-type-apple";
 const ANDROID_CLASS = "dynamic-type-android";
 const LARGE_CLASS = "dynamic-type-large";
 const EXTRA_LARGE_CLASS = "dynamic-type-extra-large";
+const APPLE_BODY_PROBE_ID = "apple-system-body-size-probe";
 
 export function classifyDynamicTypeSize(fontSize) {
   const size = Number.parseFloat(fontSize);
@@ -35,27 +36,76 @@ export function localPreviewSize(location = globalThis.location) {
   return Math.min(32, Math.max(19, requested));
 }
 
+function appleSystemBodyProbe(document) {
+  if (!document?.body) return null;
+  let probe = document.getElementById(APPLE_BODY_PROBE_ID);
+  if (probe) return probe;
+  probe = document.createElement("span");
+  probe.id = APPLE_BODY_PROBE_ID;
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "inline-size:1em",
+    "block-size:1em",
+    "overflow:hidden",
+    "visibility:hidden",
+    "pointer-events:none",
+    "font:-apple-system-body"
+  ].join(";");
+  document.body.append(probe);
+  return probe;
+}
+
+function appleSystemBodySize(root) {
+  const probe = appleSystemBodyProbe(root.ownerDocument);
+  const size = Number.parseFloat(
+    probe && root.ownerDocument.defaultView?.getComputedStyle(probe).fontSize
+  );
+  return Number.isFinite(size) && size > 0 ? size : 17;
+}
+
 export function refreshDynamicType(root = globalThis.document?.documentElement) {
   if (!root) return "normal";
 
   const view = root.ownerDocument?.defaultView ?? globalThis.window;
-  const active = supportsAppleDynamicType(view);
-  root.classList.toggle(ACTIVE_CLASS, active);
-  root.classList.toggle(APPLE_CLASS, active);
+  const supported = supportsAppleDynamicType(view);
+  root.classList.toggle(APPLE_CLASS, supported);
   root.classList.remove(ANDROID_CLASS);
   root.style.removeProperty("--android-font-scale");
   root.classList.remove(LARGE_CLASS, EXTRA_LARGE_CLASS);
 
-  if (!active) {
+  if (!supported) {
+    root.classList.remove(ACTIVE_CLASS);
+    root.style.removeProperty("--apple-font-scale");
     root.dataset.dynamicType = "normal";
     return "normal";
   }
 
-  const level = classifyDynamicTypeSize(view.getComputedStyle(root).fontSize);
+  const systemBodySize = appleSystemBodySize(root);
+  const scale = systemBodySize / 17;
+  root.style.setProperty("--apple-font-scale", String(scale));
+  const active = scale > 1.01;
+  root.classList.toggle(ACTIVE_CLASS, active);
+  const level = active ? classifyDynamicTypeSize(16 * scale) : "normal";
   root.classList.toggle(LARGE_CLASS, level === "large");
   root.classList.toggle(EXTRA_LARGE_CLASS, level === "extra-large");
   root.dataset.dynamicType = level;
   return level;
+}
+
+export function watchAppleDynamicType(root = globalThis.document?.documentElement) {
+  const view = root?.ownerDocument?.defaultView;
+  if (
+    view?.Capacitor?.getPlatform?.() === "android" ||
+    !supportsAppleDynamicType(view) ||
+    !view.ResizeObserver
+  ) return null;
+  const probe = appleSystemBodyProbe(root.ownerDocument);
+  if (!probe) return null;
+  const observer = new view.ResizeObserver(() => refreshDynamicType(root));
+  observer.observe(probe);
+  return observer;
 }
 
 export async function refreshAndroidDynamicType(
@@ -77,6 +127,7 @@ export async function refreshAndroidDynamicType(
   root.classList.toggle(ACTIVE_CLASS, active);
   root.classList.toggle(ANDROID_CLASS, active);
   root.classList.remove(APPLE_CLASS, LARGE_CLASS, EXTRA_LARGE_CLASS);
+  root.style.removeProperty("--apple-font-scale");
   root.style.setProperty("--android-font-scale", String(scale));
   root.classList.toggle(LARGE_CLASS, level === "large");
   root.classList.toggle(EXTRA_LARGE_CLASS, level === "extra-large");
@@ -96,31 +147,47 @@ function injectDynamicTypeStyles(document) {
     }
 
     /*
-     * -apple-system-body carries the user's iOS Dynamic Type preference.
-     * The app keeps Rubik for Hebrew, while rem-based sizes inherit the
-     * accessible root size supplied by WebKit.
+     * The independent -apple-system-body probe carries the user's iOS text
+     * preference. A 17px system body maps to the app's 16px baseline, while
+     * enlarged preferences scale that baseline proportionally.
      */
-    html.${ACTIVE_CLASS}.${APPLE_CLASS} {
+    html.${APPLE_CLASS}:not(.dynamic-type-preview) {
       font: -apple-system-body;
+      font-size: calc(16px * var(--apple-font-scale, 1)) !important;
     }
 
-    html.${ACTIVE_CLASS} {
-      --dynamic-text-11: 0.647rem;
-      --dynamic-text-12: 0.706rem;
-      --dynamic-text-13: 0.765rem;
-      --dynamic-text-14: 0.824rem;
-      --dynamic-text-15: 0.882rem;
-      --dynamic-text-16: 0.941rem;
-      --dynamic-text-17: 1rem;
-      --dynamic-text-20: 1.176rem;
-      --dynamic-text-24: 1.412rem;
-      --dynamic-text-28: 1.647rem;
-      --dynamic-text-32: 1.882rem;
-      --dynamic-text-36: 2.118rem;
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview) {
+      --dynamic-text-10: 0.625rem;
+      --dynamic-text-11: 0.6875rem;
+      --dynamic-text-12: 0.75rem;
+      --dynamic-text-13: 0.8125rem;
+      --dynamic-text-14: 0.875rem;
+      --dynamic-text-15: 0.9375rem;
+      --dynamic-text-16: 1rem;
+      --dynamic-text-17: 1.0625rem;
+      --dynamic-text-19: 1.1875rem;
+      --dynamic-text-20: 1.25rem;
+      --dynamic-text-24: 1.5rem;
+      --dynamic-text-28: 1.75rem;
+      --dynamic-text-32: 2rem;
+      --dynamic-text-36: 2.25rem;
+    }
+
+    /* Reduced-motion layers shorten every transition to 1ms but leave its
+       default property as "all". Prevent a stale font-size frame both when
+       enlarged text turns on and when the preference returns to normal. */
+    @media (prefers-reduced-motion: reduce) {
+      html,
+      html body,
+      html #app,
+      html #app * {
+        transition-duration: 0s !important;
+      }
     }
 
     html.${ACTIVE_CLASS}.${ANDROID_CLASS} {
-      font-size: calc(16px * var(--android-font-scale, 1)) !important;
+      /* Android WebView text zoom already applies the OS font scale. */
+      font-size: 16px !important;
     }
 
     html.${ACTIVE_CLASS} body,
@@ -213,9 +280,290 @@ function injectDynamicTypeStyles(document) {
       line-height: 1.4 !important;
     }
 
+    /* This transfer explanation is 12px in the normal design. */
+    html.${ACTIVE_CLASS} #app .screen[data-event-view="summary"]
+      .settlement-stage-heading > div > small,
+    html.dynamic-type-preview #app .screen[data-event-view="summary"]
+      .settlement-stage-heading > div > small {
+      font-size: var(--dynamic-text-12, 0.75rem) !important;
+    }
+
     html.${ACTIVE_CLASS} #app .font-num,
     html.dynamic-type-preview #app .font-num {
       font-size: inherit !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+        [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+      .product-brand-copy strong {
+      font-size: var(--dynamic-text-17, 17px) !important;
+    }
+
+    html:is(.${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-event-view="summary"]
+      .settlement-transfer-board .transfer-row .transfer-people {
+      grid-template-columns: minmax(0, 1fr) !important;
+      gap: 8px !important;
+    }
+
+    @media (max-width: 720px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        > .product-app-identity {
+        display: block !important;
+        padding: calc(10px + env(safe-area-inset-top)) 12px 12px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-lockup {
+        width: 100% !important;
+        display: grid !important;
+        grid-template-columns: 40px 44px minmax(0, 1fr) !important;
+        gap: 8px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-mark {
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-header-profile-avatar {
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy {
+        grid-column: 1 / -1 !important;
+        grid-row: 2 !important;
+        text-align: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"],
+          [data-screen-kind="event-notes"], [data-screen-kind="profile"])
+        .product-brand-copy strong {
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-header-utility-button {
+        height: auto !important;
+        min-height: 54px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-header-action-label {
+        max-width: 100% !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        text-align: center !important;
+        line-height: 1.2 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: 1 / -1 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .event-workspace-tab strong {
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+    }
+
+    @media (max-width: 360px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+
+    /* Keep branding, the full event title, and the primary notes action in
+       document order while using less vertical chrome on narrow phones. */
+    @media (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .product-app-identity {
+        padding: calc(6px + env(safe-area-inset-top)) 8px 6px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen .product-brand-lockup {
+        align-items: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .top {
+        margin-block: 4px 0 !important;
+        padding-block: 4px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-header-actions {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+    }
+
+    /* On phone-width summaries, two complete utility labels fit beside each
+       other. Keep the third action on its own row so transfers follow the
+       primary answer without three stacked rows of secondary controls. */
+    @media (min-width: 375px) and (max-width: 480px) and (orientation: portrait) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+        margin-bottom: 0 !important;
+        padding: 4px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        .event-header-utility-button {
+        min-height: 48px !important;
+      }
+
+      /* At AX sizes the longest word needs the full row; the two shorter
+         actions still share the next row without splitting their labels. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        > [data-action="open-event-participants"] {
+        grid-column: 1 / -1 !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
+        body #app .screen[data-event-view="summary"] > .event-header-actions
+        .event-header-utility-button {
+        padding-inline: 8px !important;
+      }
+    }
+
+    /* A short landscape phone has enough width for one header row and three
+       complete tab labels, but not enough height for the portrait stacking. */
+    @media (min-width: 600px) and (max-width: 900px) and (max-height: 500px) and (orientation: landscape) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-lockup {
+        align-items: center !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy {
+        grid-column: 3 !important;
+        grid-row: 1 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        gap: 12px !important;
+        text-align: start !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="home"], [data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .product-brand-copy :is(strong, small) {
+        white-space: nowrap !important;
+        overflow-wrap: normal !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        margin-block: 0 !important;
+        padding-block: 4px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav {
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        padding-block: 1px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        .event-workspace-nav > .event-workspace-notes {
+        grid-column: auto !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+        grid-template-columns: max-content minmax(0, 1fr) !important;
+        align-items: center !important;
+        gap: 8px !important;
+        padding: 6px 12px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input {
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions {
+        gap: 0 !important;
+        padding: 6px 14px !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-actions .expense-step-next {
+        min-height: 56px !important;
+        padding: 8px 12px !important;
+        line-height: 1.2 !important;
+      }
+    }
+
+    /* A compact desktop viewport can scroll an event tab underneath the
+       fixed route controls; leave a visible landing zone for keyboard/touch. */
+    @media (max-width: 720px) and (max-height: 500px) {
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+        body #app .screen[data-screen-kind="event"] .event-workspace-tab {
+        scroll-margin-block-start: 80px !important;
+        scroll-margin-block-end: calc(96px + env(safe-area-inset-bottom)) !important;
+      }
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .event-share-route-backdrop .event-invite-link-actions {
+      grid-template-columns: minmax(0, 1fr) max-content !important;
+    }
+
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #app .event-share-route-backdrop [data-action="copy-invite"] {
+      min-width: max-content !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) #app
@@ -291,6 +639,20 @@ function injectDynamicTypeStyles(document) {
       :where(button, input, select, textarea, summary, .primary-button, .secondary-button, .icon-button) {
       height: auto !important;
       min-height: max(48px, 2.85rem) !important;
+    }
+
+    /* The sign-in accessibility control has an icon only. Keep its enlarged
+       touch target round while text-bearing controls may grow vertically. */
+    html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
+      #public-account-auth-gate .accessibility-entry-auth {
+      width: 48px !important;
+      min-width: 48px !important;
+      max-width: 48px !important;
+      height: 48px !important;
+      min-height: 48px !important;
+      max-height: 48px !important;
+      padding: 0 !important;
+      aspect-ratio: 1 !important;
     }
 
     /* Icon-only overflow triggers keep a square hit target at enlarged text
@@ -887,6 +1249,7 @@ function initializeDynamicType() {
     document.documentElement.style.setProperty("font-size", `${previewSize}px`, "important");
   }
   refreshAccessibleText();
+  watchAppleDynamicType();
 }
 
 function refreshAccessibleText() {

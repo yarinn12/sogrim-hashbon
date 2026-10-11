@@ -12,7 +12,7 @@ const VIEWPORTS = [
 ];
 
 test.beforeEach(async ({ page, baseURL }, testInfo) => {
-  const platform = testInfo.project.name === "android-mobile" ? "android" : "ios";
+  const platform = testInfo.project.name.startsWith("android") ? "android" : "ios";
   const config = {
     publicUrl: baseURL,
     auth: {
@@ -66,7 +66,7 @@ test.beforeEach(async ({ page, baseURL }, testInfo) => {
 
 for (const viewport of VIEWPORTS) {
   test(`native provider controls keep their intended height at ${viewport.width}x${viewport.height}`, async ({ page }, testInfo) => {
-    const platform = testInfo.project.name === "android-mobile" ? "android" : "ios";
+    const platform = testInfo.project.name.startsWith("android") ? "android" : "ios";
     await page.setViewportSize(viewport);
     const largeText = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
     await page.goto(largeText ? `/?dynamic-type-preview=${largeText}` : "/");
@@ -94,6 +94,7 @@ for (const viewport of VIEWPORTS) {
       const art = apple?.querySelector("img");
       const appleRect = apple?.getBoundingClientRect();
       const artRect = art?.getBoundingClientRect();
+      const accessibilityRect = element.querySelector(".accessibility-entry-auth")?.getBoundingClientRect();
       return {
         google: { height: googleRect.height, width: googleRect.width },
         icon: { height: iconRect.height, width: iconRect.width },
@@ -103,6 +104,9 @@ for (const viewport of VIEWPORTS) {
           height: artRect.height,
           naturalWidth: art.naturalWidth,
           naturalHeight: art.naturalHeight
+        },
+        accessibility: accessibilityRect && {
+          width: accessibilityRect.width, height: accessibilityRect.height
         }
       };
     });
@@ -111,6 +115,13 @@ for (const viewport of VIEWPORTS) {
     expect(geometry.google.width).toBeGreaterThanOrEqual(44);
     expect(geometry.google.height).toBeGreaterThanOrEqual(56);
     expect(geometry.icon.width).toBeCloseTo(geometry.icon.height, 1);
+    expect(geometry.accessibility?.width).toBeGreaterThanOrEqual(44);
+    expect(geometry.accessibility?.height).toBeGreaterThanOrEqual(44);
+    expect(Math.abs(geometry.accessibility.width - geometry.accessibility.height),
+      "the enlarged-text accessibility control must stay round").toBeLessThanOrEqual(1);
+    if (largeText) {
+      await page.screenshot({ path: testInfo.outputPath("auth-enlarged-text.png") });
+    }
     if (platform === "ios") {
       expect(Math.abs(geometry.google.height - geometry.apple.height)).toBeLessThanOrEqual(1);
       expect(Math.abs(geometry.google.width - geometry.apple.width)).toBeLessThanOrEqual(1);

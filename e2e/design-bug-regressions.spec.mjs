@@ -360,3 +360,75 @@ test("a failed share link stops loading and explains the unavailable action", as
   await expect(whatsappButton).not.toHaveAttribute("aria-busy", "true");
   await expect(shareDialog.locator('[data-action="retry-event-share"]')).toBeVisible();
 });
+
+async function visibleWordLines(locator) {
+  return locator.evaluate(async (element) => {
+    const style = getComputedStyle(element);
+    await document.fonts.load(`${style.fontWeight} ${style.fontSize} Rubik`, element.textContent);
+    await document.fonts.ready;
+    const text = element.firstChild;
+    const lines = new Map();
+    for (const match of text.textContent.matchAll(/\S+/gu)) {
+      const range = document.createRange();
+      range.setStart(text, match.index);
+      range.setEnd(text, match.index + match[0].length);
+      const top = Math.round(range.getBoundingClientRect().top);
+      lines.set(top, [...(lines.get(top) ?? []), match[0]]);
+    }
+    return [...lines.values()].map((words) => words.join(" "));
+  });
+}
+
+test("32px failed-share action keeps complete Hebrew words on the same lines", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participant-add"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator('[data-action="open-event-share"]').click();
+  const dialog = page.locator(".event-share-modal");
+  await expect(dialog.locator(".event-share-link-status")).toHaveClass(/is-error/);
+  const action = dialog.locator('[data-action="share-invite-whatsapp"]');
+  await expect(action).toHaveText("הקישור לא זמין");
+  expect(await visibleWordLines(action)).toEqual(["הקישור לא", "זמין"]);
+  await expect(action).toHaveCSS('font-size', '32px');
+  const copy = dialog.locator('[data-action="copy-invite"]');
+  for (const width of [393, 354, 320]) {
+    await page.setViewportSize({ width, height: 852 });
+    const copyLayout = await copy.evaluate(async element => {
+      await document.fonts.ready;
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const lines = [...range.getClientRects()].filter(rect => rect.width && rect.height)
+        .map(rect => Math.round(rect.top));
+      const row = element.closest('.event-invite-link-actions');
+      return { lines: new Set(lines).size, scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth, rowScrollWidth: row.scrollWidth,
+        rowClientWidth: row.clientWidth, fontSize: getComputedStyle(element).fontSize };
+    });
+    expect(copyLayout.fontSize).toBe('32px');
+    expect(copyLayout.lines, `העתק must stay on one line at ${width}px`).toBe(1);
+    expect(copyLayout.scrollWidth).toBeLessThanOrEqual(copyLayout.clientWidth + 1);
+    expect(copyLayout.rowScrollWidth).toBeLessThanOrEqual(copyLayout.rowClientWidth + 1);
+  }
+});
+
+test("32px repayment choice keeps complete Hebrew words on the same lines", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?dynamic-type-preview=32");
+  await expect(page.locator("html")).toHaveCSS("font-size", "32px");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.locator('[data-action="open-new-event-settlement"]').click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+  const picker = page.locator('.new-event-inline-picker').filter({ hasText: "חלוקת החזרים" });
+  await picker.locator("summary").click();
+  const direct = picker.locator('[data-action="new-event-repayment-choice"][data-choice-value="direct"] > span').first();
+  await expect(direct).toBeVisible();
+  await expect(direct).toHaveCSS('font-size', '32px');
+  expect(await visibleWordLines(direct)).toEqual(["החזר לפי מי", "ששילם"]);
+  await picker.locator('[data-action="new-event-repayment-choice"][data-choice-value="direct"]').click();
+  await expect(picker.locator("summary > span").first()).toHaveText("החזר לפי מי ששילם");
+  await expect(picker.locator("summary > span").first()).toHaveCSS('font-size', '32px');
+  expect(await visibleWordLines(picker.locator("summary > span").first())).toEqual(["החזר לפי מי", "ששילם"]);
+});

@@ -1429,9 +1429,10 @@ test("partially clipped workspace navigation probes visible controls and rejects
   const navigation=page.locator('.event-workspace-nav');
   await expect(navigation).toBeVisible();
   await page.evaluate(()=>{
-    const navigation=document.querySelector('.event-workspace-nav').getBoundingClientRect();
     const route=document.querySelector('.product-route-controls').getBoundingClientRect();
-    window.scrollBy(0,navigation.top-route.bottom+Math.ceil(navigation.height*0.64));
+    const button=document.querySelector('.event-workspace-summary').getBoundingClientRect();
+    // Place the route edge inside the button's lower half at every text scale.
+    window.scrollBy(0,button.top+button.height*0.75-route.bottom);
   });
   await expect.poll(()=>navigation.evaluate(element=>{
     const clip=Number.parseFloat(getComputedStyle(element).getPropertyValue('--event-nav-route-occlusion'));
@@ -1860,6 +1861,285 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   }
 });
 
+async function readCharacterLines(locator, naturalWrap = false) {
+  return locator.evaluate((element, useNaturalWrap) => {
+    const previous = element.style.getPropertyValue("text-wrap-style");
+    const previousPriority = element.style.getPropertyPriority("text-wrap-style");
+    if (useNaturalWrap) element.style.setProperty("text-wrap-style", "auto", "important");
+    try {
+      const text = element.firstChild;
+      if (!text || text.nodeType !== Node.TEXT_NODE) return null;
+      const lines = new Map();
+      for (let i = 0; i < text.length; i++) {
+        const range = document.createRange();
+        range.setStart(text, i);
+        range.setEnd(text, i + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.height < 1) continue;
+        const top = Math.round(rect.top);
+        lines.set(top, (lines.get(top) || "") + text.data[i]);
+      }
+      return [...lines].sort(([a], [b]) => a - b).map(([, value]) => value.trim());
+    } finally {
+      if (useNaturalWrap) {
+        if (previous) element.style.setProperty("text-wrap-style", previous, previousPriority);
+        else element.style.removeProperty("text-wrap-style");
+      }
+    }
+  }, naturalWrap);
+}
+
+test("summary guidance keeps the same complete word wrapping at mobile widths", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await Promise.all([
+      document.fonts.load('500 12px Rubik', 'אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.'),
+      document.fonts.load('400 12px Rubik', 'המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם')
+    ]);
+    await document.fonts.ready;
+  });
+
+  const expectedCopy = {
+    description: "אפשר לראות את המצב כרגע. מעבירים כסף רק לאחר סגירת האירוע.",
+    transferHelper: "המקבל עשוי להיות שונה ממי ששילם, כי קיזזנו בין כולם"
+  };
+  for (const width of [360, 375, 390, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    for (const [key, selector] of Object.entries({
+      description: ".settlement-hero .muted",
+      transferHelper: ".settlement-stage-heading > div > small"
+    })) {
+      const locator = page.locator(selector);
+      const lines = await readCharacterLines(locator);
+      expect(lines.join(" "), `${key} complete copy at ${width}px`).toBe(expectedCopy[key]);
+      expect(lines, `${key} stays on two lines at ${width}px`).toHaveLength(2);
+      expect(lines, `${key} follows natural wrapping at ${width}px`)
+        .toEqual(await readCharacterLines(locator, true));
+      await expect(locator, `${key} uses natural line selection at ${width}px`)
+        .toHaveCSS("text-wrap-style", "auto");
+    }
+  }
+});
+
+test("system text preferences update iOS and Android typography without losing the normal baseline", async ({ page }) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto('/');
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  const defaultStyles = await page.evaluate(() => {
+    const label = document.createElement('label');
+    label.className = 'dynamic-type-parity-label';
+    label.textContent = 'תווית בדיקה';
+    const small = document.createElement('small');
+    small.className = 'dynamic-type-parity-small';
+    small.textContent = 'טקסט עזר';
+    document.querySelector('.product-home-screen').append(label, small);
+    const selectors = {
+      heading: '.product-home-screen .top .brand h1',
+      button: '.home-create-event-action',
+      small: '.dynamic-type-parity-small',
+      muted: '.product-home-screen .top .brand .muted',
+      label: '.dynamic-type-parity-label',
+      navigation: '.product-app-nav .product-nav-button'
+    };
+    const read = () => Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing typography control: ${selector}`);
+      const style = getComputedStyle(element);
+      return [name, { fontSize: style.fontSize, lineHeight: style.lineHeight,
+        fontFamily: style.fontFamily, fontWeight: style.fontWeight,
+        whiteSpace: style.whiteSpace, overflowWrap: style.overflowWrap }];
+    }));
+    window.readDynamicTypeDefaultStyles = read;
+    return read();
+  });
+  const homeBaseline = await page.locator('.product-home-screen .top .brand .muted')
+    .evaluate(element => parseFloat(getComputedStyle(element).fontSize));
+  const appleSizes = [17, 19, 23, 32, 17];
+  const measureApple = selector => page.evaluate(({ sizes, selector }) => {
+    const root = document.documentElement;
+    return sizes.map(systemSize => {
+      root.classList.add('dynamic-type-apple');
+      root.classList.toggle('dynamic-type-active', systemSize > 17);
+      root.classList.remove('dynamic-type-android');
+      const uiSize = 16 * systemSize / 17;
+      root.classList.toggle('dynamic-type-large', uiSize >= 19 && uiSize < 23);
+      root.classList.toggle('dynamic-type-extra-large', uiSize >= 23);
+      root.style.setProperty('--apple-font-scale', String(systemSize / 17));
+      return { systemSize, root: parseFloat(getComputedStyle(root).fontSize),
+        text: parseFloat(getComputedStyle(document.querySelector(selector)).fontSize) };
+    });
+  }, { sizes: appleSizes, selector });
+
+  for (const entry of await measureApple('.product-home-screen .top .brand .muted')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(homeBaseline * entry.systemSize / 17, 1);
+  }
+  expect(await page.evaluate(() => document.documentElement.classList.contains('dynamic-type-active'))).toBe(false);
+  expect(await page.evaluate(() => window.readDynamicTypeDefaultStyles())).toEqual(defaultStyles);
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  for (const entry of await measureApple('.settlement-stage-heading > div > small')) {
+    expect(entry.root).toBeCloseTo(16 * entry.systemSize / 17, 1);
+    expect(entry.text).toBeCloseTo(12 * entry.systemSize / 17, 1);
+  }
+
+  const androidSizes = await page.evaluate(async () => {
+    const { refreshAndroidDynamicType } = await import('/src/publicDynamicTypeLayer.mjs');
+    const root = document.documentElement;
+    const results = [];
+    for (const scale of [1, 1.5, 2, 1]) {
+      const capacitor = { getPlatform: () => 'android', Plugins: {
+        SogrimCapabilities: { getCapabilities: async () => ({ fontScale: scale }) }
+      } };
+      const level = await refreshAndroidDynamicType(root, capacitor);
+      results.push({ scale, level, root: parseFloat(getComputedStyle(root).fontSize),
+        helper: parseFloat(getComputedStyle(document.querySelector('.settlement-stage-heading > div > small')).fontSize),
+        nativeScale: Number(root.style.getPropertyValue('--android-font-scale')),
+        active: root.classList.contains('dynamic-type-active'),
+        android: root.classList.contains('dynamic-type-android') });
+    }
+    return results;
+  });
+  for (const entry of androidSizes) {
+    // Native WebView text zoom already applies the OS scale. Browser QA has
+    // no native zoom, so the CSS sizes here must remain at their pre-zoom base.
+    expect(entry.root).toBeCloseTo(16, 1);
+    expect(entry.helper).toBeCloseTo(12, 1);
+    expect(entry.nativeScale).toBe(entry.scale);
+    expect(entry.active).toBe(entry.scale > 1);
+    expect(entry.android).toBe(entry.scale > 1);
+    expect(entry.level).toBe(entry.scale === 1 ? 'normal' : 'extra-large');
+  }
+});
+
+test("home introduction keeps the same complete word wrapping at mobile width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 14px Rubik', 'אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.');
+    await document.fonts.ready;
+  });
+  const introduction = page.locator('.product-home-screen .top .brand .muted');
+  const lines = await readCharacterLines(introduction);
+  expect(lines.join(" "), "the whole introduction remains visible")
+    .toBe("אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.");
+  expect(lines, "the introduction remains two lines").toHaveLength(2);
+  await expect(introduction, "the introduction uses natural line selection")
+    .toHaveCSS("text-wrap-style", "auto");
+  expect(lines, "the introduction follows natural wrapping")
+    .toEqual(await readCharacterLines(introduction, true));
+});
+
+test("transfer explanation and event management copy keep complete word wrapping", async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 354, height: 844 });
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participants"][data-event-id="${EVENT_ID}"]`).first().click();
+  await page.locator(`[data-action="open-event-participant-profile"][data-participant-id="${MAOR_ID}"]`).click();
+  await page.locator('[data-action="toggle-event-participant-admin"]').check();
+  await page.goBack();
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+  await page.locator('.settlement-transfer-board .transfer-row').first().click();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open]').first()).toBeVisible();
+  await expect(page.locator('.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note').first()).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.load('500 12px Rubik', 'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.');
+    await document.fonts.ready;
+  });
+  const transferSelectors = [
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-debt-summary strong',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-rounding-note',
+    '.settlement-transfer-board .transfer-explanation[open] .transfer-route-note'
+  ];
+  const transfer = await readWordLines(page, transferSelectors);
+  const naturalTransfer = await readWordLines(page, transferSelectors, true);
+  await page.goBack();
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(`[data-action="open-event-settings"][data-event-id="${EVENT_ID}"]`).first().click();
+  await expect(page.locator('.event-settings-modal')).toBeVisible();
+  const managementSelectors = [
+    '.event-settings-menu-item[data-settings-section="management"] small'
+  ];
+  const management = await readWordLines(page, managementSelectors);
+  const naturalManagement = await readWordLines(page, managementSelectors, true);
+  const expectedManagement = [
+    'ניהול משותף · מנהל: ירין יצחק, Awesome Maor · מאור סיבוני'
+  ];
+  const expectedTransfer = [
+    'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',
+    'סכומי ההעברה עוגלו ליחידות מטבע שלמות. הפירוט נשאר מדויק.',
+    'אריאל ניזרי מהטיול המשפחתי מעביר ₪85.00 ל־ירין יצחק מתוך חוב כולל של ₪85.33.'
+  ];
+  // Native font shaping can move one complete word between lines across OSes.
+  // Compare each line and count to an auto-wrap control on the same DOM node,
+  // while the exact text and a bounded readable layout stay mandatory.
+  for (const [actual, reference, expected] of [
+    [management, naturalManagement, expectedManagement],
+    [transfer, naturalTransfer, expectedTransfer]
+  ]) {
+    expect(actual.map(({ text }) => text), "the complete copy remains intact")
+      .toEqual(expected);
+    expect(actual.map(({ wrapStyle }) => wrapStyle), "line selection stays natural")
+      .toEqual(expected.map(() => "auto"));
+    expect(actual.map(({ lines }) => lines.length), "line counts match natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines.length));
+    expect(actual.map(({ lines }) => lines), "complete words follow natural wrapping")
+      .toEqual(reference.map(({ lines }) => lines));
+    const maxLines = testInfo.project.name === "iphone-large-text" ? 6 : 3;
+    for (const { lines } of actual) {
+      expect(lines.length, "the explanation remains visibly compact").toBeGreaterThan(0);
+      expect(lines.length, "the explanation remains visibly compact").toBeLessThanOrEqual(maxLines);
+    }
+  }
+});
+
+async function readWordLines(page, selectors, naturalWrap = false) {
+  return page.evaluate(({ targetSelectors, useNaturalWrap }) => targetSelectors.map(selector => {
+    const element = document.querySelector(selector);
+    if (!element) return { selector, missing: true };
+    const previous = element.style.getPropertyValue("text-wrap-style");
+    const previousPriority = element.style.getPropertyPriority("text-wrap-style");
+    if (useNaturalWrap) element.style.setProperty("text-wrap-style", "auto", "important");
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    const lines = [];
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      for (const match of node.textContent.matchAll(/\S+/g)) {
+        range.setStart(node, match.index);
+        range.setEnd(node, match.index + match[0].length);
+        const rect = range.getClientRects()[0];
+        if (!rect || rect.height < 1) continue;
+        let line = lines.find(entry => Math.abs(entry.top - rect.top) <= 6);
+        if (!line) {
+          line = { top: rect.top, words: [] };
+          lines.push(line);
+        }
+        line.words.push(match[0]);
+      }
+    }
+    const result = { selector, text: element.textContent.trim(),
+      wrapStyle: getComputedStyle(element).textWrapStyle,
+      width: element.getBoundingClientRect().width,
+      lines: lines.sort((a, b) => a.top - b.top).map(line => line.words.join(' ')) };
+    if (useNaturalWrap) {
+      if (previous) element.style.setProperty("text-wrap-style", previous, previousPriority);
+      else element.style.removeProperty("text-wrap-style");
+    }
+    return result;
+  }), { targetSelectors: selectors, useNaturalWrap: naturalWrap });
+}
+
 async function captureCoherenceScreen(page, name) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await settleCoherenceMotion(page);
@@ -1882,19 +2162,74 @@ async function assertCompactSettlementFirstView(page) {
       };
     };
 
+    const describeBlock = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return {
+        tag: element.tagName.toLowerCase(), className: element.className,
+        text: element.textContent.trim().replace(/\s+/gu, ' ').slice(0, 100),
+        top: Math.round(rect.top), bottom: Math.round(rect.bottom),
+        width: Math.round(rect.width), height: Math.round(rect.height),
+        marginTop: style.marginTop, marginBottom: style.marginBottom,
+        paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+        fontSize: style.fontSize, lineHeight: style.lineHeight,
+        display: style.display, minHeight: style.minHeight
+      };
+    };
+    const screen = document.querySelector('.settlement-screen');
+    const hero = screen?.querySelector('.settlement-hero');
+    const eventActions = screen?.querySelector('.event-header-actions');
+
     return {
       viewportHeight: innerHeight,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
       heading: rectFor(".settlement-stage-heading"),
       firstTransfer: rectFor(".settlement-transfer-board .transfer-row"),
       bottomNavigation: rectFor(".product-app-nav"),
+      actionLabels: [...document.querySelectorAll(
+        ".settlement-screen > .event-header-actions .event-header-action-label"
+      )].map((label) => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return {
+          text: label.textContent.trim(),
+          fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+          buttonHeight: Math.round(label.closest("button").getBoundingClientRect().height)
+        };
+      }),
       screenPaddingBottom: parseFloat(
         getComputedStyle(document.querySelector(".settlement-screen")).paddingBottom
-      ) || 0
+      ) || 0,
+      blocks: [...(screen?.children ?? [])].map(describeBlock),
+      heroBlocks: [...(hero?.children ?? [])].map(describeBlock),
+      eventActionLayout: eventActions ? {
+        ...describeBlock(eventActions),
+        gridTemplateColumns: getComputedStyle(eventActions).gridTemplateColumns,
+        flexDirection: getComputedStyle(eventActions).flexDirection,
+        gap: getComputedStyle(eventActions).gap,
+        children: [...eventActions.children].map(describeBlock)
+      } : null,
+      heroDetails: [
+        '.settlement-hero-title-row', '.settlement-hero-title-row h2',
+        '.settlement-hero-title-row p', '.settlement-hero-total',
+        '.settlement-hero-actions', '.settlement-stage',
+        '.settlement-stage-heading', '.settlement-transfer-board'
+      ].map(selector => {
+        const element = screen?.querySelector(selector);
+        return element ? { selector, ...describeBlock(element) } : { selector, missing: true };
+      })
     };
   });
 
   const extraLargeText = layout.rootFontSize >= 23;
+  if (extraLargeText || process.env.CAPTURE_SETTLEMENT_GEOMETRY === '1') {
+    await test.info().attach('settlement-large-text-geometry', {
+      body: JSON.stringify(layout, null, 2), contentType: 'application/json'
+    });
+    await test.info().attach('settlement-large-text-full-page', {
+      body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+    });
+  }
   if (extraLargeText) {
     expect(layout.heading?.top, "large text keeps transfers close to the primary answer")
       .toBeLessThan(layout.viewportHeight * 1.5);
@@ -1902,6 +2237,11 @@ async function assertCompactSettlementFirstView(page) {
       layout.firstTransfer?.top - layout.heading?.bottom,
       "large text must not introduce an empty block before the first transfer"
     ).toBeLessThanOrEqual(80);
+    expect(layout.actionLabels, "the three event utility actions remain visible").toHaveLength(3);
+    expect(
+      layout.actionLabels.filter(({ fragments, buttonHeight }) => fragments !== 1 || buttonHeight < 48),
+      "large-text event actions keep whole labels and 48px touch targets"
+    ).toEqual([]);
   } else {
     expect(layout.heading?.top, "transfer heading stays in the document flow")
       .toBeLessThan(layout.viewportHeight * 1.5);
@@ -2259,3 +2599,58 @@ async function readHeaderBrandPresentation(page) {
     };
   });
 }
+
+test("AX summary actions keep whole labels and reachable controls at phone widths", async ({ page }) => {
+  for (const viewport of [{ width: 375, height: 667 }, { width: 393, height: 852 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    await page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`).first().click();
+    await page.locator(`[data-action="settle"][data-event-id="${EVENT_ID}"]`).first().click();
+    await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
+    await page.evaluate(() => {
+      const root = document.documentElement;
+      root.classList.add("dynamic-type-active", "dynamic-type-apple", "dynamic-type-extra-large");
+      root.style.setProperty("--apple-font-scale", String(40 / 17));
+      root.style.setProperty("font-size", "37.64706px", "important");
+    });
+    await page.evaluate(() => document.fonts.ready);
+
+    const layout = await page.evaluate(() => {
+      const actions = document.querySelector('.settlement-screen > .event-header-actions');
+      return {
+        rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: innerWidth,
+        labels: [...actions.querySelectorAll('.event-header-action-label')].map(label => {
+          const range = document.createRange();
+          range.selectNodeContents(label);
+          const button = label.closest('button');
+          return {
+            text: label.textContent.trim(),
+            fragments: [...range.getClientRects()].filter(rect => rect.width && rect.height).length,
+            buttonHeight: button.getBoundingClientRect().height,
+            labelWidth: label.scrollWidth,
+            availableWidth: label.clientWidth
+          };
+        })
+      };
+    });
+    expect(layout.rootFontSize).toBeCloseTo(37.64706, 3);
+    expect(layout.labels).toHaveLength(3);
+    expect(layout.documentWidth, `${viewport.width}px: no horizontal page clipping`)
+      .toBeLessThanOrEqual(layout.viewportWidth + 1);
+    for (const label of layout.labels) {
+      expect(label.fragments, `${viewport.width}px: ${label.text} stays on one line`).toBe(1);
+      expect(label.labelWidth, `${viewport.width}px: ${label.text} fits its control`)
+        .toBeLessThanOrEqual(label.availableWidth + 1);
+      expect(label.buttonHeight, `${viewport.width}px: utility action stays tappable`)
+        .toBeGreaterThanOrEqual(48);
+    }
+    for (const action of await page.locator('.settlement-screen > .event-header-actions > button').all()) {
+      await action.click({ trial: true });
+    }
+    await page.locator('.settlement-stage-heading').scrollIntoViewIfNeeded();
+    await expect(page.locator('.settlement-stage-heading')).toBeInViewport();
+  }
+});

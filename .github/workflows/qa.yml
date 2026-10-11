@@ -62,6 +62,16 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
+      - name: Require whole phone actions at maximum preview and iOS accessibility size
+        if: ${{ matrix.project == 'iphone-large-text' }}
+        run: |
+          for size in 32 37.64706; do
+            PW_DYNAMIC_TYPE_SIZE="$size" \
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/test-results-large-text/$size/results.json" \
+              npx playwright test e2e/iphone-landscape-proportions.spec.mjs \
+                --project=iphone-large-text --output="test-results-large-text/$size" --reporter=line,json
+          done
+
       - name: Run mobile layout QA
         run: npm run qa:mobile -- --project=${{ matrix.project }}
 
@@ -73,7 +83,36 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            test-results-large-text/
           retention-days: 7
+
+  cross-platform:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install desktop comparison engines
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Verify cross-platform journeys and matching text layout
+        run: npm run qa:cross-platform
+      - name: Upload cross-platform evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: cross-platform-report
+          path: |
+            playwright-report-cross-platform/
+            test-results-cross-platform/
+          retention-days: 14
 
   two-client-sync:
     needs: unit
@@ -105,9 +144,21 @@ jobs:
 
   # Preserve the existing required-check name, but fail closed if any lane
   # fails, is cancelled or skipped. The deploy workflow still waits for all QA.
+  ios-native:
+    needs: unit
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
+  android-native:
+    needs: unit
+    uses: ./.github/workflows/android-native-parity-qa.yml
+    with:
+      app_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, two-client-sync]
+    needs: [unit, mobile, two-client-sync, cross-platform, ios-native, android-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
@@ -115,10 +166,16 @@ jobs:
           UNIT_RESULT: ${{ needs.unit.result }}
           MOBILE_RESULT: ${{ needs.mobile.result }}
           SYNC_RESULT: ${{ needs.two-client-sync.result }}
+          CROSS_PLATFORM_RESULT: ${{ needs.cross-platform.result }}
+          IOS_NATIVE_RESULT: ${{ needs.ios-native.result }}
+          ANDROID_NATIVE_RESULT: ${{ needs.android-native.result }}
         run: |
           test "$UNIT_RESULT" = success
           test "$MOBILE_RESULT" = success
           test "$SYNC_RESULT" = success
+          test "$CROSS_PLATFORM_RESULT" = success
+          test "$IOS_NATIVE_RESULT" = success
+          test "$ANDROID_NATIVE_RESULT" = success
 
   backup-runtime:
     runs-on: ubuntu-latest

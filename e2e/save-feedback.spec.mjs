@@ -114,7 +114,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     updated_at: initialVersion
   } : null;
   const reads = [];
-  const canonicalWrites = [], personalAttempts = [];
+  const canonicalWrites = [], canonicalRequests = [], personalAttempts = [];
   const errors = [];
   const reloadDiagnostics = [];
   let reloading = false;
@@ -171,6 +171,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     if (url.pathname.endsWith("/rpc/join_shared_event")) return reply(true);
     if (url.pathname.endsWith("/rpc/update_shared_event_snapshot")) {
       const payload = request.postDataJSON();
+      canonicalRequests.push(structuredClone(payload));
       const writtenEvent = payload.p_state.events[0];
       const target = includeSecondEvent && payload.p_snapshot_id === secondSharedId ? secondShared : shared;
       if (deleteRetry ? writtenEvent?.deletedNotes?.some(note => note.id === "cache-sync-note")
@@ -286,6 +287,20 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
   if (process.env.NOTE_EDITOR_DIAGNOSTICS === "1") await expect.poll(() => page.evaluate(() => typeof window.__qaNoteEditorState)).toBe("function");
   const eventButton = page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first();
   await expect(eventButton).toBeVisible();
+  if (permissionContext) {
+    // Reproduce the stale bootstrap snapshot deterministically. This calls the
+    // same store module already used by the app, with the real isolated RPC
+    // transport and authenticated fixture; no production handler is replaced.
+    const firstRequest = canonicalRequests.length;
+    await page.evaluate(async ({ initialState, permissionPending, spaceId }) => {
+      localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(permissionPending));
+      const { saveSharedState } = await import("/src/data/localStore.mjs");
+      await saveSharedState(initialState, { awaitCloud: true });
+    }, { initialState, permissionPending, spaceId });
+    const siblingRequests = canonicalRequests.slice(firstRequest).filter(request => request.p_snapshot_id === secondSharedId);
+    expect(siblingRequests.length).toBeGreaterThan(0);
+    expect(siblingRequests.every(request => request.p_state.events[0].notes.some(note => note.id === "pending-permission-note")), "a stale bootstrap must preserve the pending note in every final RPC payload").toBe(true);
+  }
   await eventButton.click();
   await page.locator('[data-action="open-event-notes"]').click();
   if (status === "partial-create" || receiptConflict) await page.locator('[data-action="new-event-note"]').click();

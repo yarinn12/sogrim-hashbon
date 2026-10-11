@@ -85,34 +85,47 @@ test.describe("startup splash", () => {
   });
 
   test("keeps a branded frame over the video until its first playable frame", async ({ page }) => {
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-
-    const samples = [];
-    for (let index = 0; index < 20; index += 1) {
-      const sample = await page.evaluate(() => {
+    // Capture inside the page from document start. On a busy runner the splash
+    // may finish before Playwright returns from navigation to begin sampling.
+    await page.addInitScript(() => {
+      const samples = [];
+      window.__qaSplashFrameSamples = samples;
+      let seenSplash = false;
+      const sample = () => {
         const node = document.querySelector("#app-splash");
-        if (!node?.isConnected) return null;
+        if (!node?.isConnected) {
+          if (seenSplash) {
+            window.clearInterval(interval);
+            observer.disconnect();
+          }
+          return;
+        }
+        seenSplash = true;
         const video = node.querySelector(".app-splash-video");
         const fallback = node.querySelector(".app-splash-hold");
-        const result = {
+        if (!video || !fallback) return;
+        samples.push({
           ready: node.classList.contains("is-video-ready"),
-          videoOpacity: video ? getComputedStyle(video).opacity : "missing",
-          fallbackOpacity: fallback ? getComputedStyle(fallback).opacity : "missing",
-          autoplay: video?.autoplay ?? false,
-          poster: video?.getAttribute("poster") ?? ""
-        };
-        return node.isConnected ? result : null;
-      });
-      if (!sample) break;
-      samples.push(sample);
-      await page.waitForTimeout(25);
-    }
+          fallback: node.classList.contains("is-fallback"),
+          videoOpacity: getComputedStyle(video).opacity,
+          fallbackOpacity: getComputedStyle(fallback).opacity,
+          autoplay: video.autoplay,
+          poster: video.getAttribute("poster") ?? ""
+        });
+      };
+      const observer = new MutationObserver(sample);
+      observer.observe(document, { childList: true, attributes: true, subtree: true, attributeFilter: ["class", "style"] });
+      const interval = window.setInterval(sample, 25);
+    });
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("#app-splash")).toHaveCount(0, { timeout: 8_000 });
+    const samples = await page.evaluate(() => window.__qaSplashFrameSamples);
 
     expect(samples.length).toBeGreaterThan(0);
     for (const sample of samples) {
       expect(sample.autoplay).toBe(true);
       expect(sample.poster).toBe("./assets/sogrim-logo-intro-hold.jpg");
-      if (sample.ready) {
+      if (sample.ready && !sample.fallback) {
         expect(sample.videoOpacity).toBe("1");
         expect(sample.fallbackOpacity).toBe("0");
       } else {

@@ -1,4 +1,6 @@
 import { expect, test } from "@playwright/test";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 const OWNER = "person-navigation-owner";
 const FRIEND = "person-navigation-friend";
@@ -142,8 +144,8 @@ test("permission feedback for an unavailable event has no broken review action",
   await expect(summary.locator('[data-action="open-event"]')).toHaveCount(0);
 });
 
-test("permission feedback arriving after home render keeps its event action stable", async ({ page }) => {
-  await page.goto("/");
+async function assertLatePermissionFeedbackKeepsEventActionStable(page) {
+  await openRenderedHome(page);
   const home = page.locator('.screen[data-screen-kind="home"]');
   await expect(home.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first()).toBeVisible();
   const summary = home.locator("[data-sync-account-summary]");
@@ -167,4 +169,19 @@ test("permission feedback arriving after home render keeps its event action stab
   expect(stableAfterObserver).toBe(true);
   await expect(summary).toContainText("אירוע ניווט");
   await expect(review).toHaveCount(1);
+}
+
+test("permission feedback arriving after home render keeps its event action stable", async ({ page }) => {
+  await assertLatePermissionFeedbackKeepsEventActionStable(page);
+});
+
+test("late permission feedback keeps its event action stable before a nonessential image loads", async ({ page, baseURL }) => {
+  const heldImage = await holdNonessentialHomeImage(page, baseURL);
+  try {
+    await assertLatePermissionFeedbackKeepsEventActionStable(page);
+    expect(heldImage.requested, "the held image must actually be requested").toBe(true);
+    expect(await page.evaluate(() => document.readyState)).toBe("interactive");
+  } finally {
+    heldImage.release();
+  }
 });
