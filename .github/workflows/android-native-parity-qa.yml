@@ -106,7 +106,9 @@ jobs:
           NODE_OPTIONS="--import=file://$PWD/scripts/qa/android-native-isolated/offline-build-config.mjs" npm run native:prepare > artifacts/android-native-isolated/www-build.log 2>&1
           node scripts/qa/android-native-isolated/prepare-fixture.mjs
           npx cap copy android > artifacts/android-native-isolated/cap-copy.log 2>&1
-          (cd android && bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m') > artifacts/android-native-isolated/apk-build.log 2>&1
+          node scripts/qa/android-native-isolated/observe-gradle-build.mjs \
+            --cwd android --output artifacts/android-native-isolated/gradle-build-observation --source "$ANDROID_QA_SOURCE" \
+            -- bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m'
           python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"
           "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/apk-badging.txt
           grep -q "package: name='com.sogrimhashbon.app.debug'" artifacts/android-native-isolated/apk-badging.txt
