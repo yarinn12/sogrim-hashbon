@@ -360,3 +360,15 @@ health and source/APK requirements remain in place. Collecting a report or
 rejecting a dialog does not resolve the historical4acd ANR; its root cause is
 still open until exact PID/time/phase thread evidence or a faithful cause proof
 is obtained.
+
+Successful logcat/DropBox reads may themselves contain historical system
+permission warnings. On exact source ae8ca15, the final all-buffer read returned0
+with valid threadtime data, but four recorded DisplayManagerService warnings
+were incorrectly treated as failures of the reading command. These exact API36.1
+lines are frozen in the regression fixture. Command exit/error, diagnostic stderr
+and a plain command-error first line still reject collection; every final logcat
+read must also contain actual threadtime protocol. Empty/malformed final output
+cannot borrow success from earlier healthy continuous history. Historical data
+remains unmodified and the complete target-app ANR gate still rejects an incident
+after recovery. The original ae8ca15 cleanup failure and historical4acd ANR remain
+preserved; this tooling correction requires a fresh exact-source SDK run.

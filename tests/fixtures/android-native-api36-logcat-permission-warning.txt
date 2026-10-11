@@ -1,0 +1,4 @@
+10-11 01:38:34.714   689   689 W DisplayManagerService: Permission Denial: getWifiDisplayStatus() from pid=689, uid=1000 requires android.permission.ACCESS_FINE_LOCATION
+10-11 01:38:34.714   689   689 W DisplayManagerService: Permission Denial: getWifiDisplayStatus() from pid=689, uid=1000 requires android.permission.ACCESS_FINE_LOCATION
+10-11 01:38:36.761   689   773 W DisplayManagerService: Permission Denial: getWifiDisplayStatus() from pid=1076, uid=10194 requires android.permission.ACCESS_FINE_LOCATION
+10-11 01:38:36.769   689  1246 W DisplayManagerService: Permission Denial: getWifiDisplayStatus() from pid=1076, uid=10194 requires android.permission.ACCESS_FINE_LOCATION

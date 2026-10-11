@@ -60,3 +60,37 @@ test('target ANR first observed in final snapshot still captures one bugreport b
   const f=fixture(t),original=f.config.run;f.config.run=(binary,args,options)=>args[2]==='logcat'?{status:0,stdout:actualAnr+'\n'+healthy}:original(binary,args,options);
   const r=collectOwnedAnrDiagnostics(f.config);assert.equal(r.anrHistoryReady,false);assert.equal(r.bugreportRequested,true);assert.ok(r.bugreport.bytes>0);assert.equal(f.calls.filter(args=>args[2]==='bugreport').length,1);assert.ok(r.commands.some(command=>command.name==='logcat-post-bugreport'));
 });
+
+// Unmodified warning lines from ae8ca15/API36.1 final logcat. The command
+// returned0 with actual threadtime data; these are recorded system events,
+// not a permission failure of the diagnostic command that read the history.
+const actualPermissionWarnings=readFileSync(new URL('./fixtures/android-native-api36-logcat-permission-warning.txt',import.meta.url),'utf8');
+function logcatResponse(f,response){const original=f.config.run;f.config.run=(binary,args,options)=>{const result=original(binary,args,options);return args[2]==='logcat'?response:result;};}
+test('actual API36 permission warnings in successful logcat remain intact and do not fail collection',t=>{
+  const f=fixture(t);logcatResponse(f,{status:0,stdout:actualPermissionWarnings});const r=collectOwnedAnrDiagnostics(f.config);
+  assert.equal(r.diagnosticsComplete,true);assert.equal(r.anrHistoryReady,true);assert.equal(r.bugreportRequested,false);
+  assert.equal(readFileSync(join(f.out,'logcat-final.txt'),'utf8'),actualPermissionWarnings);assert.equal(f.calls.filter(args=>args[2]==='logcat').length,1);
+});
+test('empty or plain command-error final logcat cannot pass using healthy earlier history',t=>{
+  for(const stdout of ['', 'Permission Denial: logcat command not allowed','Unknown command: logcat',"Can't find service: logcat"]){
+    const f=fixture(t);logcatResponse(f,{status:0,stdout});const r=collectOwnedAnrDiagnostics(f.config);
+    assert.equal(r.diagnosticsComplete,false);assert.equal(r.commands.find(command=>command.name==='logcat-final').ok,false);assert.equal(f.calls.filter(args=>args[2]==='logcat').length,1);
+  }
+});
+test('actual diagnostic stderr denial remains a failure even with valid stdout history',t=>{
+  const f=fixture(t);logcatResponse(f,{status:0,stdout:actualPermissionWarnings,stderr:'adb: Permission Denial: unable to read logs'});const r=collectOwnedAnrDiagnostics(f.config);
+  assert.equal(r.diagnosticsComplete,false);assert.match(readFileSync(join(f.out,'logcat-final.txt'),'utf8'),/STDERR:\nadb: Permission Denial/);
+});
+test('permission warning inside a retained foreign DropBox trace is data rather than a failed dump command',t=>{
+  const f=fixture(t),original=f.config.run,body='Drop box contents: 1 entries\nProcess: foreign.app\nRecorded trace: Permission Denial: old system warning';
+  f.config.run=(binary,args,options)=>{const result=original(binary,args,options);return args[6]==='data_app_anr'?{status:0,stdout:body}:result;};
+  const r=collectOwnedAnrDiagnostics(f.config);assert.equal(r.diagnosticsComplete,true);assert.equal(r.anrHistoryReady,true);assert.equal(readFileSync(join(f.out,'dropbox-data-app-anr.txt'),'utf8'),body);
+});
+test('plain dump permission denial and a nonzero logcat command still fail without retry',t=>{
+  for(const failure of ['dump-denial','dump-unknown','logcat-exit']){
+    const f=fixture(t),original=f.config.run;f.config.run=(binary,args,options)=>{const result=original(binary,args,options);
+      if(args[6]==='data_app_anr'&&failure!=='logcat-exit')return {status:0,stdout:failure==='dump-denial'?'Permission Denial: requires DUMP':'Unknown command: --print'};
+      return args[2]==='logcat'&&failure==='logcat-exit'?{status:1,stdout:actualPermissionWarnings}:result;};
+    const r=collectOwnedAnrDiagnostics(f.config);assert.equal(r.diagnosticsComplete,false);assert.equal(f.calls.filter(args=>args[2]==='logcat').length,1);
+  }
+});

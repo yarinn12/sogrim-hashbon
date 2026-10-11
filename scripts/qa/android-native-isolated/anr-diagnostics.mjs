@@ -30,7 +30,11 @@ export function collectOwnedAnrDiagnostics({adbPath,device,avd,source,output,job
     try{result=run(adbPath,['-s',device,...args],{encoding:'utf8',timeout,killSignal:'SIGKILL',windowsHide:true,maxBuffer:32*1024*1024});}catch(error){result={status:null,error};}
     row.exitCode=result.status;row.error=result.error?.message;row.completedAtUtc=new Date().toISOString();
     const stdout=result.stdout||'',stderr=result.stderr||'';writeFileSync(resolve(out,name+'.txt'),stdout+(stderr?'\nSTDERR:\n'+stderr:''));
-    row.ok=!result.error&&result.status===0&&!/Permission Denial|Unknown command|Can't find service/i.test(stdout+stderr);report.commands.push(row);return {row,stdout};
+    // Historical log/trace messages are payload, not failures of this command.
+    const firstLine=stdout.trimStart().split(/\r?\n/,1)[0];
+    row.ok=!result.error&&result.status===0&&!/^(?:Permission Denial|Unknown command|Can't find service)(?=[:\s]|$)/i.test(firstLine)&&!/Permission Denial|Unknown command|Can't find service/i.test(stderr);
+    if(args[0]==='logcat'){row.logcatProtocol=protocol.test(stdout);row.ok&&=row.logcatProtocol;}
+    report.commands.push(row);return {row,stdout};
   }
   try{
     const owner=observe('owned-avd',['emu','avd','name'],10000);
