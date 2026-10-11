@@ -60,6 +60,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.6.app
           npm ci
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_validation.py" > build/native-parity/validator-controls.log 2>&1
+          python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/test_native_stall_monitor.py" > build/native-parity/monitor-controls.log 2>&1
           node "$GITHUB_WORKSPACE/scripts/qa/ios-parity/build-www.mjs" > build/native-parity/bundle.log 2>&1
           npx cap sync ios
           node scripts/finalize-native-projects.mjs
@@ -97,10 +98,27 @@ jobs:
             local mode="$1"
             local out="build/native-parity/$mode"
             mkdir -p "$out"
+            local observer_dir="" observer_pid="" test_status
+            observer_dir="$(mktemp -d "$out/observer.XXXXXX")" || echo "::warning::Diagnostic observer output unavailable" >&2
+            if [[ -n "$observer_dir" ]]; then
+              python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/native_stall_monitor.py" \
+                --udid "$PROBE_UDID" --bundle-id com.sogrimhashbon.app \
+                --manifest build/native-parity/package-manifest.json \
+                --source-sha "$APP_SHA" --source-tree "$(git rev-parse 'HEAD^{tree}')" \
+                --output-dir "$observer_dir" --stop-file "$observer_dir/stop" \
+                > "$observer_dir/observer.log" 2>&1 &
+              observer_pid=$!
+            fi
+            test_status=0
             xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
               -destination "platform=iOS Simulator,id=$PROBE_UDID" \
               -derivedDataPath build/native-parity/derived -resultBundlePath "$out/result.xcresult" \
-              test-without-building CODE_SIGNING_ALLOWED=NO > "$out/test.log" 2>&1
+              test-without-building CODE_SIGNING_ALLOWED=NO > "$out/test.log" 2>&1 || test_status=$?
+            if [[ -n "$observer_pid" ]]; then
+              : > "$observer_dir/stop"
+              wait "$observer_pid" || echo "::warning::Native diagnostic observer failed; see $observer_dir/observer.log" >&2
+            fi
+            if (( test_status != 0 )); then return "$test_status"; fi
             container="$(xcrun simctl get_app_container "$PROBE_UDID" com.sogrimhashbon.app data)"
             cp "$container/Documents/native-parity.json" "$out/"
             cp "$container/Documents"/native-parity-*.png "$out/"
