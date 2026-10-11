@@ -18,7 +18,7 @@ async function startupReadinessStatus(page) {
   }
 }
 
-export async function openRenderedHome(page, { path = '/', readyTimeoutMs = 8_000 } = {}) {
+export async function openRenderedHome(page, { path = '/', readyTimeoutMs = 8_000, bootTimeoutMs = 0 } = {}) {
   if (!trackedPages.has(page)) {
     await page.addInitScript(() => {
       // Identifies this document even when Firefox never settles page.goto's
@@ -67,7 +67,7 @@ export async function openRenderedHome(page, { path = '/', readyTimeoutMs = 8_00
           return location.href === targetURL
             && (performance.getEntriesByName('sogrim:start:app-module-ready').length > 0
               || window.__qaHomeDomContentLoaded === true);
-        }, { previousDocumentId, targetURL }, { polling: 100, timeout: 0 }),
+        }, { previousDocumentId, targetURL }, { polling: 100, timeout: bootTimeoutMs }),
         navigationFailure
       ]);
       await bootSignal.dispose();

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { openRenderedHome } from './helpers/typographyReadiness.mjs';
 
 // Run the QA fixture and navigation script themselves. Only the Capacitor
 // identity and screenshot acknowledgement are simulated in this browser test.
@@ -16,6 +17,10 @@ const fields = {
   profile: ['name'],
   'keyboard-ready': ['amount']
 };
+
+async function openPreflightHome(page) {
+  await openRenderedHome(page, { bootTimeoutMs: 15_000, readyTimeoutMs: 15_000 });
+}
 
 async function installNativeReadinessAdapter(page, mode = 'held-info') {
   await page.evaluate(mode => {
@@ -53,10 +58,41 @@ async function installNativeReadinessAdapter(page, mode = 'held-info') {
   }, mode);
 }
 
+test('preflight home is ready before an unrelated deferred script completes', async ({ page, baseURL }) => {
+  test.setTimeout(35_000);
+  let requested = false;
+  let releaseScript;
+  const scriptGate = new Promise(resolve => { releaseScript = resolve; });
+  await page.addInitScript({ content: syntheticService });
+  await page.addInitScript(() => {
+    window.__qaDomContentLoaded = false;
+    document.addEventListener('DOMContentLoaded', () => { window.__qaDomContentLoaded = true; }, { once: true });
+  });
+  await page.route(`${baseURL}/__qa_held_preflight_defer.js`, async route => {
+    requested = true;
+    await scriptGate;
+    await route.fulfill({ status: 200, contentType: 'text/javascript', body: '' });
+  });
+  const homeOrigin = new URL(baseURL).origin;
+  await page.route(url => url.origin === homeOrigin && url.pathname === '/', async route => {
+    const response = await route.fetch();
+    const html = await response.text();
+    await route.fulfill({ response, body: html.replace('</body>',
+      '<script defer src="/__qa_held_preflight_defer.js"></script></body>') });
+  });
+  try {
+    await openPreflightHome(page);
+    await expect.poll(() => requested, { timeout: 3_000 }).toBe(true);
+    expect(await page.evaluate(() => window.__qaDomContentLoaded)).toBe(false);
+    await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+  } finally {
+    releaseScript();
+  }
+});
+
 test('native status stays unavailable through bootstrap and an unacknowledged first capture', async ({ page }, testInfo) => {
   await page.addInitScript({ content: syntheticService });
-  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
-  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await openPreflightHome(page);
   await installNativeReadinessAdapter(page);
   await page.evaluate(journey);
   const starting = await page.evaluate(() => ({
@@ -90,8 +126,7 @@ test('native status stays unavailable through bootstrap and an unacknowledged fi
 
 test('a native bootstrap error is exposed before the first capture rather than hidden behind readiness', async ({ page }) => {
   await page.addInitScript({ content: syntheticService });
-  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
-  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await openPreflightHome(page);
   await installNativeReadinessAdapter(page, 'rejected-info');
   await page.evaluate(journey);
   await page.evaluate(() => globalThis.__iosQaReleaseInfo());
@@ -106,8 +141,7 @@ test('a native bootstrap error is exposed before the first capture rather than h
 
 test('the isolated iOS QA journey reaches keyboard-ready through the real DOM controls', async ({ page }, testInfo) => {
   await page.addInitScript({ content: syntheticService });
-  await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 15_000 });
-  await expect(page.locator('[data-screen-kind="home"]')).toBeVisible({ timeout: 15_000 });
+  await openPreflightHome(page);
 
   await page.evaluate(() => {
     const browserCapacitor = globalThis.Capacitor || {};
