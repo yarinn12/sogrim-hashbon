@@ -102,6 +102,13 @@ def validate_profile(profile, signed):
     require(set(['applinks:sogrim-hesbon-app.vercel.app', 'webcredentials:sogrim-hesbon-app.vercel.app']).issubset(signed.get('com.apple.developer.associated-domains', [])), 'Associated Domains missing')
     return {'profileValidAtVerification': True, 'profileExpiresAt': expiration.replace(tzinfo=datetime.timezone.utc).isoformat(), 'knownCertificateIncluded': True, 'debugEntitlement': False, 'appleSignIn': ['Default']}
 
+def verify_signing_certificate(app_path, directory):
+    certificate_prefix = str(pathlib.Path(directory) / 'signing-cert-')
+    subprocess.run(['/usr/bin/codesign', '-d', '--extract-certificates=' + certificate_prefix, str(app_path)], check=True, capture_output=True)
+    certificate_sha = digest(pathlib.Path(certificate_prefix + '0').read_bytes())
+    require(certificate_sha == CERT_SHA256, 'Actual signing certificate differs from the reviewed distribution certificate')
+    return certificate_sha
+
 def verify(root, expected):
     require(snapshot(root) == expected, 'Prepared web assets changed after snapshot')
     ipa = root / 'build/ios/SogrimHashbon.ipa'
@@ -116,9 +123,7 @@ def verify(root, expected):
         subprocess.run(['/usr/bin/ditto', '-x', '-k', str(ipa), str(extracted)], check=True, capture_output=True)
         app_path = extracted / app
         subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app_path)], check=True, capture_output=True)
-        certificate_prefix = str(extracted / 'signing-cert-')
-        subprocess.run(['/usr/bin/codesign', '-d', '--extract-certificates', certificate_prefix, str(app_path)], check=True, capture_output=True)
-        require(digest(pathlib.Path(certificate_prefix + '0').read_bytes()) == CERT_SHA256, 'Actual signing certificate differs from the reviewed distribution certificate')
+        verify_signing_certificate(app_path, extracted)
         signed_result = subprocess.run(['/usr/bin/codesign', '-d', '--entitlements', ':-', str(app_path)], check=True, capture_output=True)
         signed = plistlib.loads(signed_result.stdout)
         profile_result = subprocess.run(['/usr/bin/security', 'cms', '-D', '-i', str(app_path / 'embedded.mobileprovision')], check=True, capture_output=True)

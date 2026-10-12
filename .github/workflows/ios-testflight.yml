@@ -96,6 +96,8 @@ jobs:
 
       - name: Load public release notes from the frozen application metadata
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+      - name: Check signing certificate command and rejection controls before Apple keys
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
 
       - name: Require all four successful source CI runs before signing secrets
         env:
