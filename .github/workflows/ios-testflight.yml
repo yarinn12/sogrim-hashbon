@@ -1,34 +1,63 @@
-name: iOS TestFlight
-run-name: iOS TestFlight ${{ inputs.version }} (${{ inputs.build }})
+name: iOS signed artifact only
+run-name: iOS signed artifact 4.58 (193) from ${{ inputs.source_sha }}
 
 on:
   workflow_dispatch:
     inputs:
+      source_sha:
+        description: Required full frozen application commit (92cc45ce), never the tooling HEAD
+        required: true
+        type: string
+      qa_run:
+        description: Successful QA run on source_sha (38284309199 for this candidate)
+        required: true
+        type: string
+      windows_run:
+        description: Successful Windows run on source_sha (38284308925 for this candidate)
+        required: true
+        type: string
+      font_run:
+        description: Successful font provenance run on source_sha (38284308997 for this candidate)
+        required: true
+        type: string
+      auth_run:
+        description: Successful iOS auth-return run on source_sha (38284308931 for this candidate)
+        required: true
+        type: string
       version:
-        description: App Store version
+        description: Fixed candidate version; this workflow never uploads to Apple
         required: true
         default: "4.58"
       build:
-        description: Unique TestFlight build number
+        description: Fixed candidate build; this run does not reserve the number
         required: true
         default: "193"
-      release_notes:
-        description: Hebrew TestFlight release notes
-        required: true
-        default: "שופרה התאמת המסכים לאייפון ולטקסט מוגדל. נוספו שיפורים לניהול אירועים ונעיצות אישיות, הזנת הוצאות במטבע זר ושמירה על טיוטות בזמן עדכון. תוקנו תקלות סנכרון והזמנת חברים."
 
 permissions:
   contents: read
+  actions: read
 
+# Shared with the upload path; manual/out-of-band Apple actions still need coordination.
 concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  build-and-upload:
+  build-export-verify-private:
     runs-on: macos-26
     timeout-minutes: 75
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
     env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      SOURCE_QA_RUN: ${{ inputs.qa_run }}
+      SOURCE_WINDOWS_QA_RUN: ${{ inputs.windows_run }}
+      SOURCE_FONT_QA_RUN: ${{ inputs.font_run }}
+      SOURCE_AUTH_QA_RUN: ${{ inputs.auth_run }}
+      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+      WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
@@ -37,61 +66,81 @@ jobs:
       IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
       IOS_VERSION: ${{ inputs.version }}
       IOS_BUILD: ${{ inputs.build }}
-      IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
 
     steps:
-      - name: Checkout
+      - name: Validate mandatory frozen source and release inputs
+        working-directory: ${{ github.workspace }}
+        run: |
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"92cc45ce4ad45cf99d443ee2ead1bcb58375d727");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"193");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+
+      - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: app
+          persist-credentials: false
+
+      - name: Checkout the immutable workflow and shared release helpers
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: app/package-lock.json
 
-      - name: Validate Apple configuration
+      - name: Require all four successful source CI runs before signing secrets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
+
+      - name: Require pinned source CI and read unused build number before signing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" before-build
+
+      - name: Validate existing Apple configuration
         run: node scripts/verify-ios-workflow-env.mjs
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
           APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
-      - name: Verify public Apple login provider readiness
+      - name: Verify public Apple login provider readiness by reading existing configuration
         run: npm run qa:ios:providers
 
-      - name: Select and verify Xcode 26.6
+      - name: Select and verify Xcode 26.6 and iPhone SDK
         run: |
+          set -euo pipefail
           sudo xcode-select -s /Applications/Xcode_26.6.app
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
 
-      - name: Run release checks
+      - name: Build web assets and prepare the native project from the pinned checkout
         run: |
-          npm test
+          set -euo pipefail
           npm run native:ios:flatten-icon
           npm run native:prepare
+          node scripts/prepare-ios-release.mjs
+          npm run qa:ios
+          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-web-assets.py" snapshot
 
-      - name: Verify Apple login on iPhone and iPad WebKit
-        run: |
-          npx playwright install webkit
-          npm run qa:mobile -- e2e/ios-apple-provider-discovery.spec.mjs e2e/account-auth-feedback.spec.mjs e2e/iphone-google-session.spec.mjs e2e/native-auth-roundtrip.spec.mjs e2e/email-login-completion.spec.mjs --project=iphone-webkit --project=ipad-webkit
-
-      - name: Prepare Apple release settings
-        run: node scripts/prepare-ios-release.mjs
-
-      - name: Verify prepared iOS release
-        run: npm run qa:ios
-
-      - name: Import Apple Distribution certificate
+      - name: Import the existing Apple Distribution certificate
         uses: apple-actions/import-codesign-certs@v7
         with:
           p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
           p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
 
-      - name: Download App Store provisioning profile
+      - name: Download an existing active App Store provisioning profile
         uses: apple-actions/download-provisioning-profiles@v6
         with:
           bundle-id: com.sogrimhashbon.app
@@ -100,13 +149,17 @@ jobs:
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
-      - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-
-      - name: Archive signed iOS app
+      - name: Resolve Swift packages and retain the resolved dependency identity
         run: |
-          mkdir -p build/ios
-          set -o pipefail
+          set -euo pipefail
+          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
+          resolved="ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
+          test -f "$resolved"
+          cp "$resolved" build/ios/Package.resolved
+
+      - name: Archive signed iOS app without sending anything to Apple
+        run: |
+          set -euo pipefail
           xcodebuild \
             -project ios/App/App.xcodeproj \
             -scheme App \
@@ -117,51 +170,63 @@ jobs:
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             | tee build/ios/archive.log
 
-      - name: Export IPA
+      - name: Export IPA locally without upload destination
         run: |
-          set -o pipefail
+          set -euo pipefail
+          /usr/libexec/PlistBuddy -c 'Print :destination' ios/ExportOptions.generated.plist | grep -x export
           xcodebuild \
             -exportArchive \
             -archivePath build/ios/SogrimHashbon.xcarchive \
             -exportOptionsPlist ios/ExportOptions.generated.plist \
             -exportPath build/ios/export \
             | tee build/ios/export.log
-          ipa_path="$(find build/ios/export -maxdepth 2 -name '*.ipa' -print -quit)"
-          test -n "$ipa_path"
-          cp "$ipa_path" build/ios/SogrimHashbon.ipa
+          python3 - <<'EXPORT'
+          from pathlib import Path
+          import shutil
+          files = list(Path('build/ios/export').rglob('*.ipa'))
+          if len(files) != 1:
+              raise ValueError('Expected exactly one exported IPA')
+          shutil.copyfile(files[0], 'build/ios/SogrimHashbon.ipa')
+          EXPORT
 
-      - name: Verify signed iOS artifact
+      - name: Verify signed iOS artifact with the existing signature verifier
         run: npm run qa:ios:artifact
 
-      - name: Upload app to TestFlight
-        uses: apple-actions/upload-testflight-build@v5
-        with:
-          app-path: build/ios/SogrimHashbon.ipa
-          app-type: ios
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          # The action retains a ten-minute token throughout polling. Upload only;
-          # the next required step renews authentication and verifies VALID + notes.
-          wait-for-processing: "false"
-          backend: appstore-api
+      - name: Recheck exact source CI and current unused number after export
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" after-export
 
-      - name: Verify Apple processing and complete TestFlight notes
-        run: node scripts/complete-ios-testflight.mjs
+      - name: Require all packaged web assets, release entitlements and valid distribution profile
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-web-assets.py" verify
+
+      - name: Encrypt only the verified IPA and its evidence for private retention
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          tar -cf "$RUNNER_TEMP/sogrim-ios-release.tar" -C build/ios \
+            SogrimHashbon.ipa release-manifest.json artifact-verification.json \
+            source-ci-only.json source-before-build.json source-after-export.json web-assets.json Package.resolved
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" encrypt \
+            "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
 
-      - name: Keep IPA and diagnostics for seven days
-        if: always()
+      - name: Retain only encrypted release output for seven days
+        id: private_artifact
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-hashbon-ios-${{ env.IOS_VERSION }}-${{ env.IOS_BUILD }}
+          name: sogrim-ios-4.58-193-encrypted
           path: |
-            build/ios/SogrimHashbon.ipa
-            build/ios/release-manifest.json
-            build/ios/testflight-completion.json
-            build/ios/*.log
-            test-results/
-            playwright-report/
-          if-no-files-found: warn
+            app/build/ios/private-artifact/release.tar.enc
+            app/build/ios/private-artifact/envelope.json
+          if-no-files-found: error
           retention-days: 7
+
+      - name: Record preparation outcome
+        run: |
+          printf '%s\n' \
+            'Signed iOS 4.58 (193) artifact prepared from 92cc45ce4ad45cf99d443ee2ead1bcb58375d727.' \
+            'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
+            'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
+            >> "$GITHUB_STEP_SUMMARY"
