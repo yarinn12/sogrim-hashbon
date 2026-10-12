@@ -354,9 +354,9 @@ test("returning online flushes whatever was queued", () => {
   );
   assert.match(
     localStore,
-    /async function recoverOnlineSync\(\) \{[\s\S]*?runtimeConfigPromise = null;[\s\S]*?return flushPendingSharedState\(\);/
+    /async function recoverOnlineSync\(\) \{[\s\S]*?runtimeConfigPromise = null;[\s\S]*?return flushPendingSharedState\(\{ automatic: true \}\);/
   );
-  assert.match(localStore, /export async function flushPendingSharedState\(\)/);
+  assert.match(localStore, /export async function flushPendingSharedState\(\{ automatic = false \} = \{\}\)/);
 });
 
 test("an expired cloud token refreshes once without crossing account boundaries", () => {
@@ -391,7 +391,7 @@ test("concurrent online and resume recovery share one ordered flush", () => {
   );
   assert.match(
     flush,
-    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => loadAccountRequestIsCurrent\(requestScope, requestAccountGeneration\)\s*\? flushPendingSharedStateOnce\(\)/,
+    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => loadAccountRequestIsCurrent\(requestScope, requestAccountGeneration\)\s*\? flushPendingSharedStateOnce\(\{ automatic \}\)/,
     "recovery waits for any active save instead of writing concurrently"
   );
   assert.match(
@@ -525,7 +525,7 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(localStore, /mode: acceptedPending \? "queued" : "cloud"/);
   assert.match(
     localStore,
-    /const result = await flushPendingSharedState\(\)/
+    /const result = await flushPendingSharedState\(\{ automatic: true \}\)/
   );
   assert.match(localStore, /Math\.min\(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS\.length - 1\)/);
   assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);

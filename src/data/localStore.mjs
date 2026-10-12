@@ -309,7 +309,9 @@ async function syncAndPersistCloudState(
     const sharedWriteAlreadyConfirmed = Boolean(error.sharedEventPersisted && error.persistedState);
     await new Promise((resolve) => setTimeout(resolve, 350));
     try {
-      return await syncAndPersistCloudStateOnce(config, retryState, syncSelection, sharedWriteAlreadyConfirmed);
+      return await syncAndPersistCloudStateOnce(
+        config, retryState, selectionWithPermanentFailures(syncSelection, error), sharedWriteAlreadyConfirmed
+      );
     } catch (retryError) {
       if (hasPriorProgress && !retryError.sharedEventPersisted) {
         const latestProgress = retryError.partialSharedState;
@@ -317,6 +319,7 @@ async function syncAndPersistCloudState(
         // merges. Carry that progress forward, but use the latest failed IDs:
         // historical success is not confirmation of the final attempted state.
         retryError.partialSharedState = {
+          ...latestProgress,
           state: latestProgress?.state ?? retryState,
           succeededEventIds: [...new Set([
             ...priorProgress.succeededEventIds,
@@ -739,7 +742,7 @@ async function recoverOnlineSync() {
     runtimeConfigPromise = null;
     runtimeConfigUsedFallback = false;
   }
-  return flushPendingSharedState();
+  return flushPendingSharedState({ automatic: true });
 }
 
 async function nativeRuntimeConfigRequestOptions(nativeRuntime) {
@@ -962,7 +965,7 @@ async function loadSharedStateOnce(requestScope) {
           const syncedState = (await syncAndPersistCloudState(
             runtimeConfig,
             mergedState,
-            pendingSelection
+            selectionWithPendingFailure(runtimeConfig, pendingSelection)
           )).state;
           if (!loadAccountRequestIsCurrent(
             requestScope,
@@ -1039,6 +1042,7 @@ async function loadSharedStateOnce(requestScope) {
             runtimeConfig, pendingPayload, requestScope,
             requestAccountGeneration, requestSaveGeneration
           });
+          blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
           if (isRetryablePendingSyncFailure(error)) {
             publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
             schedulePendingSharedStateRetry();
@@ -1050,7 +1054,6 @@ async function loadSharedStateOnce(requestScope) {
             });
             emitOperationDeferred("state_load", { screen: "boot", error });
           } else {
-            blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
             publishSyncFailure(error, { pending: true });
             logSyncFailure(error, {
               sharedEventMutation: true,
@@ -1447,7 +1450,9 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
             reconcileCurrentPendingSync(runtimeConfig);
             emitOperationDeferred("state_save", { error });
           } else if (acceptedPending) {
-            blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
+            // An accepted partial save gets one bounded recovery attempt. A
+            // mixed transient failure must already hold its denied sibling.
+            if (retryablePendingFailure) blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
             // A durable local snapshot is a successful user save. Cloud delivery
             // continues in the background and must not trigger false failure UI.
             publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
@@ -1534,14 +1539,14 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
       };
 }
 
-export async function flushPendingSharedState() {
+export async function flushPendingSharedState({ automatic = false } = {}) {
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountGeneration = accountStorageGeneration;
   if (!pendingSyncFlushPromise) {
     cloudWriteQueue = cloudWriteQueue
       .catch(() => {})
       .then(() => loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)
-        ? flushPendingSharedStateOnce()
+        ? flushPendingSharedStateOnce({ automatic })
         : staleAccountSaveResult());
     trackActiveCloudWrite(cloudWriteQueue, requestScope, requestAccountGeneration);
     const request = cloudWriteQueue.finally(() => {
@@ -1556,7 +1561,7 @@ export async function flushPendingSharedState() {
 }
 
 
-async function flushPendingSharedStateOnce() {
+async function flushPendingSharedStateOnce({ automatic = false } = {}) {
   const requestScope = synchronizeAccountStorageScope();
   const requestAccountGeneration = accountStorageGeneration;
   const requestSaveGeneration = sharedStateSaveGeneration;
@@ -1597,6 +1602,10 @@ async function flushPendingSharedStateOnce() {
 
   const syncSelection = pendingSharedStateSelection(runtimeConfig);
 
+  if (automatic && allPendingTargetsBlocked(runtimeConfig, syncSelection)) {
+    return { ok: false, pending: true, blocked: true };
+  }
+
   publishSyncStatus("saving");
   try {
     const remoteState = await loadCloudState(runtimeConfig, pendingState);
@@ -1610,7 +1619,7 @@ async function flushPendingSharedStateOnce() {
     const saved = await syncAndPersistCloudState(
       runtimeConfig,
       mergedState,
-      syncSelection
+      automatic ? selectionWithPendingFailure(runtimeConfig, syncSelection) : syncSelection
     );
     if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration)) {
       return staleAccountSaveResult();
@@ -1648,6 +1657,7 @@ async function flushPendingSharedStateOnce() {
       runtimeConfig, pendingPayload, requestScope,
       requestAccountGeneration, requestSaveGeneration
     });
+    blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
     const retryablePendingFailure = isRetryablePendingSyncFailure(error);
     if (retryablePendingFailure) {
       publishSyncStatus("reconnecting", { failureKind: saveFailureKind(error) });
@@ -1659,7 +1669,6 @@ async function flushPendingSharedStateOnce() {
         reverted: false
       });
     } else {
-      blockAutomaticPendingSharedStateRetry(runtimeConfig, error);
       publishSyncFailure(error, { pending: true });
       logSyncFailure(error, {
         sharedEventMutation: true,
@@ -2212,6 +2221,54 @@ function pendingSharedStateSelection(config) {
   return pending ? buildSharedEventSyncSelection(null, pending) : null;
 }
 
+function permanentSharedFailures(error) {
+  return (error?.partialSharedState?.failedItems ?? [])
+    .filter(item => ["event", "deletion"].includes(item?.kind) && item.id &&
+      !isRetryablePendingSyncFailure(item.error))
+    .map(item => ({
+      kind: item.kind, id: item.id,
+      status: Number(item.error?.status ?? 0),
+      code: String(item.error?.code ?? "")
+    }));
+}
+
+function selectionWithPermanentFailures(selection, error) {
+  const deferredFailures = [
+    ...(selection?.deferredFailures ?? []),
+    ...permanentSharedFailures(error)
+  ];
+  return deferredFailures.length
+    ? { ...selection, deferredFailures: [...new Map(deferredFailures.map(item =>
+      [`${item.kind}:${item.id}`, item])).values()] }
+    : selection;
+}
+
+function matchingBlockedPendingFailure(config) {
+  const blocked = pendingSyncPermanentFailure;
+  return blocked?.key === pendingSyncStorageKey(config) &&
+    blocked.payload === pendingSharedStateRaw(config) &&
+    blocked.accountGeneration === accountStorageGeneration ? blocked : null;
+}
+
+function selectionWithPendingFailure(config, selection) {
+  const blocked = matchingBlockedPendingFailure(config);
+  return blocked?.deferredFailures?.length
+    ? { ...selection, deferredFailures: blocked.deferredFailures }
+    : selection;
+}
+
+function allPendingTargetsBlocked(config, selection) {
+  const blocked = matchingBlockedPendingFailure(config);
+  if (!blocked) return false;
+  if (blocked.blockAll) return true;
+  const selected = [
+    ...(selection?.eventIds ?? []).map(id => ({ kind: "event", id })),
+    ...(selection?.deletedEventIds ?? []).map(id => ({ kind: "deletion", id }))
+  ];
+  return selected.length > 0 && selected.every(item =>
+    blocked.deferredFailures.some(held => held.kind === item.kind && held.id === item.id));
+}
+
 function savePendingSharedState(config, sharedState, syncSelection = null, { replaceSelection = false } = {}) {
   try {
     const inherited = replaceSelection ? null : pendingSharedStateSelection(config);
@@ -2323,11 +2380,12 @@ function schedulePendingSharedStateRetry() {
     if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration) ||
         retryGeneration !== pendingSyncRetryGeneration) return;
     pendingSyncRetryTimer = 0;
-    const result = await flushPendingSharedState().catch((error) => ({ ok: false, error }));
+    const result = await flushPendingSharedState({ automatic: true }).catch((error) => ({ ok: false, error }));
     // Online recovery or a newer edit may replace this retry while it awaits
     // the flush. Only the callback that still owns the schedule may change it.
     if (!loadAccountRequestIsCurrent(requestScope, requestAccountGeneration) ||
         retryGeneration !== pendingSyncRetryGeneration) return;
+    if (result?.blocked) return;
     if (result?.ok && !result?.pending) {
       resetPendingSharedStateRetry();
     } else if (result?.pending || isRetryablePendingSyncFailure(result?.error)) {
@@ -2351,7 +2409,8 @@ function resetPendingSharedStateRetry() {
 }
 
 function blockAutomaticPendingSharedStateRetry(config, error) {
-  if (isRetryablePendingSyncFailure(error)) return;
+  const deferredFailures = permanentSharedFailures(error);
+  if (!deferredFailures.length && isRetryablePendingSyncFailure(error)) return;
   const payload = pendingSharedStateRaw(config);
   if (!payload) return;
   // Keep reads active, but do not re-send the same rejected payload on every
@@ -2359,18 +2418,17 @@ function blockAutomaticPendingSharedStateRetry(config, error) {
   // rotating the same account's token does not change a permission denial.
   pendingSyncPermanentFailure = {
     key: pendingSyncStorageKey(config), payload,
-    accountGeneration: accountStorageGeneration
+    accountGeneration: accountStorageGeneration,
+    deferredFailures,
+    blockAll: deferredFailures.length === 0
   };
 }
 
 function shouldDeferPendingSharedStateRetry(config) {
-  const blocked = pendingSyncPermanentFailure;
   return Boolean(
     pendingSyncRetryTimer ||
     (pendingSyncRetryNotBefore && Date.now() < pendingSyncRetryNotBefore) ||
-    (blocked && blocked.key === pendingSyncStorageKey(config) &&
-      blocked.payload === pendingSharedStateRaw(config) &&
-      blocked.accountGeneration === accountStorageGeneration)
+    allPendingTargetsBlocked(config, pendingSharedStateSelection(config))
   );
 }
 

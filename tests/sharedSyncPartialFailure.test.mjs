@@ -67,10 +67,10 @@ function capturePendingRetryTimers() {
   window.clearTimeout = id => timers.delete(id);
   return {
     timers,
-    async runNext() {
+    async runNext(expectedDelay = 1_200) {
       assert.equal(timers.size, 1, "exactly one background retry must drive retained work");
       const [id, { callback, delay }] = timers.entries().next().value;
-      assert.equal(delay, 1_200, "use the existing bounded retry schedule");
+      assert.equal(delay, expectedDelay, "use the existing bounded retry schedule");
       timers.delete(id);
       await callback();
     }
@@ -356,6 +356,56 @@ test("partial permission failure pauses only the remaining event until an explic
   assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "local-failing-note"));
   assert.equal(storage.getItem(key), null);
 }, { status: 403 }));
+
+test("mixed permission and temporary failures retry only the temporary event", async () => {
+  let temporaryFailure = true, permissionFailure = true;
+  await fixture(async ({ pending, storage, workspaceId, canonical }) => {
+    const key = `settle-friends-pending-sync:${workspaceId}`;
+    storage.setItem(key, JSON.stringify(pending));
+    const attempts = [];
+    const transport = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      if (String(url).endsWith("/rpc/update_shared_event_snapshot")) {
+        const body = JSON.parse(options.body);
+        attempts.push({ id: body.p_snapshot_id, state: body.p_state });
+      }
+      return transport(url, options);
+    };
+    const timers = capturePendingRetryTimers();
+    const store = await import(`../src/data/localStore.mjs?mixed-permission-retry=${crypto.randomUUID()}`);
+    const count = id => attempts.filter(attempt => attempt.id === `space-partial-${id}`).length;
+
+    assert.equal((await store.flushPendingSharedState()).ok, false);
+    assert.equal(count("healthy"), 1, "an immediate retry cannot resend the known 403 payload");
+    assert.equal(count("failing"), 2, "the temporary failure remains eligible for immediate retry");
+    const firstPending = storage.getItem(key);
+    assert.ok(firstPending);
+    await timers.runNext();
+    assert.equal(count("healthy"), 1, "background retry cannot resend the denied event");
+    assert.ok(count("failing") > 2, "background retry still attempts the temporary event");
+    assert.equal(storage.getItem(key), firstPending, "both unacknowledged intents remain durable");
+
+    temporaryFailure = false;
+    await timers.runNext(3_500);
+    assert.equal(count("healthy"), 1);
+    assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "local-failing-note"));
+    assert.deepEqual(JSON.parse(storage.getItem(key)).__pendingSync.selection,
+      { eventIds: ["healthy"], deletedEventIds: [] });
+    assert.equal(timers.timers.size, 0, "a lone denied event cannot keep the retry timer alive");
+    assert.ok(attempts.filter(attempt => attempt.id === "space-partial-failing").every(attempt =>
+      attempt.state.events[0].notes.some(note => note.id === "local-failing-note")));
+
+    assert.equal((await store.flushPendingSharedState()).ok, false,
+      "the user's explicit retry still reaches the denied event");
+    assert.equal(count("healthy"), 2);
+    permissionFailure = false;
+    assert.equal((await store.flushPendingSharedState()).ok, true);
+    assert.ok(canonical.get("space-partial-healthy").events[0].notes.some(note => note.id === "local-healthy-note"));
+    assert.equal(storage.getItem(key), null, "clear only after the final shared and personal receipts");
+  }, { canonicalStatus: id => id === "space-partial-healthy"
+    ? permissionFailure ? 403 : 200
+    : temporaryFailure ? 503 : 200 });
+});
 
 for (const receiptStatus of [403, 503]) {
 for (const path of ["save", "flush", "load"]) {
