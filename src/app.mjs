@@ -8230,11 +8230,11 @@ function renderExpenseForm(event) {
       ${!canEdit ? `<p class="notice" role="status">${escapeHtml(editBlockedMessage(event))}</p>` : ""}
       <fieldset class="expense-flow-fields" ${!canEdit ? "disabled" : ""}>
       <div class="expense-flow-body">
-      ${renderExpenseFxFields(event)}
       <label class="field expense-total-field">
         <span>סכום כולל <span class="currency-input-badge font-num" dir="ltr">${escapeHtml(expenseUsesForeignCurrency(event) ? expenseDraft.sourceCurrency : currencyCompactLabel(event))}</span></span>
         <input data-action="expense-total" name="expenseTotal" autocomplete="off" inputmode="decimal" enterkeyhint="next" dir="ltr" value="${escapeAttribute(expenseDraft.total)}" placeholder="0.00" ${expenseFlowFieldErrorAttributes("amount")} />
       </label>
+      ${renderExpenseFxFields(event)}
       <label class="field expense-name-field">
         <span>שם ההוצאה</span>
         <input data-action="expense-name" name="expenseName" autocomplete="off" enterkeyhint="next" value="${escapeAttribute(expenseDraft.name)}" placeholder="לדוגמה: מונית או ארוחת ערב" ${expenseFlowFieldErrorAttributes("name")} />
