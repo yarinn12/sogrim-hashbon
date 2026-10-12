@@ -1282,11 +1282,31 @@ test(`close-event confirmation stays readable and scrollable in ${orientation}`,
     window.scrollBy(0, el.getBoundingClientRect().top - controlsBottom - 16);
   });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  expect(await summaryTab.evaluate(el => {
+  const summaryHit = await summaryTab.evaluate(el => {
     const r = el.getBoundingClientRect();
     const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-    return hit === el || el.contains(hit);
-  })).toBe(true);
+    return {
+      reachable: hit === el || el.contains(hit),
+      tab: { top: r.top, bottom: r.bottom, left: r.left, right: r.right },
+      hit: hit && {
+        tag: hit.tagName,
+        className: hit.getAttribute('class'),
+        action: hit.closest('[data-action]')?.getAttribute('data-action'),
+        owner: hit.closest('.event-workspace-tab')?.getAttribute('class'),
+        text: hit.closest('.event-workspace-tab')?.textContent?.trim().slice(0, 80)
+      },
+      tabs: [...document.querySelectorAll('.event-workspace-tab')].map(tab => {
+        const bounds = tab.getBoundingClientRect();
+        const icon = tab.querySelector('svg')?.getBoundingClientRect();
+        return { action: tab.getAttribute('data-action'), left: bounds.left, right: bounds.right,
+          top: bounds.top, bottom: bounds.bottom,
+          icon: icon && { left: icon.left, right: icon.right, top: icon.top, bottom: icon.bottom } };
+      }),
+      scrollY: window.scrollY
+    };
+  });
+  await testInfo.attach(`summary-tab-hit-${orientation}`, { body: JSON.stringify(summaryHit), contentType: 'application/json' });
+  expect(summaryHit.reachable, JSON.stringify(summaryHit)).toBe(true);
   if (orientation === "landscape") {
     // Exercise the one-pixel movement observed while WebKit settles hover.
     // The click must wait for stability without undoing the user's scroll.
@@ -2073,7 +2093,7 @@ test("transfer explanation and event management copy keep complete word wrapping
   const management = await readWordLines(page, managementSelectors);
   const naturalManagement = await readWordLines(page, managementSelectors, true);
   const expectedManagement = [
-    'ניהול משותף · מנהל: ירין יצחק, Awesome Maor · מאור סיבוני'
+    'ניהול משותף · קובע מי יכול לעדכן הוצאות. מנהל: ירין יצחק, Awesome Maor · מאור סיבוני'
   ];
   const expectedTransfer = [
     'אריאל ניזרי מהטיול המשפחתי חייב ל־ירין יצחק ₪85.00',

@@ -4909,7 +4909,7 @@ function renderEventWorkspaceNav(event, activeView = "expenses") {
         aria-label="${notesAreActive ? "פתקים, המסך הנוכחי" : "פתיחת פתקים משותפים"}"
       >
         <span class="command-card-icon" aria-hidden="true">${iconSvg("message")}</span>
-        <strong>פתקים משותפים</strong>
+        <strong>פתקים</strong>
       </button>
     </nav>
   `;
