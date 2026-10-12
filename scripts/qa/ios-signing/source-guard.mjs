@@ -5,8 +5,8 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '92cc45ce4ad45cf99d443ee2ead1bcb58375d727';
-export const RELEASE_TREE = '23ae0378c502eaebe576a58f925904690a6583fe';
+export const RELEASE_SOURCE = 'eaecfa0761aa80b3701b329b30393899510d6844';
+export const RELEASE_TREE = '4fa245f729250a8abd17121d3e1fa56d6adb9090';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-193-encrypted';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
