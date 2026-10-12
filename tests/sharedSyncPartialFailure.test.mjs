@@ -308,6 +308,13 @@ test("a permission-rejected outbox survives home refreshes without replaying the
   assert.equal(attempts.length, 2, "background reads must not replay a known permission rejection");
   assert.equal(storage.getItem(key), durable, "the queued state and selection remain untouched");
   assert.deepEqual(new Set(store.pendingSharedSyncStatus().pendingEventIds), new Set(["healthy", "failing"]));
+  const session = JSON.parse(storage.getItem("settle-friends-account-session"));
+  session.access_token = "fixture-refreshed-token";
+  storage.setItem("settle-friends-account-session", JSON.stringify(session));
+  await store.loadSharedState();
+  assert.equal(attempts.length, 2,
+    "a refreshed token for the same account must not restart rejected writes on every home poll");
+  assert.equal(storage.getItem(key), durable);
   const retried = await store.flushPendingSharedState();
   assert.equal(retried.ok, false, "an explicit retry must still attempt delivery");
   assert.equal(attempts.length, 4);

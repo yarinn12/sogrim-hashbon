@@ -2355,11 +2355,11 @@ function blockAutomaticPendingSharedStateRetry(config, error) {
   const payload = pendingSharedStateRaw(config);
   if (!payload) return;
   // Keep reads active, but do not re-send the same rejected payload on every
-  // home refresh. A new outbox, session, or explicit flush may try again.
+  // home refresh. A new outbox, account, or explicit flush may try again;
+  // rotating the same account's token does not change a permission denial.
   pendingSyncPermanentFailure = {
     key: pendingSyncStorageKey(config), payload,
-    accountGeneration: accountStorageGeneration,
-    accessToken: loadStoredAccountSession(window.localStorage)?.access_token ?? ""
+    accountGeneration: accountStorageGeneration
   };
 }
 
@@ -2370,8 +2370,7 @@ function shouldDeferPendingSharedStateRetry(config) {
     (pendingSyncRetryNotBefore && Date.now() < pendingSyncRetryNotBefore) ||
     (blocked && blocked.key === pendingSyncStorageKey(config) &&
       blocked.payload === pendingSharedStateRaw(config) &&
-      blocked.accountGeneration === accountStorageGeneration &&
-      blocked.accessToken === (loadStoredAccountSession(window.localStorage)?.access_token ?? ""))
+      blocked.accountGeneration === accountStorageGeneration)
   );
 }
 

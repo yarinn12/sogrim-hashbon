@@ -194,6 +194,10 @@ test("routine reconnect notices keep an unresolved permission warning visible", 
   h.context.syncInlineStatusTargets();
   assert.equal(h.target.hidden, false);
   assert.equal(h.target.textContent, warning);
+  h.context.pendingSharedSyncStatus = () => ({ pending: true, pendingEventIds: ["event-a"] });
+  h.context.refreshPendingStatus();
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.textContent, warning, "session refresh must keep the pending warning readable");
   h.context.handleSyncStatus({ detail: { status: "saved", pending: false, pendingEventIds: [] } });
   h.context.syncInlineStatusTargets();
   assert.equal(h.target.hidden, true, "a real acknowledgement clears the warning");
