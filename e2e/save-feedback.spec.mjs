@@ -462,6 +462,30 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     await expect(eventButton).toBeVisible();
     if (permissionContext) {
       const summary = page.locator("[data-sync-account-summary]");
+      await page.evaluate(async () => {
+        const { flushPendingSharedState } = await import("/src/data/localStore.mjs");
+        await flushPendingSharedState();
+      });
+      const reconnect = () => page.evaluate(async () => {
+        window.dispatchEvent(new Event("offline"));
+        window.dispatchEvent(new Event("online"));
+        const { flushPendingSharedState } = await import("/src/data/localStore.mjs");
+        await flushPendingSharedState({ automatic: true });
+      });
+      // Finish any startup reconciliation before measuring repeated online
+      // wakeups against the same rejected outbox payload.
+      await reconnect();
+      const deniedBeforeOnline = canonicalRequests.filter(request => request.p_snapshot_id === secondSharedId).length;
+      const deniedCounts = [deniedBeforeOnline];
+      const outboxBeforeOnline = await page.evaluate(spaceId =>
+        localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        await reconnect();
+        deniedCounts.push(canonicalRequests.filter(request => request.p_snapshot_id === secondSharedId).length);
+      }
+      expect(deniedCounts).toEqual(Array(4).fill(deniedBeforeOnline));
+      expect(await page.evaluate(spaceId =>
+        localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBe(outboxBeforeOnline);
       await expect(summary).toContainText("אין הרשאה לבצע את השינוי");
       await expect(summary).toContainText("אירוע שני");
       const reviewButton = summary.locator('[data-action="open-event"]');

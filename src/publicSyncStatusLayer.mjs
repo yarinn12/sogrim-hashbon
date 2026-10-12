@@ -175,7 +175,7 @@ async function recoverOnlineMutationAccess() {
 
   showStatus("reconnecting");
   syncMutationControls();
-  reconnectPromise = flushPendingSharedState()
+  reconnectPromise = flushPendingSharedState({ automatic: true })
     .then(async (result) => {
       if (!result?.ok) {
         const config = await loadRuntimeConfig();

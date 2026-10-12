@@ -143,7 +143,12 @@ test("public sync status reports cloud saves and recovery without cluttering scr
   );
   assert.match(layer, /\.public-sync-status\[hidden\] \{ display: none !important; \}/);
   assert.match(layer, /flushPendingSharedState/);
+  assert.match(layer, /reconnectPromise = flushPendingSharedState\(\{ automatic: true \}\)/);
   assert.match(layer, /await flushPendingSharedState\(\)/);
+  assert.equal([...app.matchAll(/flushPendingSharedState\(\{ automatic: true \}\)/g)].length, 3,
+    "background account-link, membership, and notification recovery use automatic retry selection");
+  assert.equal([...app.matchAll(/flushPendingSharedState\(\)/g)].length, 1,
+    "only the user-triggered payment reminder may explicitly retry the whole outbox");
   assert.doesNotMatch(layer, /if \(result\?\.ok\) showStatus\("saved"\)/);
   assert.match(layer, /if \(!status \|\| ROUTINE_SYNC_STATUSES\.has\(status\)\) \{[\s\S]*?currentStatus = "";[\s\S]*?existingNode\.hidden = true/);
   assert.match(layer, /pendingHere \? pendingSaveMessage\(pendingFailureKind\) : ""/);

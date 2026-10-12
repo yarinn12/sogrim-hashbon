@@ -22661,7 +22661,7 @@ function retryPendingAccountLinks() {
   if (!ownerUserId || !pendingEntries.length) return Promise.resolve();
 
   pendingAccountLinkRetryRequest = (async () => {
-    await flushPendingSharedState().catch(() => null);
+    await flushPendingSharedState({ automatic: true }).catch(() => null);
     if (!recoveryIsCurrent()) return;
     for (const entry of pendingEntries) {
       if (!recoveryIsCurrent()) return;
@@ -23094,7 +23094,7 @@ function retryPendingEventMembershipInvitations() {
     // Membership recovery is follow-up work, not a second event publisher.
     // The ordered outbox also waits for an in-flight initial creation, so a
     // slow acknowledgement cannot trigger a competing create RPC here.
-    const publication = await flushPendingSharedState();
+    const publication = await flushPendingSharedState({ automatic: true });
     const pendingPublication = pendingSharedSyncStatus();
     if ((!publication?.ok || publication.pending) &&
         (!pendingPublication.pending || !pendingPublication.pendingEventIds.length)) return;
@@ -23658,7 +23658,7 @@ function retryPendingEventNotifications() {
   const entries = loadPendingEventNotifications(window.localStorage, ownerUserId);
   if (!ownerUserId || !entries.length) return Promise.resolve();
   pendingEventNotificationRetryRequest = (async () => {
-    const publication = await flushPendingSharedState();
+    const publication = await flushPendingSharedState({ automatic: true });
     const pending = pendingSharedSyncStatus();
     for (const entry of entries) {
       if (generation !== versionedReadCacheSessionGeneration() || !pendingMutationOwnerIsActive(ownerUserId)) return;
