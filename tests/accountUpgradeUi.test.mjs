@@ -6,15 +6,46 @@ import { buildAdminAnalyticsViewModel } from "../src/domain/adminAnalytics.mjs";
 const app = readFileSync(new URL("../src/app.mjs", import.meta.url), "utf8");
 const styles = readFileSync(new URL("../src/publicLedgerWorkspaceLayer.mjs", import.meta.url), "utf8");
 
-function section(start, end) {
-  return app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
+function section(start, end, source = app) {
+  const normalized = source.replaceAll("\r\n", "\n");
+  const startIndex = normalized.indexOf(start);
+  assert.notEqual(startIndex, -1, `Source section start is missing: ${start}`);
+  const endIndex = normalized.indexOf(end, startIndex);
+  assert.ok(endIndex > startIndex, `Source section end is missing: ${end}`);
+  return normalized.slice(startIndex, endIndex);
 }
 
 test("the creator stays in the selected roster without an inert check mark", () => {
-  const creator = section("function renderNewEventSelectedParticipant(participant)", "  return `\r\n    <label");
+  const creator = section("function renderNewEventSelectedParticipant(participant)", "  return `\n    <label");
   assert.match(creator, /is-current-participant/);
   assert.doesNotMatch(creator, /new-event-selected-participant-check/);
   assert.doesNotMatch(creator, /data-action="toggle-new-event-participant"/);
+});
+
+test("creator UI assertions isolate the same branch in LF and CRLF checkouts", () => {
+  const start = "function renderNewEventSelectedParticipant(participant)";
+  const end = "  return `\n    <label";
+  const lf = app.replaceAll("\r\n", "\n");
+  const expected = section(start, end, lf);
+  for (const source of [lf, lf.replaceAll("\n", "\r\n")]) {
+    const creator = section(start, end, source);
+    assert.equal(creator, expected);
+    assert.match(creator, /is-current-participant/);
+    assert.doesNotMatch(creator, /new-event-selected-participant-check/);
+    assert.doesNotMatch(creator, /data-action="toggle-new-event-participant"/);
+    // The ordinary participant still has a real, removable selection control.
+    const friendStart = source.replaceAll("\r\n", "\n").indexOf(end);
+    const friend = section(end, "function renderNewEventSelectedParticipants", source);
+    assert.ok(friendStart > 0);
+    assert.match(friend, /new-event-selected-participant-check/);
+    assert.match(friend, /data-action="toggle-new-event-participant"/);
+    assert.match(friend, /type="checkbox"/);
+  }
+});
+
+test("source UI checks fail closed when either section boundary is missing", () => {
+  assert.throws(() => section("missing", "end", "start end"), /start is missing/);
+  assert.throws(() => section("start", "missing", "start end"), /end is missing/);
 });
 
 test("shared notes have one create action and no empty-state announcement", () => {
