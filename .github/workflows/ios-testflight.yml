@@ -94,6 +94,9 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
+      - name: Load public release notes from the frozen application metadata
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+
       - name: Require all four successful source CI runs before signing secrets
         env:
           GH_TOKEN: ${{ github.token }}
