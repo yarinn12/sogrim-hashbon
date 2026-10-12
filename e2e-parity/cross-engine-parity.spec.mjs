@@ -1,4 +1,5 @@
 import { chromium, firefox, webkit, expect, test } from "@playwright/test";
+import { recordQaStateBoundary } from "./helpers/qaStateBoundaryDiagnostics.mjs";
 
 const OWNER = "person-cross-engine-owner";
 const FRIEND = "person-cross-engine-friend";
@@ -199,8 +200,10 @@ async function capture(page, testInfo, name, targets, cdp) {
 }
 
 async function journey(engine, name, request, baseURL, scenario, testInfo) {
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: state });
+  await recordQaStateBoundary({ request, testInfo, scenario: scenario.label, engine: name,
+    phase: "reset", method: "post", path: "/api/reset" });
+  await recordQaStateBoundary({ request, testInfo, scenario: scenario.label, engine: name,
+    phase: "state", method: "put", path: "/api/state", data: state });
   const browser = await engine.launch();
   try {
     const context = await browser.newContext({

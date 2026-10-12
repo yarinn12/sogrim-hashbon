@@ -40,6 +40,8 @@ export default defineConfig({
   outputDir: process.env.CROSS_PLATFORM_OUTPUT_DIR || "./test-results-cross-platform",
   webServer: {
     ...base.webServer,
+    // Keep local server exceptions visible beside the request-id evidence.
+    stderr: "inherit",
     env: {
       ...base.webServer.env,
       // Independent QA servers must never overwrite another run's state.
