@@ -277,6 +277,79 @@ test("legacy outbox partial success leaves only the failed event marked pending"
   assert.ok(JSON.parse(storage.getItem(`settle-friends-pending-sync:${workspaceId}`)).events[1].notes.length);
 }));
 
+test("a permission-rejected outbox survives home refreshes without replaying the same writes", async () => fixture(async ({ pending, storage, workspaceId, recover, canonical }) => {
+  const key = `settle-friends-pending-sync:${workspaceId}`;
+  storage.setItem(key, JSON.stringify(pending));
+  const attempts = [];
+  let reads = 0;
+  const transport = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/rpc/update_shared_event_snapshot")) {
+      const body = JSON.parse(options.body);
+      attempts.push({ id: body.p_snapshot_id, state: body.p_state });
+    }
+    if (!options.method || options.method === "GET") reads += 1;
+    return transport(url, options);
+  };
+  const store = await import(`../src/data/localStore.mjs?permission-poll=${crypto.randomUUID()}`);
+  const failed = await store.flushPendingSharedState();
+  assert.equal(failed.ok, false);
+  assert.deepEqual(attempts.map(attempt => attempt.id).sort(), ["space-partial-failing", "space-partial-healthy"]);
+  for (const attempt of attempts) {
+    const eventId = attempt.id.replace("space-partial-", "");
+    assert.ok(attempt.state.events[0].notes.some(note => note.id === `local-${eventId}-note`),
+      "the final rejected RPC still carries the user's queued note");
+  }
+  const durable = storage.getItem(key);
+  const readsBeforeRefresh = reads;
+  await store.loadSharedState();
+  await store.loadSharedState();
+  assert.ok(reads > readsBeforeRefresh, "home still reads cloud state while delivery is blocked");
+  assert.equal(attempts.length, 2, "background reads must not replay a known permission rejection");
+  assert.equal(storage.getItem(key), durable, "the queued state and selection remain untouched");
+  assert.deepEqual(new Set(store.pendingSharedSyncStatus().pendingEventIds), new Set(["healthy", "failing"]));
+  const retried = await store.flushPendingSharedState();
+  assert.equal(retried.ok, false, "an explicit retry must still attempt delivery");
+  assert.equal(attempts.length, 4);
+  assert.equal(storage.getItem(key), durable);
+  recover();
+  assert.equal((await store.flushPendingSharedState()).ok, true,
+    "an explicit retry after permission recovery acknowledges the original payload");
+  assert.equal(storage.getItem(key), null);
+  for (const eventId of ["healthy", "failing"]) {
+    assert.ok(canonical.get(`space-partial-${eventId}`).events[0].notes.some(note =>
+      note.id === `local-${eventId}-note`));
+  }
+}, { allFail: true, status: 403 }));
+
+test("partial permission failure pauses only the remaining event until an explicit retry", async () => fixture(async ({ pending, storage, workspaceId, recover, canonical }) => {
+  const key = `settle-friends-pending-sync:${workspaceId}`;
+  storage.setItem(key, JSON.stringify(pending));
+  const attempts = [];
+  const transport = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/rpc/update_shared_event_snapshot")) {
+      attempts.push(JSON.parse(options.body).p_snapshot_id);
+    }
+    return transport(url, options);
+  };
+  const store = await import(`../src/data/localStore.mjs?partial-permission-poll=${crypto.randomUUID()}`);
+  assert.equal((await store.flushPendingSharedState()).ok, false);
+  assert.deepEqual(new Set(attempts), new Set(["space-partial-healthy", "space-partial-failing"]));
+  assert.deepEqual(JSON.parse(storage.getItem(key)).__pendingSync.selection,
+    { eventIds: ["failing"], deletedEventIds: [] });
+  assert.ok(canonical.get("space-partial-healthy").events[0].notes.some(note => note.id === "local-healthy-note"));
+  await store.loadSharedState();
+  await store.loadSharedState();
+  assert.equal(attempts.length, 2, "home polling cannot repeat the denied sibling write");
+  recover();
+  assert.equal((await store.flushPendingSharedState()).ok, true);
+  assert.deepEqual(attempts.slice(2), ["space-partial-failing"],
+    "recovery sends only the remaining event's final RPC payload");
+  assert.ok(canonical.get("space-partial-failing").events[0].notes.some(note => note.id === "local-failing-note"));
+  assert.equal(storage.getItem(key), null);
+}, { status: 403 }));
+
 for (const receiptStatus of [403, 503]) {
 for (const path of ["save", "flush", "load"]) {
   test(`a failed personal receipt after confirmed shared writes retains only workspace delivery during ${path} HTTP ${receiptStatus}`, async () => {

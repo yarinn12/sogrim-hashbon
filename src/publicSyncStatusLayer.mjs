@@ -63,11 +63,17 @@ if (navigator.onLine === false) void handleOffline();
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
   if (typeof event.detail?.pending === "boolean") {
-    pendingSync = event.detail.pending;
-    pendingFailureKind = pendingSync ? event.detail.failureKind ?? "" : "";
-    pendingEventIds = pendingSync
+    const nextEventIds = event.detail.pending
       ? (Array.isArray(event.detail.pendingEventIds) ? event.detail.pendingEventIds : null)
       : [];
+    const samePendingEvents = pendingSync && Array.isArray(pendingEventIds) &&
+      Array.isArray(nextEventIds) && pendingEventIds.length === nextEventIds.length &&
+      nextEventIds.every((id) => pendingEventIds.includes(id));
+    pendingSync = event.detail.pending;
+    pendingFailureKind = pendingSync
+      ? event.detail.failureKind ?? (samePendingEvents ? pendingFailureKind : "")
+      : "";
+    pendingEventIds = nextEventIds;
   }
   const currentScreenSignature = screenSignature();
 
@@ -354,7 +360,10 @@ function syncInlineStatusTargets() {
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
-    button.hidden = true;
+    const eventId = button.closest(".event-action-sync-wrap, [data-route-sync-status]")
+      ?.querySelector("[data-inline-sync-status]")?.dataset.syncEventId;
+    button.hidden = !(pendingSync && pendingSaveMessage(pendingFailureKind) &&
+      (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId)));
   });
   syncMutationControls();
 }
@@ -379,6 +388,12 @@ function renderAccountPendingSummary(target, message) {
     : eventName ? `השינוי באירוע ״${eventName}״ ממתין לשמירה. `
       : ids.length === 1 ? "שינוי באירוע ממתין לשמירה. " : "שמירת החשבון ממתינה. ";
   target.append(document.createTextNode(`${context}${message}`));
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "pending-sync-review";
+  retry.dataset.syncRetry = "";
+  retry.textContent = "נסה שוב";
+  target.append(document.createTextNode(" "), retry);
   if (!eventId || !eventName) return;
   const review = document.createElement("button");
   review.type = "button";

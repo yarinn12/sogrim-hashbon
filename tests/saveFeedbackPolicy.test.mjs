@@ -104,13 +104,17 @@ test("late permission status keeps its review target stable across observer pass
   const context = vm.createContext({ document, pendingEventIds: ["event-a"] });
   vm.runInContext(functionSource("renderAccountPendingSummary"), context);
   const reviewButtons = () => target.children.filter((child) => child.dataset?.action === "open-event");
+  const retryButtons = () => target.children.filter((child) => child.dataset?.syncRetry !== undefined);
   context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
   assert.equal(reviewButtons().length, 1);
+  assert.equal(retryButtons().length, 1, "the pending home summary offers an explicit retry");
   const firstButton = reviewButtons()[0];
+  const firstRetry = retryButtons()[0];
   for (let pass = 0; pass < 3; pass++) {
     context.renderAccountPendingSummary(target, "אין הרשאה לבצע את השינוי");
     assert.equal(reviewButtons().length, 1, "an observer pass must not remove the review target");
     assert.equal(reviewButtons()[0], firstButton, "unchanged status must not rebuild its action");
+    assert.equal(retryButtons()[0], firstRetry, "unchanged status must not rebuild its retry control");
     assert.equal(reviewButtons()[0].dataset.eventId, "event-a");
   }
 });
@@ -178,6 +182,21 @@ test("an actionable failure in one event never labels another event", () => {
   delete h.target.dataset.syncEventId;
   h.context.syncInlineStatusTargets();
   assert.equal(h.target.hidden, false, "the account overview must still show an actionable failure");
+});
+
+test("routine reconnect notices keep an unresolved permission warning visible", () => {
+  const h = harness({ ok: true });
+  h.context.handleSyncStatus({ detail: { status: "unavailable", pending: true, failureKind: "permission", pendingEventIds: ["event-a"] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  const warning = h.target.textContent;
+  h.context.handleSyncStatus({ detail: { status: "reconnecting", pending: true, pendingEventIds: ["event-a"] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, false);
+  assert.equal(h.target.textContent, warning);
+  h.context.handleSyncStatus({ detail: { status: "saved", pending: false, pendingEventIds: [] } });
+  h.context.syncInlineStatusTargets();
+  assert.equal(h.target.hidden, true, "a real acknowledgement clears the warning");
 });
 
 test("partial progress clears healthy event warnings while preserving the failed event", () => {

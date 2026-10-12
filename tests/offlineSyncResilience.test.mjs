@@ -447,12 +447,14 @@ test("a queued write never freezes reads from another device during retry backof
     localStore.indexOf("async function loadSharedStateOnce"),
     localStore.indexOf("export async function saveSharedState")
   );
+  const deferredStart = load.indexOf("if (shouldDeferPendingSharedStateRetry(runtimeConfig)");
+  assert.notEqual(deferredStart, -1);
   const deferredBranch = load.slice(
-    load.indexOf("if (shouldDeferPendingSharedStateRetry()"),
-    load.indexOf("try {", load.indexOf("if (shouldDeferPendingSharedStateRetry()") + 80)
+    deferredStart,
+    load.indexOf("try {", deferredStart + 80)
   );
 
-  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(\) \|\|[\s\S]*?await loadCloudState\(/);
+  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(runtimeConfig\) \|\|[\s\S]*?await loadCloudState\(/);
   assert.match(load, /const mergedPendingState = mergeSharedStates\(remoteState, pendingState\)/);
   assert.match(load, /saveStateForScope\(visiblePendingState, requestScope\)/);
   assert.doesNotMatch(
