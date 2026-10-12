@@ -195,7 +195,7 @@
       appUrl: location.href,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
       viewport: { width: innerWidth, height: innerHeight, visualHeight: visualViewport?.height,
-        visualTop: visualViewport?.offsetTop || 0 },
+        visualTop: visualViewport?.offsetTop || 0, visualPageTop: visualViewport?.pageTop },
       documentWidth: document.documentElement.scrollWidth, errors: [...errors],
       nativeAppInfo: globalThis.__iosParityNativeAppInfo,
       openedNote,

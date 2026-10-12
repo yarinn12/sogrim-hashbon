@@ -179,8 +179,32 @@ def validate(out: Path, source_sha: str) -> None:
                 assert mapped["top"] >= record["native"]["statusBarFrame"]["y"] + record["native"]["statusBarFrame"]["height"] - 1
                 assert mapped["bottom"] <= record["native"]["keyboardFrame"]["y"] + 1
             frame, offset, scroll = record["native"]["scrollViewFrame"], record["native"]["nativeContentOffset"], record["documentScroll"]
-            visual_bottom = frame["y"] + scroll["y"] - offset["y"] + viewport["visualTop"] + viewport["visualHeight"]
-            assert math.isclose(visual_bottom, record["native"]["keyboardFrame"]["y"], abs_tol=1)
+            # WebKit can report offsetTop as the same focus scroll already in
+            # scrollY. pageTop is the document-space visual origin; adding
+            # offsetTop to scrollY counted the captured scroll twice. Older
+            # sealed captures lack pageTop, so accept their measured scrollY
+            # only when offsetTop agrees with it. An independent visual pan
+            # needs a new capture with pageTop rather than a guessed mapping.
+            visual_page_top = viewport.get("visualPageTop")
+            if visual_page_top is None:
+                assert math.isclose(viewport["visualTop"], scroll["y"], abs_tol=1), (
+                    mode, phase, "visual viewport origin requires pageTop")
+                visual_page_top = scroll["y"]
+            assert type(visual_page_top) in (int, float) and math.isfinite(visual_page_top)
+            # Standard viewports use scrollY + offsetTop. The captured WKWebView
+            # focus scroll reports all three origins as the same value. Reject
+            # other combinations instead of trusting a pageTop that merely
+            # happens to agree with a wrong keyboard frame.
+            standard_origin = math.isclose(
+                visual_page_top, scroll["y"] + viewport["visualTop"], abs_tol=1)
+            native_focus_scroll = (math.isclose(viewport["visualTop"], scroll["y"], abs_tol=1)
+                                   and math.isclose(visual_page_top, scroll["y"], abs_tol=1))
+            assert standard_origin or native_focus_scroll, (
+                mode, phase, "inconsistent visual viewport origin")
+            visual_bottom = frame["y"] + visual_page_top - offset["y"] + viewport["visualHeight"]
+            assert math.isclose(visual_bottom, record["native"]["keyboardFrame"]["y"], abs_tol=1), (
+                mode, phase, "visual viewport/native keyboard mismatch", visual_bottom,
+                record["native"]["keyboardFrame"]["y"])
             action, value = ("expense-total", "120") if field == "amount" else ("expense-name", "QA iOS")
             assert any(item["action"] == action and item["value"] == value for item in record["trustedInputs"])
         assert all(any(item["action"] == action for item in saved["trustedClicks"]) for action in ["expense-step-next", "save-expense"])

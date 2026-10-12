@@ -83,6 +83,20 @@ class AcceptanceTests(unittest.TestCase):
     def record(self, phase):
         return next(r for r in self.reports["accessibility-extra-large"]["records"] if r["phase"] == phase)
 
+    def scrolled_name(self):
+        # The captured default iOS keyboard-name state scrolls both the web
+        # document and WKWebView's native scroll view by the same 196 points.
+        record = next(r for r in self.reports["default"]["records"] if r["phase"] == "keyboard-name")
+        record["documentScroll"]["y"] = 196
+        record["native"]["nativeContentOffset"]["y"] = 196
+        record["viewport"].update({"visualTop": 196, "visualHeight": 449})
+        record["native"]["keyboardFrame"].update({"y": 449, "height": 403})
+        record["keyboardLayout"]["footer"].update({"top": 350, "bottom": 449})
+        for key, top, bottom in [("name", 283.625, 341.625), ("next", 363, 415)]:
+            for axis in ["bounds", "nativeBounds"]:
+                record["metrics"][key][axis].update({"top": top, "bottom": bottom})
+        return record
+
     def accept(self):
         with TemporaryDirectory() as temporary:
             out = Path(temporary)
@@ -97,6 +111,10 @@ class AcceptanceTests(unittest.TestCase):
 
     def rejects(self):
         with self.assertRaises((AssertionError, KeyError)): self.accept()
+
+    def rejects_keyboard_boundary(self):
+        with self.assertRaisesRegex(AssertionError, "visual viewport/native keyboard mismatch"):
+            self.accept()
 
     def test_complete_artifacts_pass(self): self.accept()
     def test_profile_content_clipping_fails(self):
@@ -151,6 +169,40 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
     def test_inconsistent_keyboard_and_visual_viewport_fails(self):
         self.record("keyboard-name")["native"]["keyboardFrame"]["y"] = 650
+        self.rejects()
+    def test_scrolled_name_matches_native_keyboard(self):
+        self.scrolled_name()
+        self.accept()
+    def test_scrolled_name_with_recorded_page_top_matches_native_keyboard(self):
+        self.scrolled_name()["viewport"]["visualPageTop"] = 196
+        self.accept()
+    def test_scrolled_name_keyboard_mismatch_still_fails(self):
+        self.scrolled_name()["native"]["keyboardFrame"]["y"] = 470
+        self.rejects_keyboard_boundary()
+    def test_scrolled_name_visual_height_mismatch_still_fails(self):
+        self.scrolled_name()["viewport"]["visualHeight"] = 419
+        self.rejects_keyboard_boundary()
+    def test_scrolled_name_without_page_top_rejects_independent_pan(self):
+        self.scrolled_name()["viewport"]["visualTop"] = 216
+        with self.assertRaisesRegex(AssertionError, "visual viewport origin requires pageTop"):
+            self.accept()
+    def test_scrolled_name_with_independent_pan_and_page_top_passes(self):
+        record = self.scrolled_name()
+        record["viewport"].update({"visualTop": 20, "visualPageTop": 216})
+        record["native"]["keyboardFrame"]["y"] = 469
+        self.accept()
+    def test_scrolled_name_wrong_recorded_page_top_fails(self):
+        self.scrolled_name()["viewport"]["visualPageTop"] = 216
+        with self.assertRaisesRegex(AssertionError, "inconsistent visual viewport origin"):
+            self.accept()
+    def test_scrolled_name_wrong_page_top_cannot_hide_wrong_keyboard_frame(self):
+        record = self.scrolled_name()
+        record["viewport"]["visualPageTop"] = 216
+        record["native"]["keyboardFrame"]["y"] = 469
+        with self.assertRaisesRegex(AssertionError, "inconsistent visual viewport origin"):
+            self.accept()
+    def test_scrolled_name_boolean_page_top_fails(self):
+        self.scrolled_name()["viewport"]["visualPageTop"] = True
         self.rejects()
     def test_untrusted_amount_input_fails(self):
         self.record("keyboard-amount")["trustedInputs"] = []
