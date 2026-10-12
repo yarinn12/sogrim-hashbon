@@ -885,17 +885,52 @@ test("participant roster keeps pending work silent and never stretches a status 
     if (failureKind === "permission") await expect(status).toContainText("אין הרשאה");
     else await expect(status).toBeHidden();
     const geometry = await roster.evaluate(node => {
+      const modal = node.getBoundingClientRect();
       const header = node.querySelector(".event-modal-header").getBoundingClientRect();
       const body = node.querySelector(".event-modal-body").getBoundingClientRect();
-      const status = node.querySelector("[data-route-sync-status]").getBoundingClientRect();
-      const text = node.querySelector("[data-inline-sync-status]").getBoundingClientRect();
-      return { headerTop: header.top, bodyGap: body.top - header.bottom, statusHeight: status.height, textHeight: text.height };
+      const statusNode = node.querySelector("[data-route-sync-status]");
+      const status = statusNode.getBoundingClientRect();
+      const textNode = node.querySelector("[data-inline-sync-status]");
+      const text = textNode.getBoundingClientRect();
+      const retryNode = node.querySelector("[data-inline-sync-retry]");
+      const retry = retryNode.getBoundingClientRect();
+      const style = getComputedStyle(statusNode);
+      const retryHit = document.elementFromPoint(retry.left + retry.width / 2, retry.top + retry.height / 2);
+      return {
+        headerTop: header.top, bodyGap: body.top - header.bottom,
+        modalLeft: modal.left, modalRight: modal.right,
+        statusLeft: status.left, statusRight: status.right, statusHeight: status.height,
+        textHeight: text.height, textClipped: textNode.scrollWidth > textNode.clientWidth + 1 ||
+          textNode.scrollHeight > textNode.clientHeight + 1,
+        retryWidth: retry.width, retryHeight: retry.height,
+        retryReachable: retryNode === retryHit || retryNode.contains(retryHit),
+        verticalChrome: [style.paddingTop, style.paddingBottom, style.borderTopWidth, style.borderBottomWidth]
+          .reduce((sum, value) => sum + parseFloat(value), 0),
+        statusText: textNode.textContent
+      };
     });
     measurements.push({ failureKind, ...geometry });
     expect(Math.abs(geometry.headerTop)).toBeLessThanOrEqual(2);
     if (failureKind === "permission") {
-      expect(geometry.statusHeight).toBeLessThanOrEqual(Math.max(44, geometry.textHeight + 24));
+      // The 44px retry target, not the one-line message, sets the content height.
+      // Keep the status compact without hiding text or shrinking its tap target.
+      expect(geometry.verticalChrome).toBeLessThanOrEqual(18);
+      expect(geometry.statusHeight).toBeLessThanOrEqual(
+        Math.max(44, geometry.textHeight, geometry.retryHeight) + 18
+      );
+      expect(geometry.statusLeft).toBeGreaterThanOrEqual(geometry.modalLeft);
+      expect(geometry.statusRight).toBeLessThanOrEqual(geometry.modalRight);
+      expect(geometry.statusText).toContain("אין הרשאה");
+      expect(geometry.textClipped).toBe(false);
+      expect(geometry.retryWidth).toBeGreaterThanOrEqual(44);
+      expect(geometry.retryHeight).toBeGreaterThanOrEqual(44);
+      expect(geometry.retryReachable).toBe(true);
       expect(geometry.bodyGap).toBeLessThanOrEqual(geometry.statusHeight + 24);
+      const retry = status.locator("[data-inline-sync-retry]");
+      await expect(retry).toBeEnabled();
+      await page.screenshot({ path: testInfo.outputPath("participants-permission-status.png") });
+      if (await page.evaluate(() => navigator.maxTouchPoints > 0)) await retry.tap();
+      else await retry.click();
     } else {
       expect(geometry.statusHeight).toBe(0);
       expect(geometry.bodyGap).toBeLessThanOrEqual(24);
