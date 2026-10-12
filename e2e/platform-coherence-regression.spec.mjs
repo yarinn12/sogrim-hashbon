@@ -203,7 +203,11 @@ test("empty note, validation, long pinned save, return and reload remain coheren
   await openEvent(page, OPEN_EVENT);
   await page.locator('[data-action="open-event-notes"]').click();
   const notes = page.locator(`[data-screen-kind="event-notes"][data-event-id="${OPEN_EVENT}"]`);
-  await expect(notes.locator(".event-notes-empty")).toContainText("עוד אין פתקים משותפים");
+  // The account upgrade intentionally removed the redundant empty-state copy.
+  // Keep the empty-list and complete create/save/reload checks below.
+  await expect(notes).toBeVisible();
+  await expect(notes.locator(".event-notes-empty")).toHaveCount(0);
+  await expect(notes.locator(".event-note-row")).toHaveCount(0);
 
   await page.setViewportSize(landscapeFor(testInfo.project.name));
   await assertNoHorizontalOverflow(page, "empty notes landscape");

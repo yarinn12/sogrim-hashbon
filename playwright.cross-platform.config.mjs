@@ -23,7 +23,14 @@ const journeys = [
   "e2e/ios-qa-journey-preflight.spec.mjs",
   "e2e/expense-keyboard-footer-regression.spec.mjs",
   "e2e/ios-xl-visual-layout.spec.mjs",
-  "e2e/platform-coherence-regression.spec.mjs"
+  "e2e/platform-coherence-regression.spec.mjs",
+  "e2e/account-upgrades-ui.spec.mjs",
+  "e2e/account-event-hydration.spec.mjs",
+  "e2e/pinned-events.spec.mjs",
+  "e2e/foreign-expense-input.spec.mjs",
+  "e2e/native-updates.spec.mjs",
+  "e2e/pwa-update-recovery.spec.mjs",
+  "e2e/vercel-fx-csp.spec.mjs"
 ];
 const firefoxNavigationReadiness = "e2e-parity/firefox-navigation-readiness.spec.mjs";
 
