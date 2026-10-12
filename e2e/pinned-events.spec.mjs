@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
 import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 test.use({ serviceWorkers: "block" });
 const OWNER = "person-event-pins-owner";
@@ -231,17 +233,25 @@ test("personal pins survive incoming event changes and do not affect another par
 test("another tab updates personal pins without losing a newer pin or reopening menus", async ({ page, context }) => {
   await seed(page);
   const other = await context.newPage();
-  await other.goto("/");
-  await order(other, [NEW, OLD, CLOSED]);
-  await pin(page, OLD, true);
-  await order(other, [OLD, NEW, CLOSED]);
-  await pin(other, CLOSED, true);
-  await order(page, [OLD, CLOSED, NEW]);
-  await pin(page, OLD, false);
-  await order(other, [CLOSED, NEW, OLD]);
-  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), KEY)).toEqual([CLOSED]);
-  await expect(page.locator(".event-status-menu")).toHaveCount(0);
-  await expect(other.locator(".event-status-menu")).toHaveCount(0);
+  const heldImage = await holdNonessentialHomeImage(other, test.info().project.use.baseURL);
+  try {
+    await openRenderedHome(other, { bootTimeoutMs: 8_000 });
+    expect(heldImage.requested, "the held resource must exercise the load boundary").toBe(true);
+    expect(await other.evaluate(() => document.readyState),
+      "the second tab is usable before a nonessential image finishes loading").toBe("interactive");
+    await order(other, [NEW, OLD, CLOSED]);
+    await pin(page, OLD, true);
+    await order(other, [OLD, NEW, CLOSED]);
+    await pin(other, CLOSED, true);
+    await order(page, [OLD, CLOSED, NEW]);
+    await pin(page, OLD, false);
+    await order(other, [CLOSED, NEW, OLD]);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), KEY)).toEqual([CLOSED]);
+    await expect(page.locator(".event-status-menu")).toHaveCount(0);
+    await expect(other.locator(".event-status-menu")).toHaveCount(0);
+  } finally {
+    heldImage.release();
+  }
 });
 
 test("two independent account contexts sync pin and unpin through the private workspace", async ({ page, browser }) => {
