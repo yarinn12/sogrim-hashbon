@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { personalPinsCloud } from "./helpers/personalPinsCloud.mjs";
+import { readLocalQaState } from "./helpers/readLocalQaState.mjs";
+import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
+import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
 
 test.use({ serviceWorkers: "block" });
 const OWNER = "person-event-pins-owner";
@@ -74,7 +77,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   page.on("pageerror", error => errors.push(error.message));
   await seed(page);
   await order(page, [NEW, OLD, CLOSED]);
-  const before = await (await request.get("/api/state")).json();
+  const before = await (await readLocalQaState(request, test.info().project.use.baseURL)).json();
   const localEventsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events);
   for (let attempt = 0; attempt < 3; attempt++) {
     await pin(page, OLD, true);
@@ -92,7 +95,7 @@ test("pin and unpin several events consecutively, preserve normal order and surv
   await order(page, [OLD, NEW, CLOSED]);
   await expect(row(page, OLD).locator(".event-note-pin")).toBeVisible();
   // Personal ordering must never modify the shared event, note pins or activity.
-  expect(await (await request.get("/api/state")).json()).toEqual(before);
+  expect(await (await readLocalQaState(request, test.info().project.use.baseURL)).json()).toEqual(before);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events)).toEqual(localEventsBefore);
   expect(errors).toEqual([]);
 });
@@ -208,17 +211,21 @@ test("personal pins survive incoming event changes and do not affect another par
     updated.events.find(event => event.id === OLD).name = "השם עודכן ממכשיר אחר";
     updated.events.find(event => event.id === OLD).settingsUpdatedAt = new Date().toISOString();
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toContainText("השם עודכן ממכשיר אחר");
     await order(page, [OLD, NEW, CLOSED]);
     await expect(row(page, CLOSED).locator(".event-note-pin")).toHaveCount(0);
     updated.events = updated.events.filter(event => event.id !== OLD);
     updated.deletedEvents.push({ id: OLD, deletedAt: new Date().toISOString(), deletedByParticipantId: updated.currentParticipantId });
     cloud.update(updated);
-    await page.reload();
+    await cloud.reload();
     await expect(row(page, OLD)).toHaveCount(0);
     await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
     expect(cloud.reads.some(snapshot => snapshot.state.events.some(event => event.name === "השם עודכן ממכשיר אחר"))).toBe(true);
+    if (cloud.diagnostics.length) await test.info().attach("webkit-document-replacement-diagnostics", {
+      contentType: "application/json",
+      body: JSON.stringify(cloud.diagnostics.map(({ url, stack, reason }) => ({ url, stack, reason })))
+    });
     expect(cloud.errors).toEqual([]);
   } finally { await other.close(); }
 });
@@ -226,15 +233,108 @@ test("personal pins survive incoming event changes and do not affect another par
 test("another tab updates personal pins without losing a newer pin or reopening menus", async ({ page, context }) => {
   await seed(page);
   const other = await context.newPage();
-  await other.goto("/");
-  await order(other, [NEW, OLD, CLOSED]);
-  await pin(page, OLD, true);
-  await order(other, [OLD, NEW, CLOSED]);
-  await pin(other, CLOSED, true);
+  const heldImage = await holdNonessentialHomeImage(other, test.info().project.use.baseURL);
+  try {
+    await openRenderedHome(other, { bootTimeoutMs: 8_000 });
+    expect(heldImage.requested, "the held resource must exercise the load boundary").toBe(true);
+    expect(await other.evaluate(() => document.readyState),
+      "the second tab is usable before a nonessential image finishes loading").toBe("interactive");
+    await order(other, [NEW, OLD, CLOSED]);
+    await pin(page, OLD, true);
+    await order(other, [OLD, NEW, CLOSED]);
+    await pin(other, CLOSED, true);
+    await order(page, [OLD, CLOSED, NEW]);
+    await pin(page, OLD, false);
+    await order(other, [CLOSED, NEW, OLD]);
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), KEY)).toEqual([CLOSED]);
+    await expect(page.locator(".event-status-menu")).toHaveCount(0);
+    await expect(other.locator(".event-status-menu")).toHaveCount(0);
+  } finally {
+    heldImage.release();
+  }
+});
+
+test("two independent account contexts sync pin and unpin through the private workspace", async ({ page, browser }) => {
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state);
+  const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  try {
+    const second = await secondContext.newPage();
+    await cloud.connectPage(second);
+    await order(second, [NEW, OLD, CLOSED]);
+    await pin(page, OLD, true);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    // The second device still has its older snapshot: its save must retry CAS.
+    await pin(second, CLOSED, true);
+    expect(cloud.conflicts()).toBeGreaterThan(0);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    await cloud.reload();
+    await order(page, [OLD, CLOSED, NEW]);
+    await pin(page, OLD, false);
+    expect(cloud.state().personalEventPinPreferences.updates[OLD].pinned).toBe(false);
+    await second.reload();
+    await order(second, [CLOSED, NEW, OLD]);
+    cloud.setOffline(second, true);
+    await secondContext.setOffline(true);
+    await pin(second, CLOSED, false);
+    expect(cloud.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+    cloud.setOffline(second, false);
+    await secondContext.setOffline(false);
+    await expect.poll(() => cloud.state().personalEventPinPreferences.updates[CLOSED].pinned,
+      { timeout: 20000 }).toBe(false);
+    await cloud.reload();
+    await order(page, [NEW, OLD, CLOSED]);
+  } finally { await secondContext.close(); }
+});
+
+test("legacy device pins migrate into the account snapshot after hydration", async ({ page }) => {
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state, { legacyPins: [OLD] });
+  await order(page, [OLD, NEW, CLOSED]);
+  await expect.poll(() => cloud.state().personalEventPinPreferences?.updates?.[OLD]?.pinned).toBe(true);
+  await cloud.reload();
+  await order(page, [OLD, NEW, CLOSED]);
+});
+
+test("a legacy device pin joins existing cloud pins after a rejected migration is retried", async ({ page }) => {
+  const accountId = "personal-pins-cloud-owner";
+  const initial = {
+    ...state,
+    personalEventPinPreferences: {
+      ownerParticipantId: `account-${accountId}`,
+      updates: { [CLOSED]: { pinned: true, updatedAt: "2026-09-03T08:00:00.000Z" } }
+    }
+  };
+  const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, initial,
+    { legacyPins: [OLD], rejectWrites: true });
   await order(page, [OLD, CLOSED, NEW]);
-  await pin(page, OLD, false);
-  await order(other, [CLOSED, NEW, OLD]);
-  expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), KEY)).toEqual([CLOSED]);
-  await expect(page.locator(".event-status-menu")).toHaveCount(0);
-  await expect(other.locator(".event-status-menu")).toHaveCount(0);
+  expect(cloud.state().personalEventPinPreferences.updates[OLD]).toBeUndefined();
+  expect(await page.evaluate(() => localStorage.getItem(
+    "settle-friends-personal-event-pins-migrated-v1:account-personal-pins-cloud-owner"
+  ))).toBeNull();
+  cloud.setWriteFailure(false);
+  await cloud.reload();
+  await expect.poll(() => cloud.state().personalEventPinPreferences.updates[OLD]?.pinned).toBe(true);
+  await order(page, [OLD, CLOSED, NEW]);
+  expect(cloud.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem(
+    "settle-friends-personal-event-pins-migrated-v1:account-personal-pins-cloud-owner"
+  ) || "[]"))).toContain(OLD);
+});
+
+test("a different authenticated account has independent pin preferences", async ({ page, browser }) => {
+  const first = await personalPinsCloud(page, test.info().project.use.baseURL, state);
+  await pin(page, OLD, true);
+  const secondContext = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
+  try {
+    const other = await secondContext.newPage();
+    const second = await personalPinsCloud(other, test.info().project.use.baseURL, state,
+      { accountId: "personal-pins-other-owner" });
+    await order(other, [NEW, OLD, CLOSED]);
+    await pin(other, CLOSED, true);
+    await first.reload();
+    await order(page, [OLD, NEW, CLOSED]);
+    expect(first.state().personalEventPinPreferences.updates[OLD].pinned).toBe(true);
+    expect(first.state().personalEventPinPreferences.updates[CLOSED]).toBeUndefined();
+    expect(second.state().personalEventPinPreferences.updates[CLOSED].pinned).toBe(true);
+    expect(second.state().personalEventPinPreferences.updates[OLD]).toBeUndefined();
+  } finally { await secondContext.close(); }
 });

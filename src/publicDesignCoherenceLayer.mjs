@@ -46,6 +46,12 @@ const CSS = `
     letter-spacing: 0 !important;
   }
 
+  /* Blink leaves some nested labels at auto when only body sets this property. */
+  html.design-coherence-v1 body,
+  html.design-coherence-v1 body #app * {
+    text-rendering: geometricPrecision !important;
+  }
+
   html.design-coherence-v1 .font-num,
   html.design-coherence-v1 .font-num *,
   html.design-coherence-v1 .currency-input-badge {
@@ -2080,7 +2086,7 @@ const CSS = `
 
   html.design-coherence-v1 .event-participant-primary-actions {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 9px !important;
     margin: 0 !important;
   }
@@ -3131,7 +3137,7 @@ const CSS = `
     color: var(--app-muted) !important;
     background: transparent !important;
     box-shadow: none !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 600 !important;
     line-height: 1.35 !important;
   }
@@ -3152,7 +3158,7 @@ const CSS = `
     .settlement-hero-title-row h2 {
     margin: 0 0 3px !important;
     color: var(--app-ink) !important;
-    font-size: clamp(19px, 5.2vw, 22px) !important;
+    font-size: clamp(1.1875rem, 5.2vw, 1.375rem) !important;
     font-weight: 650 !important;
     line-height: 1.22 !important;
   }
@@ -3163,7 +3169,7 @@ const CSS = `
     .settlement-hero-title-row .muted {
     margin: 0 !important;
     color: var(--app-muted) !important;
-    font-size: 12px !important;
+    font-size: var(--dynamic-text-12, 12px) !important;
     font-weight: 500 !important;
     line-height: 1.4 !important;
   }
@@ -4052,7 +4058,7 @@ const CSS = `
       .screen[data-screen-kind="event"]
       > .event-overview-header
       h1 {
-      font-size: 28px !important;
+      font-size: var(--dynamic-text-28, 28px) !important;
       line-height: 1.08 !important;
     }
 
@@ -4586,7 +4592,7 @@ const CSS = `
   html.design-coherence-v1.ledger-workspace-v1 body #app
     .profile-edit-screen .profile-identity-entry .profile-identity-copy > strong {
     color: var(--app-muted) !important;
-    font-size: 13px !important;
+    font-size: var(--dynamic-text-13, 13px) !important;
     font-weight: 500 !important;
   }
 
@@ -4674,6 +4680,213 @@ const CSS = `
     html.design-coherence-v1.ledger-workspace-v1 body #app
       .profile-edit-screen .profile-avatar-source-grid {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  /* Scale shared page headings with the user's text size while keeping the
+     event name and first task together on a narrow phone. */
+  @media (pointer: coarse) and (orientation: portrait) and (max-width: 720px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      margin-block: 8px 12px !important;
+      padding: 12px 18px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      width: 100% !important;
+      max-width: none !important;
+      margin-block: 0 !important;
+      font-size: 1.5rem !important;
+      line-height: 1.15 !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.875rem !important;
+      line-height: 1.3 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      flex-direction: column !important;
+      gap: 3px !important;
+      padding: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+      white-space: nowrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro {
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-notes-intro > [data-action="new-event-note"] {
+      order: -1 !important;
+      align-self: stretch !important;
+      min-height: 44px !important;
+      padding: 8px 16px !important;
+      line-height: 1.2 !important;
+    }
+  }
+
+  /* A phone turned sideways has tablet width but very little usable height.
+     Keep the task above the fixed navigation, with the same touch targets. */
+  @media (pointer: coarse) and (orientation: landscape) and (max-height: 450px) {
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] {
+      width: 100% !important;
+      max-width: 960px !important;
+      padding-inline: 16px !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-app-identity {
+      min-height: calc(56px + env(safe-area-inset-top)) !important;
+      padding-block: calc(6px + env(safe-area-inset-top)) 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
+      min-height: 0 !important;
+      display: grid !important;
+      grid-template-columns: minmax(0, 1fr) !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin-block: 6px 12px !important;
+      padding: 6px 16px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .brand {
+      min-width: 0 !important;
+      display: grid !important;
+      gap: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top :is(h1, .muted, .eyebrow) {
+      margin-block: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top h1 {
+      font-size: 1.25rem !important;
+      line-height: 1.15 !important;
+      max-width: none !important;
+      width: 100% !important;
+      text-wrap: wrap !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .eyebrow,
+    html.design-coherence-v1.ledger-workspace-v1 body #app .product-home-screen > .top .muted {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .muted {
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      margin: 0 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top .hero-actions button {
+      min-height: 44px !important;
+      flex-direction: row !important;
+      gap: 6px !important;
+      padding: 6px 8px !important;
+      font-size: 0.75rem !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .screen.product-home-screen[data-screen-kind="home"] > .top {
+      margin-block-end: 0 !important;
+      padding-block-end: 32px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions {
+      align-items: start !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .home-benefit-actions .home-quick-action {
+      min-height: 60px !important;
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab {
+      min-height: 44px !important;
+      padding-block: 6px !important;
+      font-size: 0.875rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .event-workspace-tab strong {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header {
+      padding-block: 6px !important;
+      margin-block-end: 0 !important;
+      padding-left: max(16px, env(safe-area-inset-left)) !important;
+      padding-right: max(16px, env(safe-area-inset-right)) !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-step-header .eyebrow {
+      display: none !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-modal-step-header h2 {
+      margin-block: 4px 0 !important;
+      font-size: 1.25rem !important;
+      line-height: 1.2 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-flow-progress {
+      padding-block-start: 6px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-flow-body {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field {
+      padding-block: 8px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field input[data-action="expense-total"] {
+      min-height: 50px !important;
+      font-size: 2rem !important;
+      line-height: 1.1 !important;
+      padding-block: 4px !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-total-field > span {
+      font-size: 0.75rem !important;
+      line-height: 1.25 !important;
+    }
+
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal .expense-modal-actions {
+      padding-block: 6px !important;
     }
   }
 

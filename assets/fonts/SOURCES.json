@@ -1,0 +1,93 @@
+[
+  {
+    "file": "inter-cyrillic-ext-v20.woff2",
+    "family": "Inter",
+    "subset": "cyrillic-ext",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2JL7W0Q5n-wU.woff2",
+    "sha256": "fccca918fea40089dacadc7045861314d1a6bc91f1f323cc1eeb22ebcdb321b5"
+  },
+  {
+    "file": "inter-cyrillic-v20.woff2",
+    "family": "Inter",
+    "subset": "cyrillic",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2",
+    "sha256": "aebf2ab4a4ce6810d73c1ac7be7cafb4e5ec4cee2d6db5fb3e09691747ec4bd6"
+  },
+  {
+    "file": "inter-greek-ext-v20.woff2",
+    "family": "Inter",
+    "subset": "greek-ext",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2ZL7W0Q5n-wU.woff2",
+    "sha256": "a2e2c783ca6f9c20486e81e72a279203e86730bbf8f01ff6a5ee9dbd09e1c271"
+  },
+  {
+    "file": "inter-greek-v20.woff2",
+    "family": "Inter",
+    "subset": "greek",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1pL7W0Q5n-wU.woff2",
+    "sha256": "46dd4cdca58c26ae87cc6927657bf83b2e8abfc39ffd0ab176e301a8d28d22bf"
+  },
+  {
+    "file": "inter-vietnamese-v20.woff2",
+    "family": "Inter",
+    "subset": "vietnamese",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa2pL7W0Q5n-wU.woff2",
+    "sha256": "8db00ff46c67b22cda8bed865acf7077651cac8d2841d5b40980556b48961931"
+  },
+  {
+    "file": "inter-latin-ext-v20.woff2",
+    "family": "Inter",
+    "subset": "latin-ext",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa25L7W0Q5n-wU.woff2",
+    "sha256": "a28eb6d3ccb534ae0c94ca999371df024aab60b08c3c8a5720ee9e32fa0faaa2"
+  },
+  {
+    "file": "inter-latin-v20.woff2",
+    "family": "Inter",
+    "subset": "latin",
+    "source": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7W0Q5nw.woff2",
+    "sha256": "c940764593d0fe5d596be327ca7558855e018039fb78509aa21921fd3644c3e4"
+  },
+  {
+    "file": "rubik-arabic-v31.woff2",
+    "family": "Rubik",
+    "subset": "arabic",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nErXyw023e1Ik.woff2",
+    "sha256": "fa1623ef550cb4742dc8a7449d30385f9ed0b453e85eb9c49b07c3dfcf945540"
+  },
+  {
+    "file": "rubik-cyrillic-ext-v31.woff2",
+    "family": "Rubik",
+    "subset": "cyrillic-ext",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nMrXyw023e1Ik.woff2",
+    "sha256": "79891522e6f702d4f365da6048b12acb0b453dd7b0705a431f2b10f4400896a4"
+  },
+  {
+    "file": "rubik-cyrillic-v31.woff2",
+    "family": "Rubik",
+    "subset": "cyrillic",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nFrXyw023e1Ik.woff2",
+    "sha256": "963fc62d2cf3e59e6f338db71b85b5ea86dd009fff859116d51a31a9b98d1d30"
+  },
+  {
+    "file": "rubik-hebrew-v31.woff2",
+    "family": "Rubik",
+    "subset": "hebrew",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nDrXyw023e1Ik.woff2",
+    "sha256": "e59af50ac91644907bc91d5a94bfa3be3ec32eac618fa4f841862507b21586ae"
+  },
+  {
+    "file": "rubik-latin-ext-v31.woff2",
+    "family": "Rubik",
+    "subset": "latin-ext",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nPrXyw023e1Ik.woff2",
+    "sha256": "b11446f4d0b897435488492cdc6cd612f33748e2b010ac79eff74ea861cf8970"
+  },
+  {
+    "file": "rubik-latin-v31.woff2",
+    "family": "Rubik",
+    "subset": "latin",
+    "source": "https://fonts.gstatic.com/s/rubik/v31/iJWKBXyIfDnIV7nBrXyw023e.woff2",
+    "sha256": "99ec7ccb40cf143f977c893649deece6cc2dcc7c0ff82ebf84b6584090f207ea"
+  }
+]

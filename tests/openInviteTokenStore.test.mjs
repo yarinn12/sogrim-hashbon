@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildEventInviteUrl } from "../src/domain/inviteLinks.mjs";
 
 import {
   loadLegacyOpenInviteCandidate,
@@ -71,6 +72,32 @@ test("a verified open invite is scoped to the account, workspace and event space
   );
   assert.equal(
     loadVerifiedOpenInviteToken(config(), event("event-space-b"), storage),
+    null
+  );
+});
+
+test("a server-confirmed referral code survives an offline invite and stays in its account scope", () => {
+  const storage = memoryStorage();
+  const referralCode = "0123456789abcdefabcd";
+  const saved = saveVerifiedOpenInviteToken(
+    config(), event(), TOKEN, storage, { referralCode }
+  );
+
+  assert.equal(saved.referralCode, referralCode);
+  assert.equal(
+    loadVerifiedOpenInviteToken(config(), event(), storage)?.referralCode,
+    referralCode
+  );
+  const restored = loadVerifiedOpenInviteToken(config(), event(), storage);
+  const offlineLink = buildEventInviteUrl(
+    "https://sogrim.example/",
+    event().id,
+    null,
+    { inviteToken: restored.token, referralCode: restored.referralCode }
+  );
+  assert.equal(new URL(offlineLink).searchParams.get("ref"), referralCode);
+  assert.equal(
+    loadVerifiedOpenInviteToken(config("account-b"), event(), storage),
     null
   );
 });

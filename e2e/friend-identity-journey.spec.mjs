@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { resetLocalQaState } from "./helpers/resetLocalQaState.mjs";
 
 const EVENT_ID = "event-identity-journey";
 const OWNER_ID = "account-11111111-1111-4111-8111-111111111111";
@@ -67,7 +68,7 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page, request, baseURL }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -126,7 +127,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
         }
       : seededState;
 
-  await request.post("/api/reset");
+  await resetLocalQaState(request, baseURL);
   await request.put("/api/state", { data: stateForTest });
   await page.addInitScript(({ participantId, state }) => {
     localStorage.clear();

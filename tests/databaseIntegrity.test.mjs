@@ -12,6 +12,8 @@ import { repaymentModeFixture, stableRepaymentFixture, reversePaymentFixture } f
 import { reconcileSettlementTransfers, settlementOptionsForEvent } from "../src/domain/settlement.mjs";
 import { restoreRememberedSettlementPlan } from "../src/domain/settlementPlanMemory.mjs";
 import { sendEventActivityNotification } from "../src/server/eventActivityNotifications.mjs";
+import { convertExpenseInput } from "../src/domain/expenseFx.mjs";
+import { saveCloudState } from "../src/data/cloudStore.mjs";
 
 // Real PostgreSQL/PLpgSQL, in memory only. No .env, network, production users,
 // or credentials. Supabase Auth's host-owned schema is the only fixture shim.
@@ -22,7 +24,9 @@ const migrationMarker = "-- Mandatory payment parties and finite note envelopes 
 const attributionMarker = "-- Shared note and activity attribution (2026-09-06).";
 const profileVersionMarker = "-- Monotonic public profile versions (2026-09-07).";
 const accountLinkReceiptMarker = "-- An identity link is historical evidence.";
+const referralTriggerMarker = "-- Keep referral activity beside the committed canonical financial write.";
 const accountLinkReceiptMigration = readFileSync(new URL("../supabase/migrations/20260908015000_preserve_committed_event_account_links.sql", import.meta.url), "utf8");
+const referralRecoveryMigration = readFileSync(new URL("../supabase/migrations/20261007090000_recover_referral_rewards.sql", import.meta.url), "utf8");
 const profileVersionMigration = readFileSync(new URL("../supabase/migrations/20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const profileVersionVerification = readFileSync(new URL("../supabase/verification/verify_20260907100000_monotonic_public_profile_versions.sql", import.meta.url), "utf8");
 const attributionMigration = readFileSync(new URL("../supabase/migrations/20260906110000_shared_note_activity_attribution.sql", import.meta.url), "utf8");
@@ -31,6 +35,9 @@ const attributionVerification = readFileSync(new URL("../supabase/verification/v
 const selfLeaveMigration = readFileSync(new URL("../supabase/migrations/20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
 const selfLeaveMarker = "-- Guarded self-leave receipt (2026-10-03).";
 const selfLeaveVerification = readFileSync(new URL("../supabase/verification/verify_20261003090000_allow_guarded_self_leave_receipt.sql", import.meta.url), "utf8");
+const fxBoundaryMigration = readFileSync(new URL("../supabase/migrations/20261011120000_preserve_expense_fx_at_snapshot_boundary.sql", import.meta.url), "utf8");
+const fxBoundaryVerification = readFileSync(new URL("../supabase/verification/verify_20261011120000_expense_fx_snapshot_boundary.sql", import.meta.url), "utf8");
+const fxBoundaryMarker = "-- Protect converted expenses at the snapshot write boundary (2026-10-11).";
 before(async () => {
   db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(`
@@ -65,6 +72,11 @@ before(async () => {
     await db.exec(accountLinkReceiptMigration);
     await db.exec(selfLeaveMigration);
     await db.exec(selfLeaveVerification);
+    await db.exec(fxBoundaryMigration);
+    if (process.env.DATABASE_INTEGRITY_INSTALL_MODE === "upgrade") {
+      await db.exec(referralRecoveryMigration);
+      await db.exec(referralRecoveryMigration);
+    }
   }
   catch (error) { throw new Error(`Local schema setup failed (${error.code}): ${error.message}`); }
 }, { timeout: 60_000 });
@@ -558,6 +570,172 @@ async function withSnapshot(actor, run, prepare = value => value) {
     throw error;
   } finally { await db.exec("rollback"); }
 }
+
+function convertedSnapshot(baseline) {
+  baseline.events[0].expenses[0] = { ...baseline.events[0].expenses[0],
+    name: "Lunch", ...convertExpenseInput({ sourceCurrency: "USD", targetCurrency: "ILS",
+      sourceAmount: "10", sourcePayers: [{ participantId: ids.recipient, amount: "10" }],
+      rate: "0.2", mode: "manual" }), updatedAt: new Date(Date.now() - 1000).toISOString() };
+  return baseline;
+}
+
+test("SQL canonical write keeps FX provenance when a legacy client changes only the expense name", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const candidate = structuredClone(previous);
+    candidate.events[0].expenses[0].name = "Renamed by old client";
+    candidate.events[0].expenses[0].updatedAt = new Date(Date.now() + 2000).toISOString();
+    delete candidate.events[0].expenses[0].fxConversion;
+    const version = (await db.query("select to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0].version;
+    const config = { storage: { mode: "supabase", url: "https://fixture.invalid", table: "app_snapshots",
+      spaceId: snapshotId, spaceKey, anonKey: "fixture-anon", snapshotKind: "shared_event",
+      account: { userId: ids.admin.slice(8), accessToken: "fixture-token", spaceId: "workspace-1" } } };
+    let wirePayload, receipt;
+    await saveCloudState(config, candidate, async (url, options) => {
+      assert.match(url, /\/rpc\/update_shared_event_snapshot$/);
+      wirePayload = JSON.parse(options.body);
+      receipt = await save(wirePayload.p_state, wirePayload.p_expected_updated_at);
+      return new Response(JSON.stringify(receipt), { status: 200,
+        headers: { "content-type": "application/json" } });
+    }, { expectedVersion: version });
+    assert.equal(wirePayload.p_state.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(receipt.status, "updated");
+    const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+    assert.equal(committed.events[0].expenses[0].name, "Renamed by old client");
+    assert.deepEqual(committed.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write keeps explicit FX removal through a legacy edit and rejects stale resurrection", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const removed = structuredClone(previous);
+    const firstEdit = new Date(Date.now() + 1000).toISOString();
+    delete removed.events[0].expenses[0].fxConversion;
+    removed.events[0].expenses[0].fxConversionRemovedAt = firstEdit;
+    removed.events[0].expenses[0].updatedAt = firstEdit;
+    assert.equal((await save(removed)).status, "updated");
+    const read = async () => (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+    const afterRemoval = await read();
+    assert.equal(afterRemoval.state.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(afterRemoval.state.events[0].expenses[0].fxConversionRemovedAt, firstEdit);
+
+    const legacyEdit = structuredClone(afterRemoval.state);
+    legacyEdit.events[0].expenses[0].name = "Old client renamed";
+    legacyEdit.events[0].expenses[0].updatedAt = new Date(Date.now() + 2000).toISOString();
+    delete legacyEdit.events[0].expenses[0].fxConversionRemovedAt;
+    assert.equal((await save(legacyEdit, afterRemoval.version)).status, "updated");
+    const afterLegacy = await read();
+    assert.equal(afterLegacy.state.events[0].expenses[0].fxConversionRemovedAt, firstEdit);
+
+    const stale = structuredClone(previous);
+    stale.events[0].expenses[0].updatedAt = new Date(Date.now() + 3000).toISOString();
+    stale.events[0].expenses[0].name = "Stale FX copy";
+    await db.exec("savepoint stale_fx_rejected");
+    await assert.rejects(save(stale, afterLegacy.version), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint stale_fx_rejected");
+    assert.deepEqual((await read()).state, afterLegacy.state);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write rejects a contradictory monetary edit without a replacement conversion", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const changed = structuredClone(previous);
+    const expense = changed.events[0].expenses[0];
+    delete expense.fxConversion;
+    expense.total = 202;
+    expense.payers[0].amount = 202;
+    expense.updatedAt = new Date(Date.now() + 2000).toISOString();
+    await db.exec("savepoint conflicting_fx_rejected");
+    await assert.rejects(save(changed), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint conflicting_fx_rejected");
+    assert.deepEqual((await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state, previous);
+  }, baseline => {
+    convertedSnapshot(baseline);
+    baseline.events[0].expenses[0].sharedByParticipantIds = [ids.recipient];
+    baseline.events[0].transfers = [];
+    return baseline;
+  });
+});
+
+test("SQL canonical write rejects a currency change while a converted expense exists", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const changed = structuredClone(previous);
+    changed.events[0].currency = "USD";
+    await db.exec("savepoint currency_fx_rejected");
+    await assert.rejects(save(changed), error => error.code === "PFX01");
+    await db.exec("rollback to savepoint currency_fx_rejected");
+    assert.deepEqual((await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state, previous);
+  }, convertedSnapshot);
+});
+
+test("SQL canonical write permits a deliberate new conversion after explicit removal", async () => {
+  await withSnapshot(ids.admin, async (previous, save) => {
+    const removed = structuredClone(previous);
+    const removedAt = new Date(Date.now() + 1000).toISOString();
+    delete removed.events[0].expenses[0].fxConversion;
+    removed.events[0].expenses[0].fxConversionRemovedAt = removedAt;
+    removed.events[0].expenses[0].updatedAt = removedAt;
+    assert.equal((await save(removed)).status, "updated");
+    const afterRemoval = (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [snapshotId])).rows[0];
+    const reapplied = structuredClone(previous);
+    const restoredAt = new Date(Date.now() + 2000).toISOString();
+    reapplied.events[0].expenses[0].fxConversionRestoredAt = restoredAt;
+    reapplied.events[0].expenses[0].updatedAt = restoredAt;
+    assert.equal((await save(reapplied, afterRemoval.version)).status, "updated");
+    const committed = (await db.query("select state from public.app_snapshots where id=$1", [snapshotId])).rows[0].state;
+    assert.deepEqual(committed.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+    assert.equal(committed.events[0].expenses[0].fxConversionRemovedAt, undefined);
+  }, convertedSnapshot);
+});
+
+test("SQL personal PATCH projects canonical FX for an old client even when its workspace lacks the field", async () => {
+  await withSnapshot(ids.admin, async previous => {
+    const workspaceId = `workspace-${ids.admin.slice(-1)}`;
+    const workspace = (await db.query("select state,to_jsonb(updated_at) as version from public.app_snapshots where id=$1", [workspaceId])).rows[0];
+    const candidate = structuredClone(workspace.state);
+    candidate.events = [structuredClone(previous.events[0])];
+    candidate.events[0].sharedSpaceId = snapshotId;
+    candidate.events[0].expenses[0].name = "Old client personal edit";
+    delete candidate.events[0].expenses[0].fxConversion;
+    const config = { storage: { mode: "supabase", url: "https://fixture.invalid", table: "app_snapshots",
+      spaceId: workspaceId, spaceKey, anonKey: "fixture-anon",
+      account: { userId: ids.admin.slice(8), accessToken: "fixture-token", spaceId: workspaceId } } };
+    let wirePayload, acknowledged = false;
+    await saveCloudState(config, candidate, async (url, options) => {
+      assert.match(url, /\/app_snapshots\?/);
+      wirePayload = JSON.parse(options.body).state;
+      const rows = (await db.query(`update public.app_snapshots
+        set state=$1::jsonb,updated_at=now()+interval '1 second'
+        where id=$2 and updated_at=$3::timestamptz
+        returning state,to_jsonb(updated_at) as updated_at`,
+      [JSON.stringify(wirePayload), workspaceId, workspace.version])).rows;
+      acknowledged = rows.length === 1;
+      return new Response(JSON.stringify(rows), { status: 200,
+        headers: { "content-type": "application/json" } });
+    }, { expectedVersion: workspace.version });
+    assert.equal(wirePayload.events[0].expenses[0].fxConversion, undefined);
+    assert.equal(acknowledged, true);
+    const saved = (await db.query("select state from public.app_snapshots where id=$1", [workspaceId])).rows[0].state;
+    assert.equal(saved.events[0].expenses[0].name, "Old client personal edit");
+    assert.deepEqual(saved.events[0].expenses[0].fxConversion, previous.events[0].expenses[0].fxConversion);
+  }, convertedSnapshot);
+});
+
+test("SQL FX rollout check sees the installed guard and consistent saved snapshots", async () => {
+  const result = await db.exec(fxBoundaryVerification);
+  assert.equal(result.at(-1).rows[0].verification_status, "ready");
+});
+
+test("SQL FX migration reapply leaves snapshot policies and table grants unchanged", async () => {
+  const privileges = async () => ({
+    policies: (await db.query("select * from pg_catalog.pg_policies where schemaname='public' and tablename='app_snapshots' order by policyname")).rows,
+    grants: (await db.query("select grantee,privilege_type from information_schema.table_privileges where table_schema='public' and table_name='app_snapshots' order by grantee,privilege_type")).rows
+  });
+  const before = await privileges();
+  await db.exec(fxBoundaryMigration);
+  await db.exec(fxBoundaryMigration);
+  assert.deepEqual(await privileges(), before);
+  assert.equal((await db.exec(fxBoundaryVerification)).at(-1).rows[0].verification_status, "ready");
+});
 
 test("SQL notification retry acknowledges real committed inbox receipts without creating duplicates", async () => {
   await withSnapshot(ids.admin, async baseline => {
@@ -1344,8 +1522,22 @@ async function withOpenInvite(run, { workspace = true, expired = false, closed =
   });
 }
 
-test("SQL invite redemption makes membership, canonical data and personal index readable together", async () => {
+test("SQL invite redemption and a new member expense reward the inviter after later email confirmation", async () => {
   await withOpenInvite(async ({ userId, participantId, redeem, inspect, save }) => {
+    const inviterId = ids.admin.slice(8);
+    const code = (await db.query(
+      "select code from public.friend_invite_codes where user_id=$1::uuid", [inviterId]
+    )).rows[0].code;
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    assert.equal((await db.query(
+      "select public.claim_referral($1) as value", [code]
+    )).rows[0].value.claimed, true);
+    await db.exec("reset role");
+    await db.query("select set_config('request.jwt.claim.role','service_role',true)");
+    await db.exec("set local role service_role");
     const result = await redeem();
     assert.equal(result.status, "joined");
     assert.equal(result.canonicalParticipantReady, true);
@@ -1367,7 +1559,145 @@ test("SQL invite redemption makes membership, canonical data and personal index 
     const at = new Date().toISOString();
     candidate.events[0].notes = [{ id: "joined-member-note", title: "First note", body: "After joining",
       createdAt: at, updatedAt: at, createdByParticipantId: participantId, updatedByParticipantId: participantId }];
-    assert.equal((await save(candidate, committed.shared.version)).status, "updated");
+    const noteReceipt = await save(candidate, committed.shared.version);
+    assert.equal(noteReceipt.status, "updated");
+    const afterExpense = structuredClone(candidate);
+    afterExpense.events[0].expenses.push({
+      id: "joined-member-referral-expense", title: "Synthetic joined member expense", total: 100,
+      payers: [{ participantId, amount: 100 }],
+      sharedByParticipantIds: [ids.admin, participantId],
+      createdByParticipantId: participantId, createdAt: at, updatedAt: at
+    });
+    const settlement = reconcileSettlementTransfers(
+      afterExpense.participants, afterExpense.events[0].expenses,
+      afterExpense.events[0].transfers, settlementOptionsForEvent(afterExpense.events[0])
+    );
+    assert.deepEqual(settlement.issues, []);
+    afterExpense.events[0].transfers = settlement.transfers;
+    assert.equal((await save(afterExpense, noteReceipt.updatedAt)).status, "updated");
+    await db.exec("reset role");
+    const activity = (await db.query(
+      "select actor_user_id,activity_kind,entity_id from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(activity.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [{
+      actor_user_id: userId, activity_kind: "expense_created", entity_id: "joined-member-referral-expense"
+    }]);
+    assert.equal((await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [userId]
+    )).rows[0].status, "pending");
+    await db.query("update auth.users set email_confirmed_at=now() where id=$1::uuid", [userId]);
+    // A later authenticated request has no access to the first client's local retry state.
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    await db.query("select public.get_referral_program_status() as value");
+    await db.exec("reset role");
+    const firstEntitlement = (await db.query(
+      "select to_jsonb(expires_at) as expires_at from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.equal(firstEntitlement.length, 1);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [userId]);
+    await db.query("select set_config('request.jwt.claim.role','authenticated',true)");
+    await db.exec("set local role authenticated");
+    await db.query("select public.get_referral_program_status() as value");
+    await db.exec("reset role");
+    assert.equal((await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [userId]
+    )).rows[0].status, "rewarded");
+    const entitlements = (await db.query(
+      "select source,to_jsonb(expires_at) as expires_at,expires_at > now() + interval '29 days' as full_month,expires_at < now() + interval '31 days' as at_most_one_month from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.deepEqual(entitlements, [{ source: "referral", expires_at: firstEntitlement[0].expires_at,
+      full_month: true, at_most_one_month: true }]);
+  });
+});
+
+test("SQL referral reward recovers after email confirmation on a second device", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const inviterId = ids.admin.slice(8);
+    const invitedId = ids.sender.slice(8);
+    await db.exec("reset role");
+    const code = (await db.query(
+      "select code from public.friend_invite_codes where user_id=$1::uuid",
+      [inviterId]
+    )).rows[0].code;
+    await db.exec("set local role authenticated");
+    const claim = (await db.query(
+      "select public.claim_referral($1) as value", [code]
+    )).rows[0].value;
+    assert.equal(claim.claimed, true);
+
+    const committed = await save(markPaid(previous, ids.sender));
+    assert.equal(committed.status, "updated");
+    await db.exec("reset role");
+    const activity = (await db.query(
+      "select actor_user_id, activity_kind from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(activity.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [
+      { actor_user_id: invitedId, activity_kind: "transfer_paid" }
+    ]);
+
+    // Email confirmation and the next session happen away from the device
+    // that held the local qualification retry. The committed activity is the
+    // only durable evidence available to this session.
+    await db.query("update auth.users set email_confirmed_at=now() where id=$1::uuid", [invitedId]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [invitedId]);
+    await db.exec("set local role authenticated");
+    await db.query("select public.get_referral_program_status() as value");
+    const repeat = (await db.query("select public.get_referral_program_status() as value")).rows[0].value;
+    assert.equal(repeat.ad_free_active, false, "the reward belongs to the inviter");
+    const repeatClaim = (await db.query("select public.claim_referral($1) as value", [code])).rows[0].value;
+    assert.equal(repeatClaim.claimed, false);
+    await db.exec("reset role");
+    const referral = (await db.query(
+      "select status from public.referrals where invited_user_id=$1::uuid", [invitedId]
+    )).rows[0];
+    const entitlements = (await db.query(
+      "select source, expires_at > now() as active from public.user_entitlements where user_id=$1::uuid",
+      [inviterId]
+    )).rows;
+    assert.equal(referral.status, "rewarded");
+    assert.deepEqual(entitlements, [{ source: "referral", active: true }]);
+    await db.query("select set_config('request.jwt.claim.sub',$1,true)", [inviterId]);
+    await db.exec("set local role authenticated");
+    await assert.rejects(
+      db.query("select public.claim_referral($1) as value", [code]),
+      /You cannot refer yourself/
+    );
+  });
+});
+
+test("SQL a committed new expense records only its authenticated creator for referral", async () => {
+  await withSnapshot(ids.sender, async (previous, save) => {
+    const candidate = structuredClone(previous);
+    const now = new Date().toISOString();
+    candidate.events[0].expenses.push({
+      id: "referral-expense-probe", title: "Synthetic referral expense", total: 100,
+      payers: [{ participantId: ids.sender, amount: 100 }],
+      sharedByParticipantIds: [ids.admin, ids.sender],
+      createdByParticipantId: ids.sender, createdAt: now, updatedAt: now
+    });
+    const settlement = reconcileSettlementTransfers(
+      candidate.participants, candidate.events[0].expenses,
+      candidate.events[0].transfers, settlementOptionsForEvent(candidate.events[0])
+    );
+    assert.deepEqual(settlement.issues, []);
+    candidate.events[0].transfers = settlement.transfers;
+    assert.equal((await save(candidate)).status, "updated");
+    await db.exec("reset role");
+    const rows = (await db.query(
+      "select actor_user_id, activity_kind, entity_id from private.shared_event_qualification_activity where snapshot_id=$1",
+      [snapshotId]
+    )).rows;
+    assert.deepEqual(rows.map(row => ({ ...row, actor_user_id: String(row.actor_user_id) })), [{
+      actor_user_id: ids.sender.slice(8),
+      activity_kind: "expense_created",
+      entity_id: "referral-expense-probe"
+    }]);
   });
 });
 
@@ -1494,11 +1824,19 @@ test("SQL authenticated RPC keeps CAS conflicts instead of overwriting newer dat
 });
 
 test("SQL fresh schema and incremental migration install exactly the same definitions", () => {
+  // The schema mixes checked-in CRLF with newly appended LF; compare SQL text,
+  // including every statement, after normalizing only the line endings.
+  const sameSql = value => value.replace(/\r\n?/g, "\n").trim();
   assert.equal(schema.slice(schema.indexOf(migrationMarker), schema.indexOf(attributionMarker)).trim(), migration.trim());
   assert.equal(schema.slice(schema.indexOf(attributionMarker), schema.indexOf(profileVersionMarker)).trim(), attributionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(profileVersionMarker),schema.indexOf(accountLinkReceiptMarker)).trim(), profileVersionMigration.trim());
   assert.equal(schema.slice(schema.indexOf(accountLinkReceiptMarker), schema.indexOf(selfLeaveMarker)).trim(), accountLinkReceiptMigration.slice(accountLinkReceiptMigration.indexOf(accountLinkReceiptMarker),accountLinkReceiptMigration.lastIndexOf("commit;")).trim());
-  assert.equal(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length).trim(), selfLeaveMigration.trim());
+  assert.equal(sameSql(schema.slice(schema.indexOf(selfLeaveMarker) + selfLeaveMarker.length, schema.indexOf(referralTriggerMarker))), sameSql(selfLeaveMigration));
+  assert.equal(sameSql(schema.slice(schema.indexOf(referralTriggerMarker), schema.indexOf(fxBoundaryMarker))), sameSql(referralRecoveryMigration.slice(referralRecoveryMigration.indexOf(referralTriggerMarker), referralRecoveryMigration.indexOf("create or replace function public.get_referral_program_status()"))));
+  assert.equal(sameSql(schema.slice(schema.indexOf(fxBoundaryMarker) + fxBoundaryMarker.length)),
+    sameSql(fxBoundaryMigration.replace(/^begin;\r?\n/, "").replace(/\r?\ncommit;\s*$/, "\n")));
+  const statusDefinition = source => source.match(/create or replace function public\.get_referral_program_status\(\)[\s\S]*?\$\$;/)?.[0];
+  assert.equal(sameSql(statusDefinition(schema)), sameSql(statusDefinition(referralRecoveryMigration)));
 });
 test("SQL rollout checks preserve enabled triggers and function privileges", async () => {
   await db.exec(rolloutVerification);

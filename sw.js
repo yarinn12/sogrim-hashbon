@@ -1,11 +1,25 @@
-const PWA_RELEASE = "510";
-const CACHE_NAME = "settle-friends-live-v510";
+const PWA_RELEASE = "514";
+const CACHE_NAME = "settle-friends-live-v514";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
   "/",
   "/index.html",
   "/styles.css",
+  "/assets/fonts/local.css",
+  "/assets/fonts/inter-cyrillic-ext-v20.woff2",
+  "/assets/fonts/inter-cyrillic-v20.woff2",
+  "/assets/fonts/inter-greek-ext-v20.woff2",
+  "/assets/fonts/inter-greek-v20.woff2",
+  "/assets/fonts/inter-latin-ext-v20.woff2",
+  "/assets/fonts/inter-latin-v20.woff2",
+  "/assets/fonts/inter-vietnamese-v20.woff2",
+  "/assets/fonts/rubik-arabic-v31.woff2",
+  "/assets/fonts/rubik-cyrillic-ext-v31.woff2",
+  "/assets/fonts/rubik-cyrillic-v31.woff2",
+  "/assets/fonts/rubik-hebrew-v31.woff2",
+  "/assets/fonts/rubik-latin-ext-v31.woff2",
+  "/assets/fonts/rubik-latin-v31.woff2",
   "/legal.css",
   "/legal.mjs",
   "/manifest.webmanifest",
@@ -59,6 +73,7 @@ const CACHE_FILES = [
   "/src/data/localIdentity.mjs",
   "/src/data/localStore.mjs",
   "/src/data/personalEventPins.mjs",
+  "/src/data/accountPinMigrationQueue.mjs",
   "/src/data/noteSaveRollback.mjs",
   "/src/data/settingsSaveRollback.mjs",
   "/src/data/eventControlRollback.mjs",
@@ -79,6 +94,8 @@ const CACHE_FILES = [
   "/src/data/friendsStore.mjs",
   "/src/data/sharedEventStore.mjs",
   "/src/domain/appActions.mjs",
+  "/src/domain/appUpdatePolicy.mjs",
+  "/src/domain/updateSafety.mjs",
   "/src/domain/adminAnalytics.mjs",
   "/src/domain/avatarPresets.mjs",
   "/src/domain/profileAvatarSync.mjs",
@@ -95,6 +112,7 @@ const CACHE_FILES = [
   "/src/domain/eventNotes.mjs",
   "/src/domain/eventTypes.mjs",
   "/src/domain/expenseDraft.mjs",
+  "/src/domain/expenseFx.mjs",
   "/src/domain/expenseDraftMemory.mjs",
   "/src/domain/noteDraftMemory.mjs",
   "/src/domain/friendContacts.mjs",
@@ -138,7 +156,6 @@ const CACHE_FILES = [
   "/src/publicEventWorkspaceLayer.mjs",
   "/src/publicExpenseGuestLayer.mjs",
   "/src/publicFintechDesignLayer.mjs",
-  "/src/publicFontLoader.mjs",
   "/src/publicFramerMotionLayer.mjs",
   "/src/vendor/framer-motion-dom.js",
   "/src/publicGoogleAuthLayer.mjs",
@@ -197,9 +214,10 @@ const CRITICAL_PRECACHE_FILES = new Set([
   "/src/pwaBootstrap.mjs",
   "/src/platformCompatibility.mjs",
   "/src/publicAccountAuthLayer.mjs",
-  ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css)$/.test(path))
+  ...CACHE_FILES.filter((path) => /\.(?:mjs|js|css|woff2)$/.test(path))
 ]);
 const PRECACHE_CONCURRENCY = 6;
+let activationNavigations = null;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -219,26 +237,37 @@ async function activateCurrentRelease() {
   const replacesPreviousRelease = cacheNames.some(
     (name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME
   );
-
-  await Promise.all([
-    Promise.all(
-      cacheNames
-        .filter((name) => name !== CACHE_NAME)
-        .map((name) => caches.delete(name))
-    ),
-    self.clients.claim()
-  ]);
-
-  if (!replacesPreviousRelease) return;
-  const windowClients = await self.clients.matchAll({
+  const windowClients = replacesPreviousRelease ? await self.clients.matchAll({
     type: "window",
     includeUncontrolled: true
-  });
+  }) : [];
+  activationNavigations = replacesPreviousRelease ? [] : null;
+
+  await Promise.all(
+    cacheNames
+      .filter((name) => name !== CACHE_NAME)
+      .map((name) => caches.delete(name))
+  );
+  await self.clients.claim();
+
+  if (!replacesPreviousRelease) return;
+  // Existing pages may reload on controllerchange. Let that navigation start
+  // before deciding which remaining windows need a worker-initiated reload.
+  await new Promise((resolve) => setTimeout(resolve, 750));
+  const startedNavigations = activationNavigations;
+  activationNavigations = null;
   for (const client of windowClients) {
     const clientUrl = new URL(client.url);
     if (clientUrl.origin !== self.location.origin) continue;
+    const sameUrlClients = windowClients.filter((item) => item.url === client.url);
+    if (startedNavigations.some(({ clientId, url }) =>
+      clientId === client.id || (!clientId && sameUrlClients.length === 1 && url === client.url)
+    )) continue;
     try {
-      const navigation = client.navigate?.(clientUrl.href);
+      const currentClient = await self.clients.get(client.id);
+      if (!currentClient) continue;
+      if (!await clientAllowsNavigation(currentClient)) continue;
+      const navigation = currentClient.navigate?.(clientUrl.href);
       navigation?.catch?.(() => {});
     } catch {
       // Activation must finish even if one stale window cannot be navigated.
@@ -246,11 +275,41 @@ async function activateCurrentRelease() {
   }
 }
 
+async function clientAllowsNavigation(client) {
+  // Only an explicit, timely reply authorizes a worker-driven navigation.
+  // An old, suspended or busy page may hold work that this worker cannot see.
+  if (!client.postMessage) return false;
+  if (typeof MessageChannel !== "function") return false;
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    let settled = false;
+    const finish = allowed => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      channel.port1.close();
+      channel.port2.close();
+      resolve(allowed);
+    };
+    const timeout = setTimeout(() => finish(false), 500);
+    channel.port1.onmessage = event => finish(event.data?.safe === true);
+    try {
+      client.postMessage({ type: "SOGRIM_UPDATE_NAVIGATION_CHECK" }, [channel.port2]);
+    } catch { finish(false); }
+  });
+}
+
 self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {
+  if (activationNavigations && event.request.mode === "navigate") {
+    activationNavigations.push({
+      clientId: event.replacesClientId || event.clientId || "",
+      url: event.request.url
+    });
+  }
   const url = new URL(event.request.url);
   const sameOrigin = url.origin === self.location.origin;
 
@@ -369,6 +428,7 @@ function isExpectedAssetResponse(path, response) {
     return contentType.includes("javascript");
   }
   if (path.endsWith(".css")) return contentType.includes("text/css");
+  if (path.endsWith(".woff2")) return contentType.includes("font/woff2");
   if (path.endsWith(".webmanifest")) {
     return contentType.includes("json") || contentType.includes("manifest");
   }

@@ -1,4 +1,5 @@
 import { eventOpenInviteToken } from "./eventInvites.mjs";
+import { normalizeReferralCode } from "../domain/referralCodes.mjs";
 import {
   accountStorageIdentityFromSession,
   loadStoredAccountSession
@@ -64,6 +65,7 @@ export function loadVerifiedOpenInviteToken(
     return {
       ...scope,
       token,
+      referralCode: normalizeReferralCode(record.referralCode),
       verifiedAt: String(record.verifiedAt ?? "")
     };
   } catch {
@@ -75,7 +77,8 @@ export function saveVerifiedOpenInviteToken(
   config,
   event,
   tokenValue,
-  storage = globalThis.localStorage
+  storage = globalThis.localStorage,
+  { referralCode = "" } = {}
 ) {
   const scope = openInviteTokenScope(config, event, storage);
   const token = eventOpenInviteToken({ openInviteToken: tokenValue });
@@ -88,13 +91,19 @@ export function saveVerifiedOpenInviteToken(
     eventSpaceId: scope.eventSpaceId,
     eventId: scope.eventId,
     token,
+    referralCode: normalizeReferralCode(referralCode),
     verifiedAt: new Date().toISOString()
   };
   try {
     removeConflictingEventRecords(storage, scope);
     storage.setItem(scope.storageKey, JSON.stringify(record));
     storage.removeItem(legacyOpenInviteStorageKey(scope.eventId));
-    return { ...scope, token, verifiedAt: record.verifiedAt };
+    return {
+      ...scope,
+      token,
+      referralCode: record.referralCode,
+      verifiedAt: record.verifiedAt
+    };
   } catch {
     return null;
   }

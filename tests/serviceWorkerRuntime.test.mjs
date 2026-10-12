@@ -60,7 +60,8 @@ async function createWorker({
       location: { origin: "https://sogrim-hesbon-app.vercel.app" },
       clients: {
         claim: async () => {},
-        matchAll: async () => windowClients
+        matchAll: async () => windowClients,
+        get: async (id) => windowClients.find((client) => client.id === id)
       },
       skipWaiting: async () => {
         skipWaitingCalls += 1;
@@ -75,6 +76,7 @@ async function createWorker({
     Response,
     Promise,
     AbortController,
+    MessageChannel,
     setTimeout: setTimeoutImpl,
     clearTimeout: clearTimeoutImpl
   });
@@ -127,6 +129,9 @@ function assetResponse(input, body = "fresh") {
   if (pathname === "/" || pathname.endsWith(".html")) contentType = "text/html";
   else if (/\.(?:mjs|js)$/.test(pathname)) contentType = "text/javascript";
   else if (pathname.endsWith(".css")) contentType = "text/css";
+  // Local font assets are now essential precache entries, so the synthetic
+  // origin must serve the same MIME type required by the real worker.
+  else if (pathname.endsWith(".woff2")) contentType = "font/woff2";
   else if (pathname.endsWith(".webmanifest")) contentType = "application/manifest+json";
   else if (pathname.endsWith(".svg")) contentType = "image/svg+xml";
   else if (/\.(?:png|jpg|jpeg|webp)$/.test(pathname)) contentType = "image/png";
@@ -142,7 +147,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
   assert.ok(worker.fetchCalls.length >= 8);
   assert.ok(worker.fetchCalls.every(([url, init]) => {
     const parsed = new URL(String(url));
-    return parsed.searchParams.get("pwa_release") === "510" && init?.cache === "no-store";
+    return parsed.searchParams.get("pwa_release") === "514" && init?.cache === "no-store";
   }));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/index.html"));
   assert.ok(worker.cacheWrites.some(({ request }) => request === "/src/pwaBootstrap.mjs"));
@@ -151,7 +156,7 @@ test("a new service worker bypasses stale HTTP caches while rebuilding its app s
 test("installed-app navigations bypass Safari's stale HTTP cache", async () => {
   const worker = await createWorker();
   const request = {
-    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=510",
+    url: "https://sogrim-hesbon-app.vercel.app/?pwa_release=514",
     method: "GET",
     mode: "navigate",
     headers: new Headers()
@@ -224,28 +229,84 @@ test("a waiting worker can be activated explicitly on iPhone", async () => {
   assert.equal(worker.skipWaitingCalls, 1);
 });
 
-test("an updated worker reloads open installed-app windows even when old page code is stuck", async () => {
+test("an updated worker leaves an unresponsive old page intact", async () => {
   const navigations = [];
   const staleWindow = {
+    id: "stale-installed-app",
     url: "https://sogrim-hesbon-app.vercel.app/?qa=stale-installed-app",
     async navigate(url) {
       navigations.push(url);
     }
   };
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v510"],
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v514"],
     windowClients: [staleWindow]
   });
 
   await worker.dispatchActivate();
 
-  assert.deepEqual(navigations, [staleWindow.url]);
+  assert.deepEqual(navigations, []);
+});
+
+test("worker navigates only after an explicit safe reply", async () => {
+  const navigations = [];
+  const client = {
+    id: "safe-client",
+    url: "https://sogrim-hesbon-app.vercel.app/",
+    postMessage(_message, [port]) { port.postMessage({ safe: true }); },
+    async navigate(url) { navigations.push(url); }
+  };
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v514"],
+    windowClients: [client]
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, [client.url]);
+});
+
+test("no reply and a reply after timeout never authorize navigation", async () => {
+  let delayedPort;
+  const navigations = [];
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v514"],
+    windowClients: [{
+      id: "busy-client",
+      url: "https://sogrim-hesbon-app.vercel.app/",
+      postMessage(_message, [port]) { delayedPort = port; },
+      async navigate(url) { navigations.push(url); }
+    }],
+    setTimeoutImpl(callback, delay) {
+      queueMicrotask(callback);
+      return delay;
+    },
+    clearTimeoutImpl() {}
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, []);
+  delayedPort.postMessage({ safe: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(navigations, []);
+});
+
+test("worker does not force a navigation when a client has unsynced work", async () => {
+  const navigations = [];
+  const worker = await createWorker({
+    cacheNames: ["settle-friends-live-v442", "settle-friends-live-v514"],
+    windowClients: [{
+      id: "unsynced-client",
+      url: "https://sogrim-hesbon-app.vercel.app/",
+      postMessage(_message, [port]) { port.postMessage({ safe: false }); },
+      async navigate(url) { navigations.push(url); }
+    }]
+  });
+  await worker.dispatchActivate();
+  assert.deepEqual(navigations, []);
 });
 
 test("a first service-worker install does not reload the open page", async () => {
   const navigations = [];
   const worker = await createWorker({
-    cacheNames: ["settle-friends-live-v510"],
+    cacheNames: ["settle-friends-live-v514"],
     windowClients: [{
       url: "https://sogrim-hesbon-app.vercel.app/",
       async navigate(url) {

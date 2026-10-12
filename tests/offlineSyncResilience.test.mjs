@@ -354,9 +354,9 @@ test("returning online flushes whatever was queued", () => {
   );
   assert.match(
     localStore,
-    /async function recoverOnlineSync\(\) \{[\s\S]*?runtimeConfigPromise = null;[\s\S]*?return flushPendingSharedState\(\);/
+    /async function recoverOnlineSync\(\) \{[\s\S]*?runtimeConfigPromise = null;[\s\S]*?return flushPendingSharedState\(\{ automatic: true \}\);/
   );
-  assert.match(localStore, /export async function flushPendingSharedState\(\)/);
+  assert.match(localStore, /export async function flushPendingSharedState\(\{ automatic = false \} = \{\}\)/);
 });
 
 test("an expired cloud token refreshes once without crossing account boundaries", () => {
@@ -391,7 +391,7 @@ test("concurrent online and resume recovery share one ordered flush", () => {
   );
   assert.match(
     flush,
-    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => loadAccountRequestIsCurrent\(requestScope, requestAccountGeneration\)\s*\? flushPendingSharedStateOnce\(\)/,
+    /cloudWriteQueue = cloudWriteQueue\s*\.catch\(\(\) => \{\}\)\s*\.then\(\(\) => loadAccountRequestIsCurrent\(requestScope, requestAccountGeneration\)\s*\? flushPendingSharedStateOnce\(\{ automatic \}\)/,
     "recovery waits for any active save instead of writing concurrently"
   );
   assert.match(
@@ -447,12 +447,14 @@ test("a queued write never freezes reads from another device during retry backof
     localStore.indexOf("async function loadSharedStateOnce"),
     localStore.indexOf("export async function saveSharedState")
   );
+  const deferredStart = load.indexOf("if (shouldDeferPendingSharedStateRetry(runtimeConfig)");
+  assert.notEqual(deferredStart, -1);
   const deferredBranch = load.slice(
-    load.indexOf("if (shouldDeferPendingSharedStateRetry()"),
-    load.indexOf("try {", load.indexOf("if (shouldDeferPendingSharedStateRetry()") + 80)
+    deferredStart,
+    load.indexOf("try {", deferredStart + 80)
   );
 
-  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(\) \|\|[\s\S]*?await loadCloudState\(/);
+  assert.match(load, /if \(shouldDeferPendingSharedStateRetry\(runtimeConfig\) \|\|[\s\S]*?await loadCloudState\(/);
   assert.match(load, /const mergedPendingState = mergeSharedStates\(remoteState, pendingState\)/);
   assert.match(load, /saveStateForScope\(visiblePendingState, requestScope\)/);
   assert.doesNotMatch(
@@ -523,7 +525,7 @@ test("pending conflicts retry quietly with a capped background backoff", () => {
   assert.match(localStore, /mode: acceptedPending \? "queued" : "cloud"/);
   assert.match(
     localStore,
-    /const result = await flushPendingSharedState\(\)/
+    /const result = await flushPendingSharedState\(\{ automatic: true \}\)/
   );
   assert.match(localStore, /Math\.min\(pendingSyncRetryAttempt, PENDING_SYNC_RETRY_DELAYS_MS\.length - 1\)/);
   assert.match(localStore, /publishSyncStatus\("reconnecting"\)/);
@@ -564,11 +566,14 @@ test("shared-event mutations reach the canonical event before the personal works
     localStore.indexOf("async function withFreshCloudAccount")
   );
   const prioritizedSync = persist.indexOf(
-    "? await syncSharedEvents(config, state, globalThis.fetch, syncSelection)"
+    "? await syncSharedEvents(config, state, globalThis.fetch, initialSyncSelection)"
   );
   const workspaceSave = persist.indexOf("initialSave = await saveCloudStateWithRetry(");
 
   assert.match(persist, /const prioritizeSharedEventWrite = Boolean\(/);
+  assert.match(persist, /const initialSyncSelection = sharedWriteAlreadyConfirmed\s*\? \{ eventIds: \[\], deletedEventIds: \[\] \}\s*: syncSelection;/,
+    "only a prior canonical acknowledgement may skip its shared retry");
+  assert.match(persist, /const sharedWriteAlreadyConfirmed = Boolean\(error\.sharedEventPersisted && error\.persistedState\);/);
   assert.ok(prioritizedSync >= 0, "shared mutations have an explicit canonical-first path");
   assert.ok(
     prioritizedSync < workspaceSave,

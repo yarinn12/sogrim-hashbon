@@ -1748,22 +1748,6 @@ const CSS = `
 
   html.ledger-workspace-v1
     .profile-avatar-option
-    input:checked
-    + .profile-avatar-preview::after {
-    content: "" !important;
-    position: absolute !important;
-    inset-inline-start: -2px !important;
-    inset-block-end: -2px !important;
-    width: 13px !important;
-    height: 13px !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 50% !important;
-    background: var(--ledger-brand) !important;
-    box-shadow: 0 3px 8px rgba(6, 75, 67, 0.28) !important;
-  }
-
-  html.ledger-workspace-v1
-    .profile-avatar-option
     input:focus-visible
     + .profile-avatar-preview {
     outline: 3px solid rgba(33, 170, 166, 0.28) !important;
@@ -3192,7 +3176,7 @@ const CSS = `
     }
 
     html.ledger-workspace-v1 .product-brand-copy strong {
-      font-size: 17px !important;
+      font-size: var(--dynamic-text-17, 17px) !important;
     }
 
     html.ledger-workspace-v1.circle-design-v1
@@ -8095,7 +8079,7 @@ const CSS = `
       min-height: 164px !important;
       display: block !important;
       gap: 0 !important;
-      margin: 12px 0 44px !important;
+      margin: 10px 0 36px !important;
       padding: 24px 22px 32px !important;
       border-radius: 24px !important;
     }
@@ -8345,7 +8329,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }
@@ -9746,7 +9730,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-participant-copy strong {
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.25 !important;
   }
 
@@ -9756,7 +9740,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .transfer-amount > .amount {
-    font-size: 20px !important;
+    font-size: var(--dynamic-text-20, 20px) !important;
   }
 
   html.ledger-workspace-v1 .transfer-actions > button {
@@ -10590,7 +10574,7 @@ const CSS = `
   html.ledger-workspace-v1 .event-participant-primary-actions {
     min-width: 0 !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 3fr) minmax(136px, 2fr) !important;
+    grid-template-columns: minmax(0, 1fr) !important;
     gap: 8px !important;
     margin: 13px 0 4px !important;
   }
@@ -13856,7 +13840,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .event-workspace-tab strong {
-    font-size: 13.5px !important;
+    font-size: 0.84375rem !important;
   }
 
   html.ledger-workspace-v1 .event-personal-balance {
@@ -15718,7 +15702,7 @@ const CSS = `
     border: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 700 !important;
     line-height: 1.25 !important;
   }
@@ -15754,7 +15738,7 @@ const CSS = `
     border-radius: 0 !important;
     color: var(--ledger-muted) !important;
     background: transparent !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 650 !important;
     white-space: normal !important;
   }
@@ -15781,7 +15765,7 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-event-view="summary"] .transfer-current-user {
     flex: 0 0 auto !important;
     color: var(--ledger-muted) !important;
-    font-size: 10px !important;
+    font-size: var(--dynamic-text-10, 10px) !important;
     font-weight: 650 !important;
     line-height: 1 !important;
   }
@@ -16588,6 +16572,20 @@ const CSS = `
     box-shadow: 0 12px 28px rgba(16, 35, 33, 0.12) !important;
   }
 
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search {
+    display: block !important;
+    padding: 4px 6px 8px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu .new-event-currency-search input {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  html.ledger-workspace-v1 .new-event-inline-picker-menu button[hidden] {
+    display: none !important;
+  }
+
   html.ledger-workspace-v1 .new-event-inline-picker-menu button {
     min-height: 44px !important;
     display: flex !important;
@@ -16869,15 +16867,15 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-participant-actions {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) !important;
-    gap: 10px !important;
-    margin-top: 10px !important;
+    gap: 8px !important;
+    margin-top: 8px !important;
   }
 
   html.ledger-workspace-v1 .new-event-participant-additions {
     display: grid !important;
     gap: 0 !important;
-    margin-top: 24px !important;
-    padding-top: 22px !important;
+    margin-top: 16px !important;
+    padding-top: 16px !important;
     border-top: 1px solid var(--ledger-line-strong) !important;
   }
 
@@ -16890,7 +16888,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action {
     min-width: 0 !important;
-    min-height: 62px !important;
+    min-height: 58px !important;
     display: grid !important;
     grid-template-columns: 28px minmax(0, 1fr) auto !important;
     align-items: center !important;
@@ -16907,7 +16905,7 @@ const CSS = `
 
   html.ledger-workspace-v1 .new-event-participant-route-action.is-primary {
     grid-column: auto !important;
-    min-height: 68px !important;
+    min-height: 64px !important;
     border-color: var(--ledger-brand) !important;
     color: #ffffff !important;
     background: var(--ledger-brand) !important;
@@ -17062,8 +17060,8 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participants {
     display: grid !important;
     gap: 12px !important;
-    margin-top: 18px !important;
-    padding: 16px !important;
+    margin-top: 12px !important;
+    padding: 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 14px !important;
     background: #ffffff !important;
@@ -17076,7 +17074,7 @@ const CSS = `
     align-items: baseline !important;
     justify-content: space-between !important;
     gap: 12px !important;
-    padding-bottom: 10px !important;
+    padding-bottom: 8px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
   }
 
@@ -17101,12 +17099,12 @@ const CSS = `
   html.ledger-workspace-v1 .new-event-selected-participant {
     position: relative !important;
     min-width: 0 !important;
-    min-height: 76px !important;
+    min-height: 68px !important;
     display: grid !important;
     grid-template-columns: 48px minmax(0, 1fr) auto 34px !important;
     align-items: center !important;
     gap: 11px !important;
-    padding: 12px 14px !important;
+    padding: 10px 14px !important;
     border: 1px solid var(--ledger-line) !important;
     border-radius: 12px !important;
     color: var(--ledger-ink) !important;
@@ -17116,6 +17114,7 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .new-event-selected-participant.is-current-participant {
+    grid-template-columns: 48px minmax(0, 1fr) auto !important;
     cursor: default !important;
   }
 
@@ -17500,6 +17499,16 @@ const CSS = `
       0 3px 9px rgba(18, 58, 46, 0.06) !important;
   }
 
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action {
+    gap: 2px !important;
+    padding-inline: 10px 14px !important;
+  }
+
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action .home-quick-action-icon {
+    width: 34px !important;
+    min-width: 34px !important;
+  }
+
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary > span:nth-child(2) {
     flex: 0 1 auto !important;
     text-align: center !important;
@@ -17823,6 +17832,19 @@ const CSS = `
   html.ledger-workspace-v1:has(#public-account-auth-gate) #app {
     visibility: hidden !important;
     pointer-events: none !important;
+  }
+
+  /* Keep enabled auth text readable when touch leaves the legacy hover state active. */
+  html.ledger-workspace-v1 #public-account-auth-gate .account-auth-submit:not(:disabled) {
+    color: #ffffff !important;
+  }
+  /* Keep the legal links and their bottom padding inside the mobile scroll range. */
+  @media (max-width: 760px),
+    (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    html.ledger-workspace-v1 #public-account-auth-gate .account-auth-shell {
+      overflow: visible !important;
+      grid-template-rows: auto auto !important;
+    }
   }
 
   /* Final mobile touch-target guardrails for shared route controls. */
@@ -18592,7 +18614,7 @@ const CSS = `
     padding: 0 0 9px !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     color: var(--ledger-ink) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
   }
 
@@ -18911,8 +18933,23 @@ const CSS = `
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-heading {
     margin: 0 !important;
     padding: 12px 16px !important;
+    flex-wrap: wrap !important;
     border-bottom: 1px solid var(--ledger-line) !important;
     background: var(--ledger-surface-soft) !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary {
+    min-width: min-content !important;
+    max-width: 100% !important;
+    flex: 0 1 auto !important;
+    flex-wrap: wrap !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .amount,
+  html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-day-summary .font-num {
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="event"] .expense-row,
@@ -19829,7 +19866,7 @@ const CSS = `
   html.ledger-workspace-v1 .profile-identity-copy > strong {
     overflow-wrap: anywhere !important;
     color: var(--ledger-ink) !important;
-    font-size: 17px !important;
+    font-size: var(--dynamic-text-17, 17px) !important;
     line-height: 1.35 !important;
   }
 
@@ -20402,7 +20439,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-ink) !important;
-    font-size: 19px !important;
+    font-size: var(--dynamic-text-19, 19px) !important;
     font-weight: 820 !important;
     line-height: 1.3 !important;
     text-overflow: ellipsis !important;
@@ -20426,7 +20463,7 @@ const CSS = `
     min-width: 0 !important;
     overflow: hidden !important;
     color: var(--ledger-muted) !important;
-    font-size: 14px !important;
+    font-size: var(--dynamic-text-14, 14px) !important;
     line-height: 1.45 !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
@@ -20616,6 +20653,28 @@ const CSS = `
     padding-bottom: calc(112px + env(safe-area-inset-bottom)) !important;
   }
 
+  html.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action {
+    width: 100% !important;
+    min-height: 56px !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 8px 16px !important;
+    line-height: 1.2 !important;
+  }
+
+  html.ledger-workspace-v1 body #app .screen > .event-header-actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 12px !important;
+    border-radius: 16px !important;
+    background: var(--ledger-hero-surface) !important;
+  }
+
   html.ledger-workspace-v1 .event-notes-screen .event-workspace-nav {
     margin-top: 0 !important;
   }
@@ -20668,7 +20727,7 @@ const CSS = `
     overflow: visible !important;
     clip: auto !important;
     color: inherit !important;
-    font-size: 11px !important;
+    font-size: var(--dynamic-text-11, 11px) !important;
     font-weight: 750 !important;
     white-space: nowrap !important;
   }
@@ -20771,9 +20830,9 @@ if (!document.getElementById(STYLE_ID)) {
 
 const appRoot = document.querySelector("#app");
 let workspaceOcclusionFrame = 0;
+let workspaceOcclusionFramesRemaining = 0;
 
 function syncWorkspaceNavigationOcclusion() {
-  workspaceOcclusionFrame = 0;
   const workspaceNavigation = appRoot?.querySelector(
     '.screen[data-screen-kind="event"] .event-workspace-nav'
   );
@@ -20798,16 +20857,29 @@ function syncWorkspaceNavigationOcclusion() {
     workspaceNavigation.style.removeProperty("--event-nav-route-occlusion");
   }
 
-  if (roundedOcclusion >= Math.floor(navigationRect.height)) {
+  if (navigationRect.height > 0 && occlusion >= navigationRect.height) {
     workspaceNavigation.dataset.routeFullyOccluded = "true";
   } else {
     workspaceNavigation.removeAttribute("data-route-fully-occluded");
   }
 }
 
+function flushWorkspaceNavigationOcclusion() {
+  workspaceOcclusionFrame = 0;
+  syncWorkspaceNavigationOcclusion();
+  workspaceOcclusionFramesRemaining -= 1;
+  if (workspaceOcclusionFramesRemaining > 0) {
+    workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
+  }
+}
+
 function scheduleWorkspaceNavigationOcclusion() {
+  // WebKit can deliver a scroll event before the final layout position is
+  // painted. Read once in that frame and once in the following frame, then
+  // stop. New scrolls restart this bounded pair rather than polling forever.
+  workspaceOcclusionFramesRemaining = 2;
   if (workspaceOcclusionFrame) return;
-  workspaceOcclusionFrame = requestAnimationFrame(syncWorkspaceNavigationOcclusion);
+  workspaceOcclusionFrame = requestAnimationFrame(flushWorkspaceNavigationOcclusion);
 }
 
 if (appRoot) {
@@ -20821,7 +20893,17 @@ if (appRoot) {
   window.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
+  document.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    capture: true,
+    passive: true
+  });
   window.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("scroll", scheduleWorkspaceNavigationOcclusion, {
+    passive: true
+  });
+  window.visualViewport?.addEventListener("resize", scheduleWorkspaceNavigationOcclusion, {
     passive: true
   });
   scheduleWorkspaceNavigationOcclusion();

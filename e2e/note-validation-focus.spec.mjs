@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 import { installDelayedDialogFrameFixture } from "./helpers/noteEditorDiagnostics.mjs";
 
 test.use({ serviceWorkers: "block" });
@@ -28,7 +31,7 @@ test("validation feedback cannot redirect continued note typing into the wrong f
   await installDelayedDialogFrameFixture(page, "save-event-note");
   const runtimeErrors = [];
   page.on("pageerror", error => runtimeErrors.push(error.message));
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();
   await page.locator('[data-action="new-event-note"]').click();

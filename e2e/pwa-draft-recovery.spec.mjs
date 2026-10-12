@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import { createAppHandler } from "../server.mjs";
+import { noteDraftMemoryKey } from "../src/domain/noteDraftMemory.mjs";
+import { expenseDraftMemoryKey } from "../src/domain/expenseDraftMemory.mjs";
 
 const owner = "draft-owner", eventId = "draft-event";
 const timestamp = "2026-09-01T00:00:00.000Z";
@@ -66,11 +68,32 @@ for (const kind of ["new note", "edited note", "edited expense"]) {
         await page.locator('[data-action="event-note-title"]').fill("כותרת הטיוטה");
         await page.locator('[data-action="toggle-event-note-pin"]').click();
       }
+      const draftKey = kind === "edited expense"
+        ? expenseDraftMemoryKey(owner, eventId, "draft-expense")
+        : noteDraftMemoryKey(owner, eventId, kind === "edited note" ? "draft-note" : "");
+      const draftBeforeUpdate = await page.evaluate(key => JSON.parse(localStorage.getItem(key)), draftKey);
+      expect(kind === "edited expense" ? draftBeforeUpdate?.draft?.name : draftBeforeUpdate?.draft?.bodyDraft).toBe(text);
+      await page.evaluate(() => { window.__qaPreviousWorker = navigator.serviceWorker.controller; });
+      const documentStart = await page.evaluate(() => performance.timeOrigin);
       update = true;
-      const navigation = page.waitForEvent("framenavigated", { predicate: frame => frame === page.mainFrame() });
       await page.evaluate(async () => (await navigator.serviceWorker.getRegistration()).update());
-      await navigation;
-      await openEditor(page, kind);
+      await page.waitForFunction(async expected => {
+        const keys = await caches.keys();
+        return keys.includes(`settle-friends-live-v${expected}`) &&
+          !keys.includes(`settle-friends-live-v${Number(expected) - 1}`);
+      }, release);
+      await page.waitForFunction(() => navigator.serviceWorker.controller &&
+        navigator.serviceWorker.controller !== window.__qaPreviousWorker);
+      // An open editor is update-sensitive work. The new worker must activate
+      // without replacing its document. SPA route changes can also emit
+      // framenavigated, so they are not evidence of a reload.
+      await page.waitForTimeout(1500);
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentStart);
+      await expect(field).toHaveValue(text);
+      expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)), draftKey)).toEqual(draftBeforeUpdate);
+      await page.reload();
+      expect(await page.evaluate(() => performance.timeOrigin)).toBeGreaterThan(documentStart);
+      await resumeEditor(page, kind);
       await expect(field).toHaveValue(text);
       if (kind !== "edited expense") {
         await expect(page.locator('[data-action="event-note-title"]')).toHaveValue("כותרת הטיוטה");
@@ -128,6 +151,31 @@ async function openEditor(page, kind) {
     if (await page.locator('[data-action="expense-step-edit"][data-step="name"]').isVisible()) {
       await page.locator('[data-action="expense-step-edit"][data-step="name"]').click();
     }
+  } else {
+    await page.locator('[data-action="open-event-notes"]').click();
+    await page.locator(kind === "new note" ? '[data-action="new-event-note"]'
+      : '.event-note-row[data-action="open-event-note"][data-note-id="draft-note"]').click();
+  }
+}
+
+async function resumeEditor(page, kind) {
+  const modal = page.locator(kind === "edited expense" ? ".expense-modal" : ".event-note-modal");
+  if (await modal.isVisible()) {
+    if (kind === "edited expense" &&
+        await page.locator('[data-action="expense-step-edit"][data-step="name"]').isVisible()) {
+      await page.locator('[data-action="expense-step-edit"][data-step="name"]').click();
+    }
+    return;
+  }
+  if (await page.locator('[data-screen-kind="home"]').isVisible()) {
+    await openEditor(page, kind);
+    return;
+  }
+  await expect(page.locator('[data-screen-kind="event"]')).toBeVisible();
+  if (kind === "edited expense") {
+    const row = page.locator('.expense-row[data-expense-id="draft-expense"]');
+    await row.locator(".expense-row-actions-menu > summary").click();
+    await row.locator('[data-action="edit-expense"]').click();
   } else {
     await page.locator('[data-action="open-event-notes"]').click();
     await page.locator(kind === "new note" ? '[data-action="new-event-note"]'

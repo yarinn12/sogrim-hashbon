@@ -439,19 +439,19 @@ function animateDialogOpen() {
   );
   if (!motion?.animate || !panel) return;
 
-  animateProductMotion(backdrop, { opacity: [0.85, 1] }, { duration: 0.14, ease: [0.25, 1, 0.5, 1] });
-  animateProductMotion(
-    panel,
-    {
-      opacity: [0.94, 1],
-      y: [12, 0],
-      scale: [0.99, 1]
-    },
-    {
-      duration: 0.22,
-      ease: [0.22, 1, 0.36, 1]
-    }
+  // Full-screen routes share the viewport with persistent navigation. Moving
+  // their entire panel briefly puts its bottom edge under that navigation.
+  const routeSharesPersistentNavigation = backdrop.matches(
+    ".expense-route-backdrop, .event-modal-backdrop[data-event-route-dialog='true']"
   );
+  const panelKeyframes = routeSharesPersistentNavigation
+    ? { opacity: [0.94, 1] }
+    : { opacity: [0.94, 1], y: [12, 0], scale: [0.99, 1] };
+  animateProductMotion(backdrop, { opacity: [0.85, 1] }, { duration: 0.14, ease: [0.25, 1, 0.5, 1] });
+  animateProductMotion(panel, panelKeyframes, {
+    duration: 0.22,
+    ease: [0.22, 1, 0.36, 1]
+  });
 }
 
 function animateNewRows() {

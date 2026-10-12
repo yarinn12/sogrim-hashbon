@@ -63,11 +63,17 @@ if (navigator.onLine === false) void handleOffline();
 function handleSyncStatus(event) {
   const status = event.detail?.status ?? "";
   if (typeof event.detail?.pending === "boolean") {
-    pendingSync = event.detail.pending;
-    pendingFailureKind = pendingSync ? event.detail.failureKind ?? "" : "";
-    pendingEventIds = pendingSync
+    const nextEventIds = event.detail.pending
       ? (Array.isArray(event.detail.pendingEventIds) ? event.detail.pendingEventIds : null)
       : [];
+    const samePendingEvents = pendingSync && Array.isArray(pendingEventIds) &&
+      Array.isArray(nextEventIds) && pendingEventIds.length === nextEventIds.length &&
+      nextEventIds.every((id) => pendingEventIds.includes(id));
+    pendingSync = event.detail.pending;
+    pendingFailureKind = pendingSync
+      ? event.detail.failureKind ?? (samePendingEvents ? pendingFailureKind : "")
+      : "";
+    pendingEventIds = nextEventIds;
   }
   const currentScreenSignature = screenSignature();
 
@@ -169,7 +175,7 @@ async function recoverOnlineMutationAccess() {
 
   showStatus("reconnecting");
   syncMutationControls();
-  reconnectPromise = flushPendingSharedState()
+  reconnectPromise = flushPendingSharedState({ automatic: true })
     .then(async (result) => {
       if (!result?.ok) {
         const config = await loadRuntimeConfig();
@@ -343,16 +349,60 @@ function syncInlineStatusTargets() {
     const eventId = target.dataset.syncEventId;
     const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
     const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
-    if (target.textContent !== message) target.textContent = message;
+    if (target.dataset.syncAccountSummary !== undefined) {
+      renderAccountPendingSummary(target, message);
+    } else if (target.textContent !== message) {
+      target.textContent = message;
+    }
     target.hidden = !message;
     const routeStatus = target.closest("[data-route-sync-status]");
     if (routeStatus) routeStatus.hidden = !message;
   });
 
   document.querySelectorAll("[data-inline-sync-retry]").forEach((button) => {
-    button.hidden = true;
+    const eventId = button.closest(".event-action-sync-wrap, [data-route-sync-status]")
+      ?.querySelector("[data-inline-sync-status]")?.dataset.syncEventId;
+    button.hidden = !(pendingSync && pendingSaveMessage(pendingFailureKind) &&
+      (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId)));
   });
   syncMutationControls();
+}
+
+function renderAccountPendingSummary(target, message) {
+  const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
+  const homeEvent = ids.find((id) => id === target.dataset.syncAccountEventId);
+  const row = homeEvent ? null : [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
+    .find((button) => !target.contains(button) && ids.includes(button.dataset.eventId));
+  const eventId = homeEvent || row?.dataset.eventId || "";
+  const eventName = homeEvent
+    ? target.dataset.syncAccountEventName || ""
+    : row?.querySelector(".event-row-title strong, .recent-event-main strong")?.textContent?.trim() || "";
+  const key = JSON.stringify([message, ids.length, eventId, eventName]);
+  if (target.dataset.syncSummaryKey === key) return;
+  target.dataset.syncSummaryKey = key;
+  target.replaceChildren();
+  if (!message) return;
+
+  const context = ids.length > 1
+    ? `שינויים ב־${ids.length} אירועים ממתינים לשמירה. `
+    : eventName ? `השינוי באירוע ״${eventName}״ ממתין לשמירה. `
+      : ids.length === 1 ? "שינוי באירוע ממתין לשמירה. " : "שמירת החשבון ממתינה. ";
+  target.append(document.createTextNode(`${context}${message}`));
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "pending-sync-review";
+  retry.dataset.syncRetry = "";
+  retry.textContent = "נסה שוב";
+  target.append(document.createTextNode(" "), retry);
+  if (!eventId || !eventName) return;
+  const review = document.createElement("button");
+  review.type = "button";
+  review.className = "pending-sync-review";
+  review.dataset.action = "open-event";
+  review.dataset.eventId = eventId;
+  review.textContent = "בדקו את האירוע";
+  review.setAttribute("aria-label", `פתיחת האירוע ${eventName} לבדיקת השינוי הממתין`);
+  target.append(document.createTextNode(" "), review);
 }
 
 function syncMutationControls() {
@@ -446,6 +496,23 @@ function injectStyles() {
     }
 
     [data-inline-sync-status][hidden] { display: none !important; }
+    [data-sync-account-summary] .pending-sync-review {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      min-height: 44px;
+      padding: 6px 0;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    [data-sync-account-summary] .pending-sync-review:focus-visible {
+      outline: 2px solid currentColor;
+      outline-offset: 2px;
+    }
 
     .event-route-sync-status {
       display: flex;

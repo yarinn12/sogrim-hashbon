@@ -1,0 +1,11 @@
+# Participant roster readiness in QA433
+
+QA433 on `1ec17c7` rejected cross-platform acceptance: 300 passed, four applicability skips, and two Firefox cases passed only after retry. Both first attempts stopped at `participant-roster-reflow.spec.mjs` waiting for `page.goto(..., waitUntil: load)` for the unchanged 90-second test budget. The retained snapshots and system screenshots show the home rendered. Each trace retains 152 HTTP 200 responses and one 206 response, without a recorded network failure. This does not establish why Firefox's navigation waiter did not settle.
+
+The roster journey now uses the existing `openRenderedHome` helper, which checks a fresh document, actual home visibility, navigation errors, and the original readiness budget. A deliberately pending nonessential image proves the journey does not require `load`. The image is released in `finally`. Motion must remain enabled; the existing font, entrance clearance, roster scrolling, last-participant interaction, history return, and participant-add assertions are unchanged. Product code and CI failure/retry policies are unchanged.
+
+The identical final scenario was exercised with only the prior `goto(load)`/`bringToFront` operations restored. All eight controlled baseline cases fail at `page.goto`; all eight corrected cases pass across Chromium, desktop Firefox, compact Firefox, and WebKit. Both controls use a stricter 15-second test budget; normal 90-second budgets remain unchanged. This pending-image control reproduces the blocked-load dependency, without claiming that a pending image caused the original CI failure.
+
+Nearby validation: all ten portrait/landscape cases across five mobile profiles pass, together with 22 existing Firefox readiness positive and negative controls (32 total). The normal JavaScript unit/integration suite passes 3,536/3,536, with no failed, cancelled, or skipped cases. Local browser proofs use no retry and have no flaky/skipped cases. Root receipts retain final scenario hashes, exact cases, report hashes, and logs.
+
+Native iOS/Android acceptance and the subsequent unified-source cloud run are separate checks. This QA correction does not fix or explain the iOS native input failure or historical native ANRs.

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { fulfillNativeAuthModule } from "./helpers/fulfillNativeAuthModule.mjs";
 
 test.use({ serviceWorkers: "block" });
 const AUTH = "https://native-auth-roundtrip.supabase.co";
@@ -40,13 +41,7 @@ async function prepare(page, { googleError = "", userFailureOnce = false, pkceEr
   await page.route("**/api/config*", route => route.fulfill({ json: config }));
   // Replace only the external SDK boundary. The production click handler,
   // token exchange, callback bridge, persistence and account hydration run.
-  await page.route("**/src/publicAccountAuthLayer.mjs*", async route => {
-    const response = await route.fetch();
-    const source = await response.text();
-    const sdkImport = 'import("@capgo/capacitor-social-login")';
-    expect(source.split(sdkImport)).toHaveLength(2);
-    await route.fulfill({ response, body: source.replace(sdkImport, "Promise.resolve({ SocialLogin: globalThis.__roundtripSocialLogin })") });
-  });
+  await page.route("**/src/publicAccountAuthLayer.mjs*", fulfillNativeAuthModule);
   await page.addInitScript(({ config, appleSession }) => {
     if (!sessionStorage.getItem("native-roundtrip-ready")) {
       localStorage.clear(); sessionStorage.clear();

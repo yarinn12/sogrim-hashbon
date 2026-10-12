@@ -4,8 +4,7 @@
 
 - Paid Premium is postponed and remains disabled in runtime configuration.
 - The only active ad-free path is the referral reward described below.
-- Android build 70 (`3.47`) is ready to use Google's fixed test banner without
-  enabling the production-ad switch.
+- Android build 70 (`3.47`) contains a gate for Google's fixed test banner.
 - Production AdMob rollout stays at zero until consent, placement and entitlement behavior pass real-device testing.
 
 ## Referral reward
@@ -13,10 +12,10 @@
 - Every account keeps its existing private friend code.
 - Share links use the compact public path `/r/<code>`.
 - The inviter receives 30 ad-free days after the invited account:
-  - is no more than 14 days old when attribution is claimed;
+  - claims the invitation within one hour of account creation and is not anonymous;
   - confirms its email;
-  - participates in an event with at least two people;
-  - creates an expense or marks a transfer as paid within 30 days.
+  - is an active member of a shared event with at least one other active account;
+  - creates an expense or marks a transfer as paid in that event within 30 days of claiming the invitation.
 - An invited account can be attributed once.
 - Self-referrals are rejected.
 - Rewards are capped at 12 per rolling 365 days.
@@ -26,6 +25,9 @@
 
 Referral attribution and entitlement writes are available only through guarded
 Supabase RPC functions. Clients have read-only RLS access to their own records.
+The canonical shared-event write records qualifying activity in the database.
+After email confirmation, the invited account's status request settles a pending
+reward from that durable activity, including when it resumes on another device.
 
 ## AdMob
 
@@ -72,22 +74,28 @@ per signed-in account, so the same account does not move in and out of a cohort.
 Set `ADMOB_ENABLED=true` and `ADMOB_TEST_MODE=false` only after the updated build
 and consent flow pass internal testing.
 
-### Current readiness
+### Readiness checked on 2026-10-07
 
 - Native AdMob SDK and the production application ID are included.
-- Runtime configuration currently keeps `ADMOB_ENABLED=false`,
-  `ADMOB_TEST_MODE=true` and `ADMOB_ROLLOUT_PERCENT=0`.
-- Build 70 can therefore request only Google's fixed Android test banner.
+- The repository's Render blueprint sets `ADMOB_ENABLED=false`,
+  `ADMOB_TEST_MODE=true` and `ADMOB_ROLLOUT_PERCENT=0`. The public deployed
+  config queried as Android build 70 returned `adsEnabled=false`,
+  `testMode=false`, `rolloutPercent=0` and the configured production banner
+  unit `ca-app-pub-8171715888836308/9379516743`. Neither test nor production
+  banners are currently requested by that deployed configuration.
+- Build 70 can request Google's fixed Android test banner only when the
+  deployed test-mode switch is enabled.
 - Test banners remain limited to Home and Friends and still respect ad-free
   entitlements, consent, dialogs, keyboard focus, connectivity and app visibility.
-- A signed build 70 AAB is prepared to pass the full project tests and Android release lint.
-- The AdMob payment profile is complete, the European-regulations UMP message
-  is published, and the policy center reports no issues.
+- Earlier project notes report a prepared signed build 70 AAB, a completed
+  AdMob payment profile, a published European-regulations UMP message and no
+  policy-center issues. These account and artifact states were not verified
+  during this audit.
 - `app-ads.txt` is publicly available from the recovery origin and contains the
   production publisher ID.
-- Real ad serving remains blocked until the public Play listing can be linked
-  in AdMob, Google completes its app-readiness review, and build 70 passes a
-  physical-device test with Google's test banner.
+- Real ad serving requires production switches, a linked public Play listing,
+  a completed AdMob app-readiness review and a physical-device test. The
+  AdMob/Play account states still need to be checked in their consoles.
 
 ## Subscription foundation
 

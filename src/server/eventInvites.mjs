@@ -1,12 +1,14 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { isSafeSharedIdentifier } from "../domain/sharedStateMerge.mjs";
+import { normalizeReferralCode } from "../domain/referralCodes.mjs";
 import { fetchWithTimeout } from "../data/fetchTimeout.mjs";
 
 const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PRIVATE_INVITE_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const OPTIONAL_REFERRAL_LOOKUP_TIMEOUT_MS = 750;
 const RECOVERED_MEMBER_SPACE_KEY = "member_access_recovery_v1_key_0001";
 export const OPEN_INVITE_REQUEST_TIMEOUT_MS = 8_000;
 const DEADLINE_FETCH = Symbol("event-invite-deadline-fetch");
@@ -158,6 +160,21 @@ async function manageOpenEventInviteRequest({
     });
   }
 
+  // Attribute the link to the authenticated sharer. The open token may have
+  // been created by another event member, so its created_by is not sufficient.
+  // A referral lookup failure must not prevent an event invitation.
+  const referralCodePromise = loadOwnReferralCode({
+    ...context,
+    userId: actor.id,
+    fetchImpl: (url, options, consumeResponse) => fetchWithTimeout(
+      fetchImpl,
+      url,
+      options,
+      OPTIONAL_REFERRAL_LOOKUP_TIMEOUT_MS,
+      consumeResponse
+    )
+  }).catch(() => "");
+
   const stableToken = createStableOpenInviteToken({
     secret: context.inviteTokenSigningKey,
     eventId: normalizedEventId,
@@ -167,7 +184,7 @@ async function manageOpenEventInviteRequest({
   const tokenCandidates = normalizedOperation === "ensure"
     ? [...new Set([normalizedCandidate, stableToken].filter(Boolean))]
     : [];
-  const [inviteAnchor, activeInvites, activeOpenInvite] = await Promise.all([
+  const [inviteAnchor, activeInvites, activeOpenInvite, referralCode] = await Promise.all([
     loadInviteEventAnchor({
       ...context,
       eventId: normalizedEventId,
@@ -193,7 +210,8 @@ async function manageOpenEventInviteRequest({
           spaceId,
           fetchImpl
         })
-      : Promise.resolve(null)
+      : Promise.resolve(null),
+    referralCodePromise
   ]);
   if (
     inviteAnchor &&
@@ -220,6 +238,7 @@ async function manageOpenEventInviteRequest({
         return success({
           eventId: normalizedEventId,
           token,
+          referralCode,
           createdAt: String(active.created_at ?? ""),
           rotated: false
         });
@@ -245,6 +264,7 @@ async function manageOpenEventInviteRequest({
         return success({
           eventId: normalizedEventId,
           token: recoverableToken,
+          referralCode,
           createdAt: String(active.created_at ?? ""),
           rotated: false
         });
@@ -293,6 +313,7 @@ async function manageOpenEventInviteRequest({
   return success({
     eventId: normalizedEventId,
     token,
+    referralCode,
     createdAt,
     rotated: normalizedOperation === "rotate" || recoveredActiveInvite
   });
@@ -881,6 +902,28 @@ async function loadInviteEventAnchor({
   );
   assertInviteRows(response, rows, "invite");
   return rows[0] ?? null;
+}
+
+async function loadOwnReferralCode({
+  supabaseUrl,
+  serviceRoleKey,
+  userId,
+  fetchImpl
+}) {
+  const params = new URLSearchParams({
+    user_id: `eq.${userId}`,
+    select: "code",
+    limit: "1"
+  });
+  const { response, payload: rows } = await fetchJsonResponse(
+    fetchImpl,
+    `${supabaseUrl}/rest/v1/friend_invite_codes?${params}`,
+    { headers: serviceHeaders(serviceRoleKey) },
+    [],
+    "referral"
+  );
+  assertInviteRows(response, rows, "referral");
+  return normalizeReferralCode(rows[0]?.code);
 }
 
 function assertInviteRows(response, rows, stage) {

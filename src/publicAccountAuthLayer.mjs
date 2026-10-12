@@ -3478,7 +3478,7 @@ function injectStyle() {
     }
 
     .account-google-button {
-      min-height: 48px;
+      min-height: 56px;
       display: flex;
       align-items: center;
       justify-content: center;

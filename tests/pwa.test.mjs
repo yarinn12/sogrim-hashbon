@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { posix as path } from "node:path";
 
 function escapeRegExp(value) {
@@ -41,10 +41,10 @@ test("web app manifest declares an installable mobile app", async () => {
   assert.deepEqual(manifest.display_override, ["standalone"]);
   assert.equal(manifest.dir, "rtl");
   assert.equal(manifest.lang, "he");
-  assert.equal(manifest.start_url, "./?pwa_release=510");
+  assert.equal(manifest.start_url, "./?pwa_release=514");
   assert.equal(manifest.theme_color, "#0b3b38");
   assert.deepEqual(manifest.categories, ["finance", "productivity", "utilities"]);
-  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=510&action=new-event");
+  assert.equal(manifest.shortcuts[0].url, "./?pwa_release=514&action=new-event");
   assert.ok(
     manifest.icons.some(
       (icon) => icon.src === "./app-icon-exterior-maskable-512.png" && icon.purpose.includes("maskable")
@@ -63,9 +63,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.deepEqual([...new Set(referencedReleases)], [currentRelease]);
   assert.match(
     html,
-    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=510"/
+    /rel="manifest" href="\.\/manifest\.webmanifest\?pwa_release=514"/
   );
-  assert.match(html, /data-pwa-release="510"/);
+  assert.match(html, /data-pwa-release="514"/);
   assert.match(html, /name="theme-color" content="#10312b"/);
   assert.match(html, /name="apple-mobile-web-app-capable" content="yes"/);
   assert.match(html, /name="mobile-web-app-capable" content="yes"/);
@@ -75,9 +75,9 @@ test("index links the manifest and mobile app metadata", async () => {
   assert.doesNotMatch(html, /interactive-widget/);
   assert.match(html, /rel="icon" href="\.\/app-icon-exterior-192\.png" type="image\/png"/);
   assert.match(html, /rel="apple-touch-icon" href="\.\/apple-touch-icon\.png"/);
-  assert.match(html, /href="\.\/styles\.css\?pwa_release=510"/);
-  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=510"/);
-  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=510/);
+  assert.match(html, /href="\.\/styles\.css\?pwa_release=514"/);
+  assert.match(html, /src="\.\/src\/pwaBootstrap\.mjs\?pwa_release=514"/);
+  assert.match(html, /publicInstallAppLayer\.mjs\?pwa_release=514/);
 });
 
 test("server serves install icons with the correct image type", async () => {
@@ -125,6 +125,21 @@ test("service worker precaches the app shell", async () => {
   assert.match(sw, /request\.mode === "navigate"/);
   assert.match(sw, /fetchWithNetworkTimeout\(request\)/);
   assert.match(sw, /if \(!response\?\.ok\)/);
+});
+
+test("service worker precaches every local font subset before offline activation", async () => {
+  const sw = await readFile("sw.js", "utf8");
+  const localCss = await readFile("assets/fonts/local.css", "utf8");
+  const fontFiles = (await readdir("assets/fonts")).filter(name => name.endsWith(".woff2"));
+
+  assert.ok(fontFiles.length >= 2);
+  assert.match(sw, /"\/assets\/fonts\/local\.css"/);
+  for (const name of fontFiles) {
+    assert.match(localCss, new RegExp(escapeRegExp(name)));
+    assert.match(sw, new RegExp(escapeRegExp(`/assets/fonts/${name}`)));
+  }
+  assert.match(sw, /CRITICAL_PRECACHE_FILES[\s\S]*?\(\?:mjs\|js\|css\|woff2\)/);
+  assert.match(sw, /path\.endsWith\("\.woff2"\)\) return contentType\.includes\("font\/woff2"\)/);
 });
 
 test("service worker loads heavy brand media on demand and reuses it", async () => {
@@ -238,8 +253,9 @@ test("an installed app reloads once when a new service worker takes control", as
   const registration = await readFile("src/pwaBootstrap.mjs", "utf8");
 
   assert.match(registration, /const hadActiveController = Boolean\(navigator\.serviceWorker\.controller\)/);
-  assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
-  assert.match(registration, /if \(reloadingForUpdate\) return/);
+  assert.match(registration, /addEventListener\("controllerchange"[\s\S]*?reloadWhenSafe\(\)/);
+  assert.match(registration, /hasUpdateSensitiveWork[\s\S]*?reloadingForUpdate = true;[\s\S]*?window\.location\.reload\(\)/);
+  assert.match(registration, /if \(!updateAwaitingReload \|\| reloadingForUpdate \|\| !safeToReload\(\)\) return/);
   assert.doesNotMatch(
     registration,
     /sessionStorage[\s\S]*?PWA_RELEASE/,
@@ -265,8 +281,8 @@ test("the recovery page installs the current worker before reopening the app", a
     readFile("src/pwaRecovery.mjs", "utf8")
   ]);
 
-  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=510"/);
-  assert.match(recovery, /const PWA_RELEASE = "510"/);
+  assert.match(page, /src="\.\/src\/pwaRecovery\.mjs\?pwa_release=514"/);
+  assert.match(recovery, /const PWA_RELEASE = "514"/);
   assert.match(recovery, /navigator\.serviceWorker\?\.register\?\.\(SERVICE_WORKER_URL/);
   assert.match(recovery, /updateViaCache: "none"/);
   assert.match(recovery, /await registration\?\.update\?\.\(\)/);
@@ -277,11 +293,12 @@ test("service worker activates complete updates and claims installed apps", asyn
   const sw = await readFile("sw.js", "utf8");
 
   assert.match(sw, /\.then\(\(\) => self\.skipWaiting\(\)\)/);
-  assert.match(sw, /Promise\.all\(\[/);
+  assert.match(sw, /await Promise\.all\(\s*cacheNames[\s\S]*?\.map\(\(name\) => caches\.delete\(name\)\)\s*\);\s*await self\.clients\.claim\(\)/);
   assert.match(sw, /cacheNames[\s\S]*?\.filter\(\(name\) => name !== CACHE_NAME\)/);
-  assert.match(sw, /self\.clients\.claim\(\)/);
   assert.match(sw, /self\.clients\.matchAll\([\s\S]*?includeUncontrolled: true/);
-  assert.match(sw, /client\.navigate\?\.\(clientUrl\.href\)/);
+  assert.match(sw, /self\.clients\.get\(client\.id\)/);
+  assert.match(sw, /if \(!await clientAllowsNavigation\(currentClient\)\) continue;[\s\S]*?currentClient\.navigate\?\.\(clientUrl\.href\)/,
+    "the worker may navigate only after the page confirms that drafts and pending writes are safe");
   assert.match(sw, /addEventListener\("message"[\s\S]*?SKIP_WAITING[\s\S]*?self\.skipWaiting\(\)/);
 });
 
