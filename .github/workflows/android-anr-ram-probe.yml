@@ -1,0 +1,238 @@
+name: Android ANR RAM probe (diagnostic only)
+
+on:
+  workflow_call:
+    inputs:
+      app_sha:
+        description: Exact application commit for paired diagnostic Debug emulator QA
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ram-probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        guest_ram_mib: [2048, 4096]
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      ANDROID_QA_DEVICE: emulator-5582
+      ANDROID_QA_SOURCE: ${{ inputs.app_sha }}
+      ANDROID_QA_GUEST_RAM_MIB: ${{ matrix.guest_ram_mib }}
+    steps:
+      - name: Checkout QA tools
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Require exact application source
+        id: source
+        env:
+          APP_SHA: ${{ inputs.app_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$APP_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$APP_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Prepare owned QA paths and source receipt
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ANDROID_QA_SOURCE"
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts/android-native-isolated scripts/qa
+          cp -R "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated" scripts/qa/
+          printf '%s\n' "$GITHUB_SHA" > artifacts/android-native-isolated/qa-tools-source.txt
+          printf '{"releaseAcceptance":false,"scope":"android-native-matrix","appSource":"%s","guestRamMiB":%s}\n' \
+            "$ANDROID_QA_SOURCE" "$ANDROID_QA_GUEST_RAM_MIB" > artifacts/android-native-isolated/probe-scope.json
+          echo "ANDROID_QA_AVD=sogrim_ci_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}_ram${ANDROID_QA_GUEST_RAM_MIB}" >> "$GITHUB_ENV"
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/android-native-avd" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ADB_VENDOR_KEYS=$RUNNER_TEMP/android-native-home/adbkey" >> "$GITHUB_ENV"
+          echo "ANDROID_ADB_SERVER_PORT=5037" >> "$GITHUB_ENV"
+          echo "ADB_SERVER_SOCKET=tcp:5037" >> "$GITHUB_ENV"
+          echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-native-no-upload.properties" >> "$GITHUB_ENV"
+          echo "ADB_PATH=$ANDROID_HOME/platform-tools/adb" >> "$GITHUB_ENV"
+      - name: Install actual Android emulator SDK and create an empty AVD
+        working-directory: app
+        run: |
+          set -euo pipefail
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
+          test ! -e "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+          printf 'no\n' | "$sdk_bin/avdmanager" create avd -n "$ANDROID_QA_AVD" -k 'system-images;android-36.1;google_apis_playstore;x86_64' -d pixel_6 > artifacts/android-native-isolated/avd.log 2>&1
+          python3 - <<'PY'
+          import os, pathlib
+          config=pathlib.Path(os.environ['ANDROID_AVD_HOME'])/(os.environ['ANDROID_QA_AVD']+'.avd')/'config.ini'
+          values={'hw.cpu.ncore':'2','hw.ramSize':os.environ['ANDROID_QA_GUEST_RAM_MIB'],'hw.lcd.width':'1080','hw.lcd.height':'2400','hw.lcd.density':'420','hw.keyboard':'yes','hw.camera.back':'none','hw.camera.front':'none'}
+          rows=[line for line in config.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
+          config.write_text('\n'.join(rows+[key+' = '+value for key,value in values.items()])+'\n')
+          PY
+          grep -qFx "hw.ramSize = $ANDROID_QA_GUEST_RAM_MIB" "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini"
+          grep -E '^hw\.(ramSize|cpu\.ncore) = ' "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini" > artifacts/android-native-isolated/avd-resources.txt
+      - name: Record actual host and guest DMA compatibility before emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
+      - name: Prepare shared isolated key and fresh ADB server before first emulator launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/adb-key-preflight.mjs
+      - name: Build synthetic WWW and clean actual Debug APK
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test ! -e "$SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE"
+          npm ci > artifacts/android-native-isolated/npm.log 2>&1
+          NODE_OPTIONS="--import=file://$PWD/scripts/qa/android-native-isolated/offline-build-config.mjs" npm run native:prepare > artifacts/android-native-isolated/www-build.log 2>&1
+          node scripts/qa/android-native-isolated/prepare-fixture.mjs
+          npx cap copy android > artifacts/android-native-isolated/cap-copy.log 2>&1
+          node scripts/qa/android-native-isolated/observe-gradle-build.mjs \
+            --cwd android --output artifacts/android-native-isolated/gradle-build-observation --source "$ANDROID_QA_SOURCE" \
+            -- bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m'
+          python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/apk-badging.txt
+          grep -q "package: name='com.sogrimhashbon.app.debug'" artifacts/android-native-isolated/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/debug-certificate.txt
+      - name: Boot only the owned AVD and disable its real networking
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu software -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory "$ANDROID_QA_GUEST_RAM_MIB" -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          echo "$!" > artifacts/android-native-isolated/emulator.pid
+          # A failed emulator must produce diagnostics rather than leave ADB
+          # waiting for a device until the entire job times out.
+          timeout 240 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" wait-for-device
+          booted=0
+          for n in $(seq 1 180); do
+            if [[ "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell getprop sys.boot_completed | tr -d '\r')" = 1 ]]; then booted=1; break; fi
+            sleep 1
+          done
+          test "$booted" = 1
+          test "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD"
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/network-isolation.mjs
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell settings put secure show_ime_with_hard_keyboard 1
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" install android/app/build/outputs/apk/debug/app-debug.apk
+          tr '\0' ' ' < "/proc/$(cat artifacts/android-native-isolated/emulator.pid)/cmdline" > artifacts/android-native-isolated/emulator-cmdline.txt
+          grep -qF -- "-memory $ANDROID_QA_GUEST_RAM_MIB -cores 2" artifacts/android-native-isolated/emulator-cmdline.txt
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell cat /proc/meminfo > artifacts/android-native-isolated/guest-meminfo.txt
+          cat /proc/meminfo > artifacts/android-native-isolated/host-meminfo.txt
+      - name: Require healthy owned Android system before diagnostic matrix
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
+          # Keep every Native-run event even if a later force-stop closes an ANR dialog.
+          "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
+          echo "$!" > artifacts/android-native-isolated/logcat-live.pid
+          # Start diagnostics before the first cold launch; this does not accept Native QA.
+          node scripts/qa/android-native-isolated/trace-diagnostics.mjs start
+      - name: Prove the Native guard detects stacked CSS then restores single OS scale
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/font-regression.mjs > artifacts/android-native-isolated/font-regression.log 2>&1
+      # This is a diagnostic matrix, not the complete Native acceptance wrapper.
+      # The original workflow still owns the IME, ACK, pages and journey gates.
+      - name: Probe unchanged real OS font matrix and pre-rotation launch
+        working-directory: app
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/android-native-isolated/acceptance
+          ANDROID_QA_OUTPUT=artifacts/android-native-isolated/acceptance/matrix \
+            node scripts/qa/android-native-isolated/matrix.mjs > artifacts/android-native-isolated/acceptance/matrix.log 2>&1
+          test -s artifacts/android-native-isolated/acceptance/matrix/matrix.json
+      - name: Prove actual header and badge clipping makes the Native geometry gate fail
+        working-directory: app
+        run: |
+          set -euo pipefail
+          node scripts/qa/android-native-isolated/geometry-regression.mjs > artifacts/android-native-isolated/geometry-regression.log 2>&1
+      - name: Require healthy owned Android system after diagnostic matrix
+        working-directory: app
+        run: |
+          set -euo pipefail
+          ANDROID_QA_HEALTH_PHASE=after node scripts/qa/android-native-isolated/emulator-health.mjs
+      - name: Preserve diagnostics and stop only the owned AVD
+        if: always()
+        working-directory: app
+        run: |
+          mkdir -p artifacts/android-native-isolated
+          # Finalize our trace/host observer on every failure before the original ANR gate.
+          trace_status=0
+          ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/trace-diagnostics.mjs finish || trace_status=$?
+          diagnostic_status=1
+          if [[ -s artifacts/android-native-isolated/emulator.pid && -n "${ADB_PATH:-}" && -n "${ANDROID_QA_AVD:-}" ]] && [[ "$(timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name 2>/dev/null | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD" ]]; then
+            timeout 20 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -d -v threadtime > artifacts/android-native-isolated/logcat.txt 2>&1 || true
+            timeout 10 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell dumpsys activity lastanr > artifacts/android-native-isolated/last-anr.txt 2>&1 || true
+            diagnostic_status=0
+            ANDROID_QA_JOB_STATUS="${{ job.status }}" node scripts/qa/android-native-isolated/anr-diagnostics.mjs || diagnostic_status=$?
+            timeout 15 "$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu kill || true
+          fi
+          if [[ "$diagnostic_status" != 0 ]]; then exit "$diagnostic_status"; fi
+          exit "$trace_status"
+      - name: Print bounded diagnostic outcome without artifact storage
+        if: always()
+        working-directory: app
+        env:
+          PROBE_JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          root=pathlib.Path('artifacts/android-native-isolated')
+          def load(path):
+            try: return json.loads((root/path).read_text())
+            except (OSError, ValueError): return None
+          def memtotal(path):
+            try:
+              for line in (root/path).read_text().splitlines():
+                if line.startswith('MemTotal:'): return int(line.split()[1])
+            except (OSError, ValueError, IndexError): pass
+            return None
+          matrix=load('acceptance/matrix/matrix.json') or {}
+          anr=load('anr-diagnostics/anr-diagnostics.json') or {}
+          trace=load('trace-diagnostics/trace-diagnostics.json') or {}
+          receipt={
+            'releaseAcceptance':False,'source':os.environ.get('ANDROID_QA_SOURCE'),
+            'guestRamMiB':int(os.environ['ANDROID_QA_GUEST_RAM_MIB']),
+            'jobStatus':os.environ.get('PROBE_JOB_STATUS'),
+            'guestMemTotalKiB':memtotal('guest-meminfo.txt'),
+            'hostMemTotalKiB':memtotal('host-meminfo.txt'),
+            'matrixRows':[{'scale':row.get('scale'),'orientation':row.get('orientation'),
+              'error':bool(row.get('error')),'errorHead':(row.get('error') or '').splitlines()[:1],
+              'failedChecks':[check.get('name') for check in row.get('checks',[]) if not check.get('ok')]}
+              for row in matrix.get('results',[])],
+            'anr':{'diagnosticsComplete':anr.get('diagnosticsComplete'),
+              'historyReady':anr.get('anrHistoryReady'),
+              'targetAppAnrRecords':len(anr.get('targetAppAnrLines') or [])},
+            'trace':{'captureComplete':trace.get('captureComplete'),
+              'errorCount':len(trace.get('errors') or [])},
+          }
+          rendered=json.dumps(receipt,ensure_ascii=False,indent=2)
+          print(rendered)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as summary:
+            summary.write('### Android ANR RAM diagnostic (not release acceptance)\n\n```json\n'+rendered+'\n```\n')
+          PY
