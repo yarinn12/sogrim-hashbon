@@ -297,7 +297,8 @@ test("service worker activates complete updates and claims installed apps", asyn
   assert.match(sw, /cacheNames[\s\S]*?\.filter\(\(name\) => name !== CACHE_NAME\)/);
   assert.match(sw, /self\.clients\.matchAll\([\s\S]*?includeUncontrolled: true/);
   assert.match(sw, /self\.clients\.get\(client\.id\)/);
-  assert.match(sw, /currentClient\.navigate\?\.\(clientUrl\.href\)/);
+  assert.match(sw, /if \(!await clientAllowsNavigation\(currentClient\)\) continue;[\s\S]*?currentClient\.navigate\?\.\(clientUrl\.href\)/,
+    "the worker may navigate only after the page confirms that drafts and pending writes are safe");
   assert.match(sw, /addEventListener\("message"[\s\S]*?SKIP_WAITING[\s\S]*?self\.skipWaiting\(\)/);
 });
 
