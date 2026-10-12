@@ -1,9 +1,8 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { getClientRuntimeConfig, getRuntimeConfig } from "../../../src/server/runtimeConfig.mjs";
 
 // Only injected into the QA build process. No network, credentials or product edits.
-const gradle = readFileSync(resolve(process.cwd(), "android/app/build.gradle"), "utf8");
+const gradle = readFileSync(new URL("../../../android/app/build.gradle", import.meta.url), "utf8");
 const build = Number(gradle.match(/versionCode\s+(\d+)/)?.[1]);
 if (!Number.isSafeInteger(build) || build <= 0) {
   throw new Error("QA Android versionCode could not be read from the checked-out application");
