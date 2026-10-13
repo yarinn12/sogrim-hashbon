@@ -3,7 +3,8 @@
   "version": 2,
   "git": {
     "deploymentEnabled": {
-      "codex/unified-release-4-58-20261012": false
+      "codex/unified-release-4-58-20261012": false,
+      "codex/shared-event-reference-20261013": false
     }
   },
   "builds": [

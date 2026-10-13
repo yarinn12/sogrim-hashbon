@@ -11,7 +11,7 @@ on:
       build:
         description: Unique TestFlight build number
         required: true
-        default: "193"
+        default: "194"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true

@@ -121,8 +121,8 @@ test("settlement screen exposes full event report copy", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /formatEventReport/);
-  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\), \{ showActions: false \}\)/);
-  assert.match(app, /renderEventWorkspaceNav\(event, "summary"\)[\s\S]*?renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
+  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
+  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)[\s\S]*?renderEventWorkspaceNav\(event, "summary"\)/);
   assert.match(app, /data-action="copy-event-report"/);
   assert.match(app, /copyEventReport\(target\.dataset\.eventId\)/);
 });

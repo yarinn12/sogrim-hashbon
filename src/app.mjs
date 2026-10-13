@@ -4616,10 +4616,9 @@ function renderEvent(event) {
 
   return `
     <section class="screen font-hebrew${isEmptyEvent ? "" : " event-has-action-dock"}" data-screen-kind="event" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeParticipants, { showActions: false })}
+      ${renderEventHeader(event, activeParticipants)}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "expenses")}
-      ${renderEventHeaderActions(event, activeParticipants)}
       ${renderEventCover(event)}
       ${isEmptyEvent ? `<p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>` : ""}
       ${isEmptyEvent ? renderEventStartPanel(event) : ""}
@@ -4934,15 +4933,13 @@ function renderEventNotes(event) {
 
   return `
     <section class="screen font-hebrew event-notes-screen" data-screen-kind="event-notes" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false, showMeta: false })}
+      ${renderEventHeader(event, activeEventParticipants(event))}
       ${renderNotice()}
       <button class="primary-button event-notes-entry-action" type="button" data-action="new-event-note" data-event-id="${escapeAttribute(event.id)}" ${canEdit ? "" : "disabled"}>
         <span aria-hidden="true">${iconSvg("edit")}</span>
         <span>${canEdit ? "פתק חדש" : "האירוע סגור"}</span>
       </button>
       ${renderEventWorkspaceNav(event, "notes")}
-      ${renderEventHeaderMeta(event, activeEventParticipants(event))}
-      ${renderEventHeaderActions(event, activeEventParticipants(event))}
       <p class="muted" data-inline-sync-status data-sync-event-id="${escapeAttribute(event.id)}" role="status" aria-live="polite" hidden></p>
       <section class="panel event-notes-intro" aria-labelledby="event-notes-title">
         <div>
@@ -10109,10 +10106,9 @@ function renderSettlement(event) {
 
   return `
     <section class="screen font-hebrew settlement-screen" data-screen-kind="event" data-event-view="summary" data-event-id="${escapeAttribute(event.id)}">
-      ${renderEventHeader(event, activeEventParticipants(event), { showActions: false })}
+      ${renderEventHeader(event, activeEventParticipants(event))}
       ${renderNotice()}
       ${renderEventWorkspaceNav(event, "summary")}
-      ${renderEventHeaderActions(event, activeEventParticipants(event))}
 
       ${expenseDraft?.eventId === event.id ? renderExpenseForm(event) : ""}
       ${eventDialog?.eventId === event.id ? renderEventDialog(event) : ""}

@@ -170,9 +170,10 @@ test("settlement stays inside the event shell and only switches the active works
 
   assert.match(settlement, /data-screen-kind="event"/);
   assert.match(settlement, /data-event-view="summary"/);
-  assert.match(settlement, /renderEventHeader\(event, activeEventParticipants\(event\), \{ showActions: false \}\)/);
+  assert.match(settlement, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
   assert.match(settlement, /renderEventWorkspaceNav\(event, "summary"\)/);
-  assert.match(settlement, /renderEventWorkspaceNav\(event, "summary"\)[\s\S]*?renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
+  assert.match(settlement, /renderEventHeader\(event, activeEventParticipants\(event\)\)[\s\S]*?renderEventWorkspaceNav\(event, "summary"\)/);
+  assert.doesNotMatch(settlement, /renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
   assert.match(settlement, /renderEventDialog\(event\)/);
   assert.match(header, /data-action="open-event-participants"/);
   assert.match(header, /data-action="open-event-participant-add"/);

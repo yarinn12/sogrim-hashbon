@@ -423,8 +423,9 @@ function injectDynamicTypeStyles(document) {
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-header-actions {
-        grid-template-columns: minmax(0, 1fr) !important;
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
     }
 
@@ -433,7 +434,8 @@ function injectDynamicTypeStyles(document) {
        primary answer without three stacked rows of secondary controls. */
     @media (min-width: 375px) and (max-width: 480px) and (orientation: portrait) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions {
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions {
+        display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 6px !important;
         margin-bottom: 0 !important;
@@ -441,7 +443,7 @@ function injectDynamicTypeStyles(document) {
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
         .event-header-utility-button {
         min-height: 48px !important;
       }
@@ -449,13 +451,13 @@ function injectDynamicTypeStyles(document) {
       /* At AX sizes the longest word needs the full row; the two shorter
          actions still share the next row without splitting their labels. */
       html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions
         > [data-action="open-event-participants"] {
         grid-column: 1 / -1 !important;
       }
 
       html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
         .event-header-utility-button {
         padding-inline: 8px !important;
       }

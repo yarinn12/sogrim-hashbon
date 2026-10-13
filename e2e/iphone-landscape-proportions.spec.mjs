@@ -168,12 +168,16 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }
       return {
         action: children.indexOf(screen.querySelector(':scope > [data-action="new-event-note"]')),
         tabs: children.indexOf(screen.querySelector(':scope > .event-workspace-nav')),
-        utilities: children.indexOf(screen.querySelector(':scope > .event-header-actions'))
+        header: children.indexOf(screen.querySelector(':scope > .event-overview-header')),
+        utilitiesInHeader: Boolean(screen.querySelector(':scope > .event-overview-header .event-header-actions')),
+        detachedUtilities: Boolean(screen.querySelector(':scope > .event-header-actions'))
       };
     });
     expect(order.action).toBeGreaterThanOrEqual(0);
     expect(order.action, 'the notes action must precede tabs in visual and keyboard order').toBeLessThan(order.tabs);
-    expect(order.tabs, 'workspace tabs must precede secondary event controls').toBeLessThan(order.utilities);
+    expect(order.header, 'the shared reference header precedes the notes action').toBeLessThan(order.action);
+    expect(order.utilitiesInHeader, 'all event utilities must remain inside the shared header').toBe(true);
+    expect(order.detachedUtilities, 'no detached utility bar is permitted below tabs').toBe(false);
     for (const tab of await page.locator('.event-workspace-tab').all()) {
       const fits = await tab.evaluate(element => {
         const button = element.getBoundingClientRect();
