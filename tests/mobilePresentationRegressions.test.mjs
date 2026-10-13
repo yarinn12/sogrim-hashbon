@@ -81,11 +81,13 @@ test("large text keeps short event tabs together while longer participant action
 
 test("expenses and summary keep the exact same mobile event header", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const eventHeader = app.slice(
+  const adapter = app.slice(
     app.indexOf("function renderEventHeader("),
     app.indexOf("function renderEventIdentityNotice(")
   );
 
+  const eventHeader = await readFile("src/ui/eventHeader.mjs", "utf8");
+  assert.match(adapter, /return renderEventHeaderView\(eventHeaderViewModel\(event, participants\), options\)/);
   assert.match(eventHeader, /<header class="top event-overview-header">/);
   assert.match(
     coherenceLayer,

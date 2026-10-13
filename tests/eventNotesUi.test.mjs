@@ -39,8 +39,9 @@ test("shared notes retain PR55 layout and editor states without the old empty me
     /function renderEventNotes\(event\) \{([\s\S]*?)\n\}\n\nfunction renderEventNotesSection/
   )?.[1] ?? "";
   assert.match(app, /event-notes-intro/);
-  assert.match(notesScreen, /renderEventHeader\(event, activeEventParticipants\(event\), \{ showActions: false, showMeta: false \}\)/);
-  assert.match(notesScreen, /data-action="new-event-note"[\s\S]*?renderEventWorkspaceNav\(event, "notes"\)[\s\S]*?renderEventHeaderMeta\(event, activeEventParticipants\(event\)\)/);
+  assert.match(notesScreen, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
+  assert.match(notesScreen, /data-action="new-event-note"[\s\S]*?renderEventWorkspaceNav\(event, "notes"\)/);
+  assert.doesNotMatch(notesScreen, /showActions: false|showMeta: false|renderEventHeaderMeta\(event/);
   assert.match(app, /event-notes-section-label/);
   assert.doesNotMatch(app, /עוד אין פתקים משותפים/);
   assert.match(app, /data-action="new-event-note"/);
@@ -65,7 +66,8 @@ test("notes keep primary action, workspace tabs and shared secondary controls in
     /function renderEventNotes\(event\) \{([\s\S]*?)\n\}\n\nfunction renderEventNotesSection/
   )?.[1] ?? "";
 
-  assert.match(notesScreen, /data-action="new-event-note"[\s\S]*?renderEventWorkspaceNav\(event, "notes"\)[\s\S]*?renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
+  assert.match(notesScreen, /renderEventHeader\(event, activeEventParticipants\(event\)\)[\s\S]*?data-action="new-event-note"[\s\S]*?renderEventWorkspaceNav\(event, "notes"\)/);
+  assert.doesNotMatch(notesScreen, /renderEventHeaderActions\(event/);
   assert.match(layer, /\.screen\.event-notes-screen > \.event-notes-entry-action \{[\s\S]*?min-height: 56px/);
   assert.match(layer, /\.screen > \.event-header-actions \{[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 });

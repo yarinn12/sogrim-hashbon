@@ -188,6 +188,20 @@ kill() {
  [ "$2" = "$(cat ./watcher.pid)" ] || return 99
  if [ "$1" = -TERM ]; then
   builtin kill "$@" || return
+  # Cooperative modes must acknowledge the real child exit before fake
+  # polling time advances. Otherwise twenty zero-wall-time polls can send
+  # KILL while a correctly delivered TERM is still being scheduled by Linux.
+  # Ignore-TERM, identity-race and retained-pipe modes keep their own controls.
+  case "$mode" in intact|mutated|no-ack|inode-changed|atomic-snapshot|partial-initial-stat)
+    local term_ended=0
+    for ((j=0;j<1000;j++)); do
+      if builtin [ -e ./watcher-ended ]; then term_ended=1; break; fi
+      command sleep .005
+    done
+    builtin [ "$term_ended" = 1 ] || return 97
+    printf acknowledged >./cooperative-term-ack
+    ;;
+  esac
   case "$mode" in gone-*|reject-*|changed-command-*) printf term >|./cleanup-phase; printf '0\n' >|./identity-count;; esac
   # Change the observation synchronously after TERM, before the shell resumes
   # polling/escalation. No sleep or performance-dependent race selects it.
@@ -214,7 +228,7 @@ kill() {
  const result=await runShell(directory);const signals=existsSync(join(directory,'signals.log'))?readFileSync(join(directory,'signals.log'),'utf8').trim().split(/\r?\n/):[];
  const child=existsSync(join(directory,'watcher.pid'))?readFileSync(join(directory,'watcher.pid'),'utf8').trim():null;
  const marker=name=>existsSync(join(directory,name))?readFileSync(join(directory,name),'utf8').trim():null;
- return {...result,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child&&existsSync(join(directory,'proc',child,'cmdline'))?readFileSync(join(directory,'proc',child,'cmdline')):null,lateChange:existsSync(join(directory,'late-identity-change')),cmdlineBeforeLateChange:existsSync(join(directory,'pre-change-cmdline'))?readFileSync(join(directory,'pre-change-cmdline')):null,race:marker('race-triggered'),ownedChildEnded:existsSync(join(directory,'watcher-ended')),liveIdentityChange:marker('live-identity-change'),holderStillAlive:existsSync(join(directory,'holder-ready'))&&!existsSync(join(directory,'holder-ended')),readinessWaitObserved:existsSync(join(directory,'readiness-wait-observed')),snapshotFirstRead:marker('snapshot-first-read'),localDiagnostic:{phase:marker('cleanup-phase'),pollCount:marker('poll-count'),identityCount:marker('identity-count'),watcherReady:existsSync(join(directory,'watcher.pid')),watcherEnded:existsSync(join(directory,'watcher-ended'))}};
+ return {...result,signals,child,watchSignals:signals.filter(s=>s.endsWith(' '+child)),cmdline:child&&existsSync(join(directory,'proc',child,'cmdline'))?readFileSync(join(directory,'proc',child,'cmdline')):null,lateChange:existsSync(join(directory,'late-identity-change')),cmdlineBeforeLateChange:existsSync(join(directory,'pre-change-cmdline'))?readFileSync(join(directory,'pre-change-cmdline')):null,race:marker('race-triggered'),ownedChildEnded:existsSync(join(directory,'watcher-ended')),cooperativeTermAck:existsSync(join(directory,'cooperative-term-ack')),liveIdentityChange:marker('live-identity-change'),holderStillAlive:existsSync(join(directory,'holder-ready'))&&!existsSync(join(directory,'holder-ended')),readinessWaitObserved:existsSync(join(directory,'readiness-wait-observed')),snapshotFirstRead:marker('snapshot-first-read'),localDiagnostic:{phase:marker('cleanup-phase'),pollCount:marker('poll-count'),identityCount:marker('identity-count'),watcherReady:existsSync(join(directory,'watcher.pid')),watcherEnded:existsSync(join(directory,'watcher-ended'))}};
 }
 
 const failureContext=r=>JSON.stringify({status:r.status,error:r.error?.code,bashExitCode:r.bashExitCode,stdout:r.stdout,stderr:r.stderr,signals:r.signals,diagnostic:r.localDiagnostic});
@@ -226,7 +240,7 @@ for(const mode of ['intact','mutated'])test(`owned watcher with ${mode} Toybox a
 for(const mode of ['ignore-term','intact-ignore-term'])test(`owned ${mode} watcher is revalidated then killed with bounded cleanup`,async t=>{const r=await exercise(t,mode);assert.equal(r.status,0,failureContext(r));assert.equal(r.error,undefined);assert.deepEqual(r.watchSignals,['-TERM '+r.child,'-KILL '+r.child]);assert.match(r.stdout,/CLOSE_WRITE 123/);});
 for(const mode of ['reused','foreign-parent','foreign-program','extra-argument','foreign-path'])test(`cleanup refuses ${mode} watcher identity and never reports completed capture`,async t=>{const r=await exercise(t,mode);assert.notEqual(r.status,0,'Unconfirmed cleanup cannot report success');assert.deepEqual(r.watchSignals,[],'No signal may reach a foreign/reused watcher');assert.match(r.stderr,/cleanup.*(?:unconfirmed|unavailable)|Refuse.*watch/i);});
 test('missing writer-close ACK preserves exit6 and cleans only the confirmed owned watcher',async t=>{const r=await exercise(t,'no-ack');assert.equal(r.status,6);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Writer-close ACK unavailable/);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);});
-test('changed trace inode preserves exit5 even when the event is present and the watcher is cleaned',async t=>{const r=await exercise(t,'inode-changed');assert.equal(r.status,5);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Trace inode changed/);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);});
+test('changed trace inode preserves exit5 even when the event is present and the watcher is cleaned',async t=>{const r=await exercise(t,'inode-changed');assert.equal(r.cooperativeTermAck,true);assert.equal(r.status,5);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Trace inode changed/);assert.deepEqual(r.watchSignals,['-TERM '+r.child]);});
 test('unconfirmed watcher cleanup preserves the original exit6 and never signals a reused child',async t=>{const r=await exercise(t,'no-ack-reused');assert.equal(r.bashExitCode,6);assert.equal(r.status,6);assert.doesNotMatch(r.stdout,/CLOSE_WRITE/);assert.match(r.stderr,/Writer-close ACK unavailable/);assert.match(r.stderr,/cleanup unconfirmed/);assert.deepEqual(r.watchSignals,[]);});
 for(const mode of ['late-cmdline','late-startticks','late-parent'])test(`identity changed after TERM (${mode}) prevents KILL and rejects cleanup deterministically`,async t=>{
  const r=await exercise(t,mode);assert.equal(r.lateChange,true,'The change must occur after the actual TERM call: '+failureContext(r));assert.deepEqual(r.watchSignals,['-TERM '+r.child],'Never send KILL after the confirmed child identity changes');assert.equal(r.bashExitCode,7);assert.equal(r.status,7);assert.match(r.stderr,/cleanup unconfirmed/);

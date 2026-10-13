@@ -6,7 +6,7 @@ import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
 import {fontProbeExpression} from './font-probes.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
-import {fontContractContextExpression,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
+import {readCurrentFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
@@ -23,9 +23,9 @@ try{
       const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
-      row.fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
       row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
       await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
+      row.fontContract=await readCurrentFontContract(page,scale);
       await page.evaluate(`document.querySelector('.event-workspace-nav').scrollIntoView({block:'center'})`);await sleep(250);
       row.tabs=await page.evaluate(textMeasurementExpression(['.event-workspace-tab strong'],false));
       row.tabFontContractRules=await actualAuthoredFontRules(page,['.event-workspace-tab strong']);
@@ -37,11 +37,12 @@ try{
       await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='settlement'`),'Settlement');await sleep(250);
       if(!await page.evaluate(`document.querySelector('.transfer-explanation')?.open===true`))row.nativeTaps.push(await page.tap('.transfer-row .personal-transfer-badge'));
       await waitFor(()=>page.evaluate(`document.querySelector('.transfer-explanation')?.open===true`),'Visible expanded transfer breakdown');await sleep(250);
+      row.settlementFontContract=await readCurrentFontContract(page,scale);
       row.text=await page.evaluate(textMeasurementExpression(Object.keys(required)));
       row.fontProbes=await page.evaluate(fontProbeExpression);row.state=await page.evaluate(inspectExpression);
       row.fontContractRules=await actualAuthoredFontRules(page,['.event-header-action-label']);
       for(const [selector,{size,count}] of Object.entries(required)){
-        const baseline=selector==='.event-header-action-label'?authoredNativeFontBase(selector,row.fontContract):size;
+        const baseline=selector==='.event-header-action-label'?authoredNativeFontBase(selector,row.settlementFontContract):size;
         const targets=row.text.filter(target=>target.selector===selector);
         check(selector+': required visible count',targets.length>=count,{minimumCount:count,actualCount:targets.length});
         check(selector+': exact OS ratio',targets.length>=count&&targets.every(target=>scaledFontSizeMatches(target.fontSize,baseline,scale)),{baselinePx:baseline,expectedRatio:scale,tolerancePx:.2});

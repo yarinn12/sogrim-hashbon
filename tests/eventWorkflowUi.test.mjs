@@ -121,8 +121,8 @@ test("settlement screen exposes full event report copy", async () => {
   const app = await readFile("src/app.mjs", "utf8");
 
   assert.match(app, /formatEventReport/);
-  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\), \{ showActions: false \}\)/);
-  assert.match(app, /renderEventWorkspaceNav\(event, "summary"\)[\s\S]*?renderEventHeaderActions\(event, activeEventParticipants\(event\)\)/);
+  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)/);
+  assert.match(app, /renderEventHeader\(event, activeEventParticipants\(event\)\)[\s\S]*?renderEventWorkspaceNav\(event, "summary"\)/);
   assert.match(app, /data-action="copy-event-report"/);
   assert.match(app, /copyEventReport\(target\.dataset\.eventId\)/);
 });
@@ -1141,13 +1141,9 @@ test("participant manager offers a clear group link without leaving the event", 
 
 test("single-participant events name the existing share action as an invitation", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const header = sourceBetween(
-    app,
-    "function renderEventHeaderActions(",
-    "function renderEventIdentityNotice("
-  );
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
 
-  assert.match(header, /participants\.length === 1 \? "הזמנת חברים" : "שיתוף"/);
+  assert.match(header, /participantCount === 1 \? "הזמנת חברים" : "שיתוף"/);
   assert.match(header, /data-action="open-event-participant-add"/);
   assert.match(header, /button-action-icon[^>]*aria-hidden="true">\$\{iconSvg\("share"\)\}/);
   assert.doesNotMatch(header, /data-action="invite-first"/);
@@ -1225,13 +1221,14 @@ test("expense payer selector can add a missing payer inline", async () => {
 
 test("event screen moves secondary management into focused windows", async () => {
   const app = await readFile("src/app.mjs", "utf8");
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
   const styles = await readFile("styles.css", "utf8");
 
   assert.match(app, /eventDialog/);
   assert.match(app, /renderEventDialog/);
-  assert.match(app, /data-action="open-event-participants"/);
+  assert.match(header, /data-action="open-event-participants"/);
   assert.match(app, /data-action="open-event-share"/);
-  assert.match(app, /data-action="open-event-settings"/);
+  assert.match(header, /data-action="open-event-settings"/);
   assert.match(app, /data-action="close-event-dialog"/);
   assert.match(app, /class="icon-button modal-back-button modal-close-button"/);
   assert.match(app, /data-event-route-dialog="true"/);

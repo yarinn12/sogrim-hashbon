@@ -2242,7 +2242,7 @@ async function assertCompactSettlementFirstView(page) {
       firstTransfer: rectFor(".settlement-transfer-board .transfer-row"),
       bottomNavigation: rectFor(".product-app-nav"),
       actionLabels: [...document.querySelectorAll(
-        ".settlement-screen > .event-header-actions .event-header-action-label"
+        ".settlement-screen > .event-overview-header .event-header-actions .event-header-action-label"
       )].map((label) => {
         const range = document.createRange();
         range.selectNodeContents(label);
@@ -2672,7 +2672,7 @@ test("AX summary actions keep whole labels and reachable controls at phone width
     await page.evaluate(() => document.fonts.ready);
 
     const layout = await page.evaluate(() => {
-      const actions = document.querySelector('.settlement-screen > .event-header-actions');
+      const actions = document.querySelector('.settlement-screen > .event-overview-header .event-header-actions');
       return {
         rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
         documentWidth: document.documentElement.scrollWidth,
@@ -2702,7 +2702,7 @@ test("AX summary actions keep whole labels and reachable controls at phone width
       expect(label.buttonHeight, `${viewport.width}px: utility action stays tappable`)
         .toBeGreaterThanOrEqual(48);
     }
-    for (const action of await page.locator('.settlement-screen > .event-header-actions > button').all()) {
+    for (const action of await page.locator('.settlement-screen > .event-overview-header .event-header-actions > button').all()) {
       await action.click({ trial: true });
     }
     await page.locator('.settlement-stage-heading').scrollIntoViewIfNeeded();

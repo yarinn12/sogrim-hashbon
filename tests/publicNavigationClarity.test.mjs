@@ -37,6 +37,7 @@ test("public home screen does not render the large context bar", async () => {
 });
 
 test("public event screen preserves the focused native event navigation", async () => {
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
   const [overlay, app] = await Promise.all([
     readFile("src/publicClarityLayer.mjs", "utf8"),
     readFile("src/app.mjs", "utf8")
@@ -49,7 +50,8 @@ test("public event screen preserves the focused native event navigation", async 
 
   assert.match(enhancement, /product-event-screen/);
   assert.doesNotMatch(enhancement, /product-event-command|product-sticky-actions/);
-  assert.match(app, /event-header-actions/);
+  assert.match(header, /event-header-actions/);
+  assert.match(app, /return renderEventHeaderView\(eventHeaderViewModel\(event, participants\), options\)/);
   assert.match(app, /data-action="show-expense-form"/);
   assert.match(app, /renderEventWorkspaceNav\(event, "expenses"\)/);
 });

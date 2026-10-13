@@ -420,11 +420,36 @@ function injectDynamicTypeStyles(document) {
         body #app .screen.event-notes-screen > .top {
         margin-block: 4px 0 !important;
         padding-block: 4px !important;
+        gap: 6px !important;
+      }
+
+      /* Reserve ordinary document space for the primary Notes action. The
+         complete enlarged header can scroll; no floating action covers tabs
+         or a dialog, and there is no centering transform to retain on rotation. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .event-overview-header {
+        max-height: max(156px, calc(100dvh - var(--dynamic-type-bottom-nav-block, 82px) -
+          env(safe-area-inset-bottom) - max(14px, env(safe-area-inset-bottom)) - 270px)) !important;
+        overflow: hidden !important;
+        grid-template-rows: minmax(0, 1fr) max-content !important;
+        align-items: start !important;
+        align-content: start !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-header-actions {
-        grid-template-columns: minmax(0, 1fr) !important;
+        body #app .screen.event-notes-screen > .event-overview-header > .brand {
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior-y: contain !important;
+        align-self: stretch !important;
+        align-content: start !important;
+        grid-auto-rows: max-content !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
       }
     }
 
@@ -433,7 +458,8 @@ function injectDynamicTypeStyles(document) {
        primary answer without three stacked rows of secondary controls. */
     @media (min-width: 375px) and (max-width: 480px) and (orientation: portrait) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions {
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions {
+        display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 6px !important;
         margin-bottom: 0 !important;
@@ -441,7 +467,7 @@ function injectDynamicTypeStyles(document) {
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
         .event-header-utility-button {
         min-height: 48px !important;
       }
@@ -449,13 +475,13 @@ function injectDynamicTypeStyles(document) {
       /* At AX sizes the longest word needs the full row; the two shorter
          actions still share the next row without splitting their labels. */
       html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions
         > [data-action="open-event-participants"] {
         grid-column: 1 / -1 !important;
       }
 
       html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1
-        body #app .screen[data-event-view="summary"] > .event-header-actions
+        body #app .screen[data-event-view="summary"] > .event-overview-header .event-header-actions
         .event-header-utility-button {
         padding-inline: 8px !important;
       }
@@ -500,6 +526,57 @@ function injectDynamicTypeStyles(document) {
         > .top.event-overview-header {
         margin-block: 0 !important;
         padding-block: 4px !important;
+        gap: 4px !important;
+        min-height: 0 !important;
+      }
+
+      /* Spend the short viewport on complete text and touch targets rather
+         than portrait spacing. The utilities remain in the shared card. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: env(safe-area-inset-top) 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-meta {
+        margin-block: 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-utility-button {
+        min-height: 44px !important;
+        padding-block: 2px !important;
+        flex-direction: row !important;
+      }
+
+      /* At OS accessibility sizes a complete multi-line title, metadata and
+         utilities cannot all fit in a short landscape viewport. Allow the
+         full card to scroll while its following workspace tabs stay visible;
+         retain the requested fonts, every word and all three real actions. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        max-height: calc(100dvh - 56px - env(safe-area-inset-top) -
+          var(--dynamic-type-bottom-nav-block, 82px) - env(safe-area-inset-bottom) -
+          max(14px, env(safe-area-inset-bottom)) - 70px) !important;
+        overflow: hidden !important;
+        grid-template-rows: minmax(0, 1fr) max-content !important;
+        align-items: start !important;
+        align-content: start !important;
+      }
+
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header > .brand {
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior-y: contain !important;
+        align-self: stretch !important;
+        align-content: start !important;
+        grid-auto-rows: max-content !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
@@ -546,8 +623,7 @@ function injectDynamicTypeStyles(document) {
     /* A compact desktop viewport can scroll an event tab underneath the
        fixed route controls; leave a visible landing zone for keyboard/touch. */
     @media (max-width: 720px) and (max-height: 500px) {
-      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
-        body #app .screen[data-screen-kind="event"] .event-workspace-tab {
+      html body #app .screen[data-screen-kind="event"] .event-workspace-tab {
         scroll-margin-block-start: 80px !important;
         scroll-margin-block-end: calc(96px + env(safe-area-inset-bottom)) !important;
       }

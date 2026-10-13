@@ -11,7 +11,7 @@ on:
       build:
         description: Unique TestFlight build number
         required: true
-        default: "193"
+        default: "194"
       release_notes:
         description: Hebrew TestFlight release notes
         required: true
@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ios-testflight-${{ github.repository }}
@@ -48,6 +49,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      - name: Require complete CI on this exact source before signing or upload
+        run: node scripts/verify-release-ci.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Validate Apple configuration
         run: node scripts/verify-ios-workflow-env.mjs

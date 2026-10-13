@@ -1,3 +1,6 @@
+import { accountParticipantId, pinUpdatesForOwner, validPinUpdate, pinMutationId, validAncestors, SAFE_EVENT_ID, MAX_PIN_ANCESTORS } from "../domain/personalEventPinMerge.mjs";
+export { mergeAccountEventPins } from "../domain/personalEventPinMerge.mjs";
+
 const STORAGE_PREFIX = "settle-friends-personal-event-pins-v1";
 
 export function personalEventPinsKey(participantId) {
@@ -39,9 +42,7 @@ export function setPersonalEventPin(participantId, eventId, pinned, storage) {
 // Account snapshots are private to their owner. Keep explicit unpin records so
 // an older device cannot restore a pin when its offline snapshot is merged.
 const LEGACY_PIN_TIMESTAMP = "1970-01-01T00:00:00.000Z";
-const SAFE_EVENT_ID = /^[A-Za-z0-9_-]{1,128}$/;
 const MIGRATION_RECEIPT_PREFIX = "settle-friends-personal-event-pins-migrated-v1";
-const MAX_PIN_ANCESTORS = 64;
 
 function migrationReceiptKey(participantId) {
   return `${MIGRATION_RECEIPT_PREFIX}:${participantId}`;
@@ -66,24 +67,6 @@ export function acknowledgeLegacyAccountPins(participantId, eventIds, storage) {
   const acknowledged = parsePins(target.getItem(key));
   for (const id of eventIds) if (SAFE_EVENT_ID.test(id)) acknowledged.add(id);
   target.setItem(key, JSON.stringify([...acknowledged]));
-}
-
-function accountParticipantId(state) {
-  const id = String(state?.currentParticipantId ?? "").trim();
-  return id.startsWith("account-") ? id : "";
-}
-
-function pinUpdatesForOwner(preferences, participantId) {
-  if (preferences?.ownerParticipantId !== participantId) return null;
-  const updates = preferences.updates;
-  return updates && typeof updates === "object" && !Array.isArray(updates)
-    ? updates
-    : {};
-}
-
-function validPinUpdate(update) {
-  return typeof update?.pinned === "boolean" &&
-    Number.isFinite(Date.parse(update?.updatedAt));
 }
 
 export function pinnedEventIdsForState(state, storage) {
@@ -146,56 +129,9 @@ export function updateAccountEventPin(state, eventId, pinned, storage, now = Dat
   };
 }
 
-export function mergeAccountEventPins(remoteState, localState) {
-  const participantId = accountParticipantId(localState);
-  if (!participantId || accountParticipantId(remoteState) !== participantId) return null;
-  const remote = pinUpdatesForOwner(remoteState.personalEventPinPreferences, participantId);
-  const local = pinUpdatesForOwner(localState.personalEventPinPreferences, participantId);
-  if (!remote && !local) return null;
-  const merged = {};
-  for (const id of new Set([...Object.keys(remote ?? {}), ...Object.keys(local ?? {})])) {
-    if (!SAFE_EVENT_ID.test(id)) continue;
-    const remoteUpdate = remote?.[id];
-    const localUpdate = local?.[id];
-    if (!validPinUpdate(remoteUpdate) && !validPinUpdate(localUpdate)) continue;
-    const selected = selectPinUpdate(remoteUpdate, localUpdate);
-    merged[id] = { ...selected };
-  }
-  return { ownerParticipantId: participantId, updates: merged };
-}
-
 function newMutationId() {
   return globalThis.crypto?.randomUUID?.() ??
     `random-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function pinMutationId(update) {
-  return typeof update.mutationId === "string" && update.mutationId.length <= 128 && update.mutationId
-    ? update.mutationId
-    : `legacy:${update.pinned ? 1 : 0}:${update.updatedAt}`;
-}
-
-function validAncestors(update) {
-  return Array.isArray(update.ancestors)
-    ? update.ancestors.filter(id => typeof id === "string" && id.length > 0 && id.length <= 128)
-      .slice(0, MAX_PIN_ANCESTORS)
-    : [];
-}
-
-function selectPinUpdate(remote, local) {
-  if (!validPinUpdate(remote)) return local;
-  if (!validPinUpdate(local)) return remote;
-  const remoteId = pinMutationId(remote);
-  const localId = pinMutationId(local);
-  if (remoteId === localId) {
-    return validAncestors(local).length > validAncestors(remote).length ? local : remote;
-  }
-  if (validAncestors(local).includes(remoteId)) return local;
-  if (validAncestors(remote).includes(localId)) return remote;
-  // Neither operation knows the other. Their real-time order is unknowable,
-  // including for old timestamp-only records or truncated ancestry.
-  if (local.pinned !== remote.pinned) return local.pinned ? remote : local;
-  return localId > remoteId ? local : remote;
 }
 
 export function pinnedEventsFirst(events, pinnedIds) {
