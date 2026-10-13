@@ -228,3 +228,112 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }
     await expect(page.locator('.event-note-modal')).toBeVisible();
   });
 }
+
+async function requireOpaqueEditorCoversBackground(page, testInfo, label) {
+  await expect(page.locator('.event-note-modal')).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await page.locator('.event-note-modal').focus();
+  const settleEditorPaint = async () => {
+    let stableFrames = 0;
+    await expect.poll(async () => {
+      const settled = await page.locator('.event-note-modal').evaluate(node =>
+        getComputedStyle(node).transform === 'none' && !node.getAnimations({ subtree: true }).some(animation =>
+          animation.playState === 'running' && animation.effect?.getTiming().iterations !== Infinity));
+      stableFrames = settled ? stableFrames + 1 : 0;
+      return stableFrames;
+    }, { intervals: [100] }).toBeGreaterThanOrEqual(3);
+  };
+  await settleEditorPaint();
+  // Disabling animations for a screenshot cancels and then restarts the modal
+  // entrance animation. Compare completed frames without changing its state.
+  const screenshotOptions = { animations: 'allow', caret: 'initial' };
+  const sampleLayout = () => page.evaluate(() => {
+    const modal = document.querySelector('.event-note-modal'), styles = getComputedStyle(modal);
+    const rect = modal.getBoundingClientRect();
+    return { viewport: [innerWidth, innerHeight], rootFont: getComputedStyle(document.documentElement).fontSize,
+      rootClasses: document.documentElement.className, bodyClasses: document.body.className,
+      modal: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, padding: styles.padding,
+        margin: styles.margin, transform: styles.transform, position: styles.position, zIndex: styles.zIndex },
+      rootScroll: [scrollX, scrollY], navBlock: getComputedStyle(document.documentElement).getPropertyValue('--dynamic-type-bottom-nav-block') };
+  });
+  const layout = [{ phase: 'before-actual', ...(await sampleLayout()) }];
+  const actual = await page.screenshot(screenshotOptions);
+  layout.push({ phase: 'after-actual', ...(await sampleLayout()) });
+  const backgroundCount = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll('#app button')].filter(node =>
+      !node.closest('.event-modal-backdrop, .expense-modal-backdrop') &&
+      node.getBoundingClientRect().width && node.getBoundingClientRect().height);
+    window.__qaCoveredBackgroundButtons = nodes.map(node => ({ node, style: node.getAttribute('style') }));
+    // Paint-only opacity preserves layout and the product visibility metrics.
+    // visibility:hidden would change dynamic typography's control readbacks.
+    for (const node of nodes) node.style.setProperty('filter', 'opacity(0)', 'important');
+    return nodes.length;
+  });
+  let covered;
+  try { await settleEditorPaint(); layout.push({ phase: 'before-covered', ...(await sampleLayout()) }); covered = await page.screenshot(screenshotOptions);
+    layout.push({ phase: 'after-covered', ...(await sampleLayout()) }); }
+  finally {
+    await page.evaluate(() => {
+      for (const { node, style } of window.__qaCoveredBackgroundButtons) {
+        if (style === null) node.removeAttribute('style'); else node.setAttribute('style', style);
+      }
+      delete window.__qaCoveredBackgroundButtons;
+    });
+  }
+  expect(backgroundCount).toBeGreaterThan(0);
+  await writeFile(testInfo.outputPath(`${label}-paint-layout.json`), JSON.stringify(layout));
+  const actualPath = testInfo.outputPath(`${label}-actual-editor.png`);
+  const coveredPath = testInfo.outputPath(`${label}-covered-background-reference.png`);
+  await writeFile(actualPath, actual); await writeFile(coveredPath, covered);
+  await testInfo.attach(`${label}-actual-editor`, { path: actualPath, contentType: 'image/png' });
+  await testInfo.attach(`${label}-covered-background-reference`, { path: coveredPath, contentType: 'image/png' });
+  expect(actual.equals(covered), 'background actions must not paint above the opaque note editor, even when inert').toBe(true);
+}
+
+for (const viewport of [{ width: 375, height: 667 }, { width: 667, height: 375 }]) {
+  test(`notes editor covers background actions and preserves the draft across rotation ${viewport.width}`, async ({ page }, testInfo) => {
+    await page.setViewportSize(viewport);
+    await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+    await page.locator('[data-action="open-event-notes"]').click();
+    if (process.env.PW_NOTES_LAYER_OLD === '1') {
+      // Controlled reproduction of the exact historical 0d94 paint regression.
+      // No input, bridge, readiness or typography assertion is changed.
+      await page.addStyleTag({ content: 'html.design-coherence-v1.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action { z-index: 110 !important; }' });
+    }
+    await page.locator('[data-action="new-event-note"]').click();
+    await requireOpaqueEditorCoversBackground(page, testInfo, `opening-${viewport.width}`);
+    const title = page.locator('[data-action="event-note-title"]');
+    const body = page.locator('[data-action="event-note-body"]');
+    await title.fill('בדיקת שכבות 194');
+    await body.fill('טיוטת פתק לאייפד ולאנדרואיד');
+    await page.setViewportSize({ width: viewport.height, height: viewport.width });
+    await assertRootTextSize(page, testInfo, 'rotated-note-editor');
+    await expect(title).toHaveValue('בדיקת שכבות 194');
+    await expect(body).toHaveValue('טיוטת פתק לאייפד ולאנדרואיד');
+    await requireOpaqueEditorCoversBackground(page, testInfo, `rotated-${viewport.width}`);
+    await page.locator('.event-note-modal [data-action="close-event-dialog"]').first().click();
+    await expect(page.locator('.event-note-modal')).toHaveCount(0);
+    await expect(page.locator('.event-note-open')).toHaveCount(0);
+    await page.locator('[data-action="new-event-note"]').click();
+    // Explicit Close is the product's discard action; rotation above retains
+    // the active draft, while cancelling must leave a fresh new-note editor.
+    await expect(title).toHaveValue('');
+    await expect(body).toHaveValue('');
+    await title.fill('בדיקת שכבות 194');
+    await body.fill('טיוטת פתק לאייפד ולאנדרואיד');
+    await body.click();
+    await body.press('ControlOrMeta+End');
+    await page.keyboard.insertText(' — המשך הקלדה');
+    await expect(title).toHaveValue('בדיקת שכבות 194');
+    await expect(body).toHaveValue('טיוטת פתק לאייפד ולאנדרואיד — המשך הקלדה');
+    await page.locator('[data-action="save-event-note"]').click();
+    await expect(page.locator('.event-note-modal')).toHaveCount(0);
+    await expect(page.locator('.event-note-open')).toHaveCount(1);
+    // This browser fixture uses the real local provider, so inspect its final
+    // persisted note. Shared server acknowledgements have separate Native and
+    // two-client gates; the unrelated global QA seed is not a cloud receipt.
+    await expect.poll(() => page.evaluate(eventId =>
+      JSON.parse(localStorage.getItem('settle-friends-state')).events.find(event => event.id === eventId)?.notes?.map(note => ({ title: note.title, body: note.body })), eventId)
+    ).toEqual([{ title: 'בדיקת שכבות 194', body: 'טיוטת פתק לאייפד ולאנדרואיד — המשך הקלדה' }]);
+  });
+}

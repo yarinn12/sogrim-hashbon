@@ -36,7 +36,7 @@ async function assertReferenceHeader(page, testInfo, view) {
   const screen = page.locator('#app > .screen');
   const header = screen.locator(':scope > .event-overview-header');
   const actions = header.locator('.event-header-actions');
-  // The physical iPad photo of build 193 showed a separate green bar below tabs.
+  // The user's first image showed a separate green bar below the tabs; the second image defines the desired layout.
   // The user's accepted reference keeps all three utilities inside the event card.
   await expect(actions, "one action group must remain inside the shared green event header").toHaveCount(1);
   await expect(screen.locator(':scope > .event-header-actions'), "no detached utility bar").toHaveCount(0);

@@ -21,6 +21,27 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
+      - name: Require the historical Notes layer to fail the real editor paint check
+        run: |
+          for size in 32 37.64706; do
+            old_status=0
+            PW_NOTES_LAYER_OLD=1 PW_DYNAMIC_TYPE_SIZE="$size" \
+              PLAYWRIGHT_JSON_OUTPUT_FILE="reference-evidence/notes-layer-old-$size.json" \
+              npx playwright test e2e/iphone-landscape-proportions.spec.mjs --project=iphone-large-text \
+                --grep "notes editor covers" --output="reference-layer-old-$size" --retries=0 --reporter=line,json || old_status=$?
+            test "$old_status" -eq 1
+            node --input-type=module - "reference-evidence/notes-layer-old-$size.json" <<'CONTROL'
+          import assert from 'node:assert/strict';
+          import {readFileSync} from 'node:fs';
+          const report=JSON.parse(readFileSync(process.argv[2],'utf8'));
+          assert.deepEqual([report.stats.expected,report.stats.unexpected,report.stats.skipped,report.stats.flaky],[0,2,0,0]);
+          assert.equal(report.errors.length,0);
+          const tests=[];function collect(suites){for(const suite of suites){for(const spec of suite.specs)tests.push(...spec.tests);collect(suite.suites||[]);}}collect(report.suites);
+          assert.equal(tests.length,2);
+          for(const test of tests){assert.equal(test.results.length,1);assert.equal(test.results[0].status,'failed');assert.ok(test.results[0].error.message.includes('background actions must not paint above the opaque note editor'));}
+          console.log('OLD 110 layer rejected for the exact editor paint defect, no skipped or retried case.');
+          CONTROL
+          done
       - name: Preserve all short-viewport actions at full 32px and measured iOS AX root
         run: |
           for size in 32 37.64706; do
@@ -41,5 +62,6 @@ jobs:
             playwright-report/
             test-results/
             reference-notes-*/
+            reference-layer-old-*/
           retention-days: 7
           if-no-files-found: error

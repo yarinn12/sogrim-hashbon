@@ -20,7 +20,7 @@ jobs:
       GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
       GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
       IOS_VERSION: "4.58"
-      IOS_BUILD: "193"
+      IOS_BUILD: "194"
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - uses: actions/checkout@v6

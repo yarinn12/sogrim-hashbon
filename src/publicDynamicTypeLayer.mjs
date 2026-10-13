@@ -437,7 +437,7 @@ function injectDynamicTypeStyles(document) {
         max-width: 420px !important;
         margin: 0 !important;
         transform: translateX(-50%) !important;
-        z-index: 110 !important;
+        z-index: 70 !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
