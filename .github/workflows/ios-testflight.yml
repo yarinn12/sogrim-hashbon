@@ -1,10 +1,17 @@
 name: iOS193 owner availability
-run-name: iOS193 owner access audit
+run-name: iOS193 owner access ${{ inputs.mode }}
 on:
   push:
     branches: [codex/ios193-owner-access-20261013]
-    paths: [.github/workflows/ios-testflight.yml, scripts/qa/ios-signing/owner-access-audit.mjs]
+    paths: [.github/workflows/ios-testflight.yml, scripts/qa/ios-signing/owner-access-guard.mjs, scripts/qa/ios-signing/owner-access-guard.test.mjs]
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Read-only audit or enable original193 for the sole existing Yarin tester
+        required: true
+        type: choice
+        options: [audit, enable_owner]
+        default: audit
 permissions:
   contents: read
   actions: read
@@ -12,7 +19,7 @@ concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
 jobs:
-  audit:
+  owner-access:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -26,6 +33,10 @@ jobs:
       SOURCE_FONT_QA_RUN: '38300390653'
       SOURCE_AUTH_QA_RUN: '38300390656'
       APPLE_TEAM_ID: MA9S4L7WKS
+      IOS_VERSION: '4.58'
+      IOS_BUILD: '193'
+      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+      WORKFLOW_REF: ${{ github.workflow_ref }}
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
     steps:
@@ -42,18 +53,35 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Verify frozen source and all CI without product execution
+      - name: Validate personal scope and negative controls before Apple keys
+        run: node --test "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/owner-access-guard.test.mjs"
+      - name: Require exact source and all successful CI on push audit
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-readonly-ci.mjs"
-      - name: Read only the existing owner group and original processed193
+      - name: Require exact source and all successful CI on explicit dispatch
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
+      - name: Read current personal availability only
+        if: github.event_name == 'push' || inputs.mode == 'audit'
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/owner-access-audit.mjs"
-      - uses: actions/upload-artifact@v6
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/owner-access-guard.mjs" audit
+      - name: Enable original193 only for the existing sole owner and verify readback
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'enable_owner'
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/owner-access-guard.mjs" enable_owner
+      - name: Retain JSON proof only
         if: always()
+        uses: actions/upload-artifact@v6
         with:
-          name: ios193-owner-access-audit-${{ github.run_id }}
-          path: app/build/ios/owner-access-audit.json
+          name: ios193-owner-availability-${{ github.run_id }}
+          path: |
+            app/build/ios/owner-access-receipt.json
+            app/build/ios/source-ci-only.json
           if-no-files-found: warn
           retention-days: 7
