@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {mkdirSync} from 'node:fs';
+import {SOURCE,RELEASE_TREE,verifyCommit,verifyRuns} from './source-guard.mjs';
+assert.equal(process.env.GITHUB_EVENT_NAME,'push','This entry point is a GET-only push audit, not a release');
+assert.equal(process.env.GITHUB_REPOSITORY,'yarinn12/sogrim-hashbon');
+const git=args=>execFileSync('git',args,{encoding:'utf8'}).trim();
+assert.equal(git(['rev-parse','HEAD']),SOURCE);assert.equal(git(['rev-parse','HEAD^{tree}']),RELEASE_TREE);
+assert.equal(git(['status','--porcelain']),'');
+await verifyCommit(fetch,process.env.GH_TOKEN,RELEASE_TREE);
+await verifyRuns(fetch,process.env.GH_TOKEN,process.env);
+mkdirSync('build/ios',{recursive:true});
+console.log('Frozen source and four CI runs verified for a read-only Apple audit. No release acceptance created.');

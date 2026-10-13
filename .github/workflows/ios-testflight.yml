@@ -1,51 +1,64 @@
-name: iOS signed artifact only
-run-name: iOS signed artifact 4.58 (193) from ${{ inputs.source_sha }}
-
+name: iOS193 intake only — no distribution
+run-name: iOS193 ${{ inputs.mode }} — original signed bytes
 on:
+  push:
+    branches: [codex/ios193-intake-audit-20261013]
+    paths: [.github/workflows/ios-testflight.yml, scripts/qa/ios-signing/intake-distribution-guard.mjs, scripts/qa/ios-signing/intake-readonly-ci.mjs]
   workflow_dispatch:
     inputs:
+      mode:
+        description: audit reads only; intake uploads original193 without tester or store distribution
+        type: choice
+        options: [audit, intake]
+        default: audit
+        required: true
       source_sha:
-        description: Required full frozen application commit (bf254b52), never the tooling HEAD
+        description: Frozen application SHA bf254b5235deb706234b00362e6eaea78e129e98
         required: true
         type: string
       qa_run:
-        description: Successful QA run on source_sha (38300391028 for this candidate)
+        description: Successful source QA 38300391028
         required: true
         type: string
       windows_run:
-        description: Successful Windows run on source_sha (38300390654 for this candidate)
+        description: Successful source Windows 38300390654
         required: true
         type: string
       font_run:
-        description: Successful font provenance run on source_sha (38300390653 for this candidate)
+        description: Successful source font 38300390653
         required: true
         type: string
       auth_run:
-        description: Successful iOS auth-return run on source_sha (38300390656 for this candidate)
+        description: Successful source auth return 38300390656
         required: true
         type: string
-      version:
-        description: Fixed candidate version; this workflow never uploads to Apple
+      signed_run_id:
+        description: Completed first signing run on immutable tools 931dcfa
         required: true
-        default: "4.58"
-      build:
-        description: Fixed candidate build; this run does not reserve the number
+        type: string
+      signed_artifact_id:
+        description: Exact encrypted artifact ID from that signing run
         required: true
-        default: "193"
-
+        type: string
+      ipa_sha256:
+        description: Original verified IPA SHA-256, never a rebuilt IPA
+        required: true
+        type: string
+      artifact_zip_sha256:
+        description: GitHub SHA-256 digest of the original encrypted artifact ZIP
+        required: true
+        type: string
 permissions:
   contents: read
   actions: read
-
-# Shared with the upload path; manual/out-of-band Apple actions still need coordination.
 concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
-
 jobs:
-  build-export-verify-private:
+  upload-original:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
-    timeout-minutes: 75
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -56,182 +69,175 @@ jobs:
       SOURCE_WINDOWS_QA_RUN: ${{ inputs.windows_run }}
       SOURCE_FONT_QA_RUN: ${{ inputs.font_run }}
       SOURCE_AUTH_QA_RUN: ${{ inputs.auth_run }}
+      SIGNED_RUN_ID: ${{ inputs.signed_run_id }}
+      SIGNED_ARTIFACT_ID: ${{ inputs.signed_artifact_id }}
+      SIGNED_IPA_SHA256: ${{ inputs.ipa_sha256 }}
+      SIGNED_ARTIFACT_ZIP_SHA256: ${{ inputs.artifact_zip_sha256 }}
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
-      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_TEAM_ID: MA9S4L7WKS
       APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
       APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
-      GOOGLE_CLIENT_ID: ${{ vars.GOOGLE_CLIENT_ID }}
-      GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
-      IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"
-      IOS_VERSION: ${{ inputs.version }}
-      IOS_BUILD: ${{ inputs.build }}
-
+      IOS_VERSION: '4.58'
+      IOS_BUILD: '193'
     steps:
-      - name: Validate mandatory frozen source and release inputs
-        working-directory: ${{ github.workspace }}
-        run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"bf254b5235deb706234b00362e6eaea78e129e98");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"193");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
-
-      - name: Checkout the frozen application source explicitly
+      - name: Checkout frozen application source
         uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_sha }}
           path: app
           persist-credentials: false
-
-      - name: Checkout the immutable workflow and shared release helpers
+      - name: Checkout immutable intake controls; public database gate remains separate
         uses: actions/checkout@v6
         with:
           ref: ${{ github.workflow_sha }}
           path: release-tools
           persist-credentials: false
-
-      - name: Set up Node.js
+      - name: Set up Node without dependency install or cache
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: app/package-lock.json
-
       - name: Load public release notes from the frozen application metadata
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+      - name: Check release notes against the frozen source before Apple keys
+        env:
+          IOS_RELEASE_SOURCE_DIR: ${{ github.workspace }}/app
+        run: node --test "$GITHUB_WORKSPACE/release-tools/tests/ios-signing-release-notes.test.mjs"
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
-
-      - name: Require all four successful source CI runs before signing secrets
+      - name: Require successful source CI before Apple keys
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
-
-      - name: Require pinned source CI and read unused build number before signing
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
+          mv build/ios/source-ci-only.json build/ios/live-ci-before-download.json
+      - name: Require the exact original artifact origin for intake only before Apple keys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-origin-guard.mjs"
+      - name: Read current TestFlight automatic-distribution facts only
+        if: inputs.mode == 'audit'
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" audit
+      - name: Require live manual distribution before accessing the original IPA
+        if: inputs.mode == 'intake'
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
+      - name: Download original ZIP and enforce its exact GitHub digest
+        if: inputs.mode == 'intake'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/download-intake-artifact.mjs"
+          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/extract-intake-envelope.py"
+      - name: Authenticate original archive with the existing App Store key
+        if: inputs.mode == 'intake'
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" decrypt \
+            build/ios/original-encrypted "$RUNNER_TEMP/sogrim-original-release.tar"
+      - name: Verify original IPA bytes, all assets, signature, certificate and current profile without rebuilding
+        if: inputs.mode == 'intake'
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-original-archive.py"
+      - name: Recheck source fingerprints, all CI and unused Apple build immediately before upload
+        if: inputs.mode == 'intake'
         env:
           GH_TOKEN: ${{ github.token }}
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" before-build
-
-      - name: Validate existing Apple configuration
-        run: node scripts/verify-ios-workflow-env.mjs
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          APPSTORE_CERTIFICATES_FILE_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          APPSTORE_CERTIFICATES_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
-
-      - name: Verify public Apple login provider readiness by reading existing configuration
-        run: npm run qa:ios:providers
-
-      - name: Select and verify Xcode 26.6 and iPhone SDK
         run: |
           set -euo pipefail
-          sudo xcode-select -s /Applications/Xcode_26.6.app
-          xcodebuild -version
-          xcrun --sdk iphoneos --show-sdk-version
-
-      - name: Install locked dependencies
-        run: npm ci
-
-      - name: Build web assets and prepare the native project from the pinned checkout
-        run: |
-          set -euo pipefail
-          npm run native:ios:flatten-icon
-          npm run native:prepare
-          node scripts/prepare-ios-release.mjs
-          npm run qa:ios
-          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-web-assets.py" snapshot
-
-      - name: Import the existing Apple Distribution certificate
-        uses: apple-actions/import-codesign-certs@v7
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" before-upload
+          node -e 'const a=require("node:assert/strict"),f=require("node:fs"),c=require("node:crypto");a.equal(c.createHash("sha256").update(f.readFileSync("build/ios/SogrimHashbon.ipa")).digest("hex"),process.env.SIGNED_IPA_SHA256);'
+      - name: Upload the same original IPA to TestFlight
+        if: inputs.mode == 'intake'
+        uses: apple-actions/upload-testflight-build@v5
         with:
-          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
-          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
-
-      - name: Download an existing active App Store provisioning profile
-        uses: apple-actions/download-provisioning-profiles@v6
-        with:
-          bundle-id: com.sogrimhashbon.app
-          profile-type: IOS_APP_STORE
+          app-path: app/build/ios/SogrimHashbon.ipa
+          app-type: ios
           issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-
-      - name: Resolve Swift packages and retain the resolved dependency identity
-        run: |
-          set -euo pipefail
-          xcodebuild -resolvePackageDependencies -project ios/App/App.xcodeproj -scheme App
-          resolved="ios/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"
-          test -f "$resolved"
-          cp "$resolved" build/ios/Package.resolved
-
-      - name: Archive signed iOS app without sending anything to Apple
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            clean archive \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            | tee build/ios/archive.log
-
-      - name: Export IPA locally without upload destination
-        run: |
-          set -euo pipefail
-          /usr/libexec/PlistBuddy -c 'Print :destination' ios/ExportOptions.generated.plist | grep -x export
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/ios/SogrimHashbon.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.generated.plist \
-            -exportPath build/ios/export \
-            | tee build/ios/export.log
-          python3 - <<'EXPORT'
-          from pathlib import Path
-          import shutil
-          files = list(Path('build/ios/export').rglob('*.ipa'))
-          if len(files) != 1:
-              raise ValueError('Expected exactly one exported IPA')
-          shutil.copyfile(files[0], 'build/ios/SogrimHashbon.ipa')
-          EXPORT
-
-      - name: Verify signed iOS artifact with the existing signature verifier
-        run: npm run qa:ios:artifact
-
-      - name: Recheck exact source CI and current unused number after export
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" after-export
-
-      - name: Require all packaged web assets, release entitlements and valid distribution profile
-        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-web-assets.py" verify
-
-      - name: Encrypt only the verified IPA and its evidence for private retention
+          wait-for-processing: 'false'
+          backend: appstore-api
+      - name: Verify Apple processing and complete TestFlight notes
+        if: inputs.mode == 'intake'
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node scripts/complete-ios-testflight.mjs
+      - name: Prove193 has zero groups and zero individual testers after processing
+        if: inputs.mode == 'intake'
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" postflight
+      - name: Record upload outcome without retaining plaintext IPA
+        if: inputs.mode == 'intake'
         run: |
-          set -euo pipefail
-          tar -cf "$RUNNER_TEMP/sogrim-ios-release.tar" -C build/ios \
-            SogrimHashbon.ipa release-manifest.json artifact-verification.json \
-            source-ci-only.json source-before-build.json source-after-export.json web-assets.json Package.resolved
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" encrypt \
-            "$RUNNER_TEMP/sogrim-ios-release.tar" build/ios/private-artifact
+          printf '%s\n' 'Original iOS 4.58 (193) IPA ingested after exact CI/artifact/profile and manual-distribution guards.' \
+            'No IPA rebuild or second signing was performed. Zero groups/testers verified. Database acceptance is NOT granted; App Review/public distribution remain blocked.' >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Retain only encrypted release output for seven days
-        id: private_artifact
+      - name: Retain metadata and intake evidence only
+        if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-ios-4.58-193-encrypted
+          name: ios193-intake-evidence-${{ github.run_id }}
           path: |
-            app/build/ios/private-artifact/release.tar.enc
-            app/build/ios/private-artifact/envelope.json
-          if-no-files-found: error
+            app/build/ios/live-ci-before-download.json
+            app/build/ios/upload-origin.json
+            app/build/ios/intake-*.json
+            app/build/ios/source-before-upload.json
+            app/build/ios/original-artifact-before-upload.json
+            app/build/ios/testflight-completion.json
+          if-no-files-found: warn
           retention-days: 7
-
-      - name: Record preparation outcome
-        run: |
-          printf '%s\n' \
-            'Signed iOS 4.58 (193) artifact prepared from bf254b5235deb706234b00362e6eaea78e129e98.' \
-            'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
-            'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
-            >> "$GITHUB_STEP_SUMMARY"
+  readonly-intake-audit:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    env:
+      SOURCE_SHA: bf254b5235deb706234b00362e6eaea78e129e98
+      SOURCE_QA_RUN: '38300391028'
+      SOURCE_WINDOWS_QA_RUN: '38300390654'
+      SOURCE_FONT_QA_RUN: '38300390653'
+      SOURCE_AUTH_QA_RUN: '38300390656'
+      APPLE_TEAM_ID: MA9S4L7WKS
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: bf254b5235deb706234b00362e6eaea78e129e98
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify frozen source and all source CI for GET-only audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-readonly-ci.mjs"
+      - name: Read manual-distribution facts only; this push job cannot upload
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" audit
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios193-readonly-intake-audit-${{ github.run_id }}
+          path: app/build/ios/intake-audit.json
+          if-no-files-found: warn
+          retention-days: 7
