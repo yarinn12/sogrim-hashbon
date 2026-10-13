@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve,relative} from 'node:path';
 import vm from 'node:vm';
+import {requestedSuite,selectTestFiles} from '../scripts/lib/test-suites.mjs';
 
 const source=readFileSync(new URL('../scripts/run-tests.mjs',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
 function run({launchError=false}={}) {
   const calls=[],errors=[],exits=[];
-  const context=vm.createContext({readdirSync,statSync,join,resolve,relative,console,
+  const context=vm.createContext({readdirSync,statSync,join,resolve,relative,console,requestedSuite,selectTestFiles,
     spawnSync:(executable,args,options)=>{
       calls.push({executable,args:Array.from(args),options});
       return args[0]==='--test'&&launchError?{status:null,error:Object.assign(new Error('Synthetic launch failed'),{code:'ENAMETOOLONG'})}:{status:0};

@@ -9,7 +9,7 @@ import { mergeEventNotes } from "./eventNotes.mjs";
 import { sumMoneyAmounts } from "./money.mjs";
 import { validateExpenseFx } from "./expenseFx.mjs";
 import { normalizeCurrency } from "./currencies.mjs";
-import { mergeAccountEventPins } from "../data/personalEventPins.mjs";
+import { mergeAccountEventPins } from "./personalEventPinMerge.mjs";
 import { mergeSettlementPlanMemory, restoreRememberedSettlementPlan } from "./settlementPlanMemory.mjs";
 
 const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;

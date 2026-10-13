@@ -44,11 +44,13 @@ test("the active event keeps one primary expense action and two focused internal
   );
 
   assert.match(event, /data-screen-kind="event"/);
-  assert.match(event, /event-header-actions/);
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
+  assert.match(event, /renderEventHeader\(event, activeParticipants\)/);
+  assert.match(header, /event-header-actions/);
   assert.match(event, /data-action="show-expense-form"/);
-  assert.match(event, /data-action="open-event-participants"/);
-  assert.match(event, /data-action="open-event-participant-add"/);
-  assert.match(event, /data-action="open-event-settings"/);
+  assert.match(header, /data-action="open-event-participants"/);
+  assert.match(header, /data-action="open-event-participant-add"/);
+  assert.match(header, /data-action="open-event-settings"/);
   assert.match(navigation, /data-active-event-view/);
   assert.match(navigation, /data-action="back-to-event"/);
   assert.match(navigation, /הוצאות/);
@@ -162,11 +164,7 @@ test("settlement stays inside the event shell and only switches the active works
     "function renderSettlement(event)",
     "function hasReliableSettlementIdentity"
   );
-  const header = sourceBetween(
-    app,
-    "function renderEventHeaderActions(event",
-    "function renderEventIdentityNotice"
-  );
+  const header = await readFile("src/ui/eventHeader.mjs", "utf8");
 
   assert.match(settlement, /data-screen-kind="event"/);
   assert.match(settlement, /data-event-view="summary"/);

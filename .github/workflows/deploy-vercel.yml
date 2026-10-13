@@ -1,71 +1,99 @@
 name: Deploy Vercel production
-
 on:
   workflow_run:
-    workflows: [QA]
+    workflows: [QA, Windows unit and integration QA, Cross-engine font provenance QA, iOS authentication return QA]
     types: [completed]
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-
+  actions: read
 concurrency:
   group: vercel-production
-  cancel-in-progress: true
-
+  cancel-in-progress: false
 jobs:
-  deploy:
+  verify:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    outputs:
+      ready: ${{ steps.ci.outputs.ready }}
+      source: ${{ steps.ci.outputs.source }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+      - name: Require every release lane on the exact current main source
+        id: ci
+        run: node scripts/verify-release-ci.mjs --require-main-head --defer-pending
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: ${{ !cancelled() }}
+        with:
+          name: release-ci-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: release-ci-receipt.json
+          retention-days: 14
+  deploy:
+    needs: verify
+    if: ${{ needs.verify.outputs.ready == 'true' && vars.RELEASE_PIPELINE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
     env:
       VERCEL_ORG_ID: team_f6DbtZdpAEvbb4xchQxXM2Dp
       VERCEL_PROJECT_ID: prj_OWIR7eLFlIC47dQFtZjq81nlZ8X3
       VERCEL_SCOPE: sogrim-hesbon
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      DEPLOYMENT_BASE_URL: https://sogrim-hesbon-app.vercel.app
-
     steps:
-      - name: Checkout verified revision
-        uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+          ref: ${{ needs.verify.outputs.source }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 24
           cache: npm
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
-
+      - name: Require configured production credentials
+        run: test -n "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       - name: Pull production configuration
-        if: env.VERCEL_TOKEN != ''
-        run: >-
-          npx vercel@59.1.4 pull --yes --environment=production
-          --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-
-      - name: Build the production deployment
-        if: env.VERCEL_TOKEN != ''
-        run: >-
-          npx vercel@59.1.4 build --prod
-          --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-
-      - name: Deploy the verified build
-        if: env.VERCEL_TOKEN != ''
-        run: >-
-          npx vercel@59.1.4 deploy --prebuilt --prod
-          --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-
-      - name: Use the Vercel Git integration when no CLI token is configured
-        if: env.VERCEL_TOKEN == ''
-        run: echo "No VERCEL_TOKEN is configured; verifying the Git-integrated production deployment."
-
-      - name: Verify the deployed application
+        run: npx vercel@59.1.4 pull --yes --environment=production --scope "$VERCEL_SCOPE"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Build production output
+        run: npx vercel@59.1.4 build --prod --scope "$VERCEL_SCOPE"
+      - name: Stage the tested production build without assigning domains
+        id: stage
+        run: |
+          set -euo pipefail
+          deployment_url="$(npx vercel@59.1.4 deploy --prebuilt --prod --skip-domain --scope "$VERCEL_SCOPE")"
+          DEPLOYMENT_URL="$deployment_url" node --input-type=module -e 'const v=process.env.DEPLOYMENT_URL,u=new URL(v);if(u.protocol!=="https:"||u.origin!==v||!u.hostname.endsWith(".vercel.app"))process.exit(1);'
+          printf 'url=%s\n' "$deployment_url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Verify the staged deployment
         run: node scripts/verify-production-availability.mjs --strict
         env:
-          PRODUCTION_BASE_URL: ${{ env.DEPLOYMENT_BASE_URL }}
+          PRODUCTION_BASE_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Promote the same staged build
+        run: npx vercel@59.1.4 promote "$DEPLOYMENT_URL" --scope "$VERCEL_SCOPE" --yes
+        env:
+          DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      - name: Verify the public application
+        run: node scripts/verify-production-availability.mjs --strict
+        env:
+          PRODUCTION_BASE_URL: https://sogrim-hesbon-app.vercel.app

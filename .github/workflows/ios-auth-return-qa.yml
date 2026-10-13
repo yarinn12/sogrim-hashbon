@@ -2,10 +2,8 @@ name: iOS authentication return QA
 # Actual SDK and OS callback with synthetic account data; no Apple account sign-in.
 on:
   pull_request:
-    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
   push:
     branches: [main]
-    paths: [ios/**, src/publicNativeBridgeLayer.mjs, src/server/nativeAuthReturn.mjs, scripts/qa/native-auth-session/**, .github/workflows/ios-auth-return-qa.yml]
   workflow_dispatch:
 permissions:
   contents: read

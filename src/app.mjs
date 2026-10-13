@@ -1,3 +1,4 @@
+import { renderEventHeaderView, renderEventHeaderActionsView, renderEventHeaderMetaView } from "./ui/eventHeader.mjs";
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { assignSourcePayerDifference, convertExpenseInput, fetchOpenAccessRate, formatSourceAmount, parseSourceAmount, rateIsStale, summarizeSourcePayers, FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE, FX_OPEN_ACCESS_ATTRIBUTION_URL } from "./domain/expenseFx.mjs";
 import { iconSvg } from "./uiIcons.mjs";
@@ -4656,36 +4657,25 @@ function renderEvent(event) {
   `;
 }
 
+function eventHeaderViewModel(event, participants) {
+  return {
+    eventId: event.id, name: event.name, participantCount: participants.length,
+    currencyLabel: currencySelectLabel(event.currency),
+    participantsLabel: formatCount(participants.length, "משתתף", "משתתפים"),
+    backButtonHtml: renderAppBackButton()
+  };
+}
+
 function renderEventHeaderActions(event, participants = activeEventParticipants(event)) {
-  const shareLabel = participants.length === 1 ? "הזמנת חברים" : "שיתוף";
-  const shareAccessibleLabel = participants.length === 1
-    ? "הזמנת חברים לאירוע"
-    : "שיתוף והצטרפות לאירוע";
-  return `
-    <div class="hero-actions event-header-actions">
-      <button class="secondary-button event-header-utility-button" data-action="open-event-participants" data-event-id="${event.id}" aria-label="משתתפים באירוע" title="משתתפים באירוע"><span class="event-header-action-label">משתתפים</span></button>
-      <button class="secondary-button event-header-utility-button" data-action="open-event-participant-add" data-event-id="${event.id}" aria-label="${shareAccessibleLabel}" title="${shareAccessibleLabel}"><span class="button-action-icon" aria-hidden="true">${iconSvg("share")}</span><span class="event-header-action-label">${shareLabel}</span></button>
-      <button class="secondary-button event-settings-button event-header-utility-button" data-action="open-event-settings" data-event-id="${event.id}" aria-label="הגדרות האירוע" title="הגדרות האירוע"><span class="event-settings-label event-header-action-label">הגדרות</span></button>
-    </div>
-  `;
+  return renderEventHeaderActionsView(eventHeaderViewModel(event, participants));
 }
 
 function renderEventHeaderMeta(event, participants = activeEventParticipants(event)) {
-  return `<p class="muted event-header-meta">${escapeHtml(currencySelectLabel(event.currency))} · ${formatCount(participants.length, "משתתף", "משתתפים")}</p>`;
+  return renderEventHeaderMetaView(eventHeaderViewModel(event, participants));
 }
 
-function renderEventHeader(event, participants = activeEventParticipants(event), { showActions = true, showMeta = true } = {}) {
-  return `
-    <header class="top event-overview-header">
-      ${renderAppBackButton()}
-      <div class="brand">
-        <p class="eyebrow">אירוע</p>
-        <h1>${escapeHtml(event.name)}</h1>
-        ${showMeta ? renderEventHeaderMeta(event, participants) : ""}
-      </div>
-      ${showActions ? renderEventHeaderActions(event, participants) : ""}
-    </header>
-  `;
+function renderEventHeader(event, participants = activeEventParticipants(event), options = {}) {
+  return renderEventHeaderView(eventHeaderViewModel(event, participants), options);
 }
 
 function renderEventIdentityNotice(event) {

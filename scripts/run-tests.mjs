@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync, statSync } from "node:fs";
 import { join, resolve, relative } from "node:path";
+import { requestedSuite, selectTestFiles } from "./lib/test-suites.mjs";
 
 function collectTestFiles(dir) {
   return readdirSync(dir)
@@ -29,7 +30,7 @@ function collectJavaScriptFiles(dir) {
 }
 
 const testsDir = resolve("tests");
-const testFiles = collectTestFiles(testsDir);
+const testFiles = selectTestFiles(collectTestFiles(testsDir), process.cwd(), requestedSuite(process.argv.slice(2)));
 const withCoverage = process.argv.includes("--coverage");
 
 const syntaxFiles = [
