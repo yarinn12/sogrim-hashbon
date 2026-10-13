@@ -420,7 +420,26 @@ function injectDynamicTypeStyles(document) {
         body #app .screen.event-notes-screen > .top {
         margin-block: 4px 0 !important;
         padding-block: 4px !important;
+        gap: 6px !important;
       }
+
+      /* A full title and metadata can exceed a short AX viewport. Keep the
+         one real notes action reachable above the existing navigation while
+         the complete shared header remains scrollable in document order. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+        body #app .screen.event-notes-screen > .event-notes-entry-action {
+        position: fixed !important;
+        left: 50% !important;
+        right: auto !important;
+        bottom: calc(var(--dynamic-type-bottom-nav-block, 82px) +
+          env(safe-area-inset-bottom) + max(14px, env(safe-area-inset-bottom)) + 12px) !important;
+        width: calc(100% - 28px) !important;
+        max-width: 420px !important;
+        margin: 0 !important;
+        transform: translateX(-50%) !important;
+        z-index: 110 !important;
+      }
+
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions {

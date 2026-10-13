@@ -1,6 +1,6 @@
 import {scaledFontSizeMatches} from './font-ratio.mjs';
 
-export const fontContractContextExpression=`(() => ({width:innerWidth,height:innerHeight,pointerCoarse:matchMedia('(pointer: coarse)').matches,pointerFine:matchMedia('(pointer: fine)').matches,orientation:matchMedia('(orientation: portrait)').matches?'portrait':'landscape',active:document.documentElement.classList.contains('dynamic-type-active'),dynamicType:document.documentElement.dataset.dynamicType}))()`;
+export const fontContractContextExpression=`(() => ({width:innerWidth,height:innerHeight,pointerCoarse:matchMedia('(pointer: coarse)').matches,pointerFine:matchMedia('(pointer: fine)').matches,orientation:matchMedia('(orientation: portrait)').matches?'portrait':'landscape',active:document.documentElement.classList.contains('dynamic-type-active'),dynamicType:document.documentElement.dataset.dynamicType,headerUtilitiesContained:(()=>{const labels=[...document.querySelectorAll('.event-header-action-label')],header=labels[0]?.closest('.event-overview-header');return labels.length===3&&Boolean(header)&&labels.every(label=>label.closest('.event-overview-header')===header);})()}))()`;
 
 const headings=new Set(['.product-home-screen .top .brand h1','.event-overview-header h1','[data-screen-kind="event-notes"] h1','[data-screen-kind="profile"] h1']);
 export function hasAuthoredFontContract(selector){return headings.has(selector)||['.event-header-action-label','.event-workspace-tab strong'].includes(selector);}
@@ -17,9 +17,12 @@ export function authoredNativeFontBase(selector,context){
   const coarsePortrait=pointerCoarse&&orientation==='portrait'&&width<=720;
   const coarseLandscape=pointerCoarse&&orientation==='landscape'&&height<=450;
   if(selector==='.event-workspace-tab strong')return coarsePortrait||coarseLandscape?14:13.5;
-  // The utility buttons now sit outside .top. Active type gives the button
-  // --dynamic-text-16 and its span inherits it, instead of the old11px header.
-  if(selector==='.event-header-action-label')return active?16:11.5;
+  // The user restored the shared card contract. Its authored header rule is
+  // --dynamic-text-11 at every OS ratio; detached utility bars are invalid.
+  if(selector==='.event-header-action-label'){
+    if(context.headerUtilitiesContained!==true)throw new Error('Utilities must be contained in the shared event header');
+    return 11;
+  }
   // publicDesignCoherenceLayer's two pointer:coarse queries deliberately use
   // 1.5rem/1.25rem headings. They outrank the general AX h1 size.
   if(coarsePortrait)return 24;
@@ -39,14 +42,14 @@ export async function actualAuthoredFontRules(page,selectors){
   await page.command('DOM.enable');await page.command('CSS.enable');
   const {root}=await page.command('DOM.getDocument',{depth:0});
   const rows=[];
-  const fonts=style=>(style?.cssProperties||[]).filter(p=>['font','font-size','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)&&!p.disabled);
+  const fonts=style=>(style?.cssProperties||[]).filter(p=>['font','font-size','--dynamic-text-11','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)&&!p.disabled);
   for(const selector of selectors){
     const {nodeId}=await page.command('DOM.querySelector',{nodeId:root.nodeId,selector});
     if(!nodeId)throw new Error('Actual font contract target missing: '+selector);
     const matched=await page.command('CSS.getMatchedStylesForNode',{nodeId});
     const computed=await page.command('CSS.getComputedStyleForNode',{nodeId});
     const rules=list=>(list||[]).flatMap(m=>{const properties=fonts(m.rule.style);return properties.length?[{selector:m.rule.selectorList.text,origin:m.rule.origin,styleSheetId:m.rule.styleSheetId,media:m.rule.media,properties}]:[];});
-    rows.push({selector,nodeId,computed:computed.computedStyle.filter(p=>['font-size','font-family','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)),matched:rules(matched.matchedCSSRules),inherited:(matched.inherited||[]).map(entry=>({inline:fonts(entry.inlineStyle),matched:rules(entry.matchedCSSRules)}))});
+    rows.push({selector,nodeId,computed:computed.computedStyle.filter(p=>['font-size','font-family','--dynamic-text-11','--dynamic-text-16','--dynamic-text-28','--dynamic-text-32'].includes(p.name)),matched:rules(matched.matchedCSSRules),inherited:(matched.inherited||[]).map(entry=>({inline:fonts(entry.inlineStyle),matched:rules(entry.matchedCSSRules)}))});
   }
   return {kind:'Read-only actual target CSSOM font rules; never used to derive the expected size',rows};
 }

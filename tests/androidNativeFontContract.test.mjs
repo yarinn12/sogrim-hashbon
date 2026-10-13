@@ -1,16 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules,hasAuthoredFontContract} from '../scripts/qa/android-native-isolated/font-contract.mjs';
-const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large'});
+const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large',headerUtilitiesContained:true});
 const home='.product-home-screen .top .brand h1',event='.event-overview-header h1',notes='[data-screen-kind="event-notes"] h1',profile='[data-screen-kind="profile"] h1',tabs='.event-workspace-tab strong',action='.event-header-action-label';
 
-test('authored ordinary sizes reject the obsolete fourteen/eleven pixel fixture',()=>{
+test('shared header sizes reject detached bars while tabs retain their authored contract',()=>{
  assert.equal(authoredNativeFontBase(tabs,context()),13.5);
- assert.equal(authoredNativeFontBase(action,context()),11.5);
+ assert.equal(authoredNativeFontBase(action,context()),11);
  assert.equal(authoredNativeFontMatches(13.5,tabs,context()),true);
  assert.equal(authoredNativeFontMatches(14,tabs,context()),false);
- assert.equal(authoredNativeFontMatches(11.5,action,context()),true);
- assert.equal(authoredNativeFontMatches(11,action,context()),false);
+ assert.equal(authoredNativeFontMatches(11.5,action,context()),false);
+ assert.equal(authoredNativeFontMatches(11,action,context()),true);
  assert.equal(authoredNativeFontBase(home,context()),29);
  assert.equal(authoredNativeFontBase(home,context(1,false,'landscape')),48);
  for(const selector of [event,notes,profile])assert.equal(authoredNativeFontBase(selector,context()),28);
@@ -22,7 +22,7 @@ test('AX semantic promotion is independent of the ordinary measured heading',()=
   assert.equal(authoredNativeFontBase(event,context(scale)),28);
   assert.equal(authoredNativeFontBase(home,context(scale,false,'landscape')),32);
   for(const selector of [notes,profile])assert.equal(authoredNativeFontBase(selector,context(scale)),32);
-  assert.equal(authoredNativeFontBase(action,context(scale)),16);
+  assert.equal(authoredNativeFontBase(action,context(scale)),11);
   assert.equal(authoredNativeFontMatches(32*scale,notes,context(scale)),true);
   assert.equal(authoredNativeFontMatches(28*scale,notes,context(scale)),false);
  }
@@ -62,4 +62,15 @@ test('actual font evidence uses the connected target CSS protocol without stylin
  assert.equal(result.rows[0].matched[0].properties.length,1);
  assert.ok(calls.every(c=>!c.method.includes('set')&&!c.method.includes('Runtime')));
  await assert.rejects(()=>actualAuthoredFontRules({command:async(method)=>method==='DOM.getDocument'?{root:{nodeId:1}}:method==='DOM.querySelector'?{nodeId:0}:{}},[tabs]),/target missing/);
+});
+
+
+test('missing or detached header provenance cannot authorize label measurements',()=>{
+ for(const headerUtilitiesContained of [false,undefined,null,'true']){
+  assert.throws(()=>authoredNativeFontBase(action,{...context(),headerUtilitiesContained}),/contained/);
+ }
+ for(const scale of [1,1.5,2]){
+  assert.equal(authoredNativeFontMatches(11*scale,action,context(scale)),true);
+  assert.equal(authoredNativeFontMatches((scale===1?11.5:16)*scale,action,context(scale)),false);
+ }
 });
