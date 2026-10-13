@@ -4,7 +4,9 @@
   "git": {
     "deploymentEnabled": {
       "codex/unified-release-4-58-20261012": false,
-      "codex/shared-event-reference-20261013": false
+      "codex/shared-event-reference-20261013": false,
+      "main": false,
+      "codex/engineering-foundation-20261013": false
     }
   },
   "builds": [
@@ -27,6 +29,7 @@
     { "src": "src/app/**", "use": "@vercel/static" },
     { "src": "src/data/**", "use": "@vercel/static" },
     { "src": "src/domain/**", "use": "@vercel/static" },
+    { "src": "src/ui/**", "use": "@vercel/static" },
     { "src": "src/vendor/**", "use": "@vercel/static" }
   ],
   "crons": [

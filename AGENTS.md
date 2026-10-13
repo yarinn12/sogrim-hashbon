@@ -1,5 +1,26 @@
 # Repository working rules
 
+## Permanent engineering and release workflow
+
+Follow `docs/engineering-workflow-he.md` for every change. Use a separate branch,
+small reviewable commits and immutable annotated checkpoints before change batches
+and release handoff. Never move an existing checkpoint, force-push a shared branch
+or use destructive reset as a rollback. Git checkpoints restore source, not data.
+
+Keep presentation in `src/ui`, pure business rules in `src/domain`, persistence in
+`src/data` and backend work in `src/server`/`supabase`. Extract legacy orchestration
+incrementally with compatible adapters; visual changes must not modify financial,
+identity, authorization or synchronization rules. Run `qa:architecture`, focused
+tests and the complete normal suite. Unit and Integration partition the complete
+inventory; E2E/mobile/sync/Native remain required for relevant changes.
+
+Public deployment, including manual dispatch, requires all four release CI lanes
+and their required jobs on the same exact source. Missing, skipped, stale or failed
+verification blocks release. iOS, Android and PWA must use one approved source and
+verified packaged assets. Use staged deployment verification before promotion.
+Keep the production activation switch off until the existing database and store
+gates are met. Do not claim branch protection or live CD is enabled from YAML alone.
+
 ## Regression tests for every bug fix
 
 The user requires a regression test for every bug that is fixed. Treat this as part of the fix, not optional follow-up work.

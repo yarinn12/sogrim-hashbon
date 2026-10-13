@@ -73,7 +73,13 @@
     "qa:public-origin:ios": "node scripts/verify-public-origin-readiness.mjs --ios",
     "qa:store": "node scripts/verify-store-readiness.mjs",
     "store:assets": "node scripts/generate-store-screenshots.mjs",
-    "store:review-account": "node scripts/setup-store-review-account.mjs"
+    "store:review-account": "node scripts/setup-store-review-account.mjs",
+    "qa:unit": "node scripts/run-tests.mjs --suite unit",
+    "qa:integration": "node scripts/run-tests.mjs --suite integration",
+    "qa:e2e": "npm run qa:mobile && npm run qa:cross-platform && npm run qa:sync",
+    "qa:architecture": "node scripts/check-architecture.mjs",
+    "release:checkpoint": "node scripts/create-release-checkpoint.mjs",
+    "release:verify-ci": "node scripts/verify-release-ci.mjs"
   },
   "dependencies": {
     "@capacitor-community/admob": "^8.0.0",

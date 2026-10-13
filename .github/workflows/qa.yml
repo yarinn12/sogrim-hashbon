@@ -28,8 +28,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit and integration tests
-        run: npm test
+      - name: Enforce architecture boundaries
+        run: npm run qa:architecture
+
+      - name: Run unit tests
+        run: npm run qa:unit
+
+      - name: Run integration tests
+        run: npm run qa:integration
 
       - name: Run data capacity and contention gates
         run: npm run qa:capacity
