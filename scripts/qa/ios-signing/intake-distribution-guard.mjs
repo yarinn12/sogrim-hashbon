@@ -38,6 +38,12 @@ export async function collectState(api){
   const groupStates=[];
   for(const g of groups){
     assert.ok(typeof g.id==='string'&&/^[A-Za-z0-9-]+$/.test(g.id));
+    const detail=(await api('/v1/betaGroups/'+g.id,{method:'GET'})).data;
+    assert.equal(detail?.id,g.id);assert.equal(detail?.type,'betaGroups');
+    assert.equal(detail.attributes?.isInternalGroup,g.attributes?.isInternalGroup,'Group scope changed between reads');
+    g.attributes={name:detail.attributes?.name,isInternalGroup:detail.attributes?.isInternalGroup,
+      hasAccessToAllBuilds:detail.attributes?.hasAccessToAllBuilds,
+      publicLinkEnabled:detail.attributes?.publicLinkEnabled};
     const builds=await all(api,'/v1/betaGroups/'+g.id+'/builds?'+new URLSearchParams({'fields[builds]':'version',limit:'200'}));
     groupStates.push({id:g.id,name:g.attributes?.name,isInternalGroup:g.attributes?.isInternalGroup,
       hasAccessToAllBuilds:g.attributes?.hasAccessToAllBuilds??null,
