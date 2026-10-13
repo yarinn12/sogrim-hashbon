@@ -16,6 +16,9 @@ test("manual and automatic public deployment require complete exact-source CI be
  assert.ok(workflow.indexOf("Verify the staged deployment")<workflow.indexOf("Promote the same staged build"));
  assert.match(workflow,/ref: \$\{\{ needs\.verify\.outputs\.source \}\}/);
  assert.match(workflow,/RELEASE_PIPELINE_ENABLED == 'true'/);
+ const recheck=workflow.indexOf("Recheck source and CI immediately before promotion");
+ assert.ok(recheck>workflow.indexOf("Verify the staged deployment"));
+ assert.ok(recheck<workflow.indexOf("Promote the same staged build"));
 });
 
 test("Git integration cannot publish main independently of the verified production workflow",async()=>{
@@ -29,4 +32,5 @@ test("TestFlight also requires exact-source CI before the signing credentials",a
  assert.ok(workflow.indexOf("node scripts/verify-release-ci.mjs")>=0);
  assert.ok(workflow.indexOf("node scripts/verify-release-ci.mjs")<workflow.indexOf("secrets.APPSTORE_API_PRIVATE_KEY"));
  assert.match(workflow,/actions: read/);
+ assert.match(workflow,/verify-release-ci\.mjs --require-main-head/);
 });

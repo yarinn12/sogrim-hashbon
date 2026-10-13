@@ -4,6 +4,7 @@ import { evaluateReleaseCi, REQUIRED_RELEASE_WORKFLOWS } from "./lib/release-ci-
 const argument = name => { const n = process.argv.indexOf(name); return n < 0 ? undefined : process.argv[n + 1]; };
 const source = argument("--sha") || process.env.GITHUB_SHA;
 const repository = process.env.GITHUB_REPOSITORY;
+const candidateBranch = argument("--candidate-branch");
 const token = process.env.GITHUB_TOKEN;
 if (!token) throw new Error("A read-only GitHub Actions token is required for CI verification");
 if (!/^[a-f0-9]{40}$/.test(source ?? "") || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? "")) throw new Error("Invalid source identity");
@@ -16,7 +17,7 @@ async function get(path) {
   return response.json();
 }
 const all = [];
-if (process.argv.includes("--require-main-head")) {
+if (!candidateBranch || process.argv.includes("--require-main-head")) {
   const branch = await get("branches/main");
   if (branch.commit?.sha !== source) throw new Error("Release source is not the current main commit");
 }
@@ -38,7 +39,7 @@ for (const run of candidates) {
   }
   jobsByRun[run.id]=jobs;
 }
-const verdict=evaluateReleaseCi({source,repository,runs:all,jobsByRun});
+const verdict=evaluateReleaseCi({source,repository,runs:all,jobsByRun,candidateBranch});
 await writeFile("release-ci-receipt.json",JSON.stringify(verdict,null,2)+"\n");
 console.log(JSON.stringify(verdict,null,2));
 if(process.env.GITHUB_OUTPUT)await appendFile(process.env.GITHUB_OUTPUT,`ready=${verdict.passed}\nsource=${source}\n`);

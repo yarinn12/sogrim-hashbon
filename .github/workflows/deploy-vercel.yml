@@ -88,6 +88,11 @@ jobs:
           PRODUCTION_BASE_URL: ${{ steps.stage.outputs.url }}
           VERCEL_DEPLOYMENT_URL: ${{ steps.stage.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Recheck source and CI immediately before promotion
+        run: node scripts/verify-release-ci.mjs --require-main-head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_SHA: ${{ needs.verify.outputs.source }}
       - name: Promote the same staged build
         run: npx vercel@59.1.4 promote "$DEPLOYMENT_URL" --scope "$VERCEL_SCOPE" --yes
         env:

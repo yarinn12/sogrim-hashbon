@@ -6,9 +6,9 @@ import vm from 'node:vm';
 import {requestedSuite,selectTestFiles} from '../scripts/lib/test-suites.mjs';
 
 const source=readFileSync(new URL('../scripts/run-tests.mjs',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'');
-function run({launchError=false}={}) {
+function run({launchError=false,parallelism=64}={}) {
   const calls=[],errors=[],exits=[];
-  const context=vm.createContext({readdirSync,statSync,join,resolve,relative,console,requestedSuite,selectTestFiles,
+  const context=vm.createContext({readdirSync,statSync,join,resolve,relative,console,requestedSuite,selectTestFiles,availableParallelism:()=>parallelism,
     spawnSync:(executable,args,options)=>{
       calls.push({executable,args:Array.from(args),options});
       return args[0]==='--test'&&launchError?{status:null,error:Object.assign(new Error('Synthetic launch failed'),{code:'ENAMETOOLONG'})}:{status:0};
@@ -22,10 +22,15 @@ test('the full test command fits the Windows command-line limit and includes eve
   const h=run(),command=h.calls.at(-1);
   assert.equal(command.args[0],'--test');
   const discovered=readdirSync('tests',{recursive:true}).filter(f=>f.endsWith('.test.mjs')).map(f=>resolve('tests',f)).sort();
-  assert.deepEqual(command.args.slice(1).map(f=>resolve(f)).sort(),discovered);
+  assert.deepEqual(command.args.slice(1).filter(arg=>!arg.startsWith('--')).map(f=>resolve(f)).sort(),discovered);
   const commandLength=command.executable.length+command.args.map(arg=>arg.length+3).reduce((a,b)=>a+b,0);
   assert.ok(commandLength<32767,`Windows cannot launch the complete ${commandLength}-character test command`);
   assert.deepEqual(h.exits,[0]);
+});
+
+test('the complete suite bounds file workers without changing coverage or per-test timeouts',()=>{
+  assert.ok(run({parallelism:64}).calls.at(-1).args.includes('--test-concurrency=4'));
+  assert.ok(run({parallelism:1}).calls.at(-1).args.includes('--test-concurrency=1'));
 });
 
 test('an unlaunchable test process reports the underlying error and exits unsuccessfully',()=>{
