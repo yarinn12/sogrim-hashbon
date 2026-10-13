@@ -101,8 +101,8 @@ jobs:
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
       - name: Check release notes against the frozen source before Apple keys
         env:
-          IOS_RELEASE_SOURCE_DIR: ${{ github.workspace }}/app
-        run: node --test "$GITHUB_WORKSPACE/release-tools/tests/ios-signing-release-notes.test.mjs"
+          IOS_RELEASE_METADATA_FILE: ${{ github.workspace }}/app/docs/store-submission/app-store-metadata-he.json
+        run: node --test "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-release-notes.mjs"
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
       - name: Require successful source CI before Apple keys
