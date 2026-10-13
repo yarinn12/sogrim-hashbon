@@ -11,8 +11,8 @@ import tempfile
 import zipfile
 
 SOURCE = os.environ.get('SOURCE_SHA', '')
-TREE = '50214246281f6d2a5ba422ca90fc99b947ab1021'
-if SOURCE != '0d94c6a3261faa955e5cc848c58f778f778cbfe6':
+TREE = 'babe821f960eec8746ec9f42644d9e32623e176b'
+if SOURCE != '1e2439f32839bdad380d4e682cd85b03949c3157':
     raise ValueError('Expected the coordinator frozen release source')
 TEAM = 'MA9S4L7WKS'
 BUNDLE = 'com.sogrimhashbon.app'

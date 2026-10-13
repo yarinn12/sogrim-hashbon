@@ -5,10 +5,11 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '0d94c6a3261faa955e5cc848c58f778f778cbfe6';
-export const RELEASE_TREE = '50214246281f6d2a5ba422ca90fc99b947ab1021';
+export const RELEASE_SOURCE = '1e2439f32839bdad380d4e682cd85b03949c3157';
+export const RELEASE_TREE = 'babe821f960eec8746ec9f42644d9e32623e176b';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
+export const APPLE_APP_ID = '6809952514';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
 assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
 
@@ -94,10 +95,10 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
 }
 
 export async function readUnusedBuild(request) {
-  const app = (await request('/v1/apps/6809952515', {method: 'GET'})).data;
+  const app = (await request('/v1/apps/' + APPLE_APP_ID, {method: 'GET'})).data;
   assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
   let next = '/v1/builds?' + new URLSearchParams({
-    'filter[app]': '6809952515', 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
+    'filter[app]': APPLE_APP_ID, 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
   });
   let maximum = 0;
   for (let page = 0; next && page < 20; page++) {
@@ -119,7 +120,7 @@ export async function readUnusedBuild(request) {
   }
   assert.ok(!next, 'Apple pagination incomplete');
   assert.ok(maximum < 194, '194 is no longer unused; coordinator must select a new candidate');
-  return {appId: '6809952515', maximumUploadedBuild: maximum, candidateBuild: 194,
+  return {appId: APPLE_APP_ID, maximumUploadedBuild: maximum, candidateBuild: 194,
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
@@ -179,4 +180,3 @@ async function main() {
   console.log('Exact release source, tree and all CI verified (' + phase + '); no Apple write.');
 }
 if (import.meta.url.startsWith('file:') && process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) await main();
-

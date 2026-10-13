@@ -3,7 +3,7 @@ import {generateKeyPairSync, randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCommit,
-  requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout} from './source-guard.mjs';
+  requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID} from './source-guard.mjs';
 import {protect, unprotect} from './protect-artifact.mjs';
 
 const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38280270544', SOURCE_WINDOWS_QA_RUN: '38280270132',
@@ -65,10 +65,27 @@ test('GitHub commit/tree identity accepts only frozen source',async()=>{
 function api(builds,next=null) {
   return async(path,options)=>{
     assert.equal(options.method,'GET');
+    if(path.startsWith('/v1/apps/')) assert.equal(path,'/v1/apps/6809952514');
+    else if(!new URL(path,'https://api.appstoreconnect.apple.com').searchParams.has('next'))
+      assert.equal(new URL(path,'https://api.appstoreconnect.apple.com').searchParams.get('filter[app]'),'6809952514');
     return path.startsWith('/v1/apps/') ? {data:{attributes:{bundleId:'com.sogrimhashbon.app'}}}
       : {data:builds.map(version=>({attributes:{version}})),links:{next}};
   };
 }
+test('Apple application identity is independent of PWA515 and build194',async()=>{
+  assert.equal(APPLE_APP_ID,'6809952514');
+  const proof=await readUnusedBuild(api(['191','192','193']));
+  assert.equal(proof.appId,'6809952514');
+});
+test('Apple rejects an unreadable application before inspecting build availability',async()=>{
+  let buildsRead=false;
+  await assert.rejects(readUnusedBuild(async(path,options)=>{
+    assert.equal(options.method,'GET');
+    if(path==='/v1/apps/6809952514') return {data:{attributes:{bundleId:'wrong.app'}}};
+    buildsRead=true; return {data:[],links:{next:null}};
+  }));
+  assert.equal(buildsRead,false);
+});
 test('192 permits currently unused 194 without reservation',async()=>{
   const r=await readUnusedBuild(api(['191','192','193']));assert.equal(r.maximumUploadedBuild,193);assert.equal(r.reserved,false);
 });
@@ -120,7 +137,7 @@ test('other key, ciphertext, tag and AAD tampering fail closed',()=>{
 for (const [field,value] of [['sourceCommit','a'.repeat(40)],['sourceTree','b'.repeat(40)],['build','192'],['version','4.57']])
   test('encryption rejects mismatched '+field,()=>assert.throws(()=>protect(payload,key,{...identity,[field]:value})));
 test('artifact-only preparation preserves exact checkout and gates signing while preventing Apple delivery',()=>{
- const next=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
+ const next=readFileSync(new URL('./ios-testflight-artifact-only.yml',import.meta.url),'utf8');
  assert.ok(next.includes('ref: '+'$'+'{{ inputs.source_sha }}'));
  assert.ok(next.includes('ref: '+'$'+'{{ github.workflow_sha }}'));
  assert.ok(next.indexOf('source-guard.mjs" ci-only')<next.indexOf('secrets.APPSTORE'));
