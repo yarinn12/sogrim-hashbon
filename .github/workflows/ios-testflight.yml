@@ -1,53 +1,10 @@
-name: iOS193 intake only — no distribution
-run-name: iOS193 ${{ inputs.mode }} — original signed bytes
+name: iOS193 owner availability
+run-name: iOS193 owner access audit
 on:
   push:
-    branches: [codex/ios193-intake-audit-20261013]
-    paths: [.github/workflows/ios-testflight.yml, scripts/qa/ios-signing/intake-distribution-guard.mjs, scripts/qa/ios-signing/intake-readonly-ci.mjs]
+    branches: [codex/ios193-owner-access-20261013]
+    paths: [.github/workflows/ios-testflight.yml, scripts/qa/ios-signing/owner-access-audit.mjs]
   workflow_dispatch:
-    inputs:
-      mode:
-        description: audit reads only; intake uploads original193 without tester or store distribution
-        type: choice
-        options: [audit, intake]
-        default: audit
-        required: true
-      source_sha:
-        description: Frozen application SHA bf254b5235deb706234b00362e6eaea78e129e98
-        required: true
-        type: string
-      qa_run:
-        description: Successful source QA 38300391028
-        required: true
-        type: string
-      windows_run:
-        description: Successful source Windows 38300390654
-        required: true
-        type: string
-      font_run:
-        description: Successful source font 38300390653
-        required: true
-        type: string
-      auth_run:
-        description: Successful source auth return 38300390656
-        required: true
-        type: string
-      signed_run_id:
-        description: Completed first signing run on immutable tools 931dcfa
-        required: true
-        type: string
-      signed_artifact_id:
-        description: Exact encrypted artifact ID from that signing run
-        required: true
-        type: string
-      ipa_sha256:
-        description: Original verified IPA SHA-256, never a rebuilt IPA
-        required: true
-        type: string
-      artifact_zip_sha256:
-        description: GitHub SHA-256 digest of the original encrypted artifact ZIP
-        required: true
-        type: string
 permissions:
   contents: read
   actions: read
@@ -55,148 +12,7 @@ concurrency:
   group: ios-testflight-${{ github.repository }}
   cancel-in-progress: false
 jobs:
-  upload-original:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: macos-26
-    timeout-minutes: 45
-    defaults:
-      run:
-        shell: bash
-        working-directory: app
-    env:
-      SOURCE_SHA: ${{ inputs.source_sha }}
-      SOURCE_QA_RUN: ${{ inputs.qa_run }}
-      SOURCE_WINDOWS_QA_RUN: ${{ inputs.windows_run }}
-      SOURCE_FONT_QA_RUN: ${{ inputs.font_run }}
-      SOURCE_AUTH_QA_RUN: ${{ inputs.auth_run }}
-      SIGNED_RUN_ID: ${{ inputs.signed_run_id }}
-      SIGNED_ARTIFACT_ID: ${{ inputs.signed_artifact_id }}
-      SIGNED_IPA_SHA256: ${{ inputs.ipa_sha256 }}
-      SIGNED_ARTIFACT_ZIP_SHA256: ${{ inputs.artifact_zip_sha256 }}
-      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
-      WORKFLOW_REF: ${{ github.workflow_ref }}
-      APPLE_TEAM_ID: MA9S4L7WKS
-      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
-      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
-      IOS_VERSION: '4.58'
-      IOS_BUILD: '193'
-    steps:
-      - name: Checkout frozen application source
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.source_sha }}
-          path: app
-          persist-credentials: false
-      - name: Checkout immutable intake controls; public database gate remains separate
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: release-tools
-          persist-credentials: false
-      - name: Set up Node without dependency install or cache
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-      - name: Load public release notes from the frozen application metadata
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
-      - name: Check release notes against the frozen source before Apple keys
-        env:
-          IOS_RELEASE_METADATA_FILE: ${{ github.workspace }}/app/docs/store-submission/app-store-metadata-he.json
-        run: node --test "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-release-notes.mjs"
-      - name: Check signing certificate command and rejection controls before Apple keys
-        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
-      - name: Require successful source CI before Apple keys
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
-          mv build/ios/source-ci-only.json build/ios/live-ci-before-download.json
-      - name: Require the exact original artifact origin for intake only before Apple keys
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-origin-guard.mjs"
-      - name: Read current TestFlight automatic-distribution facts only
-        if: inputs.mode == 'audit'
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" audit
-      - name: Require live manual distribution before accessing the original IPA
-        if: inputs.mode == 'intake'
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
-      - name: Download original ZIP and enforce its exact GitHub digest
-        if: inputs.mode == 'intake'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/download-intake-artifact.mjs"
-          python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/extract-intake-envelope.py"
-      - name: Authenticate original archive with the existing App Store key
-        if: inputs.mode == 'intake'
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" decrypt \
-            build/ios/original-encrypted "$RUNNER_TEMP/sogrim-original-release.tar"
-      - name: Verify original IPA bytes, all assets, signature, certificate and current profile without rebuilding
-        if: inputs.mode == 'intake'
-        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-original-archive.py"
-      - name: Recheck source fingerprints, all CI and unused Apple build immediately before upload
-        if: inputs.mode == 'intake'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" preflight
-          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" before-upload
-          node -e 'const a=require("node:assert/strict"),f=require("node:fs"),c=require("node:crypto");a.equal(c.createHash("sha256").update(f.readFileSync("build/ios/SogrimHashbon.ipa")).digest("hex"),process.env.SIGNED_IPA_SHA256);'
-      - name: Upload the same original IPA to TestFlight
-        if: inputs.mode == 'intake'
-        uses: apple-actions/upload-testflight-build@v5
-        with:
-          app-path: app/build/ios/SogrimHashbon.ipa
-          app-type: ios
-          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
-          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-          wait-for-processing: 'false'
-          backend: appstore-api
-      - name: Verify Apple processing and complete TestFlight notes
-        if: inputs.mode == 'intake'
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node scripts/complete-ios-testflight.mjs
-      - name: Prove193 has zero groups and zero individual testers after processing
-        if: inputs.mode == 'intake'
-        env:
-          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" postflight
-      - name: Record upload outcome without retaining plaintext IPA
-        if: inputs.mode == 'intake'
-        run: |
-          printf '%s\n' 'Original iOS 4.58 (193) IPA ingested after exact CI/artifact/profile and manual-distribution guards.' \
-            'No IPA rebuild or second signing was performed. Zero groups/testers verified. Database acceptance is NOT granted; App Review/public distribution remain blocked.' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Retain metadata and intake evidence only
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: ios193-intake-evidence-${{ github.run_id }}
-          path: |
-            app/build/ios/live-ci-before-download.json
-            app/build/ios/upload-origin.json
-            app/build/ios/intake-*.json
-            app/build/ios/source-before-upload.json
-            app/build/ios/original-artifact-before-upload.json
-            app/build/ios/testflight-completion.json
-          if-no-files-found: warn
-          retention-days: 7
-  readonly-intake-audit:
-    if: github.event_name == 'push'
+  audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -226,18 +42,18 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-      - name: Verify frozen source and all source CI for GET-only audit
+      - name: Verify frozen source and all CI without product execution
         env:
           GH_TOKEN: ${{ github.token }}
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-readonly-ci.mjs"
-      - name: Read manual-distribution facts only; this push job cannot upload
+      - name: Read only the existing owner group and original processed193
         env:
           APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
-        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/intake-distribution-guard.mjs" audit
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/owner-access-audit.mjs"
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: ios193-readonly-intake-audit-${{ github.run_id }}
-          path: app/build/ios/intake-audit.json
+          name: ios193-owner-access-audit-${{ github.run_id }}
+          path: app/build/ios/owner-access-audit.json
           if-no-files-found: warn
           retention-days: 7
