@@ -96,7 +96,7 @@
     "google-auth-library": "^10.9.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.10.0"
   },
   "devDependencies": {
     "@capacitor/android": "8.4.3",

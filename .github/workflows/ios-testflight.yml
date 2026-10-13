@@ -51,7 +51,7 @@ jobs:
           cache: npm
 
       - name: Require complete CI on this exact source before signing or upload
-        run: node scripts/verify-release-ci.mjs
+        run: node scripts/verify-release-ci.mjs --require-main-head
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
