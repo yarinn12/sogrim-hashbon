@@ -4,7 +4,8 @@
   "git": {
     "deploymentEnabled": {
       "codex/unified-release-4-58-20261012": false,
-      "codex/ios-release-tools-4-58-20261012": false
+      "codex/ios-release-tools-4-58-20261012": false,
+      "codex/ios194-shared-artifact-only-20261013": false
     }
   },
   "builds": [
@@ -12,22 +13,70 @@
       "src": "server.mjs",
       "use": "@vercel/node"
     },
-    { "src": "*.html", "use": "@vercel/static" },
-    { "src": "*.css", "use": "@vercel/static" },
-    { "src": "legal.mjs", "use": "@vercel/static" },
-    { "src": "*.webmanifest", "use": "@vercel/static" },
-    { "src": "*.svg", "use": "@vercel/static" },
-    { "src": "*.png", "use": "@vercel/static" },
-    { "src": "*.txt", "use": "@vercel/static" },
-    { "src": "sw.js", "use": "@vercel/static" },
-    { "src": "assets/**", "use": "@vercel/static" },
-    { "src": "downloads/**", "use": "@vercel/static" },
-    { "src": ".well-known/**", "use": "@vercel/static" },
-    { "src": "src/*.mjs", "use": "@vercel/static" },
-    { "src": "src/app/**", "use": "@vercel/static" },
-    { "src": "src/data/**", "use": "@vercel/static" },
-    { "src": "src/domain/**", "use": "@vercel/static" },
-    { "src": "src/vendor/**", "use": "@vercel/static" }
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.css",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "legal.mjs",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.webmanifest",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.svg",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.png",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.txt",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "sw.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "assets/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "downloads/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": ".well-known/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "src/*.mjs",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "src/app/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "src/data/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "src/domain/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "src/vendor/**",
+      "use": "@vercel/static"
+    }
   ],
   "crons": [
     {
@@ -85,22 +134,71 @@
     },
     {
       "src": "^/\\.well-known/apple-app-site-association$",
-      "headers": { "Content-Type": "application/json; charset=utf-8" },
+      "headers": {
+        "Content-Type": "application/json; charset=utf-8"
+      },
       "continue": true
     },
-    { "src": "/api/(.*)", "dest": "/server.mjs" },
-    { "src": "/i/(.*)", "dest": "/index.html" },
-    { "src": "/r/(.*)", "dest": "/index.html" },
-    { "src": "/auth/callback", "has": [{ "type": "query", "key": "native_auth_session" }], "dest": "/server.mjs" },
-    { "src": "/auth/callback", "dest": "/index.html" },
-    { "src": "/privacy", "dest": "/privacy.html" },
-    { "src": "/support", "dest": "/support.html" },
-    { "src": "/terms", "dest": "/terms.html" },
-    { "src": "/accessibility", "dest": "/accessibility.html" },
-    { "src": "/account-deletion", "dest": "/account-deletion.html" },
-    { "src": "/delete-account", "dest": "/account-deletion.html" },
-    { "src": "/android", "dest": "/downloads/sogrim-hashbon-android-1.2.apk" },
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/server.mjs"
+    },
+    {
+      "src": "/i/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/r/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/auth/callback",
+      "has": [
+        {
+          "type": "query",
+          "key": "native_auth_session"
+        }
+      ],
+      "dest": "/server.mjs"
+    },
+    {
+      "src": "/auth/callback",
+      "dest": "/index.html"
+    },
+    {
+      "src": "/privacy",
+      "dest": "/privacy.html"
+    },
+    {
+      "src": "/support",
+      "dest": "/support.html"
+    },
+    {
+      "src": "/terms",
+      "dest": "/terms.html"
+    },
+    {
+      "src": "/accessibility",
+      "dest": "/accessibility.html"
+    },
+    {
+      "src": "/account-deletion",
+      "dest": "/account-deletion.html"
+    },
+    {
+      "src": "/delete-account",
+      "dest": "/account-deletion.html"
+    },
+    {
+      "src": "/android",
+      "dest": "/downloads/sogrim-hashbon-android-1.2.apk"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }

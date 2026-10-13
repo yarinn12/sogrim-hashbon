@@ -1,5 +1,5 @@
 name: iOS signed artifact only
-run-name: iOS signed artifact 4.58 (193) from ${{ inputs.source_sha }}
+run-name: iOS signed artifact 4.58 (194) from ${{ inputs.source_sha }}
 
 on:
   workflow_dispatch:
@@ -9,19 +9,19 @@ on:
         required: true
         type: string
       qa_run:
-        description: Successful QA run on source_sha (38300391028 for this candidate)
+        description: Successful QA run on source_sha (38441540754 for this candidate)
         required: true
         type: string
       windows_run:
-        description: Successful Windows run on source_sha (38300390654 for this candidate)
+        description: Successful Windows run on source_sha (38441540595 for this candidate)
         required: true
         type: string
       font_run:
-        description: Successful font provenance run on source_sha (38300390653 for this candidate)
+        description: Successful font provenance run on source_sha (38441540671 for this candidate)
         required: true
         type: string
       auth_run:
-        description: Successful iOS auth-return run on source_sha (38300390656 for this candidate)
+        description: Successful iOS auth-return run on source_sha (38441540547 for this candidate)
         required: true
         type: string
       version:
@@ -31,7 +31,7 @@ on:
       build:
         description: Fixed candidate build; this run does not reserve the number
         required: true
-        default: "193"
+        default: "194"
 
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"bf254b5235deb706234b00362e6eaea78e129e98");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"193");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"0d94c6a3261faa955e5cc848c58f778f778cbfe6");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"194");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
@@ -96,6 +96,11 @@ jobs:
 
       - name: Load public release notes from the frozen application metadata
         run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+      - name: Check source CI, duplicate slots, encryption and all web-asset rejection controls
+        working-directory: ${{ github.workspace }}/release-tools/scripts/qa/ios-signing
+        run: |
+          node --test preparation.test.mjs
+          python3 test_web_assets.py
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
 
@@ -221,7 +226,7 @@ jobs:
         id: private_artifact
         uses: actions/upload-artifact@v6
         with:
-          name: sogrim-ios-4.58-193-encrypted
+          name: sogrim-ios-4.58-194-encrypted
           path: |
             app/build/ios/private-artifact/release.tar.enc
             app/build/ios/private-artifact/envelope.json
@@ -231,7 +236,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.58 (193) artifact prepared from bf254b5235deb706234b00362e6eaea78e129e98.' \
+            'Signed iOS 4.58 (194) artifact prepared from 0d94c6a3261faa955e5cc848c58f778f778cbfe6.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"

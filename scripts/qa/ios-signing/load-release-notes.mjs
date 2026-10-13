@@ -3,10 +3,10 @@ import {readFileSync,appendFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const DELIMITER='SOGRIM_RELEASE_NOTES_4_58_193';
+const DELIMITER='SOGRIM_RELEASE_NOTES_4_58_194';
 export function releaseNotesEnvironment(metadata){
   assert.equal(metadata.app.bundleId,'com.sogrimhashbon.app');
-  assert.equal(metadata.version.number,'4.58');assert.equal(metadata.version.build,'193');
+  assert.equal(metadata.version.number,'4.58');assert.equal(metadata.version.build,'194');
   const notes=metadata.version.releaseNotes;
   assert.equal(typeof notes,'string');assert.ok(notes.trim().length>=1&&notes.trim().length<=4000);
   assert.ok(!notes.split(/\r?\n/).includes(DELIMITER),'Release notes must not terminate the environment block');

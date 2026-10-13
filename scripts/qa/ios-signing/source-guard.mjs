@@ -5,10 +5,10 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = 'bf254b5235deb706234b00362e6eaea78e129e98';
-export const RELEASE_TREE = '4a208e596cbaf0576cccd7f67fc99a665287836d';
+export const RELEASE_SOURCE = '0d94c6a3261faa955e5cc848c58f778f778cbfe6';
+export const RELEASE_TREE = '50214246281f6d2a5ba422ca90fc99b947ab1021';
 export const SOURCE = process.env.SOURCE_SHA;
-export const ARTIFACT_NAME = 'sogrim-ios-4.58-193-encrypted';
+export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
 assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
 
@@ -88,16 +88,16 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
   const query = new URLSearchParams({name: ARTIFACT_NAME, per_page: '100'});
   const result = await githubRead(fetchImpl, token, '/actions/artifacts?' + query);
   assert.ok(Array.isArray(result.artifacts) && Number.isSafeInteger(result.total_count));
-  assert.equal(result.total_count, 0, 'Build193 already has a retained preparation; inspect it instead of rebuilding');
+  assert.equal(result.total_count, 0, 'Build194 already has a retained preparation; inspect it instead of rebuilding');
   assert.equal(result.artifacts.length, 0, 'Existing preparation blocks duplicate signing');
   return {name: ARTIFACT_NAME, existingPreparations: 0, reserved: false, checkedAt: new Date().toISOString()};
 }
 
 export async function readUnusedBuild(request) {
-  const app = (await request('/v1/apps/6809952514', {method: 'GET'})).data;
+  const app = (await request('/v1/apps/6809952515', {method: 'GET'})).data;
   assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
   let next = '/v1/builds?' + new URLSearchParams({
-    'filter[app]': '6809952514', 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
+    'filter[app]': '6809952515', 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
   });
   let maximum = 0;
   for (let page = 0; next && page < 20; page++) {
@@ -118,8 +118,8 @@ export async function readUnusedBuild(request) {
     next = response.links?.next;
   }
   assert.ok(!next, 'Apple pagination incomplete');
-  assert.ok(maximum < 193, '193 is no longer unused; coordinator must select a new candidate');
-  return {appId: '6809952514', maximumUploadedBuild: maximum, candidateBuild: 193,
+  assert.ok(maximum < 194, '194 is no longer unused; coordinator must select a new candidate');
+  return {appId: '6809952515', maximumUploadedBuild: maximum, candidateBuild: 194,
     reserved: false, checkedAt: new Date().toISOString()};
 }
 
@@ -129,14 +129,14 @@ export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
   assert.equal(env.IOS_VERSION, '4.58');
-  assert.equal(env.IOS_BUILD, '193');
+  assert.equal(env.IOS_BUILD, '194');
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
-  assert.equal(pwa, '514');
+  assert.equal(pwa, '515');
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
   assert.equal(metadata.version?.number, '4.58');
-  assert.equal(String(metadata.version?.build), '193');
+  assert.equal(String(metadata.version?.build), '194');
   return {sourceCommit: SOURCE, sourceTree: RELEASE_TREE, pwaRelease: pwa};
 }
 
