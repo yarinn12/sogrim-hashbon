@@ -3,6 +3,7 @@ import {scaledFontSizeMatches} from './font-ratio.mjs';
 export const fontContractContextExpression=`(() => ({width:innerWidth,height:innerHeight,pointerCoarse:matchMedia('(pointer: coarse)').matches,pointerFine:matchMedia('(pointer: fine)').matches,orientation:matchMedia('(orientation: portrait)').matches?'portrait':'landscape',active:document.documentElement.classList.contains('dynamic-type-active'),dynamicType:document.documentElement.dataset.dynamicType,headerUtilitiesContained:(()=>{const labels=[...document.querySelectorAll('.event-header-action-label')],header=labels[0]?.closest('.event-overview-header');return labels.length===3&&Boolean(header)&&labels.every(label=>label.closest('.event-overview-header')===header);})()}))()`;
 
 const headings=new Set(['.product-home-screen .top .brand h1','.event-overview-header h1','[data-screen-kind="event-notes"] h1','[data-screen-kind="profile"] h1']);
+export async function readCurrentFontContract(page,scale){return{...(await page.evaluate(fontContractContextExpression)),scale};}
 export function hasAuthoredFontContract(selector){return headings.has(selector)||['.event-header-action-label','.event-workspace-tab strong'].includes(selector);}
 
 // Fixed authored sizes come from the public 9e96d41 design, not the measured

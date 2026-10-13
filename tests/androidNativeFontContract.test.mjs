@@ -1,8 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules,hasAuthoredFontContract} from '../scripts/qa/android-native-isolated/font-contract.mjs';
+import {authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules,hasAuthoredFontContract,readCurrentFontContract} from '../scripts/qa/android-native-isolated/font-contract.mjs';
+import {runInNewContext} from 'node:vm';
 const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large',headerUtilitiesContained:true});
 const home='.product-home-screen .top .brand h1',event='.event-overview-header h1',notes='[data-screen-kind="event-notes"] h1',profile='[data-screen-kind="profile"] h1',tabs='.event-workspace-tab strong',action='.event-header-action-label';
+
+test('route changes require fresh DOM provenance rather than the home snapshot',async()=>{
+ let labels=[],reads=0;const header={};
+ const page={evaluate:async expression=>{reads++;return runInNewContext(expression,{
+  innerWidth:411,innerHeight:866,matchMedia:q=>({matches:q.includes('portrait')}),
+  document:{documentElement:{dataset:{dynamicType:'normal'},classList:{contains:()=>false}},querySelectorAll:()=>labels}
+ });}};
+ const homeSnapshot=await readCurrentFontContract(page,1);
+ assert.equal(homeSnapshot.headerUtilitiesContained,false);
+ labels=Array.from({length:3},()=>({closest:()=>header}));
+ const eventSnapshot=await readCurrentFontContract(page,1);
+ assert.throws(()=>authoredNativeFontBase(action,homeSnapshot),/contained/,'The old home snapshot must fail despite the current event header');
+ assert.equal(authoredNativeFontMatches(11,action,eventSnapshot),true);
+ labels=[...labels.slice(0,2),{closest:()=>null}];
+ const detachedSummary=await readCurrentFontContract(page,1);
+ assert.throws(()=>authoredNativeFontBase(action,detachedSummary),/contained/,'Fresh summary provenance must still reject a detached utility');
+ assert.equal(reads,3);
+});
 
 test('shared header sizes reject detached bars while tabs retain their authored contract',()=>{
  assert.equal(authoredNativeFontBase(tabs,context()),13.5);

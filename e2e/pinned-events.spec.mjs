@@ -45,7 +45,7 @@ async function seed(page, participantId = OWNER) {
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { state, participantId });
   const dynamicType = Number(test.info().project.metadata?.dynamicTypePreview || 0);
-  await page.goto(dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/");
+  await openRenderedHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/", bootTimeoutMs: 8_000 });
   await expect(page.locator(".event-row")).toHaveCount(3);
 }
 
@@ -75,7 +75,13 @@ test.beforeEach(async ({ request }) => {
 test("pin and unpin several events consecutively, preserve normal order and survive reload", async ({ page, request }) => {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
-  await seed(page);
+  const heldImage = await holdNonessentialHomeImage(page, test.info().project.use.baseURL);
+  try {
+    await seed(page);
+    expect(heldImage.requested, 'the rendered-home seed must proceed while the nonessential load is actually held').toBe(true);
+  } finally {
+    heldImage.release();
+  }
   await order(page, [NEW, OLD, CLOSED]);
   const before = await (await readLocalQaState(request, test.info().project.use.baseURL)).json();
   const localEventsBefore = await page.evaluate(() => JSON.parse(localStorage.getItem("settle-friends-state")).events);
