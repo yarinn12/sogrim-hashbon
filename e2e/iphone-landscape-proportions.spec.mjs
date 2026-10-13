@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
+import { openHeldRenderedHome, requireHeldHomeReadiness } from './helpers/heldHomeReadinessControl.mjs';
+
+requireHeldHomeReadiness(test);
 
 // These scenarios are phone touch layouts, including when the surrounding
 // suite also runs a desktop profile for other reflow checks.
@@ -28,7 +31,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     sessionStorage.setItem('settle-friends-skip-next-splash', '1');
   }, { owner, state });
   const size = requestedTextSize(testInfo);
-  await page.goto(size > 32 ? '/' : size ? `/?dynamic-type-preview=${size}` : '/');
+  await openHeldRenderedHome(page, { path: size > 32 ? '/' : size ? `/?dynamic-type-preview=${size}` : '/' });
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   if (size > 32) {
     // The local preview intentionally clamps at 32px; emulate the iOS AX root
@@ -231,15 +234,27 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 390, height: 664 }
 
 async function requireOpaqueEditorCoversBackground(page, testInfo, label) {
   await expect(page.locator('.event-note-modal')).toBeVisible();
+  if (process.env.PW_NOTES_LAYER_OLD === '1' && await page.evaluate(() => innerWidth <= 480 && matchMedia('(orientation: portrait)').matches)) {
+    await expect(page.locator('.event-notes-entry-action')).toHaveCSS('z-index', '110');
+    await expect(page.locator('.event-notes-entry-action')).toHaveCSS('position', 'fixed');
+  }
   await page.evaluate(() => document.fonts.ready);
   await page.locator('.event-note-modal').focus();
+  const panelIdentity = () => page.locator('.event-note-modal').evaluate(node => {
+    const registry = window.__qaNotePaintNodes ||= { ids: new WeakMap(), next: 0 };
+    if (!registry.ids.has(node)) registry.ids.set(node, ++registry.next);
+    return registry.ids.get(node);
+  });
   const settleEditorPaint = async () => {
-    let stableFrames = 0;
+    let stableFrames = 0, previousPanel;
     await expect.poll(async () => {
+      const currentPanel = await panelIdentity();
       const settled = await page.locator('.event-note-modal').evaluate(node =>
-        getComputedStyle(node).transform === 'none' && !node.getAnimations({ subtree: true }).some(animation =>
+        getComputedStyle(node).transform === 'none' && getComputedStyle(node.closest('.event-modal-backdrop')).opacity === '1' &&
+        !node.closest('.event-modal-backdrop').getAnimations({ subtree: true }).some(animation =>
           animation.playState === 'running' && animation.effect?.getTiming().iterations !== Infinity));
-      stableFrames = settled ? stableFrames + 1 : 0;
+      stableFrames = settled && currentPanel === previousPanel ? stableFrames + 1 : 0;
+      previousPanel = currentPanel;
       return stableFrames;
     }, { intervals: [100] }).toBeGreaterThanOrEqual(3);
   };
@@ -249,36 +264,67 @@ async function requireOpaqueEditorCoversBackground(page, testInfo, label) {
   const screenshotOptions = { animations: 'allow', caret: 'initial' };
   const sampleLayout = () => page.evaluate(() => {
     const modal = document.querySelector('.event-note-modal'), styles = getComputedStyle(modal);
+    const backdrop = modal.closest('.event-modal-backdrop'), backdropStyle = getComputedStyle(backdrop);
+    const action = document.querySelector('.event-notes-entry-action'), actionStyle = getComputedStyle(action), actionRect = action.getBoundingClientRect();
     const rect = modal.getBoundingClientRect();
     return { viewport: [innerWidth, innerHeight], rootFont: getComputedStyle(document.documentElement).fontSize,
       rootClasses: document.documentElement.className, bodyClasses: document.body.className,
       modal: { x: rect.x, y: rect.y, width: rect.width, height: rect.height, padding: styles.padding,
         margin: styles.margin, transform: styles.transform, position: styles.position, zIndex: styles.zIndex },
+      panelIdentity: window.__qaNotePaintNodes.ids.get(modal),
+      backdrop: { zIndex: backdropStyle.zIndex, opacity: backdropStyle.opacity, transform: backdropStyle.transform },
+      action: { position: actionStyle.position, zIndex: actionStyle.zIndex, transform: actionStyle.transform,
+        rect: { x: actionRect.x, y: actionRect.y, width: actionRect.width, height: actionRect.height } },
       rootScroll: [scrollX, scrollY], navBlock: getComputedStyle(document.documentElement).getPropertyValue('--dynamic-type-bottom-nav-block') };
   });
-  const layout = [{ phase: 'before-actual', ...(await sampleLayout()) }];
-  const actual = await page.screenshot(screenshotOptions);
+  const layout = [];
+  let actual;
+  await expect.poll(async () => {
+    await settleEditorPaint();
+    const before = await sampleLayout(), first = await page.screenshot(screenshotOptions);
+    const middle = await sampleLayout(), second = await page.screenshot(screenshotOptions), after = await sampleLayout();
+    layout.push({ phase: 'A-A-before', ...before }, { phase: 'A-A-middle', ...middle }, { phase: 'A-A-after', ...after });
+    const unchanged = Number.isSafeInteger(before.panelIdentity) && [before, middle, after].every(frame => frame.modal.transform === 'none' && frame.backdrop.opacity === '1' && frame.panelIdentity === before.panelIdentity);
+    if (unchanged && first.equals(second)) { actual = second; return true; }
+    return false;
+  }, { intervals: [100] }).toBe(true);
+  const actualFrame = await sampleLayout();
+  expect(actualFrame.backdrop.zIndex).toBe('80');
+  if (process.env.PW_NOTES_LAYER_OLD === '1' && actualFrame.viewport[0] <= 480) {
+    expect(actualFrame.action.zIndex).toBe('110'); expect(actualFrame.action.position).toBe('fixed');
+  }
+  layout.push({ phase: 'before-actual', ...actualFrame });
   layout.push({ phase: 'after-actual', ...(await sampleLayout()) });
+  const area = actualFrame.action.rect;
+  const clip = { x: Math.max(0, area.x), y: Math.max(0, area.y),
+    width: Math.min(actualFrame.viewport[0], area.x + area.width) - Math.max(0, area.x),
+    height: Math.min(actualFrame.viewport[1], area.y + area.height) - Math.max(0, area.y) };
+  const actionActual = clip.width > 0 && clip.height > 0 ? await page.screenshot({ ...screenshotOptions, clip }) : null;
   const backgroundCount = await page.evaluate(() => {
     const nodes = [...document.querySelectorAll('#app button')].filter(node =>
       !node.closest('.event-modal-backdrop, .expense-modal-backdrop') &&
       node.getBoundingClientRect().width && node.getBoundingClientRect().height);
-    window.__qaCoveredBackgroundButtons = nodes.map(node => ({ node, style: node.getAttribute('style') }));
-    // Paint-only opacity preserves layout and the product visibility metrics.
-    // visibility:hidden would change dynamic typography's control readbacks.
-    for (const node of nodes) node.style.setProperty('filter', 'opacity(0)', 'important');
     return nodes.length;
   });
-  let covered;
-  try { await settleEditorPaint(); layout.push({ phase: 'before-covered', ...(await sampleLayout()) }); covered = await page.screenshot(screenshotOptions);
-    layout.push({ phase: 'after-covered', ...(await sampleLayout()) }); }
+  // A persistent paint-only reference also applies to replacement background
+  // nodes. It never affects editor controls, layout or typography readbacks.
+  const paintReference = await page.addStyleTag({ content: '#app button:not(.event-modal-backdrop button, .expense-modal-backdrop button) { filter: opacity(0) !important; }' });
+  let covered, actionCovered;
+  try {
+    await expect.poll(async () => {
+      await settleEditorPaint();
+      const before = await sampleLayout(), first = await page.screenshot(screenshotOptions);
+      const middle = await sampleLayout(), second = await page.screenshot(screenshotOptions), after = await sampleLayout();
+      layout.push({ phase: 'covered-A-A-before', ...before }, { phase: 'covered-A-A-middle', ...middle }, { phase: 'covered-A-A-after', ...after });
+      const unchanged = Number.isSafeInteger(before.panelIdentity) && [before, middle, after].every(frame => frame.modal.transform === 'none' && frame.backdrop.opacity === '1' && frame.panelIdentity === before.panelIdentity);
+      if (unchanged && first.equals(second)) { covered = second; return true; }
+      return false;
+    }, { intervals: [100] }).toBe(true);
+    actionCovered = actionActual ? await page.screenshot({ ...screenshotOptions, clip }) : null;
+    layout.push({ phase: 'after-covered', ...(await sampleLayout()) });
+  }
   finally {
-    await page.evaluate(() => {
-      for (const { node, style } of window.__qaCoveredBackgroundButtons) {
-        if (style === null) node.removeAttribute('style'); else node.setAttribute('style', style);
-      }
-      delete window.__qaCoveredBackgroundButtons;
-    });
+    await paintReference.evaluate(node => node.remove());
   }
   expect(backgroundCount).toBeGreaterThan(0);
   await writeFile(testInfo.outputPath(`${label}-paint-layout.json`), JSON.stringify(layout));
@@ -287,6 +333,13 @@ async function requireOpaqueEditorCoversBackground(page, testInfo, label) {
   await writeFile(actualPath, actual); await writeFile(coveredPath, covered);
   await testInfo.attach(`${label}-actual-editor`, { path: actualPath, contentType: 'image/png' });
   await testInfo.attach(`${label}-covered-background-reference`, { path: coveredPath, contentType: 'image/png' });
+  if (actionActual) {
+    await testInfo.attach(`${label}-action-actual`, { body: actionActual, contentType: 'image/png' });
+    await testInfo.attach(`${label}-action-covered`, { body: actionCovered, contentType: 'image/png' });
+    if (process.env.PW_NOTES_LAYER_OLD === '1' && actualFrame.viewport[0] <= 480) {
+      expect(actionActual.equals(actionCovered), 'verified OLD fixed110 must visibly differ inside the actual action rectangle').toBe(false);
+    }
+  }
   expect(actual.equals(covered), 'background actions must not paint above the opaque note editor, even when inert').toBe(true);
 }
 
@@ -298,7 +351,14 @@ for (const viewport of [{ width: 375, height: 667 }, { width: 667, height: 375 }
     if (process.env.PW_NOTES_LAYER_OLD === '1') {
       // Controlled reproduction of the exact historical 0d94 paint regression.
       // No input, bridge, readiness or typography assertion is changed.
-      await page.addStyleTag({ content: 'html.design-coherence-v1.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action { z-index: 110 !important; }' });
+      await page.addStyleTag({ content: `@media (max-width: 480px) and (orientation: portrait) {
+        html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .screen.event-notes-screen > .event-notes-entry-action {
+          position: fixed !important; left: 50% !important; right: auto !important;
+          bottom: calc(var(--dynamic-type-bottom-nav-block, 82px) + env(safe-area-inset-bottom) + max(14px, env(safe-area-inset-bottom)) + 12px) !important;
+          width: calc(100% - 28px) !important; max-width: 420px !important; margin: 0 !important;
+          transform: translateX(-50%) !important; z-index: 110 !important;
+        }
+      }` });
     }
     await page.locator('[data-action="new-event-note"]').click();
     await requireOpaqueEditorCoversBackground(page, testInfo, `opening-${viewport.width}`);

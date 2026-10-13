@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test);
 
 test.use({ serviceWorkers: "block" });
 const owner = "fx-owner", eventId = "fx-event";
@@ -22,7 +25,7 @@ test.beforeEach(async ({ page, request }) => {
     localStorage.setItem("settle-friends-local-profile", JSON.stringify({ participantId: state.currentParticipantId, displayName: "בעל החשבון" }));
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, state);
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
   await page.locator(`[data-action="show-expense-form"][data-event-id="${eventId}"]`).first().click();
 });

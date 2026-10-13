@@ -1,6 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { holdNonessentialHomeImage } from "./helpers/heldHomeImage.mjs";
 import { openRenderedHome } from "./helpers/typographyReadiness.mjs";
+import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+
+requireHeldHomeReadiness(test, { skipTitles: [
+  "valid and missing event deep links have a clear destination and feedback",
+  "permission feedback for an unavailable event has no broken review action",
+  "late permission feedback keeps its event action stable before a nonessential image loads"
+] });
 
 const OWNER = "person-navigation-owner";
 const FRIEND = "person-navigation-friend";
@@ -67,7 +74,7 @@ async function recordControls(page, testInfo, screen) {
 
 test("home, event, notes, modal, notifications, profile and friends actions navigate and return", async ({ page }, testInfo) => {
   const inventory = [];
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   const home = page.locator('.screen[data-screen-kind="home"]');
   await expect(home).toBeVisible();
   await expect(home.locator('[data-action="go-back"]')).toBeDisabled();
@@ -125,7 +132,7 @@ test("valid and missing event deep links have a clear destination and feedback",
 });
 
 test("repeated home back taps return to one previous screen", async ({ page }) => {
-  await page.goto("/");
+  await openHeldRenderedHome(page);
   await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
   await page.locator('[data-action="open-event-notes"]').click();
   await expect(page.locator('.screen[data-screen-kind="event-notes"]')).toBeVisible();
@@ -183,6 +190,7 @@ async function assertLatePermissionFeedbackKeepsEventActionStable(page) {
 }
 
 test("permission feedback arriving after home render keeps its event action stable", async ({ page }) => {
+  await openHeldRenderedHome(page);
   await assertLatePermissionFeedbackKeepsEventActionStable(page);
 });
 
