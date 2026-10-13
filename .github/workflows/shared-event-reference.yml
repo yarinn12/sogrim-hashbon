@@ -1,0 +1,32 @@
+name: Shared event reference regression
+on:
+  push:
+    branches: [codex/shared-event-reference-20261013]
+permissions:
+  contents: read
+concurrency:
+  group: shared-event-reference-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit
+      - name: Compare the shared header with the user reference
+        run: npx playwright test e2e/user-reference-event-layout.spec.mjs --project=android-mobile --project=iphone-webkit --project=ipad-webkit --project=iphone-large-text --project=reflow-200 --retries=0 --reporter=line
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: shared-event-reference-${{ github.sha }}
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: error
