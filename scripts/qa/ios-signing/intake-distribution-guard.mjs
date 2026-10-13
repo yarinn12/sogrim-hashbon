@@ -22,8 +22,19 @@ export async function all(api,path){
 export function requireManualGroups(groups){
   for(const group of groups){
     assert.equal(typeof group.attributes?.isInternalGroup,'boolean','Unknown internal/external group scope');
-    assert.equal(group.attributes?.hasAccessToAllBuilds,false,
-      'Automatic access is enabled or unknown for group '+group.id);
+    if(group.attributes.isInternalGroup){
+      assert.equal(group.attributes.hasAccessToAllBuilds,false,
+        'Internal automatic access is enabled or unknown for group '+group.id);
+    }else{
+      // Apple documents external distribution as Add Builds, then Submit Review/Start Testing.
+      // Its internal-group automatic-access field is null on the live external resources.
+      // Keep that null as null; require positively identified external scope, a disabled
+      // public link and explicit per-build association checks before and after intake.
+      assert.ok([false,null,undefined].includes(group.attributes.hasAccessToAllBuilds),
+        'Unexpected external all-build access for group '+group.id);
+      assert.equal(group.attributes.publicLinkEnabled,false,
+        'External public link is enabled or unknown for group '+group.id);
+    }
   }
 }
 function versionState(rows){
@@ -57,6 +68,21 @@ export async function collectState(api){
   assert.ok(matches.length<=1,'Ambiguous build193');
   return {appId:APP,groups:groupStates,rawGroups:groups,appStoreVersions:versionState(versions),
     build:matches[0]??null,checkedAt:new Date().toISOString(),mode:'GET_ONLY'};
+}
+export async function verifyReadEndpoints(api){
+  const id='d868b49b-660b-41cf-8dcf-fa23cfeba16e';
+  const build=(await api('/v1/builds/'+id,{method:'GET'})).data;
+  assert.equal(build?.id,id);assert.equal(build.attributes?.version,'192');
+  const pre=(await api('/v1/builds/'+id+'/preReleaseVersion',{method:'GET'})).data;
+  assert.equal(pre?.attributes?.version,'4.57');assert.equal(pre?.attributes?.platform,'IOS');
+  const testers=await all(api,'/v1/builds/'+id+'/individualTesters?'+
+    new URLSearchParams({'fields[betaTesters]':'state',limit:'200'}));
+  const store=(await api('/v1/builds/'+id+'/relationships/appStoreVersion',{method:'GET'})).data;
+  assert.ok(store===null||(store?.type==='appStoreVersions'&&typeof store.id==='string'));
+  const beta=(await api('/v1/builds/'+id+'/buildBetaDetail',{method:'GET'})).data;
+  assert.ok(typeof beta?.attributes?.externalBuildState==='string');
+  return {build:'192',readOnly:true,individualTestersEndpoint:true,
+    storeVersionRelationshipEndpoint:true,betaStateEndpoint:true,individualTesterCount:testers.length};
 }
 export function requireIntakePreflight(snapshot){
   requireManualGroups(snapshot.rawGroups);
@@ -100,6 +126,7 @@ async function main(){
     console.log('IOS193_INTAKE_POSTFLIGHT:'+JSON.stringify(after));return;
   }
   const snapshot=await collectState(api);
+  if(phase==='audit')snapshot.endpointCapabilities=await verifyReadEndpoints(api);
   if(phase==='preflight'){
     let previous;
     try{previous=JSON.parse(readFileSync('build/ios/intake-preflight.json','utf8'));}
