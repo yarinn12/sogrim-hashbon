@@ -440,7 +440,6 @@ function injectDynamicTypeStyles(document) {
         z-index: 110 !important;
       }
 
-
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
         body #app .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"]) > .event-overview-header .event-header-actions {
         display: grid !important;
@@ -521,6 +520,47 @@ function injectDynamicTypeStyles(document) {
         > .top.event-overview-header {
         margin-block: 0 !important;
         padding-block: 4px !important;
+        gap: 4px !important;
+        min-height: 0 !important;
+      }
+
+      /* Spend the short viewport on complete text and touch targets rather
+         than portrait spacing. The utilities remain in the shared card. */
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .product-app-identity {
+        padding-block: env(safe-area-inset-top) 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-meta {
+        margin-block: 0 !important;
+      }
+
+      html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header .event-header-utility-button {
+        min-height: 44px !important;
+        padding-block: 2px !important;
+        flex-direction: row !important;
+      }
+
+      /* At OS accessibility sizes a complete multi-line title, metadata and
+         utilities cannot all fit in a short landscape viewport. Allow the
+         full card to scroll while its following workspace tabs stay visible;
+         retain the requested fonts, every word and all three real actions. */
+      html.${EXTRA_LARGE_CLASS}.design-coherence-v1.ledger-workspace-v1 body #app
+        .screen:is([data-screen-kind="event"], [data-screen-kind="event-notes"])
+        > .top.event-overview-header {
+        max-height: calc(100dvh - 56px - env(safe-area-inset-top) -
+          var(--dynamic-type-bottom-nav-block, 82px) - env(safe-area-inset-bottom) -
+          max(14px, env(safe-area-inset-bottom)) - 70px) !important;
+        overflow: auto !important;
+        overscroll-behavior-y: contain !important;
+        align-items: start !important;
+        align-content: start !important;
+        grid-auto-rows: max-content !important;
       }
 
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1

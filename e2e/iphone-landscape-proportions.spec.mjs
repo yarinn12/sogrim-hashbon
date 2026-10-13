@@ -80,9 +80,17 @@ async function recordGeometry(page, target, label, testInfo) {
     return { top: rect.top, bottom: rect.bottom, height: rect.height,
       viewportHeight: innerHeight, clipTop: clip?.top ?? 0,
       clipBottom: clip?.bottom ?? nav?.getBoundingClientRect().top ?? innerHeight,
-      receivesTap: element === hit || element.contains(hit) };
+      receivesTap: element === hit || element.contains(hit),
+      headerGeometry: [...document.querySelectorAll('.product-app-identity, .event-overview-header, .event-overview-header .brand, .event-overview-header h1, .event-header-meta, .event-header-actions, .event-header-utility-button, .event-workspace-nav')].map(node => {
+        const bounds = node.getBoundingClientRect(), style = getComputedStyle(node);
+        return { classes: node.className, top: bounds.top, bottom: bounds.bottom, height: bounds.height,
+          fontSize: style.fontSize, lineHeight: style.lineHeight, gap: style.gap, padding: style.padding,
+          margin: style.margin, minHeight: style.minHeight, direction: style.flexDirection };
+      }) };
   });
-  await testInfo.attach(label, { contentType: 'application/json', body: JSON.stringify(geometry) });
+  const geometryPath = testInfo.outputPath(`${label}-geometry.json`);
+  await writeFile(geometryPath, JSON.stringify(geometry));
+  await testInfo.attach(label, { contentType: 'application/json', path: geometryPath });
   await page.screenshot({ path: testInfo.outputPath(`${label}.png`) });
   return geometry;
 }
@@ -122,6 +130,36 @@ for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }
       expect(geometry.top).toBeGreaterThanOrEqual(0);
       expect(geometry.bottom, 'workspace tabs must fit above the fixed navigation without an initial scroll').toBeLessThanOrEqual(geometry.clipBottom + 1);
       expect(geometry.receivesTap).toBe(true);
+    }
+    const header = page.locator('.event-overview-header');
+    await expect(header.locator('h1')).toHaveText(state.events[0].name);
+    const headerBounds = await header.evaluate(node => ({
+      top: node.getBoundingClientRect().top, bottom: node.getBoundingClientRect().bottom,
+      clientWidth: node.clientWidth, scrollWidth: node.scrollWidth
+    }));
+    expect(headerBounds.scrollWidth).toBeLessThanOrEqual(headerBounds.clientWidth + 1);
+    const actions = header.locator('.event-header-utility-button');
+    await expect(actions).toHaveCount(3);
+    for (const [index, action] of (await actions.all()).entries()) {
+      await action.evaluate(node => {
+        const header = node.closest('.event-overview-header');
+        const bounds = header.getBoundingClientRect(), target = node.getBoundingClientRect();
+        if (target.bottom > bounds.bottom - 5) header.scrollBy(0, target.bottom - bounds.bottom + 5);
+        else if (target.top < bounds.top + 5) header.scrollBy(0, target.top - bounds.top - 5);
+      });
+      const geometry = await recordGeometry(page, action, `event-utility-${viewport.width}-${index}`, testInfo);
+      expect(geometry.height).toBeGreaterThanOrEqual(44);
+      expect(geometry.top).toBeGreaterThanOrEqual(headerBounds.top - 1);
+      expect(geometry.bottom).toBeLessThanOrEqual(headerBounds.bottom + 1);
+      expect(geometry.receivesTap).toBe(true);
+      const labelFits = await action.evaluate(node => {
+        const bounds = node.getBoundingClientRect(), range = document.createRange();
+        range.selectNodeContents(node.querySelector('.event-header-action-label'));
+        return [...range.getClientRects()].filter(rect => rect.width && rect.height).every(rect =>
+          rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 &&
+          rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1);
+      });
+      expect(labelFits, 'scrolling the full header must expose each complete utility label').toBe(true);
     }
   });
 

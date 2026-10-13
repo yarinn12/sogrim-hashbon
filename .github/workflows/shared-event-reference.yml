@@ -21,12 +21,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit
-      - name: Preserve first Notes action at full 32px and measured iOS AX root
+      - name: Preserve all short-viewport actions at full 32px and measured iOS AX root
         run: |
           for size in 32 37.64706; do
             PW_DYNAMIC_TYPE_SIZE="$size" PLAYWRIGHT_JSON_OUTPUT_FILE="reference-evidence/notes-$size.json" \
               npx playwright test e2e/iphone-landscape-proportions.spec.mjs --project=iphone-large-text \
-                --grep "portrait notes" --output="reference-notes-$size" --retries=0 --reporter=line,json
+                --output="reference-notes-$size" --retries=0 --reporter=line,json
           done
       - name: Compare the shared header with the user reference
         env:
