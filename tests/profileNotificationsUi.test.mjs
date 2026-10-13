@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { renderNotificationInboxView } from "../src/ui/notificationInbox.mjs";
+import { iconSvg } from "../src/uiIcons.mjs";
 
 test("notification time stays relative within today and switches to calendar labels after it", async () => {
   const app = await readFile("src/app.mjs", "utf8");
@@ -17,17 +19,11 @@ test("notification time stays relative within today and switches to calendar lab
 });
 
 test("signed-out notifications use the approved compact account state", async () => {
-  const [app, coherenceLayer] = await Promise.all([
-    readFile("src/app.mjs", "utf8"),
-    readFile("src/publicDesignCoherenceLayer.mjs", "utf8")
-  ]);
-  const source = app.slice(
-    app.indexOf("function renderNotificationInbox()"),
-    app.indexOf("function renderNotificationInboxItem(")
-  );
+  const coherenceLayer = await readFile("src/publicDesignCoherenceLayer.mjs", "utf8");
+  const source = renderNotificationInboxView({ state: "account-pending", hasUnread: false, backButtonHtml: "", noticeHtml: "" });
 
   assert.match(source, /notification-inbox-empty is-account-pending/);
-  assert.match(source, /iconSvg\("bell"\)/);
+  assert.ok(source.includes(iconSvg("bell")));
   assert.match(source, /ההתראות מחכות בחשבון שלך/);
   assert.match(source, />לפרופיל<\/button>/);
   assert.doesNotMatch(source, /אחרי התחברות הן יישמרו כאן בכל המכשירים/);
@@ -46,10 +42,7 @@ test("profile and notification headers omit redundant green labels", async () =>
     app.indexOf("function renderProfileSetup()"),
     app.indexOf("function renderAdminAnalyticsOverview()")
   );
-  const notifications = app.slice(
-    app.indexOf("function renderNotificationInbox()"),
-    app.indexOf("function renderNotificationInboxItem(")
-  );
+  const notifications = renderNotificationInboxView({ state: "empty", hasUnread: false, backButtonHtml: "", noticeHtml: "" });
 
   assert.doesNotMatch(profile, /isEditingProfile \? "פרופיל"/);
   assert.match(profile, /isEditingProfile \? "" : '<p class="eyebrow">סוגרים חשבון<\/p>'/);

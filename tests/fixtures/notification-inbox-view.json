@@ -1,0 +1,2368 @@
+{
+  "source": "3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1",
+  "cases": [
+    {
+      "name": "empty",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": []
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "empty",
+        "hasUnread": false,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a1d09f95b571b58a44f2571c068839812f0208ba5628e014e90f38a32e8ba0e8"
+    },
+    {
+      "name": "loading wins over account and error",
+      "input": {
+        "inbox": {
+          "status": "loading",
+          "available": false,
+          "error": "failed",
+          "items": []
+        },
+        "unread": 2,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "loading",
+        "hasUnread": true,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "5697ba64075156c97a19ee09f7c8e5b22c6491e00908adac26d787b78cf966a2"
+    },
+    {
+      "name": "error wins over unavailable account",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": false,
+          "error": "failed",
+          "items": []
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "error",
+        "hasUnread": false,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "b840e503cf0e13077ae65e7c3895a08b20168f6f385e54ece601d044a5f1ec5e"
+    },
+    {
+      "name": "account-pending",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": false,
+          "error": "",
+          "items": []
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "account-pending",
+        "hasUnread": false,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "23a71aef69e721fe56a3d0d131c7aadda3f0fc5400c47ce8f17c8513de3eb774"
+    },
+    {
+      "name": "empty with unread and trusted notice",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": []
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": "<p role=\"status\">הודעה שמורה</p>"
+      },
+      "model": {
+        "state": "empty",
+        "hasUnread": true,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": "<p role=\"status\">הודעה שמורה</p>"
+      },
+      "htmlSha256": "ea9b881090ebbb76651294bd288dec3c064010220be5e1a1f7dfed527d2e292d"
+    },
+    {
+      "name": "loading with hidden stale item",
+      "input": {
+        "inbox": {
+          "status": "loading",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "stale",
+              "title": "stale"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "loading",
+        "hasUnread": false,
+        "items": [],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "eb8b259befe3b62b29c5a021f29e7c9fcf8401e12c00fd002f79f50a29565da9"
+    },
+    {
+      "name": "friend-request/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "f8b64a9c3e3580f7095158d5f4304e6ba366a412c802cf61c200f73a3f02ab12"
+    },
+    {
+      "name": "friend-request/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "3cfa5037d2161acf55ba7f11bbbb823b236bd4b76a20d0eba3c67ae941f112e6"
+    },
+    {
+      "name": "friend-request/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "868bf1c65276674c27cadb6729666f9759288fe08639edeee36d98d06ca74860"
+    },
+    {
+      "name": "friend-request/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "8fb3554d2b991fd70b7ed1f811cd0e9a3e632b3697b6826ab3fe8a89df9eb9f8"
+    },
+    {
+      "name": "friend-request/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "43a08e28df25d27fda6873ac268228aadb53b382053449b6b83c717dc0e36ffd"
+    },
+    {
+      "name": "friend-request/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a4b131e4ebe2331144ebac99c00cb5cd1b8eb703a285b2c9be3d7e22ea040f93"
+    },
+    {
+      "name": "friend-request/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "43a08e28df25d27fda6873ac268228aadb53b382053449b6b83c717dc0e36ffd"
+    },
+    {
+      "name": "friend-request/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "friend-request",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "friend-request",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a4b131e4ebe2331144ebac99c00cb5cd1b8eb703a285b2c9be3d7e22ea040f93"
+    },
+    {
+      "name": "expense-created/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "2a13c4619638e99210707cc73dc63f6119af95da4d941a2705ab58bdb73d210d"
+    },
+    {
+      "name": "expense-created/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "5aa1f20eb09b6f9436310cbafb210aa08b6da76929b2aa57eedb447e52524ac8"
+    },
+    {
+      "name": "expense-created/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a2349c2a89a1c8cdf0e40a7afda8ad49fe9d99748ad58fd5de0fbd878c46f05b"
+    },
+    {
+      "name": "expense-created/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "33055b8351789acc3a96dd264ca62e44e5922481f397a99dfd287b8a342edaad"
+    },
+    {
+      "name": "expense-created/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "464eeed26e20121a2430b63007680afd72ae0680048455df4ee2e89873d250c5"
+    },
+    {
+      "name": "expense-created/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "c7b86e83e60f66e9e64683d78597fe3a15f5045a841d67700428a63e7ede5ca0"
+    },
+    {
+      "name": "expense-created/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "464eeed26e20121a2430b63007680afd72ae0680048455df4ee2e89873d250c5"
+    },
+    {
+      "name": "expense-created/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "expense-created",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "expense-created",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "c7b86e83e60f66e9e64683d78597fe3a15f5045a841d67700428a63e7ede5ca0"
+    },
+    {
+      "name": "participant-joined/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "f8b64a9c3e3580f7095158d5f4304e6ba366a412c802cf61c200f73a3f02ab12"
+    },
+    {
+      "name": "participant-joined/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "3cfa5037d2161acf55ba7f11bbbb823b236bd4b76a20d0eba3c67ae941f112e6"
+    },
+    {
+      "name": "participant-joined/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "868bf1c65276674c27cadb6729666f9759288fe08639edeee36d98d06ca74860"
+    },
+    {
+      "name": "participant-joined/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "8fb3554d2b991fd70b7ed1f811cd0e9a3e632b3697b6826ab3fe8a89df9eb9f8"
+    },
+    {
+      "name": "participant-joined/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "43a08e28df25d27fda6873ac268228aadb53b382053449b6b83c717dc0e36ffd"
+    },
+    {
+      "name": "participant-joined/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a4b131e4ebe2331144ebac99c00cb5cd1b8eb703a285b2c9be3d7e22ea040f93"
+    },
+    {
+      "name": "participant-joined/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "43a08e28df25d27fda6873ac268228aadb53b382053449b6b83c717dc0e36ffd"
+    },
+    {
+      "name": "participant-joined/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "participant-joined",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "participant-joined",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "a4b131e4ebe2331144ebac99c00cb5cd1b8eb703a285b2c9be3d7e22ea040f93"
+    },
+    {
+      "name": "event-invite/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "2747968ad58717bbfb916625b5059e448204e7e0775aa12e688472b850c7b14a"
+    },
+    {
+      "name": "event-invite/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "dc8ae9a90004bdaf5a5f555f15abda9d8e663ee83b2bccd477fefe32f2957f3e"
+    },
+    {
+      "name": "event-invite/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "22e27043f6c28cab03306bbb9064163af078b2b58fd09554a85311c99e0f492b"
+    },
+    {
+      "name": "event-invite/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "41e9e1eab8e780802728bc6b584acbc2efec36e1478e082eac719f7a15b99d10"
+    },
+    {
+      "name": "event-invite/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1df2a9716ab8e1a2a8c4baa425c78c44c550a30b581c3268ac6d3c7507986498"
+    },
+    {
+      "name": "event-invite/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "f999a53106eb8bb79ff8b1ede4eaad7aa5038aca1091dd81b95f1682fa8b36a8"
+    },
+    {
+      "name": "event-invite/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1df2a9716ab8e1a2a8c4baa425c78c44c550a30b581c3268ac6d3c7507986498"
+    },
+    {
+      "name": "event-invite/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "event-invite",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "event-invite",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "f999a53106eb8bb79ff8b1ede4eaad7aa5038aca1091dd81b95f1682fa8b36a8"
+    },
+    {
+      "name": "settled/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "6a45f88f0ba92374752a78718dcf3f00364d06e80c4d326a1674b9a4e709f775"
+    },
+    {
+      "name": "settled/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "60ca026abd02780c6f3a06b7a66fd5df227246781c38ec4d2a25dda176de3a70"
+    },
+    {
+      "name": "settled/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "7895f629a297d3a6bfd3f2d135a528970b83e513b7bf9e67d6c1a0ade166cf3e"
+    },
+    {
+      "name": "settled/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "d2193cbb4557d4e9ba13d349867d786e542e8ec01854849df6ddd7ca7a9de5c8"
+    },
+    {
+      "name": "settled/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1769a8225641b6aa1974f0d8c24518c21e9ac069334e00cfa05d9e39b75e1e85"
+    },
+    {
+      "name": "settled/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "fee78c575c715bce522e9e79922876c7470be85f6e0420d84b8d43543e3b115e"
+    },
+    {
+      "name": "settled/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1769a8225641b6aa1974f0d8c24518c21e9ac069334e00cfa05d9e39b75e1e85"
+    },
+    {
+      "name": "settled/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "settled",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "settled",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "fee78c575c715bce522e9e79922876c7470be85f6e0420d84b8d43543e3b115e"
+    },
+    {
+      "name": "legacy/friends/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "friends",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "friends",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "6a45f88f0ba92374752a78718dcf3f00364d06e80c4d326a1674b9a4e709f775"
+    },
+    {
+      "name": "legacy/friends/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "friends",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "friends",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "60ca026abd02780c6f3a06b7a66fd5df227246781c38ec4d2a25dda176de3a70"
+    },
+    {
+      "name": "legacy/summary/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "summary",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "summary",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "7895f629a297d3a6bfd3f2d135a528970b83e513b7bf9e67d6c1a0ade166cf3e"
+    },
+    {
+      "name": "legacy/summary/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "summary",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "summary",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "d2193cbb4557d4e9ba13d349867d786e542e8ec01854849df6ddd7ca7a9de5c8"
+    },
+    {
+      "name": "legacy/event/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "event",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "event",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1769a8225641b6aa1974f0d8c24518c21e9ac069334e00cfa05d9e39b75e1e85"
+    },
+    {
+      "name": "legacy/event/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "event",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "event",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "fee78c575c715bce522e9e79922876c7470be85f6e0420d84b8d43543e3b115e"
+    },
+    {
+      "name": "legacy/unexpected/unread",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "unexpected",
+              "readAt": "",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "unexpected",
+            "readAt": "",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "1769a8225641b6aa1974f0d8c24518c21e9ac069334e00cfa05d9e39b75e1e85"
+    },
+    {
+      "name": "legacy/unexpected/read",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "n\"<1>&",
+              "eventId": "event\"<id>&",
+              "kind": "legacy",
+              "view": "unexpected",
+              "readAt": "2026-10-13T12:01:00Z",
+              "title": "<script>שלום & \"כותרת\"</script>",
+              "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+              "createdAt": "2026-10-13T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 0,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": false,
+        "items": [
+          {
+            "id": "n\"<1>&",
+            "eventId": "event\"<id>&",
+            "kind": "legacy",
+            "view": "unexpected",
+            "readAt": "2026-10-13T12:01:00Z",
+            "title": "<script>שלום & \"כותרת\"</script>",
+            "body": "<img src=x onerror=\"bad\"> & גוף' ההודעה",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "fee78c575c715bce522e9e79922876c7470be85f6e0420d84b8d43543e3b115e"
+    },
+    {
+      "name": "mixed items retain order and unique actions",
+      "input": {
+        "inbox": {
+          "status": "ready",
+          "available": true,
+          "error": "",
+          "items": [
+            {
+              "id": "first",
+              "eventId": "one",
+              "kind": "event-invite",
+              "view": "event",
+              "readAt": "",
+              "title": "ראשון",
+              "body": "תוכן",
+              "createdAt": "2026-10-13T12:00:00Z"
+            },
+            {
+              "id": "second",
+              "eventId": "two",
+              "kind": "expense-created",
+              "view": "summary",
+              "readAt": "read",
+              "title": "שני",
+              "body": "תוכן",
+              "createdAt": "2026-10-12T12:00:00Z"
+            }
+          ]
+        },
+        "unread": 1,
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "model": {
+        "state": "items",
+        "hasUnread": true,
+        "items": [
+          {
+            "id": "first",
+            "eventId": "one",
+            "kind": "event-invite",
+            "view": "event",
+            "readAt": "",
+            "title": "ראשון",
+            "body": "תוכן",
+            "createdAt": "2026-10-13T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-13T12:00:00Z"
+          },
+          {
+            "id": "second",
+            "eventId": "two",
+            "kind": "expense-created",
+            "view": "summary",
+            "readAt": "read",
+            "title": "שני",
+            "body": "תוכן",
+            "createdAt": "2026-10-12T12:00:00Z",
+            "timeLabel": "תווית זמן: 2026-10-12T12:00:00Z"
+          }
+        ],
+        "backButtonHtml": "<button data-action=\"back\">חזרה</button>",
+        "noticeHtml": ""
+      },
+      "htmlSha256": "5ad66f5cdbdb510333a5e34a9973210ca0b105de427edb1e48fe2a13921618e7"
+    }
+  ]
+}
