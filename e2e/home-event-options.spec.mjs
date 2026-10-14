@@ -196,3 +196,34 @@ test('held event gesture consumes compatibility archive clicks after render and 
   await expect(menu).toHaveCount(0);
   await expect(page.locator(`.event-row[data-event-id="${EVENT_ID}"]`)).toHaveCount(0);
 });
+
+test('keyboard activation immediately after closing a held menu opens the event', async ({page}) => {
+  const target=page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+  await target.evaluate(async button=>{
+    const start=performance.now();
+    for(const [type,stamp] of [['pointerdown',start],['pointerup',start+600]]){
+      if(type==='pointerup')await new Promise(resolve=>setTimeout(resolve,600));
+      const event=new PointerEvent(type,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:31,isPrimary:true,button:0,clientX:50,clientY:50});
+      Object.defineProperty(event,'timeStamp',{value:stamp});button.dispatchEvent(event);
+    }
+  });
+  const menu=page.locator('.event-status-menu');await expect(menu).toBeVisible();
+  await menu.locator('[data-action="cancel-event-status-menu"]').press('Enter');
+  await expect(menu).toHaveCount(0);await target.focus();await target.press('Enter');
+  await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
+});
+
+test('a touch context menu followed by cancellation leaves home intact and the next tap works',async ({page})=>{
+  const target=page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+  await target.evaluate(button=>{
+    const start=performance.now();
+    for(const [type,stamp] of [['pointerdown',start],['contextmenu',start+560],['pointercancel',start+560]]){
+      const event=new PointerEvent(type,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:31,isPrimary:true,button:0,clientX:50,clientY:50});
+      Object.defineProperty(event,'timeStamp',{value:stamp});button.dispatchEvent(event);
+    }
+    button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1,button:0}));
+  });
+  await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+  await expect(page.locator('.event-status-menu')).toHaveCount(0);
+  await target.click();await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
+});

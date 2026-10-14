@@ -39,7 +39,7 @@ test('QA observation is capped at32, installs once and excludes unrelated action
   r.emit('pointerdown', 'save-profile'); r.emit('pointerup', undefined); r.emit('click', 'save-profile');
   assert.equal(r.entries().length, 0);
   for (let i=0; i<40; i++) r.emit('click', 'open-event');
-  assert.equal(r.entries().length, 32); assert.equal(r.options.length, 4);
+  assert.equal(r.entries().length, 32); assert.equal(r.options.length, 5);
 });
 
 test('Native tap producer and original opening assertion remain unchanged', async () => {
@@ -50,4 +50,13 @@ test('Native tap producer and original opening assertion remain unchanged', asyn
   assert.match(driver, /cardInputTrace,/);
   assert.match(matrix, /row\.nativeTaps\.push\(await page\.tap\('\[data-action="open-event"\]\[data-event-id="android-native-event"\]'\)\)/);
   assert.match(matrix, /waitFor\([^]*?'Three event tabs'\)/);
+});
+
+
+test('a related native cancellation is retained even outside the event card', () => {
+  const r=recorder();r.emit('pointerdown','open-event',{timeStamp:0});
+  r.emit('contextmenu','open-event',{timeStamp:560});
+  r.emit('pointercancel',undefined,{timeStamp:560});
+  assert.deepEqual(r.entries().map(row=>row.type),['pointerdown','contextmenu','pointercancel']);
+  assert.equal(r.entries()[2].action,'open-event');assert.equal(r.entries()[2].eventTimeStamp,560);
 });

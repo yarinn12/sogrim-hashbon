@@ -175,3 +175,22 @@ test('relative and epoch timestamps normalize without using delayed processing t
     assert.equal(g.finish({pointerId:1,timeStamp:up}, () => true).kind, 'tap');
   }
 });
+
+
+test('an immediate keyboard activation after closing a held menu is not swallowed', async () => {
+  const h=harness(); h.dispatch('pointerdown',{timeStamp:0});h.advance(560);
+  h.dispatch('pointerup',{timeStamp:560});assert.ok(h.menu());
+  h.dispatch('click',{target:h.element('cancel-event-status-menu'),detail:0,pointerType:''});
+  h.advance(600);h.dispatch('click',{detail:0,pointerType:''});await h.flush();
+  assert.equal(h.menu(),null);assert.equal(h.screen(),'event');assert.equal(h.effects.opened,1);
+});
+
+test('touch contextmenu followed by cancellation never activates an event or menu', async () => {
+  const h=harness();h.dispatch('pointerdown',{timeStamp:0});h.advance(560);
+  h.dispatch('contextmenu',{timeStamp:560});h.dispatch('pointercancel',{timeStamp:560});
+  h.advance(733);h.dispatch('click');await h.flush();
+  assert.equal(h.menu(),null);assert.equal(h.effects.opened,0);assert.equal(h.effects.archived,0);
+  h.advance(800);h.dispatch('pointerdown',{timeStamp:800});h.advance(881);
+  h.dispatch('pointerup',{timeStamp:881});h.dispatch('click');await h.flush();
+  assert.equal(h.screen(),'event');assert.equal(h.effects.opened,1);
+});

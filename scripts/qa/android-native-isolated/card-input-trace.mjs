@@ -6,11 +6,11 @@ export function installCardInputTrace() {
   const actions = new Set(['open-event', 'event-status-select']);
   const menuActions = new Set(['toggle-personal-event-pin', 'share-event-from-list', 'toggle-personal-event-archive', 'remove-event-from-list', 'cancel-event-status-menu']);
   let cardPointer = null;
-  for (const type of ['pointerdown', 'pointerup', 'contextmenu', 'click']) {
+  for (const type of ['pointerdown', 'pointerup', 'pointercancel', 'contextmenu', 'click']) {
     window.addEventListener(type, event => {
       const action = event.target?.closest?.('[data-action]')?.dataset.action;
       if (type === 'pointerdown' && event.isPrimary !== false) cardPointer = actions.has(action) ? {id: event.pointerId, action} : null;
-      const relatedRelease = type === 'pointerup' && cardPointer?.id === event.pointerId;
+      const relatedRelease = (type === 'pointerup' || type === 'pointercancel') && cardPointer?.id === event.pointerId;
       const relatedMenuClick = type === 'click' && cardPointer && menuActions.has(action);
       if (!actions.has(action) && !relatedRelease && !relatedMenuClick) return;
       if (records.length >= 32) return;

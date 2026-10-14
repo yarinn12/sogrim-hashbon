@@ -12533,7 +12533,8 @@ async function handleClick(event) {
   if (
     action === "open-event" &&
     target.dataset.eventId === suppressedEventOpenId &&
-    performance.now() < suppressEventOpenUntil
+    performance.now() < suppressEventOpenUntil &&
+    (event.detail > 0 || event.pointerType === "touch" || event.sourceCapabilities?.firesTouchEvents)
   ) {
     event.preventDefault();
     suppressedEventOpenId = "";
