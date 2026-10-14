@@ -12,7 +12,7 @@ const identity={source:PIN.source,tree:PIN.tree,tools:PIN.tools,zipSha256:PIN.zi
   apkSha256:PIN.apkSha,apkBytes:PIN.apkBytes,assets:214,fonts:13,privateEnvDisabled:true,syntheticBootstrap:true};
 const head='a'.repeat(40);
 const context={platform:'linux',toolingHead:head,source:{commit:PIN.source,tree:PIN.tree,clean:true},tools:{commit:PIN.tools,tree:PIN.tree,clean:true}};
-const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
+const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'push',GITHUB_RUN_NUMBER:'1',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/android-renderer-ab-c053-once.yml@refs/heads/'+PIN.branch,GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
 const capabilities={compatible:true,observations:{GlDirectMem:[1],HasSharedSlotsHostMemoryAllocator:[1]}};
 const originalRenderer=readFileSync(new URL('./fixtures/android-renderer-ab-original-renderer.txt',import.meta.url),'utf8');
 // Candidate B is a synthetic policy fixture, not an observed Native result.
@@ -37,9 +37,9 @@ test('original ZIP/APK/source identity and private bootstrap guards reject drift
   for(const [key,value] of Object.entries({source:'0'.repeat(40),tree:'0'.repeat(40),tools:'0'.repeat(40),apkSha256:'0'.repeat(64),zipSha256:'0'.repeat(64),apkBytes:identity.apkBytes-1,fonts:12,assets:213,privateEnvDisabled:false,syntheticBootstrap:false}))
     assert.throws(()=>assertArtifactIdentity({...identity,[key]:value}));
 });
-test('exact reviewed manual first attempt is required; wrong source/tools/branch/rerun reject',()=>{
+test('exact reviewed one-shot push is required; wrong source/tools/branch/duplicate/rerun reject',()=>{
   assertContext(env,context);
-  for(const [key,value] of Object.entries({ANDROID_AB_REVIEWED_SHA:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'push',GITHUB_RUN_ATTEMPT:'2',GITHUB_REPOSITORY:'someone/else'}))
+  for(const [key,value] of Object.entries({ANDROID_AB_REVIEWED_SHA:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_REF:'refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_NUMBER:'2',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/qa.yml@refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'2',GITHUB_REPOSITORY:'someone/else'}))
     assert.throws(()=>assertContext({...env,[key]:value},context));
   assert.throws(()=>assertContext(env,{...context,source:{...context.source,commit:'0'.repeat(40)}}));
   assert.throws(()=>assertContext(env,{...context,tools:{...context.tools,clean:false}}));
@@ -121,9 +121,14 @@ test('controlled failed-arm guard mutation accepts A failure incorrectly; final 
   const mutation=await import(pathToFileURL(file));
   assert.equal(mutation.pairVerdict(result.arms).controlsPassed,true,'Controlled OLD guard must exhibit the covered incorrect acceptance');
 });
-test('workflow is manual, read-only, no rebuild/deploy/secrets, and retains evidence on every failure',()=>{
-  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-diagnostic.yml',import.meta.url),'utf8');
-  assert.match(yaml,/workflow_dispatch:/);assert.doesNotMatch(yaml,/workflow_call:|\n  push:|\n  pull_request:/);
+test('workflow is one-shot, read-only, no rebuild/deploy/secrets, and retains evidence on every failure',()=>{
+  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-c053-once.yml',import.meta.url),'utf8');
+  assert.match(yaml,/push:\n    branches:\n      - codex\/android-renderer-ab-root-reviewed-20261014/);assert.doesNotMatch(yaml,/workflow_call:|workflow_dispatch:|pull_request:/);
+  assert.match(yaml,/github\.run_number == 1 && github\.run_attempt == 1/);
+  assert.match(yaml,/github\.repository == 'yarinn12\/sogrim-hashbon'/);
+  assert.match(yaml,/github\.event_name == 'push'/);
+  assert.match(yaml,/github\.ref == 'refs\/heads\/codex\/android-renderer-ab-root-reviewed-20261014'/);
+  assert.match(yaml,/retention-days: 7/);
   assert.match(yaml,/contents: read\n  actions: read/);
   assert.doesNotMatch(yaml,/secrets\.|assembleDebug|gradlew|native:prepare|npm ci|vercel deploy|continue-on-error|pull_request_target/);
   assert.match(yaml,/artifact_id = 11918988498/);assert.match(yaml,new RegExp(PIN.zipSha));
@@ -137,4 +142,18 @@ test('local CLI execution fails before any Native launch',()=>{
     env:{...process.env,ANDROID_AB_SOURCE_ROOT:resolve('.'),ANDROID_AB_TOOLS_ROOT:resolve('.')}});
   assert.notEqual(run.status,0);
   assert.match(run.stderr,/reviewed Linux CI host|GITHUB_ACTIONS|AssertionError/);
+});
+
+
+test('controlled OLD missing activation counter permits duplicate; FINAL rejects it', async t=>{
+  const duplicate={...env,GITHUB_RUN_NUMBER:'2'};
+  assert.throws(()=>assertContext(duplicate,context),/Only the first registered activation/);
+  const dir=mkdtempSync(join(tmpdir(),'android-ab-counter-control-'));
+  t.after(()=>{assert.ok(resolve(dir).startsWith(resolve(tmpdir())));rmSync(dir,{recursive:true,force:true});});
+  const original=readFileSync(new URL('../scripts/qa/android-renderer-ab/policy.mjs',import.meta.url),'utf8');
+  const old=original.replace("  assert.equal(env.GITHUB_RUN_NUMBER, '1', 'Only the first registered activation may execute');",'');
+  assert.notEqual(old,original);
+  const file=join(dir,'old-counter-removed.mjs');writeFileSync(file,old);
+  const controlled=await import(pathToFileURL(file));
+  assert.doesNotThrow(()=>controlled.assertContext(duplicate,context));
 });

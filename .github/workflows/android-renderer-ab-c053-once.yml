@@ -1,16 +1,9 @@
-name: Android renderer A/B diagnostic (original c053 APK)
+name: Android c053 renderer A/B one shot
 
 on:
-  workflow_dispatch:
-    inputs:
-      reviewed_tooling_sha:
-        description: Exact reviewed executor commit; must equal this workflow commit
-        required: true
-        type: string
-      review_token:
-        description: Enter c053-e13e-renderer-ab-once after Root review
-        required: true
-        type: string
+  push:
+    branches:
+      - codex/android-renderer-ab-root-reviewed-20261014
 
 permissions:
   contents: read
@@ -22,12 +15,17 @@ concurrency:
 
 jobs:
   renderer-ab-diagnostic:
+    if: >-
+      github.repository == 'yarinn12/sogrim-hashbon' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/android-renderer-ab-root-reviewed-20261014' &&
+      github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
-      ANDROID_AB_REVIEWED_SHA: ${{ inputs.reviewed_tooling_sha }}
-      ANDROID_AB_REVIEW_TOKEN: ${{ inputs.review_token }}
+      ANDROID_AB_REVIEWED_SHA: ${{ github.sha }}
+      ANDROID_AB_REVIEW_TOKEN: c053-e13e-renderer-ab-once
       ANDROID_AB_REQUESTED_SOURCE: c053989b217740fa9855edfbc2ec83456f498dfc
       ANDROID_AB_SOURCE_ROOT: ${{ github.workspace }}/app-source
       ANDROID_AB_TOOLS_ROOT: ${{ github.workspace }}/qa-tools
@@ -108,4 +106,4 @@ jobs:
           name: android-renderer-ab-c053-${{ github.run_id }}-attempt-${{ github.run_attempt }}
           path: control/artifacts/android-renderer-ab/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7

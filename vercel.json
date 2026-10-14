@@ -4,6 +4,7 @@
   "git": {
     "deploymentEnabled": {
       "codex/android-renderer-ab-c053-20261014": false,
+      "codex/android-renderer-ab-root-reviewed-20261014": false,
       "codex/unified-release-4-58-20261012": false,
       "codex/shared-event-reference-20261013": false,
       "main": false,
