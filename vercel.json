@@ -9,7 +9,8 @@
       "codex/engineering-foundation-20261013": false,
       "codex/platform-visual-candidate-20261014": false,
       "codex/ios-startup-diagnostic-4e-20261014": false,
-      "codex/ios-startup-diagnostic-reviewed-20261014": false
+      "codex/ios-startup-diagnostic-reviewed-20261014": false,
+      "codex/ios-startup-ab-reviewed-20261014": false
     }
   },
   "builds": [

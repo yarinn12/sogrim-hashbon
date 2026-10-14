@@ -68,3 +68,9 @@ TestFlight gate or release approval. Do not push or dispatch it without Root
 review, an explicit decision on runner cost, and confirmation that Vercel branch
 deployments remain disabled. It uses no credentials, signing, store upload,
 production database, or Vercel call.
+
+Root review: the isolated reviewed branch has a narrow push/manual trigger,
+repository/branch/attempt/event guards, and its Vercel branch deployment disabled.
+The public repository uses the standard macos-26 runner; no paid runner or new
+service is enabled. Execution remains diagnostic only, unsigned, synthetic, and
+separate from release acceptance. Original source pins and waits remain unchanged.

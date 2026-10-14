@@ -1,6 +1,8 @@
 name: iOS unsigned startup A/B proposal
 
 on:
+  push:
+    branches: [codex/ios-startup-ab-reviewed-20261014]
   workflow_dispatch:
 
 permissions:
@@ -8,7 +10,7 @@ permissions:
 
 jobs:
   startup-ab:
-    if: github.ref == 'refs/heads/codex/ios-startup-ab-proposal' && github.run_attempt == 1
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios-startup-ab-reviewed-20261014' && github.run_attempt == 1 && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -23,6 +25,10 @@ jobs:
       - name: Verify fixture and unchanged journey
         run: |
           set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'yarinn12/sogrim-hashbon'
+          test "$GITHUB_REF" = 'refs/heads/codex/ios-startup-ab-reviewed-20261014'
+          test "$GITHUB_RUN_ATTEMPT" = '1'
+          case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$(git merge-base 14d6f43660072acdf4e0252328c24d60c9d4dc81 HEAD)" = 14d6f43660072acdf4e0252328c24d60c9d4dc81
           test -z "$(git diff --name-only 14d6f43660072acdf4e0252328c24d60c9d4dc81..HEAD -- scripts/qa/ios-parity/journey.js scripts/qa/ios-parity/ParityUITests.swift scripts/qa/ios-parity/synthetic-service.js)"
