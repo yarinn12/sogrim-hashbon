@@ -15,6 +15,7 @@ for arm in "${arms[@]}"; do
   arm_status=$?
   set -e
   printf '%s\n' "$arm_status" > "$AB_ROOT/$arm/parent-exit-code.txt"
+  if [[ -f "$AB_ROOT/$arm/host-diagnostics-unconfirmed.txt" ]]; then break; fi
   # A failed parity test still gets the opposite arm. A simulator that did not
   # shut down is an infrastructure failure and cannot precede another arm.
   if [[ ! -f "$AB_ROOT/$arm/shutdown.json" ]] || \

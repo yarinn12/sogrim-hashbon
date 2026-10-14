@@ -18,6 +18,9 @@ def write_json(path, value):
 
 
 class ObserverABControls(unittest.TestCase):
+    cold_session = "11111111-1111-1111-1111-111111111111"
+    relaunch_session = "22222222-2222-2222-2222-222222222222"
+
     def setUp(self):
         self.temporary = TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -58,9 +61,38 @@ class ObserverABControls(unittest.TestCase):
                     write_json(category_path / "observer/monitor-report.json",
                                {"udid": udid, "sourceSha": guard.SOURCE_SHA,
                                 "sourceTree": guard.SOURCE_TREE, "status": "no-sample"})
+                write_json(category_path / "native-parity.json", {"sourceSha": guard.SOURCE_SHA,
+                    "sourceTree": guard.SOURCE_TREE,
+                    "records": [{"captureSession": self.cold_session}] * 12 +
+                               [{"captureSession": self.relaunch_session}]})
+                for session in (self.cold_session, self.relaunch_session):
+                    identity = {"event": "web-stage", "session": session,
+                                "sourceSha": guard.SOURCE_SHA, "sourceTree": guard.SOURCE_TREE,
+                                "fixtureSha": guard.SOURCE_SHA, "fixtureTree": guard.SOURCE_TREE,
+                                "deadlineEpochMs": 1792000030000, "timeoutMs": 30000}
+                    rows = [{**identity, "stage": "home-wait-start", "probeCount": 0},
+                            {**identity, "stage": "home-wait-ready", "probeCount": 3,
+                             "homeVisible": True, "homeCount": 1,
+                             "homeWidth": 120, "homeHeight": 48}]
+                    self.write_startup(arm, category, session, rows)
+
+    def startup_path(self, arm, category, session):
+        return self.root / arm / category / f"native-parity-startup-{session}.log"
+
+    def write_startup(self, arm, category, session, rows):
+        self.startup_path(arm, category, session).write_text(
+            "".join(json.dumps(row) + "\n" for row in rows), encoding="utf8")
+
+    def startup_rows(self, arm="on", category="default", session=None):
+        return [json.loads(line) for line in self.startup_path(
+            arm, category, session or self.cold_session).read_text(encoding="utf8").splitlines()]
 
     def assert_rejected(self, phrase):
         self.assertIn(phrase, "\n".join(guard.check_run(self.root)))
+
+    def test_unconfirmed_host_cleanup_cannot_accept_a_passing_pair(self):
+        (self.root / "on/host-diagnostics-unconfirmed.txt").write_text("child closure unknown\n")
+        self.assert_rejected("on host diagnostic cleanup is unconfirmed")
 
     def test_one_off_workflow_and_preview_scope(self):
         repo = Path(__file__).resolve().parents[3]
@@ -130,6 +162,71 @@ class ObserverABControls(unittest.TestCase):
         self.plan["releaseAcceptance"] = True
         write_json(self.root / "plan.json", self.plan)
         self.assert_rejected("diagnostic result must not become release acceptance")
+
+    def test_missing_home_telemetry_is_not_accepted(self):
+        self.startup_path("on", "default", self.cold_session).unlink()
+        self.assert_rejected("on/default missing or invalid home wait evidence")
+
+    def test_malformed_or_wrong_session_telemetry_is_rejected(self):
+        path = self.startup_path("off", "accessibility-extra-large", self.relaunch_session)
+        path.write_text("{malformed\n", encoding="utf8")
+        self.assert_rejected("off/accessibility-extra-large missing or invalid home wait evidence")
+        rows = self.startup_rows()
+        rows[1]["session"] = self.relaunch_session
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait identity")
+
+    def test_duplicate_or_failed_home_wait_is_rejected(self):
+        rows = self.startup_rows()
+        rows.append({**rows[1], "stage": "home-wait-timeout"})
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default incomplete or failed home wait")
+        self.write_startup("on", "default", self.cold_session, rows[:1])
+        self.assert_rejected("on/default incomplete or failed home wait")
+        self.write_startup("on", "default", self.cold_session, [rows[0], rows[0], rows[1]])
+        self.assert_rejected("on/default incomplete or failed home wait")
+
+    def test_wrong_source_fixture_timeout_and_deadline_are_rejected(self):
+        rows = self.startup_rows()
+        rows[1]["sourceSha"] = "e" * 40
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait identity")
+        rows[1]["sourceSha"] = guard.SOURCE_SHA
+        rows[1]["fixtureSha"] = "e" * 40
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait identity")
+        rows[1]["fixtureSha"] = guard.SOURCE_SHA
+        rows[1]["timeoutMs"] = 31000
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait timing fields")
+        rows[1]["timeoutMs"] = 30000
+        rows[1]["deadlineEpochMs"] += 1
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait timing fields")
+        rows[1]["deadlineEpochMs"] = -1
+        rows[0]["deadlineEpochMs"] = -1
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait timing fields")
+
+    def test_nonpositive_geometry_and_probe_counts_are_rejected(self):
+        rows = self.startup_rows()
+        rows[1]["homeWidth"] = -1
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid ready home geometry")
+        rows[1]["homeWidth"] = 120
+        rows[1]["homeVisible"] = False
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid ready home geometry")
+        rows[1]["homeVisible"] = True
+        rows[1]["probeCount"] = 0
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assert_rejected("on/default invalid home wait timing fields")
+
+    def test_late_ready_timestamp_does_not_add_a_new_deadline_rejection(self):
+        rows = self.startup_rows()
+        rows[1]["epochMs"] = rows[1]["deadlineEpochMs"] + 1
+        self.write_startup("on", "default", self.cold_session, rows)
+        self.assertEqual(guard.check_run(self.root), [])
 
     def test_bundle_and_xctestrun_digest_detect_file_change(self):
         products = self.root / "Build/Products"

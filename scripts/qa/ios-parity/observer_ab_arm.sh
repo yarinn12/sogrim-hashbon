@@ -62,6 +62,9 @@ set +e
 bash "$AB_CONTROL/observer_ab_category.sh" "$out" default
 default_status=$?
 set -e
+# A test failure with confirmed cleanup may continue. An unconfirmed host
+# observer must not contaminate AX or the opposite measured arm.
+if [[ -f "$out/host-diagnostics-unconfirmed.txt" ]]; then exit 125; fi
 xcrun simctl terminate "$AB_UDID" com.sogrimhashbon.app > "$out/terminate.log" 2>&1 || true
 set +e
 xcrun simctl uninstall "$AB_UDID" com.sogrimhashbon.app > "$out/uninstall.log" 2>&1

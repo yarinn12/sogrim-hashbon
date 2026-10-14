@@ -21,12 +21,18 @@ finish_category() {
       jobs -pr | grep -Fxq "$observer_pid" || break
       sleep 1
     done
+    local monitor_status=0
     if jobs -pr | grep -Fxq "$observer_pid"; then
-      printf 'observer did not stop within 30 seconds\n' >> "$observer_dir/observer.log"
-      kill "$observer_pid" 2>/dev/null
+      printf 'observer cleanup unconfirmed after 30 seconds; no further measured arm allowed\n' >> "$observer_dir/observer.log"
+      printf 'monitor or synchronous child may remain active\n' > "$arm_dir/host-diagnostics-unconfirmed.txt"
+      monitor_status=124
+    else
+      wait "$observer_pid"
+      monitor_status=$?
+      if (( monitor_status != 0 )); then
+        printf 'abnormal observer exit; child closure unconfirmed\n' > "$arm_dir/host-diagnostics-unconfirmed.txt"
+      fi
     fi
-    wait "$observer_pid"
-    local monitor_status=$?
     printf '%s\n' "$monitor_status" > "$observer_dir/exit-code.txt"
     if (( status == 0 && monitor_status != 0 )); then status=$monitor_status; fi
   fi

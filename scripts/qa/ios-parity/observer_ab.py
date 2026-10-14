@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -59,6 +60,68 @@ def read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf8"))
 
 
+def finite_number(value) -> bool:
+    try:
+        return type(value) in (int, float) and math.isfinite(value)
+    except OverflowError:
+        return False
+
+
+def whole_number(value) -> bool:
+    return finite_number(value) and value == int(value)
+
+
+def home_wait_errors(directory: Path, label: str) -> list[str]:
+    errors = []
+    try:
+        report = read_json(directory / "native-parity.json")
+        records = report["records"]
+        sessions = [row["captureSession"] for row in records]
+        assert report["sourceSha"] == SOURCE_SHA and report["sourceTree"] == SOURCE_TREE
+        assert len(sessions) == 13 and len(set(sessions)) == 2
+        assert all(session == sessions[0] for session in sessions[:-1])
+        assert sessions[-1] != sessions[0]
+        assert all(isinstance(session, str) and re.fullmatch(r"[0-9A-Fa-f-]{36}", session)
+                   for session in sessions)
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AssertionError):
+        return [f"{label} missing or invalid home wait evidence"]
+    for session in (sessions[0], sessions[-1]):
+        try:
+            path = directory / f"native-parity-startup-{session}.log"
+            rows = [json.loads(line) for line in path.read_text(encoding="utf8").splitlines()
+                    if line.strip()]
+            assert rows and all(isinstance(row, dict) for row in rows)
+        except (OSError, UnicodeError, ValueError, AssertionError):
+            errors.append(f"{label} missing or invalid home wait evidence: {session}")
+            continue
+        if any(row.get("session") != session or row.get("sourceSha") != SOURCE_SHA
+               or row.get("sourceTree") != SOURCE_TREE or row.get("fixtureSha") != SOURCE_SHA
+               or row.get("fixtureTree") != SOURCE_TREE for row in rows):
+            errors.append(f"{label} invalid home wait identity: {session}")
+        home = [row for row in rows if isinstance(row.get("stage"), str)
+                and row["stage"].startswith("home-wait-")]
+        if ([row["stage"] for row in home] != ["home-wait-start", "home-wait-ready"]
+                or any(row.get("event") != "web-stage" for row in home)):
+            errors.append(f"{label} incomplete or failed home wait: {session}")
+            continue
+        start, ready = home
+        deadline = start.get("deadlineEpochMs")
+        if not (whole_number(deadline) and deadline > 0
+                and whole_number(ready.get("deadlineEpochMs"))
+                and ready["deadlineEpochMs"] == deadline
+                and all(whole_number(row.get("timeoutMs")) and row["timeoutMs"] == 30000
+                        for row in home)
+                and whole_number(start.get("probeCount")) and start["probeCount"] == 0
+                and whole_number(ready.get("probeCount")) and ready["probeCount"] > 0):
+            errors.append(f"{label} invalid home wait timing fields: {session}")
+        if not (ready.get("homeVisible") is True
+                and whole_number(ready.get("homeCount")) and ready["homeCount"] > 0
+                and finite_number(ready.get("homeWidth")) and ready["homeWidth"] > 0
+                and finite_number(ready.get("homeHeight")) and ready["homeHeight"] > 0):
+            errors.append(f"{label} invalid ready home geometry: {session}")
+    return errors
+
+
 def check_run(root: Path) -> list[str]:
     errors: list[str] = []
 
@@ -106,6 +169,8 @@ def check_run(root: Path) -> list[str]:
         directory = root / arm
         shutdown = {}
         require(directory.is_dir(), f"missing {arm} arm")
+        require(not (directory / "host-diagnostics-unconfirmed.txt").exists(),
+                f"{arm} host diagnostic cleanup is unconfirmed")
         for name in ("before.json", "after.json"):
             try:
                 require(read_json(directory / name) == baseline, f"{arm} {name} build hash drift")
@@ -155,6 +220,7 @@ def check_run(root: Path) -> list[str]:
                     errors.append(f"missing {arm}/{category} observer receipt")
             else:
                 require(not observer.exists(), f"{arm}/{category} off arm ran observer")
+            errors.extend(home_wait_errors(path, f"{arm}/{category}"))
         try:
             require((directory / "validation.exit-code.txt").read_text(encoding="utf8").strip() == "0",
                     f"{arm} original prepare.py validation failed")
