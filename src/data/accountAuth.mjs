@@ -993,6 +993,9 @@ async function authRequest(config, path, options, fetchImpl) {
       payload.msg ?? payload.message ?? payload.error_description ?? payload.error ?? "Auth request failed"
     );
     error.status = response.status;
+    // Keep the Auth API's machine-readable code distinct from unrelated
+    // workspace errors that happen to use the same HTTP status.
+    error.authCode = String(payload.code ?? "").trim();
     throw error;
   }
   return payload;

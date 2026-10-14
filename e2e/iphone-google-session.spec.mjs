@@ -38,13 +38,24 @@ const cloudState = {
   deletedParticipants: []
 };
 
-test("iPhone Google sign-in keeps the session after returning to the app", async ({ page }) => {
+async function verifyGoogleSession({ page }, testInfo, {
+  backgroundWorkspaceStatus = 0, backgroundAuthUserCode = "",
+  refreshRejectStatus = 401, refreshRejectCode = ""
+} = {}) {
   const corsHeaders = {
     "access-control-allow-origin": "*",
     "access-control-allow-headers": "authorization, apikey, content-type, prefer",
     "access-control-allow-methods": "GET, PATCH, POST, OPTIONS"
   };
   let idTokenRequests = 0;
+  let authUserRequests = 0;
+  let ensureWorkspaceRequests = 0;
+  let successfulEnsureWorkspaceResponses = 0;
+  let acknowledgedWorkspaceResponses = 0;
+  let markBackgroundWorkspaceRejected;
+  const backgroundWorkspaceRejected = new Promise(resolve => {
+    markBackgroundWorkspaceRejected = resolve;
+  });
   let releaseGoogleScript;
   let markGoogleScriptRequested;
   const googleScriptRelease = new Promise((resolve) => {
@@ -121,14 +132,45 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
         }
       });
     }
+    if (url.pathname.endsWith("/auth/v1/token") &&
+        url.searchParams.get("grant_type") === "refresh_token" &&
+        (backgroundWorkspaceStatus === 401 || backgroundAuthUserCode)) {
+      return route.fulfill({
+        status: refreshRejectStatus, headers: corsHeaders,
+        json: { message: "Invalid refresh token",
+          code: refreshRejectCode || backgroundAuthUserCode }
+      });
+    }
     if (url.pathname.endsWith("/auth/v1/user")) {
+      authUserRequests += 1;
+      if (backgroundAuthUserCode && authUserRequests === 2) {
+        await route.fulfill({
+          status: 403, headers: corsHeaders,
+          json: { message: "Account is unavailable", code: backgroundAuthUserCode }
+        });
+        markBackgroundWorkspaceRejected();
+        return;
+      }
       return route.fulfill({ headers: corsHeaders, json: accountUser });
     }
     if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
-      return route.fulfill({
+      ensureWorkspaceRequests += 1;
+      if (backgroundWorkspaceStatus && ensureWorkspaceRequests === 2) {
+        await route.fulfill({
+          status: backgroundWorkspaceStatus, headers: corsHeaders,
+          json: { message: backgroundWorkspaceStatus === 401
+            ? "Invalid JWT"
+            : "Synthetic workspace reconciliation conflict" }
+        });
+        markBackgroundWorkspaceRejected();
+        return;
+      }
+      await route.fulfill({
         headers: corsHeaders,
         json: { status: "existing", workspaceId: SPACE_ID }
       });
+      successfulEnsureWorkspaceResponses += 1;
+      return;
     }
     if (url.pathname.includes("/app_snapshots")) {
       return route.fulfill({
@@ -179,8 +221,78 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
   await expect(page.getByRole("button", { name: "המשך עם Apple" })).toBeVisible();
   expect(await page.evaluate(() => window.__googleButtonRenderCount)).toBe(1);
 
+  const reloadSignals = [];
+  let completedDocumentLoads = 0;
+  let activeNavigationRequests = 0;
+  const record = (kind, detail = {}) => {
+    if (reloadSignals.length < 60) reloadSignals.push({ at: new Date().toISOString(), kind, ...detail });
+  };
+  const pathOf = url => {
+    try { return new URL(url).pathname; } catch { return String(url).slice(0, 120); }
+  };
+  const browser = page.context().browser();
+  const listeners = [
+    [page, "crash", () => record("page-crash")],
+    [page, "close", () => record("page-close")],
+    [page, "domcontentloaded", () => record("dom-content-loaded")],
+    [page, "load", () => { completedDocumentLoads++; record("document-load"); }],
+    [page, "pageerror", error => record("page-error", { message: String(error.message).slice(0, 300) })],
+    [page, "console", message => {
+      if (message.type() === "error" || message.type() === "warning") {
+        record("page-console", { level: message.type(), message: message.text().slice(0, 300) });
+      }
+    }],
+    [page, "framenavigated", frame => {
+      if (frame === page.mainFrame()) record("main-frame-navigation", { path: pathOf(frame.url()) });
+    }],
+    [page, "request", request => {
+      if (request.isNavigationRequest()) {
+        activeNavigationRequests++;
+        record("navigation-request", { path: pathOf(request.url()), activeNavigationRequests });
+      }
+    }],
+    [page, "requestfinished", request => {
+      if (request.isNavigationRequest()) {
+        activeNavigationRequests = Math.max(0, activeNavigationRequests - 1);
+        record("navigation-finished", { path: pathOf(request.url()), activeNavigationRequests });
+      }
+    }],
+    [page, "requestfailed", request => {
+      if (request.isNavigationRequest()) activeNavigationRequests = Math.max(0, activeNavigationRequests - 1);
+      if (request.isNavigationRequest() || /\/api\/config|\/auth\/v1\//.test(request.url())) {
+        record("request-failed", { path: pathOf(request.url()),
+          navigation: request.isNavigationRequest(), activeNavigationRequests,
+          error: String(request.failure()?.errorText ?? "").slice(0, 300) });
+      }
+    }],
+    [page, "response", response => {
+      if (response.url().includes("/rest/v1/rpc/ensure_account_workspace") &&
+          response.status() === 200) acknowledgedWorkspaceResponses += 1;
+      if (response.request().isNavigationRequest()) {
+        record("navigation-response", { path: pathOf(response.url()), status: response.status() });
+      } else if (/\/api\/config|\/auth\/v1\/|\/rest\/v1\/rpc\/ensure_account_workspace/.test(response.url())) {
+        record("auth-response", { path: pathOf(response.url()), status: response.status() });
+      }
+    }]
+  ];
+  if (browser) listeners.push([browser, "disconnected", () => record("browser-disconnected")]);
+  for (const [target, event, handler] of listeners) target.on(event, handler);
+  record("google-click-start");
   await googleButton.click();
+  record("google-click-returned");
+  if (backgroundWorkspaceStatus === 401 || backgroundAuthUserCode) {
+    await backgroundWorkspaceRejected;
+    await expect.poll(() => page.evaluate(() =>
+      localStorage.getItem("settle-friends-account-session")
+    )).toBeNull();
+    await expect(page.locator("#public-account-auth-gate")).toBeVisible();
+    expect(successfulEnsureWorkspaceResponses).toBe(1);
+    expect(idTokenRequests).toBe(1);
+    for (const [target, event, handler] of listeners) target.off(event, handler);
+    return;
+  }
   await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);
+  record("auth-gate-absent");
   expect(idTokenRequests).toBe(1);
   expect(await page.evaluate(() => {
     const session = JSON.parse(
@@ -196,8 +308,105 @@ test("iPhone Google sign-in keeps the session after returning to the app", async
     refreshToken: "google-refresh-token",
     userId: USER_ID
   });
+  if (backgroundWorkspaceStatus) await backgroundWorkspaceRejected;
 
-  await page.reload();
-  await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);
-  expect(idTokenRequests).toBe(1);
+  const beforeReload = await page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem("settle-friends-account-session") || "null");
+    return { path: location.pathname, readyState: document.readyState,
+      authGatePresent: Boolean(document.querySelector("#public-account-auth-gate")),
+      sessionUserId: session?.user?.id ?? null,
+      accessTokenPresent: Boolean(session?.access_token),
+      refreshTokenPresent: Boolean(session?.refresh_token) };
+  });
+  const completedDocumentLoadsBeforeManualReload = completedDocumentLoads;
+  const activeNavigationRequestsBeforeManualReload = activeNavigationRequests;
+  record("manual-reload-start", { completedDocumentLoads, activeNavigationRequests });
+  let reloadFailure;
+  try {
+    await page.reload();
+    await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);
+    expect(idTokenRequests).toBe(1);
+    expect(await page.evaluate(() => {
+      const session = JSON.parse(localStorage.getItem("settle-friends-account-session") || "null");
+      return { accessToken: session?.access_token, refreshToken: session?.refresh_token,
+        userId: session?.user?.id };
+    })).toEqual({ accessToken: "google-access-token",
+      refreshToken: "google-refresh-token", userId: USER_ID });
+    if (backgroundWorkspaceStatus) {
+      await expect.poll(() => successfulEnsureWorkspaceResponses).toBeGreaterThanOrEqual(2);
+      await expect.poll(() => acknowledgedWorkspaceResponses).toBeGreaterThanOrEqual(2);
+      expect(ensureWorkspaceRequests).toBeGreaterThanOrEqual(3);
+    }
+  } catch (error) {
+    reloadFailure = error;
+    throw error;
+  } finally {
+    for (const [target, event, handler] of listeners) target.off(event, handler);
+    let afterReload;
+    if (!page.isClosed()) {
+      try {
+        afterReload = await page.evaluate(() => {
+          const session = JSON.parse(localStorage.getItem("settle-friends-account-session") || "null");
+          return { path: location.pathname, readyState: document.readyState,
+            authGatePresent: Boolean(document.querySelector("#public-account-auth-gate")),
+            accountReadyMarker: sessionStorage.getItem("settle-friends-account-ready"),
+            testReadyMarker: localStorage.getItem("iphone-google-test-ready"),
+            sessionUserId: session?.user?.id ?? null,
+            accessTokenPresent: Boolean(session?.access_token),
+            refreshTokenPresent: Boolean(session?.refresh_token) };
+        });
+      } catch (error) {
+        afterReload = { evaluationError: String(error.message).slice(0, 300) };
+      }
+    }
+    const evidence = { project: testInfo.project.name, retry: testInfo.retry,
+      beforeReload, completedDocumentLoadsBeforeManualReload,
+      activeNavigationRequestsBeforeManualReload,
+      activeNavigationRequestsAtCompletion: activeNavigationRequests,
+      afterReload,
+      pageClosed: page.isClosed(), browserConnected: browser?.isConnected() ?? null,
+      signals: reloadSignals,
+      ...(reloadFailure ? { failure: { name: String(reloadFailure.name),
+        message: String(reloadFailure.message).slice(0, 1_000) } } : {}) };
+    try {
+      await testInfo.attach("google-session-reload-boundary", {
+        body: JSON.stringify(evidence, null, 2), contentType: "application/json"
+      });
+    } catch (attachmentError) {
+      if (reloadFailure) throw new AggregateError([reloadFailure, attachmentError],
+        "reload failed and its QA evidence could not be attached");
+      throw attachmentError;
+    }
+  }
+}
+
+test("iPhone Google sign-in keeps the session after returning to the app", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo);
 });
+
+test("iPhone Google session survives a non-auth workspace rejection and reload", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo, { backgroundWorkspaceStatus: 400 });
+});
+
+test("iPhone Google session survives a generic workspace permission rejection and reload", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo, { backgroundWorkspaceStatus: 403 });
+});
+
+test("iPhone Google session is invalidated after confirmed credential rejection", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo, { backgroundWorkspaceStatus: 401 });
+});
+
+test("iPhone Google session is invalidated after an Auth API refresh-token code", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo, {
+    backgroundWorkspaceStatus: 401, refreshRejectStatus: 400,
+    refreshRejectCode: "refresh_token_not_found"
+  });
+});
+
+for (const code of ["user_banned", "user_not_found"]) {
+  test(`iPhone Google session is invalidated after Auth API ${code}`, async ({ page }, testInfo) => {
+    await verifyGoogleSession({ page }, testInfo, {
+      backgroundAuthUserCode: code, refreshRejectStatus: 403
+    });
+  });
+}
