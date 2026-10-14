@@ -40,6 +40,9 @@ def report(enlarged=False):
     result["records"] = []
     for phase in PHASES:
         metrics = {"heading": deepcopy(metric)}
+        if phase == "home":
+            metrics["heading"].update({"text": "מה סוגרים היום?", "fontSize": 24 * factor,
+                                       "textRows": 1 if not enlarged else 2})
         if phase == "expenses": metrics = {key: deepcopy(metric) for key in ["tab", "tab2", "tab3"]}
         if phase == "notes": metrics = {key: deepcopy(metric) for key in ["title", "preview"]}
         if phase == "transfers":
@@ -57,11 +60,25 @@ def report(enlarged=False):
             metrics["groupTotal"]["text"] = "₪120.00"
             metrics["groupTotal"]["textRows"] = 1
             metrics["groupTotal"]["words"] = [{"text": "₪120.00", "rows": 1, "outsideTab": False}]
+        home_reference = ({"title": "מה סוגרים היום?", "fontSize": 24 * factor,
+                           "lineCount": 1 if not enlarged else 2, "eyebrowVisible": False,
+                           "viewport": {"width": 393, "height": 852},
+                           "pointer": {"coarse": False, "fine": False},
+                           "rootFontSize": 16 * factor,
+                           "textPreference": "normal" if not enlarged else "extra-large",
+                           "dynamicTypeActive": enlarged,
+                           "titleBounds": {"left": 40, "right": 353, "top": 150, "bottom": 178},
+                           "hero": {"left": 16, "right": 377, "top": 120, "bottom": 300,
+                                    "width": 361, "height": 180},
+                           "action": {"left": 100, "right": 293, "top": 272, "bottom": 330,
+                                      "width": 193, "height": 58},
+                           "actionFits": True}) if phase == "home" else None
         result["records"].append({"phase": phase, "native": deepcopy(native), "nativeShell": True, "platform": "ios",
                                   "appUrl": "capacitor://localhost/", "nativeAppInfo": {"id": "com.sogrimhashbon.app"},
                                   "errors": [], "documentWidth": 393, "rootFontSize": 16 * factor,
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
-                                  "metrics": metrics, "writes": [{"ok": True}], "pendingOutbox": [],
+                                  "metrics": metrics, "homeReference": home_reference,
+                                  "writes": [{"ok": True}], "pendingOutbox": [],
                                   "keyboardLayout": {"header": {"top": 0, "bottom": 120},
                                                      "headerControls": {"back": {"top": 64, "bottom": 112, "left": 280, "right": 328},
                                                                         "accessibility": {"top": 64, "bottom": 112, "left": 224, "right": 272},
@@ -117,6 +134,23 @@ class AcceptanceTests(unittest.TestCase):
             self.accept()
 
     def test_complete_artifacts_pass(self): self.accept()
+    def test_home_reference_rejects_29px_title(self):
+        for mode, factor in [("default", 1), ("accessibility-extra-large", 40 / 17)]:
+            home = self.reports[mode]["records"][0]
+            home["homeReference"]["fontSize"] = 29 * factor
+            home["metrics"]["heading"]["fontSize"] = 29 * factor
+        self.rejects()
+    def test_home_reference_rejects_two_title_lines(self):
+        home = self.reports["default"]["records"][0]
+        home["homeReference"]["lineCount"] = 2
+        home["metrics"]["heading"]["textRows"] = 2
+        self.rejects()
+    def test_home_reference_rejects_extra_eyebrow(self):
+        self.reports["default"]["records"][0]["homeReference"]["eyebrowVisible"] = True
+        self.rejects()
+    def test_home_reference_requires_actual_pointer_readback(self):
+        del self.reports["default"]["records"][0]["homeReference"]["pointer"]
+        self.rejects()
     def test_profile_content_clipping_fails(self):
         self.record("profile")["metrics"]["heading"]["scrollWidth"] = 1800
         self.rejects()

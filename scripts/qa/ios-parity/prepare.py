@@ -140,6 +140,33 @@ def validate(out: Path, source_sha: str) -> None:
                     assert metric["clippedByAncestor"] is False
             screenshot = out / mode / f"native-parity-{phase}.png"
             assert screenshot.is_file() and screenshot.stat().st_size > 1000
+        home = records["home"]
+        reference = home["homeReference"]
+        assert reference["title"] == "מה סוגרים היום?", (mode, "home reference title")
+        assert reference["viewport"] == {key: home["viewport"][key] for key in ("width", "height")}
+        assert reference["viewport"]["width"] <= 720
+        pointer = reference["pointer"]
+        assert type(pointer["coarse"]) is bool and type(pointer["fine"]) is bool
+        assert not (pointer["coarse"] and pointer["fine"]), (mode, "contradictory primary pointer")
+        assert math.isclose(reference["rootFontSize"], home["rootFontSize"], abs_tol=0.002)
+        assert reference["textPreference"] == ("normal" if mode == "default" else "extra-large")
+        assert reference["dynamicTypeActive"] is (mode != "default")
+        assert math.isclose(reference["fontSize"], home["metrics"]["heading"]["fontSize"], abs_tol=0.2)
+        assert reference["lineCount"] == home["metrics"]["heading"]["textRows"]
+        assert type(reference["lineCount"]) is int and reference["lineCount"] >= 1
+        assert reference["eyebrowVisible"] is False, (mode, "extra home greeting tag")
+        title, hero, action = (reference[key] for key in ("titleBounds", "hero", "action"))
+        assert title["left"] >= hero["left"] - 1 and title["right"] <= hero["right"] + 1
+        assert title["top"] >= hero["top"] - 1 and title["bottom"] <= hero["bottom"] + 1
+        assert hero["width"] > 0 and action["width"] >= 44 and action["height"] >= 44
+        assert action["left"] >= hero["left"] - 1 and action["right"] <= hero["right"] + 1
+        assert abs((action["left"] + action["right"] - hero["left"] - hero["right"]) / 2) <= 3
+        assert action["top"] < hero["bottom"] and action["bottom"] > hero["bottom"]
+        assert reference["actionFits"] is True
+        if mode == "default":
+            assert math.isclose(reference["rootFontSize"], 16, abs_tol=0.002)
+            assert math.isclose(reference["fontSize"], 24, abs_tol=0.2), "normal home title must be 1.5rem"
+            assert reference["lineCount"] == 1, "normal home question must stay on one line"
         saved = records["saved"]
         assert "שם ארוך" in records["transfers"]["metrics"]["longName"]["text"]
         opened = records["note-opened"]["openedNote"]
@@ -235,6 +262,9 @@ def validate(out: Path, source_sha: str) -> None:
         assert math.isclose(b["rootFontSize"], a["rootFontSize"] * factor, abs_tol=0.002)
         for key, metric in a["metrics"].items():
             assert math.isclose(b["metrics"][key]["fontSize"], metric["fontSize"] * factor, abs_tol=0.2), (phase, key)
+    a = next(record for record in normal["records"] if record["phase"] == "home")["homeReference"]
+    b = next(record for record in enlarged["records"] if record["phase"] == "home")["homeReference"]
+    assert math.isclose(b["fontSize"], a["fontSize"] * factor, abs_tol=0.2)
     print(json.dumps({"sourceSha": source_sha, "status": "passed", "nativeController": normal["controller"], "iOS": normal["systemVersion"], "categories": [normal["preferredContentSizeCategory"], enlarged["preferredContentSizeCategory"]]}))
 
 

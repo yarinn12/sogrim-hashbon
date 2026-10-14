@@ -2,8 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules,hasAuthoredFontContract,readCurrentFontContract} from '../scripts/qa/android-native-isolated/font-contract.mjs';
 import {runInNewContext} from 'node:vm';
-const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large',headerUtilitiesContained:true});
+const context=(scale=1,pointerCoarse=false,orientation='portrait')=>({scale,pointerCoarse,pointerFine:!pointerCoarse,orientation,width:orientation==='portrait'?411:914,height:orientation==='portrait'?866:366,active:scale>1,dynamicType:scale===1?'normal':'extra-large',headerUtilitiesContained:true});
 const home='.product-home-screen .top .brand h1',event='.event-overview-header h1',notes='[data-screen-kind="event-notes"] h1',profile='[data-screen-kind="profile"] h1',tabs='.event-workspace-tab strong',action='.event-header-action-label';
+
+test('compact Native typography follows the actual viewport with no primary pointer',()=>{
+ for(const scale of [1,1.5,2])for(const orientation of ['portrait','landscape']){
+  const c={...context(scale,false,orientation),pointerFine:false};
+  assert.equal(c.pointerCoarse,false);
+  assert.equal(c.pointerFine,false);
+  assert.equal(authoredNativeFontBase(tabs,c),14);
+  for(const selector of [home,event,notes,profile]){
+   const expected=orientation==='portrait'?24:20;
+   assert.equal(authoredNativeFontBase(selector,c),expected,selector+' '+orientation);
+   assert.equal(authoredNativeFontMatches(expected*scale,selector,c),true);
+  }
+ }
+});
 
 test('route changes require fresh DOM provenance rather than the home snapshot',async()=>{
  let labels=[],reads=0;const header={};
@@ -24,36 +38,47 @@ test('route changes require fresh DOM provenance rather than the home snapshot',
 });
 
 test('shared header sizes reject detached bars while tabs retain their authored contract',()=>{
- assert.equal(authoredNativeFontBase(tabs,context()),13.5);
+ assert.equal(authoredNativeFontBase(tabs,context()),14);
  assert.equal(authoredNativeFontBase(action,context()),11);
- assert.equal(authoredNativeFontMatches(13.5,tabs,context()),true);
- assert.equal(authoredNativeFontMatches(14,tabs,context()),false);
+ assert.equal(authoredNativeFontMatches(14,tabs,context()),true);
+ assert.equal(authoredNativeFontMatches(13.5,tabs,context()),false);
  assert.equal(authoredNativeFontMatches(11.5,action,context()),false);
  assert.equal(authoredNativeFontMatches(11,action,context()),true);
- assert.equal(authoredNativeFontBase(home,context()),29);
- assert.equal(authoredNativeFontBase(home,context(1,false,'landscape')),48);
- for(const selector of [event,notes,profile])assert.equal(authoredNativeFontBase(selector,context()),28);
+ assert.equal(authoredNativeFontBase(home,context()),24);
+ assert.equal(authoredNativeFontBase(home,context(1,false,'landscape')),20);
+ for(const selector of [event,notes,profile])assert.equal(authoredNativeFontBase(selector,context()),24);
 });
 
-test('AX semantic promotion is independent of the ordinary measured heading',()=>{
+test('AX root scaling preserves the compact authored heading and rejects frozen text',()=>{
  for(const scale of [1.5,2]){
-  assert.equal(authoredNativeFontBase(home,context(scale)),28);
-  assert.equal(authoredNativeFontBase(event,context(scale)),28);
-  assert.equal(authoredNativeFontBase(home,context(scale,false,'landscape')),32);
-  for(const selector of [notes,profile])assert.equal(authoredNativeFontBase(selector,context(scale)),32);
+  assert.equal(authoredNativeFontBase(home,context(scale)),24);
+  assert.equal(authoredNativeFontBase(event,context(scale)),24);
+  assert.equal(authoredNativeFontBase(home,context(scale,false,'landscape')),20);
+  for(const selector of [notes,profile])assert.equal(authoredNativeFontBase(selector,context(scale)),24);
   assert.equal(authoredNativeFontBase(action,context(scale)),11);
-  assert.equal(authoredNativeFontMatches(32*scale,notes,context(scale)),true);
-  assert.equal(authoredNativeFontMatches(28*scale,notes,context(scale)),false);
+  assert.equal(authoredNativeFontMatches(24*scale,notes,context(scale)),true);
+  assert.equal(authoredNativeFontMatches(24,notes,context(scale)),false);
  }
 });
 
-test('actual coarse pointer media chooses the independently authored compact rem rules',()=>{
+test('actual coarse pointer media retains the same compact rem rules',()=>{
  for(const scale of [1,1.5,2])for(const orientation of ['portrait','landscape']){
   const c=context(scale,true,orientation);
   assert.equal(authoredNativeFontBase(tabs,c),14);
   for(const selector of [home,event,notes,profile])assert.equal(authoredNativeFontBase(selector,c),orientation==='portrait'?24:20);
  }
  assert.equal(authoredNativeFontBase(tabs,{...context(1,true,'landscape'),height:451}),13.5);
+});
+
+test('short desktop height does not compact a wide viewport with any pointer',()=>{
+ for(const pointer of [{pointerCoarse:false,pointerFine:false},{pointerCoarse:false,pointerFine:true},{pointerCoarse:true,pointerFine:false}]){
+  const c={...context(1,false,'landscape'),...pointer,width:1280,height:400};
+  assert.equal(authoredNativeFontBase(home,c),48);
+  assert.equal(authoredNativeFontBase(tabs,c),13.5);
+ }
+ const compact={...context(1,false,'landscape'),width:1024,height:400};
+ assert.equal(authoredNativeFontBase(home,compact),20);
+ assert.equal(authoredNativeFontBase(tabs,compact),14);
 });
 
 test('all authored branches retain the original tolerance and reject frozen and stacked OS zoom',()=>{
@@ -69,7 +94,7 @@ test('all authored branches retain the original tolerance and reject frozen and 
 test('missing readbacks, stale classes and wrong orientation cannot choose a permissive contract',()=>{
  assert.equal(hasAuthoredFontContract('.expense-row strong'),false);
  assert.throws(()=>authoredNativeFontBase('.expense-row strong',context()),/No authored/);
- for(const changes of [{pointerCoarse:undefined},{width:NaN},{height:0},{scale:1.25},{orientation:'landscape'},{active:true},{dynamicType:'extra-large'}])assert.throws(()=>authoredNativeFontBase(tabs,{...context(),...changes}));
+ for(const changes of [{pointerCoarse:undefined},{pointerFine:undefined},{pointerCoarse:true,pointerFine:true},{width:NaN},{height:0},{scale:1.25},{orientation:'landscape'},{active:true},{dynamicType:'extra-large'}])assert.throws(()=>authoredNativeFontBase(tabs,{...context(),...changes}));
 });
 
 test('actual font evidence uses the connected target CSS protocol without styling mutation',async()=>{

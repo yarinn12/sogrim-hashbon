@@ -138,6 +138,39 @@
       textOverflow: style.textOverflow, overflowX: style.overflowX,
       bounds: { top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right } };
   }
+  function homeReference() {
+    const title = first('.product-home-screen .top .brand h1');
+    const hero = first('.product-home-screen > .top');
+    const action = first('.home-create-event-action');
+    if (!title || !hero || !action) throw new Error('Required iOS home reference target is missing');
+    const eyebrow = hero.querySelector('.brand > .eyebrow');
+    const bounds = element => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+        width: rect.width, height: rect.height };
+    };
+    const lines = new Set(), walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      for (let index = 0; index < node.length; index += 1) {
+        if (!node.data[index].trim()) continue;
+        const range = document.createRange();
+        range.setStart(node, index); range.setEnd(node, index + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) lines.add(Math.round(rect.top));
+      }
+    }
+    const root = document.documentElement;
+    return { title: title.textContent.trim(), fontSize: parseFloat(getComputedStyle(title).fontSize),
+      lineCount: lines.size, eyebrowVisible: Boolean(eyebrow && visible(eyebrow)),
+      titleBounds: bounds(title), hero: bounds(hero), action: bounds(action),
+      actionFits: action.scrollWidth <= action.clientWidth + 1,
+      viewport: { width: innerWidth, height: innerHeight },
+      pointer: { coarse: matchMedia('(pointer: coarse)').matches,
+        fine: matchMedia('(pointer: fine)').matches },
+      rootFontSize: parseFloat(getComputedStyle(root).fontSize),
+      textPreference: root.dataset.dynamicType,
+      dynamicTypeActive: root.classList.contains('dynamic-type-active') };
+  }
   let captureIndex = 0;
   const pending = new Map();
   globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
@@ -190,7 +223,9 @@
     if (name === 'keyboard-ready') globalThis.__iosParityInputTrace?.arm();
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
-    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, keyboardLayout: keyboardLayout(name, selectors),
+    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics,
+      homeReference: name === 'home' ? homeReference() : null,
+      keyboardLayout: keyboardLayout(name, selectors),
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
       appUrl: location.href,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -234,7 +269,9 @@
         groupTotal: '.expense-day-summary .amount' });
       return;
     }
-    await capture('home', { brand: '.product-brand-copy strong', description: '.product-home-screen .top .brand .muted' });
+    await capture('home', { brand: '.product-brand-copy strong',
+      heading: '.product-home-screen .top .brand h1',
+      description: '.product-home-screen .top .brand .muted' });
     await click(`[data-action="open-event"][data-event-id="${EVENT}"]`);
     await capture('expenses', { heading: '.event-overview-header h1',
       tab: '.event-workspace-tab:nth-child(1) strong',
