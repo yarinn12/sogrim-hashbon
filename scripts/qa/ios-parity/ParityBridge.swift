@@ -21,7 +21,46 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var statusCallbacks = 0
     private var statusPublications = 0
     private var statusLog: FileHandle?
+    private let fixtureSha = "__FIXTURE_SHA__"
+    private let fixtureTree = "__FIXTURE_TREE__"
+    private var startupObservations: [NSKeyValueObservation] = []
+    private var startupEvents = 0
+    private let startupQueue = DispatchQueue(label: "com.sogrimhashbon.qa.startup-log", qos: .utility)
     private var output: URL { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0] }
+
+    // Bounded observations, written away from the UI thread. Nothing here
+    // publishes the status UILabel, starts a journey, or changes its deadline.
+    private func observeStartup(_ event: String, _ fields: [String: Any] = [:]) {
+        guard startupEvents < 256 else { return }
+        startupEvents += 1
+        var row = fields
+        row["event"] = event; row["time"] = Date().timeIntervalSince1970
+        row["uptime"] = ProcessInfo.processInfo.systemUptime
+        row["processId"] = ProcessInfo.processInfo.processIdentifier
+        row["session"] = statusSession; row["sourceSha"] = sourceSha; row["sourceTree"] = sourceTree
+        row["fixtureSha"] = fixtureSha; row["fixtureTree"] = fixtureTree; row["sequence"] = startupEvents
+        let path = output.appendingPathComponent("native-parity-startup-\(statusSession).log")
+        let captured = row
+        startupQueue.async {
+            guard var data = try? JSONSerialization.data(withJSONObject: captured, options: [.sortedKeys]) else { return }
+            data.append(0x0A)
+            if !FileManager.default.fileExists(atPath: path.path) {
+                FileManager.default.createFile(atPath: path.path, contents: nil)
+            }
+            guard let stream = try? FileHandle(forWritingTo: path) else { return }
+            defer { try? stream.close() }
+            do { try stream.seekToEnd(); try stream.write(contentsOf: data) }
+            catch { NSLog("NATIVE_PARITY_STARTUP_LOG_ERROR") }
+        }
+    }
+    private func startupWebState() -> [String: Any] {
+        // URL query/user info/path are deliberately omitted.
+        return ["urlScheme": webView?.url?.scheme ?? "none",
+                "localhost": webView?.url?.host == "localhost",
+                "loading": webView?.isLoading ?? false,
+                "estimatedProgress": webView?.estimatedProgress ?? 0,
+                "bridgeAvailable": bridge != nil]
+    }
 
     // Independent native observations: never used to satisfy a readiness gate.
     // Append small events so a failed JS callback or AX publication is retained
@@ -43,18 +82,34 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     }
 
     override func capacitorDidLoad() {
+        observeStartup("capacitorDidLoad-enter")
         super.capacitorDidLoad()
+        observeStartup("capacitorDidLoad-super", startupWebState())
         let controller = webView!.configuration.userContentController
         controller.add(self, name: "iosParity")
-        for name in ["synthetic-service", "input-trace", "journey"] {
+        for name in ["startup-diagnostics", "synthetic-service", "input-trace", "journey"] {
             let url = Bundle.main.resourceURL!.appendingPathComponent("public/ios-parity-\(name).js")
             let script = try! String(contentsOf: url, encoding: .utf8)
             controller.addUserScript(WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            observeStartup("script-installed", ["script": name, "bytes": script.utf8.count])
         }
+        // Observe public WKWebView properties; preserve Capacitor's delegates.
+        startupObservations = [
+            webView!.observe(\.url, options: [.initial, .new]) { [weak self] _, _ in
+                guard let self = self else { return }; self.observeStartup("WK-url", self.startupWebState())
+            },
+            webView!.observe(\.isLoading, options: [.initial, .new]) { [weak self] _, _ in
+                guard let self = self else { return }; self.observeStartup("WK-loading", self.startupWebState())
+            },
+            webView!.observe(\.estimatedProgress, options: [.initial, .new]) { [weak self] _, _ in
+                guard let self = self else { return }; self.observeStartup("WK-progress", self.startupWebState())
+            }
+        ]
     }
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         appearances += 1
+        observeStartup("viewDidAppear", startupWebState())
         observeStatus("viewDidAppear", ["appearances": appearances, "timerPresent": timer != nil, "webViewPresent": webView != nil])
         if timer != nil { return }
         if let data = try? Data(contentsOf: output.appendingPathComponent("native-parity.json")),
@@ -191,6 +246,42 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     }
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard var record = message.body as? [String: Any] else { return }
+        if record["kind"] as? String == "startup-diagnostic" {
+            guard message.frameInfo.isMainFrame, let item = record["startup"] as? [String: Any],
+                  let sequence = item["sequence"] as? Int, (1...128).contains(sequence),
+                  let stage = item["stage"] as? String,
+                  ["script-injected", "dom-content-loaded", "window-loaded", "synthetic-service-start",
+                   "synthetic-service-ready", "synthetic-fetch-start", "synthetic-fetch-response",
+                   "synthetic-fetch-local", "synthetic-fetch-blocked", "journey-script-start",
+                   "journey-live-defined", "journey-start", "home-wait-start", "home-wait-ready",
+                   "bridge-wait-start", "bridge-wait-ready", "app-info-start", "app-info-ready",
+                   "capture-start", "fonts-wait-start", "fonts-ready", "raf-wait-start", "raf-ready",
+                   "capture-post", "capture-ack", "readiness-committed", "journey-error",
+                   "startup-milestone", "local-resource", "resource-summary",
+                   "native-styles-ready"].contains(stage) else { return }
+            var fields: [String: Any] = ["stage": stage, "jsSequence": sequence]
+            for key in ["epochMs", "monotonicMs", "timeOriginMs", "index", "request", "status",
+                        "startMs", "durationMs", "responseEndMs", "transferSize",
+                        "resourceEntries", "localMatched", "legacyMissed"] {
+                if let value = item[key] as? Double, value.isFinite, value >= 0 { fields[key] = value }
+            }
+            let allowed: [String: [String]] = [
+                "readyState": ["loading", "interactive", "complete"],
+                "phase": ["starting", "home", "restored", "expenses", "summary", "transfers", "notes", "note-opened", "profile", "keyboard-ready", "keyboard-amount", "keyboard-name", "saved", "resumed", "error"],
+                "endpoint": ["config", "health", "admin", "metrics", "auth-user", "workspace", "referral", "snapshots", "profiles", "profile-write", "other-synthetic", "local-asset", "blocked-external"],
+                "method": ["GET", "POST", "PATCH", "DELETE", "PUT", "HEAD", "OPTIONS"],
+                "initiator": ["script", "link", "css", "fetch", "other"],
+                "milestone": ["app-module-ready", "first-screen-rendered", "auth-ready", "splash-dismissed"],
+                "resourceClass": ["style-loader", "prelude", "auth", "core", "account",
+                                  "experience", "layers-css", "font-css", "rubik-font",
+                                  "base-css", "motion-vendor"]]
+            for (key, values) in allowed {
+                if let value = item[key] as? String, values.contains(value) { fields[key] = value }
+            }
+            if let legacy = item["legacyOriginMatched"] as? Bool { fields["legacyOriginMatched"] = legacy }
+            observeStartup("web-stage", fields)
+            return
+        }
         if record["kind"] as? String == "input-event" {
             guard let item = record["inputEvent"] as? [String: Any],
                   let sequence = item["sequence"] as? Int, (1...48).contains(sequence),
