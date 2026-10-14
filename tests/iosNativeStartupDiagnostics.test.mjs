@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 const dir = new URL('../scripts/qa/ios-parity/', import.meta.url);
 const code = readFileSync(new URL('startup-diagnostics.js', dir), 'utf8');
+const canonicalHash = text => createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex');
 function probe({ throws = false } = {}) {
   const messages = [], listeners = new Map(); let callback;
   const context = vm.createContext({ Date, URL, Set, Object, Number,
@@ -53,11 +54,11 @@ test('a failed telemetry sink does not throw or publish readiness', () => {
   assert.doesNotThrow(() => p.context.__iosParityStartup.mark('journey-start'));
   assert.equal(p.context.__iosParityLive, undefined);
 });
-test('all acceptance assertions and the validation implementation retain baseline bytes', () => {
+test('all acceptance assertions and the validation implementation retain canonical baseline bytes', () => {
   const baselines = { 'ParityUITests.swift': '3d3175b92c20059c2c73654308393023d102e69854a8ff6c792a2a37a75b1297',
     'test_validation.py': '6fbd14f8b4a683a238dc4d196a51fd879ff5ebaaed738228fd08f2854382f39d' };
   for (const [name, digest] of Object.entries(baselines)) {
-    assert.equal(createHash('sha256').update(readFileSync(new URL(name, dir))).digest('hex'), digest);
+    assert.equal(canonicalHash(readFileSync(new URL(name, dir), 'utf8')), digest);
   }
   const journey = readFileSync(new URL('journey.js', dir), 'utf8');
   assert.ok(journey.includes("if (name === 'home' || name === 'restored') nativeStatusReady = true;"));
@@ -95,4 +96,14 @@ test('actual journey separates plugin and font waits while keeping first-home re
   assert.ok(marks.some(x => x.stage === 'raf-wait-start'));
   assert.equal(marks.some(x => x.stage === 'raf-ready'), false);
   assert.equal(context.__iosParityLive().nativeStatusReady, false);
+});
+
+
+test('canonical acceptance hashes allow only line endings and reject changed deadlines', () => {
+  const source = readFileSync(new URL('ParityUITests.swift', dir), 'utf8').replace(/\r\n/g, '\n');
+  const expected = '3d3175b92c20059c2c73654308393023d102e69854a8ff6c792a2a37a75b1297';
+  assert.equal(canonicalHash(source), expected);
+  assert.equal(canonicalHash(source.replace(/\n/g, '\r\n')), expected);
+  assert.ok(source.includes('timeout: 35'));
+  assert.notEqual(canonicalHash(source.replace('timeout: 35', 'timeout: 36')), expected);
 });

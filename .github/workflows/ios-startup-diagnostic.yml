@@ -1,6 +1,8 @@
 name: iOS unsigned startup diagnostic 4e
 
 on:
+  push:
+    branches: [codex/ios-startup-diagnostic-reviewed-20261014]
   workflow_dispatch:
     inputs:
       app_sha:
@@ -28,11 +30,12 @@ jobs:
         id: source
         env:
           INPUT_SHA: ${{ inputs.app_sha }}
-          EVENT_SHA: ${{ inputs.app_sha || github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          sha="$EVENT_SHA"
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then sha="$INPUT_SHA"; fi
+          test "$GITHUB_REPOSITORY" = yarinn12/sogrim-hashbon
+          test "$GITHUB_REF" = refs/heads/codex/ios-startup-diagnostic-reviewed-20261014
+          sha="4e6f1dfba954fe34abcde60ed92af657e8457805"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then sha="$INPUT_SHA"; else test "$GITHUB_EVENT_NAME" = push; fi
           [[ "$sha" == 4e6f1dfba954fe34abcde60ed92af657e8457805 ]]
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test "$GITHUB_RUN_ATTEMPT" = 1
