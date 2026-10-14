@@ -282,10 +282,13 @@ async function verifyGoogleSession({ page }, testInfo, {
   record("google-click-returned");
   if (backgroundWorkspaceStatus === 401 || backgroundAuthUserCode) {
     await backgroundWorkspaceRejected;
-    await expect.poll(() => page.evaluate(() =>
+    // The denied session locks the gate and schedules a second document load.
+    // Read storage only after that navigation has completed.
+    await expect.poll(() => completedDocumentLoads).toBeGreaterThanOrEqual(2);
+    await expect(page.locator("#public-account-auth-gate")).toBeVisible();
+    expect(await page.evaluate(() =>
       localStorage.getItem("settle-friends-account-session")
     )).toBeNull();
-    await expect(page.locator("#public-account-auth-gate")).toBeVisible();
     expect(successfulEnsureWorkspaceResponses).toBe(1);
     expect(idTokenRequests).toBe(1);
     for (const [target, event, handler] of listeners) target.off(event, handler);
