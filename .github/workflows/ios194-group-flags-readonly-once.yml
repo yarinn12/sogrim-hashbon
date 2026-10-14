@@ -1,0 +1,174 @@
+name: Isolated read-only Apple beta group flags
+on:
+  push:
+    branches:
+      - codex/ios194-group-flags-readonly-20261014
+permissions:
+  contents: read
+concurrency:
+  group: sogrim-ios-beta-group-flags-readonly
+  cancel-in-progress: false
+jobs:
+  beta-group-flags:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/ios194-group-flags-readonly-20261014' && github.run_number == 1 && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 8f6f47368cc36c27fe5392e2a0d67a52d54985b5
+          persist-credentials: false
+      - name: Verify frozen helper source
+        run: |
+          test "$(git rev-parse HEAD)" = "8f6f47368cc36c27fe5392e2a0d67a52d54985b5"
+          test "$(git rev-parse 'HEAD^{tree}')" = "869668e96b2a6ab5282bf864fcafcf060bafe3d8"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Read only app identity and group flags
+        run: |
+          node --input-type=module <<'NODE'
+          import {writeFileSync} from 'node:fs';
+          import {join} from 'node:path';
+          import {createAppStoreClient} from './scripts/lib/app-store-release.mjs';
+          // BEGIN COLLECTOR
+          const ORIGIN = 'https://api.appstoreconnect.apple.com';
+          const APP_ID = '6809952514';
+          const BUNDLE_ID = 'com.sogrimhashbon.app';
+          const TEAM_ID = 'MA9S4L7WKS';
+          const GROUP_PATH = '/v1/apps/' + APP_ID + '/betaGroups';
+          const APP_PATH = '/v1/apps/' + APP_ID + '?fields%5Bapps%5D=bundleId';
+          const FLAGS = ['isInternalGroup', 'hasAccessToAllBuilds', 'publicLinkEnabled'];
+          const FIELD_LIST = FLAGS.join(',');
+          const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
+
+          function failure(code, status = null) {
+            const error = new Error(code);
+            error.probeCode = code;
+            error.httpStatus = Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+            return error;
+          }
+
+          function groupRequestPath(value) {
+            if (typeof value !== 'string' || !value || value.includes('#')) throw failure('UNSAFE_PAGINATION');
+            let path = value;
+            if (path.startsWith(ORIGIN + '/')) path = path.slice(ORIGIN.length);
+            const question = path.indexOf('?');
+            const pathname = question < 0 ? path : path.slice(0, question);
+            if (pathname !== GROUP_PATH) throw failure('UNSAFE_PAGINATION');
+            const query = question < 0 ? '' : path.slice(question + 1);
+            const params = Object.create(null);
+            try {
+              for (const item of query ? query.split('&') : []) {
+                if (!item || !item.includes('=')) throw failure('UNSAFE_PAGINATION');
+                const at = item.indexOf('=');
+                const key = decodeURIComponent(item.slice(0, at).replace(/\+/g, ' '));
+                const value = decodeURIComponent(item.slice(at + 1).replace(/\+/g, ' '));
+                if (!['fields[betaGroups]', 'limit', 'cursor'].includes(key) || Object.hasOwn(params, key)) throw failure('UNSAFE_PAGINATION');
+                params[key] = value;
+              }
+            } catch { throw failure('UNSAFE_PAGINATION'); }
+            if (Object.hasOwn(params, 'fields[betaGroups]') && params['fields[betaGroups]'] !== FIELD_LIST) throw failure('UNSAFE_PAGINATION');
+            if (Object.hasOwn(params, 'limit') && params.limit !== '200') throw failure('UNSAFE_PAGINATION');
+            if (Object.hasOwn(params, 'cursor') && (!params.cursor || params.cursor.length > 4096)) throw failure('UNSAFE_PAGINATION');
+            return GROUP_PATH + '?fields%5BbetaGroups%5D=' + encodeURIComponent(FIELD_LIST) + '&limit=200'
+              + (Object.hasOwn(params, 'cursor') ? '&cursor=' + encodeURIComponent(params.cursor) : '');
+          }
+
+          function getOnly(rawClient) {
+            return async (path) => {
+              const safePath = path === APP_PATH ? APP_PATH : groupRequestPath(path);
+              try { return await rawClient(safePath, {method: 'GET'}); }
+              catch (error) { throw failure('API_REQUEST_FAILED', error?.status); }
+            };
+          }
+
+          async function collectBetaGroupFlags({rawClient, teamId, now = () => new Date().toISOString()}) {
+            const state = {
+              complete: false, configuredTeamVerified: false, teamMembershipAudited: false,
+              appIdentityVerified: false, paginationComplete: false, flagsComplete: false,
+              uniqueGroupIds: true, pagesRead: 0, requestAttempts: 0, reportedTotal: null,
+              reportedTotalVerified: false, missingOrNullFlags: 0, invalidTypeFlags: 0,
+              atomicSnapshot: false, failureCode: null, httpStatus: null
+            };
+            const report = {checkedAt: null, groups: [], completeness: state};
+            const get = getOnly(rawClient);
+            const request = async (path) => { state.requestAttempts++; return await get(path); };
+            try {
+              if (teamId !== TEAM_ID) throw failure('UNEXPECTED_TEAM_CONFIGURATION');
+              state.configuredTeamVerified = true;
+              const app = (await request(APP_PATH))?.data;
+              if (app?.type !== 'apps' || app.id !== APP_ID || app.attributes?.bundleId !== BUNDLE_ID) throw failure('UNEXPECTED_APP_IDENTITY');
+              state.appIdentityVerified = true;
+              const ids = new Set(), pages = new Set();
+              let next = GROUP_PATH;
+              for (let page = 0; next !== null && page < 20; page++) {
+                const path = groupRequestPath(next);
+                if (pages.has(path)) throw failure('REPEATED_PAGINATION');
+                pages.add(path);
+                const result = await request(path);
+                state.pagesRead++;
+                if (!Array.isArray(result?.data)) throw failure('MALFORMED_GROUP_COLLECTION');
+                const total = result.meta?.paging?.total;
+                if (total !== undefined) {
+                  if (!Number.isSafeInteger(total) || total < 0) throw failure('INVALID_REPORTED_TOTAL');
+                  if (state.reportedTotal !== null && state.reportedTotal !== total) throw failure('CHANGING_REPORTED_TOTAL');
+                  state.reportedTotal = total;
+                }
+                for (const group of result.data) {
+                  if (group?.type !== 'betaGroups' || typeof group.id !== 'string' || !UUID.test(group.id)) throw failure('MALFORMED_GROUP_IDENTITY');
+                  if (ids.has(group.id)) { state.uniqueGroupIds = false; throw failure('DUPLICATE_GROUP_ID'); }
+                  ids.add(group.id);
+                  const row = {id: group.id};
+                  for (const field of FLAGS) {
+                    const value = group.attributes?.[field];
+                    row[field] = typeof value === 'boolean' ? value : null;
+                    if (value === null || value === undefined) state.missingOrNullFlags++;
+                    else if (typeof value !== 'boolean') state.invalidTypeFlags++;
+                  }
+                  report.groups.push(row);
+                }
+                const link = result.links?.next;
+                next = link === undefined || link === null ? null : link;
+                if (next !== null) groupRequestPath(next);
+              }
+              if (next !== null) throw failure('PAGINATION_LIMIT_REACHED');
+              state.paginationComplete = true;
+              if (state.reportedTotal !== null) {
+                if (state.reportedTotal !== report.groups.length) throw failure('REPORTED_TOTAL_MISMATCH');
+                state.reportedTotalVerified = true;
+              }
+              state.flagsComplete = state.missingOrNullFlags === 0 && state.invalidTypeFlags === 0;
+              if (!state.flagsComplete) throw failure('INCOMPLETE_GROUP_FLAGS');
+              state.complete = true;
+            } catch (error) {
+              state.failureCode = error?.probeCode ?? 'UNEXPECTED_PROBE_FAILURE';
+              state.httpStatus = error?.httpStatus ?? null;
+            }
+            report.checkedAt = now();
+            return report;
+          }
+          // END COLLECTOR
+          const rawClient = createAppStoreClient({
+            issuerId: process.env.APPSTORE_ISSUER_ID,
+            keyId: process.env.APPSTORE_API_KEY_ID,
+            privateKey: process.env.APPSTORE_API_PRIVATE_KEY
+          });
+          const report = await collectBetaGroupFlags({rawClient, teamId: process.env.APPLE_TEAM_ID});
+          writeFileSync(join(process.env.RUNNER_TEMP, 'ios-beta-group-flags.json'), JSON.stringify(report, null, 2) + '\n');
+          console.log('IOS_BETA_GROUP_FLAGS_READONLY:' + JSON.stringify(report));
+          process.exitCode = report.completeness.complete ? 0 : 1;
+          NODE
+      - name: Preserve sanitized report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-beta-group-flags-readonly
+          path: ${{ runner.temp }}/ios-beta-group-flags.json
+          if-no-files-found: error
+          retention-days: 7
