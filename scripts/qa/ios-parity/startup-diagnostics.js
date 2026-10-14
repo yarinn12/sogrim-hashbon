@@ -4,7 +4,8 @@
     'synthetic-service-start', 'synthetic-service-ready', 'synthetic-fetch-start',
     'synthetic-fetch-response', 'synthetic-fetch-local', 'synthetic-fetch-blocked',
     'journey-script-start', 'journey-live-defined', 'journey-start', 'home-wait-start',
-    'home-wait-ready', 'bridge-wait-start', 'bridge-wait-ready', 'app-info-start',
+    'home-wait-ready', 'home-wait-timeout', 'home-wait-error',
+    'bridge-wait-start', 'bridge-wait-ready', 'app-info-start',
     'app-info-ready', 'capture-start', 'fonts-wait-start', 'fonts-ready',
     'raf-wait-start', 'raf-ready', 'capture-post', 'capture-ack', 'readiness-committed',
     'journey-error', 'startup-milestone', 'local-resource', 'resource-summary',
@@ -59,9 +60,29 @@
     if (typeof fields.legacyOriginMatched === 'boolean') item.legacyOriginMatched = fields.legacyOriginMatched;
     if (['GET', 'POST', 'PATCH', 'DELETE', 'PUT', 'HEAD', 'OPTIONS'].includes(fields.method)) item.method = fields.method;
     if (['script', 'link', 'css', 'fetch', 'other'].includes(fields.initiator)) item.initiator = fields.initiator;
+    const homeStrings = {
+      urlScheme: ['capacitor', 'https', 'http', 'file', 'other'],
+      appScreen: ['home', 'boot', 'other', 'none'],
+      homeDisplay: ['absent', 'none', 'block', 'flex', 'grid', 'contents', 'inline', 'inline-block', 'other'],
+      homeVisibility: ['absent', 'visible', 'hidden', 'collapse', 'other'],
+      fontStatus: ['loading', 'loaded', 'unavailable'],
+      nativeStyleMedia: ['absent', 'print', 'all', 'none', 'other']
+    };
+    for (const [key, allowed] of Object.entries(homeStrings)) {
+      if (allowed.includes(fields[key])) item[key] = fields[key];
+    }
+    for (const key of ['rootNativeStylesPending', 'rootSplashActive', 'rootAuthPending',
+      'rootUpdateChecking', 'appBoot', 'homeVisible', 'nativeStyleSheetPresent']) {
+      if (typeof fields[key] === 'boolean') item[key] = fields[key];
+    }
     for (const key of ['index', 'request', 'status', 'startMs', 'durationMs', 'responseEndMs',
-      'transferSize', 'resourceEntries', 'localMatched', 'legacyMissed']) {
+      'transferSize', 'resourceEntries', 'localMatched', 'legacyMissed',
+      'deadlineEpochMs', 'timeoutMs', 'probeCount', 'homeCount', 'homeWidth', 'homeHeight',
+      'authReadyMs', 'appModuleReadyMs', 'firstScreenRenderedMs', 'splashDismissedMs']) {
       if (Number.isFinite(fields[key]) && fields[key] >= 0) item[key] = fields[key];
+    }
+    for (const key of ['homeLeft', 'homeTop']) {
+      if (Number.isFinite(fields[key]) && Math.abs(fields[key]) <= 10000) item[key] = fields[key];
     }
     try { globalThis.webkit?.messageHandlers?.iosParity?.postMessage({ kind: 'startup-diagnostic', startup: item }); }
     catch { /* A diagnostic must not break the original journey. */ }

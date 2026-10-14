@@ -254,6 +254,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                    "synthetic-service-ready", "synthetic-fetch-start", "synthetic-fetch-response",
                    "synthetic-fetch-local", "synthetic-fetch-blocked", "journey-script-start",
                    "journey-live-defined", "journey-start", "home-wait-start", "home-wait-ready",
+                   "home-wait-timeout", "home-wait-error",
                    "bridge-wait-start", "bridge-wait-ready", "app-info-start", "app-info-ready",
                    "capture-start", "fonts-wait-start", "fonts-ready", "raf-wait-start", "raf-ready",
                    "capture-post", "capture-ack", "readiness-committed", "journey-error",
@@ -262,8 +263,13 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             var fields: [String: Any] = ["stage": stage, "jsSequence": sequence]
             for key in ["epochMs", "monotonicMs", "timeOriginMs", "index", "request", "status",
                         "startMs", "durationMs", "responseEndMs", "transferSize",
-                        "resourceEntries", "localMatched", "legacyMissed"] {
+                        "resourceEntries", "localMatched", "legacyMissed",
+                        "deadlineEpochMs", "timeoutMs", "probeCount", "homeCount", "homeWidth", "homeHeight",
+                        "authReadyMs", "appModuleReadyMs", "firstScreenRenderedMs", "splashDismissedMs"] {
                 if let value = item[key] as? Double, value.isFinite, value >= 0 { fields[key] = value }
+            }
+            for key in ["homeLeft", "homeTop"] {
+                if let value = item[key] as? Double, value.isFinite, abs(value) <= 10000 { fields[key] = value }
             }
             let allowed: [String: [String]] = [
                 "readyState": ["loading", "interactive", "complete"],
@@ -274,11 +280,21 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 "milestone": ["app-module-ready", "first-screen-rendered", "auth-ready", "splash-dismissed"],
                 "resourceClass": ["style-loader", "prelude", "auth", "core", "account",
                                   "experience", "layers-css", "font-css", "rubik-font",
-                                  "base-css", "motion-vendor"]]
+                                  "base-css", "motion-vendor"],
+                "urlScheme": ["capacitor", "https", "http", "file", "other"],
+                "appScreen": ["home", "boot", "other", "none"],
+                "homeDisplay": ["absent", "none", "block", "flex", "grid", "contents", "inline", "inline-block", "other"],
+                "homeVisibility": ["absent", "visible", "hidden", "collapse", "other"],
+                "fontStatus": ["loading", "loaded", "unavailable"],
+                "nativeStyleMedia": ["absent", "print", "all", "none", "other"]]
             for (key, values) in allowed {
                 if let value = item[key] as? String, values.contains(value) { fields[key] = value }
             }
             if let legacy = item["legacyOriginMatched"] as? Bool { fields["legacyOriginMatched"] = legacy }
+            for key in ["rootNativeStylesPending", "rootSplashActive", "rootAuthPending",
+                        "rootUpdateChecking", "appBoot", "homeVisible", "nativeStyleSheetPresent"] {
+                if let value = item[key] as? Bool { fields[key] = value }
+            }
             observeStartup("web-stage", fields)
             return
         }

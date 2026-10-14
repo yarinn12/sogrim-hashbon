@@ -22,11 +22,22 @@
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   async function until(predicate, name, timeout = 30000) {
     const deadline = Date.now() + timeout;
+    let probeCount = 0;
+    const observe = (state, selectedHome) => {
+      // A diagnostic must never change a readiness result or its deadline.
+      if (name !== 'home') return;
+      try { observeHomeWait({ state, deadline, probeCount, timeout, selectedHome }); } catch {}
+    };
+    observe('start');
     while (Date.now() < deadline) {
-      const value = predicate();
-      if (value) return value;
+      let value;
+      try { value = predicate(); }
+      catch (error) { observe('error'); throw error; }
+      probeCount++;
+      if (value) { observe('ready', value); return value; }
       await sleep(100);
     }
+    observe('timeout');
     throw new Error(`iOS QA timed out: ${name}`);
   }
   function visible(element) {
@@ -35,6 +46,37 @@
     return box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
   }
   function first(selector) { return [...document.querySelectorAll(selector)].find(visible); }
+  function observeHomeWait({state, deadline, probeCount, timeout, selectedHome}) {
+    const homes = document.querySelectorAll('[data-screen-kind="home"]');
+    const home = selectedHome || homes[0] || null;
+    let box = null, style = null;
+    try { box = home?.getBoundingClientRect() || null; } catch {}
+    try { style = home ? getComputedStyle(home) : null; } catch {}
+    const root = document.documentElement;
+    const app = document.querySelector('#app');
+    const nativeStyle = document.querySelector('link[data-native-layers="true"]');
+    const markTime = name => performance.getEntriesByName?.(`sogrim:start:${name}`, 'mark')?.[0]?.startTime;
+    globalThis.__iosParityStartup?.mark(`home-wait-${state}`, {
+      deadlineEpochMs: deadline, timeoutMs: timeout, probeCount,
+      readyState: document.readyState,
+      urlScheme: location.protocol.replace(/:$/, ''),
+      rootNativeStylesPending: root.classList.contains('native-styles-pending'),
+      rootSplashActive: root.classList.contains('app-splash-active'),
+      rootAuthPending: root.classList.contains('account-auth-pending'),
+      rootUpdateChecking: root.classList.contains('mandatory-update-checking'),
+      appBoot: Boolean(app?.classList.contains('app-boot')),
+      appScreen: ['home', 'boot'].includes(app?.dataset.screen) ? app.dataset.screen : app ? 'other' : 'none',
+      homeCount: Math.min(homes.length, 1000),
+      homeVisible: Boolean(box && style && box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'),
+      homeLeft: box?.left, homeTop: box?.top, homeWidth: box?.width, homeHeight: box?.height,
+      homeDisplay: style?.display || 'absent', homeVisibility: style?.visibility || 'absent',
+      fontStatus: document.fonts?.status || 'unavailable',
+      nativeStyleMedia: nativeStyle ? nativeStyle.media || 'all' : 'absent',
+      nativeStyleSheetPresent: Boolean(nativeStyle?.sheet),
+      authReadyMs: markTime('auth-ready'), appModuleReadyMs: markTime('app-module-ready'),
+      firstScreenRenderedMs: markTime('first-screen-rendered'), splashDismissedMs: markTime('splash-dismissed')
+    });
+  }
   function point(selector) {
     const element = first(selector);
     if (!element || element.disabled) return null;
