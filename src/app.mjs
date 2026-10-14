@@ -1,4 +1,5 @@
 import { renderEventHeaderView, renderEventHeaderActionsView, renderEventHeaderMetaView } from "./ui/eventHeader.mjs";
+import { createEventPressGesture } from "./ui/eventPressGesture.mjs";
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
 import { assignSourcePayerDifference, convertExpenseInput, fetchOpenAccessRate, formatSourceAmount, parseSourceAmount, rateIsStale, summarizeSourcePayers, FX_OPEN_ACCESS_SOURCE, FX_LEGACY_ECB_SOURCE, FX_OPEN_ACCESS_ATTRIBUTION_URL } from "./domain/expenseFx.mjs";
 import { iconSvg } from "./uiIcons.mjs";
@@ -613,9 +614,12 @@ let renderGeneration = 0;
 const participantSearchQueries = new Map();
 let restoringBrowserHistory = false;
 let pendingSettingsReturnFocusSection = "";
-let eventLongPressTimer = null;
+const eventPressGesture = createEventPressGesture({
+  holdMs: EVENT_LONG_PRESS_DELAY_MS,
+  moveTolerance: EVENT_LONG_PRESS_MOVE_TOLERANCE_PX,
+  timeOrigin: () => performance.timeOrigin
+});
 let eventLongPressTarget = null;
-let eventLongPressStartPoint = null;
 let suppressedEventOpenId = "";
 let suppressEventOpenUntil = 0;
 let eventWorkspaceSwipe = null;
@@ -657,8 +661,10 @@ app.addEventListener("selectstart", handleTextSelectionStart);
 app.addEventListener("toggle", handleTransientMenuToggle, true);
 app.addEventListener("pointerdown", handleEventLongPressStart);
 app.addEventListener("pointermove", handleEventLongPressMove);
-app.addEventListener("pointerup", cancelEventLongPress);
-app.addEventListener("pointercancel", cancelEventLongPress);
+app.addEventListener("pointerup", handleEventLongPressEnd);
+app.addEventListener("pointercancel", handleEventLongPressCancel);
+document.addEventListener("pointerdown", handleEventPressPointerDown, true);
+document.addEventListener("click", consumeEventPressClick, true);
 app.addEventListener("pointerdown", handleEventWorkspaceSwipeStart);
 app.addEventListener("pointerup", handleEventWorkspaceSwipeEnd);
 app.addEventListener("pointercancel", cancelEventWorkspaceSwipe);
@@ -12071,37 +12077,56 @@ function handleEventLongPressStart(event) {
   if (!target || eventStatusMenu || importantActionDialog) return;
 
   cancelEventLongPress();
+  eventPressGesture.start(event, target, event.target.closest('[data-action="open-event"]'));
   eventLongPressTarget = target;
-  eventLongPressStartPoint = { x: event.clientX, y: event.clientY };
   target.classList.add("is-long-pressing");
-  eventLongPressTimer = window.setTimeout(() => {
-    const eventId = eventLongPressTarget?.dataset.eventId;
-    const trigger = eventLongPressTarget;
-    if (!eventId || !trigger) return;
-
-    suppressedEventOpenId = eventId;
-    suppressEventOpenUntil = performance.now() + 900;
-    cancelEventLongPress();
-    openEventStatusMenu(eventId, trigger);
-  }, EVENT_LONG_PRESS_DELAY_MS);
 }
 
 function handleEventLongPressMove(event) {
-  if (!eventLongPressTimer || !eventLongPressStartPoint) return;
-
-  const distance = Math.hypot(
-    event.clientX - eventLongPressStartPoint.x,
-    event.clientY - eventLongPressStartPoint.y
-  );
-  if (distance > EVENT_LONG_PRESS_MOVE_TOLERANCE_PX) cancelEventLongPress();
+  if (eventPressGesture.move(event)) cancelEventLongPress();
 }
 
 function cancelEventLongPress() {
-  if (eventLongPressTimer) window.clearTimeout(eventLongPressTimer);
+  eventPressGesture.cancel();
   eventLongPressTarget?.classList.remove("is-long-pressing");
-  eventLongPressTimer = null;
   eventLongPressTarget = null;
-  eventLongPressStartPoint = null;
+}
+
+function handleEventPressPointerDown(event) {
+  if (event.isPrimary) {
+    suppressedEventOpenId = "";
+    suppressEventOpenUntil = 0;
+  }
+  if (eventPressGesture.notePointerDown(event)) cancelEventLongPress();
+}
+
+function consumeEventPressClick(event) {
+  if (!eventPressGesture.consumeCompatibilityClick(event)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+function handleEventLongPressCancel(event) {
+  if (eventPressGesture.cancel(event)) cancelEventLongPress();
+}
+
+function handleEventLongPressEnd(event) {
+  const result = eventPressGesture.finish(event, target => target.isConnected && app.contains(target));
+  if (!result) return;
+  cancelEventLongPress();
+  event.preventDefault();
+  if (result.kind === "cancel") return;
+  const trigger = result.target;
+  const eventId = trigger.dataset.eventId;
+  if (result.kind === "hold") {
+    suppressedEventOpenId = eventId;
+    suppressEventOpenUntil = performance.now() + 900;
+    openEventStatusMenu(eventId, trigger);
+  } else {
+    // The native context menu may have cancelled the browser click. Activate the
+    // existing click route once; the gesture token consumes later compat clicks.
+    result.activationTarget?.click();
+  }
 }
 
 function handleEventWorkspaceSwipeStart(event) {
@@ -12169,6 +12194,8 @@ function handleEventContextMenu(event) {
 
   const target = event.target.closest('[data-long-press-event="true"][data-event-id]');
   if (!target) return;
+
+  if (eventPressGesture.isTouchContext(event)) return;
 
   cancelEventLongPress();
   suppressedEventOpenId = target.dataset.eventId;

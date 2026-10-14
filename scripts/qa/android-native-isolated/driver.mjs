@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {observeFreshWebViewBounds} from './native-observation.mjs';
+import {cardInputTraceInstallExpression} from './card-input-trace.mjs';
 
 export const device = process.env.ANDROID_QA_DEVICE;
 export const avd = process.env.ANDROID_QA_AVD;
@@ -95,12 +96,13 @@ export async function launch() {
   catch { adb(['shell', 'am', 'start', '-n', `${packageName}/com.sogrimhashbon.app.MainActivity`]); }
   const cdp = await connect(); await cdp.command('Runtime.enable');
   await waitFor(() => cdp.evaluate(`Boolean(document.querySelector('#app')?.dataset.screen && !document.querySelector('#app-splash'))`), 'Application screen', 30000);
-  await cdp.evaluate('document.fonts.ready.then(() => true)');
+  await cdp.evaluate(`${cardInputTraceInstallExpression}; document.fonts.ready.then(() => true)`);
   return cdp;
 }
 export function screenshot(path) { mkdirSync(resolve(path, '..'), { recursive: true }); writeFileSync(path, adb(['exec-out', 'screencap', '-p'], true)); }
 export const inspectExpression = `(() => {
   const app = document.querySelector('#app'), root = document.documentElement;
+  const cardInputTrace = (globalThis.__qaCardInputTrace || []).slice(0,32);
   const controls = [...document.querySelectorAll('button,input,textarea,select')].filter(e => { const r=e.getBoundingClientRect(); return r.width>0 && r.height>0 && getComputedStyle(e).visibility!=='hidden'; });
-  return { url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), nativeMethods:(Capacitor.PluginHeaders?.find(plugin=>plugin.name==='SogrimCapabilities')?.methods||[]).map(method=>method.name), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
+  return { cardInputTrace, url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), nativeMethods:(Capacitor.PluginHeaders?.find(plugin=>plugin.name==='SogrimCapabilities')?.methods||[]).map(method=>method.name), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
 })()`;
