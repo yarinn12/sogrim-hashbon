@@ -199,6 +199,56 @@ async function capture(page, testInfo, name, targets, cdp) {
   return { ...layout, metrics };
 }
 
+function expectsCompactLandscapeHome(scenario) {
+  const { width, height } = scenario.viewport;
+  return width > height && width <= 1024 && height <= 450;
+}
+
+async function homeDescriptionVisibility(page, scenario, testInfo, engine) {
+  const description = page.locator('.product-home-screen .top .brand .muted').first();
+  const expectedHidden = expectsCompactLandscapeHome(scenario);
+  await expect(description).toHaveCount(1);
+  let visibilityFailure;
+  try {
+    if (expectedHidden) await expect(description).toBeHidden();
+    else await expect(description).toBeVisible();
+  } catch (error) {
+    visibilityFailure = error;
+  }
+  const actualHidden = await description.isHidden();
+  const readback = await description.evaluate(element => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return {
+      text: element.textContent.trim(), display: style.display,
+      visibility: style.visibility,
+      bounds: { width: bounds.width, height: bounds.height },
+      viewport: { width: innerWidth, height: innerHeight },
+      compactLandscapeMedia: matchMedia('(orientation: landscape) and (max-height: 450px) and (max-width: 1024px)').matches,
+      pointerCoarse: matchMedia('(pointer: coarse)').matches,
+      pointerFine: matchMedia('(pointer: fine)').matches,
+      rootClass: document.documentElement.className
+    };
+  });
+  const evidence = { expectedHidden, actualHidden, ...readback };
+  await testInfo.attach(`${engine}-home-description-visibility`, {
+    body: JSON.stringify(evidence, null, 2), contentType: 'application/json'
+  });
+  if (visibilityFailure) {
+    await testInfo.attach(`${engine}-home-visibility-failure`, {
+      body: await page.screenshot({ fullPage: true }), contentType: 'image/png'
+    });
+    throw visibilityFailure;
+  }
+  expect(readback.viewport, `${scenario.label}: actual viewport`).toEqual(scenario.viewport);
+  expect(readback.compactLandscapeMedia, `${scenario.label}: compact landscape geometry`).toBe(expectedHidden);
+  expect(readback.rootClass, `${scenario.label}: responsive design layer`).toContain('design-coherence-v1');
+  expect(readback.rootClass, `${scenario.label}: ledger design layer`).toContain('ledger-workspace-v1');
+  expect(actualHidden, `${scenario.label}: home description visibility`).toBe(expectedHidden);
+  if (expectedHidden) expect(readback.display, `${scenario.label}: compact description display`).toBe('none');
+  return evidence;
+}
+
 async function journey(engine, name, request, baseURL, scenario, testInfo) {
   await recordQaStateBoundary({ request, testInfo, scenario: scenario.label, engine: name,
     phase: "reset", method: "post", path: "/api/reset" });
@@ -363,9 +413,12 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
       diagnoseInitialAx: scenario.label === 'portrait-375-AX-equivalent'
     });
     const records = {};
+    const descriptionVisibility = await homeDescriptionVisibility(page, scenario, testInfo, name);
     records.home = await capture(page, testInfo, `${name}-home`, {
-      description: ".product-home-screen .top .brand .muted", brand: ".product-brand-copy strong"
+      ...(!descriptionVisibility.expectedHidden ? { description: ".product-home-screen .top .brand .muted" } : {}),
+      brand: ".product-brand-copy strong"
     }, cdp);
+    records.home.descriptionVisibility = descriptionVisibility;
     if (axFontDiagnosticImmediate) records.home.axFontDiagnosticImmediate = axFontDiagnosticImmediate;
     if (scenario.label === 'portrait-375-AX-equivalent') {
       // Keep the original first-home capture above. This later sample is only
@@ -474,6 +527,12 @@ for (const scenario of [
     }
     for (const [name, result] of Object.entries(results)) {
       expect(result.errors, `${name}: runtime errors`).toEqual([]);
+      const descriptionVisibility = result.records.home.descriptionVisibility;
+      const expectedHidden = expectsCompactLandscapeHome(scenario);
+      expect(descriptionVisibility.expectedHidden, `${name}/home: visibility contract`).toBe(expectedHidden);
+      expect(descriptionVisibility.actualHidden, `${name}/home: observed visibility`).toBe(expectedHidden);
+      expect(Object.keys(result.records.home.metrics).sort(), `${name}/home: visible font targets`)
+        .toEqual(expectedHidden ? ['brand'] : ['brand', 'description']);
       for (const [screen, record] of Object.entries(result.records)) {
         expect(parseFloat(record.rootFontSize), `${name}/${screen}: requested text scale`)
           .toBeCloseTo(scenario.font, 3);
