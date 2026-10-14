@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 export const PIN = Object.freeze({
   repository: 'yarinn12/sogrim-hashbon',
-  branch: 'codex/android-renderer-ab-headless-20261014',
+  branch: 'codex/android-renderer-ab-streaming-20261014',
   source: 'c053989b217740fa9855edfbc2ec83456f498dfc',
   tree: '2b0845ff0be978c344148eb855827beb0d4f7ccb',
   tools: '9ee0e857073ff891257189c027efea924dbcb506',
@@ -29,7 +29,7 @@ export function assertContext(env, {platform, toolingHead, source, tools}) {
   assert.equal(platform, 'linux', 'Native executor requires the reviewed Linux CI host');
   assert.equal(env.GITHUB_ACTIONS, 'true');
   assert.equal(env.GITHUB_EVENT_NAME, 'push');
-  assert.equal(env.GITHUB_WORKFLOW_REF, PIN.repository + '/.github/workflows/android-renderer-ab-c053-headless-once.yml@refs/heads/' + PIN.branch);
+  assert.equal(env.GITHUB_WORKFLOW_REF, PIN.repository + '/.github/workflows/android-renderer-ab-c053-streaming-once.yml@refs/heads/' + PIN.branch);
   assert.equal(env.GITHUB_RUN_NUMBER, '1', 'Only the first registered activation may execute');
   assert.equal(env.GITHUB_REPOSITORY, PIN.repository);
   assert.equal(env.GITHUB_REF, 'refs/heads/' + PIN.branch);

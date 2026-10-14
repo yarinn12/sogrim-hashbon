@@ -7,6 +7,7 @@ import {platform} from 'node:os';
 import {createServer} from 'node:net';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 import {PIN, ARMS, assertContext, assertArtifactIdentity, assertSdk, assertRenderer, executePair, pairVerdict, probeEmulator} from './policy.mjs';
+import {sha256File} from './hash-file.mjs';
 
 const now = () => new Date().toISOString();
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -99,7 +100,7 @@ function childEnv(ctx, arm) {
 }
 function sdkDigest(ctx) {
   const candidates=['emulator','system-images/android-36.1/google_apis_playstore/x86_64','platform-tools','build-tools/36.1.0'];
-  const rows=candidates.flatMap(p=>files(join(ctx.sdk,p),ctx.sdk)).sort().map(p=>[relative(ctx.sdk,p),statSync(p).size,hash(readFileSync(p))]);
+  const rows=candidates.flatMap(p=>files(join(ctx.sdk,p),ctx.sdk)).sort().map(p=>[relative(ctx.sdk,p),statSync(p).size,sha256File(p)]);
   return {sha256:hash(Buffer.from(JSON.stringify(rows))),files:rows};
 }
 function adbOwner(ctx, expected) {
@@ -307,7 +308,7 @@ class NativeAdapter {
       assert.ok(!existsSync(destination),'Refuse overwrite of arm evidence');
       mkdirSync(destination,{recursive:true});
       if(existsSync(native))cpSync(native,join(destination,'native'),{recursive:true,errorOnExist:true,force:false});
-      const inventory=files(destination).map(p=>({path:relative(destination,p),bytes:statSync(p).size,sha256:hash(readFileSync(p))}));
+      const inventory=files(destination).map(p=>({path:relative(destination,p),bytes:statSync(p).size,sha256:sha256File(p)}));
       save(join(destination,'inventory.json'),{...immutableIdentity(ctx),arm:arm.id,files:inventory});
       arm.evidenceRetained=inventory.length>0;
       assert.ok(arm.evidenceRetained,'Arm has no retained native evidence');return {files:inventory.length};
