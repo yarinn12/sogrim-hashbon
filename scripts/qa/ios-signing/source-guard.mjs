@@ -136,7 +136,15 @@ export async function readUnusedBuild(request) {
 
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
-  assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+  if (env.GITHUB_EVENT_NAME === 'push') {
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-c053-sign-only-20261014');
+    assert.equal(env.GITHUB_WORKFLOW_REF,
+      'yarinn12/sogrim-hashbon/.github/workflows/ios194-c053-sign-only.yml@refs/heads/codex/ios194-c053-sign-only-20261014');
+    assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
+    assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
+  } else {
+    assert.equal(env.GITHUB_EVENT_NAME, 'workflow_dispatch');
+  }
   assert.equal(env.APPLE_TEAM_ID, 'MA9S4L7WKS');
   assert.equal(env.SOURCE_SHA, SOURCE);
   assert.equal(env.IOS_VERSION, '4.58');

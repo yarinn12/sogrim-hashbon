@@ -6,7 +6,8 @@
       "codex/unified-release-4-58-20261012": false,
       "codex/ios-release-tools-4-58-20261012": false,
       "codex/ios194-shared-artifact-only-20261013": false,
-      "codex/ios194-c053-tooling-reviewed-20261014": false
+      "codex/ios194-c053-tooling-reviewed-20261014": false,
+      "codex/ios194-c053-sign-only-20261014": false
     }
   },
   "builds": [
