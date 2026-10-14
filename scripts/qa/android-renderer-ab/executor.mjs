@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {spawn, execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cpSync, readdirSync, statSync, realpathSync, readlinkSync} from 'node:fs';
+import {existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, cpSync, readdirSync, statSync, realpathSync, readlinkSync, lstatSync, accessSync, constants} from 'node:fs';
 import {resolve, join, dirname, relative, isAbsolute} from 'node:path';
 import {platform} from 'node:os';
 import {createServer} from 'node:net';
@@ -9,6 +9,9 @@ import {pathToFileURL, fileURLToPath} from 'node:url';
 import {PIN, ARMS, assertContext, assertArtifactIdentity, assertSdk, assertRenderer, executePair, pairVerdict, probeEmulator} from './policy.mjs';
 import {sha256File} from './hash-file.mjs';
 import {inspectAdbOwnerProcess} from './adb-owner.mjs';
+import {prepareOwnedKvm} from './preboot-kvm.mjs';
+import {runOriginalTraceFinish,finalizeAdbClosure} from './finalization.mjs';
+import {awaitOwnedBoot} from './boot-readiness.mjs';
 
 const now = () => new Date().toISOString();
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -120,17 +123,22 @@ function adbOwner(ctx, expected) {
 }
 async function closeAdb(ctx) {
   const receipt=join(ctx.output,'adb-owner.json');
-  if(!existsSync(receipt))return;
-  const saved=readJson(receipt);assert.equal(saved.source,PIN.source);assert.equal(saved.runId,process.env.GITHUB_RUN_ID);
-  if(existsSync('/proc/'+saved.owner.pid)) {
-    adbOwner(ctx,saved.owner);
-    await command(ctx,'close-owned-adb',join(ctx.sdk,'platform-tools/adb'),['kill-server'],{env:childEnv(ctx,{id:'A',avd:'sogrim_ci_'+process.env.GITHUB_RUN_ID+'_1_a'}),timeout:15000});
-  }
-  const end=Date.now()+15000;
-  while(existsSync('/proc/'+saved.owner.pid)&&Date.now()<end)await delay(100);
-  assert.ok(!existsSync('/proc/'+saved.owner.pid),'Owned ADB process closure unconfirmed');
-  await requireFree(5037);save(join(ctx.output,'adb-closure.json'),{...immutableIdentity(ctx),pid:saved.owner.pid,closed:true});
+  const saved=existsSync(receipt)?readJson(receipt):null;
+  const initializationAttempted=existsSync(join(ctx.scratch,'arms/A/app/artifacts/android-native-isolated/adb-key-preflight.json'));
+  await finalizeAdbClosure({ownerReceipt:saved,initializationAttempted,
+    verifyAndClose:async original=>{
+      assert.equal(original.source,PIN.source);assert.equal(original.runId,process.env.GITHUB_RUN_ID);
+      if(existsSync('/proc/'+original.owner.pid)) {
+        adbOwner(ctx,original.owner);
+        await command(ctx,'close-owned-adb',join(ctx.sdk,'platform-tools/adb'),['kill-server'],{env:childEnv(ctx,{id:'A',avd:'sogrim_ci_'+process.env.GITHUB_RUN_ID+'_1_a'}),timeout:15000});
+      }
+      const end=Date.now()+15000;
+      while(existsSync('/proc/'+original.owner.pid)&&Date.now()<end)await delay(100);
+      assert.ok(!existsSync('/proc/'+original.owner.pid),'Owned ADB process closure unconfirmed');
+    },requirePortFree:()=>requireFree(5037),
+    onRecord:record=>save(join(ctx.output,'adb-closure.json'),{...immutableIdentity(ctx),pid:saved?.owner.pid??null,...record})});
 }
+
 async function prepareGlobal(ctx) {
   assert.ok(!existsSync(ctx.scratch),'Refuse an existing experiment scratch directory');
   mkdirSync(ctx.scratch);
@@ -201,6 +209,23 @@ class NativeAdapter {
     }
     if(name==='boot') {
       for(const port of [5582,5583,9232])await requireFree(port);
+      const kvmFile=join(native,'kvm-preboot.json');
+      assert.ok(!existsSync(kvmFile),'Refuse repeated KVM boot preparation');
+      const kvm=await prepareOwnedKvm({uid:process.getuid(),priorDevice:ctx.kvmDevice,
+        observe:async()=>{
+          const path='/dev/kvm',stat=lstatSync(path);
+          const acl=await command(ctx,arm.id+'-kvm-acl','getfacl',['-cp','--absolute-names',path],{env:childEnv(ctx,arm),timeout:20000});
+          let accessible=true;try{accessSync(path,constants.R_OK|constants.W_OK);}catch{accessible=false;}
+          return {path,canonicalPath:realpathSync(path),character:stat.isCharacterDevice(),dev:stat.dev,ino:stat.ino,rdev:stat.rdev,uid:stat.uid,gid:stat.gid,mode:stat.mode,accessible,acl:acl.stdout};
+        },
+        grant:uid=>command(ctx,arm.id+'-same-uid-kvm-access','sudo',['setfacl','-m','u:'+uid+':rw','--','/dev/kvm'],{env:childEnv(ctx,arm),timeout:20000}),
+        checkAcceleration:async()=>{
+          const result=await command(ctx,arm.id+'-kvm-acceleration',join(ctx.sdk,'emulator/emulator'),['-no-window','-accel-check'],{env:childEnv(ctx,arm),timeout:20000});
+          return result.stdout+result.stderr;
+        },
+        onRecord:report=>save(kvmFile,{...immutableIdentity(ctx),arm:arm.id,...report})});
+      ctx.kvmDevice=kvm.after;
+
       const executable=join(ctx.sdk,'emulator/emulator'),env=childEnv(ctx,arm);
       const args=['-avd',arm.avd,'-port','5582','-no-window','-no-snapshot','-no-audio','-no-boot-anim','-gpu',arm.gpu,'-feature','GLDirectMem,HasSharedSlotsHostMemoryAllocator','-verbose','-memory','4096','-cores','2'];
       const child=spawn(executable,args,{env,stdio:['ignore','pipe','pipe']});this.emulators.set(arm.id,child);
@@ -211,14 +236,16 @@ class NativeAdapter {
       arm.owner=this.traceApi.assertHostOwner({emulatorPid:child.pid,avd:arm.avd,device:'emulator-5582'});
       save(join(native,'emulator-owner.json'),{...immutableIdentity(ctx),owner:arm.owner,avd:arm.avd,arm:arm.id});
       save(join(ctx.output,'live-identities',arm.id+'.json'),{...immutableIdentity(ctx),owner:arm.owner,avd:arm.avd,arm:arm.id});
-      await this.adb(arm,['wait-for-device'],{timeout:240000});
-      let booted=false;
-      for(let n=0;n<180;n++){
-        await this.owner(arm);
-        if((await this.adb(arm,['shell','getprop','sys.boot_completed'])).stdout.trim()==='1'){booted=true;break;}
-        await delay(1000);
-      }
-      assert.ok(booted,'Original boot budget exhausted');
+      const observations=[];
+      await awaitOwnedBoot({
+        waitForDevice:timeout=>this.adb(arm,['wait-for-device'],{timeout,allowFailure:true}),
+        assertOwner:()=>this.owner(arm),
+        getBootCompleted:()=>this.adb(arm,['shell','getprop','sys.boot_completed'],{allowFailure:true}),
+        recordObservation:observation=>{
+          observations.push({at:now(),...observation});
+          save(join(native,'boot-readiness.json'),{...immutableIdentity(ctx),arm:arm.id,observations});
+        }
+      });
       assert.equal((await this.adb(arm,['emu','avd','name'])).stdout.split(/\r?\n/)[0].trim(),arm.avd);
       return {owner:await this.owner(arm)};
     }
@@ -262,9 +289,16 @@ class NativeAdapter {
       save(join(native,'logcat-owner.json'),{pid:child.pid,source:PIN.source,emulator:arm.owner});return {pid:child.pid};
     }
     if(name==='trace-start'||name==='trace-finish') {
-      await this.owner(arm);
-      await command(ctx,arm.id+'-'+name,process.execPath,[join(ctx.tools,'scripts/qa/android-native-isolated/trace-diagnostics.mjs'),name==='trace-start'?'start':'finish'],
+      const original=()=>command(ctx,arm.id+'-'+name,process.execPath,[join(ctx.tools,'scripts/qa/android-native-isolated/trace-diagnostics.mjs'),name==='trace-start'?'start':'finish'],
         {cwd:app,env:{...childEnv(ctx,arm),ANDROID_QA_JOB_STATUS:arm.phases.some(p=>p.state==='failed')?'failure':'success'}});
+      if(name==='trace-start'){await this.owner(arm);await original();}
+      else {
+        const ownerAlive=Boolean(arm.owner&&existsSync('/proc/'+arm.owner.pid));
+        await runOriginalTraceFinish({ownerAlive,verifyLiveOwner:()=>this.owner(arm),finishOriginal:async()=>{
+          save(join(native,'trace-finish-delegation.json'),{...immutableIdentity(ctx),ownerReceiptPresent:Boolean(arm.owner),ownerAlive,originalFinisherUsed:true,nativeAcceptance:false});
+          return original();
+        }});
+      }
       const report=readJson(join(native,'trace-diagnostics',name==='trace-start'?'trace-start.json':'trace-diagnostics.json'));
       assert.equal(name==='trace-start'?report.captureStarted:report.captureComplete,true);
       return {captureComplete:report.captureComplete??false,nativeAcceptance:false,semanticCoverage:'pending offline loss/scheduling/coverage analysis'};
@@ -358,7 +392,7 @@ async function main() {
   }
   if(mode==='--summarize') {
     const pair=readJson(pairPath);
-    let verdict;try{verdict=pairVerdict(pair.arms);if(existsSync(join(ctx.output,'adb-owner.json')))assert.equal(readJson(join(ctx.output,'adb-closure.json')).closed,true);}
+    let verdict;try{verdict=pairVerdict(pair.arms);assert.equal(readJson(join(ctx.output,'adb-closure.json')).closed,true,'ADB closure must be verified, including missing-owner paths');}
     catch(error){verdict={controlsPassed:false,error:error.message,nativeAcceptance:false,releaseAcceptance:false};}
     save(join(ctx.output,'final-verdict.json'),{...immutableIdentity(ctx),...verdict});
     assert.equal(verdict.controlsPassed,true,'Missing/failed/incomplete arm; diagnostic is not accepted');return;

@@ -1,9 +1,9 @@
-name: Android c053 renderer A/B owned process one shot
+name: Android c053 renderer A/B original boot preconditions
 
 on:
   push:
     branches:
-      - codex/android-renderer-ab-owner-20261014
+      - codex/android-renderer-ab-boot-20261014
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
     if: >-
       github.repository == 'yarinn12/sogrim-hashbon' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/codex/android-renderer-ab-owner-20261014' &&
+      github.ref == 'refs/heads/codex/android-renderer-ab-boot-20261014' &&
       github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -86,7 +86,7 @@ jobs:
           "$sdk_bin/sdkmanager" --install 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-renderer-ab/sdk-setup.log 2>&1
           echo "ANDROID_AB_SDK_BIN=$sdk_bin" >> "$GITHUB_ENV"
           test -c /dev/kvm
-          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          # The original same-uid grant is made immediately before each arm boot.
           # Executor rejects SDK/emulator version or byte drift before either launch.
       - name: Run each fresh arm once, sequentially, preserving original gates
         working-directory: control

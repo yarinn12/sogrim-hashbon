@@ -12,7 +12,7 @@ const identity={source:PIN.source,tree:PIN.tree,tools:PIN.tools,zipSha256:PIN.zi
   apkSha256:PIN.apkSha,apkBytes:PIN.apkBytes,assets:214,fonts:13,privateEnvDisabled:true,syntheticBootstrap:true};
 const head='a'.repeat(40);
 const context={platform:'linux',toolingHead:head,source:{commit:PIN.source,tree:PIN.tree,clean:true},tools:{commit:PIN.tools,tree:PIN.tree,clean:true}};
-const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'push',GITHUB_RUN_NUMBER:'1',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/android-renderer-ab-c053-owner-once.yml@refs/heads/'+PIN.branch,GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
+const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'push',GITHUB_RUN_NUMBER:'1',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/android-renderer-ab-c053-boot-once.yml@refs/heads/'+PIN.branch,GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
 const capabilities={compatible:true,observations:{GlDirectMem:[1],HasSharedSlotsHostMemoryAllocator:[1]}};
 const originalRenderer=readFileSync(new URL('./fixtures/android-renderer-ab-original-renderer.txt',import.meta.url),'utf8');
 // Candidate B is a synthetic policy fixture, not an observed Native result.
@@ -122,12 +122,12 @@ test('controlled failed-arm guard mutation accepts A failure incorrectly; final 
   assert.equal(mutation.pairVerdict(result.arms).controlsPassed,true,'Controlled OLD guard must exhibit the covered incorrect acceptance');
 });
 test('workflow is one-shot, read-only, no rebuild/deploy/secrets, and retains evidence on every failure',()=>{
-  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-c053-owner-once.yml',import.meta.url),'utf8');
-  assert.match(yaml,/push:\n    branches:\n      - codex\/android-renderer-ab-owner-20261014/);assert.doesNotMatch(yaml,/workflow_call:|workflow_dispatch:|pull_request:/);
+  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-c053-boot-once.yml',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+  assert.match(yaml,/push:\n    branches:\n      - codex\/android-renderer-ab-boot-20261014/);assert.doesNotMatch(yaml,/workflow_call:|workflow_dispatch:|pull_request:/);
   assert.match(yaml,/github\.run_number == 1 && github\.run_attempt == 1/);
   assert.match(yaml,/github\.repository == 'yarinn12\/sogrim-hashbon'/);
   assert.match(yaml,/github\.event_name == 'push'/);
-  assert.match(yaml,/github\.ref == 'refs\/heads\/codex\/android-renderer-ab-owner-20261014'/);
+  assert.match(yaml,/github\.ref == 'refs\/heads\/codex\/android-renderer-ab-boot-20261014'/);
   assert.match(yaml,/retention-days: 7/);
   assert.match(yaml,/contents: read\n  actions: read/);
   assert.doesNotMatch(yaml,/secrets\.|assembleDebug|gradlew|native:prepare|npm ci|vercel deploy|continue-on-error|pull_request_target/);
