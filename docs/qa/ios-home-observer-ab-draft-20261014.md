@@ -1,16 +1,24 @@
 # iOS home wait: observer-only diagnostic comparison (draft)
 
-This is a reviewable run design, not an activated workflow. Do not dispatch or
-publish it until the diagnostic source, exact build, and runner are reviewed.
+This is a reviewable run design. The one-off push-only runner is
+`.github/workflows/ios-home-observer-ab-once.yml`. Review the diagnostic
+source, exact build, and runner before publishing; this document does not
+establish that a run occurred.
 The existing 30-second `home` wait, 100 ms poll, 35-second native status wait,
 13 capture phases, screenshot ACK, and failure status stay unchanged.
 
 ## Pinned inputs
 
-- Application source: `8f6f47368cc36c27fe5392e2a0d67a52d54985b5`;
-  tree: `869668e96b2a6ab5282bf864fcafcf060bafe3d8`.
-- Use one unsigned `App.app` and one `xctestrun` built from that source plus
-  the reviewed QA-only home-wait diagnostics. Record both SHA-256 digests.
+- Product baseline: `8f6f47368cc36c27fe5392e2a0d67a52d54985b5`;
+  tree: `869668e96b2a6ab5282bf864fcafcf060bafe3d8`. The sealed application
+  and QA fixture checkout, including the reviewed home-wait diagnostics, is
+  `52dc1c737fcb95bbe03f6cde9e495877ca6a765c`; tree:
+  `76cc019ee0bbdcc6006753656f88ef1e5e7a58dc`. Record the separate
+  control-runner SHA for the one-off workflow.
+- Each matrix job builds one unsigned `App.app` and one `xctestrun` before its
+  two arms. Record both SHA-256 digests and the full `Build/Products` digest;
+  require them to stay identical within that job. Separate jobs build
+  independently, so their binaries need not have identical hashes.
 - Pin Xcode 26.6, iOS Simulator 26.5, device profile, synthetic fixture,
   isolated network policy, and test selection. No product file or fixture data
   changes between arms.

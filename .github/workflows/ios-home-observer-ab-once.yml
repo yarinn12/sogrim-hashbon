@@ -1,0 +1,150 @@
+name: iOS home observer A/B diagnostic (no release acceptance)
+
+on:
+  push:
+    branches: [codex/ios-home-observer-ab-20261015]
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: >-
+      github.repository == 'yarinn12/sogrim-hashbon' &&
+      github.ref == 'refs/heads/codex/ios-home-observer-ab-20261015' &&
+      github.run_number == 1 && github.run_attempt == 1
+    strategy:
+      fail-fast: false
+      matrix:
+        order: [on-off, off-on]
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      APP_SHA: 52dc1c737fcb95bbe03f6cde9e495877ca6a765c
+      APP_TREE: 76cc019ee0bbdcc6006753656f88ef1e5e7a58dc
+      AB_ORDER: ${{ matrix.order }}
+      AB_CONTROL: ${{ github.workspace }}/scripts/qa/ios-parity
+      AB_FIXTURES: ${{ github.workspace }}/app/scripts/qa/ios-parity
+    steps:
+      - name: Checkout one-off control runner
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Checkout pinned application and QA fixture
+        uses: actions/checkout@v6
+        with:
+          ref: 52dc1c737fcb95bbe03f6cde9e495877ca6a765c
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Verify pinned inputs and exact simulator SDK
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$APP_SHA"
+          test "$(git rev-parse 'HEAD^{tree}')" = "$APP_TREE"
+          test -z "$(git status --porcelain)"
+          test "$(git -C .. rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_SHA" != "$APP_SHA"
+          mkdir -p build/native-parity-ab
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          xcodebuild -version > build/native-parity-ab/xcode-version.txt
+          grep -qx 'Xcode 26.6' build/native-parity-ab/xcode-version.txt
+          test "$(xcrun --sdk iphonesimulator --show-sdk-version)" = 26.5
+          python3 - <<'PY'
+          import json, pathlib, re, subprocess
+          out=pathlib.Path('build/native-parity-ab')
+          runtimes=json.loads(subprocess.check_output(['xcrun','simctl','list','runtimes','-j']))['runtimes']
+          runtime=next(row for row in runtimes if row.get('isAvailable') and row.get('version')=='26.5' and '.iOS-' in row['identifier'])
+          devices=json.loads(subprocess.check_output(['xcrun','simctl','list','devicetypes','-j']))['devicetypes']
+          device=next(row for row in devices if row['name']=='iPhone 16')
+          for value in (runtime['identifier'],device['identifier']):
+              assert re.fullmatch(r'[A-Za-z0-9.\-]+',value), value
+          (out/'sdk.json').write_text(json.dumps({'runtimeVersion':'26.5','runtimeId':runtime['identifier'],
+              'deviceName':device['name'],'deviceTypeId':device['identifier']},indent=2)+'\n')
+          (out/'simulator.env').write_text(f"AB_RUNTIME_ID={runtime['identifier']}\nAB_DEVICE_TYPE_ID={device['identifier']}\n")
+          PY
+      - name: Prepare synthetic fixture and unsigned parity controller
+        working-directory: app
+        run: |
+          set -euo pipefail
+          python3 "$AB_CONTROL/test_observer_ab.py" > build/native-parity-ab/observer-ab-controls.log 2>&1
+          npm ci
+          python3 "$AB_FIXTURES/test_validation.py" > build/native-parity-ab/validator-controls.log 2>&1
+          python3 "$AB_FIXTURES/test_native_stall_monitor.py" > build/native-parity-ab/monitor-controls.log 2>&1
+          node "$AB_FIXTURES/build-www.mjs" > build/native-parity-ab/bundle.log 2>&1
+          npx cap sync ios > build/native-parity-ab/cap-sync.log 2>&1
+          node scripts/finalize-native-projects.mjs > build/native-parity-ab/finalize.log 2>&1
+          python3 "$AB_FIXTURES/prepare.py" prepare "$PWD" "$APP_SHA" > build/native-parity-ab/prepare.log 2>&1
+          python3 - <<'PY'
+          import json, os, pathlib
+          out=pathlib.Path('build/native-parity-ab')
+          manifest=json.loads(pathlib.Path('build/native-parity/package-manifest.json').read_text())
+          assert (manifest['sourceSha'],manifest['sourceTree'])==(os.environ['APP_SHA'],os.environ['APP_TREE'])
+          assert (manifest['fixtureSha'],manifest['fixtureTree'])==(os.environ['APP_SHA'],os.environ['APP_TREE'])
+          sdk=json.loads((out/'sdk.json').read_text())
+          (out/'plan.json').write_text(json.dumps({'schemaVersion':1,'diagnosticOnly':True,
+              'releaseAcceptance':False,'runnerSha':os.environ['GITHUB_SHA'],
+              'sourceSha':manifest['sourceSha'],'sourceTree':manifest['sourceTree'],
+              'fixtureSha':manifest['fixtureSha'],'fixtureTree':manifest['fixtureTree'],
+              'order':os.environ['AB_ORDER'].split('-'),'runtimeVersion':sdk['runtimeVersion'],
+              'deviceName':sdk['deviceName'],'runtimeId':sdk['runtimeId'],
+              'deviceTypeId':sdk['deviceTypeId']},indent=2)+'\n')
+          PY
+      - name: Build unsigned App.app and XCTest once before both arms
+        working-directory: app
+        run: |
+          set -euo pipefail
+          out=build/native-parity-ab
+          printf 'build-for-testing\n' > "$out/build-invocations.txt"
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$out/derived" build-for-testing CODE_SIGNING_ALLOWED=NO \
+            > "$out/build.log" 2>&1
+          python3 "$AB_CONTROL/observer_ab.py" snapshot "$PWD/$out/derived/Build/Products" \
+            "$PWD/$out/baseline.json"
+      - name: Run both observer arms and retain either failure
+        working-directory: app
+        run: |
+          set -euo pipefail
+          export AB_ROOT="$PWD/build/native-parity-ab"
+          export AB_PRODUCTS="$AB_ROOT/derived/Build/Products"
+          export AB_MANIFEST="$PWD/build/native-parity/package-manifest.json"
+          export AB_SOURCE_SHA="$APP_SHA" AB_SOURCE_TREE="$APP_TREE"
+          source "$AB_ROOT/simulator.env"
+          export AB_RUNTIME_ID AB_DEVICE_TYPE_ID
+          AB_APP_BUNDLE="$(python3 - "$AB_ROOT/baseline.json" "$AB_PRODUCTS" <<'PY'
+          import json, pathlib, sys
+          baseline=json.loads(pathlib.Path(sys.argv[1]).read_text())
+          print(pathlib.Path(sys.argv[2])/baseline['appPath'])
+          PY
+          )"
+          AB_XCTESTRUN="$(python3 - "$AB_ROOT/baseline.json" "$AB_PRODUCTS" <<'PY'
+          import json, pathlib, sys
+          baseline=json.loads(pathlib.Path(sys.argv[1]).read_text())
+          print(pathlib.Path(sys.argv[2])/baseline['xctestrunPath'])
+          PY
+          )"
+          export AB_APP_BUNDLE AB_XCTESTRUN
+          bash "$AB_CONTROL/observer_ab_run.sh"
+      - name: Keep every diagnostic artifact, including failed arms
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-home-observer-ab-${{ matrix.order }}-${{ github.sha }}
+          path: |
+            app/build/native-parity-ab/*.json
+            app/build/native-parity-ab/*.log
+            app/build/native-parity-ab/*.txt
+            app/build/native-parity-ab/*.env
+            app/build/native-parity-ab/on/
+            app/build/native-parity-ab/off/
+            app/build/native-parity/package-manifest.json
+          if-no-files-found: error
+          retention-days: 14
