@@ -17,6 +17,7 @@ try{
   adb(['shell','settings','put','system','accelerometer_rotation','0']);
   for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
     const row={scale,orientation,checks:[],nativeHolds:[],nativeTaps:[]};results.push(row);
+    let measuringHold=false;
     const check=(name,ok,detail={})=>row.checks.push({name,ok:Boolean(ok),...detail});
     try{
       adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
@@ -58,7 +59,10 @@ try{
       for(const [label,selector] of [['header','.product-app-identity'],['hero','.settlement-hero'],['transfer','.transfer-row']]){await page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);await sleep(200);screenshot(resolve(out,`${orientation}-scale-${scale}-${label}.png`));}
       // Keep the original first tap cold; exercise hold only in a separate launch.
       row.exceptions=page.exceptions;
-      page.close();page=null;page=await launch();
+      measuringHold=true;
+      page.close();page=null;
+      const heldOriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});
+      row.holdRotationReceipt=heldOriented.receipt;
       row.nativeHolds.push(await page.hold('[data-action="open-event"][data-event-id="android-native-event"]',650));
       const held=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),tabs=Boolean(document.querySelector('.event-workspace-nav'));return menu||app?.dataset.screen!=='home'||tabs?{home:app?.dataset.screen==='home',menu,tabs}:false})()`),'Native hold opens event options on Home');
       check('Native hold opens event options on Home',held.home&&held.menu&&!held.tabs,held);
@@ -72,7 +76,16 @@ try{
       row.holdState=await page.evaluate(inspectExpression);
       row.holdExceptions=page.exceptions;
       check('Native hold session has no JS exceptions',row.holdExceptions.length===0);
-    }catch(error){row.error=error.stack;row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
+    }catch(error){
+      row.error=error.stack;
+      const failureState=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;
+      if(measuringHold){
+        row.holdRotationReceipt=error.rotationReceipt||row.holdRotationReceipt;
+        row.holdState=failureState;row.holdExceptions=page?.exceptions||[];
+      }else{
+        row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=failureState;
+      }
+    }
     finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }
 }finally{

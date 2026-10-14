@@ -77,7 +77,7 @@ test('six scale/orientation cases preserve the original cold tap before separate
   const tabs = matrix.indexOf("'Three event tabs'");
   const followupOpen=matrix.indexOf("row.nativeTaps.push(await page.tap('[data-action=\"open-event\"][data-event-id=\"android-native-event\"]'))",close);
   const followupTabs=matrix.indexOf("'Three event tabs'",followupOpen);
-  const fresh=matrix.indexOf('page.close();page=null;page=await launch();',tabs);
+  const fresh=matrix.indexOf('const heldOriented=await launchForOwnedOrientation(',tabs);
   assert.ok(open >= 0 && tabs > open && fresh > tabs && hold > fresh && close > hold && followupOpen > close && followupTabs > followupOpen, 'The original cold tap and tabs must precede a separate fresh-session hold, close and follow-up tap');
   assert.match(matrix, /event-status-menu\[data-event-id/);
   assert.match(matrix, /dataset\.screen==='home'/);
