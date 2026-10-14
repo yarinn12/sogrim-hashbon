@@ -122,7 +122,7 @@ jobs:
           set -euo pipefail
           test -c /dev/kvm
           sudo setfacl -m "u:$USER:rw" /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu software -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > artifacts/android-native-isolated/emulator.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/emulator.pid
           # A failed emulator must produce diagnostics rather than leave ADB
           # waiting for a device until the entire job times out.
@@ -136,6 +136,7 @@ jobs:
           test "$("$ADB_PATH" -s "$ANDROID_QA_DEVICE" emu avd name | head -1 | tr -d '\r')" = "$ANDROID_QA_AVD"
           tr '\0' ' ' < "/proc/$(cat artifacts/android-native-isolated/emulator.pid)/cmdline" > artifacts/android-native-isolated/emulator-cmdline.txt
           printf '\n' >> artifacts/android-native-isolated/emulator-cmdline.txt
+          grep -qF -- '-gpu swiftshader' artifacts/android-native-isolated/emulator-cmdline.txt
           grep -qF -- '-memory 4096 -cores 2' artifacts/android-native-isolated/emulator-cmdline.txt
           cat artifacts/android-native-isolated/emulator-cmdline.txt
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell cat /proc/meminfo > artifacts/android-native-isolated/guest-meminfo.txt
