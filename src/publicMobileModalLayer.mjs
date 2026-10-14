@@ -451,9 +451,9 @@ const CSS = `
       .event-participant-route-backdrop[data-event-route-dialog="true"]
       .event-participant-roster-modal {
       box-sizing: border-box !important;
-      height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 16px - env(safe-area-inset-bottom)) !important;
       min-height: 0 !important;
-      max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 16px - env(safe-area-inset-bottom)) !important;
       display: block !important;
       overflow-y: auto !important;
       scroll-padding-block: 12px !important;
