@@ -61,10 +61,12 @@ test("large and normal text take effect immediately with reduced motion", async 
     root.style.setProperty("font-size", "37.64706px", "important");
 
     // Read in the same browser task: a transition must not expose the old
-    // 16px root and 13px description for a frame after the preference changes.
+    // 16px root and 14px compact description after the preference changes.
     const enlarged = {
+      viewport: { width: innerWidth, height: innerHeight },
       reducedMotion,
       coarsePointer,
+      finePointer: matchMedia("(any-pointer: fine)").matches,
       beforeRoot,
       beforeDescription,
       root: parseFloat(getComputedStyle(root).fontSize),
@@ -90,15 +92,17 @@ test("large and normal text take effect immediately with reduced motion", async 
   });
 
   expect(sizes.reducedMotion).toBe(true);
+  expect(sizes.viewport).toEqual({ width: 375, height: 667 });
   expect(sizes.coarsePointer).toBe(false);
+  expect(sizes.finePointer).toBe(true);
   expect(sizes.beforeRoot).toBeCloseTo(16, 3);
-  expect(sizes.beforeDescription).toBeCloseTo(13, 3);
+  expect(sizes.beforeDescription).toBeCloseTo(14, 3);
   expect(sizes.root).toBeCloseTo(37.64706, 3);
-  expect(sizes.description).toBeCloseTo(30.588236, 3);
+  expect(sizes.description).toBeCloseTo(32.941176, 3);
   expect(sizes.rootFontTransition).toBe(false);
   expect(sizes.descriptionFontTransition).toBe(false);
   expect(sizes.restoredRoot).toBeCloseTo(16, 3);
-  expect(sizes.restoredDescription).toBeCloseTo(13, 3);
+  expect(sizes.restoredDescription).toBeCloseTo(14, 3);
   expect(sizes.restoredRootFontTransition).toBe(false);
   expect(sizes.restoredDescriptionFontTransition).toBe(false);
 
@@ -112,6 +116,9 @@ test("large and normal text take effect immediately with reduced motion", async 
     root.classList.remove("dynamic-type-preview");
     root.style.removeProperty("font-size");
     return {
+      viewport: { width: innerWidth, height: innerHeight },
+      coarsePointer: matchMedia("(any-pointer: coarse)").matches,
+      finePointer: matchMedia("(any-pointer: fine)").matches,
       beforeRoot,
       beforeDescription,
       root: parseFloat(getComputedStyle(root).fontSize),
@@ -123,9 +130,12 @@ test("large and normal text take effect immediately with reduced motion", async 
     };
   });
   expect(previewReturn.beforeRoot).toBeCloseTo(28, 3);
-  expect(previewReturn.beforeDescription).toBeCloseTo(22.75, 3);
+  expect(previewReturn.viewport).toEqual({ width: 375, height: 667 });
+  expect(previewReturn.coarsePointer).toBe(false);
+  expect(previewReturn.finePointer).toBe(true);
+  expect(previewReturn.beforeDescription).toBeCloseTo(24.5, 3);
   expect(previewReturn.root).toBeCloseTo(16, 3);
-  expect(previewReturn.description).toBeCloseTo(13, 3);
+  expect(previewReturn.description).toBeCloseTo(14, 3);
   expect(previewReturn.rootFontTransition).toBe(false);
   expect(previewReturn.descriptionFontTransition).toBe(false);
 });
