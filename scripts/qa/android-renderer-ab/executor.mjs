@@ -8,6 +8,7 @@ import {createServer} from 'node:net';
 import {pathToFileURL, fileURLToPath} from 'node:url';
 import {PIN, ARMS, assertContext, assertArtifactIdentity, assertSdk, assertRenderer, executePair, pairVerdict, probeEmulator} from './policy.mjs';
 import {sha256File} from './hash-file.mjs';
+import {inspectAdbOwnerProcess} from './adb-owner.mjs';
 
 const now = () => new Date().toISOString();
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -104,7 +105,8 @@ function sdkDigest(ctx) {
   return {sha256:hash(Buffer.from(JSON.stringify(rows))),files:rows};
 }
 function adbOwner(ctx, expected) {
-  if(expected) {assert.deepEqual(processIdentity(expected.pid),expected.identity);assert.deepEqual(readFileSync('/proc/'+expected.pid+'/cmdline','utf8').split('\0').filter(Boolean),expected.command);return expected;}
+  const inspect=pid=>inspectAdbOwnerProcess(pid,join(ctx.sdk,'platform-tools/adb'),{identityFor:processIdentity,readFile:readFileSync,realpath:realpathSync},expected);
+  if(expected)return inspect(expected.pid);
   const rows=['/proc/net/tcp','/proc/net/tcp6'].flatMap(p=>readFileSync(p,'utf8').split('\n').slice(1));
   const inodes=rows.map(row=>row.trim().split(/\s+/)).filter(row=>row[3]==='0A'&&row[1]?.split(':')[1]==='13AD').map(row=>row[9]);
   assert.equal(inodes.length,1,'Require exactly one newly prepared ADB5037 listener');
@@ -114,10 +116,7 @@ function adbOwner(ctx, expected) {
     if(matches)owners.push(Number(pid));
   } catch(error) {if(!['EACCES','EPERM','ENOENT'].includes(error.code))throw error;}
   assert.equal(owners.length,1,'Require one readable owned ADB server PID');
-  const pid=owners[0],command=readFileSync('/proc/'+pid+'/cmdline','utf8').split('\0').filter(Boolean);
-  assert.equal(realpathSync(command[0]),realpathSync(join(ctx.sdk,'platform-tools/adb')));
-  assert.ok(command.includes('tcp:5037')&&command.includes('fork-server')&&command.includes('server'));
-  return {pid,identity:processIdentity(pid),command};
+  return inspect(owners[0]);
 }
 async function closeAdb(ctx) {
   const receipt=join(ctx.output,'adb-owner.json');

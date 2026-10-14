@@ -1,9 +1,9 @@
-name: Android c053 renderer A/B streaming one shot
+name: Android c053 renderer A/B owned process one shot
 
 on:
   push:
     branches:
-      - codex/android-renderer-ab-streaming-20261014
+      - codex/android-renderer-ab-owner-20261014
 
 permissions:
   contents: read
@@ -18,7 +18,7 @@ jobs:
     if: >-
       github.repository == 'yarinn12/sogrim-hashbon' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/codex/android-renderer-ab-streaming-20261014' &&
+      github.ref == 'refs/heads/codex/android-renderer-ab-owner-20261014' &&
       github.run_number == 1 && github.run_attempt == 1
     runs-on: ubuntu-24.04
     timeout-minutes: 45
