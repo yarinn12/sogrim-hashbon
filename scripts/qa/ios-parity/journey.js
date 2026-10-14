@@ -1,4 +1,6 @@
 (() => {
+  const startup = (stage, fields) => globalThis.__iosParityStartup?.mark(stage, fields);
+  startup('journey-script-start');
   const errors = [];
   const navigationDiagnostics = [];
   const historyDiagnostics = [];
@@ -91,6 +93,7 @@
     documentScroll: { x: scrollX, y: scrollY },
     restored: Boolean(localStorage.getItem('qa-ios-parity-complete'))
   });
+  startup('journey-live-defined', { phase });
   async function click(selector) {
     const element = await until(() => first(selector), selector);
     const diagnostic = { selector, at: performance.now(), beforePhase: phase, beforeScreen: document.querySelector('#app')?.dataset.screen,
@@ -173,7 +176,7 @@
   }
   let captureIndex = 0;
   const pending = new Map();
-  globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
+  globalThis.__iosParityCaptureAck = index => { startup('capture-ack', { index, phase }); pending.get(index)?.(); pending.delete(index); };
   function keyboardLayout(name, selectors) {
     if (name !== 'keyboard-amount' && name !== 'keyboard-name') return null;
     const field = name === 'keyboard-amount' ? 'amount' : 'name';
@@ -215,14 +218,20 @@
     webkit.messageHandlers.iosParity.postMessage({ kind: 'keyboard-geometry-diagnostic', index, phase: name, snapshots });
   }
   async function capture(name, selectors) {
+    startup('capture-start', { phase: name });
+    startup('fonts-wait-start', { phase: name });
     await document.fonts.ready;
+    startup('fonts-ready', { phase: name });
+    startup('raf-wait-start', { phase: name });
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    startup('raf-ready', { phase: name });
     const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]));
     phase = name;
     globalThis.__iosParityInputTrace?.setPhase(name);
     if (name === 'keyboard-ready') globalThis.__iosParityInputTrace?.arm();
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
+    startup('capture-post', { index, phase });
     webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics,
       homeReference: name === 'home' ? homeReference() : null,
       keyboardLayout: keyboardLayout(name, selectors),
@@ -242,6 +251,7 @@
     });
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
     if (name === 'home' || name === 'restored') nativeStatusReady = true;
+    if (name === 'home' || name === 'restored') startup('readiness-committed', { index, phase });
     // Observe subsequent geometry without replacing the sealed original
     // capture or delaying the trusted XCTest actions that consume its phase.
     if (name === 'keyboard-amount' || name === 'keyboard-name') {
@@ -250,9 +260,16 @@
   }
   globalThis.__iosParityCaptureCurrent = name => capture(name, { heading: '.event-overview-header h1' });
   async function run() {
+    startup('journey-start', { phase });
+    startup('home-wait-start', { phase });
     await until(() => first('[data-screen-kind="home"]'), 'home');
+    startup('home-wait-ready', { phase });
+    startup('bridge-wait-start', { phase });
     await until(() => globalThis.Capacitor?.isNativePlatform?.(), 'actual Capacitor bridge');
+    startup('bridge-wait-ready', { phase });
+    startup('app-info-start', { phase });
     globalThis.__iosParityNativeAppInfo = await Capacitor.Plugins.App.getInfo();
+    startup('app-info-ready', { phase });
     if (localStorage.getItem('qa-ios-parity-complete')) {
       await click(`[data-action="open-event"][data-event-id="${EVENT}"]`);
       const row = JSON.parse(localStorage.getItem('qa-native-server-row'));
@@ -318,6 +335,7 @@
     await capture('saved', { heading: '.event-overview-header h1' });
   }
   run().catch(error => {
+    startup('journey-error');
     errors.push(String(error), String(error.stack || error)); phase = 'error';
     webkit.messageHandlers.iosParity.postMessage({ index: ++captureIndex, phase, errors, navigationDiagnostics, historyDiagnostics });
   });

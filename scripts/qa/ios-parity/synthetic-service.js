@@ -1,4 +1,7 @@
 (() => {
+  const startup = (stage, fields) => globalThis.__iosParityStartup?.mark(stage, fields);
+  startup('synthetic-service-start');
+  let startupRequest = 0;
   const userId = 'ios-native-qa-owner', participantId = 'account-' + userId;
   const space = 'ios-native-qa-space', key = 'synthetic-ios-native-space-key-123456';
   const auth = 'https://ios-native-qa.supabase.co';
@@ -31,12 +34,24 @@
   const config = { publicUrl: 'https://sogrim-hesbon-app.vercel.app', apiBaseUrl: 'https://sogrim-hesbon-app.vercel.app', auth: { googleClientId: 'synthetic-ios.apps.googleusercontent.com' }, storage: { mode: 'supabase', url: auth, anonKey: 'synthetic-ios-native-anon', table: 'app_snapshots' }, updates: { ios: { minimumSupportedBuild: 0, currentBuild: 187, required: false, storeUrl: 'https://play.google.com/store/apps/details?id=com.sogrimhashbon.app' } }, monetization: { adsEnabled: false, premiumEnabled: false }, launch: { googleAuthReady: true, authEmailDeliveryReady: true } };
   Object.defineProperty(globalThis, 'SogrimNativeRuntimeConfig', { configurable: false, get: () => config, set: () => {} });
   const originalFetch = globalThis.fetch.bind(globalThis);
-  const response = (data, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } }));
+  const syntheticResponse = (data, status = 200) => Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } }));
   const append = (key, value) => { const values = JSON.parse(localStorage.getItem(key) || '[]'); values.push(value); localStorage.setItem(key, JSON.stringify(values)); };
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url, location.href);
     const method = String(options.method || input?.method || 'GET').toUpperCase();
     const body = options.body ? JSON.parse(options.body) : null;
+    const request = ++startupRequest;
+    const endpoint = url.pathname === '/api/config' ? 'config' : url.pathname === '/api/health' ? 'health' :
+      url.pathname === '/api/admin/overview' ? 'admin' : url.pathname === '/api/product-metrics' ? 'metrics' :
+      url.origin !== auth ? (url.origin === location.origin && !url.pathname.startsWith('/api/') ? 'local-asset' : 'blocked-external') :
+      url.pathname === '/auth/v1/user' ? 'auth-user' : url.pathname.endsWith('/rpc/ensure_account_workspace') ? 'workspace' :
+      url.pathname.endsWith('/rpc/get_referral_program_status') ? 'referral' : url.pathname.endsWith('/app_snapshots') ? 'snapshots' :
+      url.pathname.endsWith('/user_profiles') ? 'profiles' : url.pathname.endsWith('/rpc/upsert_user_profile') ? 'profile-write' : 'other-synthetic';
+    startup('synthetic-fetch-start', { request, method, endpoint });
+    const response = (data, status = 200) => {
+      startup('synthetic-fetch-response', { request, method, endpoint, status });
+      return syntheticResponse(data, status);
+    };
     if (url.pathname === '/api/config') return response(config);
     if (url.pathname === '/api/health') return response({ ok: true, fixture: true });
     if (url.pathname === '/api/admin/overview') return response({ message: 'Synthetic user is not an admin' }, 403);
@@ -66,8 +81,13 @@
       append('qa-native-unhandled', { method, path: url.pathname });
       return response({ message: 'Unsupported synthetic endpoint' }, 501);
     }
-    if (url.origin === location.origin && !url.pathname.startsWith('/api/')) return originalFetch(input, options);
+    if (url.origin === location.origin && !url.pathname.startsWith('/api/')) {
+      startup('synthetic-fetch-local', { request, method, endpoint });
+      return originalFetch(input, options);
+    }
+    startup('synthetic-fetch-blocked', { request, method, endpoint });
     append('qa-native-blocked-network', { method, origin: url.origin, path: url.pathname });
     throw new Error('Isolated iOS QA blocks external request: ' + url.origin + url.pathname);
   };
+  startup('synthetic-service-ready');
 })();

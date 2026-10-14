@@ -126,7 +126,7 @@ jobs:
               [[ -f "$diagnostic" ]] || continue
               cp "$diagnostic" "$out/"
             done
-            for diagnostic in "$container/Documents"/native-parity-status-*.log; do
+            for diagnostic in "$container/Documents"/native-parity-*.log; do
               [[ -f "$diagnostic" ]] || continue
               cp "$diagnostic" "$out/"
             done

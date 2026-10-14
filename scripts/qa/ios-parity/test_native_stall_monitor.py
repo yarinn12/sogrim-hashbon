@@ -258,6 +258,22 @@ class NativeStallMonitorTests(unittest.TestCase):
         self.assertEqual(probe.last_process_scan,
                          {"parserFailures": 1, "commandLength": len(str(self.executable))})
 
+    def test_rejected_process_paths_explain_zero_candidates_without_widening_target(self):
+        path = self.journal()
+        command = str(self.executable).replace("\\", "/") + " --private-key sensitive-value"
+        rows = [ProcessIdentity(16125 + i, self.process.uid, self.process.started,
+                                '"' + command + '"', self.process.start_epoch) for i in range(8)]
+        with self.assertRaises(MonitorUnavailable) as caught:
+            self.target(path, process_rows=rows)
+        details = caught.exception.details
+        self.assertEqual(str(caught.exception), "app-pid-not-unique")
+        self.assertEqual(details["candidateCount"], 0)
+        self.assertEqual(len(details["relatedAppProcesses"]), 4)
+        self.assertEqual(details["relatedAppProcesses"][0]["pid"], 16125)
+        self.assertFalse(details["relatedAppProcesses"][0]["exactExecutableMatch"])
+        self.assertNotIn("sensitive-value", json.dumps(details))
+        self.assertNotIn("--private-key", json.dumps(details))
+
     def test_rejected_startup_pid_records_bounded_structured_diagnostic_without_sampling(self):
         candidate = Assessment(True, "startup-not-ready", SESSION, "startup-not-ready", 0,
                                self.documents / f"native-parity-status-{SESSION}.log", 1791691600, 23)

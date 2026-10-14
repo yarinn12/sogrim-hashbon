@@ -191,6 +191,16 @@ def verify_target(*, udid, bundle_id, manifest_path, expected_sha, expected_tree
                "commandLength": scan.get("commandLength", max((len(row.command) for row in process_rows), default=0)),
                "pathDigest": hashlib.sha256(str(executable).encode("utf8")).hexdigest()}
     if len(matching) != 1:
+        # Explain a rejected exact path without using a broader match to sample.
+        # Never retain raw commands: they can contain credentials or payloads.
+        related = [row for row in process_rows if re.search(r"(?:^|/)App\.app/App(?:\s|$)", row.command)]
+        details["relatedAppProcesses"] = [{
+            "pid": row.pid, "uidMatches": row.uid == own_uid,
+            "startEpoch": row.start_epoch, "exactExecutableMatch": row in matching,
+            "ownedDevicePath": str(root) + "/" in row.command,
+            "commandLength": len(row.command),
+            "commandDigest": hashlib.sha256(row.command.encode("utf8")).hexdigest()
+        } for row in related[:4]]
         raise MonitorUnavailable("app-pid-not-unique", details)
     process = matching[0]
     if process.pid <= 0 or process.uid != own_uid or not process.started or process.start_epoch <= 0:
@@ -307,7 +317,7 @@ def run_observer(args, probe=None, system_name=None):
                        elapsedSeconds=assessment.elapsed_seconds)
         if details:
             row.update({key: details[key] for key in
-                        ("candidateCount", "parserFailures", "commandLength", "pathDigest")
+                        ("candidateCount", "parserFailures", "commandLength", "pathDigest", "relatedAppProcesses")
                         if key in details})
         if row not in report["diagnostics"] and len(report["diagnostics"]) < 32:
             report["diagnostics"].append(row)

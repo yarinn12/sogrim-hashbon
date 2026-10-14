@@ -3,6 +3,7 @@ from hashlib import sha256
 from pathlib import Path
 import json
 import math
+import os
 import plistlib
 import re
 import subprocess
@@ -20,7 +21,11 @@ def prepare(app: Path, source_sha: str) -> None:
     public = app / "ios/App/App/public"
     assert public.is_dir()
     source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=app, text=True).strip()
-    manifest = {"sourceSha": source_sha, "sourceTree": source_tree, "source": {}, "www": {}, "qaFixtures": {}}
+    fixture_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=FIXTURES, text=True).strip()
+    fixture_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=FIXTURES, text=True).strip()
+    manifest = {"sourceSha": source_sha, "sourceTree": source_tree, "fixtureSha": fixture_sha,
+                "fixtureTree": fixture_tree, "diagnosticOnly": os.environ.get("IOS_STARTUP_DIAGNOSTIC") == "1",
+                "source": {}, "www": {}, "qaFixtures": {}}
     for path in sorted(FIXTURES.iterdir()):
         if path.is_file():
             manifest["qaFixtures"][path.name] = sha256(path.read_bytes()).hexdigest()
@@ -30,14 +35,14 @@ def prepare(app: Path, source_sha: str) -> None:
         if path.is_file():
             manifest["www"][str(path.relative_to(public))] = sha256(path.read_bytes()).hexdigest()
     (out / "package-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf8")
-    for name in ["synthetic-service", "input-trace", "journey"]:
+    for name in ["startup-diagnostics", "synthetic-service", "input-trace", "journey"]:
         (public / f"ios-parity-{name}.js").write_bytes((FIXTURES / f"{name}.js").read_bytes())
     delegate = app / "ios/App/App/AppDelegate.swift"
     source = delegate.read_text(encoding="utf8")
     assert "class SogrimBridgeViewController: CAPBridgeViewController" in source
     assert source.count("import AuthenticationServices") == 1
     source = source.replace("import AuthenticationServices", "import AuthenticationServices\nimport WebKit")
-    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree)
+    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree).replace("__FIXTURE_SHA__", fixture_sha).replace("__FIXTURE_TREE__", fixture_tree)
     delegate.write_text(source, encoding="utf8")
     story = app / "ios/App/App/Base.lproj/Main.storyboard"
     markup = story.read_text(encoding="utf8")
