@@ -27,6 +27,7 @@ export function evaluateReleaseCi({ source, repository, runs, jobsByRun = {}, ca
       const names = new Set(jobs.map(job => job.name));
       for (const expected of ["unit", "backup-runtime", "two-client-sync", "cross-platform", "unit-and-mobile",
         "mobile (android-mobile)", "mobile (iphone-webkit)", "mobile (ipad-webkit)", "mobile (iphone-large-text)", "mobile (reflow-200)",
+        "mobile-iphone-webkit-shard-1", "mobile-iphone-webkit-shard-2",
         "mobile-iphone-large-text-shard-1", "mobile-iphone-large-text-shard-2",
         "android-native / native-parity", "ios-native / native-parity"]) {
         if (!names.has(expected)) failures.push(`qa.yml: missing required job ${expected}`);

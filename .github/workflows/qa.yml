@@ -56,7 +56,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [android-mobile, iphone-webkit, ipad-webkit, reflow-200]
+        project: [android-mobile, ipad-webkit, reflow-200]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -84,6 +84,154 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 7
+
+  mobile-iphone-webkit-shard-1:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+      PW_QA_PORT: "4185"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run first half of iPhone WebKit QA
+        run: |
+          mkdir -p qa-iphone-webkit-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/results.json" \
+            npm run qa:mobile -- --project=iphone-webkit --shard=1/2 \
+              --reporter=github,html,json --output=test-results-iphone-webkit-main
+      - name: Record exact source, project and shard
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit 1
+      - name: Upload first shard evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report-iphone-webkit-shard-1
+          path: |
+            qa-iphone-webkit-shard/
+            test-results-iphone-webkit-main/
+            playwright-report/
+          if-no-files-found: error
+          retention-days: 7
+
+  mobile-iphone-webkit-shard-2:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+      PW_QA_PORT: "4186"
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium webkit
+      - name: Run second half of iPhone WebKit QA
+        run: |
+          mkdir -p qa-iphone-webkit-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-iphone-webkit-shard/results.json" \
+            npm run qa:mobile -- --project=iphone-webkit --shard=2/2 \
+              --reporter=github,html,json --output=test-results-iphone-webkit-main
+      - name: Record exact source, project and shard
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-webkit 2
+      - name: Upload second shard evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report-iphone-webkit-shard-2
+          path: |
+            qa-iphone-webkit-shard/
+            test-results-iphone-webkit-main/
+            playwright-report/
+          if-no-files-found: error
+          retention-days: 7
+
+  mobile-iphone-webkit:
+    name: mobile (iphone-webkit)
+    if: ${{ always() }}
+    needs: [unit, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Require both shards
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          SHARD_1_RESULT: ${{ needs['mobile-iphone-webkit-shard-1'].result }}
+          SHARD_2_RESULT: ${{ needs['mobile-iphone-webkit-shard-2'].result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$SHARD_1_RESULT" = success
+          test "$SHARD_2_RESULT" = success
+      - name: Checkout exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download first shard evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: playwright-report-iphone-webkit-shard-1
+          path: shards/1
+      - name: Download second shard evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: playwright-report-iphone-webkit-shard-2
+          path: shards/2
+      - name: Inventory source and each planned shard
+        run: |
+          mkdir -p inventory
+          for shard in all 1/2 2/2; do
+            name="${shard//\//-}"
+            if test "$shard" = all; then
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
+                npx playwright test --list --project=iphone-webkit --reporter=json
+            else
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
+                npx playwright test --list --project=iphone-webkit --shard="$shard" --reporter=json
+            fi
+          done
+      - name: Verify exact once coverage, project and source
+        env:
+          EXPECTED_PROJECT: iphone-webkit
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
+          node scripts/qa/verify-large-text-shards.mjs \
+            inventory/all.json inventory/1-2.json inventory/2-2.json \
+            shards/1/qa-iphone-webkit-shard/results.json shards/2/qa-iphone-webkit-shard/results.json \
+            shards/1/qa-iphone-webkit-shard/receipt.json shards/2/qa-iphone-webkit-shard/receipt.json
 
   mobile-iphone-large-text-shard-1:
     needs: unit
@@ -122,7 +270,7 @@ jobs:
             npm run qa:mobile -- --project=iphone-large-text --shard=1/2 \
               --reporter=github,html,json --output=test-results-large-text-main
       - name: Record exact source and shard
-        run: node scripts/qa/write-large-text-receipt.mjs 1
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text 1
       - name: Upload first shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
@@ -165,7 +313,7 @@ jobs:
             npm run qa:mobile -- --project=iphone-large-text --shard=2/2 \
               --reporter=github,html,json --output=test-results-large-text-main
       - name: Record exact source and shard
-        run: node scripts/qa/write-large-text-receipt.mjs 2
+        run: node scripts/qa/write-iphone-shard-receipt.mjs iphone-large-text 2
       - name: Upload second shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
@@ -317,13 +465,16 @@ jobs:
 
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform, ios-native, android-native]
+    needs: [unit, mobile, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2, mobile-iphone-webkit, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform, ios-native, android-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
         env:
           UNIT_RESULT: ${{ needs.unit.result }}
           MOBILE_RESULT: ${{ needs.mobile.result }}
+          IPHONE_WEBKIT_SHARD_1_RESULT: ${{ needs['mobile-iphone-webkit-shard-1'].result }}
+          IPHONE_WEBKIT_SHARD_2_RESULT: ${{ needs['mobile-iphone-webkit-shard-2'].result }}
+          IPHONE_WEBKIT_RESULT: ${{ needs['mobile-iphone-webkit'].result }}
           LARGE_TEXT_SHARD_1_RESULT: ${{ needs['mobile-iphone-large-text-shard-1'].result }}
           LARGE_TEXT_SHARD_2_RESULT: ${{ needs['mobile-iphone-large-text-shard-2'].result }}
           LARGE_TEXT_RESULT: ${{ needs['mobile-iphone-large-text'].result }}
@@ -334,6 +485,9 @@ jobs:
         run: |
           test "$UNIT_RESULT" = success
           test "$MOBILE_RESULT" = success
+          test "$IPHONE_WEBKIT_SHARD_1_RESULT" = success
+          test "$IPHONE_WEBKIT_SHARD_2_RESULT" = success
+          test "$IPHONE_WEBKIT_RESULT" = success
           test "$LARGE_TEXT_SHARD_1_RESULT" = success
           test "$LARGE_TEXT_SHARD_2_RESULT" = success
           test "$LARGE_TEXT_RESULT" = success

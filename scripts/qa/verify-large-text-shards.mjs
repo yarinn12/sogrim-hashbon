@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-// Scope guards in the app test files: three native iOS provider cases and four iPad-only layouts.
+// Scope guards in the app test files. Test IDs include the Playwright project.
+// Large Text skips three native iOS provider cases and four iPad-only layouts.
 export const ALLOWED_SCOPE_SKIP_IDS = new Set([
   "a8206df1cbecf2fd7bd3-394b526612aa5e412f97",
   "a8206df1cbecf2fd7bd3-4a2af2a4f6e80d4ae736",
@@ -11,13 +12,23 @@ export const ALLOWED_SCOPE_SKIP_IDS = new Set([
   "d2bcf4eb79ae557ae9c9-690c1d2c7a8a5c3b72b1",
   "d2bcf4eb79ae557ae9c9-ac8ba7f8ab06590ab03f"
 ]);
+export const IPHONE_WEBKIT_SCOPE_SKIP_IDS = new Set([
+  "d2bcf4eb79ae557ae9c9-dec2ef63e2a6411019f5",
+  "d2bcf4eb79ae557ae9c9-3a6624728fb667d8e6f3",
+  "d2bcf4eb79ae557ae9c9-83d866818fa36cd6c0ee",
+  "d2bcf4eb79ae557ae9c9-7dad0308516bf37c9fee"
+]);
+const SCOPE_SKIPS_BY_PROJECT = new Map([
+  ["iphone-large-text", ALLOWED_SCOPE_SKIP_IDS],
+  ["iphone-webkit", IPHONE_WEBKIT_SCOPE_SKIP_IDS]
+]);
 
-function specs(report) {
+function specs(report, project) {
   const found = [];
   function visit(suite) {
     for (const spec of suite.specs ?? []) {
-      if (!spec.id || spec.tests?.length !== 1 || spec.tests[0].projectName !== "iphone-large-text") {
-        throw new Error("Invalid iPhone large text test identity");
+      if (!spec.id || spec.tests?.length !== 1 || spec.tests[0].projectName !== project) {
+        throw new Error(`Invalid ${project} test identity`);
       }
       found.push(spec);
     }
@@ -27,9 +38,9 @@ function specs(report) {
   return found;
 }
 
-function index(report, label) {
+function index(report, label, project) {
   const byId = new Map();
-  for (const spec of specs(report)) {
+  for (const spec of specs(report, project)) {
     if (byId.has(spec.id)) throw new Error(`${label}: duplicate test ${spec.id}`);
     byId.set(spec.id, spec);
   }
@@ -45,16 +56,18 @@ function sameIds(actual, expected, label) {
   }
 }
 
-export function verifyLargeTextShards({ inventory, planned, actual, receipts, source, tree, runId, runAttempt }) {
-  const all = index(inventory, "source inventory");
+export function verifyIphoneShards({ project, inventory, planned, actual, receipts, source, tree, runId, runAttempt }) {
+  const allowedScopeSkipIds = SCOPE_SKIPS_BY_PROJECT.get(project);
+  if (!allowedScopeSkipIds) throw new Error(`Unsupported iPhone shard project: ${project}`);
+  const all = index(inventory, "source inventory", project);
   const union = new Map();
   const observedSkips = new Set();
   for (const shard of [1, 2]) {
     const label = `shard ${shard}`;
-    const plan = index(planned[shard], `${label} plan`);
-    const result = index(actual[shard], `${label} result`);
+    const plan = index(planned[shard], `${label} plan`, project);
+    const result = index(actual[shard], `${label} result`, project);
     const receipt = receipts[shard];
-    if (receipt?.source !== source || receipt?.tree !== tree ||
+    if (receipt?.project !== project || receipt?.source !== source || receipt?.tree !== tree ||
         receipt?.runId !== runId || receipt?.runAttempt !== runAttempt ||
         receipt?.shard !== shard) {
       throw new Error(`${label}: missing or incorrect source receipt`);
@@ -71,7 +84,7 @@ export function verifyLargeTextShards({ inventory, planned, actual, receipts, so
       }
       const plannedTest = plannedSpec.tests[0];
       const test = spec.tests[0];
-      if (ALLOWED_SCOPE_SKIP_IDS.has(id)) {
+      if (allowedScopeSkipIds.has(id)) {
         if (test.expectedStatus !== "skipped" || test.status !== "skipped" ||
             test.results?.length !== 1 || test.results[0].status !== "skipped" ||
             test.results[0].retry !== 0 ||
@@ -89,18 +102,23 @@ export function verifyLargeTextShards({ inventory, planned, actual, receipts, so
     }
   }
   sameIds(union, all, "combined shards");
-  if (observedSkips.size !== ALLOWED_SCOPE_SKIP_IDS.size ||
-      [...ALLOWED_SCOPE_SKIP_IDS].some(id => !observedSkips.has(id))) {
+  if (observedSkips.size !== allowedScopeSkipIds.size ||
+      [...allowedScopeSkipIds].some(id => !observedSkips.has(id))) {
     throw new Error("Missing one or more required scope skips");
   }
-  return { source, tree, count: all.size, shard1: index(actual[1], "shard 1").size,
-    shard2: index(actual[2], "shard 2").size };
+  return { project, source, tree, count: all.size,
+    shard1: index(actual[1], "shard 1", project).size,
+    shard2: index(actual[2], "shard 2", project).size };
 }
+
+export const verifyLargeTextShards = options => verifyIphoneShards({ ...options, project: "iphone-large-text" });
+export const verifyIphoneWebkitShards = options => verifyIphoneShards({ ...options, project: "iphone-webkit" });
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [inventory, plan1, plan2, actual1, actual2, receipt1, receipt2] = process.argv.slice(2);
   const read = path => JSON.parse(readFileSync(path, "utf8"));
-  const result = verifyLargeTextShards({
+  const result = verifyIphoneShards({
+    project: process.env.EXPECTED_PROJECT ?? "iphone-large-text",
     inventory: read(inventory),
     planned: { 1: read(plan1), 2: read(plan2) },
     actual: { 1: read(actual1), 2: read(actual2) },
