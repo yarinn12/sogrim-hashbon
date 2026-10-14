@@ -9,7 +9,7 @@
     'app-info-ready', 'capture-start', 'fonts-wait-start', 'fonts-ready',
     'raf-wait-start', 'raf-ready', 'capture-post', 'capture-ack', 'readiness-committed',
     'journey-error', 'startup-milestone', 'local-resource', 'resource-summary',
-    'native-styles-ready']);
+    'native-styles-ready', 'native-style-load', 'native-style-error']);
   const phases = new Set(['starting', 'home', 'restored', 'expenses', 'summary', 'transfers',
     'notes', 'note-opened', 'profile', 'keyboard-ready', 'keyboard-amount', 'keyboard-name',
     'saved', 'resumed', 'error']);
@@ -101,6 +101,14 @@
     mark('window-loaded');
     summarizeResources();
   }, { once: true });
+  // Capture the existing resource event before the product load listener runs.
+  // No extra frame requests, network calls or readiness writes.
+  for (const type of ['load', 'error']) document.addEventListener(type, event => {
+    const sheet = event.target;
+    if (sheet?.tagName === 'LINK' && sheet.dataset?.nativeLayers === 'true') {
+      mark(`native-style-${type}`, { nativeStyleMedia: sheet.media || 'all' });
+    }
+  }, true);
   document.addEventListener('sogrim:native-styles-ready', () => mark('native-styles-ready'), { once: true });
   // Existing product performance marks identify bootstrap/render boundaries.
   // Resource observations use timings only, with no URL, headers or payload.

@@ -278,9 +278,18 @@
     }
     webkit.messageHandlers.iosParity.postMessage({ kind: 'keyboard-geometry-diagnostic', index, phase: name, snapshots });
   }
+  function observeFirstCapture(stage, name, index) {
+    if (name !== 'home' && name !== 'restored') return;
+    try { globalThis.__iosParityStartup?.mark(stage, { phase: name, index }); } catch {}
+  }
   async function capture(name, selectors) {
+    observeFirstCapture('capture-start', name);
+    observeFirstCapture('fonts-wait-start', name);
     await document.fonts.ready;
+    observeFirstCapture('fonts-ready', name);
+    observeFirstCapture('raf-wait-start', name);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    observeFirstCapture('raf-ready', name);
     const visiblePhase = visualCapture(name);
     const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]));
     phase = name;
@@ -305,8 +314,12 @@
       writes: JSON.parse(localStorage.getItem('qa-native-writes') || '[]'),
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
     });
+    // Queued in JavaScript; only the separate capture-ack proves Native completion.
+    observeFirstCapture('capture-post', name, index);
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
+    observeFirstCapture('capture-ack', name, index);
     if (name === 'home' || name === 'restored') nativeStatusReady = true;
+    observeFirstCapture('readiness-committed', name, index);
     // Observe subsequent geometry without replacing the sealed original
     // capture or delaying the trusted XCTest actions that consume its phase.
     if (name === 'keyboard-amount' || name === 'keyboard-name') {

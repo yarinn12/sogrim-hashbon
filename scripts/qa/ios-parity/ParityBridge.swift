@@ -259,7 +259,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                    "capture-start", "fonts-wait-start", "fonts-ready", "raf-wait-start", "raf-ready",
                    "capture-post", "capture-ack", "readiness-committed", "journey-error",
                    "startup-milestone", "local-resource", "resource-summary",
-                   "native-styles-ready"].contains(stage) else { return }
+                   "native-styles-ready", "native-style-load", "native-style-error"].contains(stage) else { return }
             var fields: [String: Any] = ["stage": stage, "jsSequence": sequence]
             for key in ["epochMs", "monotonicMs", "timeOriginMs", "index", "request", "status",
                         "startMs", "durationMs", "responseEndMs", "transferSize",
