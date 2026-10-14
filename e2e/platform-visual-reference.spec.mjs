@@ -628,8 +628,13 @@ test("extra-large text keeps the complete settling filter word at 393 and 320px"
     expect(reading.documentWidth).toBeLessThanOrEqual(reading.viewport.width + 1);
     expect.soft(reading.gridDisplay).toBe('grid');
     expect.soft(reading.gridAutoFlow).toBe('row');
-    expect.soft(reading.rowCount, `${reading.viewport.width}px: two filter rows`).toBe(2);
-    expect.soft(reading.columnCount, `${reading.viewport.width}px: two filter columns`).toBe(2);
+    // At <=339px the accepted accessibility layout gives every filter the full
+    // row; wider phones use two columns. Both preserve the complete word.
+    const expectedColumns = reading.viewport.width <= 339 ? 1 : 2;
+    expect.soft(reading.rowCount, `${reading.viewport.width}px: accessible filter rows`)
+      .toBe(4 / expectedColumns);
+    expect.soft(reading.columnCount, `${reading.viewport.width}px: accessible filter columns`)
+      .toBe(expectedColumns);
     expect(reading.optionLayout).toHaveLength(4);
     for (const option of reading.optionLayout) {
       expect.soft(option.labelGlyphsWithin, `${reading.viewport.width}px: ${option.text} visible`).toBe(true);
