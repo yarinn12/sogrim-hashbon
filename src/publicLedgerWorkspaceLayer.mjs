@@ -6017,8 +6017,8 @@ const CSS = `
 
     html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
       body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content {
-      height: auto !important;
-      grid-template-rows: auto auto !important;
+      height: 100% !important;
+      grid-template-rows: minmax(0, 1fr) auto !important;
       row-gap: 2px !important;
     }
 

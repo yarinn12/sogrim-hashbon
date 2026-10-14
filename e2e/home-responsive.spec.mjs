@@ -309,6 +309,8 @@ test("home status labels and counts fit their touch targets at narrow widths", a
       const count = content.querySelector(".font-num").getBoundingClientRect();
       return {
         label: label.textContent,
+        top: bounds.top,
+        bottom: bounds.bottom,
         width: bounds.width,
         height: bounds.height,
         overflow: button.scrollWidth - button.clientWidth,
@@ -326,7 +328,21 @@ test("home status labels and counts fit their touch targets at narrow widths", a
       expect(item.width).toBeGreaterThanOrEqual(44);
       expect(item.height).toBeGreaterThanOrEqual(44);
     }
-    expect(Math.max(...layout.map(item => item.countBottom)) - Math.min(...layout.map(item => item.countBottom))).toBeLessThanOrEqual(1);
+    const rows = [];
+    for (const item of layout) {
+      const row = rows.find(candidate => Math.abs(candidate.top - item.top) <= 1);
+      if (row) row.items.push(item);
+      else rows.push({ top: item.top, items: [item] });
+    }
+    rows.sort((left, right) => left.top - right.top);
+    for (const [index, row] of rows.entries()) {
+      const countBottoms = row.items.map(item => item.countBottom);
+      expect(Math.max(...countBottoms) - Math.min(...countBottoms), `${width}px row ${index + 1}: counts must align within their row`).toBeLessThanOrEqual(1);
+      if (index > 0) {
+        const previousBottom = Math.max(...rows[index - 1].items.map(item => item.bottom));
+        expect(row.top, `${width}px: lifecycle filter rows must not overlap`).toBeGreaterThanOrEqual(previousBottom - 1);
+      }
+    }
     await filters.filter({ hasText: "מוסיפים הוצאות" }).click();
     await expect(page.locator('.event-lifecycle-filter [data-filter="adding"]')).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".event-row")).toHaveCount(1);
