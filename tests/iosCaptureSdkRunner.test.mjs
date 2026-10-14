@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+test('capture SDK verification pins app and fixtures to 8f6 and preserves every original build/measurement step',()=>{
+ const original=readFileSync(new URL('../.github/workflows/ios-parity-qa.yml',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+ const runner=readFileSync(new URL('../.github/workflows/ios-capture-8f6-sdk-once.yml',import.meta.url),'utf8').replace(/\r\n/g,'\n');
+ const start='      - uses: actions/setup-node@v6';
+ assert.equal(runner.slice(runner.indexOf(start)),original.slice(original.indexOf(start)).replace('retention-days: 14','retention-days: 7'));
+ assert.match(runner,/ref: 8f6f47368cc36c27fe5392e2a0d67a52d54985b5/);
+ assert.match(runner,/EVENT_SHA: 8f6f47368cc36c27fe5392e2a0d67a52d54985b5/);
+ assert.match(runner,/INPUT_SHA: 8f6f47368cc36c27fe5392e2a0d67a52d54985b5/);
+ assert.match(runner,/github\.run_number == 1 && github\.run_attempt == 1/);
+ assert.match(runner,/github\.repository == 'yarinn12\/sogrim-hashbon'/);
+ assert.match(runner,/github\.ref == 'refs\/heads\/codex\/ios-capture-8f6-sdk-20261014'/);
+ assert.match(runner,/branches: \[codex\/ios-capture-8f6-sdk-20261014\]/);
+ assert.match(runner,/timeout-minutes: 35/);
+ assert.doesNotMatch(runner,/workflow_dispatch:|workflow_call:|secrets\.|altool|app-store-connect|appStoreVersionReleaseRequest/);
+ const vercel=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
+ assert.equal(vercel.git.deploymentEnabled['codex/ios-capture-8f6-sdk-20261014'],false);
+});
