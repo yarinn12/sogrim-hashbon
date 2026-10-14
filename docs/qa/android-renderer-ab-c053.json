@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Reviewed unsigned Android renderer diagnostic using one original APK; never Native/release acceptance.",
+  "branch": "codex/android-renderer-ab-c053-20261014",
+  "source": "c053989b217740fa9855edfbc2ec83456f498dfc",
+  "tree": "2b0845ff0be978c344148eb855827beb0d4f7ccb",
+  "qaTools": "9ee0e857073ff891257189c027efea924dbcb506",
+  "origin": {
+    "run": 38611164699,
+    "artifact": 11918988498,
+    "ZIPsha256": "2a50fda848f13200553c07145253c98d206909eabf696c7ae66238de069d1755",
+    "APKsha256": "e13e32a4ed5903bf527127e2dee4d039df923b5120f69d11aa63333b3afb28c5",
+    "APKbytes": 23883384,
+    "version": "4.58-debug/190"
+  },
+  "files": {
+    "workflow": ".github/workflows/android-renderer-ab-diagnostic.yml",
+    "executor": "scripts/qa/android-renderer-ab/executor.mjs",
+    "policy": "scripts/qa/android-renderer-ab/policy.mjs",
+    "artifactVerifier": "scripts/qa/android-renderer-ab/verify-artifact.py",
+    "tests": "tests/androidRendererAB.test.mjs",
+    "rendererFixture": "tests/fixtures/android-renderer-ab-original-renderer.txt"
+  },
+  "execution": {
+    "currentEvent": "workflow_dispatch",
+    "firstAttemptOnly": true,
+    "sourceAndToolsPinned": true,
+    "emulatorVersion": "37.2.12/build16428233",
+    "systemImage": "android-36.1/google_apis_playstore/x86_64 revision4",
+    "arms": [
+      "A:software",
+      "B:swiftshader"
+    ],
+    "sequential": true,
+    "freshAVDs": true,
+    "APKRebuild": false
+  },
+  "reviewHandoff": {
+    "pushPerformed": false,
+    "dispatchPerformed": false,
+    "NativeExecuted": false,
+    "defaultBranchRegistrationPerformed": false,
+    "normalQAGatesChanged": false,
+    "RootNextStep": "Root adds the agreed narrow review-branch push entry plus repository/ref/event/source/run_number1/run_attempt1 guards after reviewing this frozen commit. No routing/registration changes are included."
+  },
+  "commands": {
+    "initialize": "node scripts/qa/android-renderer-ab/executor.mjs --initialize",
+    "run": "node scripts/qa/android-renderer-ab/executor.mjs --run",
+    "finalize": "node scripts/qa/android-renderer-ab/executor.mjs --finalize",
+    "verdict": "node scripts/qa/android-renderer-ab/executor.mjs --summarize",
+    "focusedTests": "node --test tests/androidRendererAB.test.mjs"
+  },
+  "controls": {
+    "reviewedToolingCommitRequired": true,
+    "wrongZIPAPKSourceRejected": true,
+    "installedAPKHashVerified": true,
+    "actualRendererFallbackRejected": true,
+    "actualDMAFlagsRequired": true,
+    "originalIMEFontsGeometryACKRelaunchPreserved": true,
+    "originalANRdeadlineMs": 5000,
+    "originalHelperTimeoutsUnchanged": true,
+    "originalToolsModified": false,
+    "completeHistoricalANRGateRetained": true,
+    "failedMissingArmRejected": true,
+    "phaseJournalAndRawOutputsPreserved": true,
+    "ownedPIDStartTicksVerified": true,
+    "ADB5037InitiallyUnused": true,
+    "closureRequiredBeforeB": true,
+    "noRetry": true,
+    "noWaiver": true,
+    "noAcceptanceOnOneRun": true,
+    "contentsPermission": "read",
+    "actionsPermission": "read",
+    "VercelBranchDisabled": true,
+    "signingKeysUsed": false,
+    "productionDBUsed": false
+  },
+  "limitations": [
+    "Native execution and renderer A/B results remain unverified until Root's reviewed CI diagnostic.",
+    "The inherited trace config intentionally retains its original coverage/loss limitations; raw trace and host observations require subsequent analysis.",
+    "SDK source-property hashes and emulator version/build are strict. Installing newer packages stops before either arm; no fallback or silent SDK drift is permitted.",
+    "The workflow is currently manual and has not been registered on main; Root will provide the agreed review-branch push entry.",
+    "A single sequential pair cannot establish all-device stability or an application fix."
+  ],
+  "originalProposal": "C:/Users/A/Documents/Codex/2026-10-03/ch/outputs/android-native-c053-qa457-renderer-proposal-20261014/renderer-ab-proposal.json",
+  "originalProposalSHA256": "e2c9dc14adb64895b355b5a20e1a1f4c1b9318bbba4bb2ab66842bdc13ca1036"
+}

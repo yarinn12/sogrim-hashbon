@@ -1,0 +1,111 @@
+name: Android renderer A/B diagnostic (original c053 APK)
+
+on:
+  workflow_dispatch:
+    inputs:
+      reviewed_tooling_sha:
+        description: Exact reviewed executor commit; must equal this workflow commit
+        required: true
+        type: string
+      review_token:
+        description: Enter c053-e13e-renderer-ab-once after Root review
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: android-renderer-ab-c053-one-shot
+  cancel-in-progress: false
+
+jobs:
+  renderer-ab-diagnostic:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      ANDROID_AB_REVIEWED_SHA: ${{ inputs.reviewed_tooling_sha }}
+      ANDROID_AB_REVIEW_TOKEN: ${{ inputs.review_token }}
+      ANDROID_AB_REQUESTED_SOURCE: c053989b217740fa9855edfbc2ec83456f498dfc
+      ANDROID_AB_SOURCE_ROOT: ${{ github.workspace }}/app-source
+      ANDROID_AB_TOOLS_ROOT: ${{ github.workspace }}/qa-tools
+    steps:
+      - name: Checkout reviewed control plane
+        uses: actions/checkout@v6
+        with:
+          path: control
+          persist-credentials: false
+      - name: Checkout immutable application source (no build)
+        uses: actions/checkout@v6
+        with:
+          ref: c053989b217740fa9855edfbc2ec83456f498dfc
+          path: app-source
+          persist-credentials: false
+      - name: Checkout original immutable QA tools
+        uses: actions/checkout@v6
+        with:
+          ref: 9ee0e857073ff891257189c027efea924dbcb506
+          path: qa-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Initialize both arm identities and require exact review
+        working-directory: control
+        run: node scripts/qa/android-renderer-ab/executor.mjs --initialize
+      - name: Download only the original reviewed artifact ZIP
+        uses: actions/github-script@v8
+        with:
+          retries: 0
+          script: |
+            const fs = require('node:fs');
+            const crypto = require('node:crypto');
+            const path = require('node:path');
+            const owner = 'yarinn12', repo = 'sogrim-hashbon', artifact_id = 11918988498;
+            const expected = '2a50fda848f13200553c07145253c98d206909eabf696c7ae66238de069d1755';
+            const {data: artifact} = await github.rest.actions.getArtifact({owner, repo, artifact_id});
+            if (artifact.expired || artifact.size_in_bytes !== 121573483 ||
+                artifact.workflow_run?.id !== 38611164699 ||
+                artifact.workflow_run?.head_sha !== 'c053989b217740fa9855edfbc2ec83456f498dfc' ||
+                artifact.digest !== 'sha256:' + expected) throw new Error('Original artifact identity is absent, expired or mismatched');
+            const response = await github.rest.actions.downloadArtifact({owner, repo, artifact_id, archive_format: 'zip'});
+            const bytes = Buffer.from(response.data);
+            if (bytes.length !== 121573483 || crypto.createHash('sha256').update(bytes).digest('hex') !== expected) throw new Error('Original ZIP bytes/hash mismatch');
+            const target = path.join(process.env.GITHUB_WORKSPACE, 'control/artifacts/android-renderer-ab/original.zip');
+            fs.writeFileSync(target, bytes, {flag:'wx'});
+      - name: Prepare original SDK packages and KVM
+        working-directory: control
+        run: |
+          set -euo pipefail
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-renderer-ab/sdk-setup.log 2>&1
+          echo "ANDROID_AB_SDK_BIN=$sdk_bin" >> "$GITHUB_ENV"
+          test -c /dev/kvm
+          sudo setfacl -m "u:$USER:rw" /dev/kvm
+          # Executor rejects SDK/emulator version or byte drift before either launch.
+      - name: Run each fresh arm once, sequentially, preserving original gates
+        working-directory: control
+        run: node scripts/qa/android-renderer-ab/executor.mjs --run
+      - name: Reject any missing, failed or incomplete arm
+        if: always()
+        working-directory: control
+        run: node scripts/qa/android-renderer-ab/executor.mjs --finalize
+      - name: Validate both terminal arm states
+        if: always()
+        working-directory: control
+        run: node scripts/qa/android-renderer-ab/executor.mjs --summarize
+      - name: Retain original failures, both arm histories and raw coverage
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-renderer-ab-c053-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: control/artifacts/android-renderer-ab/
+          if-no-files-found: error
+          retention-days: 14

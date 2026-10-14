@@ -1,0 +1,10 @@
+INFO         | Android emulator version 37.2.12.0 (build_id 16428233) (CL:N/A)
+INFO         | Graphics backend: gfxstream
+INFO         | emuglConfig_init: vulkan_mode_selected:lavapipe gles_mode_selected:swangle
+DEBUG   | setCurrentRenderer: swangle lavapipe gles:Angle Indirect vulkan:Lavapipe
+DEBUG   | gfxstreamFeature:Vulkan = 0
+INFO         | Performing composition using CompositorGl.
+INFO         | Graphics Adapter Vendor Google (Google Inc.)
+INFO         | Graphics Adapter Android Emulator OpenGL ES Translator (Google SwiftShader)
+INFO         | Graphics API Version OpenGL ES 3.0 (OpenGL ES 3.0 SwiftShader 4.0.0.1)
+INFO         |   androidboot.debug.hwui.renderer=skiagl
