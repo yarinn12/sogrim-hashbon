@@ -6,7 +6,8 @@
       "codex/unified-release-4-58-20261012": false,
       "codex/shared-event-reference-20261013": false,
       "main": false,
-      "codex/engineering-foundation-20261013": false
+      "codex/engineering-foundation-20261013": false,
+      "codex/platform-visual-candidate-20261014": false
     }
   },
   "builds": [
