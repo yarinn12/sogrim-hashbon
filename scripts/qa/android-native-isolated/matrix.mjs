@@ -23,14 +23,6 @@ try{
       const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
-      row.nativeHolds.push(await page.hold('[data-action="open-event"][data-event-id="android-native-event"]',650));
-      const held=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),tabs=Boolean(document.querySelector('.event-workspace-nav'));return menu||app?.dataset.screen!=='home'||tabs?{home:app?.dataset.screen==='home',menu,tabs}:false})()`),'Native hold opens event options on Home');
-      check('Native hold opens event options on Home',held.home&&held.menu&&!held.tabs,held);
-      if(!held.home||!held.menu||held.tabs)throw new Error('Native hold did not leave event options open on Home');
-      row.nativeTaps.push(await page.tap('[data-action="cancel-event-status-menu"]'));
-      const closed=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),open=Boolean(document.querySelector('[data-action="open-event"][data-event-id="android-native-event"]'));return !menu?{home:app?.dataset.screen==='home',menu,open}:false})()`),'Native tap closes event options');
-      check('Native tap closes event options on Home',closed.home&&!closed.menu&&closed.open,closed);
-      if(!closed.home||closed.menu||!closed.open)throw new Error('Native tap did not close event options on Home');
       row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
       await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
       row.fontContract=await readCurrentFontContract(page,scale);
@@ -64,7 +56,22 @@ try{
       check('Actual requested viewport orientation',orientation==='portrait'?row.state.dimensions.height>row.state.dimensions.width:row.state.dimensions.width>row.state.dimensions.height);
       if(process.env.ANDROID_QA_INJECT_FAILURE==='1'&&results.length===1)check('Controlled QA failure injection',false);
       for(const [label,selector] of [['header','.product-app-identity'],['hero','.settlement-hero'],['transfer','.transfer-row']]){await page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);await sleep(200);screenshot(resolve(out,`${orientation}-scale-${scale}-${label}.png`));}
+      // Keep the original first tap cold; exercise hold only in a separate launch.
       row.exceptions=page.exceptions;
+      page.close();page=null;page=await launch();
+      row.nativeHolds.push(await page.hold('[data-action="open-event"][data-event-id="android-native-event"]',650));
+      const held=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),tabs=Boolean(document.querySelector('.event-workspace-nav'));return menu||app?.dataset.screen!=='home'||tabs?{home:app?.dataset.screen==='home',menu,tabs}:false})()`),'Native hold opens event options on Home');
+      check('Native hold opens event options on Home',held.home&&held.menu&&!held.tabs,held);
+      if(!held.home||!held.menu||held.tabs)throw new Error('Native hold did not leave event options open on Home');
+      row.nativeTaps.push(await page.tap('[data-action="cancel-event-status-menu"]'));
+      const closed=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),open=Boolean(document.querySelector('[data-action="open-event"][data-event-id="android-native-event"]'));return !menu?{home:app?.dataset.screen==='home',menu,open}:false})()`),'Native tap closes event options');
+      check('Native tap closes event options on Home',closed.home&&!closed.menu&&closed.open,closed);
+      if(!closed.home||closed.menu||!closed.open)throw new Error('Native tap did not close event options on Home');
+      row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
+      await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
+      row.holdState=await page.evaluate(inspectExpression);
+      row.holdExceptions=page.exceptions;
+      check('Native hold session has no JS exceptions',row.holdExceptions.length===0);
     }catch(error){row.error=error.stack;row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
     finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }

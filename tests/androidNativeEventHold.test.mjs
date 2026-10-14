@@ -69,13 +69,16 @@ test('invalid duration, covered target, foreign bounds and failed Native input n
   }
 });
 
-test('six scale/orientation cases require Native hold, Native close, then the original event tap and tabs', () => {
+test('six scale/orientation cases preserve the original cold tap before separate Native hold coverage', () => {
   assert.match(matrix, /for\(const scale of \[1,1\.5,2\]\)for\(const \[orientation,rotation\] of \[\['portrait',0\],\['landscape',1\]\]\)/);
   const hold = matrix.indexOf('await page.hold(');
   const close = matrix.indexOf("await page.tap('[data-action=\"cancel-event-status-menu\"]')");
   const open = matrix.indexOf("row.nativeTaps.push(await page.tap('[data-action=\"open-event\"][data-event-id=\"android-native-event\"]'))");
   const tabs = matrix.indexOf("'Three event tabs'");
-  assert.ok(hold >= 0 && close > hold && open > close && tabs > open, 'Native hold and close must precede the unchanged event tap and tab assertion');
+  const followupOpen=matrix.indexOf("row.nativeTaps.push(await page.tap('[data-action=\"open-event\"][data-event-id=\"android-native-event\"]'))",close);
+  const followupTabs=matrix.indexOf("'Three event tabs'",followupOpen);
+  const fresh=matrix.indexOf('page.close();page=null;page=await launch();',tabs);
+  assert.ok(open >= 0 && tabs > open && fresh > tabs && hold > fresh && close > hold && followupOpen > close && followupTabs > followupOpen, 'The original cold tap and tabs must precede a separate fresh-session hold, close and follow-up tap');
   assert.match(matrix, /event-status-menu\[data-event-id/);
   assert.match(matrix, /dataset\.screen==='home'/);
   assert.match(matrix, /row\.nativeHolds\.push/);
