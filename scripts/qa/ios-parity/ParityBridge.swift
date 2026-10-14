@@ -257,9 +257,12 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                    "bridge-wait-start", "bridge-wait-ready", "app-info-start", "app-info-ready",
                    "capture-start", "fonts-wait-start", "fonts-ready", "raf-wait-start", "raf-ready",
                    "capture-post", "capture-ack", "readiness-committed", "journey-error",
-                   "startup-milestone", "local-resource"].contains(stage) else { return }
+                   "startup-milestone", "local-resource", "resource-summary",
+                   "native-styles-ready"].contains(stage) else { return }
             var fields: [String: Any] = ["stage": stage, "jsSequence": sequence]
-            for key in ["epochMs", "monotonicMs", "index", "request", "status", "startMs", "durationMs", "responseEndMs", "transferSize"] {
+            for key in ["epochMs", "monotonicMs", "timeOriginMs", "index", "request", "status",
+                        "startMs", "durationMs", "responseEndMs", "transferSize",
+                        "resourceEntries", "localMatched", "legacyMissed"] {
                 if let value = item[key] as? Double, value.isFinite, value >= 0 { fields[key] = value }
             }
             let allowed: [String: [String]] = [
@@ -268,10 +271,14 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 "endpoint": ["config", "health", "admin", "metrics", "auth-user", "workspace", "referral", "snapshots", "profiles", "profile-write", "other-synthetic", "local-asset", "blocked-external"],
                 "method": ["GET", "POST", "PATCH", "DELETE", "PUT", "HEAD", "OPTIONS"],
                 "initiator": ["script", "link", "css", "fetch", "other"],
-                "milestone": ["app-module-ready", "first-screen-rendered", "auth-ready", "splash-dismissed"]]
+                "milestone": ["app-module-ready", "first-screen-rendered", "auth-ready", "splash-dismissed"],
+                "resourceClass": ["style-loader", "prelude", "auth", "core", "account",
+                                  "experience", "layers-css", "font-css", "rubik-font",
+                                  "base-css", "motion-vendor"]]
             for (key, values) in allowed {
                 if let value = item[key] as? String, values.contains(value) { fields[key] = value }
             }
+            if let legacy = item["legacyOriginMatched"] as? Bool { fields["legacyOriginMatched"] = legacy }
             observeStartup("web-stage", fields)
             return
         }

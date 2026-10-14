@@ -1,0 +1,63 @@
+name: iOS unsigned startup A/B proposal
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  startup-ab:
+    if: github.ref == 'refs/heads/codex/ios-startup-ab-proposal' && github.run_attempt == 1
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      IOS_STARTUP_DIAGNOSTIC: "1"
+    steps:
+      - name: Checkout the reviewed QA fixture
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify fixture and unchanged journey
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git merge-base 14d6f43660072acdf4e0252328c24d60c9d4dc81 HEAD)" = 14d6f43660072acdf4e0252328c24d60c9d4dc81
+          test -z "$(git diff --name-only 14d6f43660072acdf4e0252328c24d60c9d4dc81..HEAD -- scripts/qa/ios-parity/journey.js scripts/qa/ios-parity/ParityUITests.swift scripts/qa/ios-parity/synthetic-service.js)"
+      - name: Checkout exact 3f application source
+        uses: actions/checkout@v6
+        with:
+          ref: 3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1
+          path: app-3f
+          persist-credentials: false
+      - name: Checkout exact 4e application source
+        uses: actions/checkout@v6
+        with:
+          ref: 4e6f1dfba954fe34abcde60ed92af657e8457805
+          path: app-4e
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Check the QA-only resource logger and original controls
+        run: |
+          set -euo pipefail
+          node --test tests/startupDiagnosticResource.test.mjs
+          python3 scripts/qa/ios-parity/test_validation.py
+          python3 scripts/qa/ios-parity/test_native_stall_monitor.py
+          python3 scripts/qa/ios-parity/test_startup_ab.py
+      - name: Run paired cold starts on fresh simulators
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode_26.6.app
+          python3 scripts/qa/ios-parity/run_startup_ab.py --execute --fixture-sha "$GITHUB_SHA"
+      - name: Preserve all A/B results for review
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-startup-ab-${{ github.run_id }}
+          path: build/startup-ab/
+          if-no-files-found: warn
+          retention-days: 7

@@ -10,7 +10,8 @@ const canonicalHash = text => createHash('sha256').update(text.replace(/\r\n/g, 
 function probe({ throws = false } = {}) {
   const messages = [], listeners = new Map(); let callback;
   const context = vm.createContext({ Date, URL, Set, Object, Number,
-    performance: { now: () => 12 }, document: { readyState: 'loading' },
+    performance: { now: () => 12, timeOrigin: 1_000 },
+    document: { readyState: 'loading', addEventListener: (name, fn) => listeners.set(`document:${name}`, fn) },
     location: { href: 'capacitor://localhost/index.html', origin: 'null' },
     addEventListener: (name, fn) => listeners.set(name, fn),
     PerformanceObserver: class { constructor(fn) { callback = fn; } observe() {} },
@@ -44,7 +45,10 @@ test('milestones and asset timings omit URLs, external endpoints and arbitrary m
   p.entries([{ entryType: 'mark', name: 'sogrim:start:app-module-ready', startTime: 20 },
     { entryType: 'mark', name: 'sogrim:start:secret', startTime: 21 },
     { entryType: 'resource', name: 'https://external.test/a.js?secret', startTime: 2 },
-    { entryType: 'resource', name: 'capacitor://localhost/a.js?secret', startTime: 3, duration: 4, initiatorType: 'script' }]);
+    // Use a bundled asset on the fixed allowlist; arbitrary local scripts are
+    // intentionally excluded by the QA logger.
+    { entryType: 'resource', name: 'capacitor://localhost/assets/native-core.mjs?secret', startTime: 3,
+      duration: 4, initiatorType: 'script' }]);
   assert.equal(p.messages.filter(x => x.startup.stage === 'startup-milestone').length, 1);
   assert.equal(p.messages.filter(x => x.startup.stage === 'local-resource').length, 1);
   assert.equal(JSON.stringify(p.messages).includes('secret'), false);
