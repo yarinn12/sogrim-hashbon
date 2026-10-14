@@ -85,6 +85,19 @@ class Cdp {
     if(x<left||x>=right||y<top||y>=bottom)throw new Error('Native tap point outside WebView');
     adb(['shell','input','tap',String(x),String(y)]);return{...point,xPhysical:x,yPhysical:y,webViewBounds:observed.bounds,observationAttempts:observed.attempts};
   }
+  async hold(selector,durationMs=650){
+    if(!Number.isSafeInteger(durationMs)||durationMs!==650)throw new Error('Native hold requires approved 650ms integer duration');
+    const locate=()=>this.evaluate(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw new Error('Hold control unavailable');e.scrollIntoView({block:'center'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!(hit===e||e.contains(hit)))throw new Error('Hold target covered by '+hit?.outerHTML?.slice(0,200));return{x,y,dpr:devicePixelRatio,action:e.dataset.action};})()`);
+    await locate();
+    const observed=await observeFreshWebViewBounds({packageName,dump:path=>adb(['shell','uiautomator','dump','--compressed',path]),read:path=>adb(['shell','cat',path]),delay:sleep,makePath:attempt=>`/sdcard/qa-native-window-${Date.now()}-${++this.sequence}-${attempt}.xml`,onAttempt:record=>this.nativeObservations.push({...record,selector})});
+    // The observed WebView may move while the target is being located.
+    const point=await locate(),[left,top,right,bottom]=observed.bounds;
+    const x=Math.round(left+point.x*point.dpr),y=Math.round(top+point.y*point.dpr);
+    if(x<left||x>=right||y<top||y>=bottom)throw new Error('Native hold point outside WebView');
+    const inputCommand=['shell','input','swipe',String(x),String(y),String(x),String(y),String(durationMs)];
+    adb(inputCommand);
+    return{...point,xPhysical:x,yPhysical:y,webViewBounds:observed.bounds,observationAttempts:observed.attempts,durationMs,inputCommand};
+  }
   close() { this.socket.close(); }
 }
 export async function launch() {
