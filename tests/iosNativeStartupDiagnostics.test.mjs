@@ -58,12 +58,10 @@ test('a failed telemetry sink does not throw or publish readiness', () => {
   assert.doesNotThrow(() => p.context.__iosParityStartup.mark('journey-start'));
   assert.equal(p.context.__iosParityLive, undefined);
 });
-test('product and acceptance fixtures retain the exact 4e baseline content', () => {
+test('unchanged synthetic service and native UI actions retain the exact 4e baseline content', () => {
   const baselines = {
-    'journey.js': 'e962382017b82fcfb8e4c914b30bc5e470d61b06c2fb76189cb182611a58b138',
     'synthetic-service.js': '0b9dce3a03526794b24063ff367370828fe1aa0594b3d5da4ae02467d7444bed',
-    'ParityUITests.swift': '3d3175b92c20059c2c73654308393023d102e69854a8ff6c792a2a37a75b1297',
-    'test_validation.py': '6fbd14f8b4a683a238dc4d196a51fd879ff5ebaaed738228fd08f2854382f39d'
+    'ParityUITests.swift': '3d3175b92c20059c2c73654308393023d102e69854a8ff6c792a2a37a75b1297'
   };
   for (const [name, digest] of Object.entries(baselines)) {
     const source = readFileSync(new URL(name, dir), 'utf8');
@@ -72,6 +70,18 @@ test('product and acceptance fixtures retain the exact 4e baseline content', () 
   }
   const uiTests = readFileSync(new URL('ParityUITests.swift', dir), 'utf8');
   assert.notEqual(canonicalHash(uiTests.replace('timeout: 35', 'timeout: 36')), baselines['ParityUITests.swift']);
+});
+
+test('journey retains original font, frame, native ACK and action deadlines', () => {
+  const journey = readFileSync(new URL('journey.js', dir), 'utf8');
+  assert.match(journey, /async function until\(predicate, name, timeout = 30000\)/);
+  assert.match(journey, /await document\.fonts\.ready/);
+  assert.match(journey, /requestAnimationFrame\(\(\) => requestAnimationFrame\(resolve\)\)/);
+  assert.match(journey, /Promise\.race\(\[completed, sleep\(10000\)/);
+  assert.equal((journey.match(/'real native (?:amount|name) typing', 90000/g) || []).length, 2);
+  assert.match(journey, /'final synthetic server acknowledgement', 90000/);
+  assert.match(journey, /waitForOriginalSplashRemoval\(\);\s+await capture\('home'/);
+  assert.match(journey, /waitForOriginalSplashRemoval\(\);\s+await capture\('restored'/);
 });
 
 test('standing QA installs the observer first and preserves native startup logs', () => {

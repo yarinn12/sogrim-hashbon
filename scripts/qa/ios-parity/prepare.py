@@ -87,6 +87,71 @@ def install_test_target(app: Path) -> None:
     (app / "ios/App/ParityProbeUITests.swift").write_bytes((FIXTURES / "ParityUITests.swift").read_bytes())
 
 
+CAPTURE_PHASES = ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile",
+                  "keyboard-ready", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]
+CAPTURE_SCREENS = {"home": "home", "summary": "settlement", "transfers": "settlement", "profile": "profile"}
+
+
+def read_journal(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf8").splitlines() if line.strip()]
+
+
+def validate_capture_evidence(directory: Path, report: dict, manifest: dict) -> None:
+    records = report["records"]
+    assert [record["phase"] for record in records] == CAPTURE_PHASES, "missing or reordered Native capture"
+    cold, relaunch = records[0]["captureSession"], records[-1]["captureSession"]
+    assert cold != relaunch and all(record["captureSession"] == cold for record in records[:-1]), "cold/relaunch session overlap"
+    sessions = {cold, relaunch}
+    startup_files = {path.stem.removeprefix("native-parity-startup-"): path
+                     for path in directory.glob("native-parity-startup-*.log")}
+    status_files = {path.stem.removeprefix("native-parity-status-"): path
+                    for path in directory.glob("native-parity-status-*.log")}
+    assert set(startup_files) == sessions and set(status_files) == sessions, "missing or foreign startup session"
+    origins = []
+    for session in [cold, relaunch]:
+        startup = read_journal(startup_files[session])
+        status = read_journal(status_files[session])
+        assert startup and status
+        for row in startup:
+            assert row["session"] == session and row["sourceSha"] == manifest["sourceSha"]
+            assert row["sourceTree"] == manifest["sourceTree"]
+            assert row["fixtureSha"] == manifest["fixtureSha"] and row["fixtureTree"] == manifest["fixtureTree"]
+        for row in status:
+            assert row["session"] == session and row["sourceSha"] == manifest["sourceSha"]
+            assert row["sourceTree"] == manifest["sourceTree"]
+        injected = [row for row in startup if row.get("event") == "web-stage" and row.get("stage") == "script-injected"]
+        dismissed = [row for row in startup if row.get("event") == "web-stage" and
+                     row.get("stage") == "startup-milestone" and row.get("milestone") == "splash-dismissed"]
+        assert len(injected) == len(dismissed) == 1, "original splash lifecycle missing"
+        assert injected[0]["time"] <= dismissed[0]["time"]
+        origin = injected[0]["timeOriginMs"]
+        assert isinstance(origin, (int, float)) and math.isfinite(origin) and origin > 0
+        assert dismissed[0]["timeOriginMs"] == origin
+        origins.append(origin)
+        expected = [record for record in records if record["captureSession"] == session]
+        received = [row for row in status if row.get("event") == "captureReceived"]
+        written = [row for row in status if row.get("event") == "captureWritten"]
+        acknowledged = [row for row in status if row.get("event") == "captureAckCallback"]
+        assert len(received) == len(written) == len(acknowledged) == len(expected), "capture/ACK count mismatch"
+        for record in expected:
+            phase, index = record["phase"], record["index"]
+            witness = record["visualCapture"]
+            assert witness["phase"] == phase and witness["screen"] == CAPTURE_SCREENS.get(phase, "event"), (phase, "wrong visible screen")
+            assert witness["splashAbsent"] is True, (phase, "splash covers measured screen")
+            mark, captured = witness["splashMarkMs"], witness["capturedAtMs"]
+            assert all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in [mark, captured])
+            assert math.isclose(mark, dismissed[0]["startMs"], abs_tol=0.5), (phase, "wrong original splash mark")
+            assert mark <= captured, (phase, "capture predates original splash mark")
+            matching = lambda rows: [row for row in rows if row.get("index") == index]
+            begin, saved, ack = matching(received), matching(written), matching(acknowledged)
+            assert len(begin) == len(saved) == len(ack) == 1 and begin[0]["phase"] == phase, (phase, "capture/ACK identity")
+            assert begin[0]["time"] <= saved[0]["time"] <= ack[0]["time"], (phase, "capture/ACK order")
+            assert ack[0].get("error") == "", (phase, "native capture ACK failed")
+            screenshot = directory / f"native-parity-{phase}.png"
+            assert screenshot.is_file() and screenshot.stat().st_size > 1000, (phase, "missing visual capture")
+    assert origins[0] != origins[1], "cold and relaunch document clocks reused"
+
+
 def validate(out: Path, source_sha: str) -> None:
     manifest = json.loads((out / "package-manifest.json").read_text(encoding="utf8"))
     assert manifest["sourceSha"] == source_sha and re.fullmatch(r"[0-9a-f]{40}", manifest["sourceTree"])
@@ -253,6 +318,7 @@ def validate(out: Path, source_sha: str) -> None:
         group_total = records["restored"]["metrics"]["groupTotal"]
         assert group_total["textRows"] == 1, (mode, "groupTotal", "currency split across rows")
         assert group_total["words"] and all(word["rows"] == 1 for word in group_total["words"]), (mode, "groupTotal", "digit split across rows")
+        validate_capture_evidence(out / mode, report, manifest)
         reports[mode] = report
     normal, enlarged = reports["default"], reports["accessibility-extra-large"]
     assert normal["preferredContentSizeCategory"] == "UICTContentSizeCategoryL"

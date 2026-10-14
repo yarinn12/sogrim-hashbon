@@ -339,6 +339,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             record["metrics"] = metrics
         }
         record["native"] = nativeInfo()
+        record["captureSession"] = statusSession
         observeStatus("captureReceived", ["index": index, "phase": record["phase"] as? String ?? "missing"])
         records.append(record)
         report = nativeInfo(); report["records"] = records

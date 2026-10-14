@@ -174,6 +174,28 @@
   let captureIndex = 0;
   const pending = new Map();
   globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
+  const expectedCaptureScreen = {
+    home: 'home', expenses: 'event', summary: 'settlement', transfers: 'settlement',
+    notes: 'event', 'note-opened': 'event', profile: 'profile',
+    'keyboard-ready': 'event', 'keyboard-amount': 'event', 'keyboard-name': 'event',
+    saved: 'event', resumed: 'event', restored: 'event'
+  };
+  function visualCapture(name) {
+    const splashMark = performance.getEntriesByName?.('sogrim:start:splash-dismissed', 'mark')?.[0];
+    const splashAbsent = !document.querySelector('#app-splash') &&
+      !document.documentElement.classList.contains('app-splash-active');
+    const screen = document.querySelector('#app')?.dataset.screen;
+    if (!splashMark || !splashAbsent || screen !== expectedCaptureScreen[name]) {
+      throw new Error(`iOS QA visible phase mismatch: ${name}`);
+    }
+    return { phase: name, screen, splashAbsent: true,
+      splashMarkMs: splashMark.startTime, capturedAtMs: performance.now() };
+  }
+  async function waitForOriginalSplashRemoval() {
+    await until(() => performance.getEntriesByName?.('sogrim:start:splash-dismissed', 'mark')?.length &&
+      !document.querySelector('#app-splash') &&
+      !document.documentElement.classList.contains('app-splash-active'), 'original splash removed');
+  }
   function keyboardLayout(name, selectors) {
     if (name !== 'keyboard-amount' && name !== 'keyboard-name') return null;
     const field = name === 'keyboard-amount' ? 'amount' : 'name';
@@ -217,13 +239,14 @@
   async function capture(name, selectors) {
     await document.fonts.ready;
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const visiblePhase = visualCapture(name);
     const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]));
     phase = name;
     globalThis.__iosParityInputTrace?.setPhase(name);
     if (name === 'keyboard-ready') globalThis.__iosParityInputTrace?.arm();
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
-    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics,
+    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, visualCapture: visiblePhase,
       homeReference: name === 'home' ? homeReference() : null,
       keyboardLayout: keyboardLayout(name, selectors),
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
@@ -265,10 +288,12 @@
       const rendered = await until(() => first(expenseSelector), 'restored expense rendered in the native UI');
       if (!rendered.textContent.includes('QA iOS')) throw new Error('The restored expense name differs in the UI');
       rendered.scrollIntoView({ block: 'center' });
+      await waitForOriginalSplashRemoval();
       await capture('restored', { heading: '.event-overview-header h1', expense: expenseSelector,
         groupTotal: '.expense-day-summary .amount' });
       return;
     }
+    await waitForOriginalSplashRemoval();
     await capture('home', { brand: '.product-brand-copy strong',
       heading: '.product-home-screen .top .brand h1',
       description: '.product-home-screen .top .brand .muted' });
