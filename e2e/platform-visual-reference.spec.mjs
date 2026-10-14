@@ -284,6 +284,16 @@ test("geometry across tablet and desktop breakpoints preserves screen and hero p
     { width: 1367, height: 900 }, { width: 1440, height: 900 }
   ]) {
     await page.setViewportSize(viewport);
+    // WebKit can report the new innerWidth before dispatching resize to the app.
+    const tabletViewport = viewport.width >= 721 && viewport.width <= 1366;
+    const root = page.locator("html");
+    if (tabletViewport) {
+      await expect(root, `${viewport.width}px: tablet shell follows viewport resize`)
+        .toHaveClass(/\bresponsive-tablet-shell\b/);
+    } else {
+      await expect(root, `${viewport.width}px: desktop shell follows viewport resize`)
+        .not.toHaveClass(/\bresponsive-tablet-shell\b/);
+    }
     const home = await page.locator('.screen[data-screen-kind="home"]').evaluate(screen => {
       const hero = screen.querySelector(':scope > .top');
       const action = screen.querySelector('.home-create-event-action');
