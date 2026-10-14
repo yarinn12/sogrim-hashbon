@@ -7,7 +7,8 @@
       "codex/shared-event-reference-20261013": false,
       "main": false,
       "codex/engineering-foundation-20261013": false,
-      "codex/platform-visual-candidate-20261014": false
+      "codex/platform-visual-candidate-20261014": false,
+      "codex/ios-home-observer-ab-20261015": false
     }
   },
   "builds": [

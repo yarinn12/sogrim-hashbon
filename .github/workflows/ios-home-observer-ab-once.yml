@@ -11,6 +11,7 @@ jobs:
   compare:
     if: >-
       github.repository == 'yarinn12/sogrim-hashbon' &&
+      github.event_name == 'push' &&
       github.ref == 'refs/heads/codex/ios-home-observer-ab-20261015' &&
       github.run_number == 1 && github.run_attempt == 1
     strategy:
@@ -103,10 +104,25 @@ jobs:
           set -euo pipefail
           out=build/native-parity-ab
           printf 'build-for-testing\n' > "$out/build-invocations.txt"
+          source "$out/simulator.env"
+          build_udid="$(xcrun simctl create 'Build-only parity destination' "$AB_DEVICE_TYPE_ID" "$AB_RUNTIME_ID")"
+          [[ "$build_udid" =~ ^[A-Fa-f0-9-]{36}$ ]]
+          printf '{"udid":"%s","measured":false}\n' "$build_udid" > "$out/build-destination.json"
+          trap 'xcrun simctl shutdown "$build_udid" >> "$out/build-shutdown.log" 2>&1 || true' EXIT
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator -destination "platform=iOS Simulator,id=$build_udid" \
             -derivedDataPath "$out/derived" build-for-testing CODE_SIGNING_ALLOWED=NO \
             > "$out/build.log" 2>&1
+          xcrun simctl shutdown "$build_udid" > "$out/build-shutdown.log" 2>&1 || true
+          xcrun simctl list devices -j > "$out/build-destination-state.json"
+          python3 - "$out/build-destination-state.json" "$build_udid" <<'PY'
+          import json, pathlib, sys
+          rows=json.loads(pathlib.Path(sys.argv[1]).read_text())['devices']
+          device=next(d for devices in rows.values() for d in devices if d['udid']==sys.argv[2])
+          assert device['state']=='Shutdown', 'Build-only destination must stop before measured arms'
+          PY
+          xcrun simctl delete "$build_udid" > "$out/build-delete.log" 2>&1
+          trap - EXIT
           python3 "$AB_CONTROL/observer_ab.py" snapshot "$PWD/$out/derived/Build/Products" \
             "$PWD/$out/baseline.json"
       - name: Run both observer arms and retain either failure

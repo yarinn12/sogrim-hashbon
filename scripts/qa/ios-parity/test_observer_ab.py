@@ -62,6 +62,18 @@ class ObserverABControls(unittest.TestCase):
     def assert_rejected(self, phrase):
         self.assertIn(phrase, "\n".join(guard.check_run(self.root)))
 
+    def test_one_off_workflow_and_preview_scope(self):
+        repo = Path(__file__).resolve().parents[3]
+        yaml = (repo / '.github/workflows/ios-home-observer-ab-once.yml').read_text(encoding='utf8')
+        for value in ["github.event_name == 'push'", "github.run_number == 1 && github.run_attempt == 1",
+                      "github.ref == 'refs/heads/codex/ios-home-observer-ab-20261015'",
+                      'runs-on: macos-26', 'timeout-minutes: 35', 'persist-credentials: false']:
+            self.assertIn(value, yaml)
+        for value in ['workflow_dispatch:', 'pull_request:', 'secrets.', 'continue-on-error:']:
+            self.assertNotIn(value, yaml)
+        config = guard.read_json(repo / 'vercel.json')
+        self.assertIs(config['git']['deploymentEnabled']['codex/ios-home-observer-ab-20261015'], False)
+
     def test_both_order_permutations_pass(self):
         self.assertEqual(guard.check_run(self.root), [])
         self.plan["order"] = ["off", "on"]
