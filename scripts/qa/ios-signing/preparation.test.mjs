@@ -80,7 +80,7 @@ function api(builds,next=null) {
       : {data:builds.map(version=>({attributes:{version}})),links:{next}};
   };
 }
-test('Apple application identity is independent of PWA515 and build194',async()=>{
+test('Apple application identity is independent of PWA516 and build194',async()=>{
   assert.equal(APPLE_APP_ID,'6809952514');
   const proof=await readUnusedBuild(api(['191','192','193']));
   assert.equal(proof.appId,'6809952514');
@@ -116,7 +116,7 @@ test('duplicate encrypted preparation blocks another signing attempt',async()=>{
   await assert.rejects(requireUnusedArtifactSlot(fixture(1,false),'synthetic'));
   await assert.rejects(requireUnusedArtifactSlot(fixture(1,true),'synthetic'));
 });
-const readText=p=>p==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "515";':
+const readText=p=>p==='src/pwaBootstrap.mjs'?'const PWA_RELEASE = "516";':
   JSON.stringify({version:{number:'4.58',build:194}});
 const git=args=>args[1]==='HEAD'?RELEASE_SOURCE:RELEASE_TREE;
 test('checkout/source/version/build/PWA exact identity passes',()=>assert.equal(verifyCheckout(git,readText,env).sourceTree,RELEASE_TREE));
@@ -125,7 +125,7 @@ for(const [name,change] of [['build',{IOS_BUILD:'192'}],['version',{IOS_VERSION:
   test('checkout rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...env,...change})));
 test('checkout rejects another tree/PWA/store metadata',()=>{
   assert.throws(()=>verifyCheckout(()=>SOURCE,readText,env));
-  assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('515','511'),env));
+  assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('516','511'),env));
   assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('4.58','4.57'),env));
 });
 const pem=()=>generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({type:'pkcs8',format:'pem'});
@@ -159,6 +159,6 @@ test('artifact-only preparation preserves exact checkout and gates signing while
 });
 test('previous build193 and PWA514 cannot be signed as194',()=>{
  assert.throws(()=>verifyCheckout(git,readText,{...env,IOS_BUILD:'193'}));
- assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('515','514'),env));
+ assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('516','514'),env));
  assert.throws(()=>protect(payload,key,{...identity,build:'193'}));
 });

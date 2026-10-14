@@ -5,12 +5,12 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1';
-export const RELEASE_TREE = '8a9ae9b8e00533c84edd3022ec993ac937e4460a';
+export const RELEASE_SOURCE = '52aad74cb5febc1305d29debc1261099be56ecb1';
+export const RELEASE_TREE = 'ea7bec91dbb25a396f290a15c58a9ae9bbdf9bb0';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
 export const APPLE_APP_ID = '6809952514';
-export const SOURCE_BRANCH = 'codex/engineering-foundation-20261013';
+export const SOURCE_BRANCH = 'codex/platform-visual-candidate-20261014';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
 assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
 
@@ -143,7 +143,7 @@ export function verifyCheckout(runGit, readText, env) {
   assert.equal(runGit(['rev-parse', 'HEAD']), SOURCE);
   assert.equal(runGit(['rev-parse', 'HEAD^{tree}']), RELEASE_TREE);
   const pwa = readText('src/pwaBootstrap.mjs').match(/const PWA_RELEASE = "(\d+)"/)?.[1];
-  assert.equal(pwa, '515');
+  assert.equal(pwa, '516');
   const metadata = JSON.parse(readText('docs/store-submission/app-store-metadata-he.json'));
   assert.equal(metadata.version?.number, '4.58');
   assert.equal(String(metadata.version?.build), '194');

@@ -24,7 +24,7 @@ class AssetTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
         config = {'appId': assets.BUNDLE, 'webDir': 'www', 'server': {'androidScheme': 'https'}, 'ios': {'contentInset': 'automatic', 'preferredContentMode': 'mobile'}}
-        for name, data in {'index.html': b'<html>synthetic 515</html>', 'assets/styles.css': b'button{min-height:44px}'}.items():
+        for name, data in {'index.html': b'<html>synthetic 516</html>', 'assets/styles.css': b'button{min-height:44px}'}.items():
             for directory in ('www', 'ios/App/App/public'):
                 target = self.root / directory / name
                 target.parent.mkdir(parents=True, exist_ok=True)
