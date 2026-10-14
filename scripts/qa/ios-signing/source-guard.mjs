@@ -5,8 +5,8 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '4e6f1dfba954fe34abcde60ed92af657e8457805';
-export const RELEASE_TREE = '6323e010cc2dc2ec818c5bb8c3bef1b712e15a56';
+export const RELEASE_SOURCE = 'c053989b217740fa9855edfbc2ec83456f498dfc';
+export const RELEASE_TREE = '2b0845ff0be978c344148eb855827beb0d4f7ccb';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
 export const APPLE_APP_ID = '6809952514';
@@ -79,7 +79,8 @@ export async function verifyRuns(fetchImpl, token, env) {
     if (path === '.github/workflows/qa.yml') {
       const required = ['unit', 'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
         ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
-        'ios-native / native-parity', 'android-native / native-parity'];
+        'ios-native / native-parity', 'android-native / native-parity',
+        'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2'];
       for (const name of required) assert.equal(jobs.filter(job => job.name === name).length, 1, 'Missing QA lane: ' + name);
     } else {
       const requiredName = {'.github/workflows/qa-windows.yml':'windows-unit',

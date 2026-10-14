@@ -12,7 +12,8 @@ const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38280270544', SOURCE_WINDOWS_QA
   APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.58', IOS_BUILD: '194'};
 const names = ['unit','cross-platform','two-client-sync','unit-and-mobile','backup-runtime',
   ...['android-mobile','iphone-webkit','ipad-webkit','iphone-large-text','reflow-200'].map(p=>'mobile ('+p+')'),
-  'ios-native / native-parity','android-native / native-parity'];
+  'ios-native / native-parity','android-native / native-parity',
+  'mobile-iphone-large-text-shard-1','mobile-iphone-large-text-shard-2'];
 function ci(edit = () => {}) {
   return async (url, options) => {
     assert.equal(options.method, 'GET');
@@ -145,7 +146,7 @@ test('other key, ciphertext, tag and AAD tampering fail closed',()=>{
 for (const [field,value] of [['sourceCommit','a'.repeat(40)],['sourceTree','b'.repeat(40)],['build','192'],['version','4.57']])
   test('encryption rejects mismatched '+field,()=>assert.throws(()=>protect(payload,key,{...identity,[field]:value})));
 test('artifact-only preparation preserves exact checkout and gates signing while preventing Apple delivery',()=>{
- const next=readFileSync(new URL('./ios-testflight-artifact-only.yml',import.meta.url),'utf8');
+ const next=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
  assert.ok(next.includes('ref: '+'$'+'{{ inputs.source_sha }}'));
  assert.ok(next.includes('ref: '+'$'+'{{ github.workflow_sha }}'));
  assert.ok(next.indexOf('source-guard.mjs" ci-only')<next.indexOf('secrets.APPSTORE'));
@@ -162,3 +163,15 @@ test('previous build193 and PWA514 cannot be signed as194',()=>{
  assert.throws(()=>verifyCheckout(git,p=>readText(p).replace('516','514'),env));
  assert.throws(()=>protect(payload,key,{...identity,build:'193'}));
 });
+
+for (const name of ['mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2']) {
+ test('private CI requires the exact source-bound '+name, async()=>{
+  await assert.rejects(verifyRuns(ci((v,p,j)=>{
+   if(j&&p.endsWith('/qa.yml')) { v.jobs=v.jobs.filter(job=>job.name!==name);v.total_count=v.jobs.length; }
+  }),'synthetic',env),error=>error.code==='ERR_ASSERTION' && error.actual===0 &&
+    error.expected===1 && error.message.startsWith('Missing QA lane: '+name+'\n'));
+  await assert.rejects(verifyRuns(ci((v,p,j)=>{
+   if(j&&p.endsWith('/qa.yml'))v.jobs.find(job=>job.name===name).conclusion='failure';
+  }),'synthetic',env));
+ });
+}
