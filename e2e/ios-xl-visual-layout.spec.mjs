@@ -208,20 +208,50 @@ for (const mode of ['normal', '32', 'AX']) {
       // mobile WebKit's Playwright wheel API is unsupported. Exercise both
       // routes without substituting a synthetic wheel event for a user action.
       const modal = page.locator('.expense-step-modal');
-      await modal.evaluate((node, scrollTop) => {
+      const wheelStart = await modal.evaluate((node, scrollTop) => {
         node.scrollTop = Math.max(200, scrollTop);
+        const evidence = { startTop: node.scrollTop, wheels: [], scrolls: [] };
+        node.__qaWheelEvidence = evidence;
+        node.addEventListener('wheel', event => {
+          evidence.wheels.push({ at: performance.now(), deltaY: event.deltaY,
+            trusted: event.isTrusted, top: node.scrollTop });
+        }, { capture: true, passive: true });
+        node.addEventListener('scroll', event => {
+          evidence.scrolls.push({ at: performance.now(), trusted: event.isTrusted,
+            top: node.scrollTop });
+        }, { passive: true });
+        return evidence.startTop;
       }, geometry.scrollport.scrollTop);
+      expect(wheelStart).toBeGreaterThanOrEqual(200);
       const box = await modal.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 180));
       await page.mouse.wheel(0, -900);
-      await page.evaluate(() => new Promise(resolve =>
-        requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const wheelHeading = await page.locator('#expense-modal-title').boundingBox();
-      const wheelStep = await page.locator('.expense-modal-step-header .eyebrow').boundingBox();
-      expect(wheelHeading.y).toBeGreaterThanOrEqual(115);
-      expect(wheelHeading.y + wheelHeading.height).toBeLessThanOrEqual(449);
-      expect(wheelStep.y).toBeGreaterThanOrEqual(115);
-      expect(wheelStep.y + wheelStep.height).toBeLessThanOrEqual(449);
+      try {
+        // Playwright resolves mouse.wheel before WebKit has finished scrolling.
+        // Observe the actual user wheel and scroll to the top before checking
+        // layout. A stalled wheel or a later keyboard reveal must still fail.
+        await expect.poll(() => modal.evaluate(node => {
+          const { startTop, wheels, scrolls } = node.__qaWheelEvidence;
+          const userWheel = wheels.find(event => event.trusted && event.deltaY < 0);
+          return Boolean(userWheel && node.scrollTop === 0 && scrolls.some(event =>
+            event.at >= userWheel.at && event.top < startTop));
+        }), { message: 'the real upward wheel scroll reaches the modal top' }).toBe(true);
+        await page.evaluate(() => new Promise(resolve =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const wheelHeading = await page.locator('#expense-modal-title').boundingBox();
+        const wheelStep = await page.locator('.expense-modal-step-header .eyebrow').boundingBox();
+        expect(wheelHeading.y).toBeGreaterThanOrEqual(115);
+        expect(wheelHeading.y + wheelHeading.height).toBeLessThanOrEqual(449);
+        expect(wheelStep.y).toBeGreaterThanOrEqual(115);
+        expect(wheelStep.y + wheelStep.height).toBeLessThanOrEqual(449);
+      } finally {
+        const wheelEvidence = await modal.evaluate(node => ({
+          ...node.__qaWheelEvidence, finalTop: node.scrollTop
+        }));
+        await testInfo.attach('keyboard-wheel-scroll', {
+          body: JSON.stringify({ mode, wheelEvidence }, null, 2), contentType: 'application/json'
+        });
+      }
     }
     const nextFramePair = () => page.evaluate(() => new Promise(resolve =>
       requestAnimationFrame(() => requestAnimationFrame(resolve))));
