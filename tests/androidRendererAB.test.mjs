@@ -5,14 +5,14 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
-import {PIN,ARMS,PHASES,assertContext,assertArtifactIdentity,assertSdk,assertRenderer,executePair,pairVerdict} from '../scripts/qa/android-renderer-ab/policy.mjs';
+import {PIN,ARMS,PHASES,assertContext,assertArtifactIdentity,assertSdk,assertRenderer,executePair,pairVerdict,probeEmulator} from '../scripts/qa/android-renderer-ab/policy.mjs';
 import {assertNoTargetAppAnr} from '../scripts/qa/android-native-isolated/anr-diagnostics.mjs';
 
 const identity={source:PIN.source,tree:PIN.tree,tools:PIN.tools,zipSha256:PIN.zipSha,zipBytes:PIN.zipBytes,
   apkSha256:PIN.apkSha,apkBytes:PIN.apkBytes,assets:214,fonts:13,privateEnvDisabled:true,syntheticBootstrap:true};
 const head='a'.repeat(40);
 const context={platform:'linux',toolingHead:head,source:{commit:PIN.source,tree:PIN.tree,clean:true},tools:{commit:PIN.tools,tree:PIN.tree,clean:true}};
-const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'push',GITHUB_RUN_NUMBER:'1',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/android-renderer-ab-c053-once.yml@refs/heads/'+PIN.branch,GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
+const env={GITHUB_ACTIONS:'true',GITHUB_EVENT_NAME:'push',GITHUB_RUN_NUMBER:'1',GITHUB_WORKFLOW_REF:PIN.repository+'/.github/workflows/android-renderer-ab-c053-headless-once.yml@refs/heads/'+PIN.branch,GITHUB_REPOSITORY:PIN.repository,GITHUB_REF:'refs/heads/'+PIN.branch,GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_SHA:head,ANDROID_AB_REVIEWED_SHA:head,ANDROID_AB_REVIEW_TOKEN:PIN.reviewToken,ANDROID_AB_REQUESTED_SOURCE:PIN.source};
 const capabilities={compatible:true,observations:{GlDirectMem:[1],HasSharedSlotsHostMemoryAllocator:[1]}};
 const originalRenderer=readFileSync(new URL('./fixtures/android-renderer-ab-original-renderer.txt',import.meta.url),'utf8');
 // Candidate B is a synthetic policy fixture, not an observed Native result.
@@ -122,12 +122,12 @@ test('controlled failed-arm guard mutation accepts A failure incorrectly; final 
   assert.equal(mutation.pairVerdict(result.arms).controlsPassed,true,'Controlled OLD guard must exhibit the covered incorrect acceptance');
 });
 test('workflow is one-shot, read-only, no rebuild/deploy/secrets, and retains evidence on every failure',()=>{
-  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-c053-once.yml',import.meta.url),'utf8');
-  assert.match(yaml,/push:\n    branches:\n      - codex\/android-renderer-ab-root-reviewed-20261014/);assert.doesNotMatch(yaml,/workflow_call:|workflow_dispatch:|pull_request:/);
+  const yaml=readFileSync(new URL('../.github/workflows/android-renderer-ab-c053-headless-once.yml',import.meta.url),'utf8');
+  assert.match(yaml,/push:\n    branches:\n      - codex\/android-renderer-ab-headless-20261014/);assert.doesNotMatch(yaml,/workflow_call:|workflow_dispatch:|pull_request:/);
   assert.match(yaml,/github\.run_number == 1 && github\.run_attempt == 1/);
   assert.match(yaml,/github\.repository == 'yarinn12\/sogrim-hashbon'/);
   assert.match(yaml,/github\.event_name == 'push'/);
-  assert.match(yaml,/github\.ref == 'refs\/heads\/codex\/android-renderer-ab-root-reviewed-20261014'/);
+  assert.match(yaml,/github\.ref == 'refs\/heads\/codex\/android-renderer-ab-headless-20261014'/);
   assert.match(yaml,/retention-days: 7/);
   assert.match(yaml,/contents: read\n  actions: read/);
   assert.doesNotMatch(yaml,/secrets\.|assembleDebug|gradlew|native:prepare|npm ci|vercel deploy|continue-on-error|pull_request_target/);
@@ -156,4 +156,40 @@ test('controlled OLD missing activation counter permits duplicate; FINAL rejects
   const file=join(dir,'old-counter-removed.mjs');writeFileSync(file,old);
   const controlled=await import(pathToFileURL(file));
   assert.doesNotThrow(()=>controlled.assertContext(duplicate,context));
+});
+
+
+test('metadata probe selects original headless binary; OLD GUI query fails before any AVD launch', async t=>{
+  const emulatorStub = `
+    const args=process.argv.slice(1);
+    if(!args.includes('-no-window')){
+      process.stderr.write('qemu-system-x86_64: error while loading shared libraries: libpulse.so.0');
+      process.exit(127);
+    }
+    if(args.includes('-avd'))throw Error('metadata probe cannot launch an AVD');
+    if(args.includes('-version'))process.stdout.write('Android emulator version 37.2.12.0 (build_id 16428233)');
+    else if(args.includes('-help-gpu'))process.stdout.write('software swiftshader swangle lavapipe');
+    else process.exit(2);
+  `;
+  const calls=[];
+  const command=async(label,executable,args,options)=>{
+    calls.push({label,executable,args,options});
+    const result=spawnSync(process.execPath,['-e',emulatorStub,'--',...args],{encoding:'utf8',timeout:options.timeout});
+    if(result.status!==0)throw Error(label+': exit '+result.status+': '+result.stderr);
+    return {stdout:result.stdout,stderr:result.stderr};
+  };
+  const dir=mkdtempSync(join(tmpdir(),'android-ab-headless-control-'));
+  t.after(()=>{assert.ok(resolve(dir).startsWith(resolve(tmpdir())+'/')||resolve(dir).startsWith(resolve(tmpdir())+'\\'));rmSync(dir,{recursive:true,force:true});});
+  const original=readFileSync(new URL('../scripts/qa/android-renderer-ab/policy.mjs',import.meta.url),'utf8');
+  const old=original.replace("['-no-window', '-version']","['-version']");
+  assert.notEqual(old,original);
+  const file=join(dir,'old-gui-query.mjs');writeFileSync(file,old);
+  const baseline=await import(pathToFileURL(file));
+  await assert.rejects(()=>baseline.probeEmulator(command,'same-sdk-emulator'),/emulator-version: exit 127:.*libpulse/);
+  calls.length=0;
+  const result=await probeEmulator(command,'same-sdk-emulator');
+  assert.match(result.version,/37\.2\.12\.0 \(build_id 16428233\)/);
+  assert.match(result.gpuHelp,/software swiftshader/);
+  assert.deepEqual(calls.map(c=>c.args),[['-no-window','-version'],['-no-window','-help-gpu']]);
+  assert.ok(calls.every(c=>c.options.timeout===20000&&c.executable==='same-sdk-emulator'));
 });

@@ -6,7 +6,7 @@ import {resolve, join, dirname, relative, isAbsolute} from 'node:path';
 import {platform} from 'node:os';
 import {createServer} from 'node:net';
 import {pathToFileURL, fileURLToPath} from 'node:url';
-import {PIN, ARMS, assertContext, assertArtifactIdentity, assertSdk, assertRenderer, executePair, pairVerdict} from './policy.mjs';
+import {PIN, ARMS, assertContext, assertArtifactIdentity, assertSdk, assertRenderer, executePair, pairVerdict, probeEmulator} from './policy.mjs';
 
 const now = () => new Date().toISOString();
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -139,9 +139,8 @@ async function prepareGlobal(ctx) {
     '--archive',ctx.archive,'--source-root',ctx.source,'--tools-root',ctx.tools,'--destination',original]);
   const artifact=JSON.parse(verified.stdout.trim());assertArtifactIdentity(artifact);save(join(ctx.output,'artifact-identity.json'),artifact);
   const api=await import(pathToFileURL(join(ctx.tools,'scripts/qa/android-native-isolated/renderer-capabilities.mjs')));
-  const version=await command(ctx,'emulator-version',join(ctx.sdk,'emulator/emulator'),['-version'],{timeout:20000});
-  const help=await command(ctx,'emulator-help-gpu',join(ctx.sdk,'emulator/emulator'),['-help-gpu'],{timeout:20000});
-  const sdk=api.readRendererSdk(ctx.sdk);assertSdk(sdk,version.stdout+version.stderr,help.stdout+help.stderr);
+  const probes=await probeEmulator((...args)=>command(ctx,...args),join(ctx.sdk,'emulator/emulator'));
+  const sdk=api.readRendererSdk(ctx.sdk);assertSdk(sdk,probes.version,probes.gpuHelp);
   const digest=sdkDigest(ctx);save(join(ctx.output,'sdk-inputs.json'),{...sdk,stableDigest:digest});
   ctx.sdkDigest=digest.sha256;ctx.original=original;
   for(const port of [5037,5582,5583,9232])await requireFree(port);
