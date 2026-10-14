@@ -3415,6 +3415,11 @@ const CSS = `
     }
   }
 
+  /* Dialog panels stay anchored while the pointer moves across their content. */
+  html.ledger-workspace-v1 .panel:is(.expense-modal, .event-modal) {
+    transform: none !important;
+  }
+
   html.ledger-workspace-v1 .status-chip,
   html.ledger-workspace-v1 .event-type-chip {
     min-height: 26px !important;
