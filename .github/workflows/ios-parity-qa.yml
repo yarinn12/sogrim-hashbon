@@ -65,7 +65,7 @@ jobs:
           npx cap sync ios
           node scripts/finalize-native-projects.mjs
           python3 "$GITHUB_WORKSPACE/scripts/qa/ios-parity/prepare.py" prepare "$PWD" "$APP_SHA"
-      - name: Boot iPhone 15 or 16 and build unsigned Debug with the real SDK
+      - name: Build unsigned Debug before booting a clean iPhone 15 or 16
         working-directory: app
         run: |
           set -euo pipefail
@@ -81,12 +81,32 @@ jobs:
           print('PROBE_DEVICE='+device['name'].replace(' ','_'))
           PY
           source build/native-parity/simulator.env
-          xcrun simctl boot "$PROBE_UDID"
-          xcrun simctl bootstatus "$PROBE_UDID" -b
           xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
             -sdk iphonesimulator -destination "platform=iOS Simulator,id=$PROBE_UDID" \
             -derivedDataPath build/native-parity/derived build-for-testing CODE_SIGNING_ALLOWED=NO \
             > build/native-parity/build.log 2>&1
+          simulator_state() {
+            xcrun simctl list devices -j | python3 -c '
+          import json, sys
+          udid = sys.argv[1]
+          devices = json.load(sys.stdin)["devices"]
+          print(next((device["state"] for runtime in devices.values() for device in runtime if device["udid"] == udid), "Missing"))
+          ' "$PROBE_UDID"
+          }
+          state="$(simulator_state)"
+          if [[ "$state" == Booted ]]; then
+            xcrun simctl shutdown "$PROBE_UDID"
+          fi
+          for attempt in {1..30}; do
+            state="$(simulator_state)"
+            if [[ "$state" == Shutdown ]]; then break; fi
+            sleep 1
+          done
+          test "$state" = Shutdown
+          xcrun simctl erase "$PROBE_UDID" > build/native-parity/erase.log 2>&1
+          test "$(simulator_state)" = Shutdown
+          xcrun simctl boot "$PROBE_UDID"
+          xcrun simctl bootstatus "$PROBE_UDID" -b
       - name: Verify normal and real OS accessibility sizes, keyboard, native taps and persistence
         working-directory: app
         env:
