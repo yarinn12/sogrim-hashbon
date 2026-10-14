@@ -536,6 +536,20 @@ function setupKeyboardViewport() {
   let keyboardOpen = false;
   let safeAreaProbe;
   let observedModal;
+  let scheduledScroll;
+  let userScrollModal;
+  let intentSequence = 0;
+  let userScrollSequence = 0;
+  let revealSequence = 0;
+
+  const markUserScroll = event => {
+    const modal = event.target instanceof Element
+      ? event.target.closest(".expense-step-modal")
+      : null;
+    if (!modal || !root.classList.contains("app-software-keyboard-open")) return;
+    userScrollModal = modal;
+    userScrollSequence = ++intentSequence;
+  };
 
   const safeAreaTop = () => {
     const configured = Number.parseFloat(getComputedStyle(root).getPropertyValue("--app-keyboard-safe-area-top"));
@@ -584,6 +598,8 @@ function setupKeyboardViewport() {
 
   const sync = () => {
     frame = 0;
+    const pendingScroll = scheduledScroll;
+    scheduledScroll = null;
     const active = document.activeElement;
     const editing = !active?.readOnly && !active?.disabled && active?.matches?.(
       'textarea, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"])'
@@ -623,19 +639,41 @@ function setupKeyboardViewport() {
       root.style.removeProperty("--app-keyboard-viewport-height");
       root.style.removeProperty("--app-keyboard-viewport-top");
     }
-    if (keyboardOpen) revealFocusedExpenseField(visibleHeight, offsetTop);
+    if (keyboardOpen && modal) {
+      // A scroll made after this frame was scheduled is newer than its layout
+      // measurement. Let the user read the title until another editing or
+      // viewport action explicitly asks to reveal the focused field again.
+      if (pendingScroll?.modal === modal
+        && modal.scrollTop < pendingScroll.top - 1) {
+        userScrollModal = modal;
+        userScrollSequence = ++intentSequence;
+      }
+      if (revealSequence > userScrollSequence) userScrollModal = null;
+      if (userScrollModal !== modal) revealFocusedExpenseField(visibleHeight, offsetTop);
+    } else if (!keyboardOpen) {
+      userScrollModal = null;
+    }
   };
-  const schedule = () => {
+  const schedule = (reason = "layout") => {
+    const modal = document.activeElement?.closest?.(".expense-step-modal");
+    // Preserve the first layout snapshot while its frame is pending. A later
+    // user scroll must not be hidden by another ResizeObserver notification.
+    if (!frame || reason !== "layout") {
+      scheduledScroll = modal ? { modal, top: modal.scrollTop, reason } : null;
+    }
+    if (reason !== "layout") revealSequence = ++intentSequence;
     if (!frame) frame = requestAnimationFrame(sync);
   };
   const focusedLayoutObserver = typeof ResizeObserver === "function"
-    ? new ResizeObserver(schedule)
+    ? new ResizeObserver(() => schedule())
     : null;
-  viewport.addEventListener("resize", schedule, { passive: true });
-  viewport.addEventListener("scroll", schedule, { passive: true });
-  window.addEventListener("resize", schedule, { passive: true });
-  document.addEventListener("focusin", schedule, { passive: true });
-  document.addEventListener("input", schedule, { passive: true });
+  viewport.addEventListener("resize", () => schedule("viewport"), { passive: true });
+  viewport.addEventListener("scroll", () => schedule("viewport"), { passive: true });
+  window.addEventListener("resize", () => schedule("viewport"), { passive: true });
+  document.addEventListener("focusin", () => schedule("editing"), { passive: true });
+  document.addEventListener("input", () => schedule("editing"), { passive: true });
+  document.addEventListener("wheel", markUserScroll, { capture: true, passive: true });
+  document.addEventListener("touchmove", markUserScroll, { capture: true, passive: true });
   schedule();
 }
 
