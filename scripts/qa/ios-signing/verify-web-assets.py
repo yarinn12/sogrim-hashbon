@@ -7,12 +7,13 @@ import plistlib
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 
 SOURCE = os.environ.get('SOURCE_SHA', '')
-TREE = 'babe821f960eec8746ec9f42644d9e32623e176b'
-if SOURCE != '1e2439f32839bdad380d4e682cd85b03949c3157':
+TREE = '8a9ae9b8e00533c84edd3022ec993ac937e4460a'
+if SOURCE != '3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1':
     raise ValueError('Expected the coordinator frozen release source')
 TEAM = 'MA9S4L7WKS'
 BUNDLE = 'com.sogrimhashbon.app'
@@ -35,6 +36,78 @@ def file_map(directory):
     require(len(result) > 0, 'Empty web asset directory')
     return result
 
+def compare_canonical_www(prepared, canonical):
+    require(prepared == canonical, 'WWW differs from independently built canonical Git bytes')
+
+def canonical_archive_command(source, git_binary='git'):
+    # git archive otherwise honors core.autocrlf on Windows. Verify original
+    # blobs, never repair or normalize the exported bytes after the fact.
+    return [git_binary, '-c', 'core.autocrlf=false', '-c', 'core.eol=lf',
+            'archive', '--format=tar', source]
+
+def extract_git_archive(stream, destination, expected):
+    seen = set()
+    with tarfile.open(fileobj=stream, mode='r|') as archive:
+        for entry in archive:
+            path = pathlib.PurePosixPath(entry.name)
+            require(not path.is_absolute() and '..' not in path.parts and '\\' not in entry.name,
+                    'Unsafe canonical Git archive path')
+            if entry.isdir():
+                continue
+            require(entry.isfile() and entry.name in expected and entry.name not in seen,
+                    'Unexpected, duplicate or nonregular canonical Git file')
+            data = archive.extractfile(entry).read()
+            blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+            require(blob == expected[entry.name], 'Canonical archive bytes differ from Git blob')
+            target = destination / entry.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+            seen.add(entry.name)
+    require(seen == set(expected), 'Canonical Git archive is incomplete')
+
+def canonical_git_www(root):
+    def git(*args):
+        return subprocess.run(['git', *args], cwd=root, check=True, capture_output=True).stdout
+    require(git('rev-parse', 'HEAD').decode().strip() == SOURCE, 'Canonical audit needs exact source HEAD')
+    require(git('rev-parse', 'HEAD^{tree}').decode().strip() == TREE, 'Canonical audit needs exact Git tree')
+    entries = {}
+    for row in git('ls-tree', '-r', '-z', SOURCE).split(b'\0'):
+        if not row:
+            continue
+        header, path = row.split(b'\t', 1)
+        mode, kind, blob = header.decode().split(' ')
+        require(mode in ('100644', '100755') and kind == 'blob', 'Nonregular canonical Git input')
+        entries[path.decode('utf-8')] = blob
+    require(len(entries) > 500, 'Incomplete canonical Git input tree')
+    require(not any(name.startswith(('www/', 'node_modules/')) for name in entries),
+            'Generated assets or dependencies must not replace canonical inputs')
+    with tempfile.TemporaryDirectory(prefix='sogrim-canonical-www-') as directory:
+        reference = pathlib.Path(directory)
+        with subprocess.Popen(canonical_archive_command(SOURCE), cwd=root,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
+            try:
+                extract_git_archive(process.stdout, reference, entries)
+            except Exception:
+                if process.poll() is None:
+                    process.kill()
+                process.communicate()
+                raise
+            require(process.wait() == 0, 'Cannot export canonical Git source')
+        dependencies = root / 'node_modules'
+        require(dependencies.is_dir(), 'Locked npm ci dependencies are required')
+        (reference / 'node_modules').symlink_to(dependencies, target_is_directory=True)
+        subprocess.run(['node', 'scripts/build-native-web.mjs'], cwd=reference,
+                       check=True, capture_output=True)
+        canonical = file_map(reference / 'www')
+        require(len(canonical) >= 200, 'Incomplete canonical WWW build')
+        require({'index.html', 'assets/native-layers.css', 'assets/native-style-loader.mjs',
+                 *('assets/native-' + name + '.mjs' for name in ('prelude', 'auth', 'core', 'account', 'experience'))}
+                .issubset(canonical), 'Canonical generated entry points missing')
+        compare_canonical_www(file_map(root / 'www'), canonical)
+    return {'sourceCommit': SOURCE, 'sourceTree': TREE, 'gitInputCount': len(entries),
+            'allArchiveBytesMatchGitBlobs': True, 'lockedDependenciesSharedAfterNpmCi': True,
+            'independentCanonicalBuild': True, 'www': canonical}
+
 def validate_config(data):
     config = json.loads(data)
     require(config.get('appId') == BUNDLE and config.get('webDir') == 'www', 'Unexpected Capacitor identity')
@@ -42,8 +115,15 @@ def validate_config(data):
     require(config.get('ios', {}).get('contentInset') == 'automatic', 'Unexpected iOS content inset')
     require(config.get('ios', {}).get('preferredContentMode') == 'mobile', 'Unexpected iOS content mode')
 
-def snapshot(root):
+def snapshot(root, canonical=None):
     web = file_map(root / 'www')
+    if canonical is not None:
+        require(canonical.get('sourceCommit') == SOURCE and canonical.get('sourceTree') == TREE,
+                'Canonical proof belongs to another source')
+        require(canonical.get('independentCanonicalBuild') is True and
+                canonical.get('allArchiveBytesMatchGitBlobs') is True and
+                canonical.get('gitInputCount', 0) > 500, 'Canonical Git byte proof missing')
+        compare_canonical_www(web, canonical.get('www'))
     copied = file_map(root / 'ios/App/App/public')
     require(set(copied) == set(web) | {'cordova.js', 'cordova_plugins.js'}, 'Unexpected files in copied iOS web assets')
     for name, sha in web.items():
@@ -56,7 +136,10 @@ def snapshot(root):
         configs[name] = digest(data)
         if name == 'capacitor.config.json':
             validate_config(data)
-    return {'sourceCommit': SOURCE, 'sourceTree': TREE, 'pwaRelease': '515', 'www': web, 'iosPublic': copied, 'nativeConfigs': configs, 'privacyManifest': plistlib.loads((root / 'ios/App/App/PrivacyInfo.xcprivacy').read_bytes())}
+    result = {'sourceCommit': SOURCE, 'sourceTree': TREE, 'pwaRelease': '515', 'www': web, 'iosPublic': copied, 'nativeConfigs': configs, 'privacyManifest': plistlib.loads((root / 'ios/App/App/PrivacyInfo.xcprivacy').read_bytes())}
+    if canonical is not None:
+        result['canonicalGit'] = canonical
+    return result
 
 def inspect_zip(archive, expected):
     entries = archive.infolist()
@@ -110,7 +193,8 @@ def verify_signing_certificate(app_path, directory):
     return certificate_sha
 
 def verify(root, expected):
-    require(snapshot(root) == expected, 'Prepared web assets changed after snapshot')
+    require('canonicalGit' in expected, 'Independent canonical Git proof is required before signing acceptance')
+    require(snapshot(root, expected['canonicalGit']) == expected, 'Prepared web assets changed after snapshot')
     ipa = root / 'build/ios/SogrimHashbon.ipa'
     manifest = json.loads((root / 'build/ios/release-manifest.json').read_text())
     sha = digest(ipa.read_bytes())
@@ -134,7 +218,7 @@ def verify(root, expected):
     require(before['sourceCommit'] == after['sourceCommit'] == SOURCE, 'Source proof mismatch')
     require(before['sourceTree'] == after['sourceTree'] == TREE, 'Source tree proof mismatch')
     require(before['packageSha256'] == after['packageSha256'] and before['packageLockSha256'] == after['packageLockSha256'], 'Package declarations changed during build')
-    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '515', 'version': '4.58', 'build': '194', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    proof = {'sourceCommit': SOURCE, 'sourceTree': before['sourceTree'], 'pwaRelease': '515', 'version': '4.58', 'build': '194', 'ipaSha256': sha, 'wwwFileCount': len(expected['www']), 'ipaWebFileCount': len(expected['iosPublic']), 'everyWwwAssetMatches': True, 'everyWwwAssetMatchesCanonicalGitBuild': True, 'canonicalGitInputCount': expected['canonicalGit']['gitInputCount'], 'noUnexpectedWebAssets': True, 'noRemoteServerUrl': True, 'signatureVerified': True, 'signingCertificateSha256': CERT_SHA256, 'privacyManifestSemanticallyMatches': True, 'profile': profile_proof, 'ci': after['ci'], 'appleBuildReadback': after['apple'], 'physicalDeviceAcceptance': False, 'appleUploadPerformed': False, 'verifiedAt': datetime.datetime.now(datetime.timezone.utc).isoformat()}
     (root / 'build/ios/artifact-verification.json').write_text(json.dumps(proof, indent=2) + '\n')
     manifest.update(proof)
     (root / 'build/ios/release-manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
@@ -144,7 +228,7 @@ if __name__ == '__main__':
     root = pathlib.Path.cwd()
     target = root / 'build/ios/web-assets.json'
     if sys.argv[1] == 'snapshot':
-        target.write_text(json.dumps(snapshot(root), indent=2) + '\n')
+        target.write_text(json.dumps(snapshot(root, canonical_git_www(root)), indent=2) + '\n')
         print('Complete web and native configuration snapshot saved.')
     elif sys.argv[1] == 'verify':
         verify(root, json.loads(target.read_text()))

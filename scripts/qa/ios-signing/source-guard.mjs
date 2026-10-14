@@ -5,11 +5,12 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '1e2439f32839bdad380d4e682cd85b03949c3157';
-export const RELEASE_TREE = 'babe821f960eec8746ec9f42644d9e32623e176b';
+export const RELEASE_SOURCE = '3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1';
+export const RELEASE_TREE = '8a9ae9b8e00533c84edd3022ec993ac937e4460a';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
 export const APPLE_APP_ID = '6809952514';
+export const SOURCE_BRANCH = 'codex/engineering-foundation-20261013';
 assert.match(SOURCE ?? '', /^[0-9a-f]{40}$/, 'source_sha must be a full commit');
 assert.equal(SOURCE, RELEASE_SOURCE, 'Only the coordinator frozen release source is authorized');
 
@@ -52,6 +53,8 @@ export async function verifyRuns(fetchImpl, token, env) {
     assert.equal(run.repository?.full_name, 'yarinn12/sogrim-hashbon');
     assert.equal(run.head_repository?.full_name, 'yarinn12/sogrim-hashbon', 'Fork CI is forbidden');
     assert.equal(run.head_sha, SOURCE, 'CI must be on source_sha');
+    assert.equal(run.head_branch, SOURCE_BRANCH, 'Private candidate CI must belong to its explicit source branch');
+    assert.ok(['push', 'pull_request', 'workflow_dispatch'].includes(run.event), 'Unsupported private CI event');
     assert.equal(run.path, path);
     assert.equal(run.status, 'completed');
     assert.equal(run.conclusion, 'success');
@@ -78,6 +81,12 @@ export async function verifyRuns(fetchImpl, token, env) {
         ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
         'ios-native / native-parity', 'android-native / native-parity'];
       for (const name of required) assert.equal(jobs.filter(job => job.name === name).length, 1, 'Missing QA lane: ' + name);
+    } else {
+      const requiredName = {'.github/workflows/qa-windows.yml':'windows-unit',
+        '.github/workflows/cross-engine-font-provenance-qa.yml':'linux-font-provenance',
+        '.github/workflows/ios-auth-return-qa.yml':'native'}[path];
+      assert.ok(requiredName, 'Unknown private acceptance workflow');
+      assert.equal(jobs.filter(job => job.name === requiredName).length, 1, 'Missing acceptance lane: ' + requiredName);
     }
     proofs.push({id, path, source: run.head_sha, attempt: run.run_attempt, conclusion: run.conclusion,
       jobs: jobs.map(({id, name, conclusion, head_sha}) => ({id, name, conclusion, source: head_sha})), updatedAt: run.updated_at});

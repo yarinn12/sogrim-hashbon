@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 
 const CONTEXT = 'sogrim-ios-private-artifact-v1';
 const SOURCE = process.env.SOURCE_SHA;
-const TREE = 'babe821f960eec8746ec9f42644d9e32623e176b';
-assert.equal(SOURCE, '1e2439f32839bdad380d4e682cd85b03949c3157', 'Expected the coordinator frozen release source');
+const TREE = '8a9ae9b8e00533c84edd3022ec993ac937e4460a';
+assert.equal(SOURCE, '3f1976105fbc6bae48fcc1ff3ed975db5a8b98c1', 'Expected the coordinator frozen release source');
 const hash = data => createHash('sha256').update(data).digest('hex');
 
 function derive(pem, salt, aad) {
@@ -65,6 +65,7 @@ function main() {
     assert.equal(manifest.appleUploadPerformed, false);
     assert.equal(manifest.signatureVerified, true);
     assert.equal(manifest.everyWwwAssetMatches, true);
+    assert.equal(manifest.everyWwwAssetMatchesCanonicalGitBuild, true);
     const result = protect(readFileSync(input), pem, {sourceCommit: manifest.sourceCommit,
       sourceTree: manifest.sourceTree, version: manifest.version, build: manifest.build, buildRunId: process.env.GITHUB_RUN_ID,
       buildRunAttempt: process.env.GITHUB_RUN_ATTEMPT, ipaSha256: manifest.ipaSha256});

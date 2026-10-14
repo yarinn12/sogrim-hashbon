@@ -3,7 +3,7 @@ import {generateKeyPairSync, randomBytes} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCommit,
-  requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID} from './source-guard.mjs';
+  requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID, SOURCE_BRANCH} from './source-guard.mjs';
 import {protect, unprotect} from './protect-artifact.mjs';
 
 const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38280270544', SOURCE_WINDOWS_QA_RUN: '38280270132',
@@ -21,15 +21,23 @@ function ci(edit = () => {}) {
     const [id, path] = requiredRuns(env).find(([id]) => id === match[1]);
     let value;
     if (match[2]) value = {total_count: path.endsWith('/qa.yml') ? names.length : 1,
-      jobs: (path.endsWith('/qa.yml') ? names : ['checks']).map((name,i) => ({id:i+1,run_id:Number(id),
+      jobs: (path.endsWith('/qa.yml') ? names : [path.endsWith('/qa-windows.yml')?'windows-unit':path.endsWith('/ios-auth-return-qa.yml')?'native':'linux-font-provenance']).map((name,i) => ({id:i+1,run_id:Number(id),
         head_sha:SOURCE,name,status:'completed',conclusion:'success'}))};
     else value = {id:Number(id),head_sha:SOURCE,repository:{full_name:env.GITHUB_REPOSITORY},
-      head_repository:{full_name:env.GITHUB_REPOSITORY},path,status:'completed',conclusion:'success',run_attempt:1};
+      head_repository:{full_name:env.GITHUB_REPOSITORY},head_branch:SOURCE_BRANCH,event:'pull_request',path,status:'completed',conclusion:'success',run_attempt:1};
     edit(value, path, !!match[2]); return {ok:true,json:async()=>value};
   };
 }
 test('four complete exact-source CI runs and all native lanes pass',async()=>{
   const proof=await verifyRuns(ci(),'synthetic-token',env); assert.equal(proof.length,4);
+});
+for(const workflow of ['qa-windows.yml','cross-engine-font-provenance-qa.yml','ios-auth-return-qa.yml'])
+ test('private CI rejects a substitute passing job instead of '+workflow,async()=>assert.rejects(verifyRuns(ci((v,p,j)=>{
+  if(j&&p.endsWith('/'+workflow))v.jobs[0].name='unrelated-passing-check';
+ }),'synthetic',env)));
+test('private candidate CI rejects another branch and privileged PR target events',async()=>{
+ await assert.rejects(verifyRuns(ci((v,p,j)=>{if(!j)v.head_branch='main';}),'synthetic',env));
+ await assert.rejects(verifyRuns(ci((v,p,j)=>{if(!j)v.event='pull_request_target';}),'synthetic',env));
 });
 for (const [name,field,value] of [
   ['another source','head_sha','a'.repeat(40)],['failed','conclusion','failure'],
