@@ -4205,8 +4205,7 @@ function injectStyle() {
       pointer-events: none;
     }
 
-    @media (max-width: 760px),
-      (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (max-width: 1366px) {
       .account-auth-gate {
         place-items: stretch;
         padding: 0;
@@ -4371,7 +4370,7 @@ function injectStyle() {
 
     /* iPad home-screen apps keep a readable form measure without collapsing
        the entire authentication experience into a phone-width strip. */
-    @media (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (min-width: 761px) and (max-width: 1366px) {
       .account-auth-gate {
         justify-items: center;
         padding-inline:

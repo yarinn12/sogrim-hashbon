@@ -10,7 +10,7 @@ const CSS = `
     pointer-events: none !important;
   }
 
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  @media (max-width: 1366px) {
     .expense-modal-backdrop,
     .event-modal-backdrop,
     html.product-v1 .expense-modal-backdrop,
@@ -336,8 +336,7 @@ const CSS = `
   /* Safari can leave 100dvh unchanged while the software keyboard covers it.
      Use the visual viewport only during that state and return to the ordinary
      route geometry when it closes. Navigation is already behind the keyboard. */
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
-    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+  html.app-software-keyboard-open.ledger-workspace-v1 body #app
       :is(.expense-modal-backdrop, .event-modal-backdrop) {
       top: var(--app-keyboard-viewport-top) !important;
       bottom: auto !important;
@@ -444,11 +443,10 @@ const CSS = `
       visibility: hidden !important;
       pointer-events: none !important;
     }
-  }
 
-  /* Desktop pointer layouts keep the same bottom navigation, so the roster
+  /* Desktop layouts keep the same bottom navigation, so the roster
      needs its own scrollport above that navigation as well. */
-  @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  @media (min-width: 1025px) {
     html.ledger-workspace-v1 body #app
       .event-participant-route-backdrop[data-event-route-dialog="true"]
       .event-participant-roster-modal {
@@ -643,13 +641,10 @@ function setupKeyboardViewport() {
 
 function syncResponsiveTabletShell() {
   const isTabletViewport = window.innerWidth >= 721 && window.innerWidth <= 1366;
-  const userAgent = String(globalThis.navigator?.userAgent ?? "");
-  const hasTouch =
-    Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0 || /iPad|Mobile\//i.test(userAgent);
   document.documentElement.classList.remove("compact-tablet-phone-shell");
   document.documentElement.classList.toggle(
     "responsive-tablet-shell",
-    isTabletViewport && hasTouch
+    isTabletViewport
   );
 }
 

@@ -4685,7 +4685,7 @@ const CSS = `
 
   /* Scale shared page headings with the user's text size while keeping the
      event name and first task together on a narrow phone. */
-  @media (pointer: coarse) and (orientation: portrait) and (max-width: 720px) {
+  @media (orientation: portrait) and (max-width: 720px) {
     html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] > .top {
       min-height: 0 !important;
       margin-block: 8px 12px !important;
@@ -4752,7 +4752,7 @@ const CSS = `
 
   /* A phone turned sideways has tablet width but very little usable height.
      Keep the task above the fixed navigation, with the same touch targets. */
-  @media (pointer: coarse) and (orientation: landscape) and (max-height: 450px) {
+  @media (orientation: landscape) and (max-height: 450px) and (max-width: 1024px) {
     html.design-coherence-v1.ledger-workspace-v1 body #app .screen[data-screen-kind] {
       width: 100% !important;
       max-width: 960px !important;
