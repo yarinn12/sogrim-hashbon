@@ -31,6 +31,18 @@ const record={source:git(process.cwd(),'HEAD'),tree:git(process.cwd(),'HEAD^{tre
 if(record.source!==process.env.ANDROID_QA_SOURCE||record.tree!=='9bcf8cf40144d12507faa2cfea9ddadee42d819f'||record.toolsSource!==process.env.GITHUB_SHA)throw new Error('Mismatched actual source/tool checkout');
 writeFileSync('artifacts/android-native-isolated/diagnostic-origin.json',JSON.stringify(record,null,2),{flag:'wx'});
 JS
+prepare_owned_kvm() {
+  # A prior emulator may leave the next session without effective KVM access.
+  # Re-establish the same owned-user baseline; never fall back to software CPU.
+  test -c /dev/kvm
+  id > "$out/kvm-user.txt"
+  stat -c '%d:%i:%u:%g:%a' /dev/kvm > "$out/kvm-before.stat"
+  getfacl -p /dev/kvm > "$out/kvm-before.acl"
+  sudo setfacl -m "u:$USER:rw" /dev/kvm
+  stat -c '%d:%i:%u:%g:%a' /dev/kvm > "$out/kvm-after.stat"
+  getfacl -p /dev/kvm > "$out/kvm-after.acl"
+  "$ANDROID_HOME/emulator/emulator" -accel-check > "$out/kvm-accel-check.log" 2>&1
+}
 owner_valid() {
   ANDROID_QA_EMULATOR_PID="$(cat "$out/emulator.pid")" node --input-type=module - <<'JS'
 import {readFileSync} from 'node:fs';
@@ -114,6 +126,7 @@ PY
 cp "$ANDROID_AVD_HOME/$ANDROID_QA_AVD.avd/config.ini" "$out/avd-config.ini"
 node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
 node scripts/qa/android-native-isolated/gltransport.mjs snapshot
+prepare_owned_kvm
 "$ANDROID_HOME/emulator/emulator" -avd "$ANDROID_QA_AVD" -port 5582 -no-window -no-snapshot -no-audio -no-boot-anim -gpu swiftshader -feature GLDirectMem,HasSharedSlotsHostMemoryAllocator -verbose -memory 4096 -cores 2 > "$out/emulator.log" 2>&1 &
 emulator_pid=$!; export ANDROID_QA_EMULATOR_PID="$emulator_pid"
 printf '%s\n' "$emulator_pid" > "$out/emulator.pid"
