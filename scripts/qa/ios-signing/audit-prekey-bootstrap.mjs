@@ -176,6 +176,7 @@ export async function runSignedAuditPreKey(anchors,githubToken,options) {
   runtime.checkedAt=now();
   const context=verifyAuditExecution(auth.reviewed,runtime,{api:measured.api,checkouts:after,inputs});
   return {scope:'SIGNED_AUDIT_PREKEY_PREPARATION_ONLY',context,signatureProof:auth.signatureProof,
+    validatedPolicy:auth.policy,reviewedPolicyBytes:Buffer.from(auth.reviewed.policyBytes),toolkitRoot:after.toolkit.realPath,
     bootstrapCaptures:auth.captures,auditApiCaptures:measured.api,gates,
     appleKeysAuthorized:false,ownerAvailabilityAccepted:false,databaseAccepted:false,
     publicReleaseAccepted:false,distributionAllowed:false};
