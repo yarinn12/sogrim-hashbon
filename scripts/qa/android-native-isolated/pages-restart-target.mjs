@@ -1,12 +1,24 @@
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {record,stamp,boundedGuestClockAnchor,CLOCK_PROBE} from './pages-restart-telemetry.mjs';
 
 export const armScale=arm=>{if(!['A','B'].includes(arm))throw new Error('Require predeclared A or B arm');return arm==='A'?2:1.5;};
+export function cleanupBoundary(phase,{originalScale,originalRotation}){
+  if(!['start','complete'].includes(phase)||!process.env.ANDROID_RESTART_TARGET_OUTPUT)throw new Error('Require explicit cleanup phase and isolated output');
+  const file=join(process.env.ANDROID_RESTART_TARGET_OUTPUT,'cleanup.json');
+  const restoreCommands=[['shell','settings','put','system','font_scale',originalScale],['shell','wm','user-rotation','lock',originalRotation==='null'?'0':originalRotation]];
+  const marker=record('pages-cleanup-'+phase,{scope:'cleanup',restoreCommands});
+  const report=phase==='start'?{scope:'cleanup',complete:false,rotationCommandAcknowledged:false,restoreCommands,startMarker:marker}:JSON.parse(readFileSync(file,'utf8'));
+  if(phase==='complete'){
+    if(report.scope!=='cleanup'||report.complete||JSON.stringify(report.restoreCommands)!==JSON.stringify(restoreCommands))throw new Error('Cleanup boundary missing, repeated or mismatched');
+    Object.assign(report,{complete:true,rotationCommandAcknowledged:true,completionMarker:marker});
+  }
+  writeFileSync(file,JSON.stringify(report,null,2),phase==='start'?{flag:'wx'}:{});return report;
+}
 export async function runTarget({adb,launch,waitFor,sleep,launchForOwnedOrientation,onPage},arm=process.env.ANDROID_RESTART_ARM){
   const scale=armScale(arm),output=process.env.ANDROID_RESTART_TARGET_OUTPUT;
   if(!output)throw new Error('Require isolated target output');
-  const report={arm,scale,diagnosticOnly:true,nativeAcceptance:false,releaseAuthorized:false,rotationRequested:false,foregroundBeforeRotationReached:false,clockAnchors:[]};
+  const report={arm,scale,diagnosticOnly:true,nativeAcceptance:false,releaseAuthorized:false,rotationRequested:false,rotationRequestScope:'target-before-rotation-only; pages finally restores rotation separately',foregroundBeforeRotationReached:false,clockAnchors:[]};
   let page;const boundary=new Error('DIAGNOSTIC_STOP_BEFORE_ROTATION');
   function anchor(label){const before=stamp(),raw=adb([...CLOCK_PROBE]),after=stamp(),value={label,...boundedGuestClockAnchor(before,after,raw)};report.clockAnchors.push(value);record('target-clock-anchor',value);}
   try{

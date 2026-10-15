@@ -1,18 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,rmSync,readdirSync} from 'node:fs';
+import {mkdtempSync,readFileSync,rmSync,readdirSync,writeFileSync,appendFileSync,mkdirSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {spawnSync,execFileSync} from 'node:child_process';
-import {join} from 'node:path';
-import {createTelemetry,boundedUptimeAnchor,boundedGuestClockAnchor} from '../scripts/qa/android-native-isolated/pages-restart-telemetry.mjs';
-import {SOURCE,TREE,instrumentDriver,instrumentPages,validatePrelude,targetDiagnosticComplete,diagnosticOutcome} from '../scripts/qa/android-native-isolated/pages-restart-materialize.mjs';
+import {join,resolve} from 'node:path';
+import {createTelemetry,boundedUptimeAnchor,boundedGuestClockAnchor,record,observedSpawnSync} from '../scripts/qa/android-native-isolated/pages-restart-telemetry.mjs';
+import {SOURCE,TREE,instrumentDriver,instrumentPages,validatePrelude,targetDiagnosticComplete,diagnosticOutcome,assessClosedLog} from '../scripts/qa/android-native-isolated/pages-restart-materialize.mjs';
 import {requireConfiguration,materializeHarness} from '../scripts/qa/android-native-isolated/pages-restart-diagnostic.mjs';
-import {runTarget,armScale} from '../scripts/qa/android-native-isolated/pages-restart-target.mjs';
+import {runTarget,armScale,cleanupBoundary} from '../scripts/qa/android-native-isolated/pages-restart-target.mjs';
 import {launchForOwnedOrientation} from '../scripts/qa/android-native-isolated/orientation.mjs';
 
 function temporary(fn){const path=mkdtempSync(join(tmpdir(),'sogrim-restart-synthetic-'));return Promise.resolve().then(()=>fn(path)).finally(()=>rmSync(path,{recursive:true,force:true}));}
 const before={atUtc:'2026-10-15T19:48:25.000Z',monotonicNs:'10000000000'},after={atUtc:'2026-10-15T19:48:25.040Z',monotonicNs:'10040000000'};
 const bootId='12345678-1234-1234-1234-123456789abc',clockProbe=`${bootId}\n123.45 98.76\n${bootId}\n`;
+const successfulCollections=()=>({errors:[],trace:{captureComplete:true},anr:{diagnosticsComplete:true,anrHistoryReady:true,targetAppAnrLines:[]},prelude:{matrixPassed:true,pagesPassed:true},closedLog:{logcatClosed:true,anrHistoryReady:true},cleanup:{scope:'cleanup',complete:true,rotationCommandAcknowledged:true}});
+const validTarget=()=>({foregroundBeforeRotationReached:true,requestedScaleVerified:true,rotationRequested:false,clockAnchorsComplete:true,clockAnchors:[{label:'before-font-setting',bootId,usablePointAnchor:false},{label:'after-target-observation',bootId,usablePointAnchor:false}]});
 test('bounded clock probe requires matching boot identity around uptime',()=>{
   assert.equal(boundedGuestClockAnchor(before,after,clockProbe).bootId,bootId);
   assert.throws(()=>boundedGuestClockAnchor(before,after,clockProbe.replaceAll(bootId,'bad')),/boot/);
@@ -52,6 +54,39 @@ test('instrumented actual driver executes unchanged ADB and correlated CDP respo
   assert.equal(sends.length,2);assert.equal(acks.length,2);assert.notEqual(sends[0].data.connection,sends[1].data.connection);
   for(const sent of sends)assert.equal(acks.filter(ack=>ack.data.connection===sent.data.connection&&ack.data.id===sent.data.id).length,1);
 }));
+test('CDP raw ACK after original timeout is retained as late unmatched without resolving readiness',()=>temporary(async path=>{
+  const original=readFileSync(new URL('../scripts/qa/android-native-isolated/driver.mjs',import.meta.url),'utf8');
+  const source=instrumentDriver(original,'synthetic-telemetry').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
+  const journal=createTelemetry(path);let expired;
+  class Socket{listeners=new Map();constructor(){queueMicrotask(()=>this.listeners.get('open')?.({}));}addEventListener(name,fn){this.listeners.set(name,fn);}send(raw){this.request=JSON.parse(raw);}receive(raw){this.listeners.get('message')({data:raw});}close(){}}
+  const timer=(fn,ms)=>{if(ms===15000){expired=fn;return {syntheticTimeout:true};}return setTimeout(fn,ms);},clear=handle=>{if(!handle?.syntheticTimeout)clearTimeout(handle);};
+  const api=new Function('spawnSync','process','record','observedSpawnSync','WebSocket','setTimeout','clearTimeout',source+';return {Cdp};')(
+    ()=>({status:0,stdout:'sogrim_ci_synthetic\n',stderr:''}),{env:{ANDROID_QA_DEVICE:'emulator-5554',ANDROID_QA_AVD:'sogrim_ci_synthetic',ADB_PATH:'synthetic-adb'}},journal.record,journal.observedSpawnSync,Socket,timer,clear);
+  const page=new api.Cdp('ws://synthetic-late');await page.ready;
+  const pending=page.command('Runtime.evaluate',{expression:'synthetic late response'});await Promise.resolve();
+  assert.equal(typeof expired,'function');const rejection=assert.rejects(pending,/CDP Runtime.evaluate timed out/);expired();await rejection;
+  assert.equal(page.pending.size,0);
+  const raw=JSON.stringify({id:page.socket.request.id,result:{result:{value:'late native response'}}});page.socket.receive(raw);
+  page.socket.receive(JSON.stringify({id:999,result:{unmatched:true}}));page.socket.receive(JSON.stringify({method:'Runtime.consoleAPICalled',params:{type:'log'}}));
+  const rows=readFileSync(join(path,'commands.jsonl'),'utf8').trim().split('\n').map(JSON.parse),late=rows.filter(row=>row.kind==='cdp-ack'&&row.data.late);
+  assert.equal(late.length,1,'actual late ACK must survive pending-map deletion');assert.equal(late[0].data.raw,raw);assert.equal(late[0].data.unmatched,true);assert.equal(late[0].data.matched,false);assert.equal(late[0].data.uiInputResponsiveProven,false);assert.equal(page.pending.size,0);
+  assert.equal(rows.filter(row=>row.kind==='cdp-ack'&&row.data.id===999&&row.data.unmatched&&!row.data.late).length,1);
+  assert.equal(rows.filter(row=>row.kind==='cdp-message'&&row.data.message?.method==='Runtime.consoleAPICalled').length,1);
+}));
+test('closed log tail ANR rejects final outcome after clean pre-close collection',()=>temporary(path=>{
+  const file=join(path,'logcat-live.log'),prefix='10-15 19:48:25.000 8694 8694 I Sogrim: synthetic pre-close ready\n';writeFileSync(file,prefix);
+  const collected=assessClosedLog(file,true);assert.equal(collected.anrHistoryReady,true);
+  const tail='10-15 19:48:30.983 697 825 I am_anr: [0,8694,com.sogrimhashbon.app.debug,0,Input dispatching timed out (FocusEvent(hasFocus=true))]\n';appendFileSync(file,tail);
+  const closed=assessClosedLog(file,true);assert.equal(closed.anrHistoryReady,false);assert.deepEqual(closed.targetAppAnrLines,[tail.trim()]);assert.equal(closed.file.bytes,Buffer.byteLength(prefix+tail));
+  const report={...successfulCollections(),target:validTarget(),closedLog:closed};const outcome=diagnosticOutcome(report);
+  assert.equal(outcome.exitCode,1,JSON.stringify({closedLog:closed,outcome}));assert.equal(outcome.diagnosticComplete,false);assert.equal(outcome.anrObserved,true);
+}));
+test('final history requires closed ACK, readable complete file and original predicate success',()=>temporary(path=>{
+  const file=join(path,'logcat-live.log');writeFileSync(file,'10-15 19:48:25.000 8694 8694 I Sogrim: synthetic log\n');
+  const base={...successfulCollections(),target:validTarget()};assert.equal(diagnosticOutcome({...base,closedLog:assessClosedLog(file,true)}).exitCode,0);
+  for(const closed of [assessClosedLog(file,false),assessClosedLog(join(path,'missing.log'),true),{logcatClosed:true,anrHistoryReady:false}])assert.equal(diagnosticOutcome({...base,closedLog:closed}).exitCode,1);
+  writeFileSync(file,'malformed or empty protocol');assert.equal(assessClosedLog(file,true).anrHistoryReady,false);
+}));
 test('instrumentation rejects changed or ambiguous frozen-source anchors',()=>{
   const driver=readFileSync(new URL('../scripts/qa/android-native-isolated/driver.mjs',import.meta.url),'utf8');assert.throws(()=>instrumentDriver(driver.replace('const result = spawnSync(adbPath,','const result = other(adbPath,'),'x'),/anchor/);
   assert.throws(()=>instrumentDriver(driver+driver,'x'),/anchor/);
@@ -79,23 +114,58 @@ test('after-target anchor failure cannot pass closure with valid foreground and 
     const orientation=async({onPage,adb})=>{onPage({evaluate:async()=>({fontScale:2})});try{adb(['shell','wm','user-rotation','lock','0']);}catch(error){error.rotationReceipt={commandApplications:0,observations:[{phase:'foreground-before-request'}]};throw error;}};
     const report=await runTarget({adb,launch:async()=>{},waitFor:async()=>{},sleep:async()=>{},launchForOwnedOrientation:orientation},'A');
     assert.equal(report.foregroundBeforeRotationReached,true);assert.equal(report.requestedScaleVerified,true);assert.equal(report.capabilityError,undefined);assert.equal(report.error,undefined);assert.equal(report.clockAnchors.length,1);assert.match(report.clockAnchorError,/after-target anchor read failure/);assert.equal(targetDiagnosticComplete(report),false);
-    const outcome=diagnosticOutcome({errors:[],trace:{captureComplete:true},anr:{diagnosticsComplete:true,anrHistoryReady:true,targetAppAnrLines:[]},prelude:{matrixPassed:true,pagesPassed:true},target:report});
+    const outcome=diagnosticOutcome({...successfulCollections(),target:report});
     assert.equal(outcome.exitCode,1,JSON.stringify({target:report,outcome}));assert.equal(outcome.diagnosticComplete,false);
   }finally{for(const key of ['ANDROID_RESTART_COMMAND_EVIDENCE','ANDROID_RESTART_TARGET_OUTPUT'])if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
 }));
 test('closure rejects each error and missing anchor, while wide valid anchors remain complete',()=>{
-  const target={foregroundBeforeRotationReached:true,requestedScaleVerified:true,rotationRequested:false,clockAnchorsComplete:true,clockAnchors:[{label:'before-font-setting',bootId,usablePointAnchor:false},{label:'after-target-observation',bootId,usablePointAnchor:false}]};
+  const target=validTarget();
   assert.equal(targetDiagnosticComplete(target),true);
   for(const field of ['error','clockAnchorError','capabilityError'])assert.equal(targetDiagnosticComplete({...target,[field]:'synthetic failure'}),false);
   assert.equal(targetDiagnosticComplete({...target,clockAnchors:[target.clockAnchors[0]]}),false);
   assert.equal(targetDiagnosticComplete({...target,clockAnchors:[...target.clockAnchors].reverse()}),false);
   assert.equal(targetDiagnosticComplete({...target,clockAnchors:[target.clockAnchors[0],{...target.clockAnchors[1],bootId:'other'}]}),false);
-  const baseline={errors:[],trace:{captureComplete:true},anr:{diagnosticsComplete:true,anrHistoryReady:true,targetAppAnrLines:[]},prelude:{matrixPassed:true,pagesPassed:true},target};
+  const baseline={...successfulCollections(),target};
   assert.equal(diagnosticOutcome(baseline).exitCode,0);assert.equal(diagnosticOutcome(baseline).nativeAcceptance,false);
   assert.equal(diagnosticOutcome({...baseline,anr:{...baseline.anr,anrHistoryReady:false}}).exitCode,1);
   assert.equal(diagnosticOutcome({...baseline,anr:{...baseline.anr,targetAppAnrLines:['synthetic target ANR']}}).exitCode,1);
   assert.equal(diagnosticOutcome({...baseline,errors:['synthetic observer failure']}).exitCode,1);
 });
+async function executeSyntheticCleanup(path,failRestore=false){
+  const previous={...process.env};process.env.ANDROID_RESTART_COMMAND_EVIDENCE=join(path,'commands');process.env.ANDROID_RESTART_TARGET_OUTPUT=path;process.env.ANDROID_RESTART_ARM='A';
+  const commands=[],page={evaluate:async expression=>expression.includes('getCapabilities')?{fontScale:2}:{width:411,height:866,orientation:'portrait',native:true,platform:'android'},close(){}};
+  const adb=args=>{
+    commands.push(args);const result=observedSpawnSync((_command,actual)=>{
+      let stdout='';if(actual.includes('/proc/uptime'))stdout=clockProbe;else if(actual.includes('displays'))stdout='  Display: mDisplayId=0\n    mCurrentFocus=Window{owned u0 com.sogrimhashbon.app.debug/com.sogrimhashbon.app.MainActivity}\n    mRotation=ROTATION_0\n    cur=1080x2400\n';else if(actual.includes('get'))stdout=actual.at(-1)==='font_scale'?'1.5':'1';else if(actual.includes('user-rotation')&&!actual.includes('lock'))stdout='lock 1';
+      return {status:failRestore&&actual.includes('lock')?1:0,stdout,stderr:''};
+    },'synthetic-adb',args,{encoding:'utf8'});if(result.status!==0)throw new Error('synthetic cleanup rotation failed');return result.stdout;
+  };
+  try{
+    const original=readFileSync(new URL('../scripts/qa/android-native-isolated/pages.mjs',import.meta.url),'utf8');
+    // Synthetic execution truncates only the loop prelude. The actual generated
+    // target and original finally/restore commands execute through their real code.
+    const source=instrumentPages(original,'synthetic-target','synthetic-telemetry').replace(/^import .*;\r?\n/gm,'').replace('[1,1.5,2]','[2]');
+    const fakeProcess={env:{ANDROID_QA_OUTPUT:join(path,'pages')},exitCode:undefined};
+    const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+    let failure;try{await new AsyncFunction('mkdirSync','writeFileSync','resolve','process','adb','acceptanceRunProvenance','runTarget','cleanupBoundary','record','launch','waitFor','sleep','launchForOwnedOrientation',source)(mkdirSync,writeFileSync,resolve,fakeProcess,adb,()=>({syntheticOnly:true}),runTarget,cleanupBoundary,record,async()=>page,async fn=>{const value=await fn();assert.ok(value);return value;},async()=>{},launchForOwnedOrientation);}catch(error){failure=error;}
+    if(!existsSync(join(path,'target.json')))throw new Error('Synthetic cleanup fixture failed before target: '+String(failure));
+    return {commands,process:fakeProcess,failure,target:JSON.parse(readFileSync(join(path,'target.json'),'utf8')),cleanup:existsSync(join(path,'cleanup.json'))?JSON.parse(readFileSync(join(path,'cleanup.json'),'utf8')):null,journal:readFileSync(join(path,'commands/commands.jsonl'),'utf8').trim().split('\n').map(JSON.parse)};
+  }finally{for(const key of ['ANDROID_RESTART_COMMAND_EVIDENCE','ANDROID_RESTART_TARGET_OUTPUT','ANDROID_RESTART_ARM'])if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}
+}
+test('target rotation interception and original pages cleanup rotation have separate acknowledged boundaries',()=>temporary(async path=>{
+  const result=await executeSyntheticCleanup(path);assert.equal(result.failure,undefined);assert.equal(result.process.exitCode,1);assert.equal(result.target.rotationRequested,false);
+  assert.match(result.target.rotationRequestScope,/target-before-rotation-only/);
+  assert.deepEqual(result.commands.slice(-2),[['shell','settings','put','system','font_scale','1.5'],['shell','wm','user-rotation','lock','1']]);
+  assert.equal(result.cleanup?.complete,true,'original cleanup must have a separate complete boundary');assert.equal(result.cleanup.scope,'cleanup');assert.equal(result.cleanup.rotationCommandAcknowledged,true);
+  const start=result.cleanup.startMarker.sequence,end=result.cleanup.completionMarker.sequence;
+  assert.equal(result.journal.filter(row=>row.sequence>start&&row.sequence<end&&row.kind==='adb-command-send').length,2);
+  assert.equal(result.journal.filter(row=>row.sequence>start&&row.sequence<end&&row.kind==='adb-command-ack'&&row.data.successfulProcessExit).length,2);
+}));
+test('failed original cleanup rotation retains command ACK and incomplete cleanup outcome',()=>temporary(async path=>{
+  const result=await executeSyntheticCleanup(path,true);assert.match(String(result.failure),/cleanup rotation failed/);assert.equal(result.target.rotationRequested,false);assert.equal(result.cleanup.complete,false);
+  const ack=result.journal.findLast(row=>row.kind==='adb-command-ack');assert.equal(ack.data.status,1);
+  assert.equal(diagnosticOutcome({...successfulCollections(),target:result.target,cleanup:result.cleanup}).exitCode,1);
+}));
 test('target foreground timeout remains a failed diagnostic with original receipt',()=>temporary(async path=>{
   const previous=process.env.ANDROID_RESTART_TARGET_OUTPUT,previousCommands=process.env.ANDROID_RESTART_COMMAND_EVIDENCE;process.env.ANDROID_RESTART_TARGET_OUTPUT=path;process.env.ANDROID_RESTART_COMMAND_EVIDENCE=join(path,'commands');
   try{

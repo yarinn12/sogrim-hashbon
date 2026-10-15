@@ -2,7 +2,7 @@ import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,existsSync,openSync,closeSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve,isAbsolute,relative,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
-import {SOURCE,TREE,sha,instrumentDriver,instrumentPages,validatePrelude,diagnosticOutcome} from './pages-restart-materialize.mjs';
+import {SOURCE,TREE,sha,instrumentDriver,instrumentPages,validatePrelude,diagnosticOutcome,assessClosedLog} from './pages-restart-materialize.mjs';
 import {armScale} from './pages-restart-target.mjs';
 import {stamp,boundedGuestClockAnchor,CLOCK_PROBE,createTelemetry} from './pages-restart-telemetry.mjs';
 import {verifyOwnedAsg,readAsgSdk} from './gltransport.mjs';
@@ -95,6 +95,7 @@ async function main(){
     const matrix=JSON.parse(readFileSync(join(output,'matrix/matrix.json'),'utf8')),pages=JSON.parse(readFileSync(join(output,'pages/pages.json'),'utf8'));
     report.prelude=validatePrelude(matrix,pages);if(!report.prelude.matrixPassed||!report.prelude.pagesPassed)throw new Error('Original matrix or exact four-case pages prelude failed');
     report.target=JSON.parse(readFileSync(join(output,'target.json'),'utf8'));
+    report.cleanup=JSON.parse(readFileSync(join(output,'cleanup.json'),'utf8'));
   }catch(error){report.errors.push(String(error.stack||error));}
   finally{
     const traceOptions={...options,output:traceOutput};
@@ -103,6 +104,7 @@ async function main(){
     report.stoppingLogcat=true;
     if(logcat){logcat.kill();report.logcatClosed=await Promise.race([logClosed,new Promise(done=>setTimeout(()=>done(false),5000).unref())]);if(!report.logcatClosed)report.errors.push('Owned logcat close was not acknowledged; evidence may still change');}
     if(logFd!==undefined)closeSync(logFd);if(logError)report.errors.push(logError);
+    report.closedLog=assessClosedLog(join(output,'logcat-live.log'),report.logcatClosed);
     Object.assign(report,diagnosticOutcome(report));
     report.completedAtUtc=new Date().toISOString();writeFileSync(join(output,'diagnostic-report.json'),JSON.stringify(report,null,2));
     const files=[];function inventory(directory){for(const name of readdirSync(directory)){const file=join(directory,name);if(statSync(file).isDirectory())inventory(file);else files.push({path:relative(artifactRoot,file).replaceAll('\\','/'),bytes:statSync(file).size,sha256:sha(readFileSync(file))});}}inventory(artifactRoot);
