@@ -1,15 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createHash} from 'node:crypto';
 import {APP_SOURCE} from '../scripts/qa/android-native-isolated/diagnostic/apk-members.mjs';
 import {foreground15sVerdict,hostCapacitySnapshot,requireDiagnosticManifest,requireFrozenEmulatorControls,runFixedTrials,TRIAL_ORDER,webviewProviderIdentity} from '../scripts/qa/android-native-isolated/diagnostic/abba-contract.mjs';
-import {requireDiagnosticReceipts} from '../scripts/qa/android-native-isolated/diagnostic/one-shot.mjs';
+import {executeTrial,requireDiagnosticReceipts,requireLiveCollector,toolsSourceFromCheckout} from '../scripts/qa/android-native-isolated/diagnostic/one-shot.mjs';
+import {DIAGNOSTIC_CONTRACT,diagnosticMetadata} from '../scripts/qa/android-native-isolated/diagnostic-contract.mjs';
+import {HOST_COHORT_CONTRACT} from '../scripts/qa/android-native-isolated/cohort-observation-coverage.mjs';
+import {assertHostOwner,startOwnedTrace} from '../scripts/qa/android-native-isolated/trace-diagnostics.mjs';
 
 const sha='a'.repeat(64),toolsSource='b'.repeat(40);
 const manifest={schemaVersion:1,appSource:APP_SOURCE,fixtureOnly:true,nativeAcceptance:false,requiredSignerVerification:true,changedMembers:['assets/public/index.html'],variants:{A:{path:'/synthetic/product.apk',apkSha256:sha},B:{path:'/synthetic/control.apk',apkSha256:sha}}};
+const owner={pid:3499,startTicks:'12345'};
+const session='sogrim_ci_diagnostic_1_aaaaaaaaaaaaaaaa';
+const ready={...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:APP_SOURCE,session,owner};
 const receipts={manifest,source:APP_SOURCE,toolsSource,device:'emulator-5582',avd:'sogrim_ci_diagnostic_1',emulatorPid:3499,
   network:{isolated:true,source:APP_SOURCE,device:'emulator-5582',avd:'sogrim_ci_diagnostic_1',pid:3499},
-  collector:{captureStarted:true,coverageVersion:5,appSource:APP_SOURCE,toolsSource,owner:{pid:3499,startTicks:'12345'}}};
+  collector:{...diagnosticMetadata(DIAGNOSTIC_CONTRACT.start),captureStarted:true,guestTransportStarted:true,source:APP_SOURCE,device:'emulator-5582',avd:'sogrim_ci_diagnostic_1',emulatorPid:3499,session,hostOwner:owner,hostObserver:{pid:789,ready},errors:[],guestTransportErrors:[],hostObservationErrors:[]}};
 
 test('fixed ABBA records every trial even when a product trial fails; no retry or selected winner',async()=>{
   let time=Date.now();const attempted=[],durable=[];
@@ -40,17 +49,145 @@ test('the original foreground 15-second result is never fabricated from an unsta
 });
 
 test('one-shot preflight requires the exact app source, isolated AVD and an approved v5 collector',()=>{
-  assert.deepEqual(requireDiagnosticReceipts(receipts),receipts.collector.owner);
+  assert.deepEqual(requireDiagnosticReceipts(receipts),receipts.collector.hostOwner);
   for(const invalid of [
     {...receipts,source:'c'.repeat(40)},
     {...receipts,network:{...receipts.network,isolated:false}},
-    {...receipts,collector:{...receipts.collector,coverageVersion:4}},
-    {...receipts,collector:{...receipts.collector,toolsSource:'c'.repeat(40)}},
+    {...receipts,collector:{...receipts.collector,diagnosticsVersion:1}},
+    {...receipts,collector:{...receipts.collector,source:'c'.repeat(40)}},
+    {...receipts,collector:{...receipts.collector,hostObserver:{...receipts.collector.hostObserver,ready:{...ready,owner:{...owner,startTicks:'99999'}}}}},
+    {...receipts,collector:{...receipts.collector,errors:['host start failed']}},
     {...receipts,manifest:{...manifest,nativeAcceptance:true}},
     {...receipts,manifest:{...manifest,changedMembers:['assets/public/index.html','classes.dex']}},
     {...receipts,manifest:{...manifest,changedMembers:['assets/public/index.html','META-INF/OTHER.SF']}}
   ])assert.throws(()=>requireDiagnosticReceipts(invalid));
   assert.equal(requireDiagnosticManifest(manifest),manifest);
+  assert.equal(HOST_COHORT_CONTRACT.version,5);
+});
+
+function procStat(pid,name,startTicks='12345'){
+  const fields=Array(40).fill('0');fields[10]='3';fields[11]='4';fields[18]=startTicks;
+  return `${pid} (${name}) S ${fields.join(' ')}\n`;
+}
+
+test('actual startOwnedTrace v5 producer gives the one-shot a compatible owned start receipt',async t=>{
+  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-v5-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const proc=join(root,'proc'),processDir=join(proc,'3499');mkdirSync(processDir,{recursive:true});
+  writeFileSync(join(processDir,'cmdline'),['/sdk/emulator/emulator','-avd','sogrim_ci_diagnostic_1','-port','5582',''].join('\0'));
+  writeFileSync(join(processDir,'stat'),procStat(3499,'qemu-system-x86'));
+  const options={adbPath:'boundary-adb',device:receipts.device,avd:receipts.avd,source:APP_SOURCE,emulatorPid:3499,output:join(root,'trace')};
+  const state={configIdentity:'7:122:1024',traceIdentity:'7:123'};
+  const run=(binary,args,settings)=>{
+    assert.equal(binary,options.adbPath);assert.deepEqual(args.slice(0,2),['-s',options.device]);
+    const command=args.slice(2);
+    if(command[0]==='emu')return{status:0,stdout:options.avd+'\nOK\n'};
+    if(command[1]==='perfetto'){
+      if(command.includes('--version'))return{status:0,stdout:'Perfetto v51.2 (N/A)\n'};
+      if(command.includes('--help'))return{status:0,stdout:'--background-wait --config --query --txt\n'};
+      if(command.includes('--query'))return{status:0,stdout:'linux.ftrace traced_probes gfx,view,wm,am,input\nlinux.process_stats traced_probes\nandroid.surfaceflinger.frametimeline surfaceflinger\n'};
+      assert.equal(command.at(-1),state.configPath);return{status:0,stdout:'7000\n'};
+    }
+    if(command[1]==='toybox')return{status:0,stdout:'inotifyd timeout stat sha256sum sed cut grep tr head seq sleep cat'};
+    if(command[1]==='sh'&&command[2]==='-s'){
+      const script=settings.input,reserve=script.includes('set -C');
+      if(reserve){
+        state.configPath=/config='([^']+)'/.exec(script)[1];state.guestPath=/trace='([^']+)'/.exec(script)[1];
+        const config=script.split("<<'SOGRIM_OWNED_CONFIG'\n")[1].split('SOGRIM_OWNED_CONFIG\n')[0];
+        state.configSha=createHash('sha256').update(config).digest('hex');
+      }
+      return{status:0,stdout:`CONFIG ${state.configIdentity} ${state.configSha} ${state.configPath}\n`+(reserve?'':`TRACE ${state.traceIdentity} ${state.guestPath}\n`)};
+    }
+    if(command[1]==='cat'&&command[2].endsWith('/cmdline'))return{status:0,stdout:'/system/bin/perfetto\0--background-wait\0--txt\0-c\0'+state.configPath+'\0'};
+    if(command[1]==='cat'&&command[2].endsWith('/stat'))return{status:0,stdout:procStat(7000,'perfetto','6789')};
+    assert.fail('Unexpected startOwnedTrace boundary command '+JSON.stringify(command));
+  };
+  const launchHost=async(start,hostOwner)=>({pid:789,ready:{...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:start.source,session:start.session,owner:hostOwner}});
+  const collector=await startOwnedTrace(options,{run,platform:'linux',procRoot:proc,launchHost});
+  assert.equal(collector.captureStarted,true,collector.errors.join('\n'));
+  assert.deepEqual(requireDiagnosticReceipts({...receipts,collector}),collector.hostOwner);
+  assert.equal(collector.coverageVersion,undefined);
+  assert.equal(collector.hostObserver.ready.diagnosticsProducer,DIAGNOSTIC_CONTRACT.host);
+});
+
+test('tools source comes from the checkout and must equal the workflow SHA guard',()=>{
+  const checkout='C:/synthetic/tools';
+  const run=(program,args)=>{assert.equal(program,'git');assert.deepEqual(args.slice(-2),['rev-parse','HEAD']);return toolsSource+'\n';};
+  assert.equal(toolsSourceFromCheckout(checkout,{run,expectedSha:toolsSource}),toolsSource);
+  assert.throws(()=>toolsSourceFromCheckout(checkout,{run,expectedSha:'c'.repeat(40)}));
+});
+
+test('stopped, stale or capped v5 host collection is a safety stop',()=>{
+  const base={collector:receipts.collector,output:'/synthetic/trace',clock:()=>5000,
+    exists:()=>false,stat:()=>({isFile:()=>true,size:100,mtimeMs:5000}),signal:(pid,signal)=>{assert.equal(pid,789);assert.equal(signal,0);}};
+  assert.equal(requireLiveCollector(base).journalBytes,100);
+  for(const changed of [
+    {exists:path=>path.endsWith('host-summary.json')},
+    {stat:()=>({isFile:()=>true,size:64*1024*1024,mtimeMs:5000})},
+    {stat:()=>({isFile:()=>true,size:100,mtimeMs:-1000})},
+    {signal:()=>{throw new Error('observer exited');}}
+  ])assert.throws(()=>requireLiveCollector({...base,...changed}),error=>error.safetyStop===true);
+});
+
+function trialBoundary(t,{loseOwner=false,stopCollector=false,failInstall=false}={}){
+  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-owner-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const proc=join(root,'proc'),processDir=join(proc,'3499');mkdirSync(processDir,{recursive:true});
+  const command=['/sdk/emulator/emulator','-avd',receipts.avd,'-port','5582','-no-window','-no-snapshot','-gpu','swiftshader','-feature','GLDirectMem,HasSharedSlotsHostMemoryAllocator','-memory','4096','-cores','2'];
+  writeFileSync(join(processDir,'cmdline'),[...command,''].join('\0'));writeFileSync(join(processDir,'stat'),procStat(3499,'qemu-system-x86'));
+  const rawWebView='Current WebView package (name, version): (com.google.android.webview, 141.0.1)';
+  const ctx={...receipts,owner,ownerCommand:command,webview:webviewProviderIdentity(rawWebView),guestVcpus:'2',output:root,collectorOutput:root,adbPath:'boundary-adb'};
+  const calls=[];let collectorChecks=0;
+  const makeAdb=async()=>async args=>{
+    calls.push(args);
+    const cmd=args.join(' ');
+    if(cmd==='emu avd name')return receipts.avd+'\nOK\n';
+    if(cmd==='shell dumpsys webviewupdate')return rawWebView;
+    if(cmd==='shell nproc')return '2';
+    if(cmd==='shell settings get global airplane_mode_on')return '1';
+    if(cmd==='shell dumpsys connectivity')return 'Active default network: none\n';
+    if(cmd==='shell settings get system font_scale')return '1';
+    if(cmd==='shell wm user-rotation')return 'lock 0';
+    if(cmd==='shell settings get system accelerometer_rotation'){
+      if(loseOwner)writeFileSync(join(processDir,'stat'),procStat(3499,'qemu-system-x86','99999'));
+      return '0';
+    }
+    if(cmd==='shell dumpsys activity lastanr')return 'no owned ANR';
+    if(cmd.startsWith('install -r')&&failInstall)throw new Error('Synthetic install refused');
+    assert.fail('Unexpected ADB boundary command '+cmd);
+  };
+  const hostOwner=(identity,options)=>assertHostOwner(identity,{...options,procRoot:proc});
+  const checkCollector=()=>{
+    collectorChecks++;
+    if(stopCollector&&collectorChecks>=2)throw Object.assign(new Error('Owned v5 collector unavailable: host summary exists'),{safetyStop:true});
+  };
+  return{ctx,calls,deps:{makeAdb,hostOwner,checkCollector}};
+}
+
+test('real owner identity loss inside executeTrial stops before any package mutation and retains remaining ABBA rows',async t=>{
+  const boundary=trialBoundary(t,{loseOwner:true}),rows=[];
+  const result=await runFixedTrials({append:row=>rows.push(row),runTrial:input=>executeTrial(input,boundary.ctx,()=>false,boundary.deps)});
+  assert.deepEqual(result.rows.map(row=>row.status),['error','not-attempted','not-attempted','not-attempted']);
+  assert.match(result.rows[0].error,/Owned emulator unavailable/);
+  assert.equal(boundary.calls.filter(args=>['install','am','pm'].includes(args[0])||args.join(' ').includes('force-stop')).length,0);
+  assert.equal(rows.length,4);
+});
+
+test('collector stop inside executeTrial stops before installation and retains remaining ABBA rows',async t=>{
+  const boundary=trialBoundary(t,{stopCollector:true}),rows=[];
+  const result=await runFixedTrials({append:row=>rows.push(row),runTrial:input=>executeTrial(input,boundary.ctx,()=>false,boundary.deps)});
+  assert.deepEqual(result.rows.map(row=>row.status),['error','not-attempted','not-attempted','not-attempted']);
+  assert.match(result.rows[0].error,/collector unavailable/);
+  assert.equal(boundary.calls.some(args=>args[0]==='install'),false);
+  assert.equal(rows.length,4);
+});
+
+test('install request start is recorded even when ADB never acknowledges completion',async t=>{
+  const boundary=trialBoundary(t,{failInstall:true});
+  await assert.rejects(()=>executeTrial({trial:1,variant:'A',budgetMs:90_000},boundary.ctx,()=>false,boundary.deps),error=>{
+    assert.match(error.message,/Synthetic install refused/);
+    assert.ok(error.evidence.events.some(event=>event.kind==='apk-install-request-start'));
+    assert.equal(error.evidence.events.some(event=>event.kind==='apk-install-completed'),false);
+    return true;
+  });
 });
 
 test('capacity report preserves unavailable kernel fields instead of inventing CPU measurements',()=>{

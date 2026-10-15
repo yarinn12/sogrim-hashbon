@@ -41,7 +41,10 @@ Disable real emulator networking with the existing `network-isolation.mjs` and
 retain its receipt. Set portrait/rotation lock and actual `font_scale=1`
 **before** the diagnostic window; the runner rechecks them and issues no
 rotation or hold command. Start the reviewed v5 host cohort collector and
-guest trace before trial 1. The runner refuses v4 or an absent v5 start receipt.
+guest trace before trial 1. The runner reads the actual `trace-start.json` v2
+diagnostic contract, its owned host observer readiness, and the imported v5
+cohort contract. It refuses v4, stale observer journals and stopped or capped
+host capture. The v5 tools files must be integrated before this runner starts.
 
 The fixed order is **A–B–B–A**, with a 90-second budget per trial and a
 12-minute total diagnostic window. Each trial installs its audited variant,
@@ -54,8 +57,9 @@ retains four rows with explicit unattempted reasons. A CI wrapper must apply
 the separate hard `timeout 12m` and finalize all existing trace/logcat/ANR
 evidence on every exit. This budget does not change any QA acceptance deadline.
 
-The runner records host UTC/monotonic and guest clock anchors; force-stop,
-install, start, common CDP readiness, product-specific splash/native readiness,
+The runner records host UTC/monotonic and guest clock anchors; request start
+and completion around install, force-stop, app-data clear and `am start -W`,
+then common CDP readiness, product-specific splash/native readiness,
 control readiness, the original product 15-second foreground result (owned
 focus plus Android Native WebView), the separate control focus result, focus/ANR changes,
 and stop. Product and control readiness are separately labeled; their raw
@@ -70,9 +74,11 @@ profiler attach, SIGSTOP, renderer change, or production I/O is part of this
 trial.
 
 `diagnostic/one-shot.mjs` requires the audited manifest, the original network
-isolation receipt, an approved v5 collector start receipt, ADB/APKSigner paths,
+isolation receipt, an actual v5 collector start receipt, ADB/APKSigner paths,
 the reviewed control index, explicit AVD/device/PID and separate app/tools
-SHAs. Its output directory must be new. It writes `trials.jsonl`, capacity
+SHAs. It derives the tools SHA from the separate tools checkout and compares
+it with the workflow's `GITHUB_SHA` guard. Its output directory must be new.
+It writes `trials.jsonl`, capacity
 samples, ANR snapshots and `one-shot.json` incrementally. The final record
 intentionally remains `diagnosticComplete: false` and
 `needsV5CollectorStopAndGuestTraceCorrelation: true` until Root reviews the
