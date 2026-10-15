@@ -72,5 +72,6 @@ test("large-text touch hover preserves the primary action hitbox and visual feed
   await page.mouse.down();
   await expect.poll(() => button.evaluate(node => node.matches(":active"))).toBe(true);
   await expect.poll(() => button.evaluate(node => getComputedStyle(node).transform)).not.toBe("none");
+  await expect.poll(() => button.evaluate(node => node.getBoundingClientRect().width), "pressed action visibly scales down").toBeLessThan(box.width * 0.99);
   await page.mouse.up();
 });
