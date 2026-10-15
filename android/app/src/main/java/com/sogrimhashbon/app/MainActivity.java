@@ -84,7 +84,8 @@ public class MainActivity extends BridgeActivity {
             MODE_PRIVATE
         );
         int installedVersion = preferences.getInt(WEB_BUNDLE_VERSION_KEY, -1);
-        return installedVersion != BuildConfig.VERSION_CODE;
+        if (installedVersion == BuildConfig.VERSION_CODE) return false;
+        return true;
     }
 
     private void markWebBundleCacheRefreshed() {
