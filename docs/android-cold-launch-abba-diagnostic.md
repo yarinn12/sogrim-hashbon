@@ -76,8 +76,12 @@ trial.
 `diagnostic/one-shot.mjs` requires the audited manifest, the original network
 isolation receipt, an actual v5 collector start receipt, ADB/APKSigner paths,
 the reviewed control index, explicit AVD/device/PID and separate app/tools
-SHAs. It derives the tools SHA from the separate tools checkout and compares
-it with the workflow's `GITHUB_SHA` guard. Its output directory must be new.
+SHAs. Run this module from the original tools checkout while the working
+directory is the frozen 59b app checkout. It verifies its own path belongs to
+the tools checkout, compares that checkout's HEAD with the workflow's
+`GITHUB_SHA`, and separately verifies the app checkout HEAD. The copied QA
+scripts inside the app build are not a tools-source receipt. Its output
+directory must be new.
 It writes `trials.jsonl`, capacity
 samples, ANR snapshots and `one-shot.json` incrementally. The final record
 intentionally remains `diagnosticComplete: false` and

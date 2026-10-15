@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {APP_SOURCE,auditDiagnosticApks} from '../scripts/qa/android-native-isolated/diagnostic/apk-members.mjs';
 import {foreground15sVerdict,hostCapacitySnapshot,requireDiagnosticManifest,requireFrozenEmulatorControls,runFixedTrials,TRIAL_ORDER,webviewProviderIdentity} from '../scripts/qa/android-native-isolated/diagnostic/abba-contract.mjs';
-import {executeTrial,requireDiagnosticReceipts,requireLiveCollector,toolsSourceFromCheckout} from '../scripts/qa/android-native-isolated/diagnostic/one-shot.mjs';
+import {executeTrial,requireDiagnosticReceipts,requireLiveCollector,requireSeparateCheckouts,toolsSourceFromCheckout} from '../scripts/qa/android-native-isolated/diagnostic/one-shot.mjs';
 import {DIAGNOSTIC_CONTRACT,diagnosticMetadata} from '../scripts/qa/android-native-isolated/diagnostic-contract.mjs';
 import {HOST_COHORT_CONTRACT} from '../scripts/qa/android-native-isolated/cohort-observation-coverage.mjs';
 import {assertHostOwner,startOwnedTrace} from '../scripts/qa/android-native-isolated/trace-diagnostics.mjs';
@@ -116,6 +116,24 @@ test('tools source comes from the checkout and must equal the workflow SHA guard
   const run=(program,args)=>{assert.equal(program,'git');assert.deepEqual(args.slice(-2),['rev-parse','HEAD']);return toolsSource+'\n';};
   assert.equal(toolsSourceFromCheckout(checkout,{run,expectedSha:toolsSource}),toolsSource);
   assert.throws(()=>toolsSourceFromCheckout(checkout,{run,expectedSha:'c'.repeat(40)}));
+});
+
+test('one-shot binds its original tools module to tools HEAD and separately checks the frozen app HEAD',()=>{
+  const toolsCheckout=resolve('synthetic/tools'),appCheckout=resolve('synthetic/tools/app');
+  const modulePath=join(toolsCheckout,'scripts/qa/android-native-isolated/diagnostic/one-shot.mjs');
+  const calls=[];
+  const run=(program,args)=>{
+    assert.equal(program,'git');calls.push(args);
+    if(args.at(-1)==='--show-toplevel')return toolsCheckout+'\n';
+    return resolve(args[1])===toolsCheckout?toolsSource+'\n':APP_SOURCE+'\n';
+  };
+  const options={appCheckout,toolsCheckout,modulePath,expectedToolsSha:toolsSource,run};
+  assert.deepEqual(requireSeparateCheckouts(options),{source:APP_SOURCE,toolsSource});
+  assert.equal(calls.length,3);
+  assert.throws(()=>requireSeparateCheckouts({...options,modulePath:join(appCheckout,'scripts/qa/android-native-isolated/diagnostic/one-shot.mjs')}));
+  assert.throws(()=>requireSeparateCheckouts({...options,toolsCheckout:appCheckout}));
+  assert.throws(()=>requireSeparateCheckouts({...options,expectedToolsSha:'c'.repeat(40)}));
+  assert.throws(()=>requireSeparateCheckouts({...options,run:(program,args)=>args.at(-1)==='--show-toplevel'?toolsCheckout+'\n':resolve(args[1])===toolsCheckout?toolsSource+'\n':'c'.repeat(40)+'\n'}));
 });
 
 test('stopped, stale or capped v5 host collection is a safety stop',()=>{

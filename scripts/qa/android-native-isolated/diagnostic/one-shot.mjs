@@ -1,9 +1,9 @@
 import {execFile,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {appendFileSync,existsSync,mkdirSync,readFileSync,statSync,writeFileSync} from 'node:fs';
-import {dirname,resolve} from 'node:path';
+import {dirname,isAbsolute,relative,resolve,sep} from 'node:path';
 import {promisify} from 'node:util';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {auditDiagnosticApks,APP_SOURCE} from './apk-members.mjs';
 import {foreground15sVerdict,hostCapacitySnapshot,requireDiagnosticManifest,requireFrozenEmulatorControls,runFixedTrials,webviewProviderIdentity} from './abba-contract.mjs';
@@ -44,6 +44,20 @@ export function toolsSourceFromCheckout(checkout,{run=execFileSync,expectedSha}=
   const sha=String(run('git',['-C',resolve(checkout),'rev-parse','HEAD'],{encoding:'utf8',timeout:10000,windowsHide:true})).trim();
   if(!hex40.test(sha)||expectedSha&&sha!==expectedSha)throw new Error('QA tools checkout SHA differs from workflow guard');
   return sha;
+}
+
+const samePath=(a,b)=>process.platform==='win32'?resolve(a).toLowerCase()===resolve(b).toLowerCase():resolve(a)===resolve(b);
+const inside=(root,path)=>{const child=relative(resolve(root),resolve(path));return child!==''&&child!=='..'&&!child.startsWith('..'+sep)&&!isAbsolute(child);};
+export function requireSeparateCheckouts({appCheckout,toolsCheckout,expectedToolsSha,modulePath=fileURLToPath(import.meta.url),run=execFileSync}){
+  if(!appCheckout||!toolsCheckout||!hex40.test(expectedToolsSha||'')||samePath(appCheckout,toolsCheckout)||
+    !inside(toolsCheckout,modulePath)||inside(appCheckout,modulePath))
+    throw new Error('Require separate original QA tools module and 59b app checkout');
+  const observedToolsRoot=String(run('git',['-C',dirname(modulePath),'rev-parse','--show-toplevel'],{encoding:'utf8',timeout:10000,windowsHide:true})).trim();
+  if(!samePath(observedToolsRoot,toolsCheckout))throw new Error('Diagnostic module is not owned by the QA tools checkout');
+  const toolsSource=toolsSourceFromCheckout(toolsCheckout,{run,expectedSha:expectedToolsSha});
+  const source=String(run('git',['-C',resolve(appCheckout),'rev-parse','HEAD'],{encoding:'utf8',timeout:10000,windowsHide:true})).trim();
+  if(source!==APP_SOURCE)throw new Error('Application checkout HEAD differs from frozen 59b source');
+  return{source,toolsSource};
 }
 
 export function requireLiveCollector({collector,output,clock=Date.now,exists=existsSync,stat=statSync,signal=process.kill}){
@@ -129,7 +143,9 @@ async function guestGpuObservation(adb,pid){
 function ownedContext(env){
   for(const key of ['ANDROID_DIAGNOSTIC_APK_MANIFEST','ANDROID_DIAGNOSTIC_NETWORK_RECEIPT','ANDROID_DIAGNOSTIC_V5_START_RECEIPT'])if(!env[key])throw new Error('Require '+key);
   if(!hex40.test(env.GITHUB_SHA||''))throw new Error('Require actual QA tools checkout SHA from workflow');
-  const source=env.ANDROID_DIAGNOSTIC_APP_SOURCE,toolsSource=toolsSourceFromCheckout(env.ANDROID_DIAGNOSTIC_TOOLS_CHECKOUT,{expectedSha:env.GITHUB_SHA}),device=env.ANDROID_QA_DEVICE,avd=env.ANDROID_QA_AVD,emulatorPid=Number(env.ANDROID_QA_EMULATOR_PID);
+  const {source,toolsSource}=requireSeparateCheckouts({appCheckout:process.cwd(),toolsCheckout:env.ANDROID_DIAGNOSTIC_TOOLS_CHECKOUT,expectedToolsSha:env.GITHUB_SHA});
+  if(env.ANDROID_DIAGNOSTIC_APP_SOURCE!==source)throw new Error('Requested app source differs from actual app checkout');
+  const device=env.ANDROID_QA_DEVICE,avd=env.ANDROID_QA_AVD,emulatorPid=Number(env.ANDROID_QA_EMULATOR_PID);
   const manifest=json(env.ANDROID_DIAGNOSTIC_APK_MANIFEST),network=json(env.ANDROID_DIAGNOSTIC_NETWORK_RECEIPT),collector=json(env.ANDROID_DIAGNOSTIC_V5_START_RECEIPT);
   const owner=requireDiagnosticReceipts({manifest,network,collector,source,toolsSource,device,avd,emulatorPid});
   const collectorOutput=dirname(resolve(env.ANDROID_DIAGNOSTIC_V5_START_RECEIPT));
