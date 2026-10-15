@@ -72,6 +72,11 @@ Consumers reject older schema/producers; they do not reinterpret old receipts.
   while this flag remains false. A stop file created later cannot retroactively
   complete a stopped observer's receipt.
 
+The owned stop must be observed strictly before the unchanged20min duration
+bound. Expiry wins at the exact bound and after it, even when a valid stop file
+is already present during finalization. Its raw contents and verified owned ACK
+remain retained, alongside DURATION_CAP; window/capture completion remain false.
+
 Host `observationErrors` and typed `windowErrors` retain separate causes; their
 combined `errors` accounting is checked. Missing/invalid stop and duration expiry
 are window failures. Malformed inventories, owner/counter failures, journal/write
