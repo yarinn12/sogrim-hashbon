@@ -18,7 +18,7 @@ function planFromXCTest(swift) {
       match[0].includes('and foreground') ? 'await-resume' : 'await-background');
   const sharedDeadline = /let end = deadline \?\? Date\(\)\.addingTimeInterval\(timeout\)/.test(swift) &&
     /let lifecycleDeadline = Date\(\)\.addingTimeInterval\(35\)/.test(path) &&
-    /wait\("native background", deadline: lifecycleDeadline\)/.test(path) &&
+    /wait\("native background", deadline: lifecycleDeadline(?:, readWebState: false)?\)/.test(path) &&
     /wait\("native background and foreground", deadline: lifecycleDeadline\)/.test(path);
   return {
     actions, sharedDeadline,
@@ -158,4 +158,26 @@ test('native resumed capture starts only after a new active callback', () => {
   // after Home while JavaScript capture cannot complete in the background.
   assert.equal(poll(false, 1, 1), false, 'background polling must not consume the capture latch');
   assert.equal(poll(true, 2, 1), true, 'a fresh foreground callback may request the capture once');
+});
+
+
+test('the OS background wait never queries the background app accessibility tree', () => {
+  const start = source.indexOf('func wait(');
+  const end = source.indexOf('func tap(', start);
+  const waiter = source.slice(start, end);
+  const call = source.match(/wait\("native background",[^\n]+/)[0];
+  const isolated = /readWebState: false/.test(call) &&
+    /readWebState: Bool = true/.test(waiter) &&
+    /if readWebState && state\(\)\["phase"\]/.test(waiter) &&
+    /readWebState \? String\(describing: state\(\)\)/.test(waiter);
+  // A background process can lose its AX server before the OS state query
+  // acknowledges Home. UI queries are invalid at this boundary; the later
+  // foreground wait still requires fresh native counters and a sealed capture.
+  const calls = [];
+  for (const osState of ['foreground', 'background']) {
+    calls.push('OS:' + osState);
+    if (osState === 'background') break;
+    if (!isolated) calls.push('AX:background-app');
+  }
+  assert.deepEqual(calls, ['OS:foreground', 'OS:background']);
 });

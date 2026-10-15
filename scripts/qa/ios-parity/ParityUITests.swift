@@ -33,15 +33,27 @@ final class ParityProbeUITests: XCTestCase {
             add(attachment)
             print("NATIVE_SYSTEM_SCREENSHOT: \(phase)")
         }
-        func wait(_ name: String, timeout: TimeInterval = 35, deadline: Date? = nil, predicate: () -> Bool) {
+        func wait(_ name: String, timeout: TimeInterval = 35, deadline: Date? = nil, readWebState: Bool = true, predicate: () -> Bool) {
             let end = deadline ?? Date().addingTimeInterval(timeout)
+            var lastOSState: String? = nil
             while Date() < end {
+                if !readWebState {
+                    let osState = String(describing: app.state.rawValue)
+                    if lastOSState != osState {
+                        print("NATIVE_LIFECYCLE_OS_STATE: \(name) state=\(osState) remaining=\(end.timeIntervalSinceNow)")
+                        lastOSState = osState
+                    }
+                }
                 if predicate() { return }
-                if state()["phase"] as? String == "error" { break }
+                // Home can remove the app from the accessibility tree before
+                // XCTest observes its background state. Query only OS state
+                // here; verify fresh UIKit counters and capture on foreground.
+                if readWebState && state()["phase"] as? String == "error" { break }
                 Thread.sleep(forTimeInterval: 0.3)
             }
             systemScreenshot("failure-\(name)")
-            XCTFail("Timed out: \(name). State: \(state())")
+            let finalState = readWebState ? String(describing: state()) : "OS state \(app.state.rawValue)"
+            XCTFail("Timed out: \(name). State: \(finalState)")
         }
         func tap(_ key: String) {
             // Large accessibility text may need ordinary user scrolling before
@@ -97,7 +109,7 @@ final class ParityProbeUITests: XCTestCase {
         let priorForegrounds = priorNative["foregrounds"] as? Int ?? 0
         let lifecycleDeadline = Date().addingTimeInterval(35)
         XCUIDevice.shared.press(.home)
-        wait("native background", deadline: lifecycleDeadline) {
+        wait("native background", deadline: lifecycleDeadline, readWebState: false) {
             app.state == .runningBackground || app.state == .runningBackgroundSuspended
         }
         app.activate()

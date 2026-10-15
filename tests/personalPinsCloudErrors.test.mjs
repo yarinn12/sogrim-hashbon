@@ -86,3 +86,57 @@ test("Chromium cannot classify the WebKit diagnostic", async () => {
   assert.equal(f.errors.length, 1);
   assert.deepEqual(f.diagnostics, []);
 });
+
+
+test("fixture reload waits for an already issued inbox read instead of cancelling it", async () => {
+  const f = probe(), issued = request();
+  f.page.emit("request", issued);
+  let navigated = false;
+  const pending = f.withReload(async () => { navigated = true; });
+  await Promise.resolve();
+  const navigatedBeforeFinish = navigated;
+  f.page.emit("requestfinished", issued);
+  await pending;
+  assert.equal(navigatedBeforeFinish, false, "reload must not cancel the old document's active read");
+  assert.equal(navigated, true);
+  assert.deepEqual(f.errors, []);
+});
+
+test("fixture reload drains a second inbox read issued while the first is settling", async () => {
+  const f = probe(), first = request(), second = request();
+  f.page.emit("request", first);
+  let navigated = false;
+  const pending = f.withReload(async () => { navigated = true; });
+  f.page.emit("request", second);
+  f.page.emit("requestfinished", first);
+  await Promise.resolve();
+  const navigatedBeforeSecondFinish = navigated;
+  f.page.emit("requestfinished", second);
+  await pending;
+  assert.equal(navigatedBeforeSecondFinish, false);
+  assert.equal(navigated, true);
+});
+
+test("an active read that actually fails while draining remains a failure", async () => {
+  const f = probe(), issued = request();
+  issued.failure = () => ({ errorText: "Load request cancelled" });
+  f.page.emit("request", issued);
+  let navigated = false;
+  const pending = f.withReload(async () => { navigated = true; });
+  await Promise.resolve();
+  const navigatedBeforeFailure = navigated;
+  f.page.emit("requestfailed", issued);
+  await pending;
+  assert.equal(navigatedBeforeFailure, false);
+  assert.equal(f.errors.length, 1);
+  assert.match(f.errors[0], /Load request cancelled/);
+  assert.deepEqual(f.diagnostics, []);
+});
+
+test("unrelated requests cannot hold the account inbox reload boundary", async () => {
+  const f = probe();
+  f.page.emit("request", request(`${origin}/rest/v1/app_snapshots?id=eq.other`));
+  let navigated = false;
+  await f.withReload(async () => { navigated = true; });
+  assert.equal(navigated, true);
+});
