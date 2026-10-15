@@ -223,6 +223,35 @@ test('aggregate retains every invalid arm and diagnostic-only scope',()=>{
  assert.equal(r.allArmsComparable,false);assert.equal(r.defaultOnly,true);assert.equal(r.distributionAllowed,false);
  assert.throws(()=>aggregate(rows.slice(1)));assert.throws(()=>aggregate([...rows].reverse()));
 });
+
+test('actual summary requires four distinct confirmed create receipts and preserves partial preflight',()=>{
+ const rows=ORDER.map((mode,i)=>({trial:i+1,mode,...armVerdict(good(mode))}));
+ const created=owners().map(o=>({...o,deviceType:DEVICE_TYPE,creationProof:{
+  receipt:`commands/000${o.trial}-owned-create.json`,exit:0,responseSha256:sha(o.udid+'\n'),
+  verified:{utc:'2026-10-15T00:00:00Z',monotonicNs:'123'},
+  device:{udid:o.udid,name:o.name,state:'Shutdown',deviceTypeIdentifier:DEVICE_TYPE}
+ }}));
+ assert.equal(aggregate(rows,created).sameHostFourFreshSimulators,true);
+ for(let n=0;n<4;n++){
+  const r=aggregate(rows,created.slice(0,n));
+  assert.equal(r.sameHostFourFreshSimulators,false,'Partial preflight cannot claim four creations');
+  assert.equal(r.verifiedFreshSimulatorCount,n);assert.equal(r.rows.length,4);
+ }
+ for(const mutate of [
+  os=>delete os[3].creationProof,
+  os=>os[3].creationProof.exit=1,
+  os=>os[3].creationProof.device.name='foreign',
+  os=>os[3].creationProof.device.state='Booted',
+  os=>os[3].creationProof.receipt='missing-receipt',
+  os=>os[3].creationProof.verified.utc='unknown',
+  os=>{os[3].udid=os[0].udid;os[3].creationProof.device.udid=os[0].udid;}
+ ]){
+  const os=structuredClone(created);mutate(os);
+  assert.equal(aggregate(rows,os).sameHostFourFreshSimulators,false);
+  assert.equal(aggregate(rows,os).verifiedFreshSimulatorCount,3);
+ }
+});
+
 test('inactive workflow has no dispatch, secret access, distribution or alternate-host matrix',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/ios475-observer-footprint-abba-20261016.yml',import.meta.url),'utf8');
  assert.match(workflow,/if: \$\{\{ github\.run_number == 0 \}\}/);

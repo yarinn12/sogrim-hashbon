@@ -45,7 +45,7 @@ ABBA על host יחיד הוא אבחון חקרני. ארבע מכונות וי
 
 ## בדיקות ומסירה
 
-הקובץ tests/iosObserverFootprint.test.mjs נכלל ב־npm test הרגיל. 15 בדיקות מכסות קשירות, bytes אמיתיים, דחיית SDK/מכשיר זר, סדר וזהויות, פרוטוקול finally בפועל עם שגיאות collection/validation/cleanup, שימור failed prefixes, ACK/PNG חסרים והפרדת שעונים.
+הקובץ tests/iosObserverFootprint.test.mjs נכלל ב־npm test הרגיל. 16 בדיקות מכסות קשירות, bytes אמיתיים, דחיית SDK/מכשיר זר, סדר וזהויות, פרוטוקול finally בפועל עם שגיאות collection/validation/cleanup, שימור failed prefixes, ACK/PNG חסרים והפרדת שעונים.
 
 בסביבה לקריאה בלבד הורצו13בדיקות סמנטיות בזיכרון ללא fail/skip, syntax לכל3קובצי MJS ו־actionlint עם shellcheck/pyflakes מושבתים. שתי בדיקות הקבצים האמיתיים, הבדיקה ללא התאמות import, qa:architecture והסוויטה המלאה ממתינות ל־Root לאחר החלת ה־patch. אין כאן Swift compilation או ריצת מכשיר.
 
@@ -59,4 +59,6 @@ ABBA על host יחיד הוא אבחון חקרני. ארבע מכונות וי
 
 שומרים checkpoint לפני הפעלה. אין ב־patch push, API, keys, signing, upload או שינויי חנות/מסד/Production, ואין הפעלה של automation iphone.
 
-לפני push Root יוודא גם ש־preview לענף האבחון כבוי; ה־patch אינו משנה הגדרות Vercel.
+לפני push Root יוודא גם ש־preview לענף האבחון כבוי; Root הוסיף חסימת preview ב־vercel.json לענף האבחון המדויק בלבד.
+
+Root הוסיף שמירת קוד הכשל בצעד CI לאחר persist, ו־creationProof לכל simctl create עם receipt של הפקודה וקריאת זהות במצב Shutdown. דוח הסיכום מציין ארבע יצירות רק אם ארבע זהויות שונות וסדורות אומתו; preflight חלקי שומר ספירה אמיתית ושדה false. בדיקות OLD מבודדות מוכיחות כשל בהשמטת בדיקת התוצאה ובהחזרת טענת ארבע יצירות ללא תנאי.

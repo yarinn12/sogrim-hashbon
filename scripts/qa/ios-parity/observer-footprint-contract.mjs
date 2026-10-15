@@ -183,10 +183,30 @@ export function requirePublic(root,b){
  requireFileMap(root,expected);
  return actual;
 }
-export function aggregate(rows){
+function verifiedFreshSimulatorCount(owners){
+ const identities=new Set();
+ for(const [index,owner]of owners.entries()){
+  try{
+   assert.equal(owner.trial,index+1);assert.equal(owner.mode,ORDER[index]);
+   assert.equal(owner.deviceType,DEVICE_TYPE);assert.match(owner.udid??'',uuid);
+   const proof=owner.creationProof;assert.equal(proof.exit,0);
+   assert.match(proof.receipt,/^commands\/[0-9]+-owned-create\.json$/);
+   assert.match(proof.responseSha256,/^[a-f0-9]{64}$/);
+   assert.ok(Number.isFinite(Date.parse(proof.verified.utc)));
+   assert.match(proof.verified.monotonicNs,/^[1-9][0-9]*$/);
+   const d=ownedDevice({[owner.runtime]:[proof.device]},owner);
+   assert.equal(d.state,'Shutdown');
+   identities.add(owner.udid);
+  }catch{} // A partial or unverified create is retained, never counted as complete.
+ }
+ return identities.size;
+}
+export function aggregate(rows,owners=[]){
  assert.equal(rows.length,4);assert.deepEqual(rows.map(r=>r.mode),ORDER);
  assert.deepEqual(rows.map(r=>r.trial),[1,2,3,4]);
+ const createdCount=verifiedFreshSimulatorCount(owners);
  return {order:[...ORDER],rows,allArmsComparable:rows.every(r=>r.comparisonEligible===true),
+  verifiedFreshSimulatorCount:createdCount,sameHostFourFreshSimulators:owners.length===4&&createdCount===4,
  diagnosticOnly:true,defaultOnly:true,fullTwoModeValidatorRun:false,nativeAcceptance:false,sourceAccepted:false,distributionAllowed:false};
 }
 

@@ -82,7 +82,7 @@ async function command(c,s,label,program,args,{cwd=c.app,allowFailure=false,capt
   if(result.spawnError||overflow||result.code!==0){
    if(!allowFailure)throw Error(label+' failed: '+JSON.stringify(result));
   }
-  return {...result,text,log};
+  return {...result,text,log,receipt};
  }finally{if(child)active.delete(child);closeSync(fd);}
 }
 async function jsonCommand(c,s,label,args){const r=await command(c,s,label,'xcrun',args,{capture:true});return JSON.parse(r.text);}
@@ -141,7 +141,9 @@ async function preflight(c){
   s.owners.push(owner);persist(c,s);
   const response=await command(c,s,'owned-create','xcrun',['simctl','create',owner.name,DEVICE_TYPE,owner.runtime],{capture:true});
   owner.udid=response.text.trim();owner.created=stamp();persist(c,s);
-  assert.equal((await device(c,s,owner)).state,'Shutdown');
+  const createdDevice=await device(c,s,owner);assert.equal(createdDevice.state,'Shutdown');
+  owner.creationProof={receipt:relative(c.out,response.receipt),exit:response.code,responseSha256:sha(response.text),device:createdDevice,verified:stamp()};
+  persist(c,s);
  }
  s.preflightComplete=true;persist(c,s);
 }
@@ -313,9 +315,9 @@ async function finalize(c,s){
   errors:['Arm absent: prior build/preflight/outer cancellation; original failure preserved'],
   nativeAcceptance:false,sourceAccepted:false,distributionAllowed:false});
  s.finalized=stamp();persist(c,s);save(join(c.out,'closure.json'),closure);
- const summary={...aggregate(rows),sourceSha:APP_SHA,sourceTree:TREE,fixtureSha:FIXTURE_SHA,toolsSha:c.toolsSha,run:c.run,
+ const summary={...aggregate(rows,s.owners),sourceSha:APP_SHA,sourceTree:TREE,fixtureSha:FIXTURE_SHA,toolsSha:c.toolsSha,run:c.run,
   failedReferenceRun:38809205491,referenceStillFailed:true,buildOnce:s.buildComplete!==undefined,
-  sameHostFourFreshSimulators:true,noCounterbalancedHostReplication:true,cleanupAllVerified:closure.length===4&&closure.every(r=>r.verified)};
+  noCounterbalancedHostReplication:true,cleanupAllVerified:closure.length===4&&closure.every(r=>r.verified)};
  save(join(c.out,'summary.json'),summary);
  const files=inventory(c.out);delete files['artifact-inventory.json'];save(join(c.out,'artifact-inventory.json'),files);
 }
