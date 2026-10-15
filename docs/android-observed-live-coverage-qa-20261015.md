@@ -37,6 +37,8 @@ it does not replace scheduler counters.
 `tests/fixtures/android-native-qa466-sample300.json` is the unchanged retained
 sample300 (11:57:37.138 UTC), SHA256
 `7f34db455a903289e7435e7ce397f68941c836d582852208ecca1285ae9d016f`.
+An exact `.gitattributes` `-text` rule preserves its original bytes on Windows
+and Linux; the regression's strict hash assertion is unchanged.
 It comes from original artifact11970341161, ZIP124776582 bytes, SHA256
 `9a1b5dbd70c468a4558fc8601453625b8aab022a0230f61562295de62ee4e09b`.
 Owner PID3286/startTicks29104, initial189/final188 tasks and TID4622's first
