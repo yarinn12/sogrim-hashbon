@@ -4,7 +4,7 @@ import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,existsSync,rmSync} from
 import {join,resolve,dirname,basename} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
-const workflow=readFileSync(new URL('../.github/workflows/android-warm-content-abba-20261016.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+const workflow=readFileSync(new URL('../.github/workflows/android-warm-runtime-abba-20261016.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const helper=readFileSync(new URL('../scripts/qa/android-native-isolated/warm-content/prepare-runtime-deps.sh',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const bash=process.platform==='win32'?'C:/Program Files/Git/bin/bash.exe':'/bin/bash';
 const dependency='bash "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/prepare-runtime-deps.sh"';

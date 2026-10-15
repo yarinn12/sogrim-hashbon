@@ -9,7 +9,7 @@ import {createHash} from 'node:crypto';
 import {actualFile,validateActualSdk,requireAppCheckout,requireStableProof,bindWorkflowInputs,requireOneShot,verifyOriginalHelpers} from '../scripts/qa/android-native-isolated/warm-content/workflow-proof.mjs';
 
 const wrapper=readFileSync(new URL('../scripts/qa/android-native-isolated/warm-content/arm.sh',import.meta.url),'utf8').replaceAll('\r\n','\n');
-const workflow=readFileSync(new URL('../.github/workflows/android-warm-content-abba-20261016.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
+const workflow=readFileSync(new URL('../.github/workflows/android-warm-runtime-abba-20261016.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const begin=wrapper.indexOf('cleanup() {'),end=wrapper.indexOf('\ntrap cleanup EXIT',begin);assert.ok(begin>=0&&end>begin);const cleanup=wrapper.slice(begin,end);
 const bash=process.platform==='win32'?'C:/Program Files/Git/bin/bash.exe':'/bin/bash';
 function temporary(t){const parent=resolve(tmpdir()),root=mkdtempSync(join(parent,'sogrim-warm-wrapper-'));t.after(()=>{assert.equal(dirname(resolve(root)),parent);assert.ok(basename(root).startsWith('sogrim-warm-wrapper-'));rmSync(root,{recursive:true,force:true});});return root;}
@@ -75,7 +75,7 @@ for(const scenario of ['success','first-anr','final-input-change'])test('actual 
   const exits=readFileSync(join(root,'artifacts/android-warm-content/arm-exits.txt'),'utf8').trim().split('\n');assert.deepEqual(exits,scenario==='first-anr'?['1 A 1','2 B 0','3 B 0','4 A 0']:['1 A 0','2 B 0','3 B 0','4 A 0']);
 });
 test('new workflow has one-shot read-only namespace, two builds and proof before any ADB preflight',()=>{
-  assert.match(workflow,/branches: \[codex\/android-warm-content-abba-20261016\]/);assert.match(workflow,/github\.run_number == 1 && github\.run_attempt == 1/);assert.match(workflow,/contents: read/);assert.match(workflow,/runs-on: ubuntu-24\.04/);
+  assert.match(workflow,/branches: \[codex\/android-warm-runtime-abba-20261016\]/);assert.match(workflow,/github\.run_number == 1 && github\.run_attempt == 1/);assert.match(workflow,/contents: read/);assert.match(workflow,/runs-on: ubuntu-24\.04/);
   assert.equal((workflow.match(/assembleDebug --no-daemon/g)||[]).length,2);assert.equal((workflow.match(/npm run native:prepare/g)||[]).length,1);assert.ok(workflow.indexOf('workflow-proof.mjs" master')<workflow.indexOf('run: node scripts/qa/android-native-isolated/adb-key-preflight.mjs'));
   const before=wrapper.indexOf('input-proof-before.json');assert.ok(wrapper.indexOf('trap cleanup EXIT')<wrapper.indexOf('workflow-proof.mjs" arm-before'));assert.ok(before>=0&&before<wrapper.indexOf('prepare_owned_kvm\n'));assert.doesNotMatch(wrapper,/pm.*clear|pages-restart-diagnostic\.mjs/);assert.match(workflow,/if: always\(\)/);
 });
@@ -128,11 +128,16 @@ test('actual source and CLI guards cannot accept a fake checkout or unsupported 
   assert.throws(()=>bindWorkflowInputs({ANDROID_WARM_CONTENT_RUN:'reviewed-diagnostic-only'},{platform:'win32'}),/Linux/);assert.throws(()=>bindWorkflowInputs({}, {platform:'linux'}),/guarded/);
 });
 test('actual proof entry refuses a different repository/ref/run/attempt before SDK work',()=>{
-  const env={GITHUB_REPOSITORY:'yarinn12/sogrim-hashbon',GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/codex/android-warm-content-abba-20261016',GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016',GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'12345',GITHUB_SHA:'a'.repeat(40)};
+  const env={GITHUB_REPOSITORY:'yarinn12/sogrim-hashbon',GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/codex/android-warm-runtime-abba-20261016',GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/android-warm-runtime-abba-20261016.yml@refs/heads/codex/android-warm-runtime-abba-20261016',GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'12345',GITHUB_SHA:'a'.repeat(40)};
   assert.equal(requireOneShot(env),true);
   for(const key of Object.keys(env))assert.throws(()=>requireOneShot({...env,[key]:'wrong'}),/one-shot/);
 });
 test('canonical APK auditor rejects forged ready metadata without actual c14 source',t=>{
   const root=temporary(t),python=process.env.SOGRIM_TEST_PYTHON||'python3';writeFileSync(join(root,'A.apk'),'fake APK');writeFileSync(join(root,'audit.json'),JSON.stringify({ready:true,sourceCommit:'c14'}));writeFileSync(join(root,'fixture.json'),'{}');
   const script=fileURLToPath(new URL('../scripts/qa/android-native-isolated/warm-content/canonical-apk.py',import.meta.url));const r=spawnSync(python,[script,root,join(root,'A.apk'),join(root,'audit.json'),join(root,'fixture.json')],{encoding:'utf8',timeout:10000});assert.equal(r.error,undefined,String(r.error));assert.notEqual(r.status,0);assert.doesNotMatch(r.stdout,/"ready":true/);
+});
+
+test('new runtime diagnostic one-shot rejects the consumed original workflow namespace',()=>{
+ const old={GITHUB_REPOSITORY:'yarinn12/sogrim-hashbon',GITHUB_EVENT_NAME:'push',GITHUB_REF:'refs/heads/codex/android-warm-content-abba-20261016',GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016',GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'12345',GITHUB_SHA:'a'.repeat(40)};
+ assert.throws(()=>requireOneShot(old),/one-shot/);
 });

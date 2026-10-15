@@ -1,15 +1,15 @@
-name: Android warm content ABBA diagnostic
+name: Android warm runtime ABBA diagnostic
 
 on:
   push:
-    branches: [codex/android-warm-content-abba-20261016]
+    branches: [codex/android-warm-runtime-abba-20261016]
 
 permissions:
   contents: read
 
 jobs:
   diagnostic:
-    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/android-warm-content-abba-20261016' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016' && github.run_number == 1 && github.run_attempt == 1 }}
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/android-warm-runtime-abba-20261016' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/android-warm-runtime-abba-20261016.yml@refs/heads/codex/android-warm-runtime-abba-20261016' && github.run_number == 1 && github.run_attempt == 1 }}
     runs-on: ubuntu-24.04
     # Four complete, sequential fresh-AVD preludes plus one build. Per-arm
     # 10-minute child deadlines and original trace caps remain unchanged.
@@ -30,8 +30,8 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = yarinn12/sogrim-hashbon
           test "$GITHUB_EVENT_NAME" = push
-          test "$GITHUB_REF" = refs/heads/codex/android-warm-content-abba-20261016
-          test "$GITHUB_WORKFLOW_REF" = yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016
+          test "$GITHUB_REF" = refs/heads/codex/android-warm-runtime-abba-20261016
+          test "$GITHUB_WORKFLOW_REF" = yarinn12/sogrim-hashbon/.github/workflows/android-warm-runtime-abba-20261016.yml@refs/heads/codex/android-warm-runtime-abba-20261016
           test "$GITHUB_RUN_NUMBER" = 1
           test "$GITHUB_RUN_ATTEMPT" = 1
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"

@@ -23,7 +23,7 @@ export function actualFile(path,{inside}={}){
   return {path:real,bytes,sha256:digest.digest('hex')};
 }
 export function requireOneShot(env){
-  if(env.GITHUB_REPOSITORY!=='yarinn12/sogrim-hashbon'||env.GITHUB_EVENT_NAME!=='push'||env.GITHUB_REF!=='refs/heads/codex/android-warm-content-abba-20261016'||env.GITHUB_WORKFLOW_REF!=='yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016'||env.GITHUB_RUN_NUMBER!=='1'||env.GITHUB_RUN_ATTEMPT!=='1'||!/^\d+$/.test(env.GITHUB_RUN_ID||'')||!/^[a-f0-9]{40}$/.test(env.GITHUB_SHA||''))throw new Error('Require exact one-shot workflow identity');
+  if(env.GITHUB_REPOSITORY!=='yarinn12/sogrim-hashbon'||env.GITHUB_EVENT_NAME!=='push'||env.GITHUB_REF!=='refs/heads/codex/android-warm-runtime-abba-20261016'||env.GITHUB_WORKFLOW_REF!=='yarinn12/sogrim-hashbon/.github/workflows/android-warm-runtime-abba-20261016.yml@refs/heads/codex/android-warm-runtime-abba-20261016'||env.GITHUB_RUN_NUMBER!=='1'||env.GITHUB_RUN_ATTEMPT!=='1'||!/^\d+$/.test(env.GITHUB_RUN_ID||'')||!/^[a-f0-9]{40}$/.test(env.GITHUB_SHA||''))throw new Error('Require exact one-shot workflow identity');
   return true;
 }
 export function validateActualSdk(sdkHome,{run=spawnSync}={}){
