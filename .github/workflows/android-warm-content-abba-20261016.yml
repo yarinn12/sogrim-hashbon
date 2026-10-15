@@ -1,0 +1,167 @@
+name: Android warm content ABBA diagnostic
+
+on:
+  push:
+    branches: [codex/android-warm-content-abba-20261016]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    if: ${{ github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/android-warm-content-abba-20261016' && github.workflow_ref == 'yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016' && github.run_number == 1 && github.run_attempt == 1 }}
+    runs-on: ubuntu-24.04
+    # Four complete, sequential fresh-AVD preludes plus one build. Per-arm
+    # 10-minute child deadlines and original trace caps remain unchanged.
+    timeout-minutes: 120
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      ANDROID_QA_DEVICE: emulator-5582
+      ANDROID_QA_SOURCE: c14a7665e8de361d8d33be183e7a88adec3ff7cb
+      ANDROID_WARM_CONTENT_RUN: reviewed-diagnostic-only
+    steps:
+      - name: Checkout immutable diagnostic tools
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Require one-shot diagnostic scope
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = yarinn12/sogrim-hashbon
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/codex/android-warm-content-abba-20261016
+          test "$GITHUB_WORKFLOW_REF" = yarinn12/sogrim-hashbon/.github/workflows/android-warm-content-abba-20261016.yml@refs/heads/codex/android-warm-content-abba-20261016
+          test "$GITHUB_RUN_NUMBER" = 1
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+      - name: Checkout frozen application for one build
+        uses: actions/checkout@v6
+        with:
+          ref: c14a7665e8de361d8d33be183e7a88adec3ff7cb
+          path: app
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Bind clean source and owned paths
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ANDROID_QA_SOURCE"
+          test "$(git rev-parse 'HEAD^{tree}')" = 9bcf8cf40144d12507faa2cfea9ddadee42d819f
+          test -z "$(git status --porcelain)"
+          mkdir -p artifacts/android-native-isolated
+          echo "ANDROID_AVD_HOME=$RUNNER_TEMP/android-native-avd" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-native-home" >> "$GITHUB_ENV"
+          echo "ADB_VENDOR_KEYS=$RUNNER_TEMP/android-native-home/adbkey" >> "$GITHUB_ENV"
+          echo "ANDROID_ADB_SERVER_PORT=5037" >> "$GITHUB_ENV"
+          echo "ADB_SERVER_SOCKET=tcp:5037" >> "$GITHUB_ENV"
+          echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-native-no-upload.properties" >> "$GITHUB_ENV"
+          echo "ADB_PATH=$ANDROID_HOME/platform-tools/adb" >> "$GITHUB_ENV"
+      - name: Install original emulator SDK
+        working-directory: app
+        run: |
+          set -euo pipefail
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
+          test ! -e "$ANDROID_AVD_HOME"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+      - name: Build and audit one actual Debug APK
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test ! -e "$SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE"
+          npm ci > artifacts/android-native-isolated/npm.log 2>&1
+          NODE_OPTIONS="--import=file://$PWD/scripts/qa/android-native-isolated/offline-build-config.mjs" npm run native:prepare > artifacts/android-native-isolated/www-build.log 2>&1
+          node scripts/qa/android-native-isolated/prepare-fixture.mjs
+          npx cap copy android > artifacts/android-native-isolated/cap-copy.log 2>&1
+          node scripts/qa/android-native-isolated/observe-gradle-build.mjs \
+            --cwd android --output artifacts/android-native-isolated/gradle-build-observation --source "$ANDROID_QA_SOURCE" \
+            -- bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m'
+          python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/apk-badging.txt
+          grep -q "package: name='com.sogrimhashbon.app.debug'" artifacts/android-native-isolated/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/debug-certificate.txt
+      - name: Build approved minimal-index control once and bind actual inputs
+        working-directory: app
+        run: |
+          set -euo pipefail
+          pair="$PWD/artifacts/android-native-isolated/warm-content-apks"
+          mkdir -p "$pair"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$pair/product.apk"
+          node "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/prepare-control.mjs"
+          node scripts/qa/android-native-isolated/observe-gradle-build.mjs \
+            --cwd android --output artifacts/android-native-isolated/control-gradle-observation --source "$ANDROID_QA_SOURCE" \
+            -- bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m'
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$pair/control.apk"
+          cp "$pair/product.apk" android/app/build/outputs/apk/debug/app-debug.apk
+          python3 - <<'PY'
+          import pathlib,zipfile
+          root=pathlib.Path.cwd()
+          with zipfile.ZipFile(root/'artifacts/android-native-isolated/warm-content-apks/product.apk')as archive:
+              (root/'android/app/src/main/assets/public/index.html').write_bytes(archive.read('assets/public/index.html'))
+          PY
+          python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"
+          node "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/apk-members.mjs" \
+            "$pair/product.apk" "$pair/control.apk" \
+            "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/control-index.html" \
+            "$PWD/artifacts/android-native-isolated/apk-assets.json" \
+            "$PWD/artifacts/android-native-isolated/fixture-provenance.json" "$pair/manifest.json"
+          echo "ANDROID_WARM_BUILD_ROOT=$PWD" >> "$GITHUB_ENV"
+          echo "ANDROID_WARM_PAIR_MANIFEST=$pair/manifest.json" >> "$GITHUB_ENV"
+          echo "ANDROID_WARM_PRODUCT_AUDIT=$PWD/artifacts/android-native-isolated/apk-assets.json" >> "$GITHUB_ENV"
+          echo "ANDROID_WARM_FIXTURE_RECEIPT=$PWD/artifacts/android-native-isolated/fixture-provenance.json" >> "$GITHUB_ENV"
+          echo "ANDROID_WARM_CONTROL_INDEX=$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/control-index.html" >> "$GITHUB_ENV"
+          echo "APKSIGNER_PATH=$ANDROID_HOME/build-tools/36.1.0/apksigner" >> "$GITHUB_ENV"
+          ANDROID_WARM_BUILD_ROOT="$PWD" \
+            ANDROID_WARM_PAIR_MANIFEST="$pair/manifest.json" \
+            ANDROID_WARM_PRODUCT_AUDIT="$PWD/artifacts/android-native-isolated/apk-assets.json" \
+            ANDROID_WARM_FIXTURE_RECEIPT="$PWD/artifacts/android-native-isolated/fixture-provenance.json" \
+            ANDROID_WARM_CONTROL_INDEX="$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/control-index.html" \
+            APKSIGNER_PATH="$ANDROID_HOME/build-tools/36.1.0/apksigner" \
+            node "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/workflow-proof.mjs" master "$pair/master-proof.json"
+      - name: Prepare isolated ADB key and server once after actual pair proof
+        working-directory: app
+        run: node scripts/qa/android-native-isolated/adb-key-preflight.mjs
+      - name: Run four fresh owned AVD sessions in declared ABBA order
+        working-directory: app
+        run: |
+          set -euo pipefail
+          test -c /dev/kvm
+          mkdir -p artifacts/android-warm-content
+          aggregate=0
+          index=0
+          for arm in A B B A; do
+            index=$((index+1))
+            status=0
+            bash "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/arm.sh" "$index" "$arm" || status=$?
+            printf '%s %s %s\n' "$index" "$arm" "$status" >> artifacts/android-warm-content/arm-exits.txt
+            if [[ "$status" != 0 ]]; then aggregate=1; fi
+          done
+          proof_status=0
+          ANDROID_WARM_MASTER_PROOF="$ANDROID_WARM_BUILD_ROOT/artifacts/android-native-isolated/warm-content-apks/master-proof.json" \
+            node "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/workflow-proof.mjs" final \
+            "$PWD/artifacts/android-warm-content/final-input-proof.json" || proof_status=$?
+          if [[ "$proof_status" != 0 ]]; then aggregate=1; fi
+          exit "$aggregate"
+      - name: Preserve all original diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-warm-content-abba-${{ github.sha }}
+          path: |
+            app/artifacts/android-native-isolated/
+            app/artifacts/android-warm-content/
+            app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
