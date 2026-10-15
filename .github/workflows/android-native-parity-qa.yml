@@ -83,7 +83,7 @@ jobs:
           python3 - <<'PY'
           import os, pathlib
           config=pathlib.Path(os.environ['ANDROID_AVD_HOME'])/(os.environ['ANDROID_QA_AVD']+'.avd')/'config.ini'
-          values={'hw.cpu.ncore':'2','hw.ramSize':'4096','hw.lcd.width':'1080','hw.lcd.height':'2400','hw.lcd.density':'420','hw.keyboard':'yes','hw.camera.back':'none','hw.camera.front':'none'}
+          values={'hw.cpu.ncore':'2','hw.ramSize':'4096','hw.lcd.width':'1080','hw.lcd.height':'2400','hw.lcd.density':'420','hw.keyboard':'yes','hw.camera.back':'none','hw.camera.front':'none','hw.gltransport':'asg'}
           rows=[line for line in config.read_text().splitlines() if line.split('=',1)[0].strip() not in values]
           config.write_text('\n'.join(rows+[key+' = '+value for key,value in values.items()])+'\n')
           PY
@@ -95,6 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/qa/android-native-isolated/renderer-capabilities.mjs snapshot
+          node scripts/qa/android-native-isolated/gltransport.mjs snapshot
       - name: Prepare shared isolated key and fresh ADB server before first emulator launch
         working-directory: app
         run: |
@@ -153,6 +154,7 @@ jobs:
           set -euo pipefail
           ANDROID_QA_HEALTH_PHASE=before node scripts/qa/android-native-isolated/emulator-health.mjs
           ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/renderer-capabilities.mjs verify
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/gltransport.mjs verify
           # Keep every Native-run event even if a later force-stop closes an ANR dialog.
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" logcat -b all -v threadtime > artifacts/android-native-isolated/logcat-live.log 2>&1 &
           echo "$!" > artifacts/android-native-isolated/logcat-live.pid

@@ -83,7 +83,7 @@ function fixture(t){
     throw new Error('Unexpected boundary command '+JSON.stringify(command));
   }
   const deps={run,platform:'linux',procRoot:proc,launchHost:async()=>({pid:99,ready:{boundaryOnly:true}})};
-  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,captureComplete:true,samples:2,boundaryOnly:true};};
+  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:1,coverageSamples:2,nonMainTasksMeasured:2,rendererRoleProven:false,boundaryOnly:true};};
   return{root,proc,processDir,options,state,calls,run,deps,stopHost};
 }
 
@@ -163,7 +163,7 @@ test('host sampling scopes all reads to the owned process and records CPU/runque
   const sample=sampleOwnedHost(f.options,{procRoot:f.proc,read,expectedStartTicks:'12345'});
   assert.equal(sample.threads.length,2);assert.equal(sample.threads[1].runNs,'100');assert.equal(sample.threads[1].runQueueWaitNs,'20');assert.equal(sample.threads[1].wchan,'futex_wait');assert.equal(sample.unavailable.length,0);
   assert.ok(paths.every(path=>path.startsWith(f.processDir+sep)));
-  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,10);
+  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,12);
 });
 test('unavailable kernel wait channels and disappearing task reads remain explicit',t=>{
   const f=fixture(t);writeFileSync(join(f.processDir,'task','3450','wchan'),'0\n');

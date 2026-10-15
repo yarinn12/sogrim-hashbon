@@ -35,22 +35,86 @@ export function sampleOwnedHost(options,deps={}){
   let readCount=0,threadsScanned=0;
   const rawRead=deps.read||readFileSync,read=(...args)=>{readCount++;return rawRead(...args);},list=deps.list||readdirSync,procRoot=deps.procRoot||'/proc';
   const begin=performance.now(),owner=assertHostOwner(options,{...deps,read});
-  const threads=[],unavailable=[],observedNames=[];
-  for(const tid of list(join(procRoot,String(owner.pid),'task'))){
-    if(!/^\d+$/.test(tid))continue;
-    threadsScanned++;
-    const task=join(procRoot,String(owner.pid),'task',tid);let stat;
-    try{stat=parseProcStat(read(join(task,'stat'),'utf8'));}catch(error){unavailable.push({tid,error:error.message});continue;}
-    observedNames.push(stat.name);
-    if(Number(tid)!==owner.pid&&!/RenderThread|vcpu|llvm|swift|gfx|angle|gpu/i.test(stat.name))continue;
+  const taskRoot=join(procRoot,String(owner.pid),'task'),inventory=()=>{
+    const ids=list(taskRoot).filter(tid=>/^\d+$/.test(tid)).map(Number).sort((a,b)=>a-b);
+    if(ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length||!ids.includes(owner.pid))throw new Error('Malformed owned host task inventory');
+    return ids;
+  };
+  const before=inventory(),threads=[],unavailable=[],lifecycle=[],observedNames=[];
+  for(const tid of before){
+    threadsScanned++;const task=join(taskRoot,String(tid));let initial;
+    try{
+      initial=parseProcStat(read(join(task,'stat'),'utf8'));
+      if(initial.pid!==tid||tid===owner.pid&&initial.startTicks!==owner.startTicks)throw new Error('Owned task PID/start identity mismatch');
+      observedNames.push(initial.name);
+    }catch(error){unavailable.push({tid,field:'stat',code:error.code??null,error:error.message});continue;}
+    const record={...initial,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,countersVerified:false};
     let scheduling,wchan;
-    try{scheduling=read(join(task,'schedstat'),'utf8').trim().split(/\s+/);if(scheduling.length!==3||scheduling.some(x=>!/^\d+$/.test(x)))throw new Error('Malformed schedstat');}catch(error){unavailable.push({tid,field:'schedstat',error:error.message});}
-    try{wchan=read(join(task,'wchan'),'utf8').trim();if(wchan==='0')unavailable.push({tid,field:'wchan',error:'Kernel wait channel unavailable (0)'});}catch(error){unavailable.push({tid,field:'wchan',error:error.message});}
-    threads.push({...stat,runNs:scheduling?.[0],runQueueWaitNs:scheduling?.[1],timeslices:scheduling?.[2],wchan});
+    try{
+      scheduling=read(join(task,'schedstat'),'utf8').trim().split(/\s+/);
+      if(scheduling.length!==3||scheduling.some(x=>!/^\d+$/.test(x)))throw new Error('Malformed schedstat');
+    }catch(error){scheduling=undefined;unavailable.push({tid,startTicks:initial.startTicks,field:'schedstat',code:error.code??null,error:error.message});}
+    try{wchan=read(join(task,'wchan'),'utf8').trim();if(!wchan)throw new Error('Kernel wait channel is empty');if(wchan==='0')unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',code:'ZERO_WCHAN',error:'Kernel wait channel unavailable (0)'});}
+    catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',code:error.code??null,error:error.message});}
+    try{
+      const after=parseProcStat(read(join(task,'stat'),'utf8'));
+      if(after.pid!==tid||after.startTicks!==initial.startTicks){
+        lifecycle.push({tid,kind:'tid-reused-during-read',beforeStartTicks:initial.startTicks,afterStartTicks:after.startTicks});
+        throw new Error('Owned task identity changed during scheduler read');
+      }
+      if(scheduling){Object.assign(record,{runNs:scheduling[0],runQueueWaitNs:scheduling[1],timeslices:scheduling[2],countersVerified:true});}
+      if(wchan)record.wchan=wchan;
+    }catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'identity-after',code:error.code??null,error:error.message});}
+    threads.push(record);
   }
+  const after=inventory();
+  for(const tid of before)if(!after.includes(tid))lifecycle.push({tid,kind:'exited-during-sample',startTicks:threads.find(t=>t.pid===tid)?.startTicks??null});
+  for(const tid of after)if(!before.includes(tid))lifecycle.push({tid,kind:'born-during-sample',startTicks:null});
   assertHostOwner(options,{...deps,read,expectedStartTicks:owner.startTicks});
-  return{atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,readCount,threadsScanned,selectedThreads:threads.length,sampleDurationMs:performance.now()-begin};
+  // A non-atomic proc snapshot records lifecycle gaps explicitly. It never
+  // invents a final counter or calls a partial inventory complete.
+  const coverageComplete=unavailable.every(gap=>gap.field==='wchan'&&gap.code==='ZERO_WCHAN')&&lifecycle.length===0&&threads.length===before.length&&threads.every(t=>t.countersVerified);
+  return{atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,
+    inventory:{before,after,coverageComplete,scope:'all-owned-host-tasks',rendererRoleProven:false},
+    readCount,threadsScanned,selectedThreads:threads.length,sampleDurationMs:performance.now()-begin};
 }
+
+export function recordHostInventory(summary,sample,priorCounters=new Map()){
+  if(sample.owner.pid!==summary.owner.pid||sample.owner.startTicks!==summary.owner.startTicks)throw new Error('Host sample owner changed');
+  if(!sample.inventory?.coverageComplete||sample.inventory.scope!=='all-owned-host-tasks'||
+     sample.inventory.before.length!==sample.threads.length||sample.inventory.after.length!==sample.threads.length||
+     JSON.stringify(sample.inventory.before)!==JSON.stringify(sample.inventory.after)||sample.unavailable.some(gap=>gap.field!=='wchan'||gap.code!=='ZERO_WCHAN')||sample.lifecycle.length)
+    throw new Error('Owned host task inventory/counter coverage is incomplete');
+  const ids=sample.threads.map(t=>t.pid).sort((a,b)=>a-b);
+  if(JSON.stringify(ids)!==JSON.stringify(sample.inventory.before)||new Set(ids).size!==ids.length)throw new Error('Host scheduler inventory does not match actual sampled tasks');
+  for(const t of sample.threads){
+    if(!t.countersVerified||!Number.isSafeInteger(t.pid)||t.pid<1||t.emulatorPid!==summary.owner.pid||t.emulatorStartTicks!==summary.owner.startTicks||!/^\d+$/.test(t.startTicks)||
+       ['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'].some(k=>!/^\d+$/.test(t[k]??'')))throw new Error('Host task scheduler identity/counters are missing');
+    const key=summary.owner.pid+':'+summary.owner.startTicks+':'+t.pid+':'+t.startTicks,previous=priorCounters.get(key);
+    const fields=['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'];
+    if(previous&&fields.some(k=>BigInt(t[k])<BigInt(previous[k])))throw new Error('Owned host task scheduler counter decreased');
+    priorCounters.set(key,Object.fromEntries(fields.map(k=>[k,t[k]])));
+  }
+  summary.coverageSamples=(summary.coverageSamples||0)+1;
+  summary.nonMainTasksMeasured=(summary.nonMainTasksMeasured||0)+sample.threads.filter(t=>t.pid!==summary.owner.pid).length;
+}
+
+export function requireHostInventoryCoverage(summary){
+  if(summary.coverageVersion!==1||![summary.samples,summary.coverageSamples,summary.nonMainTasksMeasured].every(Number.isSafeInteger)||
+     summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainTasksMeasured<1||summary.capReached||summary.errors?.length)
+    throw new Error('Full owned host task scheduling coverage is missing');
+  return true;
+}
+
+export function appendHostInventory(data,sample,summary){
+  const line=JSON.stringify(sample)+'\n',current=existsSync(data)?statSync(data).size:0;
+  if(current+Buffer.byteLength(line)>=maxHostBytes){
+    summary.capReached={kind:'host-bytes',limit:maxHostBytes,attemptedSampleBytes:Buffer.byteLength(line)};
+    throw new Error('Host diagnostic disk cap reached before full sample append');
+  }
+  appendFileSync(data,line);
+}
+
 export function requireDataSources(query){
   const required=['linux.ftrace','linux.process_stats','android.surfaceflinger.frametimeline'];
   const missing=required.filter(name=>!query.split(/\r?\n/).some(line=>line.trim().split(/\s+/)[0]===name));
@@ -356,7 +420,7 @@ export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options
   else if(!start)report.traceAnalysisStatus='unavailable: no valid capture receipt';
   else if(guestLaunchAttempted&&!start.guestPid){report.traceAnalysisStatus='unavailable: trace launch not acknowledged; no owned PID/inode';report.errors.push('Trace launch attempted without an owned acknowledgement; refuse guessed PID or file');}
   // Release an actually launched cooperative observer even if guest ownership vanished.
-  if(start?.hostObserver){try{report.host=await stopHost(options);if(report.host.source!==options.source||!report.host.captureComplete)throw new Error('Owned host scheduling capture is missing/incomplete');}catch(error){report.errors.push(error.stack);}}
+  if(start?.hostObserver){try{report.host=await stopHost(options);if(report.host.source!==options.source||!report.host.captureComplete||report.host.owner?.pid!==start.hostOwner?.pid||report.host.owner?.startTicks!==start.hostOwner?.startTicks)throw new Error('Owned host scheduling capture is missing/incomplete');requireHostInventoryCoverage(report.host);}catch(error){report.errors.push(error.stack);}}
   if(start?.guestPid){
     let owned=false;
     try{
@@ -376,23 +440,24 @@ export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options
   report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
 }
 async function watchHost(output){
-  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[]};
+  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:1,coverageSamples:0,nonMainTasksMeasured:0,rendererRoleProven:false};
+  const priorCounters=new Map();
   const end=Date.now()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
   summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;
   try{
     do{
       const sample=sampleOwnedHost(options,{expectedStartTicks:options.hostOwner.startTicks});
-      appendFileSync(data,JSON.stringify(sample)+'\n');summary.samples++;summary.unavailableFields+=sample.unavailable.length;summary.maxSampleDurationMs=Math.max(summary.maxSampleDurationMs,sample.sampleDurationMs);
+      appendHostInventory(data,sample,summary);summary.samples++;summary.unavailableFields+=sample.unavailable.length;summary.maxSampleDurationMs=Math.max(summary.maxSampleDurationMs,sample.sampleDurationMs);
       summary.readCount+=sample.readCount;summary.threadsScanned+=sample.threadsScanned;summary.maxThreadsScanned=Math.max(summary.maxThreadsScanned,sample.threadsScanned);summary.maxSelectedThreads=Math.max(summary.maxSelectedThreads,sample.selectedThreads);
       for(const thread of sample.threads)if(/RenderThread|llvm|swift|gfx|angle|gpu/i.test(thread.name))names.add(thread.name);
-      if(sample.threads.some(x=>!x.runNs))throw new Error('Selected host thread scheduler counters unavailable');
+      recordHostInventory(summary,sample,priorCounters);
       if(summary.samples===1)writeFileSync(join(output,'host-ready.json'),JSON.stringify({source:options.source,owner:sample.owner}));
       if(statSync(data).size>=maxHostBytes)throw new Error('Host diagnostic disk cap reached');
       if(existsSync(join(output,'host-stop')))break;
       await delay(hostIntervalMs);
     }while(Date.now()<end);
     if(!existsSync(join(output,'host-stop')))throw new Error('Host diagnostic duration cap reached before finalize');
-    if(summary.samples<2||!names.size)throw new Error('Host renderer scheduling samples are missing');
+    requireHostInventoryCoverage(summary);
     summary.captureComplete=true;
   }catch(error){summary.errors.push(error.stack);}
   summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();if(existsSync(data))summary.data=fileReceipt(data);writeFileSync(join(output,'host-summary.json'),JSON.stringify(summary,null,2));
