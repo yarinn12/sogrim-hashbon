@@ -6,10 +6,74 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-test("iOS release automation restricts candidate pushes and remains manually TestFlight-ready", async () => {
-  const [packageJson, workflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
+
+function assertManualSigningDisabled(raw) {
+  const workflow = raw.replace(/\r\n/g, "\n");
+  const triggers = workflow.split("\non:\n")[1]?.split("\npermissions:")[0];
+  const jobs = workflow.split("\njobs:\n")[1];
+  assert.ok(triggers && jobs, "legacy signing triggers and jobs must be inspectable");
+  assert.deepEqual(triggers.match(/^  [a-zA-Z0-9_-]+:$/gm), ["  workflow_dispatch:"]);
+  assert.deepEqual(jobs.match(/^  [a-zA-Z0-9_-]+:$/gm), ["  build-export-verify-private:"]);
+  assert.match(jobs, /^  build-export-verify-private:\n    if: github\.event_name != 'workflow_dispatch'\n/m);
+}
+
+function assertPrivateSigningContract(raw) {
+  const workflow = raw.replace(/\r\n/g, "\n");
+  const required = token => {
+    const index = workflow.indexOf(token);
+    assert.ok(index >= 0, "missing private signing boundary: " + token);
+    return index;
+  };
+  const steps = workflow.split(/(?=^      - )/m).filter(step => /^      - /.test(step));
+  for (const phase of ["ci-only", "before-build", "after-export"]) {
+    const command = new RegExp('^        run: node "[^"\\n]+/source-guard\\.mjs" ' + phase + '$', "m");
+    const found = steps.filter(step => command.test(step));
+    assert.equal(found.length, 1, "source guard must execute once: " + phase);
+    assert.doesNotMatch(found[0], /^        (?:if|continue-on-error):/m,
+      "source proof cannot be bypassed by a conditional or ignored failure");
+  }
+  assert.ok(required('source-guard.mjs" ci-only') < required("secrets.APPSTORE_"),
+    "all four source CI lanes must be checked before Apple keys");
+  assert.ok(required('source-guard.mjs" before-build') < required("clean archive"));
+  assert.ok(required("npm ci") < required("npm run native:prepare"));
+  assert.ok(required("npm run native:prepare") < required("clean archive"));
+  assert.ok(required("clean archive") < required("-exportArchive"));
+  assert.ok(required("-exportArchive") < required("npm run qa:ios:artifact"));
+  assert.ok(required("npm run qa:ios:artifact") < required('source-guard.mjs" after-export'));
+  assert.ok(required('source-guard.mjs" after-export') < required('verify-web-assets.py" verify'));
+  assert.ok(required('verify-web-assets.py" verify') < required('protect-artifact.mjs" encrypt'));
+  assert.match(workflow, /IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"/);
+  assert.match(workflow, /grep -x export/, "IPA export must not upload");
+  assert.match(workflow, /app\/build\/ios\/private-artifact\/release\.tar\.enc/);
+  assert.match(workflow, /app\/build\/ios\/private-artifact\/envelope\.json/);
+  assert.doesNotMatch(workflow, /upload-testflight-build|complete-ios-testflight|appStoreVersionReleaseRequest/);
+  assert.doesNotMatch(workflow, /continue-on-error/);
+}
+
+let signingGuardPromise;
+async function signingGuard() {
+  signingGuardPromise ??= (async () => {
+    const url = new URL("../scripts/qa/ios-signing/source-guard.mjs", import.meta.url);
+    const text = await readFile(url, "utf8");
+    const source = text.match(/export const RELEASE_SOURCE = '([0-9a-f]{40})'/)?.[1];
+    assert.match(source ?? "", /^[0-9a-f]{40}$/);
+    const prior = process.env.SOURCE_SHA;
+    process.env.SOURCE_SHA = source; // Synthetic import context only; no guard CLI or API is invoked.
+    try { return await import(url.href); }
+    finally {
+      if (prior === undefined) delete process.env.SOURCE_SHA;
+      else process.env.SOURCE_SHA = prior;
+    }
+  })();
+  return signingGuardPromise;
+}
+
+test("private iOS signing remains source-gated, encrypted-artifact-only and separate from intake", async () => {
+  const [packageJson, workflow, oneShot, intakeWorkflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
+    readFile(".github/workflows/ios194-11b-sign-only.yml", "utf8"),
+    readFile("scripts/qa/ios-signing/intake-workflow-template.yml", "utf8"),
     readFile("scripts/prepare-ios-release.mjs", "utf8"),
     readFile("scripts/verify-ios-workflow-env.mjs", "utf8"),
     readFile("scripts/prepare-ios-icon.mjs", "utf8"),
@@ -43,13 +107,15 @@ test("iOS release automation restricts candidate pushes and remains manually Tes
   assert.match(packageJson.scripts["native:ios:apple-secret"], /generate-apple-client-secret/);
   assert.match(packageJson.scripts["native:ios:csr"], /new-apple-distribution-csr/);
   assert.match(workflow, /workflow_dispatch:/);
-  assert.match(workflow, new RegExp(`default: "${metadata.version.number.replaceAll(".", "\\.")}"`));
-  assert.match(workflow, new RegExp(`default: "${metadata.version.build}"`));
+  assert.match(workflow, /default: "4\.58"/);
+  assert.match(workflow, /default: "194"/, "the private candidate overrides historical tooling metadata build193");
+  assertManualSigningDisabled(workflow);
+  for (const definition of [workflow, oneShot]) assertPrivateSigningContract(definition);
   assert.match(workflow, /runs-on: macos-26/);
   assert.match(workflow, /Xcode_26\.6\.app/);
   assert.match(workflow, /verify-ios-workflow-env\.mjs/);
   assert.match(workflow, /concurrency:/);
-  assert.match(workflow, /if: always\(\)/);
+  assert.match(intakeWorkflow, /if: always\(\)/, "intake retains its metadata evidence on failure");
   assert.match(workflow, /build\/ios\/archive\.log/);
   assert.match(workflow, /build\/ios\/export\.log/);
   const jobEnvironment = workflow.slice(
@@ -61,27 +127,28 @@ test("iOS release automation restricts candidate pushes and remains manually Tes
   assert.match(jobEnvironment, /GOOGLE_IOS_CLIENT_ID: \$\{\{ vars\.GOOGLE_IOS_CLIENT_ID \}\}/);
   assert.match(exampleEnv, /^GOOGLE_IOS_CLIENT_ID=$/m);
   assert.ok(
-    workflow.indexOf("Select and verify Xcode 26.6") < workflow.indexOf("Run release checks"),
+    workflow.indexOf("Select and verify Xcode 26.6") < workflow.indexOf("Build web assets and prepare the native project from the pinned checkout"),
     "Xcode must be selected before native release checks"
   );
   assert.match(workflow, /import-codesign-certs@v7/);
   assert.match(workflow, /download-provisioning-profiles@v6/);
-  assert.match(workflow, /upload-testflight-build@v5/);
+  assert.match(intakeWorkflow, /upload-testflight-build@v5/);
   assert.match(workflow, /Verify signed iOS artifact/);
-  assert.match(workflow, /build\/ios\/release-manifest\.json/);
-  assert.match(workflow, /app-type: ios/);
-  assert.match(workflow, /backend: appstore-api/);
-  assert.doesNotMatch(workflow, /backend: AppStoreAPI/);
-  assert.doesNotMatch(workflow, /^\s*uses-non-exempt-encryption:/m,
+  assert.match(workflow, /-C build\/ios/);
+  assert.match(workflow, /SogrimHashbon\.ipa release-manifest\.json artifact-verification\.json/);
+  assert.match(intakeWorkflow, /app-type: ios/);
+  assert.match(intakeWorkflow, /backend: appstore-api/);
+  assert.doesNotMatch(intakeWorkflow, /backend: AppStoreAPI/);
+  assert.doesNotMatch(intakeWorkflow, /^\s*uses-non-exempt-encryption:/m,
     "Apple rejects a second encryption declaration after reading it from the signed app");
   assert.match(info, /<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\s*\/>/);
   assert.match(submissionCheck, /check\("Export compliance is declared"/);
-  assert.match(workflow, /wait-for-processing: "false"/,
+  assert.match(intakeWorkflow, /wait-for-processing: ['"]false['"]/,
     "The upload action must not retain its expired token during processing");
-  assert.match(workflow, /run: node scripts\/complete-ios-testflight\.mjs/,
+  assert.match(intakeWorkflow, /run: node scripts\/complete-ios-testflight\.mjs/,
     "A required completion step must still verify Apple's processing result and notes");
-  assert.ok(workflow.indexOf("Verify Apple processing and complete TestFlight notes") > workflow.indexOf("Upload app to TestFlight"));
-  assert.doesNotMatch(workflow, /continue-on-error/,
+  assert.ok(intakeWorkflow.indexOf("Verify Apple processing and complete TestFlight notes") > intakeWorkflow.indexOf("Upload the same original IPA to TestFlight"));
+  assert.doesNotMatch(intakeWorkflow, /continue-on-error/,
     "Failed processing or unsaved notes must fail the release");
   assert.doesNotMatch(workflow, /push:/);
   assert.doesNotMatch(workflow, /^  (?:pull_request|pull_request_target|schedule):/m);
@@ -149,6 +216,89 @@ test("iOS release automation restricts candidate pushes and remains manually Tes
   assert.doesNotMatch(launchScreen, /image="Splash"|<image name="Splash"/);
   assert.equal(metadata.app.bundleId, "com.sogrimhashbon.app");
   assert.ok(Buffer.byteLength(metadata.version.keywords, "utf8") <= 100);
+});
+
+
+test("private signing contracts reject reenabled legacy dispatch, extra triggers and removed CI guards", async () => {
+  const legacy = (await readFile(".github/workflows/ios-testflight.yml", "utf8")).replace(/\r\n/g, "\n");
+  for (const mutation of [
+    legacy.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name == 'workflow_dispatch'"),
+    legacy.replace("  workflow_dispatch:\n", "  push:\n  workflow_dispatch:\n"),
+    legacy + "\n  bypass:\n    runs-on: macos-26\n    steps: []\n"
+  ]) {
+    assert.notEqual(mutation, legacy);
+    assert.throws(() => assertManualSigningDisabled(mutation));
+  }
+  const oneShot = await readFile(".github/workflows/ios194-11b-sign-only.yml", "utf8");
+  for (const mutation of [
+    oneShot.replace('source-guard.mjs" ci-only', 'source-guard.mjs" removed'),
+    oneShot.replace('        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only', '        # run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only'),
+    oneShot.replace('source-guard.mjs" after-export', 'source-guard.mjs" removed'),
+    oneShot.replace('verify-web-assets.py" verify', 'verify-web-assets.py" removed')
+  ]) {
+    assert.notEqual(mutation, oneShot);
+    assert.throws(() => assertPrivateSigningContract(mutation));
+  }
+});
+
+test("one-shot source checkout and all source CI lanes fail closed for stale or failed proof", async () => {
+  const guard = await signingGuard();
+  const workflow = (await readFile(".github/workflows/ios194-11b-sign-only.yml", "utf8")).replace(/\r\n/g, "\n");
+  assert.match(workflow, /github\.event_name == 'push' && github\.run_attempt == 1 && github\.run_number == 1/);
+  assert.doesNotMatch(workflow.split("\npermissions:")[0], /workflow_dispatch|pull_request|schedule/);
+  assert.equal(workflow.match(/^      SOURCE_SHA: "([0-9a-f]{40})"$/m)?.[1], guard.RELEASE_SOURCE);
+  assert.equal(workflow.match(/^      IOS_VERSION: "([^"]+)"$/m)?.[1], "4.58");
+  assert.equal(workflow.match(/^      IOS_BUILD: "([^"]+)"$/m)?.[1], "194");
+  assert.match(workflow, new RegExp('ref: "' + guard.RELEASE_SOURCE + '"'));
+  const ref = workflow.match(/github\.ref == '([^']+)'/)?.[1];
+  const env = {
+    GITHUB_REPOSITORY: "yarinn12/sogrim-hashbon", GITHUB_EVENT_NAME: "push",
+    GITHUB_REF: ref, GITHUB_WORKFLOW_REF: "yarinn12/sogrim-hashbon/.github/workflows/ios194-11b-sign-only.yml@" + ref,
+    GITHUB_RUN_ATTEMPT: "1", GITHUB_RUN_NUMBER: "1", APPLE_TEAM_ID: "MA9S4L7WKS",
+    SOURCE_SHA: guard.RELEASE_SOURCE, IOS_VERSION: "4.58", IOS_BUILD: "194",
+    ...Object.fromEntries([...workflow.matchAll(/^      (SOURCE_(?:QA|WINDOWS_QA|FONT_QA|AUTH_QA)_RUN): "([1-9][0-9]*)"$/gm)].map(m => [m[1], m[2]]))
+  };
+  const runGit = args => args[1] === "HEAD" ? guard.RELEASE_SOURCE : guard.RELEASE_TREE;
+  const readText = path => path === "src/pwaBootstrap.mjs" ? 'const PWA_RELEASE = "516";'
+    : JSON.stringify({ version: { number: "4.58", build: "194" } });
+  assert.equal(guard.verifyCheckout(runGit, readText, env).sourceCommit, guard.RELEASE_SOURCE);
+  for (const patch of [{ SOURCE_SHA: "a".repeat(40) }, { IOS_BUILD: "193" }, { GITHUB_RUN_ATTEMPT: "2" }, { GITHUB_RUN_NUMBER: "2" }, { GITHUB_REF: "refs/heads/main" }])
+    assert.throws(() => guard.verifyCheckout(runGit, readText, { ...env, ...patch }));
+  assert.throws(() => guard.verifyCheckout(() => "a".repeat(40), readText, env));
+  assert.throws(() => guard.verifyCheckout(args => args[1] === "HEAD" ? guard.RELEASE_SOURCE : "a".repeat(40), readText, env));
+  assert.throws(() => guard.requiredRuns({ ...env, SOURCE_AUTH_QA_RUN: env.SOURCE_QA_RUN }));
+  const names = ["unit", "cross-platform", "cross-platform-shard-1", "cross-platform-shard-2",
+    "two-client-sync", "unit-and-mobile", "backup-runtime",
+    ...["android-mobile", "iphone-webkit", "ipad-webkit", "iphone-large-text", "reflow-200"].map(p => "mobile (" + p + ")"),
+    "ios-native / native-parity", "android-native / native-parity",
+    "mobile-iphone-large-text-shard-1", "mobile-iphone-large-text-shard-2",
+    "mobile-iphone-webkit-shard-1", "mobile-iphone-webkit-shard-2"];
+  const fixture = (edit = () => {}) => async (url, options) => {
+    assert.equal(options.method, "GET");
+    assert.equal(new URL(url).origin, "https://api.github.com"); // In-memory stub; never calls fetch.
+    const match = url.match(/\/actions\/runs\/(\d+)(.*)/);
+    const [id, path] = guard.requiredRuns(env).find(([id]) => id === match?.[1]) ?? [];
+    assert.ok(id);
+    const jobNames = path.endsWith("/qa.yml") ? names
+      : [path.endsWith("/qa-windows.yml") ? "windows-unit" : path.endsWith("/ios-auth-return-qa.yml") ? "native" : "linux-font-provenance"];
+    const jobs = Boolean(match[2]);
+    const value = jobs ? { total_count: jobNames.length, jobs: jobNames.map((name, i) => ({
+      id: i + 1, run_id: Number(id), head_sha: guard.RELEASE_SOURCE, name, status: "completed", conclusion: "success"
+    })) } : { id: Number(id), head_sha: guard.RELEASE_SOURCE, repository: { full_name: env.GITHUB_REPOSITORY },
+      head_repository: { full_name: env.GITHUB_REPOSITORY }, head_branch: guard.SOURCE_BRANCH,
+      event: "pull_request", path, status: "completed", conclusion: "success", run_attempt: 1 };
+    edit(value, path, jobs);
+    return { ok: true, json: async () => value };
+  };
+  assert.equal((await guard.verifyRuns(fixture(), "synthetic-token", env)).length, 4);
+  for (const edit of [
+    (v, p, jobs) => { if (!jobs) v.head_sha = "a".repeat(40); },
+    (v, p, jobs) => { if (!jobs) v.run_attempt = 2; },
+    (v, p, jobs) => { if (!jobs) v.head_branch = "main"; },
+    (v, p, jobs) => { if (jobs) v.jobs[0].conclusion = "failure"; },
+    (v, p, jobs) => { if (jobs) v.jobs[0].conclusion = "skipped"; },
+    (v, p, jobs) => { if (jobs && p.endsWith("/qa.yml")) { v.jobs.splice(v.jobs.findIndex(j => j.name === "ios-native / native-parity"), 1); v.total_count--; } }
+  ]) await assert.rejects(guard.verifyRuns(fixture(edit), "synthetic-token", env));
 });
 
 test("Apple workflow configuration fails fast without exposing credentials", () => {
@@ -374,13 +524,15 @@ test("TestFlight archive selects the installed distribution profile without alte
   assert.equal(await readFile(join(projectDirectory, "project.pbxproj"), "utf8"), projectBeforeInvalidInput);
 });
 
-test("TestFlight workflow retains the prepared manual distribution signing configuration", async () => {
-  const workflow = await readFile(".github/workflows/ios-testflight.yml", "utf8");
-  assert.match(workflow, /IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"/);
-  const archiveStep = workflow.split("- name: Archive signed iOS app")[1].split("- name: Export IPA")[0];
-  assert.doesNotMatch(archiveStep, /CODE_SIGN_STYLE=Automatic/);
-  assert.doesNotMatch(archiveStep, /-allowProvisioningUpdates/);
-  assert.match(workflow, /profile-type: IOS_APP_STORE/);
+test("both signing definitions retain the prepared manual distribution configuration", async () => {
+  for (const path of ["ios-testflight.yml", "ios194-11b-sign-only.yml"]) {
+    const workflow = await readFile(".github/workflows/" + path, "utf8");
+    assert.match(workflow, /IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"/);
+    const archiveStep = workflow.split("- name: Archive signed iOS app")[1].split("- name: Export IPA")[0];
+    assert.doesNotMatch(archiveStep, /CODE_SIGN_STYLE=Automatic/);
+    assert.doesNotMatch(archiveStep, /-allowProvisioningUpdates/);
+    assert.match(workflow, /profile-type: IOS_APP_STORE/);
+  }
 });
 
 test("Apple client secret generator creates a valid six-month ES256 token", async () => {

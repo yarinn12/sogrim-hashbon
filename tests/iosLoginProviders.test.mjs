@@ -43,15 +43,42 @@ async function verify(options = {}) {
   return verifyIosLoginProviders({ publicOrigin, ...options });
 }
 
-test("iOS workflow gates the archive and upload on public Apple provider readiness", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/ios-testflight.yml", import.meta.url), "utf8");
-  const gate = workflow.indexOf("run: npm run qa:ios:providers");
-  assert.ok(gate >= 0, "iOS release has no public Apple provider gate");
-  assert.ok(gate < workflow.indexOf("- name: Run release checks"), "provider failures must block native preparation");
-  assert.ok(gate < workflow.indexOf("- name: Archive signed iOS app"));
-  assert.ok(gate < workflow.indexOf("- name: Upload app to TestFlight"));
+function assertProviderBeforeSigning(workflow) {
+  const steps = workflow.replace(/\r\n/g, "\n").split(/(?=^      - )/m)
+    .filter(step => /^      - /.test(step));
+  const provider = steps.findIndex(step => /^        run: npm run qa:ios:providers$/m.test(step));
+  const prepare = steps.findIndex(step => /^          npm run native:prepare$/m.test(step));
+  const archive = steps.findIndex(step => /^            clean archive \\/m.test(step));
+  assert.ok(provider >= 0, "signed artifact preparation has no public Apple provider gate");
+  assert.ok(prepare > provider, "provider failure must block native preparation");
+  assert.ok(archive > prepare, "provider and preparation must precede signing");
+  assert.doesNotMatch(steps[provider], /^        (?:if|continue-on-error):/m,
+    "the provider gate must be unconditional and fail closed");
+}
+
+test("both private signing definitions gate preparation and archive on public Apple provider readiness", async () => {
+  for (const path of ["ios-testflight.yml", "ios194-11b-sign-only.yml"]) {
+    const workflow = await readFile(new URL("../.github/workflows/" + path, import.meta.url), "utf8");
+    assertProviderBeforeSigning(workflow);
+    assert.doesNotMatch(workflow, /apple-actions\/upload-testflight-build|complete-ios-testflight/,
+      "signing retains an encrypted artifact; upload belongs to the separately guarded intake");
+  }
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.scripts["qa:ios:providers"], "node scripts/verify-ios-login-providers.mjs");
+});
+
+test("provider-order contract rejects missing, bypassed and post-archive provider checks", async () => {
+  const workflow = (await readFile(new URL("../.github/workflows/ios194-11b-sign-only.yml", import.meta.url), "utf8"))
+    .replace(/\r\n/g, "\n");
+  const gate = "        run: npm run qa:ios:providers";
+  const moved = workflow.replace(gate, "        run: echo provider-gate-removed") +
+    "\n      - name: Late provider check\n" + gate + "\n";
+  const missing = workflow.replace(gate, "        run: echo provider-gate-removed");
+  const bypassed = workflow.replace(gate, "        continue-on-error: true\n" + gate);
+  for (const mutation of [moved, missing, bypassed]) {
+    assert.notEqual(mutation, workflow);
+    assert.throws(() => assertProviderBeforeSigning(mutation));
+  }
 });
 
 test("public provider gate follows only the three anonymous GET boundaries and never signs in", async () => {
