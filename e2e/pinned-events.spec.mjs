@@ -205,6 +205,7 @@ test("failed preference writes keep the previous order and allow a successful re
 
 test("personal pins survive incoming event changes and do not affect another participant", async ({ page, browser }) => {
   const cloud = await personalPinsCloud(page, test.info().project.use.baseURL, state);
+  const documentToken = await page.evaluate(() => globalThis.__qaPinsDocumentToken = crypto.randomUUID());
   await pin(page, OLD, true);
   const other = await browser.newContext({ baseURL: test.info().project.use.baseURL, serviceWorkers: "block" });
   try {
@@ -217,15 +218,17 @@ test("personal pins survive incoming event changes and do not affect another par
     updated.events.find(event => event.id === OLD).name = "השם עודכן ממכשיר אחר";
     updated.events.find(event => event.id === OLD).settingsUpdatedAt = new Date().toISOString();
     cloud.update(updated);
-    await cloud.reload();
+    await cloud.refresh();
     await expect(row(page, OLD)).toContainText("השם עודכן ממכשיר אחר");
+    expect(await page.evaluate(() => globalThis.__qaPinsDocumentToken)).toBe(documentToken);
     await order(page, [OLD, NEW, CLOSED]);
     await expect(row(page, CLOSED).locator(".event-note-pin")).toHaveCount(0);
     updated.events = updated.events.filter(event => event.id !== OLD);
     updated.deletedEvents.push({ id: OLD, deletedAt: new Date().toISOString(), deletedByParticipantId: updated.currentParticipantId });
     cloud.update(updated);
-    await cloud.reload();
+    await cloud.refresh();
     await expect(row(page, OLD)).toHaveCount(0);
+    expect(await page.evaluate(() => globalThis.__qaPinsDocumentToken)).toBe(documentToken);
     await expect(page.locator(".event-list .event-notes-section-label")).toHaveCount(0);
     expect(cloud.reads.some(snapshot => snapshot.state.events.some(event => event.name === "השם עודכן ממכשיר אחר"))).toBe(true);
     if (cloud.diagnostics.length) await test.info().attach("webkit-document-replacement-diagnostics", {

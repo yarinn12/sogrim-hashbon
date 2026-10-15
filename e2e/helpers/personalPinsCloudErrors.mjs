@@ -6,14 +6,6 @@ import { isWebKitReloadDiagnostic } from "./reloadDiagnostics.mjs";
 export function recordPersonalPinsCloudErrors(page, { origin, userId, browserName }) {
   const errors = [], diagnostics = [];
   const activeRequests = new Map(), failedUrls = new Set();
-  const idleWaiters = new Set();
-  const finishRequest = request => {
-    activeRequests.delete(request);
-    if (!activeRequests.size) {
-      for (const resolve of idleWaiters) resolve();
-      idleWaiters.clear();
-    }
-  };
   let reload = null;
   const inboxUrl = value => {
     try {
@@ -28,10 +20,10 @@ export function recordPersonalPinsCloudErrors(page, { origin, userId, browserNam
     activeRequests.set(request, url);
     reload?.issuedUrls.add(url);
   });
-  page.on("requestfinished", finishRequest);
+  page.on("requestfinished", request => activeRequests.delete(request));
   page.on("requestfailed", request => {
     const url = activeRequests.get(request) || inboxUrl(request.url());
-    finishRequest(request);
+    activeRequests.delete(request);
     if (!url) return;
     failedUrls.add(url);
     errors.push(`requestfailed: ${url}: ${request.failure?.()?.errorText || "unknown"}`);
@@ -50,13 +42,7 @@ export function recordPersonalPinsCloudErrors(page, { origin, userId, browserNam
   const withReload = async callback => {
     if (reload) throw new Error("Nested document reload in personal pins fixture");
     reload = { issuedUrls: new Set(activeRequests.values()) };
-    try {
-      // This fixture deliberately navigates. Finish its already issued inbox
-      // reads first, under the existing outer test deadline. Real failures
-      // remain in errors; no request is cancelled or reclassified here.
-      while (activeRequests.size) await new Promise(resolve => idleWaiters.add(resolve));
-      return await callback();
-    }
+    try { return await callback(); }
     finally { reload = null; }
   };
   return { errors, diagnostics, withReload };

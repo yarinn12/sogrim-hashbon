@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { recordPersonalPinsCloudErrors } from "./personalPinsCloudErrors.mjs";
-import { navigateWithPersonalPinsInbox } from "./personalPinsCloudNavigation.mjs";
+import { refreshPersonalPinsSnapshot } from "./personalPinsCloudRefresh.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // The private account snapshot is shared by independently connected contexts.
@@ -72,12 +72,13 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
     }
     sessionStorage.setItem("settle-friends-skip-next-splash", "1");
   }, { user, state, space, key, participantId, legacyPins });
-  await navigateWithPersonalPinsInbox(clientPage, () => clientPage.goto("/"), { origin, userId });
+  await clientPage.goto("/");
   await expect(clientPage.locator(".event-row")).toHaveCount(state.events.length);
   }
   await connectPage(page);
   return { reads, writes, errors: errorMonitor.errors, diagnostics: errorMonitor.diagnostics,
-    reload: () => errorMonitor.withReload(() => navigateWithPersonalPinsInbox(page, () => page.reload(), { origin, userId })), state: () => structuredClone(current.state),
+    refresh: () => refreshPersonalPinsSnapshot(page, { origin, space, updatedAt: current.updated_at }),
+    reload: () => errorMonitor.withReload(() => page.reload()), state: () => structuredClone(current.state),
     update: next => { current = { ...current, state: structuredClone(next), updated_at: stamp() }; },
     conflicts: () => conflicts,
     setWriteFailure: reject => { writesRejected = reject; },
