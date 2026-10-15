@@ -24,7 +24,13 @@ present with `countersVerified: false`. The identity-after array contains only
 TID/PID/start, and quality groups contain TID references rather than copies of
 counter records:
 
-- `survivorsVerified`: terminal tasks with five verified counters and closure.
+- `survivorsVerified`: records with five verified counters and matching identities
+  in the reads actually performed, for numeric TIDs present in the terminal
+  inventory. The closing identity read precedes that inventory. This is not
+  proof that the same lifetime continued until the inventory or afterwards;
+  reuse entirely inside the unobserved interval cannot be excluded. Observed
+  identity changes or disappearance/reappearance still fail. Adding another
+  finite scan would move, rather than eliminate, that interval.
 - `departedVerified`: terminal-absent tasks with five verified counters; no
   closing identity is invented when its read failed or was never attempted.
 - `departedPartial`: terminal-absent tasks with a known identity and only
