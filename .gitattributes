@@ -2,3 +2,4 @@
 tests/fixtures/android-native-7b969f8-close-raw.txt -text
 tests/fixtures/android-native-7b969f8-pull-raw.txt -text
 tests/fixtures/android-native-qa466-sample300.json -text
+tests/fixtures/android-native-qa467-sample284.json -text

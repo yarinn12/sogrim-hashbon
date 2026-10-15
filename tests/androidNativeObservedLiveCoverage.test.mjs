@@ -46,7 +46,7 @@ function replayQA466(changes={}){
   const sample=sampleOwnedHost(options,{procRoot,read,list,expectedStartTicks:owner.startTicks});
   return{sample,reads,lists,taskRoot};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
+function summary(owner){return{owner,samples:2,coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
 
 for(const value of [true,undefined,'false']){
   const label=value===undefined?'undefined':JSON.stringify(value);
@@ -72,12 +72,12 @@ test('QA466 sample300 retains 188 real counters and explicitly unknown pre-ident
   assert.equal(recorded.inventory.before.length,189);assert.equal(recorded.inventory.after.length,188);
   const {sample,reads,lists,taskRoot}=replayQA466();
   assert.equal(sample.inventory.coverageComplete,true,'only initial ENOENT plus final absence is an explicit unobserved exit');
-  assert.equal(lists,2);assert.equal(reads.get(join(taskRoot,'4622','stat')),1,'one attempt, no retry');
-  assert.equal(sample.threads.length,188);assert.deepEqual(sample.inventory.before,recorded.inventory.before);assert.deepEqual(sample.inventory.after,recorded.inventory.after);
+  assert.equal(lists,3);assert.equal(reads.get(join(taskRoot,'4622','stat')),1,'one attempt, no retry');
+  assert.equal(sample.threads.length,188);assert.deepEqual(sample.inventory.before,recorded.inventory.before);assert.deepEqual(sample.inventory.afterFinal,recorded.inventory.after);
   assert.deepEqual(sample.threads,recorded.threads,'all retained counters come from actual records');
   assert.equal(sample.unavailable.find(g=>g.tid===4622).code,'ENOENT');
   assert.deepEqual(sample.lifecycle,[{tid:4622,kind:'unobserved-exit',startTicks:null,identity:null,counters:null}]);
-  assert.equal(sample.inventory.coverageVersion,2);assert.equal(sample.inventory.scope,'observed-live-owned-host-tasks');
+  assert.equal(sample.inventory.coverageVersion,3);assert.equal(sample.inventory.scope,'observed-live-owned-host-tasks');
   assert.equal(sample.inventory.atomic,false);assert.equal(sample.inventory.lifetimeCoverageProven,false);assert.equal(sample.inventory.rendererRoleProven,false);
   const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,sample,prior);
   assert.equal(receipt.coverageSamples,2);assert.equal(receipt.nonMainTasksMeasured,374);assert.equal(receipt.unobservedExits,2);assert.equal(receipt.samplesWithUnobservedExits,2);
@@ -109,9 +109,10 @@ test('an exception label cannot replace its exact first-read and endpoint eviden
     s=>{s.lifecycle[0].counters={runNs:'0'};},
     s=>{s.lifecycle[0].startTicks='123';},
     s=>{s.lifecycle[0].kind='exited-during-sample';},
-    s=>{s.inventory.after.push(4622);s.inventory.after.sort((a,b)=>a-b);},
+    s=>{s.inventory.afterFinal.push(4622);s.inventory.afterFinal.sort((a,b)=>a-b);},
     s=>{s.inventory.before=s.inventory.before.filter(tid=>tid!==4622);},
     s=>{s.inventory.coverageVersion=1;},
+    s=>{s.inventory.coverageVersion=2;},
     s=>{s.inventory.scope='all-owned-host-tasks';},
     s=>{s.inventory.coverageContract='all-owned-host-tasks-v1';},
     s=>{s.inventory.atomic=true;},
@@ -130,6 +131,6 @@ test('every final task still requires its own real identity and all five counter
 
 test('exception accounting never substitutes for complete samples, worker counters or caps',()=>{
   const {sample}=replayQA466(),valid=summary(sample.owner);recordHostInventory(valid,sample);recordHostInventory(valid,sample);
-  for(const changes of [{coverageVersion:1},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{samples:3},{coverageSamples:1},{nonMainTasksMeasured:0},{unobservedExits:-1},{unobservedExits:undefined},{samplesWithUnobservedExits:0},{samplesWithUnobservedExits:3},{samplesWithUnobservedExits:undefined},{capReached:{kind:'host-bytes'}},{errors:['EIO']},{inventoryAtomic:true},{lifetimeCoverageProven:true}])
+  for(const changes of [{coverageVersion:1},{coverageVersion:2},{coverageContract:'observed-live-owned-host-tasks-v2'},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{samples:3},{coverageSamples:1},{nonMainTasksMeasured:0},{unobservedExits:-1},{unobservedExits:undefined},{samplesWithUnobservedExits:0},{samplesWithUnobservedExits:3},{samplesWithUnobservedExits:undefined},{newbornTasksMeasured:undefined},{newbornTasksMeasured:-1},{newbornTasksMeasured:375},{finalIdentitiesVerified:undefined},{finalIdentitiesVerified:375},{capReached:{kind:'host-bytes'}},{errors:['EIO']},{inventoryAtomic:true},{lifetimeCoverageProven:true}])
     assert.throws(()=>requireHostInventoryCoverage({...valid,...changes}),/coverage is missing/);
 });

@@ -83,7 +83,7 @@ function fixture(t){
     throw new Error('Unexpected boundary command '+JSON.stringify(command));
   }
   const deps={run,platform:'linux',procRoot:proc,launchHost:async()=>({pid:99,ready:{boundaryOnly:true}})};
-  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:2,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,rendererRoleProven:false,boundaryOnly:true};};
+  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:2,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4,rendererRoleProven:false,boundaryOnly:true};};
   return{root,proc,processDir,options,state,calls,run,deps,stopHost};
 }
 
@@ -163,7 +163,7 @@ test('host sampling scopes all reads to the owned process and records CPU/runque
   const sample=sampleOwnedHost(f.options,{procRoot:f.proc,read,expectedStartTicks:'12345'});
   assert.equal(sample.threads.length,2);assert.equal(sample.threads[1].runNs,'100');assert.equal(sample.threads[1].runQueueWaitNs,'20');assert.equal(sample.threads[1].wchan,'futex_wait');assert.equal(sample.unavailable.length,0);
   assert.ok(paths.every(path=>path.startsWith(f.processDir+sep)));
-  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,12);
+  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,14);
 });
 test('unavailable kernel wait channels and disappearing task reads remain explicit',t=>{
   const f=fixture(t);writeFileSync(join(f.processDir,'task','3450','wchan'),'0\n');
@@ -188,7 +188,7 @@ test('successful scoped start/finalize keeps ownership, raw command outputs and 
 });
 
 test('finisher requires the versioned observed-live contract and explicit exception accounting',async t=>{
-  for(const changes of [{coverageVersion:1},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3}]){
+  for(const changes of [{coverageVersion:1},{coverageVersion:2},{coverageContract:'observed-live-owned-host-tasks-v2'},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3},{newbornTasksMeasured:undefined},{finalIdentitiesVerified:undefined},{finalIdentitiesVerified:3}]){
     const f=fixture(t);await startOwnedTrace(f.options,f.deps);
     const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),...changes})});
     assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Observed-live.*coverage is missing/);
