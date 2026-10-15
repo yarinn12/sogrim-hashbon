@@ -1,0 +1,108 @@
+name: iOS475 observer footprint ABBA (INACTIVE preparation)
+
+on:
+  push:
+    branches: [codex/ios475-observer-footprint-abba-20261016]
+    paths:
+      - .github/workflows/ios475-observer-footprint-abba-20261016.yml
+      - scripts/qa/ios-parity/observer-footprint-*
+      - scripts/qa/ios-parity/run-observer-footprint.mjs
+      - tests/iosObserverFootprint.test.mjs
+
+permissions:
+  contents: read
+
+jobs:
+  experiment:
+    # Root must review the immutable patch/tests before replacing BOTH inactive locks.
+    # Do not push a skipped preparation first: the activated workflow is run_number=1 only.
+    if: ${{ github.run_number == 0 }}
+    runs-on: macos-26
+    # Outer allowance: one <=35m build + four sequential <=35m default runs,
+    # plus 20m for checkout/preflight/finalization/artifact preservation.
+    # It does not change any original XCTest/observer/boot deadline or permit retries.
+    timeout-minutes: 195
+    env:
+      IOS475_OBSERVER_FOOTPRINT: inactive-preparation
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      IOS475_APP_ROOT: ${{ github.workspace }}/app
+      IOS475_FIXTURE_ROOT: ${{ github.workspace }}/fixture
+      IOS475_TOOLS_ROOT: ${{ github.workspace }}/orchestration
+      IOS475_EVIDENCE_ROOT: ${{ github.workspace }}/ios475-observer-footprint-abba
+    steps:
+      - name: Checkout orchestration only
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: orchestration
+          persist-credentials: false
+      - name: Checkout original failed application
+        uses: actions/checkout@v6
+        with:
+          ref: 8b8bfa6da7fc88e7e846c894d26b59120c871468
+          path: app
+          persist-credentials: false
+      - name: Checkout original fixture identity separately
+        uses: actions/checkout@v6
+        with:
+          ref: 5115472ada3f5661d4aa81a23d9a38eb6529b44f
+          path: fixture
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Offline contract controls on SDK host
+        working-directory: orchestration
+        run: node --test tests/iosObserverFootprint.test.mjs
+      - name: Select original Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.6.app
+      - name: Verify three checkouts and create four owned Shutdown devices
+        id: preflight
+        timeout-minutes: 5
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs preflight
+      - name: Original preparation and ONE unsigned build
+        id: build
+        timeout-minutes: 35
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs build
+      - name: A1 original observer ON, fresh device 1
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 35
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs arm 1
+      - name: B1 observer OFF, fresh device 2
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 35
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs arm 2
+      - name: B2 observer OFF, fresh device 3
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 35
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs arm 3
+      - name: A2 original observer ON, fresh device 4
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 35
+        run: node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs arm 4
+      - name: Always close verified owned simulators and preserve every prefix
+        if: ${{ always() }}
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          if [[ -f "$IOS475_EVIDENCE_ROOT/state.json" ]]; then
+            node orchestration/scripts/qa/ios-parity/run-observer-footprint.mjs finalize
+          fi
+      - name: Preserve raw diagnostic evidence, including failed or absent arms
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios475-observer-footprint-abba-${{ github.run_id }}-attempt1
+          path: |
+            ios475-observer-footprint-abba/
+            app/build/native-parity/*.json
+            app/build/native-parity/*.log
+          if-no-files-found: error
+          retention-days: 14
