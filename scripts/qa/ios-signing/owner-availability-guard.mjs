@@ -7,7 +7,7 @@ export const PINS = Object.freeze({
   appId: '6809952514', bundleId: 'com.sogrimhashbon.app', version: '4.58', build: '194',
   ownerGroupId: '4646e3de-7401-4e70-ac32-9a00072e1376',
   ownerTesterId: '5d2040f0-3af9-4d98-a188-fd6eeb5547db',
-  previousBuildId: '10837c40-5e4f-464d-b71e-ea6e28c0446f',
+  previousBuildId: 'PENDING', baselineBuildIds: 'PENDING', baselineBuildIdsSha256: 'PENDING',
   sourceSha: 'PENDING', sourceTree: 'PENDING', signingToolSha: 'PENDING',
   signedRunId: 'PENDING', signedJobId: 'PENDING', signedArtifactId: 'PENDING',
   signedArtifactSize: 'PENDING', signedZipSha256: 'PENDING', ipaSha256: 'PENDING',
@@ -43,7 +43,13 @@ export function requireBoundPins() {
   for (const key of ['signedRunId', 'signedJobId', 'signedArtifactId', 'signedArtifactSize',
     'intakeRunId', 'intakeJobId', 'intakeArtifactId']) assert.match(PINS[key], /^[1-9][0-9]*$/);
   assert.match(PINS.buildId, /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
-  assert.notEqual(PINS.buildId, PINS.previousBuildId);
+  const baseline = ids(PINS.baselineBuildIds);
+  for (const buildId of baseline) assert.match(buildId, /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+  assert.match(PINS.baselineBuildIdsSha256, /^[a-f0-9]{64}$/);
+  assert.equal(hash(JSON.stringify(sorted(baseline))), PINS.baselineBuildIdsSha256, 'Pinned baseline digest mismatch');
+  assert.ok(!baseline.includes(PINS.buildId), 'Target build is not an existing baseline');
+  if (baseline.length === 0) assert.equal(PINS.previousBuildId, null, 'Empty audited baseline requires explicit null previous ID');
+  else assert.ok(baseline.includes(PINS.previousBuildId), 'Previous build must belong to the entire pinned baseline');
 }
 function receipt(bytes) {
   requireBoundPins(); // Fail before parsing a caller-supplied snapshot or producing a request.
@@ -56,7 +62,8 @@ function receipt(bytes) {
   for (const key of ['appId', 'bundleId', 'version', 'build', 'buildId', 'sourceSha', 'sourceTree',
     'signingToolSha', 'signedRunId', 'signedJobId', 'signedArtifactId', 'signedArtifactSize',
     'signedZipSha256', 'ipaSha256', 'intakeToolSha', 'intakeRunId', 'intakeJobId',
-    'intakeArtifactId', 'intakeZipSha256', 'notesSha256']) assert.equal(r[key], PINS[key], 'Receipt pin: ' + key);
+    'intakeArtifactId', 'intakeZipSha256', 'notesSha256', 'previousBuildId', 'baselineBuildIdsSha256']) assert.equal(r[key], PINS[key], 'Receipt pin: ' + key);
+  sameSet(ids(r.baselineBuildIds), PINS.baselineBuildIds);
   const baseline = inspect(r.snapshot, false);
   assert.equal(baseline.assigned, false, 'Intake receipt must prove zero distribution');
   return r;
@@ -111,7 +118,7 @@ function inspect(s, fresh = true) {
   assert.ok(owner?.isInternalGroup === true, 'Existing internal owner group required');
   assert.equal(owner.hasAccessToAllBuilds, false);
   sameSet(owner.testerIds, [PINS.ownerTesterId]);
-  assert.ok(owner.buildIds.includes(PINS.previousBuildId), 'Previous beta access was removed');
+  sameSet(owner.buildIds.filter(buildId => buildId !== PINS.buildId), PINS.baselineBuildIds);
   assert.ok(Array.isArray(s.testers));
   ids(s.testers.map(t => t.id));
   sameSet(s.testers.map(t => t.id), [...new Set(s.groups.flatMap(g => g.testerIds))]);

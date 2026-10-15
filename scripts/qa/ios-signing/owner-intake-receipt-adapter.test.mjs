@@ -84,7 +84,7 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
       signingBranch: 'codex/signing-synthetic', signingWorkflowPath: '.github/workflows/signing-synthetic.yml',
       intakeBranch: 'codex/intake-synthetic', intakeWorkflowPath: '.github/workflows/intake-synthetic.yml',
       intakeEvent: 'push', intakeJobName: 'upload-original', collectorStepName: 'Collect owner snapshot',
-      buildId: TARGET, previousBuildId: B};
+      buildId: TARGET, previousBuildId: B, baselineBuildIds: [B, C]};
     files['signing-artifact.zip'] = Buffer.from('synthetic original encrypted ZIP bytes; not a parsed ZIP');
     files['intake-evidence.zip'] = Buffer.from('synthetic intake evidence ZIP bytes; not a parsed ZIP');
     p.signedArtifactSize = String(files['signing-artifact.zip'].length);
@@ -187,7 +187,7 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
       ownKeys() { reads++; throw Error('input consumed'); }, get() { reads++; throw Error('input consumed'); }});
     assert.throws(() => unboundAdapter.adaptIntakeToOwnerReceipt(input), /PENDING/); assert.equal(reads, 0);
   });
-  for (const key of ['previousBuildId', 'baselineBuildIdsSha256', 'intakeJobId']) await check('unresolved binding blocks before input: ' + key, async () => {
+  for (const key of ['previousBuildId', 'baselineBuildIds', 'baselineBuildIdsSha256', 'intakeJobId']) await check('unresolved binding blocks before input: ' + key, async () => {
     const f = await fixture(); const mod = await loadAdapter({...f.pins, [key]: 'PENDING'}); let reads = 0;
     const input = new Proxy({}, {getPrototypeOf() { reads++; throw Error('input consumed'); }, ownKeys() { reads++; throw Error('input consumed'); }});
     assert.throws(() => mod.adaptIntakeToOwnerReceipt(input), /PENDING/); assert.equal(reads, 0);
@@ -208,6 +208,54 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
     const plan = owner.planOwnerAvailability(out.receiptBytes, r.snapshot);
     assert.equal(plan.action, 'ADD_BUILD_TO_EXISTING_OWNER_GROUP');
     assert.deepEqual(plan.request.body.data, [{type: 'builds', id: TARGET}]);
+  });
+  const emptyBaseline = ({docs, p}) => {
+    p.previousBuildId = null; p.baselineBuildIds = []; p.baselineBuildIdsSha256 = hash(Buffer.from('[]'));
+    docs['intake-preflight.json'].groups[0].builds = [];
+    docs['intake-postflight.json'].groups[0].builds = [];
+    docs['owner-snapshot.json'].groups[0].buildIds = [];
+    docs['owner-snapshot-evidence.json'] = makeEvidence(docs['owner-snapshot.json']);
+  };
+  await check('explicitly audited empty baseline derives owner bytes and only194 may be added', async () => {
+    const f = await fixture(emptyBaseline), out = f.mod.adaptIntakeToOwnerReceipt(f.files);
+    assert.equal(out.previousBuildId, null); assert.deepEqual(out.baselineBuildIds, []);
+    const r = JSON.parse(out.receiptBytes);
+    assert.equal(r.previousBuildId, null); assert.deepEqual(r.baselineBuildIds, []);
+    assert.equal(r.baselineBuildIdsSha256, hash(Buffer.from('[]')));
+    const core = await loadCore({...f.pins, intakeReceiptSha256: out.receiptSha256});
+    const before = r.snapshot, after = copy(before);
+    after.groups.find(g => g.id === G).buildIds = [TARGET];
+    after.buildGroupIds = [G]; after.build.internalBuildState = 'IN_BETA_TESTING';
+    const plan = core.planOwnerAvailability(out.receiptBytes, before);
+    assert.deepEqual(plan.request, {method: 'POST', path: '/v1/betaGroups/' + G + '/relationships/builds', body: {data: [{type: 'builds', id: TARGET}]}});
+    assert.equal(core.requireAllowedMutation(plan.request, out.receiptBytes, before), true);
+    assert.equal(core.verifyOwnerPostflight(out.receiptBytes, before, after).ownerAvailabilityConfirmed, true);
+    assert.equal(core.planOwnerAvailability(out.receiptBytes, after).request, null);
+    for (const mutate of [s => s.groups[0].buildIds.push(B), s => s.groups[1].buildIds = [],
+      s => s.groups[0].id = 'other-group', s => s.groups[0].testerIds.push(XT),
+      s => s.appStoreVersions[0].state = 'PREPARE_FOR_SUBMISSION', s => s.storeVersionId = 'store455']) {
+      const changed = copy(after); mutate(changed);
+      assert.throws(() => core.verifyOwnerPostflight(out.receiptBytes, before, changed));
+    }
+  });
+  for (const [name, mutate] of [
+    ['empty audit with invented previous GUID', x => { emptyBaseline(x); x.p.previousBuildId = B; }],
+    ['nonempty baseline with null previous ID', ({p}) => p.previousBuildId = null],
+    ['empty pins contradict nonempty audit', ({p}) => {p.baselineBuildIds = []; p.previousBuildId = null; p.baselineBuildIdsSha256 = hash(Buffer.from('[]'));}],
+    ['pinned baseline full set mismatch', ({p}) => p.baselineBuildIds = [B]],
+    ['pinned baseline contains target194', ({p}) => {p.baselineBuildIds = [B, C, TARGET]; p.baselineBuildIdsSha256 = hash(Buffer.from(JSON.stringify(p.baselineBuildIds.sort())));}],
+    ['duplicate pinned baseline ID', ({p}) => {p.baselineBuildIds = [B, B]; p.baselineBuildIdsSha256 = hash(Buffer.from(JSON.stringify(p.baselineBuildIds)));}],
+    ['empty audit without complete collector', x => {emptyBaseline(x); x.docs['owner-snapshot-evidence.json'].complete = false;}]
+  ]) await check('explicit baseline binding rejects: ' + name, async () => {
+    const f = await fixture(mutate); assert.throws(() => f.mod.adaptIntakeToOwnerReceipt(f.files));
+  });
+  await check('complete nonempty baseline survives API ordering changes', async () => {
+    const f = await fixture(({docs, p}) => {
+      p.baselineBuildIds.reverse();
+      docs['intake-preflight.json'].groups.reverse();
+      docs['intake-preflight.json'].groups.find(g => g.id === G).builds.reverse();
+    });
+    assert.deepEqual(f.mod.adaptIntakeToOwnerReceipt(f.files).baselineBuildIds, [B, C]);
   });
   await check('raw evidence substitution fails without rebinding fingerprints', async () => {
     const f = await fixture(); f.files['testflight-completion.json'] = Buffer.from('{}');
@@ -259,6 +307,10 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
     ['extra owner tester', ({docs}) => docs['owner-snapshot.json'].groups[0].testerIds.push(XT)],
     ['lost baseline build', ({docs}) => docs['owner-snapshot.json'].groups[0].buildIds = [B]],
     ['different baseline across intake', ({docs}) => docs['intake-preflight.json'].groups[0].builds.pop()],
+    ['unrelated existing build access changed during intake', ({docs}) => docs['intake-preflight.json'].groups[1].builds = []],
+    ['unrelated existing group changed during intake', ({docs}) => docs['intake-preflight.json'].groups[1].name = 'changed'],
+    ['unexpected group during intake', ({docs}) => docs['intake-preflight.json'].groups.push({id: 'unexpected', builds: []})],
+    ['exposure flags changed during intake', ({docs}) => docs['intake-preflight.json'].groups[0].hasAccessToAllBuilds = true],
     ['selected baseline GUID unproven', ({p}) => p.previousBuildId = X],
     ['wrong baseline set digest', ({p}) => p.baselineBuildIdsSha256 = '0'.repeat(64)],
     ['empty group baseline cannot be repaired by inventing193', ({docs, p}) => {
@@ -314,5 +366,5 @@ test('owner intake adapter synthetic controls', async () => {
     ADAPTER_PINS
   );
   assert.equal(report.failed, 0, JSON.stringify(report.failures));
-  assert.equal(report.total, 64);
+  assert.equal(report.total, 78);
 });

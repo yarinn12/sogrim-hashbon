@@ -8,10 +8,12 @@ const copy = structuredClone;
 const unbound = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'));
 const C = unbound.PINS;
 const BUILD = '22222222-2222-4222-8222-222222222222';
+const BASE = '11111111-1111-4111-8111-111111111111';
+const SECOND = '55555555-5555-4555-8555-555555555555';
 const EXTERNAL = '33333333-3333-4333-8333-333333333333';
 const EXTTESTER = '44444444-4444-4444-8444-444444444444';
 const notes = 'בדיקת עדכון אישי: עיצוב משותף ושמירת נתונים.';
-function snapshot() {
+function snapshot(baseline = [BASE]) {
   return {schemaVersion: 1, observedAt: new Date().toISOString(),
     coverage: {appGroups: true, groupBuilds: true, groupTesters: true, buildGroups: true,
       individualTesters: true, storeVersions: true, storeBuildLinks: true, notes: true},
@@ -23,7 +25,7 @@ function snapshot() {
     buildGroupIds: [], individualTesterIds: [], storeVersionId: null,
     groups: [
       {id: C.ownerGroupId, appId: C.appId, name: 'Yarin Internal Testing', isInternalGroup: true,
-        hasAccessToAllBuilds: false, publicLinkEnabled: false, buildIds: [C.previousBuildId], testerIds: [C.ownerTesterId]},
+        hasAccessToAllBuilds: false, publicLinkEnabled: false, buildIds: [...baseline], testerIds: [C.ownerTesterId]},
       {id: EXTERNAL, appId: C.appId, name: 'Existing external group', isInternalGroup: false,
         hasAccessToAllBuilds: null, publicLinkEnabled: false, buildIds: ['old-external'], testerIds: [EXTTESTER]}
     ],
@@ -34,16 +36,17 @@ function snapshot() {
   };
 }
 let serial = 0;
-async function fixture(receiptChange = () => {}) {
+async function fixture(receiptChange = () => {}, {baseline = [BASE], previousBuildId = baseline[0] ?? null} = {}) {
   const pins = {...C, sourceSha: 'a'.repeat(40), sourceTree: 'b'.repeat(40),
     signingToolSha: 'c'.repeat(40), intakeToolSha: 'd'.repeat(40),
     signedRunId: '101', signedJobId: '102', signedArtifactId: '103', signedArtifactSize: '104',
     signedZipSha256: 'e'.repeat(64), ipaSha256: 'f'.repeat(64),
     intakeRunId: '201', intakeJobId: '202', intakeArtifactId: '203',
-    intakeZipSha256: '1'.repeat(64), notesSha256: sha(notes), buildId: BUILD};
+    intakeZipSha256: '1'.repeat(64), notesSha256: sha(notes), buildId: BUILD,
+    previousBuildId, baselineBuildIds: baseline, baselineBuildIdsSha256: sha(JSON.stringify([...baseline].sort()))};
   const r = {schemaVersion: 1, scope: 'PACKAGE_INTAKE_ONLY', hebrewReleaseNotesVerified: true,
     ...Object.fromEntries(Object.entries(pins).filter(([k]) => !['intakeReceiptSha256',
-      'ownerGroupId', 'ownerTesterId', 'previousBuildId'].includes(k))), snapshot: snapshot()};
+      'ownerGroupId', 'ownerTesterId'].includes(k))), snapshot: snapshot(baseline)};
   receiptChange(r);
   const bytes = Buffer.from(JSON.stringify(r));
   pins.intakeReceiptSha256 = sha(bytes);
@@ -51,7 +54,7 @@ async function fixture(receiptChange = () => {}) {
     'export const PINS = Object.freeze(' + JSON.stringify(pins) + ');');
   assert.notEqual(bound, source);
   const mod = await import('data:text/javascript;base64,' + Buffer.from(bound + '\n//' + serial++).toString('base64'));
-  return {mod, bytes, before: snapshot()};
+  return {mod, bytes, before: snapshot(baseline)};
 }
 function assigned(before) {
   const after = copy(before);
@@ -74,6 +77,42 @@ test('normal preflight proposes exactly one existing-owner relationship POST; va
   assert.equal(proof.ownerAvailabilityConfirmed, true); assert.equal(proof.mutationExpected, true);
   assert.deepEqual(proof.testerIds, [C.ownerTesterId]); assert.equal(proof.publicReleaseAccepted, false);
   assert.equal(proof.databaseAccepted, false); assert.equal(proof.ipaSha256, 'f'.repeat(64));
+});
+
+test('explicitly audited empty baseline permits only adding194 to the existing owner group', async () => {
+  const {mod, bytes, before} = await fixture(() => {}, {baseline: []});
+  const plan = mod.planOwnerAvailability(bytes, before);
+  assert.deepEqual(plan.request.body.data, [{type: 'builds', id: BUILD}]);
+  assert.equal(mod.requireAllowedMutation(plan.request, bytes, before), true);
+  const after = assigned(before);
+  assert.deepEqual(after.groups[0].buildIds, [BUILD]);
+  assert.equal(mod.verifyOwnerPostflight(bytes, before, after).ownerAvailabilityConfirmed, true);
+  assert.equal(mod.planOwnerAvailability(bytes, after).request, null);
+  for (const [, mutate] of mutations) {
+    const changed = copy(after); mutate(changed);
+    assert.throws(() => mod.verifyOwnerPostflight(bytes, before, changed));
+  }
+});
+
+test('entire nonempty baseline is pinned and preserved, not just a selected previous build', async () => {
+  const {mod, bytes, before} = await fixture(() => {}, {baseline: [BASE, SECOND]});
+  assert.equal(mod.verifyOwnerPostflight(bytes, before, assigned(before)).ownerAvailabilityConfirmed, true);
+  for (const buildIds of [[BASE], [SECOND], [], [BASE, SECOND, 'another']]) {
+    const pre = copy(before); pre.groups[0].buildIds = buildIds;
+    assert.throws(() => mod.planOwnerAvailability(bytes, pre));
+    const post = assigned(before); post.groups[0].buildIds = [...buildIds, BUILD];
+    assert.throws(() => mod.verifyOwnerPostflight(bytes, before, post));
+  }
+});
+
+test('empty and nonempty baseline receipt fields cannot be substituted after digest binding', async () => {
+  for (const baseline of [[], [BASE, SECOND]]) for (const mutate of [
+    r => delete r.baselineBuildIds, r => r.baselineBuildIds = ['invented'],
+    r => r.baselineBuildIdsSha256 = '0'.repeat(64), r => r.previousBuildId = 'invented'
+  ]) {
+    const f = await fixture(mutate, {baseline});
+    assert.throws(() => f.mod.planOwnerAvailability(f.bytes, f.before));
+  }
 });
 test('already-correct association is idempotent and cannot propose a second POST', async () => {
   const {mod, bytes, before} = await fixture(); const current = assigned(before);
@@ -123,7 +162,7 @@ const mutations = [
   ['group membership inconsistent', s => s.groups[1].testerIds = []],
   ['new group', s => s.groups.push({...copy(s.groups[1]), id: 'new-group', testerIds: []})],
   ['duplicate group', s => s.groups.push(copy(s.groups[1]))],
-  ['duplicate relationship', s => s.groups[0].buildIds.push(C.previousBuildId)],
+  ['duplicate relationship', s => s.groups[0].buildIds.push(BASE)],
   ['inconsistent build relationship', s => s.buildGroupIds.push(C.ownerGroupId)],
   ['external build exposure', s => { s.groups[1].buildIds.push(BUILD); s.buildGroupIds = [EXTERNAL]; }],
   ['new tester resource', s => s.testers.push({id: 'new-tester', groupIds: []})]
@@ -138,8 +177,8 @@ for (const [name, mutate] of [
   ['create group', x => x.path = '/v1/betaGroups'], ['invite tester', x => x.path = '/v1/betaTesterInvitations'],
   ['tester association', x => x.path = '/v1/builds/' + BUILD + '/relationships/individualTesters'],
   ['Store release', x => x.path = '/v1/appStoreVersionReleaseRequests'],
-  ['second build', x => x.body.data.push({type: 'builds', id: C.previousBuildId})],
-  ['different build', x => x.body.data[0].id = C.previousBuildId],
+  ['second build', x => x.body.data.push({type: 'builds', id: BASE})],
+  ['different build', x => x.body.data[0].id = BASE],
   ['unexpected flags', x => x.body.attributes = {hasAccessToAllBuilds: true}],
   ['unexpected request option', x => x.retry = 1]
 ]) test('mutation allowlist rejects: ' + name, async () => {

@@ -19,7 +19,7 @@ export const ADAPTER_PINS = Object.freeze({
   signedZipSha256: 'PENDING', ipaSha256: 'PENDING',
   intakeRunId: 'PENDING', intakeJobId: 'PENDING', intakeArtifactId: 'PENDING', intakeArtifactSize: 'PENDING',
   intakeZipSha256: 'PENDING', notesSha256: 'PENDING', buildId: 'PENDING',
-  previousBuildId: 'PENDING', baselineBuildIdsSha256: 'PENDING',
+  previousBuildId: 'PENDING', baselineBuildIds: 'PENDING', baselineBuildIdsSha256: 'PENDING',
   qaRunId: 'PENDING', windowsRunId: 'PENDING', fontRunId: 'PENDING', authRunId: 'PENDING',
   signingBranch: 'PENDING', signingWorkflowPath: 'PENDING',
   intakeBranch: 'PENDING', intakeWorkflowPath: 'PENDING', intakeEvent: 'PENDING',
@@ -63,7 +63,12 @@ export function requireAdapterBindings() {
   for (const k of ['signedRunId', 'signedJobId', 'signedArtifactId', 'signedArtifactSize',
     'intakeRunId', 'intakeJobId', 'intakeArtifactId', 'intakeArtifactSize', 'qaRunId',
     'windowsRunId', 'fontRunId', 'authRunId']) positive(P[k]);
-  guid(P.buildId); guid(P.previousBuildId); assert.notEqual(P.previousBuildId, P.buildId);
+  guid(P.buildId);
+  const baseline = ids(P.baselineBuildIds); baseline.forEach(guid);
+  assert.equal(hash(Buffer.from(JSON.stringify(sorted(baseline)))), P.baselineBuildIdsSha256, 'Pinned baseline digest mismatch');
+  assert.ok(!baseline.includes(P.buildId), 'Target build is not an existing baseline');
+  if (baseline.length === 0) assert.equal(P.previousBuildId, null, 'Empty audited baseline requires explicit null previous ID');
+  else { guid(P.previousBuildId); assert.ok(baseline.includes(P.previousBuildId), 'Selected baseline ID must be pinned'); }
   for (const k of ['signingBranch', 'intakeBranch']) assert.match(P[k], /^codex\/[a-z0-9-]+$/);
   for (const k of ['signingWorkflowPath', 'intakeWorkflowPath']) assert.match(P[k], /^\.github\/workflows\/[a-z0-9-]+\.yml$/);
   assert.ok(['push', 'workflow_dispatch'].includes(P.intakeEvent));
@@ -164,6 +169,8 @@ function group(r) {
   return found[0];
 }
 function preserveOwnerBaseline(pre, post, snapshot) {
+  const stableGroups = groups => groups.map(g => ({...g, builds: [...g.builds].sort((a, b) => a.id.localeCompare(b.id))})).sort((a, b) => a.id.localeCompare(b.id));
+  assert.deepEqual(canonical(stableGroups(pre.groups)), canonical(stableGroups(post.groups)), 'Existing groups or build access changed during intake');
   const before = group(pre), after = group(post), collected = group(snapshot);
   assert.ok(Array.isArray(before.builds) && Array.isArray(after.builds));
   const beforeIds = ids(before.builds.map(b => b.id)), afterIds = ids(after.builds.map(b => b.id));
@@ -173,11 +180,10 @@ function preserveOwnerBaseline(pre, post, snapshot) {
     assert.equal(after.builds.find(x => x.id === b.id)?.build, b.build);
   }
   const baselineBuildIds = sorted(afterIds);
+  sameIds(baselineBuildIds, P.baselineBuildIds);
   assert.equal(hash(Buffer.from(JSON.stringify(baselineBuildIds))), P.baselineBuildIdsSha256);
-  assert.ok(baselineBuildIds.length > 0, 'Empty baseline requires a separately reviewed core contract');
-  assert.ok(baselineBuildIds.includes(P.previousBuildId), 'Selected core baseline ID is not proven in the existing group');
-  // No version193 requirement or historical GUID. Root binds this selection only
-  // after a real complete baseline and contract review; every baseline ID is preserved.
+  // Empty is permitted only by explicit null/[]/digest pins and complete audited inputs.
+  // All live bindings remain PENDING until a real baseline and its original bytes are reviewed.
   return {baselineBuildIds, baselineBuildIdsSha256: P.baselineBuildIdsSha256, previousBuildId: P.previousBuildId};
 }
 function snapshotProof(s, post, notes) {
@@ -354,7 +360,8 @@ export function adaptIntakeToOwnerReceipt(files) {
     intakeRunId: d['source-before-upload.json'].buildRunId, intakeJobId: intake.jobId,
     intakeArtifactId: String(d['intake-artifact.json'].id), intakeZipSha256: fingerprints['intake-evidence.zip'],
     notesSha256: hash(Buffer.from(normalizedNotes)), hebrewReleaseNotesVerified: completion.hebrewReleaseNotesVerified,
-    snapshot: s};
+    previousBuildId: baseline.previousBuildId, baselineBuildIds: baseline.baselineBuildIds,
+    baselineBuildIdsSha256: baseline.baselineBuildIdsSha256, snapshot: s};
   const receiptBytes = canonicalBytes(r);
   return {receiptBytes, receiptSha256: hash(receiptBytes), ...baseline, inputSha256: fingerprints,
     scope: 'DERIVED_OWNER_RECEIPT_PREPARATION_ONLY', databaseAccepted: false, publicReleaseAccepted: false};
