@@ -4,7 +4,8 @@ import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createHash} from 'node:crypto';
-import {APP_SOURCE} from '../scripts/qa/android-native-isolated/diagnostic/apk-members.mjs';
+import {spawnSync} from 'node:child_process';
+import {APP_SOURCE,auditDiagnosticApks} from '../scripts/qa/android-native-isolated/diagnostic/apk-members.mjs';
 import {foreground15sVerdict,hostCapacitySnapshot,requireDiagnosticManifest,requireFrozenEmulatorControls,runFixedTrials,TRIAL_ORDER,webviewProviderIdentity} from '../scripts/qa/android-native-isolated/diagnostic/abba-contract.mjs';
 import {executeTrial,requireDiagnosticReceipts,requireLiveCollector,toolsSourceFromCheckout} from '../scripts/qa/android-native-isolated/diagnostic/one-shot.mjs';
 import {DIAGNOSTIC_CONTRACT,diagnosticMetadata} from '../scripts/qa/android-native-isolated/diagnostic-contract.mjs';
@@ -52,6 +53,7 @@ test('one-shot preflight requires the exact app source, isolated AVD and an appr
   assert.deepEqual(requireDiagnosticReceipts(receipts),receipts.collector.hostOwner);
   for(const invalid of [
     {...receipts,source:'c'.repeat(40)},
+    {...receipts,toolsSource:APP_SOURCE},
     {...receipts,network:{...receipts.network,isolated:false}},
     {...receipts,collector:{...receipts.collector,diagnosticsVersion:1}},
     {...receipts,collector:{...receipts.collector,source:'c'.repeat(40)}},
@@ -157,7 +159,9 @@ function trialBoundary(t,{loseOwner=false,stopCollector=false,failInstall=false}
   const hostOwner=(identity,options)=>assertHostOwner(identity,{...options,procRoot:proc});
   const checkCollector=()=>{
     collectorChecks++;
-    if(stopCollector&&collectorChecks>=2)throw Object.assign(new Error('Owned v5 collector unavailable: host summary exists'),{safetyStop:true});
+    return requireLiveCollector({collector:ctx.collector,output:root,clock:()=>5000,
+      exists:path=>stopCollector&&collectorChecks>=2&&path.endsWith('host-summary.json'),
+      stat:()=>({isFile:()=>true,size:100,mtimeMs:5000}),signal:()=>{}});
   };
   return{ctx,calls,deps:{makeAdb,hostOwner,checkCollector}};
 }
@@ -214,4 +218,33 @@ test('control is static fixture-only HTML and the exact diagnostic branch disabl
   assert.match(control,/data-diagnostic-control="minimal-webview"/);assert.doesNotMatch(control,/<script\b|<link\b/i);
   const vercel=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
   assert.equal(vercel.git.deploymentEnabled['codex/android-cold-launch-abba-20261015'],false);
+});
+
+test('real APK member audit accepts only the reviewed index and exact signature metadata delta',t=>{
+  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-apk-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const python=process.env.PYTHON3_PATH||'python3';
+  const indexPath=new URL('../scripts/qa/android-native-isolated/diagnostic/control-index.html',import.meta.url);
+  const control=readFileSync(indexPath,'utf8'),fixturePath=join(root,'reviewed-control.html');writeFileSync(fixturePath,control);
+  const productPath=join(root,'product.apk'),controlPath=join(root,'control.apk');
+  const productIndex='<html><script src="./android-native-qa-fixture.js"></script></html>';
+  const common={'classes.dex':'dex-same','assets/public/styles.css':'css-same','assets/public/assets/fonts/qa.woff2':'font-same',
+    'lib/x86_64/libqa.so':'native-same','resources.arsc':'resource-same','META-INF/CERT.RSA':'certificate-same','META-INF/OTHER.SF':'other-same'};
+  const zipCode='import json,sys,zipfile\nwith zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_DEFLATED) as archive:\n for name,value in json.loads(sys.argv[2]).items(): archive.writestr(name,value.encode("utf-8"))\n';
+  const build=(path,members)=>{
+    const result=spawnSync(python,['-c',zipCode,path,JSON.stringify(members)],{encoding:'utf8',windowsHide:true,timeout:10000});
+    assert.equal(result.status,0,result.error?.message||result.stderr);
+  };
+  build(productPath,{...common,'assets/public/index.html':productIndex});
+  build(controlPath,{...common,'assets/public/index.html':control,'META-INF/CERT.RSA':'certificate-resigned'});
+  const audit=()=>auditDiagnosticApks({productApk:productPath,controlApk:controlPath,controlIndex:fixturePath,python});
+  const accepted=audit();
+  assert.deepEqual(accepted.changedMembers,['META-INF/CERT.RSA','assets/public/index.html']);
+  assert.equal(accepted.fixtureOnly,true);assert.equal(accepted.nativeAcceptance,false);
+  for(const member of ['classes.dex','assets/public/styles.css','assets/public/assets/fonts/qa.woff2','lib/x86_64/libqa.so','resources.arsc','META-INF/OTHER.SF']){
+    build(controlPath,{...common,[member]:'changed-'+member,'assets/public/index.html':control,'META-INF/CERT.RSA':'certificate-resigned'});
+    assert.throws(audit,error=>error.message.includes(member),member);
+  }
+  build(controlPath,{...common,'assets/public/index.html':control,'META-INF/CERT.RSA':'certificate-resigned'});
+  writeFileSync(fixturePath,control+'\nchanged fixture');
+  assert.throws(audit,/reviewed minimal fixture/);
 });

@@ -21,7 +21,7 @@ const hex40=/^[a-f0-9]{40}$/;
 
 export function requireDiagnosticReceipts({manifest,network,collector,source,toolsSource,device,avd,emulatorPid}){
   requireDiagnosticManifest(manifest);
-  if(source!==APP_SOURCE||!hex40.test(toolsSource||'')||!/^emulator-\d+$/.test(device||'')||!/^sogrim_ci_[a-z0-9_]+$/.test(avd||'')||!Number.isSafeInteger(emulatorPid)||emulatorPid<=1)
+  if(source!==APP_SOURCE||!hex40.test(toolsSource||'')||toolsSource===source||!/^emulator-\d+$/.test(device||'')||!/^sogrim_ci_[a-z0-9_]+$/.test(avd||'')||!Number.isSafeInteger(emulatorPid)||emulatorPid<=1)
     throw new Error('Require exact app/tools source and explicitly owned CI AVD');
   if(network?.isolated!==true||network.device!==device||network.avd!==avd||network.pid!==emulatorPid||network.source!==source)
     throw new Error('Require original owned-AVD network isolation receipt');
