@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { capturePausedZeroScreenshot } from "./helpers/pausedZeroScreenshot.mjs";
 import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 
 test.use({ serviceWorkers: "block" });
 
@@ -19,8 +20,8 @@ const state = {
   }]
 };
 
-test("event screenshot preserves its paused infinite animation at time zero", async ({ page, request }, testInfo) => {
-  expect((await request.post("/api/reset")).ok()).toBe(true);
+test("event screenshot preserves its paused infinite animation at time zero", async ({ page, request, baseURL }, testInfo) => {
+  await resetLocalQaStateFresh(baseURL);
   expect((await request.put("/api/state", { data: state })).ok()).toBe(true);
   await page.addInitScript(({ state: seededState, participantId }) => {
     localStorage.setItem("settle-friends-state", JSON.stringify(seededState));
