@@ -5,7 +5,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 
 export const APP_SOURCE='c14a7665e8de361d8d33be183e7a88adec3ff7cb';
 export const APP_TREE='9bcf8cf40144d12507faa2cfea9ddadee42d819f';
-export const CONTROL_INDEX_SHA256='f7aadce54f96e89e63a7b6ae0ff1168e706aaa17b4f1baf80d4d847b00177552';
+export const CONTROL_INDEX_SHA256='fd891eb048775b7410e4d7219efabcaf6a8590f8cb726ca883f362fb3a77b88b';
 export const SIGNATURE_MEMBER_ALLOWLIST=Object.freeze(['META-INF/MANIFEST.MF','META-INF/CERT.SF','META-INF/CERT.RSA']);
 
 // Reuse the repository's Python zipfile APK-audit approach. The exact delta

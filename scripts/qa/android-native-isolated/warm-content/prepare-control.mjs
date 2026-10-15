@@ -11,7 +11,7 @@ export function prepareControl({root=process.cwd(),receiptPath=join(root,'artifa
   if(receipt.sourceCommit!==APP_SOURCE||receipt.sourceTree!==APP_TREE||receipt.privateEnvDisabled!==true||receipt.nativeDiagnosticAbsent!==true)throw new Error('Require exact c14 product fixture provenance');
   const generated=realpathSync(join(root,'android/app/src/main/assets/public'));
   if(resolve(dirname(target))!==generated||lstatSync(target).isSymbolicLink()||!lstatSync(target).isFile())throw new Error('Refuse non-generated or symlinked Android index');
-  const before=readFileSync(target),control=readFileSync(fixture);
+  const before=readFileSync(target),control=Buffer.from(readFileSync(fixture,'utf8').replaceAll('\r\n','\n'));
   if(hash(before)!==receipt.fixtureIndexSha256||!before.toString('utf8').includes('android-native-qa-fixture.js'))throw new Error('Generated product index differs from audited synthetic fixture');
   if(hash(control)!==CONTROL_INDEX_SHA256||!control.toString('utf8').includes('data-diagnostic-control="minimal-webview"')||/<script\b|<link\b/i.test(control.toString('utf8')))throw new Error('Minimal control must exactly match reviewed a60cdd7 index');
   writeFileSync(target,control);

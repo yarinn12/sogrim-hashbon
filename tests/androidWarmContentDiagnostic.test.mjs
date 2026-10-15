@@ -11,6 +11,7 @@ import {requirePair,validateWarmPrelude,warmOutcome,contentContrast} from '../sc
 import {instrumentWarmDriver,instrumentWarmMatrix,materializeWarmHarness} from '../scripts/qa/android-native-isolated/warm-content/materialize.mjs';
 import {runWarmTarget,verifiedDebugSigner,matrixCleanupBoundary,verifyPairFiles} from '../scripts/qa/android-native-isolated/warm-content/target.mjs';
 import {requireConfiguration} from '../scripts/qa/android-native-isolated/warm-content/controller.mjs';
+import {prepareControl} from '../scripts/qa/android-native-isolated/warm-content/prepare-control.mjs';
 import {assessClosedLog} from '../scripts/qa/android-native-isolated/pages-restart-materialize.mjs';
 import {createTelemetry} from '../scripts/qa/android-native-isolated/pages-restart-telemetry.mjs';
 
@@ -136,7 +137,15 @@ test('target does not retry a failed original process-start wait',()=>temporary(
   const journal=createTelemetry(path),commands=[];let now=0;
   class FakeDate extends Date{static now(){now+=1000;return now;}}
   const api=new Function('spawnSync','process','record','observedSpawnSync','setTimeout','Date',code+';return {launch};')((cmd,args)=>{commands.push(args);return{status:0,stdout:args.includes('name')?'sogrim_ci_synthetic\n':'',stderr:''};},{env:{ANDROID_QA_DEVICE:'emulator-5582',ANDROID_QA_AVD:'sogrim_ci_synthetic',ADB_PATH:'synthetic-adb',ANDROID_WARM_CONTENT_TARGET:'B'}},journal.record,journal.observedSpawnSync,(fn,ms)=>setTimeout(fn,0),FakeDate);
-  await assert.rejects(api.launch(),/QA process launched timed out/);assert.equal(commands.filter(c=>c.includes('start')).length,1);
+  let failure;try{await api.launch();}catch(error){failure=error;}assert.equal(commands.filter(c=>c.includes('start')).length,1);assert.match(String(failure),/QA process launched timed out/);
+}));
+
+test('prepare control writes approved canonical Git bytes even from a CRLF checkout',()=>temporary(path=>{
+  const generated=join(path,'android/app/src/main/assets/public'),output=join(path,'receipt.json'),fixture=join(path,'control-crlf.html'),provenance=join(path,'fixture.json');mkdirSync(generated,{recursive:true});
+  const original=Buffer.from('<head><script src="android-native-qa-fixture.js"></script></head>'),canonical=readFileSync(new URL('warm-content/control-index.html',base),'utf8').replaceAll('\r\n','\n');
+  writeFileSync(join(generated,'index.html'),original);writeFileSync(fixture,canonical.replaceAll('\n','\r\n'));
+  writeFileSync(provenance,JSON.stringify({sourceCommit:APP_SOURCE,sourceTree:APP_TREE,privateEnvDisabled:true,nativeDiagnosticAbsent:true,fixtureIndexSha256:sha(original)}));
+  const receipt=prepareControl({root:path,receiptPath:provenance,fixture,output});assert.equal(receipt.controlIndexSha256,CONTROL_INDEX_SHA256);assert.equal(sha(readFileSync(join(generated,'index.html'))),CONTROL_INDEX_SHA256);
 }));
 
 test('original matrix cleanup boundary lists all restores and remains incomplete on failure',()=>temporary(path=>{
@@ -149,10 +158,10 @@ test('original matrix cleanup boundary lists all restores and remains incomplete
   }finally{for(const[k,v]of [['ANDROID_WARM_CONTENT_OUTPUT',previous.output],['ANDROID_RESTART_COMMAND_EVIDENCE',previous.commands]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
 }));
 
-for(const fault of ['none','dex','resource','css','font','extra','index','old-source','bad-audit','duplicate'])test('actual ZIP pair reader '+fault,()=>temporary(path=>{
+for(const fault of ['none','crlf','dex','resource','css','font','extra','index','old-source','bad-audit','duplicate'])test('actual ZIP pair reader '+fault,()=>temporary(path=>{
   const python=process.env.SOGRIM_TEST_PYTHON||'python3',helper=fileURLToPath(new URL('./helpers/androidWarmApkFixture.py',import.meta.url)),control=fileURLToPath(new URL('warm-content/control-index.html',base));
   const generated=spawnSync(python,[helper,path,control,fault],{encoding:'utf8'});assert.equal(generated.status,0,generated.stderr);
-  const options={python,productApk:join(path,'A.apk'),controlApk:join(path,'B.apk'),controlIndex:control,productAudit:join(path,'audit.json'),fixtureReceipt:join(path,'fixture.json')};
-  if(fault==='none'){const report=auditDiagnosticApks(options);assert.equal(report.appSource,APP_SOURCE);assert.equal(report.productLineageVerified,true);assert.equal(report.changedMembers.includes('assets/public/index.html'),true);assert.equal(report.members['classes.dex'].product,report.members['classes.dex'].control);}
+  const options={python,productApk:join(path,'A.apk'),controlApk:join(path,'B.apk'),controlIndex:fault==='crlf'?join(path,'control-crlf.html'):control,productAudit:join(path,'audit.json'),fixtureReceipt:join(path,'fixture.json')};
+  if(['none','crlf'].includes(fault)){const report=auditDiagnosticApks(options);assert.equal(report.appSource,APP_SOURCE);assert.equal(report.reviewedControlIndexNormalizedCRLF,fault==='crlf'||sha(readFileSync(control))!==CONTROL_INDEX_SHA256);assert.equal(report.productLineageVerified,true);assert.equal(report.changedMembers.includes('assets/public/index.html'),true);assert.equal(report.members['classes.dex'].product,report.members['classes.dex'].control);}
   else assert.throws(()=>auditDiagnosticApks(options),/audit/);
 }));

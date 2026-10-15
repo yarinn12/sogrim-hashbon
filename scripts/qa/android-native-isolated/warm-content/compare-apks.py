@@ -7,7 +7,7 @@ import zipfile
 
 SOURCE = 'c14a7665e8de361d8d33be183e7a88adec3ff7cb'
 TREE = '9bcf8cf40144d12507faa2cfea9ddadee42d819f'
-CONTROL_HASH = 'f7aadce54f96e89e63a7b6ae0ff1168e706aaa17b4f1baf80d4d847b00177552'
+CONTROL_HASH = 'fd891eb048775b7410e4d7219efabcaf6a8590f8cb726ca883f362fb3a77b88b'
 INDEX = 'assets/public/index.html'
 SIGNATURE_METADATA = {'META-INF/MANIFEST.MF', 'META-INF/CERT.SF', 'META-INF/CERT.RSA'}
 
@@ -36,7 +36,8 @@ def audit(product_path, control_path, fixture_path, product_audit, fixture_recei
         raise ValueError('APK member names differ: ' + repr(sorted(set(product) ^ set(control))))
     if INDEX not in product or b'android-native-qa-fixture.js' not in product[INDEX]:
         raise ValueError('Product APK lacks the isolated synthetic fixture index')
-    fixture = fixture_path.read_bytes()
+    fixture_raw = fixture_path.read_bytes()
+    fixture = fixture_raw.replace(b'\r\n', b'\n')
     if digest(fixture)!=CONTROL_HASH or control[INDEX] != fixture or b'data-diagnostic-control="minimal-webview"' not in fixture:
         raise ValueError('Control APK index differs from the reviewed minimal fixture')
     original=json.loads(Path(product_audit).read_text(encoding='utf-8'))
@@ -65,7 +66,7 @@ def audit(product_path, control_path, fixture_path, product_audit, fixture_recei
                       'apkBytes': product_path.stat().st_size, 'indexSha256': digest(product[INDEX])},
                 'B': {'path': str(control_path), 'apkSha256': digest(control_path.read_bytes()),
                       'apkBytes': control_path.stat().st_size, 'indexSha256': digest(control[INDEX])}},
-            'reviewedControlIndexSha256': digest(fixture), 'changedMembers': changed,
+            'reviewedControlIndexSha256': digest(fixture), 'reviewedControlIndexRawSha256': digest(fixture_raw), 'reviewedControlIndexNormalizedCRLF': fixture_raw!=fixture, 'changedMembers': changed,
             'signatureMetadataDifferences': sorted(set(changed) & SIGNATURE_METADATA),
             'memberCount': len(product), 'members': members}
 

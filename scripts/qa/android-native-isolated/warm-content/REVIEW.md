@@ -68,3 +68,8 @@ identities; it requires A reproduction before reporting a descriptive contrast.
 Installer/cache effects remain an explicit confound. It never authorizes causal
 attribution. Root must also bind its wrapper's exact SDK/resources/owner/session
 and all raw manifests before interpreting any future four-arm result.
+
+The approved minimal index hash binds canonical Git LF bytes. Only checkout CRLF
+conversion is normalized before writing the control or comparing its fixture;
+raw fixture hash and normalization are recorded. Extra or changed content is
+rejected. The canonical index remains byte-identical to a60cdd7.
