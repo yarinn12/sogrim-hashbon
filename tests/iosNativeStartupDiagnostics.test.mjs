@@ -62,7 +62,7 @@ test('synthetic service and frozen native UI driver retain their exact content s
   const baselines = {
     'synthetic-service.js': '0b9dce3a03526794b24063ff367370828fe1aa0594b3d5da4ae02467d7444bed',
     // OS background waiting omits AX reads; action predicates and deadlines stay sealed.
-    'ParityUITests.swift': 'ed7d0bc029ab7f41202c7e827b930bafa5d3fd7f4420b4240b0d07dc5db35f37'
+    'ParityUITests.swift': '636ea33a2db57a3a18da57578ab0ca81bb5e41d4f68e8c34f5421f5a080289d8'
   };
   for (const [name, digest] of Object.entries(baselines)) {
     const source = readFileSync(new URL(name, dir), 'utf8');

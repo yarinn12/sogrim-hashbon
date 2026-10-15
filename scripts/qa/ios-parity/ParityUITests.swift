@@ -4,6 +4,10 @@ final class ParityProbeUITests: XCTestCase {
     func testNativeTypographyKeyboardSaveRotationAndRelaunch() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "com.sogrimhashbon.app")
+        let publicationMode = ProcessInfo.processInfo.environment["QA_STATUS_PUBLICATION"] ?? "control"
+        XCTAssertTrue(["control", "dedupe"].contains(publicationMode))
+        app.launchEnvironment["QA_STATUS_PUBLICATION"] = publicationMode
+        print("QA_STATUS_PUBLICATION_MODE: \(publicationMode)")
         app.launch()
         let status = app.staticTexts["native-parity-state"]
         let statusExists = status.waitForExistence(timeout: 35)
@@ -92,7 +96,15 @@ final class ParityProbeUITests: XCTestCase {
             guard let point = state()[key] as? [String: Double], let x = point["x"], let y = point["y"] else { return }
             app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
         }
-        wait("native form") { state()["phase"] as? String == "keyboard-ready" }
+        wait("native form") {
+            let current = state()
+            guard current["phase"] as? String == "keyboard-ready" else { return false }
+            let native = current["native"] as? [String: Any] ?? [:]
+            let hasPollCounters = native["statusPoll"] != nil
+            XCTAssertEqual(hasPollCounters, publicationMode == "control", "The target app must use the requested diagnostic arm")
+            print("QA_STATUS_PUBLICATION_ARM_PROOF: \(publicationMode) pollCountersInLabel=\(hasPollCounters)")
+            return true
+        }
         XCUIDevice.shared.orientation = .landscapeLeft
         Thread.sleep(forTimeInterval: 1)
         // The production iPhone policy remains portrait, including on rotation.

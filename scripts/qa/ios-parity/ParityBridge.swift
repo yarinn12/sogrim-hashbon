@@ -20,6 +20,8 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var statusRequests = 0
     private var statusCallbacks = 0
     private var statusPublications = 0
+    private let statusPublicationMode = ProcessInfo.processInfo.environment["QA_STATUS_PUBLICATION"] ?? "control"
+    private var lastPublishedStatusData: Data?
     private var statusLog: FileHandle?
     private let fixtureSha = "__FIXTURE_SHA__"
     private let fixtureTree = "__FIXTURE_TREE__"
@@ -213,7 +215,9 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                         "insideWebView": target.map { $0 === self.webView! || $0.isDescendant(of: self.webView!) } ?? false]
                 }
             }
-            state["native"] = self.nativeInfo()
+            var uiNative = self.nativeInfo()
+            if self.statusPublicationMode == "dedupe" { uiNative.removeValue(forKey: "statusPoll") }
+            state["native"] = uiNative
             if state["phase"] as? String == "saved", self.backgrounds > 0,
                self.foregrounds > self.foregroundsAtLastBackground,
                UIApplication.shared.applicationState == .active,
@@ -227,6 +231,11 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
                 guard let result = String(data: encoded, encoding: .utf8) else {
                     self.observeStatus("encodingRejected"); return
                 }
+                // Diagnostic arm only: keep every journal/capture counter, but
+                // avoid changing the AX tree for an otherwise identical state.
+                // The resumed capture request above must still run every poll.
+                if self.statusPublicationMode == "dedupe", self.lastPublishedStatusData == encoded { return }
+                self.lastPublishedStatusData = encoded
                 self.status.text = result; self.status.accessibilityLabel = result
                 self.status.accessibilityIdentifier = "native-parity-state"
                 self.status.isAccessibilityElement = true

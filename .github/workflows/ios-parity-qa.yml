@@ -6,6 +6,10 @@ on:
       app_sha:
         required: true
         type: string
+      status_publication_mode:
+        required: false
+        type: string
+        default: control
   workflow_dispatch:
     inputs:
       app_sha:
@@ -111,6 +115,7 @@ jobs:
         working-directory: app
         env:
           APP_SHA: ${{ steps.source.outputs.sha }}
+          TEST_RUNNER_QA_STATUS_PUBLICATION: ${{ inputs.status_publication_mode || 'control' }}
         run: |
           set -euo pipefail
           source build/native-parity/simulator.env
@@ -182,7 +187,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: ios-capacitor-parity-${{ steps.source.outputs.sha }}
+          name: ios-capacitor-parity-${{ steps.source.outputs.sha }}-${{ inputs.status_publication_mode || 'control' }}
           path: |
             app/build/native-parity/*.json
             app/build/native-parity/*.log

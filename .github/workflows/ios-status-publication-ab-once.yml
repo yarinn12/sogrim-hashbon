@@ -1,0 +1,40 @@
+name: iOS status publication diagnostic AB only
+run-name: iOS status publication AB — no release acceptance
+on:
+  push:
+    branches: [codex/ios-status-publication-ab-20261015]
+permissions:
+  contents: read
+jobs:
+  runtime-identity:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.event_name == 'push' && github.ref == 'refs/heads/codex/ios-status-publication-ab-20261015' && github.run_attempt == 1 && github.run_number == 1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require unchanged application runtime and no store workflow
+        env:
+          BASE_SOURCE: 11b083ad804392c2d8273167837fda305af5182c
+        run: |
+          python3 - <<'PY'
+          import os,subprocess,json
+          allowed={'.github/workflows/ios-parity-qa.yml','.github/workflows/ios-status-publication-ab-once.yml',
+            'scripts/qa/ios-parity/ParityBridge.swift','scripts/qa/ios-parity/ParityUITests.swift',
+            'tests/iosNativeStartupDiagnostics.test.mjs','vercel.json'}
+          changed=subprocess.check_output(['git','diff','--name-only',os.environ['BASE_SOURCE'],'HEAD'],text=True).splitlines()
+          assert set(changed)<=allowed,changed
+          print(json.dumps({'baseRuntimeSource':os.environ['BASE_SOURCE'],'probeSource':os.environ['GITHUB_SHA'],
+            'runtimeFilesUnchanged':True,'changed':changed,'releaseAccepted':False}))
+          PY
+  native-publication:
+    needs: runtime-identity
+    strategy:
+      fail-fast: false
+      matrix:
+        publication: [control, dedupe]
+    uses: ./.github/workflows/ios-parity-qa.yml
+    with:
+      app_sha: ${{ github.sha }}
+      status_publication_mode: ${{ matrix.publication }}
