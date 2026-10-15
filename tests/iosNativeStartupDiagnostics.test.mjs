@@ -7,10 +7,14 @@ import { createHash } from 'node:crypto';
 const dir = new URL('../scripts/qa/ios-parity/', import.meta.url);
 const code = readFileSync(new URL('startup-diagnostics.js', dir), 'utf8');
 const canonicalHash = text => createHash('sha256').update(text.replace(/\r\n/g, '\n')).digest('hex');
-function probe({ throws = false } = {}) {
-  const messages = [], listeners = new Map(); let callback;
+function probe({ throws = false, timeOrigins = [1_000] } = {}) {
+  const messages = [], listeners = new Map(); let callback, timeOriginReads = 0;
+  const performance = { now: () => 12 };
+  Object.defineProperty(performance, 'timeOrigin', {
+    get() { return timeOrigins[Math.min(timeOriginReads++, timeOrigins.length - 1)]; }
+  });
   const context = vm.createContext({ Date, URL, Set, Object, Number,
-    performance: { now: () => 12, timeOrigin: 1_000 },
+    performance,
     document: { readyState: 'loading', addEventListener: (name, fn) => listeners.set(`document:${name}`, fn) },
     location: { href: 'capacitor://localhost/index.html', origin: 'null' },
     addEventListener: (name, fn) => listeners.set(name, fn),
@@ -18,8 +22,29 @@ function probe({ throws = false } = {}) {
     webkit: { messageHandlers: { iosParity: { postMessage(value) { if (throws) throw Error('unavailable'); messages.push(value); } } } }
   });
   vm.runInContext(code, context);
-  return { context, messages, listeners, entries: values => callback({ getEntries: () => values }) };
+  return { context, messages, listeners, timeOriginReads: () => timeOriginReads,
+    entries: values => callback({ getEntries: () => values }) };
 }
+
+test('startup marks retain one exact time origin per document and refresh it on relaunch', () => {
+  const coldOrigin = 1792060167939.0002;
+  const cold = probe({ timeOrigins: [coldOrigin, 1792060167941] });
+  cold.context.__iosParityStartup.mark('startup-milestone', { milestone: 'splash-dismissed' });
+  assert.equal(cold.messages[0].startup.stage, 'script-injected');
+  assert.equal(cold.messages[1].startup.milestone, 'splash-dismissed');
+  assert.deepEqual(cold.messages.map(message => message.startup.timeOriginMs), [coldOrigin, coldOrigin]);
+  assert.equal(cold.timeOriginReads(), 1);
+  assert.deepEqual(cold.messages.map(message => message.startup.monotonicMs), [12, 12]);
+  assert.ok(cold.messages.every(message => Number.isFinite(message.startup.epochMs)));
+
+  const relaunchOrigin = 1792060254639;
+  const relaunch = probe({ timeOrigins: [relaunchOrigin, 1792060254641] });
+  relaunch.context.__iosParityStartup.mark('startup-milestone', { milestone: 'splash-dismissed' });
+  assert.deepEqual(relaunch.messages.map(message => message.startup.timeOriginMs),
+    [relaunchOrigin, relaunchOrigin]);
+  assert.equal(relaunch.timeOriginReads(), 1);
+  assert.notEqual(relaunchOrigin, coldOrigin);
+});
 test('startup marks observe stages without defining or satisfying readiness', () => {
   const p = probe();
   assert.equal(p.messages[0].startup.stage, 'script-injected');

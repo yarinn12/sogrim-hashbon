@@ -1,5 +1,6 @@
 // Observations only: no readiness value, fetch, polling timer or DOM mutation.
 (() => {
+  const documentTimeOriginMs = performance.timeOrigin;
   const stages = new Set(['script-injected', 'dom-content-loaded', 'window-loaded',
     'synthetic-service-start', 'synthetic-service-ready', 'synthetic-fetch-start',
     'synthetic-fetch-response', 'synthetic-fetch-local', 'synthetic-fetch-blocked',
@@ -51,7 +52,7 @@
   function mark(stage, fields = {}) {
     if (!stages.has(stage) || count >= 128) return false;
     const item = { stage, sequence: ++count, epochMs: Date.now(), monotonicMs: performance.now(),
-      timeOriginMs: performance.timeOrigin,
+      timeOriginMs: documentTimeOriginMs,
       readyState: document.readyState };
     if (phases.has(fields.phase)) item.phase = fields.phase;
     if (endpoints.has(fields.endpoint)) item.endpoint = fields.endpoint;
