@@ -252,10 +252,12 @@ test('actual summary requires four distinct confirmed create receipts and preser
  }
 });
 
-test('inactive workflow has no dispatch, secret access, distribution or alternate-host matrix',()=>{
+test('one-shot workflow has no dispatch, secret access, distribution or alternate-host matrix',()=>{
  const workflow=readFileSync(new URL('../.github/workflows/ios475-observer-footprint-abba-20261016.yml',import.meta.url),'utf8');
- assert.match(workflow,/if: \$\{\{ github\.run_number == 0 \}\}/);
- assert.match(workflow,/IOS475_OBSERVER_FOOTPRINT: inactive-preparation/);
+ assert.match(workflow,/if: \$\{\{ github\.run_number == 1 && github\.run_attempt == 1 \}\}/);
+ assert.match(workflow,/IOS475_OBSERVER_FOOTPRINT: reviewed-diagnostic-only/);
+ const deployment=JSON.parse(readFileSync(new URL('../vercel.json',import.meta.url),'utf8'));
+ assert.equal(deployment.git.deploymentEnabled[BRANCH],false,'Diagnostic branch cannot create a web preview');
  assert.match(workflow,/runs-on: macos-26/);assert.match(workflow,/contents: read/);
  assert.doesNotMatch(workflow,/workflow_dispatch|secrets\.|contents: write|matrix:|macos.*large|upload.*testflight/i);
  assert.match(workflow,new RegExp(APP_SHA));assert.match(workflow,new RegExp(FIXTURE_SHA));

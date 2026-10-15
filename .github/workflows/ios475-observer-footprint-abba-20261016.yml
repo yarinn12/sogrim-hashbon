@@ -1,4 +1,4 @@
-name: iOS475 observer footprint ABBA (INACTIVE preparation)
+name: iOS475 observer footprint ABBA diagnostic
 
 on:
   push:
@@ -14,16 +14,15 @@ permissions:
 
 jobs:
   experiment:
-    # Root must review the immutable patch/tests before replacing BOTH inactive locks.
-    # Do not push a skipped preparation first: the activated workflow is run_number=1 only.
-    if: ${{ github.run_number == 0 }}
+    # Reviewed one-shot diagnostic: no retries and no distribution capability.
+    if: ${{ github.run_number == 1 && github.run_attempt == 1 }}
     runs-on: macos-26
     # Outer allowance: one <=35m build + four sequential <=35m default runs,
     # plus 20m for checkout/preflight/finalization/artifact preservation.
     # It does not change any original XCTest/observer/boot deadline or permit retries.
     timeout-minutes: 195
     env:
-      IOS475_OBSERVER_FOOTPRINT: inactive-preparation
+      IOS475_OBSERVER_FOOTPRINT: reviewed-diagnostic-only
       SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
       PYTHONDONTWRITEBYTECODE: "1"
       IOS475_APP_ROOT: ${{ github.workspace }}/app
