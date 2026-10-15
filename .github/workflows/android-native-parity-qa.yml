@@ -145,6 +145,7 @@ jobs:
           printf 'host '; awk '/^MemTotal:/ {print; exit}' artifacts/android-native-isolated/host-meminfo.txt
           ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/network-isolation.mjs
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" shell settings put secure show_ime_with_hard_keyboard 1
+          ANDROID_QA_EMULATOR_PID="$(cat artifacts/android-native-isolated/emulator.pid)" node scripts/qa/android-native-isolated/launcher-preparation.mjs
           "$ADB_PATH" -s "$ANDROID_QA_DEVICE" install android/app/build/outputs/apk/debug/app-debug.apk
       - name: Require healthy owned Android system before Native acceptance
         working-directory: app
