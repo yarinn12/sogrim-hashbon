@@ -129,33 +129,48 @@ test("mobile-layout setup refuses remote fixture origins", async () => {
 
 test("mobile-layout setup aborts a stalled real HTTP PUT at the existing deadline", async t => {
   let continued = false;
+  let receivedPut;
+  const putReceived = new Promise(resolve => { receivedPut = resolve; });
+  let stalledSocket;
   const h = await fixture(t, (incoming, response) => {
     if (incoming.url === "/api/reset") {
       response.end('{"reset":true}');
       return;
     }
-    // Keep the real PUT socket unanswered. The watchdog only frees the old
-    // implementation, which otherwise has no deadline and would hang forever.
-    setTimeout(() => incoming.socket.destroy(), 250).unref();
-  });
-  const originalTimeout = AbortSignal.timeout;
-  const timeoutBudgets = [];
-  t.mock.method(AbortSignal, "timeout", milliseconds => {
-    timeoutBudgets.push(milliseconds);
-    return originalTimeout(timeoutBudgets.length === 2 ? 25 : milliseconds);
+    // The real server has accepted the PUT but intentionally sends no ACK.
+    stalledSocket = incoming.socket;
+    receivedPut();
   });
 
-  await assert.rejects(
-    (async () => {
-      await prepareMobileLayoutFixture({ baseURL: h.baseURL, state: { synthetic: true } });
-      continued = true;
-    })(),
-    error => {
-      assert.deepEqual(timeoutBudgets, [30_000, 30_000]);
-      assert.equal(error.name, "AbortError");
-      return true;
+  const originalTimeout = AbortSignal.timeout;
+  const timeoutBudgets = [];
+  let expirePutDeadline;
+  t.mock.method(AbortSignal, "timeout", milliseconds => {
+    timeoutBudgets.push(milliseconds);
+    if (timeoutBudgets.length === 2) {
+      const clock = new AbortController();
+      expirePutDeadline = () => clock.abort();
+      return clock.signal;
     }
-  );
+    return originalTimeout(milliseconds);
+  });
+
+  const operation = (async () => {
+    await prepareMobileLayoutFixture({ baseURL: h.baseURL, state: { synthetic: true } });
+    continued = true;
+  })();
+  const rejected = assert.rejects(operation, error => {
+    assert.deepEqual(timeoutBudgets, [30_000, 30_000]);
+    assert.equal(error.name, "AbortError");
+    return true;
+  });
+
+  await putReceived;
+  // Only the deadline clock is controlled. The HTTP request and abort are real.
+  if (expirePutDeadline) expirePutDeadline();
+  else stalledSocket.destroy(); // Release OLD, which has no PUT deadline.
+  await rejected;
+
   assert.equal(continued, false);
   assert.deepEqual(h.calls, [
     { method: "POST", path: "/api/reset", use: 1 },
