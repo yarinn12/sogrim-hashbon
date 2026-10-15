@@ -77,7 +77,8 @@ export async function verifyRuns(fetchImpl, token, env) {
       assert.equal(job.conclusion, 'success', 'Failed, skipped or cancelled CI job');
     }
     if (path === '.github/workflows/qa.yml') {
-      const required = ['unit', 'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
+      const required = ['unit', 'cross-platform', 'cross-platform-shard-1', 'cross-platform-shard-2',
+        'two-client-sync', 'unit-and-mobile', 'backup-runtime',
         ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
         'ios-native / native-parity', 'android-native / native-parity',
         'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',

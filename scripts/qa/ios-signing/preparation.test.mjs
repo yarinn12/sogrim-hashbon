@@ -5,12 +5,14 @@ import {test} from 'node:test';
 import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCommit,
   requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID, SOURCE_BRANCH} from './source-guard.mjs';
 import {protect, unprotect} from './protect-artifact.mjs';
+import {verifyRuns as verifyIntakeRuns} from './intake-source-guard.mjs';
 
 const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38280270544', SOURCE_WINDOWS_QA_RUN: '38280270132',
   SOURCE_FONT_QA_RUN: '38280270159', SOURCE_AUTH_QA_RUN: '38280270319',
   GITHUB_REPOSITORY: 'yarinn12/sogrim-hashbon', GITHUB_EVENT_NAME: 'workflow_dispatch',
   APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.58', IOS_BUILD: '194'};
-const names = ['unit','cross-platform','two-client-sync','unit-and-mobile','backup-runtime',
+const names = ['unit','cross-platform','cross-platform-shard-1','cross-platform-shard-2',
+  'two-client-sync','unit-and-mobile','backup-runtime',
   ...['android-mobile','iphone-webkit','ipad-webkit','iphone-large-text','reflow-200'].map(p=>'mobile ('+p+')'),
   'ios-native / native-parity','android-native / native-parity',
   'mobile-iphone-large-text-shard-1','mobile-iphone-large-text-shard-2',
@@ -32,6 +34,8 @@ function ci(edit = () => {}) {
 }
 test('four complete exact-source CI runs and all native lanes pass',async()=>{
   const proof=await verifyRuns(ci(),'synthetic-token',env); assert.equal(proof.length,4);
+  const qa=proof.find(run=>run.path==='.github/workflows/qa.yml');
+  assert.equal(qa.jobs.length,18); assert.equal(new Set(qa.jobs.map(job=>job.name)).size,18);
 });
 for(const workflow of ['qa-windows.yml','cross-engine-font-provenance-qa.yml','ios-auth-return-qa.yml'])
  test('private CI rejects a substitute passing job instead of '+workflow,async()=>assert.rejects(verifyRuns(ci((v,p,j)=>{
@@ -165,7 +169,8 @@ test('previous build193 and PWA514 cannot be signed as194',()=>{
  assert.throws(()=>protect(payload,key,{...identity,build:'193'}));
 });
 
-for (const name of ['mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
+for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
+ 'mobile-iphone-large-text-shard-1', 'mobile-iphone-large-text-shard-2',
  'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2']) {
  test('private CI requires the exact source-bound '+name, async()=>{
   await assert.rejects(verifyRuns(ci((v,p,j)=>{
@@ -221,3 +226,18 @@ test('manual preparation is disabled so input CI runs cannot replace the frozen 
  const extraTrigger=lf.replace('  workflow_dispatch:\n','  push:\n  workflow_dispatch:\n');
  assert.notEqual(extraTrigger,lf);assert.throws(()=>assertManualPreparationDisabled(extraTrigger));
 });
+
+
+test('intake source CI accepts all four exact-source runs with eighteen QA jobs',async()=>{
+  const proofs=await verifyIntakeRuns(ci(),'synthetic-token',env);
+  assert.equal(proofs.length,4);
+  assert.equal(proofs.find(run=>run.path==='.github/workflows/qa.yml').jobs.length,18);
+});
+for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
+ test('intake source CI rejects missing '+name,async()=>{
+  await assert.rejects(verifyIntakeRuns(ci((value,path,jobs)=>{
+   if(jobs&&path==='.github/workflows/qa.yml'){
+    value.jobs=value.jobs.filter(job=>job.name!==name);value.total_count=value.jobs.length;
+   }
+  }),'synthetic-token',env),error=>error.expected===1&&error.message.includes('Missing QA lane: '+name));
+ });
