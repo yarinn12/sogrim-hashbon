@@ -17,7 +17,8 @@ export async function writeLocalQaStateFresh(baseURL, state) {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload)
       },
-      agent: false
+      agent: false,
+      signal: AbortSignal.timeout(30_000)
     }, response => {
       const chunks = [];
       response.on("data", chunk => chunks.push(chunk));

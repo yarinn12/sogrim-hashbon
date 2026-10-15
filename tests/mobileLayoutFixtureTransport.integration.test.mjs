@@ -126,3 +126,39 @@ test("mobile-layout setup refuses remote fixture origins", async () => {
     /local loopback/
   );
 });
+
+test("mobile-layout setup aborts a stalled real HTTP PUT at the existing deadline", async t => {
+  let continued = false;
+  const h = await fixture(t, (incoming, response) => {
+    if (incoming.url === "/api/reset") {
+      response.end('{"reset":true}');
+      return;
+    }
+    // Keep the real PUT socket unanswered. The watchdog only frees the old
+    // implementation, which otherwise has no deadline and would hang forever.
+    setTimeout(() => incoming.socket.destroy(), 250).unref();
+  });
+  const originalTimeout = AbortSignal.timeout;
+  const timeoutBudgets = [];
+  t.mock.method(AbortSignal, "timeout", milliseconds => {
+    timeoutBudgets.push(milliseconds);
+    return originalTimeout(timeoutBudgets.length === 2 ? 25 : milliseconds);
+  });
+
+  await assert.rejects(
+    (async () => {
+      await prepareMobileLayoutFixture({ baseURL: h.baseURL, state: { synthetic: true } });
+      continued = true;
+    })(),
+    error => {
+      assert.deepEqual(timeoutBudgets, [30_000, 30_000]);
+      assert.equal(error.name, "AbortError");
+      return true;
+    }
+  );
+  assert.equal(continued, false);
+  assert.deepEqual(h.calls, [
+    { method: "POST", path: "/api/reset", use: 1 },
+    { method: "PUT", path: "/api/state", use: 1 }
+  ]);
+});
