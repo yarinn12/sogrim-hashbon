@@ -28,7 +28,7 @@ function run(t,scenario='success',text=workflow){
 set -euo pipefail
 export PATH="/usr/bin:$PATH"
 scenario="$1"; fixture_root="$PWD"
-original_ld="${LD_LIBRARY_PATH-}"
+original_ld=""; if [[ -v LD_LIBRARY_PATH ]]; then original_ld="$LD_LIBRARY_PATH"; fi
 export GITHUB_WORKSPACE="$PWD/tools" ANDROID_HOME="$PWD/sdk" ANDROID_WARM_CONTENT_RUN=reviewed-diagnostic-only
 export WARM_DEP_STATE="$PWD/state"
 pair="$PWD/pair"; mkdir -p "$pair"; printf '0\n' > "$WARM_DEP_STATE"
@@ -57,7 +57,8 @@ ldd(){
 bash(){ source "$1"; }
 node(){
  [[ "$1" = *workflow-proof.mjs && "$2" = master ]] || return 99
- [[ "${LD_LIBRARY_PATH-}" = "$original_ld" ]] || return 95
+ local current_ld=""; if [[ -v LD_LIBRARY_PATH ]]; then current_ld="$LD_LIBRARY_PATH"; fi
+ [[ "$current_ld" = "$original_ld" ]] || return 95
  printf 'version\n' >> "$fixture_root/calls"
  "$ANDROID_HOME/emulator/emulator" -version
  printf 'input-proof\n' >> "$fixture_root/calls"
