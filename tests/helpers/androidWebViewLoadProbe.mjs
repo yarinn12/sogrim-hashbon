@@ -49,12 +49,14 @@ const sources={
   '  if(scenario.equals("restored")){restored=true;cached="restored-bundle";}',
   '  if(scenario.equals("missing"))installed=-1;',
   '  if(scenario.equals("qa")){BuildConfig.NATIVE_QA_WEBVIEW=true;installed=190;}',
-  '  if(scenario.equals("cache-failure"))failClear=true;',
+  '  if(scenario.equals("cache-failure")||scenario.equals("cache-retry"))failClear=true;',
   '  if(scenario.equals("storage-wipe")){android.webkit.CookieManager.getInstance().removeAllCookies(null);android.webkit.WebStorage.getInstance().deleteAllData();}',
   '  if(installed!=-1)stores.computeIfAbsent(STORE,k->new HashMap<>()).put(KEY,installed);',
   '  boolean threw=false; try{new MainActivity().onCreate(restored?new Bundle():null);View.flush();if(scenario.equals("qa")){cached="old-bundle";new MainActivity().onCreate(null);View.flush();}}catch(IllegalStateException failure){threw=true;}',
+  '  int firstStoredVersion=preferences(STORE).getInt(KEY,-1);int firstPuts=puts;',
+  '  if(scenario.equals("cache-retry")){failClear=false;new MainActivity().onCreate(null);View.flush();}',
   '  String quote=Character.toString(34); List<String> values=new ArrayList<>();for(String value:navigations)values.add(quote+value+quote);',
-  '  System.out.printf("{%cnavigations%c:[%s],%cclears%c:%d,%cputs%c:%d,%cstoredVersion%c:%d,%cthrew%c:%s,%caccountRetained%c:%s}%n",34,34,String.join(",",values),34,34,clears,34,34,puts,34,34,preferences(STORE).getInt(KEY,-1),34,34,threw,34,34,"synthetic-account".equals(cookieJar.get("session"))&&"unsynced-draft".equals(localStorage.get("draft")));',
+  '  System.out.printf("{%cnavigations%c:[%s],%cclears%c:%d,%cputs%c:%d,%cstoredVersion%c:%d,%cthrew%c:%s,%caccountRetained%c:%s,%cfirstStoredVersion%c:%d,%cfirstPuts%c:%d}%n",34,34,String.join(",",values),34,34,clears,34,34,puts,34,34,preferences(STORE).getInt(KEY,-1),34,34,threw,34,34,"synthetic-account".equals(cookieJar.get("session"))&&"unsynced-draft".equals(localStorage.get("draft")),34,34,firstStoredVersion,34,34,firstPuts);',
   ' }',
   '}'
  ].join('\n')

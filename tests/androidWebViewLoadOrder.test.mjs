@@ -39,3 +39,15 @@ test('a failed cache refresh cannot first start the application from stale resou
  assert.equal(result.threw,true);assert.deepEqual(result.navigations,[]);
  assert.equal(result.accountRetained,true);
 });
+
+test('a failed cache clear leaves the version pending so the next launch refreshes before navigation',()=>{
+ const result=probe.run('cache-retry');
+ assert.equal(result.threw,true);
+ assert.equal(result.firstStoredVersion,187,'failed clear must not mark the new bundle as refreshed');
+ assert.equal(result.firstPuts,0,'no installed-version write before successful clear');
+ assert.deepEqual(result.navigations,['fresh-bundle']);
+ assert.equal(result.clears,2);
+ assert.equal(result.storedVersion,190);
+ assert.equal(result.puts,1);
+ assert.equal(result.accountRetained,true);
+});

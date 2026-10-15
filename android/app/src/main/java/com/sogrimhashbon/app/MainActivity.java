@@ -55,6 +55,7 @@ public class MainActivity extends BridgeActivity {
             WebView appWebView = findViewById(com.getcapacitor.android.R.id.webview);
             if (appWebView != null && shouldRefreshWebBundleCache()) {
                 appWebView.clearCache(true);
+                markWebBundleCacheRefreshed();
             }
         }
         super.load();
@@ -83,12 +84,17 @@ public class MainActivity extends BridgeActivity {
             MODE_PRIVATE
         );
         int installedVersion = preferences.getInt(WEB_BUNDLE_VERSION_KEY, -1);
-        if (installedVersion == BuildConfig.VERSION_CODE) return false;
+        return installedVersion != BuildConfig.VERSION_CODE;
+    }
 
-        preferences.edit()
+    private void markWebBundleCacheRefreshed() {
+        if (BuildConfig.NATIVE_QA_WEBVIEW) return;
+
+        // A throwing clear must leave the update pending for the next launch.
+        getSharedPreferences(WEB_BUNDLE_CACHE_PREFS, MODE_PRIVATE)
+            .edit()
             .putInt(WEB_BUNDLE_VERSION_KEY, BuildConfig.VERSION_CODE)
             .apply();
-        return true;
     }
 
     private void applySystemBarStyle() {
