@@ -474,6 +474,7 @@ export async function watchOwnedHost(output,{sample=sampleOwnedHost,append=appen
   const data=join(output,'host-scheduling.jsonl'),summary={...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,samples:0,errors:[],observationErrors:[],windowErrors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,cohortSelection,inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,cohortTasksTargeted:0,observedOutsideCohort:0,samplesWithOutsideCohort:0,coverageSamples:0,survivorsVerified:0,nonMainSurvivorsVerified:0,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:0,historyGaps:[],rejectedSamples:[],nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
   const priorCounters=new Map(),stopFile=join(output,'host-stop'),journalDigest=createHash('sha256');let acknowledgedBytes=0;
   const end=clock()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
+  let durationExpired=false;
   summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;
   try{
     const journal=openSync(data,'wx');closeSync(journal);
@@ -486,15 +487,22 @@ export async function watchOwnedHost(output,{sample=sampleOwnedHost,append=appen
       recordHostInventory(summary,frame,priorCounters);
       if(summary.samples===1)persist(join(output,'host-ready.json'),JSON.stringify({...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:frame.owner}));
       if(statSync(data).size>=maxHostBytes)throw new Error('Host diagnostic disk cap reached');
-      if(existsSync(stopFile))break;
+      if(existsSync(stopFile)){durationExpired=clock()>=end;break;}
       await sleep(hostIntervalMs);
-    }while(clock()<end);
+      durationExpired=clock()>=end;
+    }while(!durationExpired);
     requireHostInventoryCoverage(summary);
   }catch(error){addHostObservationError(summary,error);}
-  if(existsSync(stopFile)){
+  durationExpired=durationExpired||clock()>=end;
+  const stopPresent=existsSync(stopFile);let stopError;
+  if(stopPresent){
     try{summary.rawStop=readFileSync(stopFile,'utf8');const request=verifyOwnedHostStop(JSON.parse(summary.rawStop),options);summary.ownedStop={...request,verified:true,observedAtUtc:now()};}
-    catch(error){addHostWindowError(summary,'INVALID_OWNED_STOP',error);}
-  }else addHostWindowError(summary,clock()>=end?'DURATION_CAP':'MISSING_OWNED_STOP',new Error('Host diagnostic window ended before an owned stop acknowledgement'));
+    catch(error){stopError=error;}
+  }
+  durationExpired=durationExpired||clock()>=end;
+  if(durationExpired)addHostWindowError(summary,'DURATION_CAP',new Error('Host diagnostic duration cap reached before an owned stop was observed'));
+  if(stopError)addHostWindowError(summary,'INVALID_OWNED_STOP',stopError);
+  else if(!stopPresent&&!durationExpired)addHostWindowError(summary,'MISSING_OWNED_STOP',new Error('Host diagnostic window ended before an owned stop acknowledgement'));
   summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();
   summary.expectedJournal={bytes:acknowledgedBytes,sha256:journalDigest.digest('hex')};
   try{if(!existsSync(data))throw new Error('Host journal is absent after sampling');summary.data=receipt(data);if(summary.data.bytes!==summary.expectedJournal.bytes||summary.data.sha256!==summary.expectedJournal.sha256)throw new Error('Host journal does not match the fully acknowledged observation sequence');}catch(error){addHostObservationError(summary,error);}
