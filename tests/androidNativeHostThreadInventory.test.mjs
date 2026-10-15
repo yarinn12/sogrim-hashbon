@@ -36,7 +36,7 @@ test('actual sampleOwnedHost retains scheduler counters for unnamed and nonmatch
 });
 
 test('two complete real inventories prove scheduler coverage without claiming renderer roles',t=>{
-  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererNames:[],rendererRoleProven:false},prior=new Map();
+  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererNames:[],rendererRoleProven:false},prior=new Map();
   recordHostInventory(summary,sample,prior);recordHostInventory(summary,sampleOwnedHost(f.options,{procRoot:f.root}),prior);
   assert.equal(requireHostInventoryCoverage(summary),true);assert.equal(summary.nonMainTasksMeasured,6);assert.equal(summary.rendererRoleProven,false);
 });
@@ -63,11 +63,12 @@ test('natural task exit during read retains a known partial departure with termi
 });
 test('new tasks between inventory endpoints are recorded without a guessed start time',t=>{
   const f=procFixture(t);let lists=0;
-  // The closing endpoint is now the third inventory. This original negative
-  // still introduces an unmeasured final TID; its failure assertions stay intact.
+  // v5 retains final-only observations outside the explicit counter cohort.
+  // Their presence supplies neither counter nor worker coverage.
   const list=p=>{if(++lists===3)f.add(3480,'','20003');return readdirSync(p);};
-  const sample=sampleOwnedHost(f.options,{procRoot:f.root,list});assert.equal(sample.inventory.coverageComplete,false);
-  assert.ok(sample.lifecycle.some(g=>g.tid===3480&&g.kind==='born-during-sample'&&g.startTicks===null));
+  const sample=sampleOwnedHost(f.options,{procRoot:f.root,list});assert.equal(sample.inventory.coverageComplete,true);
+  assert.deepEqual(sample.coverage.observedOutsideCohort,[3480]);assert.ok(!sample.inventory.cohort.includes(3480));assert.ok(!sample.threads.some(row=>row.pid===3480));assert.ok(!sample.finalIdentities.some(row=>row.pid===3480));
+  assert.ok(sample.lifecycle.some(g=>g.tid===3480&&g.kind==='observed-outside-cohort'&&g.startTicks===null));
 });
 test('TID reuse retains actual raw counters as unverified and rejects coverage',t=>{
   const f=procFixture(t),target=join(f.taskRoot,'3450','stat');let reads=0;
@@ -94,7 +95,7 @@ test('CPU tick regression also invalidates an unchanged TID lifetime',t=>{
   assert.throws(()=>recordHostInventory(summary,sampleOwnedHost(f.options,{procRoot:f.root}),prior),/counter decreased/);
 });
 test('incomplete summary and main-only samples cannot replace worker scheduling coverage',()=>{
-  const valid={coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,samples:2,coverageSamples:2,survivorsVerified:4,nonMainSurvivorsVerified:2,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:4,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4};
+  const valid={coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false,samples:2,coverageSamples:2,cohortTasksTargeted:4,observedOutsideCohort:0,samplesWithOutsideCohort:0,survivorsVerified:4,nonMainSurvivorsVerified:2,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:4,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4};
   assert.equal(requireHostInventoryCoverage(valid),true);
   for(const d of [{samples:1,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:2,nonMainTasksMeasured:0},{samples:2,coverageSamples:2,nonMainTasksMeasured:2,capReached:true}])
     assert.throws(()=>requireHostInventoryCoverage({...valid,...d}),/coverage is missing/);

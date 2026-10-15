@@ -1,5 +1,9 @@
 # Android host observations: terminal survivors v4
 
+Historical v4 contract. The current diagnostic tool implementation is documented
+in [android-observed-cohort-v5.md](android-observed-cohort-v5.md). Historical v4
+captures and failures are not migrated or retroactively accepted.
+
 `observed-terminal-survivors-v4` (`coverageVersion: 4`, scope
 `observed-terminal-survivors`) requires verified observations for every TID in
 the fourth, terminal inventory. An ENOENT while reading a task that is absent

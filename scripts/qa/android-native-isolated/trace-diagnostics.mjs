@@ -3,11 +3,12 @@ import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSy
 import {resolve,join,basename} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
-import {TERMINAL_HOST_CONTRACT,classifyTerminalSurvivors,recordTerminalHostInventory as recordHostInventory,requireTerminalHostCoverage as requireHostInventoryCoverage} from './terminal-survivor-coverage.mjs';
+import {HOST_COHORT_CONTRACT,classifyHostCohort,recordHostCohortInventory as recordHostInventory,requireHostCohortCoverage as requireHostInventoryCoverage} from './cohort-observation-coverage.mjs';
+import {DIAGNOSTIC_CONTRACT,diagnosticMetadata,requireDiagnosticMetadata,ownedHostStopRequest,verifyOwnedHostStop,addHostObservationError,addHostWindowError,setHostObservationStatus,verifyHostObservationStatus} from './diagnostic-contract.mjs';
 export {recordHostInventory,requireHostInventoryCoverage};
 
 const target='com.sogrimhashbon.app.debug',hostIntervalMs=1000,maxHostBytes=64*1024*1024,maxTraceBytes=512*1024*1024;
-const {version:hostCoverageVersion,scope:hostCoverageScope,name:hostCoverageContract}=TERMINAL_HOST_CONTRACT;
+const {version:hostCoverageVersion,scope:hostCoverageScope,name:hostCoverageContract,selection:cohortSelection}=HOST_COHORT_CONTRACT;
 const now=()=>new Date().toISOString(),delay=ms=>new Promise(done=>setTimeout(done,ms));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 // v51.2 intentionally prints --help to stderr and returns 1 (PrintUsage then
@@ -79,11 +80,12 @@ export function sampleOwnedHost(options,deps={}){
   }
   for(const tid of before)sampleTask(tid,'initial');
   const afterDiscovery=inventory(),newborn=afterDiscovery.filter(tid=>!before.includes(tid));
+  const cohort=[...new Set([...before,...afterDiscovery])].sort((a,b)=>a-b);
   // Exactly one counter pass for newly discovered tasks. Never retry a task
   // from the original pass or repair an earlier read failure.
   for(const tid of newborn)sampleTask(tid,'newborn');
   const afterFinal=inventory();let finalIdentityReadCount=0;
-  for(const tid of afterFinal){
+  for(const tid of afterFinal.filter(tid=>cohort.includes(tid))){
     finalIdentityReadCount++;let rawFinal;
     try{
       rawFinal=read(join(taskRoot,String(tid),'stat'),'utf8');const identity=parseProcIdentity(rawFinal);
@@ -108,14 +110,15 @@ export function sampleOwnedHost(options,deps={}){
     lifecycle.push({tid,kind:'born-during-sample',phase:'discovery',startTicks:thread?.startTicks??null});
     if(!afterFinal.includes(tid))lifecycle.push({tid,kind:'exited-during-sample',startTicks:thread?.startTicks??null});
   }
-  for(const tid of afterFinal)if(!afterDiscovery.includes(tid))lifecycle.push({tid,kind:'born-during-sample',phase:'final',startTicks:null});
+  for(const tid of afterFinal)if(cohort.includes(tid)&&!afterDiscovery.includes(tid))lifecycle.push({tid,kind:'born-during-sample',phase:'final',startTicks:null});
+  for(const tid of [...new Set([...afterFinal,...terminal])].sort((a,b)=>a-b))if(!cohort.includes(tid))lifecycle.push({tid,kind:'observed-outside-cohort',phase:afterFinal.includes(tid)?'final':'terminal',startTicks:null,identity:null,counters:null});
   assertHostOwner(options,{...deps,read,expectedStartTicks:owner.startTicks});
   // This fourth observation confirms terminal absence, not a whole lifetime.
   // Retain all counter/identity observations and read errors for classification.
   const sample={atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,finalIdentities,identitiesAfterCounters,
-    inventory:{before,afterDiscovery,afterFinal,terminal,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,rendererRoleProven:false},
+    inventory:{before,afterDiscovery,afterFinal,terminal,cohort,cohortSelection,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false},
     readCount,threadsScanned,selectedThreads:threads.length,finalIdentityReadCount,sampleDurationMs:0};
-  sample.coverage=classifyTerminalSurvivors(sample);
+  sample.coverage=classifyHostCohort(sample);
   sample.inventory.coverageComplete=sample.coverage.unresolvedGaps.length===0;
   sample.sampleDurationMs=performance.now()-begin;
   return sample;
@@ -128,6 +131,7 @@ export function appendHostInventory(data,sample,summary){
     throw new Error('Host diagnostic disk cap reached before full sample append');
   }
   appendFileSync(data,line);
+  if(statSync(data).size!==current+Buffer.byteLength(line))throw new Error('Host journal append byte acknowledgement mismatch');
 }
 
 export function requireDataSources(query){
@@ -393,12 +397,12 @@ async function spawnHost(options,owner,onSpawn){
   const fd=openSync(join(options.output,'host-observer.log'),'a');let child;
   try{child=spawn(process.execPath,[fileURLToPath(import.meta.url),'host',options.output],{detached:true,stdio:['ignore',fd,fd],windowsHide:true});}finally{closeSync(fd);}
   child.unref();writeFileSync(join(options.output,'host-observer.pid'),String(child.pid));onSpawn({pid:child.pid});
-  const ready=await waitFile(join(options.output,'host-ready.json'));if(ready.source!==options.source||ready.owner.startTicks!==owner.startTicks)throw new Error('Host observer readiness ownership mismatch');
+  const ready=await waitFile(join(options.output,'host-ready.json'));requireDiagnosticMetadata(ready,DIAGNOSTIC_CONTRACT.host);if(ready.source!==options.source||ready.session!==options.session||ready.owner.pid!==owner.pid||ready.owner.startTicks!==owner.startTicks)throw new Error('Host observer readiness ownership mismatch');
   return{pid:child.pid,ready};
 }
 export async function startOwnedTrace(raw,{run=spawnSync,platform=process.platform,hostRead=readFileSync,procRoot='/proc',launchHost=spawnHost}={}){
   const options=context(raw);mkdirSync(options.output,{recursive:true});const stateFile=join(options.output,'trace-start.json');if(existsSync(stateFile))throw new Error('Refuse duplicate trace start or overwrite');
-  const report={...options,startedAtUtc:now(),captureStarted:false,commands:[],errors:[],nativeAcceptance:false};const observe=observer(options,report,run);
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.start),startedAtUtc:now(),captureStarted:false,captureComplete:false,guestTransportStarted:false,guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,commands:[],errors:[],guestTransportErrors:[],hostObservationErrors:[],nativeAcceptance:false};const observe=observer(options,report,run);
   try{
     if(platform!=='linux')throw new Error('Host scheduling instrumentation requires owned Linux CI, not this local device');
     ownerReadback(options,observe);report.hostOwner=assertHostOwner(options,{read:hostRead,procRoot});
@@ -419,23 +423,34 @@ export async function startOwnedTrace(raw,{run=spawnSync,platform=process.platfo
     const started=observe('perfetto-start',['shell','perfetto','--background-wait','--txt','-c',report.configPath]).trim();
     if(!/^\d+$/.test(started))throw new Error('Perfetto background PID acknowledgement is absent or ambiguous');
     report.guestPid=Number(started);writeFileSync(stateFile,JSON.stringify(report,null,2));report.guestStartTicks=guestOwner(report,observe);
-    Object.assign(report,guestFiles(report,observe));
-    writeFileSync(stateFile,JSON.stringify(report,null,2));report.hostObserver=await launchHost(options,report.hostOwner,host=>{report.hostObserver=host;writeFileSync(stateFile,JSON.stringify(report,null,2));});report.captureStarted=true;
-  }catch(error){report.errors.push(error.stack);}
+    Object.assign(report,guestFiles(report,observe));report.guestTransportStarted=true;
+    writeFileSync(stateFile,JSON.stringify(report,null,2));report.hostLaunchAttempted=true;report.hostObserver=await launchHost({...options,session:report.session},report.hostOwner,host=>{report.hostObserver=host;writeFileSync(stateFile,JSON.stringify(report,null,2));});report.captureStarted=true;
+  }catch(error){report.errors.push(error.stack);(report.guestTransportStarted&&report.hostLaunchAttempted?report.hostObservationErrors:report.guestTransportErrors).push(error.stack);}
   report.completedAtUtc=now();writeFileSync(stateFile,JSON.stringify(report,null,2));return report;
 }
-export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options=>{writeFileSync(join(options.output,'host-stop'),'stop\n');return waitFile(join(options.output,'host-summary.json'));}}={}){
+export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async(options,start)=>{writeFileSync(join(options.output,'host-stop'),JSON.stringify(ownedHostStopRequest(start)),{flag:'wx'});return waitFile(join(options.output,'host-summary.json'));}}={}){
   const options=context(raw);mkdirSync(options.output,{recursive:true});let start;
-  const report={...options,finalizeStartedAtUtc:now(),captureComplete:false,commands:[],errors:[],nativeAcceptance:false,traceAnalysisStatus:'pending actual Trace Processor scheduling/loss/coverage analysis'};const observe=observer(options,report,run);
-  try{start=readJson(join(options.output,'trace-start.json'));for(const name of ['source','device','avd','emulatorPid'])if(start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');report.start=start;}catch(error){report.errors.push(error.stack);start=undefined;}
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.finish),finalizeStartedAtUtc:now(),captureComplete:false,guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,commands:[],errors:[],guestTransportErrors:[],hostObservationErrors:[],nativeAcceptance:false,traceAnalysisStatus:'pending actual Trace Processor scheduling/loss/coverage analysis'};const observe=observer(options,report,run);
+  const guestError=error=>{const text=error.stack??String(error);report.guestTransportErrors.push(text);report.errors.push(text);};
+  const hostError=error=>{const text=error.stack??String(error);report.hostObservationErrors.push(text);report.errors.push(text);};
+  try{start=readJson(join(options.output,'trace-start.json'));requireDiagnosticMetadata(start,DIAGNOSTIC_CONTRACT.start);for(const name of ['source','device','avd','emulatorPid'])if(start[name]!==options[name])throw new Error('Refuse mismatched trace source/ownership receipt');report.start=start;}catch(error){guestError(error);start=undefined;}
   const guestLaunchAttempted=!!start&&(start.guestLaunchAttempted||start.commands?.some(x=>x.name==='perfetto-start'));
-  if(start?.errors?.length)report.errors.push('Original startup errors: '+start.errors.join('\n'));
+  if(start?.errors?.length){
+    report.errors.push('Original startup errors: '+start.errors.join('\n'));
+    const classified=[...(start.guestTransportErrors||[]),...(start.hostObservationErrors||[])];
+    if(JSON.stringify([...classified].sort())!==JSON.stringify([...start.errors].sort()))guestError(new Error('Unclassified original startup errors remain incomplete'));
+    else{report.guestTransportErrors.push(...start.guestTransportErrors);report.hostObservationErrors.push(...start.hostObservationErrors);}
+  }
   report.noCaptureStarted=!!start&&!guestLaunchAttempted&&!start.guestPid&&!start.hostObserver&&start.captureStarted===false;
-  if(report.noCaptureStarted){report.traceAnalysisStatus='unavailable: capture never started';report.errors.push('No capture started; no guest tracer or host observer was launched');}
+  if(report.noCaptureStarted){report.traceAnalysisStatus='unavailable: capture never started';guestError(new Error('No capture started; no guest tracer or host observer was launched'));}
   else if(!start)report.traceAnalysisStatus='unavailable: no valid capture receipt';
-  else if(guestLaunchAttempted&&!start.guestPid){report.traceAnalysisStatus='unavailable: trace launch not acknowledged; no owned PID/inode';report.errors.push('Trace launch attempted without an owned acknowledgement; refuse guessed PID or file');}
-  // Release an actually launched cooperative observer even if guest ownership vanished.
-  if(start?.hostObserver){try{report.host=await stopHost(options);if(report.host.source!==options.source||!report.host.captureComplete||report.host.owner?.pid!==start.hostOwner?.pid||report.host.owner?.startTicks!==start.hostOwner?.startTicks)throw new Error('Owned host scheduling capture is missing/incomplete');requireHostInventoryCoverage(report.host);}catch(error){report.errors.push(error.stack);}}
+  else if(guestLaunchAttempted&&!start.guestPid){report.traceAnalysisStatus='unavailable: trace launch not acknowledged; no owned PID/inode';guestError(new Error('Trace launch attempted without an owned acknowledgement; refuse guessed PID or file'));}
+  // Host status and guest transport have independent failure buckets. Neither
+  // partial host observations nor transport framing constitutes Native acceptance.
+  if(start?.hostObserver){try{
+    report.host=await stopHost(options,start);Object.assign(report,verifyHostObservationStatus(report.host,start));
+    if(!report.hostObservationIntegrity||!report.hostCaptureWindowComplete)throw new Error('Owned host scheduling capture is missing/incomplete');
+  }catch(error){hostError(error);}}
   if(start?.guestPid){
     let owned=false;
     try{
@@ -443,46 +458,54 @@ export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options
       ownerReadback(options,observe);guestFiles(start,observe);owned=true;guestOwner(start,observe);ownerReadback(options,observe);
       const script=closeWriteScript(start);writeFileSync(join(options.output,'close-write.sh'),script);
       report.writerClose=verifyCloseWrite(observe('perfetto-stop-close',['shell','toybox','timeout','15','sh','-s'],script),start);
-    }catch(error){report.errors.push(error.stack);}
+    }catch(error){guestError(error);}
     if(owned){
       try{
-        // Pull partial evidence on failure too, but never accept it without close-write.
         ownerReadback(options,observe);guestFiles(start,observe);const file=join(options.output,'guest.pftrace');if(existsSync(file))throw new Error('Refuse overwrite of pulled trace evidence');observe('perfetto-pull',['pull',start.guestPath,file]);report.trace=fileReceipt(file);if(report.trace.bytes>=maxTraceBytes)throw new Error('Trace hit diagnostic disk cap; coverage is incomplete');report.structure=inspectTrace(readFileSync(file));
-      }catch(error){report.errors.push(error.stack);}
+      }catch(error){guestError(error);}
     }
   }
-  report.captureComplete=!!start?.captureStarted&&!!report.writerClose?.verified&&!!report.trace&&!!report.structure&&!!report.host?.captureComplete&&report.errors.length===0;
+  report.guestTransportComplete=start?.guestTransportStarted===true&&!!report.writerClose?.verified&&!!report.trace&&!!report.structure&&report.guestTransportErrors.length===0;
+  report.captureComplete=!!start?.captureStarted&&report.guestTransportComplete&&report.hostObservationIntegrity&&report.hostCaptureWindowComplete&&report.errors.length===0;
   report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
 }
-async function watchHost(output){
-  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:0,survivorsVerified:0,nonMainSurvivorsVerified:0,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:0,historyGaps:[],rejectedSamples:[],nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
-  const priorCounters=new Map();
-  const end=Date.now()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
+export async function watchOwnedHost(output,{sample=sampleOwnedHost,append=appendHostInventory,clock=Date.now,sleep=delay,receipt=fileReceipt,persist=writeFileSync}={}){
+  const options=readJson(join(output,'trace-start.json'));requireDiagnosticMetadata(options,DIAGNOSTIC_CONTRACT.start);
+  const data=join(output,'host-scheduling.jsonl'),summary={...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,samples:0,errors:[],observationErrors:[],windowErrors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,cohortSelection,inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,cohortTasksTargeted:0,observedOutsideCohort:0,samplesWithOutsideCohort:0,coverageSamples:0,survivorsVerified:0,nonMainSurvivorsVerified:0,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:0,historyGaps:[],rejectedSamples:[],nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
+  const priorCounters=new Map(),stopFile=join(output,'host-stop'),journalDigest=createHash('sha256');let acknowledgedBytes=0;
+  const end=clock()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
   summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;
   try{
+    const journal=openSync(data,'wx');closeSync(journal);
     do{
-      const sample=sampleOwnedHost(options,{expectedStartTicks:options.hostOwner.startTicks});
-      appendHostInventory(data,sample,summary);summary.samples++;summary.unavailableFields+=sample.unavailable.length;summary.maxSampleDurationMs=Math.max(summary.maxSampleDurationMs,sample.sampleDurationMs);
-      summary.readCount+=sample.readCount;summary.threadsScanned+=sample.threadsScanned;summary.maxThreadsScanned=Math.max(summary.maxThreadsScanned,sample.threadsScanned);summary.maxSelectedThreads=Math.max(summary.maxSelectedThreads,sample.selectedThreads);
-      for(const thread of sample.threads)if(/RenderThread|llvm|swift|gfx|angle|gpu/i.test(thread.name))names.add(thread.name);
-      recordHostInventory(summary,sample,priorCounters);
-      if(summary.samples===1)writeFileSync(join(output,'host-ready.json'),JSON.stringify({source:options.source,owner:sample.owner}));
+      const frame=sample(options,{expectedStartTicks:options.hostOwner.startTicks});
+      const expectedLine=JSON.stringify(frame)+'\n';append(data,frame,summary);journalDigest.update(expectedLine);acknowledgedBytes+=Buffer.byteLength(expectedLine);
+      summary.samples++;summary.unavailableFields+=frame.unavailable.length;summary.maxSampleDurationMs=Math.max(summary.maxSampleDurationMs,frame.sampleDurationMs);
+      summary.readCount+=frame.readCount;summary.threadsScanned+=frame.threadsScanned;summary.maxThreadsScanned=Math.max(summary.maxThreadsScanned,frame.threadsScanned);summary.maxSelectedThreads=Math.max(summary.maxSelectedThreads,frame.selectedThreads);
+      for(const thread of frame.threads)if(/RenderThread|llvm|swift|gfx|angle|gpu/i.test(thread.name))names.add(thread.name);
+      recordHostInventory(summary,frame,priorCounters);
+      if(summary.samples===1)persist(join(output,'host-ready.json'),JSON.stringify({...diagnosticMetadata(DIAGNOSTIC_CONTRACT.host),source:options.source,session:options.session,owner:frame.owner}));
       if(statSync(data).size>=maxHostBytes)throw new Error('Host diagnostic disk cap reached');
-      if(existsSync(join(output,'host-stop')))break;
-      await delay(hostIntervalMs);
-    }while(Date.now()<end);
-    if(!existsSync(join(output,'host-stop')))throw new Error('Host diagnostic duration cap reached before finalize');
+      if(existsSync(stopFile))break;
+      await sleep(hostIntervalMs);
+    }while(clock()<end);
     requireHostInventoryCoverage(summary);
-    summary.captureComplete=true;
-  }catch(error){summary.errors.push(error.stack);}
-  summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();if(existsSync(data))summary.data=fileReceipt(data);writeFileSync(join(output,'host-summary.json'),JSON.stringify(summary,null,2));
+  }catch(error){addHostObservationError(summary,error);}
+  if(existsSync(stopFile)){
+    try{summary.rawStop=readFileSync(stopFile,'utf8');const request=verifyOwnedHostStop(JSON.parse(summary.rawStop),options);summary.ownedStop={...request,verified:true,observedAtUtc:now()};}
+    catch(error){addHostWindowError(summary,'INVALID_OWNED_STOP',error);}
+  }else addHostWindowError(summary,clock()>=end?'DURATION_CAP':'MISSING_OWNED_STOP',new Error('Host diagnostic window ended before an owned stop acknowledgement'));
+  summary.rendererNames=[...names];summary.kernelWaitChannelsComplete=summary.unavailableFields===0;summary.overhead={observerCpuMicroseconds:process.cpuUsage(cpuStart),elapsedMs:performance.now()-timeStart,rssBytes:process.memoryUsage().rss};summary.completedAtUtc=now();
+  summary.expectedJournal={bytes:acknowledgedBytes,sha256:journalDigest.digest('hex')};
+  try{if(!existsSync(data))throw new Error('Host journal is absent after sampling');summary.data=receipt(data);if(summary.data.bytes!==summary.expectedJournal.bytes||summary.data.sha256!==summary.expectedJournal.sha256)throw new Error('Host journal does not match the fully acknowledged observation sequence');}catch(error){addHostObservationError(summary,error);}
+  setHostObservationStatus(summary,options);persist(join(output,'host-summary.json'),JSON.stringify(summary,null,2));return summary;
 }
 // Cleanup also runs after an APK build failure, before an emulator PID exists.
 // Classify that absence without inventing a PID or entering guest/host cleanup.
 // Any recorded/residual capture remains unconfirmed and unsuccessful.
 function finishWithoutEmulatorPid(options){
   mkdirSync(options.output,{recursive:true});
-  const report={...options,mode:'finish',emulatorPidUnavailable:true,jobStatus:process.env.ANDROID_QA_JOB_STATUS,finalizeStartedAtUtc:now(),captureStarted:false,captureComplete:false,nativeAcceptance:false,noCaptureStarted:false,commands:[],errors:[]};
+  const report={...options,...diagnosticMetadata(DIAGNOSTIC_CONTRACT.finish),guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,mode:'finish',emulatorPidUnavailable:true,jobStatus:process.env.ANDROID_QA_JOB_STATUS,finalizeStartedAtUtc:now(),captureStarted:false,captureComplete:false,nativeAcceptance:false,noCaptureStarted:false,commands:[],errors:[]};
   const validIdentity=!!options.adbPath&&/^emulator-\d+$/.test(options.device||'')&&/^sogrim_ci_[a-z0-9_]+$/.test(options.avd||'')&&/^[a-f0-9]{40}$/.test(options.source||'');
   if(!validIdentity)report.errors.push('Require exact source and explicit owned CI emulator identity');
   const startFile=join(options.output,'trace-start.json'),hasStart=existsSync(startFile);
@@ -497,16 +520,16 @@ function finishWithoutEmulatorPid(options){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
   const mode=process.argv[2];
-  if(mode==='host')await watchHost(resolve(process.argv[3]));
+  if(mode==='host')await watchOwnedHost(resolve(process.argv[3]));
   else{
     try{
       const options={adbPath:process.env.ADB_PATH,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,source:process.env.ANDROID_QA_SOURCE,output:'artifacts/android-native-isolated/trace-diagnostics'},pidFile='artifacts/android-native-isolated/emulator.pid';
       const noEmulatorPid=mode==='finish'&&!existsSync(pidFile);
       if(!noEmulatorPid)options.emulatorPid=Number(readFileSync(pidFile,'utf8').trim());
       const report=noEmulatorPid?finishWithoutEmulatorPid(options):mode==='start'?await startOwnedTrace(options):mode==='finish'?await finishOwnedTrace(options):(()=>{throw new Error('Require trace start/finish mode');})();
-      console.log(JSON.stringify({source:report.source,captureStarted:report.captureStarted,captureComplete:report.captureComplete,noCaptureStarted:report.noCaptureStarted,traceAnalysisStatus:report.traceAnalysisStatus,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
+      console.log(JSON.stringify({source:report.source,diagnosticsVersion:report.diagnosticsVersion,guestTransportComplete:report.guestTransportComplete,hostObservationIntegrity:report.hostObservationIntegrity,hostCaptureWindowComplete:report.hostCaptureWindowComplete,captureStarted:report.captureStarted,captureComplete:report.captureComplete,noCaptureStarted:report.noCaptureStarted,traceAnalysisStatus:report.traceAnalysisStatus,errors:report.errors,nativeAcceptance:false}));if(!(report.captureStarted||report.captureComplete))process.exitCode=1;
     }catch(error){
-      const output='artifacts/android-native-isolated/trace-diagnostics';mkdirSync(output,{recursive:true});const report={source:process.env.ANDROID_QA_SOURCE,mode,captureStarted:false,captureComplete:false,nativeAcceptance:false,error:error.stack,recordedAtUtc:now()};writeFileSync(join(output,'trace-unavailable-'+mode+'.json'),JSON.stringify(report,null,2));console.error(JSON.stringify(report));process.exitCode=1;
+      const output='artifacts/android-native-isolated/trace-diagnostics';mkdirSync(output,{recursive:true});const report={...diagnosticMetadata(mode==='start'?DIAGNOSTIC_CONTRACT.start:DIAGNOSTIC_CONTRACT.finish),guestTransportComplete:false,hostObservationIntegrity:false,hostCaptureWindowComplete:false,source:process.env.ANDROID_QA_SOURCE,mode,captureStarted:false,captureComplete:false,nativeAcceptance:false,error:error.stack,recordedAtUtc:now()};writeFileSync(join(output,'trace-unavailable-'+mode+'.json'),JSON.stringify(report,null,2));console.error(JSON.stringify(report));process.exitCode=1;
     }
   }
 }

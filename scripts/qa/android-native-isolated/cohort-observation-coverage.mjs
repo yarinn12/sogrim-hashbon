@@ -1,4 +1,4 @@
-export const TERMINAL_HOST_CONTRACT=Object.freeze({version:4,name:'observed-terminal-survivors-v4',scope:'observed-terminal-survivors'});
+export const HOST_COHORT_CONTRACT=Object.freeze({version:5,name:'observed-owned-cohort-v5',scope:'observed-owned-cohort',selection:'union-before-afterDiscovery'});
 const fields=['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'];
 const scheduling=fields.slice(2),numeric=value=>typeof value==='string'&&/^\d+$/.test(value);
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -6,19 +6,20 @@ const key=(owner,tid,start)=>`${owner.pid}:${owner.startTicks}:${tid}:${start}`;
 
 // Classify observations, not whole thread lifetimes. An absent terminal TID
 // never receives an invented closing identity or a fabricated final counter.
-export function classifyTerminalSurvivors(sample){
-  const result={survivorsVerified:[],departedVerified:[],departedPartial:[],unobservedExits:[],unresolvedGaps:[]},seenIssues=new Set();
+export function classifyHostCohort(sample){
+  const result={survivorsVerified:[],departedVerified:[],departedPartial:[],unobservedExits:[],observedOutsideCohort:[],unresolvedGaps:[]},seenIssues=new Set();
   const issue=(kind,tid,field,code)=>{
     const value={kind,...(tid===undefined?{}:{tid}),...(field===undefined?{}:{field}),...(code===undefined?{}:{code})};
     if(!seenIssues.has(JSON.stringify(value))){seenIssues.add(JSON.stringify(value));result.unresolvedGaps.push(value);}
   };
   const inv=sample.inventory,owner=sample.owner;
-  if(inv?.coverageVersion!==4||inv.coverageContract!==TERMINAL_HOST_CONTRACT.name||inv.scope!==TERMINAL_HOST_CONTRACT.scope||inv.atomic!==false||inv.lifetimeCoverageProven!==false||inv.rendererRoleProven!==false)issue('contract');
+  if(inv?.coverageVersion!==5||inv.coverageContract!==HOST_COHORT_CONTRACT.name||inv.scope!==HOST_COHORT_CONTRACT.scope||inv.cohortSelection!==HOST_COHORT_CONTRACT.selection||inv.atomic!==false||inv.lifetimeCoverageProven!==false||inv.identityContinuityProven!==false||inv.allThreadsCoverageProven!==false||inv.rendererRoleProven!==false)issue('contract');
   const validIds=ids=>Array.isArray(ids)&&ids.includes(owner?.pid)&&ids.every((id,index)=>Number.isSafeInteger(id)&&id>0&&(!index||id>ids[index-1]));
   const inventories=[inv?.before,inv?.afterDiscovery,inv?.afterFinal,inv?.terminal];
   if(!inventories.every(validIds)||!['threads','identitiesAfterCounters','finalIdentities','unavailable','lifecycle'].every(name=>Array.isArray(sample[name]))){issue('malformed-observations');return result;}
   const [before,discovery,final,terminal]=inventories.map(ids=>new Set(ids));
   const observed=[...new Set(inventories.flat())].sort((a,b)=>a-b),targets=new Set([...before,...discovery]);
+  if(!validIds(inv.cohort)||!same(inv.cohort,[...targets].sort((a,b)=>a-b)))issue('cohort-selection-mismatch');
   const records=new Map(),afterIds=new Map(),closing=new Map();
   for(const row of sample.threads){
     if(!Number.isSafeInteger(row.pid)||row.pid<1||records.has(row.pid))issue('counter-record-identity',row.pid);
@@ -34,23 +35,24 @@ export function classifyTerminalSurvivors(sample){
     afterIds.set(row.tid,row);
   }
   for(const row of sample.finalIdentities){
-    if(!final.has(row.pid)||closing.has(row.pid)||!numeric(row.startTicks)||row.emulatorPid!==owner.pid||row.emulatorStartTicks!==owner.startTicks||fields.some(name=>Object.hasOwn(row,name)))issue('closing-identity-malformed',row.pid);
+    if(!targets.has(row.pid)||!final.has(row.pid)||closing.has(row.pid)||!numeric(row.startTicks)||row.emulatorPid!==owner.pid||row.emulatorStartTicks!==owner.startTicks||fields.some(name=>Object.hasOwn(row,name)))issue('closing-identity-malformed',row.pid);
     closing.set(row.pid,row);
     const record=records.get(row.pid),matched=!!record&&record.startTicks===row.startTicks;
     if(record&&!matched)issue('closing-identity-reuse',row.pid);
     if(row.identityVerified!==matched)issue('closing-identity-claim',row.pid);
   }
-  if(sample.threadsScanned!==targets.size||sample.selectedThreads!==sample.threads.length||sample.finalIdentityReadCount!==final.size)issue('read-accounting');
+  if(sample.threadsScanned!==targets.size||sample.selectedThreads!==sample.threads.length||sample.finalIdentityReadCount!==[...final].filter(tid=>targets.has(tid)).length)issue('read-accounting');
   const lifecycleKeys=new Set();
   for(const event of sample.lifecycle){
     const lifecycleKey=JSON.stringify([event.tid,event.kind,event.phase]);
     if(lifecycleKeys.has(lifecycleKey))issue('duplicate-lifecycle',event.tid);
     lifecycleKeys.add(lifecycleKey);
-    if(!observed.includes(event.tid)||!['tid-reused-during-read','tid-reused-before-final-identity','exited-during-sample','born-during-sample','unobserved-exit'].includes(event.kind))issue('malformed-lifecycle',event.tid);
+    if(!observed.includes(event.tid)||!['tid-reused-during-read','tid-reused-before-final-identity','exited-during-sample','born-during-sample','unobserved-exit','observed-outside-cohort'].includes(event.kind))issue('malformed-lifecycle',event.tid);
     if(event.kind.startsWith('tid-reused'))issue('observed-identity-reuse',event.tid);
   }
   const gapsByTid=new Map(),gapKeys=new Set();
   for(const gap of sample.unavailable){
+    if(!targets.has(gap.tid))issue('read-outside-cohort',gap.tid,gap.field);
     const gapKey=JSON.stringify([gap.tid,gap.field]);
     if(gapKeys.has(gapKey))issue('duplicate-read-gap',gap.tid,gap.field);
     gapKeys.add(gapKey);
@@ -83,7 +85,13 @@ export function classifyTerminalSurvivors(sample){
       if(ids.has(tid)){if(absentAfterAppearance)issue('inventory-reappearance',tid);appeared=true;}
       else if(appeared)absentAfterAppearance=true;
     }
-    if(!targets.has(tid)){issue('unmeasured-birth',tid);continue;}
+    if(!targets.has(tid)){
+      result.observedOutsideCohort.push(tid);
+      const events=sample.lifecycle.filter(event=>event.tid===tid),expected=[{tid,kind:'observed-outside-cohort',phase:final.has(tid)?'final':'terminal',startTicks:null,identity:null,counters:null}];
+      if(!same(events,expected))issue('outside-cohort-observation-mismatch',tid);
+      if(records.has(tid)||afterIds.has(tid)||closing.has(tid)||gapsByTid.has(tid))issue('read-outside-cohort',tid);
+      continue;
+    }
     const record=records.get(tid),post=afterIds.get(tid),close=closing.get(tid),gaps=gapsByTid.get(tid)||[];
     const hasGap=field=>gaps.some(gap=>gap.field===field&&gap.code==='ENOENT');
     const events=sample.lifecycle.filter(event=>event.tid===tid&&!event.kind.startsWith('tid-reused'));
@@ -120,14 +128,14 @@ export function classifyTerminalSurvivors(sample){
   return result;
 }
 
-const countFields=['coverageSamples','survivorsVerified','nonMainSurvivorsVerified','departedVerified','departedPartial','unobservedExits','unresolvedGaps','counterRecordsVerified','nonMainTasksMeasured','samplesWithUnobservedExits','newbornTasksMeasured','finalIdentitiesVerified'];
-export function recordTerminalHostInventory(summary,sample,priorCounters=new Map()){
+const countFields=['coverageSamples','cohortTasksTargeted','survivorsVerified','nonMainSurvivorsVerified','departedVerified','departedPartial','unobservedExits','observedOutsideCohort','samplesWithOutsideCohort','unresolvedGaps','counterRecordsVerified','nonMainTasksMeasured','samplesWithUnobservedExits','newbornTasksMeasured','finalIdentitiesVerified'];
+export function recordHostCohortInventory(summary,sample,priorCounters=new Map()){
   if(sample.owner.pid!==summary.owner.pid||sample.owner.startTicks!==summary.owner.startTicks)throw new Error('Host sample owner changed');
   for(const field of countFields)summary[field]??=0;
   summary.historyGaps??=[];summary.rejectedSamples??=[];
-  const coverage=classifyTerminalSurvivors(sample),gaps=[...coverage.unresolvedGaps],pending=new Map();
+  const coverage=classifyHostCohort(sample),gaps=[...coverage.unresolvedGaps],pending=new Map();
   if(!same(sample.coverage,coverage)||sample.inventory.coverageComplete!==(gaps.length===0))gaps.push({kind:'coverage-declaration-mismatch'});
-  const observed=new Set([sample.inventory.before,sample.inventory.afterDiscovery,sample.inventory.afterFinal,sample.inventory.terminal].filter(Array.isArray).flat());
+  const observed=new Set([sample.inventory.before,sample.inventory.afterDiscovery].filter(Array.isArray).flat());
   for(const tid of observed)if(priorCounters.get(key(summary.owner,tid,'unknown'))?.closed)gaps.push({tid,kind:'unobserved-departed-tid-reappeared'});
   for(const record of sample.threads){
     if(!numeric(record.startTicks))continue;
@@ -149,6 +157,9 @@ export function recordTerminalHostInventory(summary,sample,priorCounters=new Map
   }
   for(const tid of coverage.unobservedExits)priorCounters.set(key(summary.owner,tid,'unknown'),{closed:true});
   summary.coverageSamples++;
+  summary.cohortTasksTargeted+=sample.inventory.cohort.length;
+  summary.observedOutsideCohort+=coverage.observedOutsideCohort.length;
+  summary.samplesWithOutsideCohort+=coverage.observedOutsideCohort.length?1:0;
   for(const field of ['survivorsVerified','departedVerified','departedPartial','unobservedExits'])summary[field]+=coverage[field].length;
   summary.nonMainSurvivorsVerified+=coverage.survivorsVerified.filter(tid=>tid!==summary.owner.pid).length;
   const verified=sample.threads.filter(row=>row.countersVerified);
@@ -160,14 +171,16 @@ export function recordTerminalHostInventory(summary,sample,priorCounters=new Map
   summary.finalIdentitiesVerified+=sample.finalIdentities.filter(row=>row.identityVerified).length;
 }
 
-export function requireTerminalHostCoverage(summary){
-  if(summary.coverageVersion!==4||summary.coverageContract!==TERMINAL_HOST_CONTRACT.name||summary.coverageScope!==TERMINAL_HOST_CONTRACT.scope||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||summary.rendererRoleProven!==false||
+export function requireHostCohortCoverage(summary){
+  if(summary.coverageVersion!==5||summary.coverageContract!==HOST_COHORT_CONTRACT.name||summary.coverageScope!==HOST_COHORT_CONTRACT.scope||summary.cohortSelection!==HOST_COHORT_CONTRACT.selection||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||summary.identityContinuityProven!==false||summary.allThreadsCoverageProven!==false||summary.rendererRoleProven!==false||
     ![summary.samples,...countFields.map(field=>summary[field])].every(value=>Number.isSafeInteger(value)&&value>=0)||
     summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainSurvivorsVerified<1||summary.unresolvedGaps!==0||
     summary.survivorsVerified!==summary.samples+summary.nonMainSurvivorsVerified||summary.counterRecordsVerified!==summary.survivorsVerified+summary.departedVerified||
+    summary.cohortTasksTargeted!==summary.survivorsVerified+summary.departedVerified+summary.departedPartial+summary.unobservedExits||
+    summary.samplesWithOutsideCohort>summary.samples||summary.samplesWithOutsideCohort>summary.observedOutsideCohort||(summary.observedOutsideCohort===0)!==(summary.samplesWithOutsideCohort===0)||
     summary.nonMainTasksMeasured!==summary.nonMainSurvivorsVerified+summary.departedVerified||summary.finalIdentitiesVerified<summary.survivorsVerified||summary.finalIdentitiesVerified>summary.counterRecordsVerified||
     summary.newbornTasksMeasured>summary.nonMainTasksMeasured||summary.samplesWithUnobservedExits>summary.samples||summary.samplesWithUnobservedExits>summary.unobservedExits||
     (summary.unobservedExits===0)!==(summary.samplesWithUnobservedExits===0)||summary.capReached||summary.errors?.length||summary.historyGaps?.length||summary.rejectedSamples?.length)
-    throw new Error('Terminal survivor scheduling coverage is missing');
+    throw new Error('Observed cohort scheduling coverage is missing');
   return true;
 }
