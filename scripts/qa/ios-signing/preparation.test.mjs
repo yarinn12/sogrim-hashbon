@@ -179,8 +179,8 @@ for (const name of ['mobile-iphone-large-text-shard-1', 'mobile-iphone-large-tex
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios194-a120-sign-only-20261015',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-a120-sign-only.yml@refs/heads/codex/ios194-a120-sign-only-20261015',
+ GITHUB_REF:'refs/heads/codex/ios194-fdce-sign-only-20261015',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-fdce-sign-only.yml@refs/heads/codex/ios194-fdce-sign-only-20261015',
  GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -191,9 +191,9 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
- const actual=readFileSync(new URL('../../../.github/workflows/ios194-a120-sign-only.yml',import.meta.url),'utf8');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios194-fdce-sign-only.yml',import.meta.url),'utf8');
  assert.ok(actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
- assert.ok(actual.includes('branches: [codex/ios194-a120-sign-only-20261015]'));
+ assert.ok(actual.includes('branches: [codex/ios194-fdce-sign-only-20261015]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));

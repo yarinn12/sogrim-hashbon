@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Required full frozen application commit (a1202a8c), never the tooling HEAD
+        description: Required full frozen application commit (fdce6de7), never the tooling HEAD
         required: true
         type: string
       qa_run:
@@ -73,7 +73,7 @@ jobs:
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"a1202a8c3779f4b8586cbee0145eb0175dc6d165");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"194");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"194");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
@@ -238,7 +238,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.58 (194) artifact prepared from a1202a8c3779f4b8586cbee0145eb0175dc6d165.' \
+            'Signed iOS 4.58 (194) artifact prepared from fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"
