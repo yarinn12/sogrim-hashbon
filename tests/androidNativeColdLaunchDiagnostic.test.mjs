@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {dirname,join,resolve} from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import {APP_SOURCE,auditDiagnosticApks} from '../scripts/qa/android-native-isolated/diagnostic/apk-members.mjs';
@@ -11,6 +11,8 @@ import {executeTrial,requireDiagnosticReceipts,requireLiveCollector,requireSepar
 import {DIAGNOSTIC_CONTRACT,diagnosticMetadata} from '../scripts/qa/android-native-isolated/diagnostic-contract.mjs';
 import {HOST_COHORT_CONTRACT} from '../scripts/qa/android-native-isolated/cohort-observation-coverage.mjs';
 import {assertHostOwner,startOwnedTrace} from '../scripts/qa/android-native-isolated/trace-diagnostics.mjs';
+
+function temporaryFixture(t,prefix){const parent=resolve(tmpdir()),root=mkdtempSync(join(parent,prefix));t.after(()=>{assert.equal(dirname(resolve(root)),parent);rmSync(root,{recursive:true,force:true});});return root;}
 
 const sha='a'.repeat(64),toolsSource='b'.repeat(40);
 const manifest={schemaVersion:1,appSource:APP_SOURCE,fixtureOnly:true,nativeAcceptance:false,requiredSignerVerification:true,changedMembers:['assets/public/index.html'],variants:{A:{path:'/synthetic/product.apk',apkSha256:sha},B:{path:'/synthetic/control.apk',apkSha256:sha}}};
@@ -73,7 +75,7 @@ function procStat(pid,name,startTicks='12345'){
 }
 
 test('actual startOwnedTrace v5 producer gives the one-shot a compatible owned start receipt',async t=>{
-  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-v5-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const root=temporaryFixture(t,'sogrim-abba-v5-');
   const proc=join(root,'proc'),processDir=join(proc,'3499');mkdirSync(processDir,{recursive:true});
   writeFileSync(join(processDir,'cmdline'),['/sdk/emulator/emulator','-avd','sogrim_ci_diagnostic_1','-port','5582',''].join('\0'));
   writeFileSync(join(processDir,'stat'),procStat(3499,'qemu-system-x86'));
@@ -149,7 +151,7 @@ test('stopped, stale or capped v5 host collection is a safety stop',()=>{
 });
 
 function trialBoundary(t,{loseOwner=false,stopCollector=false,failInstall=false}={}){
-  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-owner-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const root=temporaryFixture(t,'sogrim-abba-owner-');
   const proc=join(root,'proc'),processDir=join(proc,'3499');mkdirSync(processDir,{recursive:true});
   const command=['/sdk/emulator/emulator','-avd',receipts.avd,'-port','5582','-no-window','-no-snapshot','-gpu','swiftshader','-feature','GLDirectMem,HasSharedSlotsHostMemoryAllocator','-memory','4096','-cores','2'];
   writeFileSync(join(processDir,'cmdline'),[...command,''].join('\0'));writeFileSync(join(processDir,'stat'),procStat(3499,'qemu-system-x86'));
@@ -239,7 +241,7 @@ test('control is static fixture-only HTML and the exact diagnostic branch disabl
 });
 
 test('real APK member audit accepts only the reviewed index and exact signature metadata delta',t=>{
-  const root=mkdtempSync(join(tmpdir(),'sogrim-abba-apk-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  const root=temporaryFixture(t,'sogrim-abba-apk-');
   const python=process.env.PYTHON3_PATH||'python3';
   const indexPath=new URL('../scripts/qa/android-native-isolated/diagnostic/control-index.html',import.meta.url);
   const control=readFileSync(indexPath,'utf8'),fixturePath=join(root,'reviewed-control.html');writeFileSync(fixturePath,control);

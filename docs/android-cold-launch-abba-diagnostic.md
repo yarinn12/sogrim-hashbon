@@ -94,3 +94,18 @@ No production account, keys, signing/upload credential, network access,
 deployment, store action or paid service is needed. This local branch is a
 review artifact; no CI was run for the one-shot and no Android device result is
 claimed here.
+
+## Bounded CI wrapper
+
+The separate `android-cold-launch-abba-20261015.yml` workflow accepts only the
+first push run and first attempt on `codex/android-cold-launch-abba-20261015`
+in this repository. It pins the app checkout to 59b and records the separate
+actual tools commit/tree. It retains the existing SDK, renderer, guest
+resources and 45-minute job bound. Its 12-minute trial command is followed by
+always-run owned trace finalization and the original ANR diagnostics. The
+launch owner receipt is created before trace startup and checked before any
+final guest diagnostics or emulator termination. Missing ownership remains
+unconfirmed; another process or AVD is never adopted. Original APKs, trace,
+logs and trial records are retained for review for 14 days. This workflow
+cannot approve a release, sign a store package, or upload one. The ordinary
+Native acceptance workflow and its gates remain unchanged.
