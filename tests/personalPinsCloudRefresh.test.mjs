@@ -21,6 +21,7 @@ test('live refresh awaits the delivered expected snapshot and complete body',asy
 test('metadata, old revisions, wrong accounts and writes cannot acknowledge incoming state',async()=>{
  const f=fixture();const pending=refreshPersonalPinsSnapshot(f.page,options);
  assert.equal(await f.matches(),true);
+ assert.equal(await f.matches(url,'GET',[{updated_at:options.updatedAt,state:{events:[]}}]),true,'the real full-state projection omits id; the URL still binds the account space');
  for(const [href,method,payload] of [[url,'GET',[{id:options.space,updated_at:options.updatedAt}]],
   [url,'GET',[{...f.rows[0],updated_at:'old'}]],[url,'GET',[{...f.rows[0],id:'other'}]],
   [url.replace(options.origin,'https://other.example'),'GET',f.rows],[url,'PATCH',f.rows],

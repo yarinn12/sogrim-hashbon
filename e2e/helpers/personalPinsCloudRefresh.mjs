@@ -7,7 +7,7 @@ export async function refreshPersonalPinsSnapshot(page, { origin, space, updated
         url.searchParams.get("id") !== `eq.${space}` || response.request().method() !== "GET") return false;
     if (!response.ok()) throw new Error(`Synthetic account snapshot returned ${response.status()}`);
     const rows = await response.json();
-    return Array.isArray(rows) && rows.some(row => row.id === space && row.updated_at === updatedAt &&
+    return Array.isArray(rows) && rows.some(row => (row.id === undefined || row.id === space) && row.updated_at === updatedAt &&
       row.state && typeof row.state === "object" && Array.isArray(row.state.events));
   });
   const [response] = await Promise.all([snapshot, page.bringToFront()]);
