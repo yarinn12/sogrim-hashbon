@@ -44,6 +44,7 @@ cleanup() {
   result=$?
   trap - EXIT
   cleanup_status=0
+  emulator_wait_status=-1
   if [[ -s "$out/emulator.pid" && -s "$out/emulator-owner.json" ]]; then
     if owner_valid; then
       export ANDROID_QA_EMULATOR_PID="$(cat "$out/emulator.pid")"
@@ -68,7 +69,14 @@ cleanup() {
           if ! kill -0 "$emulator_pid" 2>/dev/null; then break; fi
           sleep 1
         done
-        if kill -0 "$emulator_pid" 2>/dev/null; then cleanup_status=1; else wait "$emulator_pid" || true; fi
+        if kill -0 "$emulator_pid" 2>/dev/null; then
+          cleanup_status=1
+        elif wait "$emulator_pid"; then
+          emulator_wait_status=0
+        else
+          emulator_wait_status=$?
+          cleanup_status=1
+        fi
       fi
     else
       cleanup_status=1
@@ -77,13 +85,15 @@ cleanup() {
     # No verified start-tick identity: preserve failure, never kill by a guessed PID.
     cleanup_status=1
   fi
-  printf '{"arm":"%s","index":%s,"exitCode":%s,"cleanupExitCode":%s,"nativeAcceptance":false}\n' "$arm" "$index" "$result" "$cleanup_status" > "$out/wrapper-exit.json"
-  python3 - <<'PY'
+  manifest_status=0
+  python3 - <<'PY' 2> "$out/wrapper-manifest.stderr.log" || manifest_status=$?
 import pathlib,hashlib,json
 root=pathlib.Path('artifacts/android-native-isolated')
 files=[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
-(root/'wrapper-final-manifest.json').write_text(json.dumps({'files':files,'excludes':['wrapper-final-manifest.json'],'nativeAcceptance':False},indent=2))
+(root/'wrapper-final-manifest.json').write_text(json.dumps({'files':files,'excludes':['wrapper-final-manifest.json','wrapper-exit.json'],'nativeAcceptance':False},indent=2))
 PY
+  if [[ "$manifest_status" != 0 ]]; then cleanup_status=1; fi
+  printf '{"arm":"%s","index":%s,"exitCode":%s,"cleanupExitCode":%s,"emulatorWaitExitCode":%s,"manifestExitCode":%s,"nativeAcceptance":false}\n' "$arm" "$index" "$result" "$cleanup_status" "$emulator_wait_status" "$manifest_status" > "$out/wrapper-exit.json"
   if [[ -e "$destination" ]]; then exit 1; fi
   mv "$out" "$destination"
   if [[ "$cleanup_status" != 0 ]]; then exit 1; fi
