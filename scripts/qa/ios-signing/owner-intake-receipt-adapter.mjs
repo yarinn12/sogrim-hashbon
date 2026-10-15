@@ -147,7 +147,8 @@ function sourceProof(r, metadataBytes) {
     assert.ok(Array.isArray(c.jobs) && c.jobs.length > 0);
     assert.equal(new Set(c.jobs.map(j => numericId(j.id))).size, c.jobs.length);
     for (const j of c.jobs) { assert.equal(j.source, P.sourceSha); assert.equal(j.conclusion, 'success'); }
-    const names = c.path === '.github/workflows/qa.yml' ? ['unit', 'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
+    const names = c.path === '.github/workflows/qa.yml' ? ['unit', 'cross-platform-shard-1', 'cross-platform-shard-2',
+      'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
       ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
       'ios-native / native-parity', 'android-native / native-parity', 'mobile-iphone-large-text-shard-1',
       'mobile-iphone-large-text-shard-2', 'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2'] :

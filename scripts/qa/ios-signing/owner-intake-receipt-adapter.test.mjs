@@ -165,7 +165,8 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
       phase: 'before-upload', version: p.version, build: p.build, workflowCommit: p.intakeToolSha,
       buildRunId: p.intakeRunId, buildRunAttempt: '1', appleUploadPerformed: false, sourceInputs,
       packageSha256: sourceInputs['package.json'], packageLockSha256: sourceInputs['package-lock.json'], checkedAt: time(1000),
-      ci: [[p.qaRunId, '.github/workflows/qa.yml', ['unit', 'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
+      ci: [[p.qaRunId, '.github/workflows/qa.yml', ['unit', 'cross-platform-shard-1', 'cross-platform-shard-2',
+          'cross-platform', 'two-client-sync', 'unit-and-mobile', 'backup-runtime',
           ...['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text', 'reflow-200'].map(p => 'mobile (' + p + ')'),
           'ios-native / native-parity', 'android-native / native-parity', 'mobile-iphone-large-text-shard-1',
           'mobile-iphone-large-text-shard-2', 'mobile-iphone-webkit-shard-1', 'mobile-iphone-webkit-shard-2']],
@@ -193,6 +194,7 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
   });
   await check('complete synthetic evidence maps to canonical owner bytes with no193 assumption', async () => {
     const f = await fixture(); const out = f.mod.adaptIntakeToOwnerReceipt(f.files), again = f.mod.adaptIntakeToOwnerReceipt(f.files);
+    assert.equal(f.docs['source-before-upload.json'].ci[0].jobs.length, 18);
     assert.ok(out.receiptBytes.equals(again.receiptBytes)); assert.equal(hash(out.receiptBytes), out.receiptSha256);
     assert.equal(out.previousBuildId, B); assert.deepEqual(out.baselineBuildIds, [B, C]);
     assert.ok(!JSON.stringify(f.docs['intake-postflight.json']).includes('193'));
@@ -236,6 +238,12 @@ export async function runAdapterControls(loadAdapter, unboundAdapter, loadCore, 
     ['rebuilt IPA', ({docs}) => docs['original-artifact-before-upload.json'].rebuilt = true],
     ['skipped source job', ({docs}) => docs['source-before-upload.json'].ci[0].jobs[0].conclusion = 'skipped'],
     ['missing QA lane', ({docs}) => docs['source-before-upload.json'].ci[0].jobs.pop()],
+    ['missing cross-platform-shard-1', ({docs}) => {
+      docs['source-before-upload.json'].ci[0].jobs = docs['source-before-upload.json'].ci[0].jobs.filter(j => j.name !== 'cross-platform-shard-1');
+    }],
+    ['missing cross-platform-shard-2', ({docs}) => {
+      docs['source-before-upload.json'].ci[0].jobs = docs['source-before-upload.json'].ci[0].jobs.filter(j => j.name !== 'cross-platform-shard-2');
+    }],
     ['second source CI attempt', ({docs}) => docs['source-before-upload.json'].ci[0].attempt = 2],
     ['wrong intake tool in source receipt', ({docs}) => docs['source-before-upload.json'].workflowCommit = '0'.repeat(40)],
     ['wrong194 completion identity', ({docs}) => docs['testflight-completion.json'].buildId = C],
@@ -306,5 +314,5 @@ test('owner intake adapter synthetic controls', async () => {
     ADAPTER_PINS
   );
   assert.equal(report.failed, 0, JSON.stringify(report.failures));
-  assert.ok(report.total >= 40);
+  assert.equal(report.total, 64);
 });
