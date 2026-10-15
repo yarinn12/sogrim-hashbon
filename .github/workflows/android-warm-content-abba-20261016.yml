@@ -76,6 +76,9 @@ jobs:
           "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-native-isolated/sdk.log 2>&1
           test ! -e "$ANDROID_AVD_HOME"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME"
+      - name: Install and prove emulator runtime dependencies before version or input proofs
+        working-directory: app
+        run: bash "$GITHUB_WORKSPACE/scripts/qa/android-native-isolated/warm-content/prepare-runtime-deps.sh"
       - name: Build and audit one actual Debug APK
         working-directory: app
         run: |
