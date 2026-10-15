@@ -36,7 +36,7 @@ test('actual sampleOwnedHost retains scheduler counters for unnamed and nonmatch
 });
 
 test('two complete real inventories prove scheduler coverage without claiming renderer roles',t=>{
-  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererNames:[],rendererRoleProven:false},prior=new Map();
+  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererNames:[],rendererRoleProven:false},prior=new Map();
   recordHostInventory(summary,sample,prior);recordHostInventory(summary,sampleOwnedHost(f.options,{procRoot:f.root}),prior);
   assert.equal(requireHostInventoryCoverage(summary),true);assert.equal(summary.nonMainTasksMeasured,6);assert.equal(summary.rendererRoleProven,false);
 });
@@ -54,10 +54,10 @@ for(const kind of ['permission','missing','malformed'])test('required scheduler 
   assert.ok(sample.unavailable.some(g=>g.tid===3450&&g.field==='schedstat'));
   assert.throws(()=>recordHostInventory({owner:sample.owner},sample),/incomplete/);
 });
-test('natural task exit during read records the known identity and incomplete coverage',t=>{
+test('natural task exit during read retains a known partial departure with terminal absence',t=>{
   const f=procFixture(t),target=join(f.taskRoot,'3450','schedstat');let exited=false;
   const read=(p,...args)=>{if(p===target&&!exited){exited=true;rmSync(dirname(target),{recursive:true});}return readFileSync(p,...args);};
-  const sample=sampleOwnedHost(f.options,{procRoot:f.root,read});assert.equal(sample.inventory.coverageComplete,false);
+  const sample=sampleOwnedHost(f.options,{procRoot:f.root,read});assert.equal(sample.inventory.coverageComplete,true);assert.deepEqual(sample.coverage.departedPartial,[3450]);
   assert.ok(sample.lifecycle.some(g=>g.tid===3450&&g.kind==='exited-during-sample'&&g.startTicks==='20000'));
   assert.equal(sample.threads.find(t=>t.pid===3450).runNs,undefined);
 });
@@ -69,11 +69,11 @@ test('new tasks between inventory endpoints are recorded without a guessed start
   const sample=sampleOwnedHost(f.options,{procRoot:f.root,list});assert.equal(sample.inventory.coverageComplete,false);
   assert.ok(sample.lifecycle.some(g=>g.tid===3480&&g.kind==='born-during-sample'&&g.startTicks===null));
 });
-test('TID reuse during a counter read discards unverified counters',t=>{
+test('TID reuse retains actual raw counters as unverified and rejects coverage',t=>{
   const f=procFixture(t),target=join(f.taskRoot,'3450','stat');let reads=0;
   const read=(p,...args)=>{if(p===target&&++reads===2)writeFileSync(target,procStat(3450,'','99999'));return readFileSync(p,...args);};
   const sample=sampleOwnedHost(f.options,{procRoot:f.root,read});assert.equal(sample.inventory.coverageComplete,false);
-  assert.ok(sample.lifecycle.some(g=>g.kind==='tid-reused-during-read'));assert.equal(sample.threads.find(t=>t.pid===3450).runNs,undefined);
+  assert.ok(sample.lifecycle.some(g=>g.kind==='tid-reused-during-read'));assert.equal(sample.threads.find(t=>t.pid===3450).runNs,'501');assert.equal(sample.threads.find(t=>t.pid===3450).countersVerified,false);
 });
 test('owner reuse blocks all evidence acceptance and reads remain inside the owned proc tree',t=>{
   const f=procFixture(t),target=join(f.processDir,'stat'),paths=[];let checks=0;
@@ -94,8 +94,10 @@ test('CPU tick regression also invalidates an unchanged TID lifetime',t=>{
   assert.throws(()=>recordHostInventory(summary,sampleOwnedHost(f.options,{procRoot:f.root}),prior),/counter decreased/);
 });
 test('incomplete summary and main-only samples cannot replace worker scheduling coverage',()=>{
+  const valid={coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,samples:2,coverageSamples:2,survivorsVerified:4,nonMainSurvivorsVerified:2,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:4,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4};
+  assert.equal(requireHostInventoryCoverage(valid),true);
   for(const d of [{samples:1,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:2,nonMainTasksMeasured:0},{samples:2,coverageSamples:2,nonMainTasksMeasured:2,capReached:true}])
-    assert.throws(()=>requireHostInventoryCoverage({coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:d.coverageSamples+d.nonMainTasksMeasured,...d}),/coverage is missing/);
+    assert.throws(()=>requireHostInventoryCoverage({...valid,...d}),/coverage is missing/);
 });
 test('a partial or duplicated measured task set cannot claim a complete inventory',t=>{
   const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root});

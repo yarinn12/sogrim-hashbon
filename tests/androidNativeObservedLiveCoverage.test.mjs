@@ -39,14 +39,14 @@ function replayQA466(changes={}){
   };
   const list=path=>{
     assert.equal(path,taskRoot);lists++;
-    const ids=[...(lists===1?recorded.inventory.before:recorded.inventory.after)];
+    const ids=[...(lists===1&&!changes.followup?recorded.inventory.before:recorded.inventory.after)];
     if(lists===2){if(changes.presentAfter)ids.push(4622);if(changes.newAfter)ids.push(99999);const exited=changes.exitAfterIdentity||changes.exitAfterCounters;if(exited)ids.splice(ids.indexOf(exited),1);}
     return ids.sort((a,b)=>a-b).map(String);
   };
   const sample=sampleOwnedHost(options,{procRoot,read,list,expectedStartTicks:owner.startTicks});
   return{sample,reads,lists,taskRoot};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
+function summary(owner){return{owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
 
 for(const value of [true,undefined,'false']){
   const label=value===undefined?'undefined':JSON.stringify(value);
@@ -72,16 +72,16 @@ test('QA466 sample300 retains 188 real counters and explicitly unknown pre-ident
   assert.equal(recorded.inventory.before.length,189);assert.equal(recorded.inventory.after.length,188);
   const {sample,reads,lists,taskRoot}=replayQA466();
   assert.equal(sample.inventory.coverageComplete,true,'only initial ENOENT plus final absence is an explicit unobserved exit');
-  assert.equal(lists,3);assert.equal(reads.get(join(taskRoot,'4622','stat')),1,'one attempt, no retry');
+  assert.equal(lists,4);assert.equal(reads.get(join(taskRoot,'4622','stat')),1,'one attempt, no retry');
   assert.equal(sample.threads.length,188);assert.deepEqual(sample.inventory.before,recorded.inventory.before);assert.deepEqual(sample.inventory.afterFinal,recorded.inventory.after);
   assert.deepEqual(sample.threads,recorded.threads,'all retained counters come from actual records');
   assert.equal(sample.unavailable.find(g=>g.tid===4622).code,'ENOENT');
   assert.deepEqual(sample.lifecycle,[{tid:4622,kind:'unobserved-exit',startTicks:null,identity:null,counters:null}]);
-  assert.equal(sample.inventory.coverageVersion,3);assert.equal(sample.inventory.scope,'observed-live-owned-host-tasks');
+  assert.equal(sample.inventory.coverageVersion,4);assert.equal(sample.inventory.scope,'observed-terminal-survivors');
   assert.equal(sample.inventory.atomic,false);assert.equal(sample.inventory.lifetimeCoverageProven,false);assert.equal(sample.inventory.rendererRoleProven,false);
-  const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,sample,prior);
-  assert.equal(receipt.coverageSamples,2);assert.equal(receipt.nonMainTasksMeasured,374);assert.equal(receipt.unobservedExits,2);assert.equal(receipt.samplesWithUnobservedExits,2);
-  assert.equal(prior.size,188);assert.ok(![...prior.keys()].some(key=>key.includes(':4622:')));
+  const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,replayQA466({followup:true}).sample,prior);
+  assert.equal(receipt.coverageSamples,2);assert.equal(receipt.nonMainTasksMeasured,374);assert.equal(receipt.unobservedExits,1);assert.equal(receipt.samplesWithUnobservedExits,1);
+  assert.equal(prior.size,189);assert.deepEqual(prior.get('3286:29104:4622:unknown'),{closed:true});assert.ok(![...prior.keys()].some(key=>key.includes(':4622:')&&!key.endsWith(':unknown')));
   assert.equal(requireHostInventoryCoverage(receipt),true);
 });
 
@@ -92,7 +92,7 @@ for(const changes of [{presentAfter:true},{initialError:'EACCES'},{initialError:
     if(changes.exitAfterCounters)assert.equal(sample.threads.find(t=>t.pid===3291).countersVerified,true,'even a fully read known identity may not use the pre-identity exception');
   }
   // The recorder independently checks the retained evidence, even if a caller
-  // falsely labels the sample complete. No existing negative is reclassified.
+  // falsely labels the sample complete. Terminal-present gaps, reuse and invalid observations remain failures.
   sample.inventory.coverageComplete=true;
   assert.throws(()=>recordHostInventory({owner:sample.owner},sample),/incomplete/);
 });

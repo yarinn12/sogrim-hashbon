@@ -83,7 +83,7 @@ function fixture(t){
     throw new Error('Unexpected boundary command '+JSON.stringify(command));
   }
   const deps={run,platform:'linux',procRoot:proc,launchHost:async()=>({pid:99,ready:{boundaryOnly:true}})};
-  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:3,coverageContract:'observed-live-owned-host-tasks-v3',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:2,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4,rendererRoleProven:false,boundaryOnly:true};};
+  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:2,survivorsVerified:4,nonMainSurvivorsVerified:2,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:4,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4,rendererRoleProven:false,boundaryOnly:true};};
   return{root,proc,processDir,options,state,calls,run,deps,stopHost};
 }
 
@@ -187,11 +187,11 @@ test('successful scoped start/finalize keeps ownership, raw command outputs and 
   assert.notEqual(start.commands[0].output.path,finish.commands[0].output.path);assert.ok(start.commands[0].output.sha256);
 });
 
-test('finisher requires the versioned observed-live contract and explicit exception accounting',async t=>{
-  for(const changes of [{coverageVersion:1},{coverageVersion:2},{coverageContract:'observed-live-owned-host-tasks-v2'},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3},{newbornTasksMeasured:undefined},{finalIdentitiesVerified:undefined},{finalIdentitiesVerified:3}]){
+test('finisher requires the versioned terminal-survivor contract and explicit quality accounting',async t=>{
+  for(const changes of [{coverageVersion:3},{survivorsVerified:undefined},{nonMainSurvivorsVerified:0},{departedVerified:undefined},{departedPartial:undefined},{unresolvedGaps:1},{counterRecordsVerified:undefined},{coverageVersion:1},{coverageVersion:2},{coverageContract:'observed-live-owned-host-tasks-v2'},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3},{newbornTasksMeasured:undefined},{finalIdentitiesVerified:undefined},{finalIdentitiesVerified:3}]){
     const f=fixture(t);await startOwnedTrace(f.options,f.deps);
     const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),...changes})});
-    assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Observed-live.*coverage is missing/);
+    assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Terminal survivor.*coverage is missing/);
     assert.equal(finish.writerClose.verified,true);assert.ok(finish.trace.sha256);assert.equal(finish.nativeAcceptance,false);
   }
   const f=fixture(t);await startOwnedTrace(f.options,f.deps);

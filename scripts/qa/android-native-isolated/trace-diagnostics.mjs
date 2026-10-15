@@ -3,9 +3,11 @@ import {mkdirSync,readFileSync,writeFileSync,appendFileSync,readdirSync,existsSy
 import {resolve,join,basename} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
+import {TERMINAL_HOST_CONTRACT,classifyTerminalSurvivors,recordTerminalHostInventory as recordHostInventory,requireTerminalHostCoverage as requireHostInventoryCoverage} from './terminal-survivor-coverage.mjs';
+export {recordHostInventory,requireHostInventoryCoverage};
 
 const target='com.sogrimhashbon.app.debug',hostIntervalMs=1000,maxHostBytes=64*1024*1024,maxTraceBytes=512*1024*1024;
-const hostCoverageVersion=3,hostCoverageScope='observed-live-owned-host-tasks',hostCoverageContract='observed-live-owned-host-tasks-v3';
+const {version:hostCoverageVersion,scope:hostCoverageScope,name:hostCoverageContract}=TERMINAL_HOST_CONTRACT;
 const now=()=>new Date().toISOString(),delay=ms=>new Promise(done=>setTimeout(done,ms));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 // v51.2 intentionally prints --help to stderr and returns 1 (PrintUsage then
@@ -46,31 +48,33 @@ export function sampleOwnedHost(options,deps={}){
     if(ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length||!ids.includes(owner.pid))throw new Error('Malformed owned host task inventory');
     return ids;
   };
-  const before=inventory(),threads=[],unavailable=[],lifecycle=[],observedNames=[],finalIdentities=[];
+  const before=inventory(),threads=[],unavailable=[],lifecycle=[],observedNames=[],finalIdentities=[],identitiesAfterCounters=[];
   function sampleTask(tid,phase){
-    threadsScanned++;const task=join(taskRoot,String(tid));let initial;
+    threadsScanned++;const task=join(taskRoot,String(tid));let initial,rawInitial;
     try{
-      initial=parseProcStat(read(join(task,'stat'),'utf8'));
+      rawInitial=read(join(task,'stat'),'utf8');initial=parseProcStat(rawInitial);
       if(initial.pid!==tid||tid===owner.pid&&initial.startTicks!==owner.startTicks)throw new Error('Owned task PID/start identity mismatch');
       observedNames.push(initial.name);
-    }catch(error){unavailable.push({tid,field:'stat',phase,code:error.code??null,error:error.message});return;}
+    }catch(error){unavailable.push({tid,field:'stat',phase,code:error.code??null,error:error.message,...(rawInitial===undefined?{}:{raw:rawInitial})});return;}
     const record={...initial,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,countersVerified:false};
-    let scheduling,wchan;
+    let scheduling,wchan,rawScheduling,rawWchan;
     try{
-      scheduling=read(join(task,'schedstat'),'utf8').trim().split(/\s+/);
+      rawScheduling=read(join(task,'schedstat'),'utf8');scheduling=rawScheduling.trim().split(/\s+/);
       if(scheduling.length!==3||scheduling.some(x=>!/^\d+$/.test(x)))throw new Error('Malformed schedstat');
-    }catch(error){scheduling=undefined;unavailable.push({tid,startTicks:initial.startTicks,field:'schedstat',code:error.code??null,error:error.message});}
-    try{wchan=read(join(task,'wchan'),'utf8').trim();if(!wchan)throw new Error('Kernel wait channel is empty');if(wchan==='0')unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',code:'ZERO_WCHAN',error:'Kernel wait channel unavailable (0)'});}
-    catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',code:error.code??null,error:error.message});}
+      Object.assign(record,{runNs:scheduling[0],runQueueWaitNs:scheduling[1],timeslices:scheduling[2]});
+    }catch(error){scheduling=undefined;unavailable.push({tid,startTicks:initial.startTicks,field:'schedstat',phase,code:error.code??null,error:error.message,...(rawScheduling===undefined?{}:{raw:rawScheduling})});}
+    try{rawWchan=read(join(task,'wchan'),'utf8');wchan=rawWchan.trim();record.wchan=wchan;if(!wchan)throw new Error('Kernel wait channel is empty');if(wchan==='0')unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',phase,code:'ZERO_WCHAN',error:'Kernel wait channel unavailable (0)'});}
+    catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'wchan',phase,code:error.code??null,error:error.message,...(rawWchan===undefined?{}:{raw:rawWchan})});}
+    let rawAfter;
     try{
-      const after=parseProcStat(read(join(task,'stat'),'utf8'));
+      rawAfter=read(join(task,'stat'),'utf8');const after=parseProcStat(rawAfter);
+      identitiesAfterCounters.push({tid,pid:after.pid,startTicks:after.startTicks});
       if(after.pid!==tid||after.startTicks!==initial.startTicks){
         lifecycle.push({tid,kind:'tid-reused-during-read',beforeStartTicks:initial.startTicks,afterStartTicks:after.startTicks});
         throw new Error('Owned task identity changed during scheduler read');
       }
-      if(scheduling){Object.assign(record,{runNs:scheduling[0],runQueueWaitNs:scheduling[1],timeslices:scheduling[2],countersVerified:true});}
-      if(wchan)record.wchan=wchan;
-    }catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'identity-after',code:error.code??null,error:error.message});}
+      if(scheduling)record.countersVerified=true;
+    }catch(error){unavailable.push({tid,startTicks:initial.startTicks,field:'identity-after',phase,code:error.code??null,error:error.message,...(rawAfter===undefined?{}:{raw:rawAfter})});}
     threads.push(record);
   }
   for(const tid of before)sampleTask(tid,'initial');
@@ -80,9 +84,9 @@ export function sampleOwnedHost(options,deps={}){
   for(const tid of newborn)sampleTask(tid,'newborn');
   const afterFinal=inventory();let finalIdentityReadCount=0;
   for(const tid of afterFinal){
-    finalIdentityReadCount++;
+    finalIdentityReadCount++;let rawFinal;
     try{
-      const identity=parseProcIdentity(read(join(taskRoot,String(tid),'stat'),'utf8'));
+      rawFinal=read(join(taskRoot,String(tid),'stat'),'utf8');const identity=parseProcIdentity(rawFinal);
       const measured=threads.find(t=>t.pid===tid),record={...identity,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,identityVerified:false};
       finalIdentities.push(record);
       if(identity.pid!==tid||measured&&identity.startTicks!==measured.startTicks){
@@ -91,8 +95,9 @@ export function sampleOwnedHost(options,deps={}){
       }
       if(!measured)throw new Error('Final task has no measured counter identity');
       record.identityVerified=true;
-    }catch(error){unavailable.push({tid,field:'identity-final',code:error.code??null,error:error.message});}
+    }catch(error){unavailable.push({tid,field:'identity-final',phase:'closing',code:error.code??null,error:error.message,...(rawFinal===undefined?{}:{raw:rawFinal})});}
   }
+  const terminal=inventory();
   for(const tid of before)if(!afterDiscovery.includes(tid)||!afterFinal.includes(tid)){
     const thread=threads.find(t=>t.pid===tid),gap=unavailable.find(g=>g.tid===tid&&g.field==='stat'&&g.phase==='initial'&&g.code==='ENOENT');
     if(!thread&&gap&&!afterDiscovery.includes(tid)&&!afterFinal.includes(tid))lifecycle.push({tid,kind:'unobserved-exit',startTicks:null,identity:null,counters:null});
@@ -105,73 +110,15 @@ export function sampleOwnedHost(options,deps={}){
   }
   for(const tid of afterFinal)if(!afterDiscovery.includes(tid))lifecycle.push({tid,kind:'born-during-sample',phase:'final',startTicks:null});
   assertHostOwner(options,{...deps,read,expectedStartTicks:owner.startTicks});
-  // Proc inventories are non-atomic. Only a first stat ENOENT with final
-  // absence has no observed identity at all in this sample. Keep it explicitly
-  // unknown; this contract proves neither atomic nor full-lifetime coverage.
-  const sample={atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,finalIdentities,
-    inventory:{before,afterDiscovery,afterFinal,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,rendererRoleProven:false},
+  // This fourth observation confirms terminal absence, not a whole lifetime.
+  // Retain all counter/identity observations and read errors for classification.
+  const sample={atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,finalIdentities,identitiesAfterCounters,
+    inventory:{before,afterDiscovery,afterFinal,terminal,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,rendererRoleProven:false},
     readCount,threadsScanned,selectedThreads:threads.length,finalIdentityReadCount,sampleDurationMs:0};
-  sample.inventory.coverageComplete=observedLiveInventoryComplete(sample);
+  sample.coverage=classifyTerminalSurvivors(sample);
+  sample.inventory.coverageComplete=sample.coverage.unresolvedGaps.length===0;
   sample.sampleDurationMs=performance.now()-begin;
   return sample;
-}
-
-function observedLiveInventoryComplete(sample){
-  const inventory=sample.inventory;
-  if(inventory?.coverageVersion!==hostCoverageVersion||inventory.coverageContract!==hostCoverageContract||inventory.scope!==hostCoverageScope||inventory.atomic!==false||inventory.lifetimeCoverageProven!==false||inventory.rendererRoleProven!==false)return false;
-  const{before,afterDiscovery,afterFinal}=inventory;
-  const validIds=ids=>Array.isArray(ids)&&ids.includes(sample.owner.pid)&&ids.every((id,index)=>Number.isSafeInteger(id)&&id>0&&(index===0||id>ids[index-1]));
-  if(!validIds(before)||!validIds(afterDiscovery)||!validIds(afterFinal)||!Array.isArray(sample.threads)||!Array.isArray(sample.lifecycle)||!Array.isArray(sample.unavailable)||!Array.isArray(sample.finalIdentities))return false;
-  const beforeSet=new Set(before),discoverySet=new Set(afterDiscovery),finalSet=new Set(afterFinal),ids=sample.threads.map(t=>t.pid).sort((a,b)=>a-b);
-  const newborn=afterDiscovery.filter(tid=>!beforeSet.has(tid));
-  if(afterFinal.some(tid=>!discoverySet.has(tid))||newborn.some(tid=>!finalSet.has(tid))||JSON.stringify(ids)!==JSON.stringify(afterFinal)||!sample.threads.every(t=>t.countersVerified))return false;
-  if(before.some(tid=>discoverySet.has(tid)!==finalSet.has(tid)))return false;
-  if(sample.finalIdentityReadCount!==afterFinal.length||JSON.stringify(sample.finalIdentities.map(t=>t.pid).sort((a,b)=>a-b))!==JSON.stringify(afterFinal))return false;
-  if(!sample.finalIdentities.every(identity=>identity.identityVerified===true&&identity.emulatorPid===sample.owner.pid&&identity.emulatorStartTicks===sample.owner.startTicks&&identity.startTicks===sample.threads.find(t=>t.pid===identity.pid)?.startTicks))return false;
-  const exits=before.filter(tid=>!discoverySet.has(tid)&&!finalSet.has(tid)),gaps=sample.unavailable.filter(g=>g.field!=='wchan'||g.code!=='ZERO_WCHAN');
-  if(sample.lifecycle.length!==exits.length+newborn.length||gaps.length!==exits.length)return false;
-  const birthsVerified=newborn.every(tid=>{
-    const events=sample.lifecycle.filter(event=>event.tid===tid);
-    return events.length===1&&events[0].kind==='born-during-sample'&&events[0].phase==='discovery'&&events[0].startTicks===sample.threads.find(t=>t.pid===tid)?.startTicks;
-  });
-  return birthsVerified&&exits.every(tid=>{
-    const events=sample.lifecycle.filter(event=>event.tid===tid),missing=gaps.filter(gap=>gap.tid===tid);
-    return events.length===1&&events[0].kind==='unobserved-exit'&&events[0].startTicks===null&&events[0].identity===null&&events[0].counters===null&&
-      missing.length===1&&missing[0].field==='stat'&&missing[0].phase==='initial'&&missing[0].code==='ENOENT'&&missing[0].startTicks===undefined;
-  });
-}
-
-export function recordHostInventory(summary,sample,priorCounters=new Map()){
-  if(sample.owner.pid!==summary.owner.pid||sample.owner.startTicks!==summary.owner.startTicks)throw new Error('Host sample owner changed');
-  if(!sample.inventory?.coverageComplete||!observedLiveInventoryComplete(sample))
-    throw new Error('Owned host task inventory/counter coverage is incomplete');
-  const ids=sample.threads.map(t=>t.pid).sort((a,b)=>a-b);
-  if(JSON.stringify(ids)!==JSON.stringify(sample.inventory.afterFinal)||new Set(ids).size!==ids.length)throw new Error('Host scheduler inventory does not match actual sampled tasks');
-  for(const t of sample.threads){
-    if(!t.countersVerified||!Number.isSafeInteger(t.pid)||t.pid<1||t.emulatorPid!==summary.owner.pid||t.emulatorStartTicks!==summary.owner.startTicks||!/^\d+$/.test(t.startTicks)||
-       ['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'].some(k=>!/^\d+$/.test(t[k]??'')))throw new Error('Host task scheduler identity/counters are missing');
-    const key=summary.owner.pid+':'+summary.owner.startTicks+':'+t.pid+':'+t.startTicks,previous=priorCounters.get(key);
-    const fields=['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'];
-    if(previous&&fields.some(k=>BigInt(t[k])<BigInt(previous[k])))throw new Error('Owned host task scheduler counter decreased');
-    priorCounters.set(key,Object.fromEntries(fields.map(k=>[k,t[k]])));
-  }
-  summary.coverageSamples=(summary.coverageSamples||0)+1;
-  summary.nonMainTasksMeasured=(summary.nonMainTasksMeasured||0)+sample.threads.filter(t=>t.pid!==summary.owner.pid).length;
-  const exits=sample.lifecycle.filter(event=>event.kind==='unobserved-exit').length;
-  summary.unobservedExits=(summary.unobservedExits||0)+exits;
-  summary.samplesWithUnobservedExits=(summary.samplesWithUnobservedExits||0)+(exits?1:0);
-  summary.newbornTasksMeasured=(summary.newbornTasksMeasured||0)+sample.lifecycle.filter(event=>event.kind==='born-during-sample').length;
-  summary.finalIdentitiesVerified=(summary.finalIdentitiesVerified||0)+sample.finalIdentities.length;
-}
-
-export function requireHostInventoryCoverage(summary){
-  if(summary.coverageVersion!==hostCoverageVersion||summary.coverageContract!==hostCoverageContract||summary.coverageScope!==hostCoverageScope||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||summary.rendererRoleProven!==false||
-     ![summary.samples,summary.coverageSamples,summary.nonMainTasksMeasured,summary.unobservedExits,summary.samplesWithUnobservedExits,summary.newbornTasksMeasured,summary.finalIdentitiesVerified].every(Number.isSafeInteger)||
-     summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainTasksMeasured<1||summary.unobservedExits<0||summary.samplesWithUnobservedExits<0||
-     summary.samplesWithUnobservedExits>summary.samples||summary.unobservedExits<summary.samplesWithUnobservedExits||(summary.unobservedExits===0)!==(summary.samplesWithUnobservedExits===0)||
-     summary.newbornTasksMeasured<0||summary.newbornTasksMeasured>summary.nonMainTasksMeasured||summary.finalIdentitiesVerified!==summary.coverageSamples+summary.nonMainTasksMeasured||summary.capReached||summary.errors?.length)
-    throw new Error('Observed-live owned host task scheduling coverage is missing');
-  return true;
 }
 
 export function appendHostInventory(data,sample,summary){
@@ -508,7 +455,7 @@ export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options
   report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
 }
 async function watchHost(output){
-  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:0,nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
+  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:0,survivorsVerified:0,nonMainSurvivorsVerified:0,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:0,historyGaps:[],rejectedSamples:[],nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:0,rendererRoleProven:false};
   const priorCounters=new Map();
   const end=Date.now()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
   summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;
