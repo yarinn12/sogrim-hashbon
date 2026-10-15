@@ -135,6 +135,11 @@ export function verifyCrossPlatformShards({ canonicalReports, inventory, planned
         approved = ALLOWED_SCOPE_SKIPS.get(item.projectId),
         isApprovedSkip = approved?.id === item.canonicalId &&
           approved.file === item.file && approved.title === item.title;
+      if (run?.some(result => result.error != null ||
+          (result.errors !== undefined &&
+            (!Array.isArray(result.errors) || result.errors.length > 0)))) {
+        throw new Error(`${label}: reported a result error for ${key}`);
+      }
       if (isApprovedSkip) {
         if (test.expectedStatus !== "skipped" || test.status !== "skipped" ||
             run?.length !== 1 || run[0].status !== "skipped" || run[0].retry !== 0 ||

@@ -149,3 +149,20 @@ test("new skip, altered approved skip, retry, flaky and missing result fail clos
     assert.throws(() => verifyCrossPlatformShards(f));
   }
 });
+
+for (const mode of ["passed", "approved-skip"]) {
+  for (const field of ["error", "errors"]) {
+    test(`cross-platform rejects nested result ${field} in ${mode} cases`, () => {
+      const f = fixture();
+      let selected = mode === "passed" ? ordinaryTest(f.actual[1]) : undefined;
+      if (!selected) visitSpecs(f.actual[1], spec => {
+        if (!selected && spec.title === ALLOWED_SCOPE_SKIPS.get("desktop-chromium").title)
+          selected = spec.tests[0];
+      });
+      assert.ok(selected);
+      selected.results[0][field] = field === "error"
+        ? { message: "controlled result error" } : [{ message: "controlled result error" }];
+      assert.throws(() => verifyCrossPlatformShards(f), /reported a result error/);
+    });
+  }
+}

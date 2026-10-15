@@ -42,3 +42,8 @@ all/1-2/2-2 lists reproduce the grouped-ID mismatch and verify the new
 execution results; no browser suite has run on this candidate. The first full
 CI run must confirm both shards finish within their original deadlines and
 that the aggregate accepts actual browser results.
+
+A review follow-up also rejects nested result `error` values and nonempty or
+malformed `errors` arrays, including results labeled passed or approved skip.
+Four unchanged mutations failed against the earlier verifier and passed after
+the fix; the full focused workflow/inventory/release-policy set passed21/21.
