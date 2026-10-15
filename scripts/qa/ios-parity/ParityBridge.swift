@@ -20,6 +20,7 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
     private var statusRequests = 0
     private var statusCallbacks = 0
     private var statusPublications = 0
+    private var statusPublicationPolicy = StatusPublicationPolicy()
     private var statusLog: FileHandle?
     private let fixtureSha = "__FIXTURE_SHA__"
     private let fixtureTree = "__FIXTURE_TREE__"
@@ -223,13 +224,14 @@ class SogrimParityBridgeViewController: SogrimBridgeViewController, WKScriptMess
             }
             if let error = error { state["evaluationError"] = String(describing: error) }
             do {
-                let encoded = try JSONSerialization.data(withJSONObject: state, options: [.sortedKeys])
+                guard let encoded = try self.statusPublicationPolicy.candidate(for: state) else { return }
                 guard let result = String(data: encoded, encoding: .utf8) else {
                     self.observeStatus("encodingRejected"); return
                 }
                 self.status.text = result; self.status.accessibilityLabel = result
                 self.status.accessibilityIdentifier = "native-parity-state"
                 self.status.isAccessibilityElement = true
+                self.statusPublicationPolicy.didPublish(encoded)
                 self.statusPublications += 1
                 let frame = self.status.convert(self.status.bounds, to: nil)
                 self.observeStatus("published", ["identifier": self.status.accessibilityIdentifier ?? "",

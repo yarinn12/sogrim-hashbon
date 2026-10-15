@@ -12,6 +12,18 @@ from urllib.parse import urlsplit
 FIXTURES = Path(__file__).parent
 
 
+def inject_status_policy(source: str, import_line: str) -> str:
+    assert source.count(import_line) == 1
+    policy = (FIXTURES / "StatusPublicationPolicy.swift").read_text(encoding="utf8")
+    return source.replace(import_line, import_line + "\n" + policy, 1)
+
+
+def test_target_source() -> str:
+    driver = (FIXTURES / "ParityUITests.swift").read_text(encoding="utf8")
+    tests = (FIXTURES / "StatusPublicationPolicyTests.swift").read_text(encoding="utf8")
+    return inject_status_policy(driver, "import XCTest") + "\n" + tests
+
+
 def prepare(app: Path, source_sha: str) -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", source_sha)
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=app, text=True).strip() == source_sha
@@ -40,6 +52,7 @@ def prepare(app: Path, source_sha: str) -> None:
     assert "class SogrimBridgeViewController: CAPBridgeViewController" in source
     assert source.count("import AuthenticationServices") == 1
     source = source.replace("import AuthenticationServices", "import AuthenticationServices\nimport WebKit")
+    source = inject_status_policy(source, "import WebKit")
     source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree).replace("__FIXTURE_SHA__", fixture_sha).replace("__FIXTURE_TREE__", fixture_tree)
     delegate.write_text(source, encoding="utf8")
     story = app / "ios/App/App/Base.lproj/Main.storyboard"
@@ -84,7 +97,7 @@ def install_test_target(app: Path) -> None:
     content = content.replace("<Testables>", '<Testables><TestableReference skipped="NO">' + reference + '</TestableReference>')
     content = content.replace("<BuildActionEntries>", '<BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">' + reference + '</BuildActionEntry>')
     scheme.write_text(content, encoding="utf8")
-    (app / "ios/App/ParityProbeUITests.swift").write_bytes((FIXTURES / "ParityUITests.swift").read_bytes())
+    (app / "ios/App/ParityProbeUITests.swift").write_text(test_target_source(), encoding="utf8")
 
 
 CAPTURE_PHASES = ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile",

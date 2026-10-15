@@ -380,4 +380,31 @@ class AcceptanceTests(unittest.TestCase):
         self.rejects()
 
 
+class StatusPublicationWiringTests(unittest.TestCase):
+    def test_generated_app_and_test_target_use_identical_swift_policy(self):
+        policy = (validator.FIXTURES / "StatusPublicationPolicy.swift").read_text(encoding="utf8")
+        driver = (validator.FIXTURES / "ParityUITests.swift").read_text(encoding="utf8")
+        delegate = validator.inject_status_policy("import WebKit\nclass App {}", "import WebKit")
+        target = validator.test_target_source()
+        self.assertEqual(delegate.count(policy), 1)
+        self.assertEqual(target.count(policy), 1)
+        self.assertTrue(target.startswith("import XCTest\n" + policy))
+        self.assertIn(driver.removeprefix("import XCTest"), target)
+        self.assertIn("final class StatusPublicationPolicyTests", target)
+        prepare = (validator.FIXTURES / "prepare.py").read_text(encoding="utf8")
+        self.assertIn('source = inject_status_policy(source, "import WebKit")', prepare)
+        self.assertIn('write_text(test_target_source(), encoding="utf8")', prepare)
+
+    def test_capture_and_resumed_trigger_precede_label_deduplication(self):
+        bridge = (validator.FIXTURES / "ParityBridge.swift").read_text(encoding="utf8")
+        self.assertLess(bridge.index("__iosParityCaptureCurrent?.('resumed')"),
+                        bridge.index("statusPublicationPolicy.candidate(for: state)"))
+        self.assertLess(bridge.index("statusPublicationPolicy.candidate(for: state)"),
+                        bridge.index("self.status.text = result"))
+        self.assertLess(bridge.index("self.status.text = result"),
+                        bridge.index("statusPublicationPolicy.didPublish(encoded)"))
+        self.assertIn('record["native"] = nativeInfo()', bridge)
+        self.assertIn('report = nativeInfo(); report["records"] = records', bridge)
+
+
 if __name__ == "__main__": unittest.main()
