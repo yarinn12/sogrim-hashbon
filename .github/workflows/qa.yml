@@ -389,10 +389,15 @@ jobs:
             shards/1/qa-large-text-shard/results.json shards/2/qa-large-text-shard/results.json \
             shards/1/qa-large-text-shard/receipt.json shards/2/qa-large-text-shard/receipt.json
 
-  cross-platform:
+  cross-platform-shard-1:
     needs: unit
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+      PW_QA_PORT: "4187"
+      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-1
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -407,16 +412,142 @@ jobs:
         run: npm ci
       - name: Install desktop comparison engines
         run: npx playwright install --with-deps chromium firefox webkit
-      - name: Verify cross-platform journeys and matching text layout
-        run: npm run qa:cross-platform
-      - name: Upload cross-platform evidence
+      - name: Run first half of cross-platform QA
+        run: |
+          mkdir -p qa-cross-platform-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/results.json" \
+            npm run qa:cross-platform -- --shard=1/2 --reporter=github,html,json
+      - name: Record exact source and shard
+        run: node scripts/qa/write-cross-platform-shard-receipt.mjs 1
+      - name: Upload first shard evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v6
         with:
-          name: cross-platform-report
+          name: cross-platform-report-shard-1
           path: |
-            playwright-report-cross-platform/
-            test-results-cross-platform/
+            qa-cross-platform-shard/
+            playwright-report/
+            test-results-cross-platform-shard-1/
+          if-no-files-found: error
+          retention-days: 14
+
+  cross-platform-shard-2:
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+      PW_QA_PORT: "4188"
+      CROSS_PLATFORM_OUTPUT_DIR: test-results-cross-platform-shard-2
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Install desktop comparison engines
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Run second half of cross-platform QA
+        run: |
+          mkdir -p qa-cross-platform-shard
+          PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/qa-cross-platform-shard/results.json" \
+            npm run qa:cross-platform -- --shard=2/2 --reporter=github,html,json
+      - name: Record exact source and shard
+        run: node scripts/qa/write-cross-platform-shard-receipt.mjs 2
+      - name: Upload second shard evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: cross-platform-report-shard-2
+          path: |
+            qa-cross-platform-shard/
+            playwright-report/
+            test-results-cross-platform-shard-2/
+          if-no-files-found: error
+          retention-days: 14
+
+  cross-platform:
+    if: ${{ always() }}
+    needs: [unit, cross-platform-shard-1, cross-platform-shard-2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+    steps:
+      - name: Require both cross-platform shards
+        env:
+          UNIT_RESULT: ${{ needs.unit.result }}
+          SHARD_1_RESULT: ${{ needs['cross-platform-shard-1'].result }}
+          SHARD_2_RESULT: ${{ needs['cross-platform-shard-2'].result }}
+        run: |
+          test "$UNIT_RESULT" = success
+          test "$SHARD_1_RESULT" = success
+          test "$SHARD_2_RESULT" = success
+      - name: Checkout exact source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download first shard evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: cross-platform-report-shard-1
+          path: shards/1
+      - name: Download second shard evidence
+        uses: actions/download-artifact@v6
+        with:
+          name: cross-platform-report-shard-2
+          path: shards/2
+      - name: Inventory source and both planned shards
+        run: |
+          mkdir -p inventory
+          for shard in all 1/2 2/2; do
+            name="${shard//\//-}"
+            if test "$shard" = all; then
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
+                npx playwright test --config playwright.cross-platform.config.mjs --list --reporter=json
+            else
+              PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/$name.json" \
+                npx playwright test --config playwright.cross-platform.config.mjs --list --shard="$shard" --reporter=json
+            fi
+          done
+          for project in desktop-chromium desktop-firefox desktop-webkit compact-firefox cross-engine-comparison; do
+            PLAYWRIGHT_JSON_OUTPUT_FILE="$PWD/inventory/project-$project.json" \
+              npx playwright test --config playwright.cross-platform.config.mjs --list --project="$project" --reporter=json
+          done
+      - name: Verify complete exact-once coverage and source
+        env:
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE"
+          export EXPECTED_TREE="$(git rev-parse HEAD^{tree})"
+          node scripts/qa/verify-cross-platform-shards.mjs \
+            inventory/all.json inventory/1-2.json inventory/2-2.json \
+            shards/1/qa-cross-platform-shard/results.json shards/2/qa-cross-platform-shard/results.json \
+            shards/1/qa-cross-platform-shard/receipt.json shards/2/qa-cross-platform-shard/receipt.json \
+            inventory/project-desktop-chromium.json inventory/project-desktop-firefox.json \
+            inventory/project-desktop-webkit.json inventory/project-compact-firefox.json \
+            inventory/project-cross-engine-comparison.json
+      - name: Upload cross-platform coverage inventory
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: cross-platform-coverage-inventory
+          path: inventory/
+          if-no-files-found: error
           retention-days: 14
 
   two-client-sync:
@@ -465,7 +596,7 @@ jobs:
 
   unit-and-mobile:
     if: ${{ always() }}
-    needs: [unit, mobile, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2, mobile-iphone-webkit, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform, ios-native, android-native]
+    needs: [unit, mobile, mobile-iphone-webkit-shard-1, mobile-iphone-webkit-shard-2, mobile-iphone-webkit, mobile-iphone-large-text-shard-1, mobile-iphone-large-text-shard-2, mobile-iphone-large-text, two-client-sync, cross-platform-shard-1, cross-platform-shard-2, cross-platform, ios-native, android-native]
     runs-on: ubuntu-latest
     steps:
       - name: Require every verification lane to pass
@@ -479,6 +610,8 @@ jobs:
           LARGE_TEXT_SHARD_2_RESULT: ${{ needs['mobile-iphone-large-text-shard-2'].result }}
           LARGE_TEXT_RESULT: ${{ needs['mobile-iphone-large-text'].result }}
           SYNC_RESULT: ${{ needs.two-client-sync.result }}
+          CROSS_PLATFORM_SHARD_1_RESULT: ${{ needs['cross-platform-shard-1'].result }}
+          CROSS_PLATFORM_SHARD_2_RESULT: ${{ needs['cross-platform-shard-2'].result }}
           CROSS_PLATFORM_RESULT: ${{ needs.cross-platform.result }}
           IOS_NATIVE_RESULT: ${{ needs.ios-native.result }}
           ANDROID_NATIVE_RESULT: ${{ needs.android-native.result }}
@@ -492,6 +625,8 @@ jobs:
           test "$LARGE_TEXT_SHARD_2_RESULT" = success
           test "$LARGE_TEXT_RESULT" = success
           test "$SYNC_RESULT" = success
+          test "$CROSS_PLATFORM_SHARD_1_RESULT" = success
+          test "$CROSS_PLATFORM_SHARD_2_RESULT" = success
           test "$CROSS_PLATFORM_RESULT" = success
           test "$IOS_NATIVE_RESULT" = success
           test "$ANDROID_NATIVE_RESULT" = success
