@@ -89,7 +89,7 @@ export function sampleOwnedHost(options,deps={}){
 
 function observedLiveInventoryComplete(sample){
   const inventory=sample.inventory;
-  if(inventory?.coverageVersion!==hostCoverageVersion||inventory.coverageContract!==hostCoverageContract||inventory.scope!==hostCoverageScope||inventory.atomic!==false||inventory.lifetimeCoverageProven!==false)return false;
+  if(inventory?.coverageVersion!==hostCoverageVersion||inventory.coverageContract!==hostCoverageContract||inventory.scope!==hostCoverageScope||inventory.atomic!==false||inventory.lifetimeCoverageProven!==false||inventory.rendererRoleProven!==false)return false;
   const{before,after}=inventory;
   const validIds=ids=>Array.isArray(ids)&&ids.includes(sample.owner.pid)&&ids.every((id,index)=>Number.isSafeInteger(id)&&id>0&&(index===0||id>ids[index-1]));
   if(!validIds(before)||!validIds(after)||!Array.isArray(sample.threads)||!Array.isArray(sample.lifecycle)||!Array.isArray(sample.unavailable))return false;
@@ -125,7 +125,7 @@ export function recordHostInventory(summary,sample,priorCounters=new Map()){
 }
 
 export function requireHostInventoryCoverage(summary){
-  if(summary.coverageVersion!==hostCoverageVersion||summary.coverageContract!==hostCoverageContract||summary.coverageScope!==hostCoverageScope||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||
+  if(summary.coverageVersion!==hostCoverageVersion||summary.coverageContract!==hostCoverageContract||summary.coverageScope!==hostCoverageScope||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||summary.rendererRoleProven!==false||
      ![summary.samples,summary.coverageSamples,summary.nonMainTasksMeasured,summary.unobservedExits,summary.samplesWithUnobservedExits].every(Number.isSafeInteger)||
      summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainTasksMeasured<1||summary.unobservedExits<0||summary.samplesWithUnobservedExits<0||
      summary.samplesWithUnobservedExits>summary.samples||summary.unobservedExits<summary.samplesWithUnobservedExits||(summary.unobservedExits===0)!==(summary.samplesWithUnobservedExits===0)||summary.capReached||summary.errors?.length)

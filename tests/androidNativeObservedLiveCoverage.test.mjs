@@ -46,7 +46,24 @@ function replayQA466(changes={}){
   const sample=sampleOwnedHost(options,{procRoot,read,list,expectedStartTicks:owner.startTicks});
   return{sample,reads,lists,taskRoot};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
+function summary(owner){return{owner,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
+
+for(const value of [true,undefined,'false']){
+  const label=value===undefined?'undefined':JSON.stringify(value);
+  test('sample rendererRoleProven must be explicitly false; rejects '+label,()=>{
+    const {sample}=replayQA466();assert.equal(sample.inventory.rendererRoleProven,false);
+    recordHostInventory(summary(sample.owner),sample);
+    sample.inventory.rendererRoleProven=value;
+    assert.throws(()=>recordHostInventory(summary(sample.owner),sample),/inventory\/counter coverage is incomplete/,'invalid sample renderer role claim must be rejected');
+  });
+  test('summary rendererRoleProven must be explicitly false; rejects '+label,()=>{
+    const {sample}=replayQA466(),receipt=summary(sample.owner);
+    recordHostInventory(receipt,sample);recordHostInventory(receipt,sample);
+    assert.equal(receipt.rendererRoleProven,false);assert.equal(requireHostInventoryCoverage(receipt),true);
+    receipt.rendererRoleProven=value;
+    assert.throws(()=>requireHostInventoryCoverage(receipt),/coverage is missing/,'invalid summary renderer role claim must be rejected');
+  });
+}
 
 test('QA466 sample300 retains 188 real counters and explicitly unknown pre-identity exit without dropping the sample',()=>{
   assert.equal(createHash('sha256').update(raw).digest('hex'),'7f34db455a903289e7435e7ce397f68941c836d582852208ecca1285ae9d016f');

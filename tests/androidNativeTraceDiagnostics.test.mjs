@@ -188,7 +188,7 @@ test('successful scoped start/finalize keeps ownership, raw command outputs and 
 });
 
 test('finisher requires the versioned observed-live contract and explicit exception accounting',async t=>{
-  for(const changes of [{coverageVersion:1},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3}]){
+  for(const changes of [{coverageVersion:1},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3}]){
     const f=fixture(t);await startOwnedTrace(f.options,f.deps);
     const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),...changes})});
     assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Observed-live.*coverage is missing/);
