@@ -200,12 +200,24 @@ test('actual one-shot workflow keeps signing gates and creates encrypted artifac
 });
 
 
-test('manual preparation is disabled so input CI runs cannot replace the frozen one-shot run set',()=>{
- const workflow=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
+function assertManualPreparationDisabled(raw) {
+ const workflow=raw.replace(/\r\n/g,'\n');
+ const header=workflow.split('\non:\n')[1];
+ assert.ok(header,'manual template must have known triggers');
+ const triggers=header.split('\npermissions:')[0];
  const jobs=workflow.split('\njobs:\n')[1];
- const triggers=workflow.split('\non:\n')[1].split('\npermissions:')[0];
- assert.deepEqual(triggers.match(/^  [a-zA-Z0-9_-]+:\r?$/gm),['  workflow_dispatch:']);
+ assert.deepEqual(triggers.match(/^  [a-zA-Z0-9_-]+:$/gm),['  workflow_dispatch:']);
  assert.ok(jobs,'manual template jobs must remain inspectable');
- assert.equal((jobs.match(/^  [a-zA-Z0-9_-]+:\r?$/gm)||[]).length,1,'no second enabled manual job');
- assert.match(jobs,/^  build-export-verify-private:\r?\n    if: github\.event_name != 'workflow_dispatch'\r?\n/m);
+ assert.equal((jobs.match(/^  [a-zA-Z0-9_-]+:$/gm)||[]).length,1,'no second enabled manual job');
+ assert.match(jobs,/^  build-export-verify-private:\n    if: github\.event_name != 'workflow_dispatch'\n/m);
+}
+
+test('manual preparation is disabled so input CI runs cannot replace the frozen one-shot run set',()=>{
+ const raw=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
+ const lf=raw.replace(/\r\n/g,'\n');
+ for(const value of [lf,lf.replace(/\n/g,'\r\n')])assertManualPreparationDisabled(value);
+ const enabled=lf.replace("if: github.event_name != 'workflow_dispatch'","if: github.event_name == 'workflow_dispatch'");
+ assert.notEqual(enabled,lf);assert.throws(()=>assertManualPreparationDisabled(enabled));
+ const extraTrigger=lf.replace('  workflow_dispatch:\n','  push:\n  workflow_dispatch:\n');
+ assert.notEqual(extraTrigger,lf);assert.throws(()=>assertManualPreparationDisabled(extraTrigger));
 });
