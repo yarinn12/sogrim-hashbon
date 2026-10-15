@@ -1,0 +1,19 @@
+# Pages restart ABBA workflow review
+
+Application is frozen at c14a7665e8de361d8d33be183e7a88adec3ff7cb/tree 9bcf8cf40144d12507faa2cfea9ddadee42d819f. Tool modules are reviewed at 1ca55d56f86f0f3e4f1c2943bcd1f0ec254a7be4. No product source, signing, Apple/Google account, database or release operation is part of this experiment.
+
+The one-shot push namespace is codex/android-pages-restart-abba-20261015. The exact repository, workflow ref, event, first run and first attempt are checked before setup. Permissions are contents:read; no environment or account secret is requested. Rerun is refused. This diagnostic workflow does not satisfy the four release CI lanes.
+
+One c14 checkout builds and audits one Debug APK using the original locked NPM/offline synthetic WWW/Capacitor/observed Gradle sequence and original assets verifier. No control rebuild or re-signing occurs. Four separate clean c14 Git worktrees each receive the identical actual APK and its original fixture/assets proofs. Each arm compares APK bytes before use and records actual App/Tools SHA/tree, APK SHA256, host timestamps and unique AVD identity.
+
+All four sessions run serially on the same ubuntu-24.04 host with the same installed SDK image, two cores, 4096 MiB, pixel_6 geometry, SwiftShader/gfxstream and ASG settings. A single isolated ADB key/server is created before any emulator; each AVD and guest data image is newly created with no snapshots. Original renderer/transport snapshots and readbacks, network isolation, launcher prep, actual APK install and emulator-health-before execute per arm.
+
+Declared order is A/B/B/A, not retries. Each separate arm process replays unchanged font fault controls, all matrix checks/holds, then the original four pages cases before the final preference/restart boundary. Only the final font preference argument differs (2 versus 1.5). The absolute Tools runner executes with cwd and SOURCE_ROOT of the separate clean App worktree, so toolCommit measures Tools rather than App.
+
+The 120-minute outer job budget covers one build and four independent full preludes. Original per-command, child, foreground, boot, trace/v5 time and byte budgets are unchanged. A failing arm stays failed and raw evidence remains; remaining independently fresh arms still run. A target ANR, failed capture, cleanup or incomplete prelude remains nonzero. No acceptance predicate is relaxed.
+
+Only the recorded emulator child PID with matching start ticks and exact AVD/port can be stopped. The wrapper requests guest shutdown, waits/reaps its own child and records failures. If a failed boot prevents a guest reply, the same verified host child alone may receive TERM. Missing owner identity never permits a guessed signal. Trace capture interrupted before normal closure receives the unchanged original finish operation while the owned emulator is alive. Raw capture and closure failures are retained.
+
+Each arm's raw directory is archived once under app/artifacts/android-pages-restart/arm-N-X. Its final manifest includes all files after wrapper teardown, excluding only itself; it supplements the runner's earlier closure manifest. Build evidence and the single original APK are also uploaded on failure. An original archive readback remains necessary before interpreting findings.
+
+Local checks: actionlint and Git Bash syntax passed. Root module regression suite passed 28/28 without skips. Full normal suite and independent wrapper review are pending at this preparation commit. No actual diagnostic has run.
