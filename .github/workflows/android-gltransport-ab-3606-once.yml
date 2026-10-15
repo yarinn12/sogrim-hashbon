@@ -1,0 +1,119 @@
+name: Android 3606 PIPE ASG isolated diagnostic once
+
+on:
+  push:
+    branches:
+      - codex/android-gltransport-ab-20261015
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-gltransport-ab-3606-one-shot
+  cancel-in-progress: false
+
+jobs:
+  gltransport-ab-diagnostic:
+    if: >-
+      github.repository == 'yarinn12/sogrim-hashbon' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/codex/android-gltransport-ab-20261015' &&
+      github.run_number == 1 && github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD: "1"
+      ANDROID_AB_REVIEWED_SHA: ${{ github.sha }}
+      ANDROID_AB_REVIEW_TOKEN: 3606-pipe-asg-once
+      ANDROID_AB_REQUESTED_SOURCE: 3606feae297326fcd89a963cc3994499f6a8e696
+      ANDROID_QA_SOURCE: 3606feae297326fcd89a963cc3994499f6a8e696
+      ANDROID_AB_SOURCE_ROOT: ${{ github.workspace }}/app-source
+      ANDROID_AB_TOOLS_ROOT: ${{ github.workspace }}/qa-tools
+      ANDROID_AB_BUILD_ROOT: ${{ github.workspace }}/build-app
+    steps:
+      - name: Checkout reviewed control plane
+        uses: actions/checkout@v6
+        with:
+          path: control
+          persist-credentials: false
+      - name: Checkout immutable application source
+        uses: actions/checkout@v6
+        with:
+          ref: 3606feae297326fcd89a963cc3994499f6a8e696
+          path: app-source
+          persist-credentials: false
+      - name: Checkout original immutable Native QA tools
+        uses: actions/checkout@v6
+        with:
+          ref: 3606feae297326fcd89a963cc3994499f6a8e696
+          path: qa-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Initialize one-shot identities and require exact reviewed context
+        working-directory: control
+        run: node scripts/qa/android-gltransport-ab/executor.mjs --initialize
+      - name: Prepare SDK and separate disposable build paths
+        working-directory: control
+        run: |
+          set -euo pipefail
+          sdk_bin="$(dirname "$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -1)")"
+          test -x "$sdk_bin/sdkmanager"
+          "$sdk_bin/sdkmanager" --install 'platforms;android-36' 'build-tools;36.1.0' 'platform-tools' 'emulator' 'system-images;android-36.1;google_apis_playstore;x86_64' > artifacts/android-gltransport-ab/sdk-setup.log 2>&1
+          echo "ANDROID_AB_SDK_BIN=$sdk_bin" >> "$GITHUB_ENV"
+          echo "ANDROID_USER_HOME=$RUNNER_TEMP/android-gltransport-build-home" >> "$GITHUB_ENV"
+          echo "ANDROID_EMULATOR_HOME=$RUNNER_TEMP/android-gltransport-build-home" >> "$GITHUB_ENV"
+          echo "SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE=$RUNNER_TEMP/android-gltransport-no-upload.properties" >> "$GITHUB_ENV"
+          test -c /dev/kvm
+          test ! -e "$ANDROID_AB_BUILD_ROOT"
+          git clone --no-hardlinks --no-checkout "$ANDROID_AB_SOURCE_ROOT" "$ANDROID_AB_BUILD_ROOT"
+          git -C "$ANDROID_AB_BUILD_ROOT" checkout --detach "$ANDROID_QA_SOURCE"
+      - name: Build one synthetic Debug APK with original source build commands
+        working-directory: build-app
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$ANDROID_QA_SOURCE"
+          test -z "$(git status --porcelain)"
+          test ! -e "$SOGRIM_ANDROID_SIGNING_PROPERTIES_FILE"
+          mkdir -p artifacts/android-native-isolated "$ANDROID_USER_HOME"
+          printf '%s\n' "$ANDROID_QA_SOURCE" > artifacts/android-native-isolated/qa-tools-source.txt
+          npm ci > artifacts/android-native-isolated/npm.log 2>&1
+          NODE_OPTIONS="--import=file://$PWD/scripts/qa/android-native-isolated/offline-build-config.mjs" npm run native:prepare > artifacts/android-native-isolated/www-build.log 2>&1
+          node scripts/qa/android-native-isolated/prepare-fixture.mjs
+          npx cap copy android > artifacts/android-native-isolated/cap-copy.log 2>&1
+          node scripts/qa/android-native-isolated/observe-gradle-build.mjs \
+            --cwd android --output artifacts/android-native-isolated/gradle-build-observation --source "$ANDROID_QA_SOURCE" \
+            -- bash ./gradlew assembleDebug --no-daemon --max-workers=2 "-Duser.home=$ANDROID_USER_HOME" '-Dorg.gradle.jvmargs=-Xmx1536m'
+          python3 scripts/qa/android-native-isolated/audit-apk.py "$PWD" "$ANDROID_QA_SOURCE"
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump badging android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/apk-badging.txt
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk > artifacts/android-native-isolated/debug-certificate.txt
+      - name: Seal the once-built APK and audited provenance
+        working-directory: control
+        run: node scripts/qa/android-gltransport-ab/executor.mjs --seal
+      - name: Run two fresh AVDs sequentially once with original Native gates
+        working-directory: control
+        run: node scripts/qa/android-gltransport-ab/executor.mjs --run
+      - name: Finalize trace ANR history and only exactly owned processes
+        if: always()
+        working-directory: control
+        run: node scripts/qa/android-gltransport-ab/executor.mjs --finalize
+      - name: Reject incomplete mismatched or failed diagnostic arms
+        if: always()
+        working-directory: control
+        run: node scripts/qa/android-gltransport-ab/executor.mjs --summarize
+      - name: Retain all first-attempt failures and source artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-gltransport-ab-3606-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: |
+            control/artifacts/android-gltransport-ab/
+            build-app/artifacts/android-native-isolated/
+            build-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

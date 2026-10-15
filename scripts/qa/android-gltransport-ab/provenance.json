@@ -1,0 +1,51 @@
+{
+  "reusedRunnerCommit": "1c86a9d2635fc8670e854bdceb41bc88ff0291f6",
+  "applicationAndNativeTools": "3606feae297326fcd89a963cc3994499f6a8e696",
+  "unchangedHelpers": [
+    {
+      "path": "adb-owner.mjs",
+      "sha256": "ac9e7e93806e80340d1e97e9a38aea74074252643ad6262d90def3af6df6b7f4",
+      "unchanged": true
+    },
+    {
+      "path": "boot-readiness.mjs",
+      "sha256": "cbb8d505c697b4fabf76398c0c43e620ccc7f26daac77fb379de9d1342b3abb7",
+      "unchanged": true
+    },
+    {
+      "path": "finalization.mjs",
+      "sha256": "8dba552a566f7f5cfd6f29b812ca6c3cb6f4a85cd8d59f0604773d7aef3b3382",
+      "unchanged": true
+    },
+    {
+      "path": "hash-file.mjs",
+      "sha256": "8528fdf6f1421abc1d50ac449293783c4e9dedf993dff2d4c3b89b4fdf592986",
+      "unchanged": true
+    },
+    {
+      "path": "preboot-kvm.mjs",
+      "sha256": "728270e92fdaa54ddc00c2fbabedd7547ca631d17d67e102e8dcf367e0eb79d8",
+      "unchanged": true
+    }
+  ],
+  "exactSdkProof": {
+    "url": "https://dl.google.com/android/repository/emulator-linux_x64-16428233.zip",
+    "contentRange": "bytes 348605595-349654170/349654171",
+    "zipBytes": 349654171,
+    "files": {
+      "emulator/lib/hardware-properties.ini": {
+        "bytes": 31318,
+        "sha256": "13a89cc7cfa84c5fe48cd7eb8d296bca321dcd0d90f7bcb751efd963ae2c653d",
+        "matchesRetainedExactSdk": true
+      },
+      "emulator/source.properties": {
+        "bytes": 103,
+        "sha256": "ba13085f647fb8389a4d06a1de0e4104ac4e841733e50f67223ac230e1ce685a",
+        "matchesRetainedExactSdk": true
+      }
+    }
+  },
+  "executorAndPolicy": "adapted from immutable reused runner; changes described in preparation plan",
+  "nativeExecuted": false,
+  "releaseAcceptance": false
+}
