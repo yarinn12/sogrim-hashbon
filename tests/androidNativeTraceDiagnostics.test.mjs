@@ -83,7 +83,7 @@ function fixture(t){
     throw new Error('Unexpected boundary command '+JSON.stringify(command));
   }
   const deps={run,platform:'linux',procRoot:proc,launchHost:async()=>({pid:99,ready:{boundaryOnly:true}})};
-  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:1,coverageSamples:2,nonMainTasksMeasured:2,rendererRoleProven:false,boundaryOnly:true};};
+  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,owner:assertHostOwner(options,{procRoot:proc}),captureComplete:true,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:2,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,rendererRoleProven:false,boundaryOnly:true};};
   return{root,proc,processDir,options,state,calls,run,deps,stopHost};
 }
 
@@ -185,6 +185,18 @@ test('successful scoped start/finalize keeps ownership, raw command outputs and 
   const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:f.stopHost});assert.equal(finish.captureComplete,true);assert.equal(finish.nativeAcceptance,false);assert.equal(finish.structure.semanticCoverageValidated,false);assert.equal(f.state.hostStopped,true);
   assert.equal(finish.writerClose.verified,true);assert.ok(f.calls.some(x=>x.includes('timeout')));assert.ok(f.calls.every(x=>!x.includes('force-stop')&&!x.includes('settings')&&!x.includes('emu-kill')));
   assert.notEqual(start.commands[0].output.path,finish.commands[0].output.path);assert.ok(start.commands[0].output.sha256);
+});
+
+test('finisher requires the versioned observed-live contract and explicit exception accounting',async t=>{
+  for(const changes of [{coverageVersion:1},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3}]){
+    const f=fixture(t);await startOwnedTrace(f.options,f.deps);
+    const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),...changes})});
+    assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Observed-live.*coverage is missing/);
+    assert.equal(finish.writerClose.verified,true);assert.ok(finish.trace.sha256);assert.equal(finish.nativeAcceptance,false);
+  }
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);
+  const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),unobservedExits:1,samplesWithUnobservedExits:1})});
+  assert.equal(finish.captureComplete,true,finish.errors.join('\n'));assert.equal(finish.host.unobservedExits,1);assert.equal(finish.nativeAcceptance,false);
 });
 test('foreign AVD blocks start before any trace mutation and blocks finalization guest kill/pull',async t=>{
   const f=fixture(t);f.state.owner='foreign_avd';const start=await startOwnedTrace(f.options,f.deps);assert.equal(start.captureStarted,false);assert.equal(f.calls.length,1);assert.match(start.errors.join(),/foreign/);

@@ -5,6 +5,7 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {createHash,randomBytes} from 'node:crypto';
 
 const target='com.sogrimhashbon.app.debug',hostIntervalMs=1000,maxHostBytes=64*1024*1024,maxTraceBytes=512*1024*1024;
+const hostCoverageVersion=2,hostCoverageScope='observed-live-owned-host-tasks',hostCoverageContract='observed-live-owned-host-tasks-v2';
 const now=()=>new Date().toISOString(),delay=ms=>new Promise(done=>setTimeout(done,ms));
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 // v51.2 intentionally prints --help to stderr and returns 1 (PrintUsage then
@@ -47,7 +48,7 @@ export function sampleOwnedHost(options,deps={}){
       initial=parseProcStat(read(join(task,'stat'),'utf8'));
       if(initial.pid!==tid||tid===owner.pid&&initial.startTicks!==owner.startTicks)throw new Error('Owned task PID/start identity mismatch');
       observedNames.push(initial.name);
-    }catch(error){unavailable.push({tid,field:'stat',code:error.code??null,error:error.message});continue;}
+    }catch(error){unavailable.push({tid,field:'stat',phase:'initial',code:error.code??null,error:error.message});continue;}
     const record={...initial,emulatorPid:owner.pid,emulatorStartTicks:owner.startTicks,countersVerified:false};
     let scheduling,wchan;
     try{
@@ -68,25 +69,47 @@ export function sampleOwnedHost(options,deps={}){
     threads.push(record);
   }
   const after=inventory();
-  for(const tid of before)if(!after.includes(tid))lifecycle.push({tid,kind:'exited-during-sample',startTicks:threads.find(t=>t.pid===tid)?.startTicks??null});
+  for(const tid of before)if(!after.includes(tid)){
+    const thread=threads.find(t=>t.pid===tid),gap=unavailable.find(g=>g.tid===tid&&g.field==='stat'&&g.phase==='initial'&&g.code==='ENOENT');
+    if(!thread&&gap)lifecycle.push({tid,kind:'unobserved-exit',startTicks:null,identity:null,counters:null});
+    else lifecycle.push({tid,kind:'exited-during-sample',startTicks:thread?.startTicks??null});
+  }
   for(const tid of after)if(!before.includes(tid))lifecycle.push({tid,kind:'born-during-sample',startTicks:null});
   assertHostOwner(options,{...deps,read,expectedStartTicks:owner.startTicks});
-  // A non-atomic proc snapshot records lifecycle gaps explicitly. It never
-  // invents a final counter or calls a partial inventory complete.
-  const coverageComplete=unavailable.every(gap=>gap.field==='wchan'&&gap.code==='ZERO_WCHAN')&&lifecycle.length===0&&threads.length===before.length&&threads.every(t=>t.countersVerified);
-  return{atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,
-    inventory:{before,after,coverageComplete,scope:'all-owned-host-tasks',rendererRoleProven:false},
-    readCount,threadsScanned,selectedThreads:threads.length,sampleDurationMs:performance.now()-begin};
+  // Proc inventories are non-atomic. Only a first stat ENOENT with final
+  // absence has no observed identity at all in this sample. Keep it explicitly
+  // unknown; this contract proves neither atomic nor full-lifetime coverage.
+  const sample={atUtc:now(),monotonicNs:process.hrtime.bigint().toString(),owner,threads,observedNames:[...new Set(observedNames)],unavailable,lifecycle,
+    inventory:{before,after,coverageComplete:false,coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,scope:hostCoverageScope,atomic:false,lifetimeCoverageProven:false,rendererRoleProven:false},
+    readCount,threadsScanned,selectedThreads:threads.length,sampleDurationMs:0};
+  sample.inventory.coverageComplete=observedLiveInventoryComplete(sample);
+  sample.sampleDurationMs=performance.now()-begin;
+  return sample;
+}
+
+function observedLiveInventoryComplete(sample){
+  const inventory=sample.inventory;
+  if(inventory?.coverageVersion!==hostCoverageVersion||inventory.coverageContract!==hostCoverageContract||inventory.scope!==hostCoverageScope||inventory.atomic!==false||inventory.lifetimeCoverageProven!==false)return false;
+  const{before,after}=inventory;
+  const validIds=ids=>Array.isArray(ids)&&ids.includes(sample.owner.pid)&&ids.every((id,index)=>Number.isSafeInteger(id)&&id>0&&(index===0||id>ids[index-1]));
+  if(!validIds(before)||!validIds(after)||!Array.isArray(sample.threads)||!Array.isArray(sample.lifecycle)||!Array.isArray(sample.unavailable))return false;
+  const beforeSet=new Set(before),afterSet=new Set(after),ids=sample.threads.map(t=>t.pid).sort((a,b)=>a-b);
+  if(after.some(tid=>!beforeSet.has(tid))||JSON.stringify(ids)!==JSON.stringify(after)||!sample.threads.every(t=>t.countersVerified))return false;
+  const exits=before.filter(tid=>!afterSet.has(tid)),gaps=sample.unavailable.filter(g=>g.field!=='wchan'||g.code!=='ZERO_WCHAN');
+  if(sample.lifecycle.length!==exits.length||gaps.length!==exits.length)return false;
+  return exits.every(tid=>{
+    const events=sample.lifecycle.filter(event=>event.tid===tid),missing=gaps.filter(gap=>gap.tid===tid);
+    return events.length===1&&events[0].kind==='unobserved-exit'&&events[0].startTicks===null&&events[0].identity===null&&events[0].counters===null&&
+      missing.length===1&&missing[0].field==='stat'&&missing[0].phase==='initial'&&missing[0].code==='ENOENT'&&missing[0].startTicks===undefined;
+  });
 }
 
 export function recordHostInventory(summary,sample,priorCounters=new Map()){
   if(sample.owner.pid!==summary.owner.pid||sample.owner.startTicks!==summary.owner.startTicks)throw new Error('Host sample owner changed');
-  if(!sample.inventory?.coverageComplete||sample.inventory.scope!=='all-owned-host-tasks'||
-     sample.inventory.before.length!==sample.threads.length||sample.inventory.after.length!==sample.threads.length||
-     JSON.stringify(sample.inventory.before)!==JSON.stringify(sample.inventory.after)||sample.unavailable.some(gap=>gap.field!=='wchan'||gap.code!=='ZERO_WCHAN')||sample.lifecycle.length)
+  if(!sample.inventory?.coverageComplete||!observedLiveInventoryComplete(sample))
     throw new Error('Owned host task inventory/counter coverage is incomplete');
   const ids=sample.threads.map(t=>t.pid).sort((a,b)=>a-b);
-  if(JSON.stringify(ids)!==JSON.stringify(sample.inventory.before)||new Set(ids).size!==ids.length)throw new Error('Host scheduler inventory does not match actual sampled tasks');
+  if(JSON.stringify(ids)!==JSON.stringify(sample.inventory.after)||new Set(ids).size!==ids.length)throw new Error('Host scheduler inventory does not match actual sampled tasks');
   for(const t of sample.threads){
     if(!t.countersVerified||!Number.isSafeInteger(t.pid)||t.pid<1||t.emulatorPid!==summary.owner.pid||t.emulatorStartTicks!==summary.owner.startTicks||!/^\d+$/.test(t.startTicks)||
        ['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'].some(k=>!/^\d+$/.test(t[k]??'')))throw new Error('Host task scheduler identity/counters are missing');
@@ -97,12 +120,16 @@ export function recordHostInventory(summary,sample,priorCounters=new Map()){
   }
   summary.coverageSamples=(summary.coverageSamples||0)+1;
   summary.nonMainTasksMeasured=(summary.nonMainTasksMeasured||0)+sample.threads.filter(t=>t.pid!==summary.owner.pid).length;
+  summary.unobservedExits=(summary.unobservedExits||0)+sample.lifecycle.length;
+  summary.samplesWithUnobservedExits=(summary.samplesWithUnobservedExits||0)+(sample.lifecycle.length?1:0);
 }
 
 export function requireHostInventoryCoverage(summary){
-  if(summary.coverageVersion!==1||![summary.samples,summary.coverageSamples,summary.nonMainTasksMeasured].every(Number.isSafeInteger)||
-     summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainTasksMeasured<1||summary.capReached||summary.errors?.length)
-    throw new Error('Full owned host task scheduling coverage is missing');
+  if(summary.coverageVersion!==hostCoverageVersion||summary.coverageContract!==hostCoverageContract||summary.coverageScope!==hostCoverageScope||summary.inventoryAtomic!==false||summary.lifetimeCoverageProven!==false||
+     ![summary.samples,summary.coverageSamples,summary.nonMainTasksMeasured,summary.unobservedExits,summary.samplesWithUnobservedExits].every(Number.isSafeInteger)||
+     summary.samples<2||summary.coverageSamples!==summary.samples||summary.nonMainTasksMeasured<1||summary.unobservedExits<0||summary.samplesWithUnobservedExits<0||
+     summary.samplesWithUnobservedExits>summary.samples||summary.unobservedExits<summary.samplesWithUnobservedExits||(summary.unobservedExits===0)!==(summary.samplesWithUnobservedExits===0)||summary.capReached||summary.errors?.length)
+    throw new Error('Observed-live owned host task scheduling coverage is missing');
   return true;
 }
 
@@ -440,7 +467,7 @@ export async function finishOwnedTrace(raw,{run=spawnSync,stopHost=async options
   report.finalizedAtUtc=now();writeFileSync(join(options.output,'trace-diagnostics.json'),JSON.stringify(report,null,2));return report;
 }
 async function watchHost(output){
-  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:1,coverageSamples:0,nonMainTasksMeasured:0,rendererRoleProven:false};
+  const options=readJson(join(output,'trace-start.json')),data=join(output,'host-scheduling.jsonl'),summary={source:options.source,owner:options.hostOwner,startedAtUtc:now(),captureComplete:false,samples:0,errors:[],unavailableFields:0,maxSampleDurationMs:0,rendererNames:[],coverageVersion:hostCoverageVersion,coverageContract:hostCoverageContract,coverageScope:hostCoverageScope,inventoryAtomic:false,lifetimeCoverageProven:false,coverageSamples:0,nonMainTasksMeasured:0,unobservedExits:0,samplesWithUnobservedExits:0,rendererRoleProven:false};
   const priorCounters=new Map();
   const end=Date.now()+1200000,names=new Set(),cpuStart=process.cpuUsage(),timeStart=performance.now();
   summary.limits={intervalMs:hostIntervalMs,durationMs:1200000,maxHostBytes,maxTraceBytes};summary.readCount=0;summary.threadsScanned=0;summary.maxThreadsScanned=0;summary.maxSelectedThreads=0;

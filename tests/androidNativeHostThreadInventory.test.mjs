@@ -36,7 +36,7 @@ test('actual sampleOwnedHost retains scheduler counters for unnamed and nonmatch
 });
 
 test('two complete real inventories prove scheduler coverage without claiming renderer roles',t=>{
-  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:1,rendererNames:[],rendererRoleProven:false},prior=new Map();
+  const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root}),summary={owner:sample.owner,samples:2,coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,rendererNames:[],rendererRoleProven:false},prior=new Map();
   recordHostInventory(summary,sample,prior);recordHostInventory(summary,sampleOwnedHost(f.options,{procRoot:f.root}),prior);
   assert.equal(requireHostInventoryCoverage(summary),true);assert.equal(summary.nonMainTasksMeasured,6);assert.equal(summary.rendererRoleProven,false);
 });
@@ -93,7 +93,7 @@ test('CPU tick regression also invalidates an unchanged TID lifetime',t=>{
 });
 test('incomplete summary and main-only samples cannot replace worker scheduling coverage',()=>{
   for(const d of [{samples:1,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:1,nonMainTasksMeasured:2},{samples:2,coverageSamples:2,nonMainTasksMeasured:0},{samples:2,coverageSamples:2,nonMainTasksMeasured:2,capReached:true}])
-    assert.throws(()=>requireHostInventoryCoverage({coverageVersion:1,...d}),/coverage is missing/);
+    assert.throws(()=>requireHostInventoryCoverage({coverageVersion:2,coverageContract:'observed-live-owned-host-tasks-v2',coverageScope:'observed-live-owned-host-tasks',inventoryAtomic:false,lifetimeCoverageProven:false,unobservedExits:0,samplesWithUnobservedExits:0,...d}),/coverage is missing/);
 });
 test('a partial or duplicated measured task set cannot claim a complete inventory',t=>{
   const f=procFixture(t),sample=sampleOwnedHost(f.options,{procRoot:f.root});
