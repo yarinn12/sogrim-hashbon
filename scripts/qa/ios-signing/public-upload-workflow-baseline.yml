@@ -1,0 +1,157 @@
+name: iOS upload original signed artifact
+run-name: Upload original iOS 4.58 (193), signing run ${{ inputs.signed_run_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Frozen application SHA bf254b5235deb706234b00362e6eaea78e129e98
+        required: true
+        type: string
+      qa_run:
+        description: Successful source QA 38300391028
+        required: true
+        type: string
+      windows_run:
+        description: Successful source Windows 38300390654
+        required: true
+        type: string
+      font_run:
+        description: Successful source font 38300390653
+        required: true
+        type: string
+      auth_run:
+        description: Successful source auth return 38300390656
+        required: true
+        type: string
+      signed_run_id:
+        description: Completed first signing run on immutable tools 931dcfa
+        required: true
+        type: string
+      signed_artifact_id:
+        description: Exact encrypted artifact ID from that signing run
+        required: true
+        type: string
+      ipa_sha256:
+        description: Original verified IPA SHA-256, never a rebuilt IPA
+        required: true
+        type: string
+      artifact_zip_sha256:
+        description: GitHub SHA-256 digest of the original encrypted artifact ZIP
+        required: true
+        type: string
+      database_receipt_sha256:
+        description: SHA-256 of committed actual database acceptance receipt
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ios-testflight-${{ github.repository }}
+  cancel-in-progress: false
+jobs:
+  upload-original:
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: app
+    env:
+      SOURCE_SHA: ${{ inputs.source_sha }}
+      SOURCE_QA_RUN: ${{ inputs.qa_run }}
+      SOURCE_WINDOWS_QA_RUN: ${{ inputs.windows_run }}
+      SOURCE_FONT_QA_RUN: ${{ inputs.font_run }}
+      SOURCE_AUTH_QA_RUN: ${{ inputs.auth_run }}
+      SIGNED_RUN_ID: ${{ inputs.signed_run_id }}
+      SIGNED_ARTIFACT_ID: ${{ inputs.signed_artifact_id }}
+      SIGNED_IPA_SHA256: ${{ inputs.ipa_sha256 }}
+      SIGNED_ARTIFACT_ZIP_SHA256: ${{ inputs.artifact_zip_sha256 }}
+      DATABASE_RECEIPT_SHA256: ${{ inputs.database_receipt_sha256 }}
+      WORKFLOW_COMMIT: ${{ github.workflow_sha }}
+      WORKFLOW_REF: ${{ github.workflow_ref }}
+      APPLE_TEAM_ID: MA9S4L7WKS
+      APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+      APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+      IOS_VERSION: '4.58'
+      IOS_BUILD: '193'
+    steps:
+      - name: Checkout frozen application source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha }}
+          path: app
+          persist-credentials: false
+      - name: Checkout immutable upload controls and actual database receipt
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - name: Set up Node without dependency install or cache
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Load public release notes from the frozen application metadata
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/load-release-notes.mjs"
+      - name: Check release notes against the frozen source before Apple keys
+        env:
+          IOS_RELEASE_SOURCE_DIR: ${{ github.workspace }}/app
+        run: node --test "$GITHUB_WORKSPACE/release-tools/tests/ios-signing-release-notes.test.mjs"
+      - name: Check signing certificate command and rejection controls before Apple keys
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"
+      - name: Require successful source CI before Apple keys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only
+          mv build/ios/source-ci-only.json build/ios/live-ci-before-download.json
+      - name: Require exact original artifact origin and reviewed database acceptance before Apple keys
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/upload-origin-guard.mjs"
+      - name: Download only the original encrypted artifact by exact ID and signing run
+        uses: actions/download-artifact@v6
+        with:
+          artifact-ids: ${{ inputs.signed_artifact_id }}
+          run-id: ${{ inputs.signed_run_id }}
+          github-token: ${{ github.token }}
+          repository: yarinn12/sogrim-hashbon
+          path: app/build/ios/original-encrypted
+          merge-multiple: true
+      - name: Authenticate original archive with the existing App Store key
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/protect-artifact.mjs" decrypt \
+            build/ios/original-encrypted "$RUNNER_TEMP/sogrim-original-release.tar"
+      - name: Verify original IPA bytes, all assets, signature, certificate and current profile without rebuilding
+        run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/verify-original-archive.py"
+      - name: Recheck source fingerprints, all CI and unused Apple build immediately before upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" before-upload
+          node -e 'const a=require("node:assert/strict"),f=require("node:fs"),c=require("node:crypto");a.equal(c.createHash("sha256").update(f.readFileSync("build/ios/SogrimHashbon.ipa")).digest("hex"),process.env.SIGNED_IPA_SHA256);'
+      - name: Upload the same original IPA to TestFlight
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: app/build/ios/SogrimHashbon.ipa
+          app-type: ios
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          wait-for-processing: 'false'
+          backend: appstore-api
+      - name: Verify Apple processing and complete TestFlight notes
+        env:
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node scripts/complete-ios-testflight.mjs
+      - name: Record upload outcome without retaining plaintext IPA
+        run: |
+          printf '%s\n' 'Original iOS 4.58 (193) IPA uploaded after source CI, artifact and database guards.' \
+            'No IPA rebuild or second signing was performed. App Review and public release still require their own readback.' >> "$GITHUB_STEP_SUMMARY"
