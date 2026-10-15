@@ -32,7 +32,7 @@ function replayOriginalWithSyntheticTerminalAbsence({followup=false}={}){
   const sample=sampleOwnedHost({emulatorPid:owner.pid,avd:'sogrim_ci_38744710465_1',device:'emulator-5582'},{procRoot,read,list,expectedStartTicks:owner.startTicks});
   return{sample,reads,lists,taskRoot,syntheticTerminal};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false};}
+function summary(owner){return{owner,samples:2,coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false};}
 
 test('QA468 sample552 remains failed v3; only synthetic terminal absence supports prospective survivor coverage',()=>{
   assert.equal(createHash('sha256').update(raw).digest('hex'),'a75e3e3566e997ed28a102352ee0e424166dfe8e896078e8ba11c1313cf1572e');
@@ -45,7 +45,7 @@ test('QA468 sample552 remains failed v3; only synthetic terminal absence support
   assert.deepEqual(sample.inventory.terminal,f.syntheticTerminal);
   assert.equal(sample.coverage.survivorsVerified.length,238);assert.deepEqual(sample.coverage.departedVerified,[5449]);assert.deepEqual(sample.coverage.departedPartial,[]);assert.deepEqual(sample.coverage.unobservedExits,[]);assert.deepEqual(sample.coverage.unresolvedGaps,[]);
   assert.ok(sample.unavailable.some(g=>g.tid===5449&&g.field==='identity-final'&&g.code==='ENOENT'));
-  assert.equal(sample.inventory.coverageVersion,4);assert.equal(sample.inventory.scope,'observed-terminal-survivors');assert.equal(sample.inventory.rendererRoleProven,false);
+  assert.equal(sample.inventory.coverageVersion,5);assert.equal(sample.inventory.scope,'observed-owned-cohort');assert.equal(sample.inventory.rendererRoleProven,false);
   const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,replayOriginalWithSyntheticTerminalAbsence({followup:true}).sample,prior);
   assert.equal(requireHostInventoryCoverage(receipt),true);assert.equal(receipt.survivorsVerified,476);assert.equal(receipt.departedVerified,1);assert.equal(receipt.departedPartial,0);assert.equal(receipt.unobservedExits,0);assert.equal(receipt.unresolvedGaps,0);assert.equal(receipt.nonMainSurvivorsVerified,474);
 });
@@ -140,12 +140,12 @@ for(const field of [undefined,'stat','schedstat','identity-after'])test('discove
   else if(field==='stat')assert.deepEqual(sample.coverage.unobservedExits,[subjectTid]);
   else{assert.deepEqual(sample.coverage.departedPartial,[subjectTid]);assert.equal(sample.threads.find(t=>t.pid===subjectTid).countersVerified,false);}
 });
-for(const terminalPresent of [true,false])test('a newborn outside the counter pass stays fatal, terminalPresent='+terminalPresent,()=>{
-  const {sample}=simulate({inventories:[withoutSubject,withoutSubject,all,terminalPresent?all:withoutSubject]});assertFailed(sample);
-  assert.ok(sample.coverage.unresolvedGaps.some(g=>g.kind==='unmeasured-birth'&&g.tid===subjectTid));
+for(const terminalPresent of [true,false])test('a task outside the counter cohort remains an observation only, terminalPresent='+terminalPresent,()=>{
+  const {sample}=simulate({inventories:[withoutSubject,withoutSubject,all,terminalPresent?all:withoutSubject]});assertComplete(sample);
+  assert.deepEqual(sample.coverage.observedOutsideCohort,[subjectTid]);assert.ok(!sample.threads.some(row=>row.pid===subjectTid));assert.ok(!sample.finalIdentities.some(row=>row.pid===subjectTid));
 });
 test('a task first seen only at terminal has no fabricated identity or counters',()=>{
-  const {sample}=simulate({inventories:[withoutSubject,withoutSubject,withoutSubject,all]});assertFailed(sample);
+  const {sample}=simulate({inventories:[withoutSubject,withoutSubject,withoutSubject,all]});assertComplete(sample);assert.deepEqual(sample.coverage.observedOutsideCohort,[subjectTid]);
   assert.ok(!sample.threads.some(row=>row.pid===subjectTid));assert.ok(!sample.finalIdentities.some(row=>row.pid===subjectTid));
 });
 

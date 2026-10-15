@@ -46,7 +46,7 @@ function replayQA466(changes={}){
   const sample=sampleOwnedHost(options,{procRoot,read,list,expectedStartTicks:owner.startTicks});
   return{sample,reads,lists,taskRoot};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
+function summary(owner){return{owner,samples:2,coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false,unobservedExits:0,samplesWithUnobservedExits:0};}
 
 for(const value of [true,undefined,'false']){
   const label=value===undefined?'undefined':JSON.stringify(value);
@@ -77,7 +77,7 @@ test('QA466 sample300 retains 188 real counters and explicitly unknown pre-ident
   assert.deepEqual(sample.threads,recorded.threads,'all retained counters come from actual records');
   assert.equal(sample.unavailable.find(g=>g.tid===4622).code,'ENOENT');
   assert.deepEqual(sample.lifecycle,[{tid:4622,kind:'unobserved-exit',startTicks:null,identity:null,counters:null}]);
-  assert.equal(sample.inventory.coverageVersion,4);assert.equal(sample.inventory.scope,'observed-terminal-survivors');
+  assert.equal(sample.inventory.coverageVersion,5);assert.equal(sample.inventory.scope,'observed-owned-cohort');
   assert.equal(sample.inventory.atomic,false);assert.equal(sample.inventory.lifetimeCoverageProven,false);assert.equal(sample.inventory.rendererRoleProven,false);
   const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,replayQA466({followup:true}).sample,prior);
   assert.equal(receipt.coverageSamples,2);assert.equal(receipt.nonMainTasksMeasured,374);assert.equal(receipt.unobservedExits,1);assert.equal(receipt.samplesWithUnobservedExits,1);
@@ -122,7 +122,7 @@ test('an exception label cannot replace its exact first-read and endpoint eviden
   for(const mutate of mutations){const sample=structuredClone(original);mutate(sample);assert.throws(()=>recordHostInventory({owner:sample.owner},sample),/incomplete/);}
 });
 
-test('every final task still requires its own real identity and all five counters',()=>{
+test('every surviving cohort task still requires its own real identity and all five counters',()=>{
   const original=replayQA466().sample;
   for(const mutate of [s=>s.threads.pop(),s=>s.threads.push(s.threads[0]),s=>{s.threads[1].countersVerified=false;},s=>{delete s.threads[1].startTicks;},...['userTicks','systemTicks','runNs','runQueueWaitNs','timeslices'].map(key=>s=>{delete s.threads[1][key];})]){
     const sample=structuredClone(original);mutate(sample);assert.throws(()=>recordHostInventory({owner:sample.owner},sample),/incomplete|identity\/counters/);

@@ -47,9 +47,9 @@ function replay(changes={}){
   };
   return{sample:sampleOwnedHost(options,{procRoot,read,list,expectedStartTicks:owner.startTicks}),reads,get lists(){return lists;},taskRoot,originalWorker};
 }
-function summary(owner){return{owner,samples:2,coverageVersion:4,coverageContract:'observed-terminal-survivors-v4',coverageScope:'observed-terminal-survivors',inventoryAtomic:false,lifetimeCoverageProven:false,rendererRoleProven:false};}
+function summary(owner){return{owner,samples:2,coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,rendererRoleProven:false};}
 
-test('QA467 sample284 stays failed; synthetic newborn counters permit only the prospective v4 replay',()=>{
+test('QA467 sample284 stays failed; synthetic newborn counters permit only the prospective v5 replay',()=>{
   assert.equal(createHash('sha256').update(raw).digest('hex'),'95eff2eef0ee989c92dd9fb9d2c90afbcad2d6eee63b1145abf61edcc6390a1c');
   assert.equal(recorded.inventory.coverageComplete,false);assert.equal(recorded.threads.length,179);assert.ok(!recorded.threads.some(t=>t.pid===4548));
   assert.deepEqual(recorded.lifecycle,[{tid:4548,kind:'born-during-sample',startTicks:null}]);
@@ -59,7 +59,7 @@ test('QA467 sample284 stays failed; synthetic newborn counters permit only the p
   assert.deepEqual(sample.threads.filter(t=>t.pid!==4548),recorded.threads,'all179 historical counter records stay unchanged');
   assert.deepEqual(sample.inventory.before,recorded.inventory.before);assert.deepEqual(sample.inventory.afterDiscovery,recorded.inventory.after);assert.deepEqual(sample.inventory.afterFinal,recorded.inventory.after);
   assert.equal(f.lists,4);assert.equal(sample.threads.length,180);assert.equal(sample.finalIdentities.length,180);
-  assert.equal(sample.inventory.coverageVersion,4);assert.equal(sample.inventory.rendererRoleProven,false);
+  assert.equal(sample.inventory.coverageVersion,5);assert.equal(sample.inventory.rendererRoleProven,false);
   for(const thread of sample.threads){const dir=join(f.taskRoot,String(thread.pid));assert.equal(f.reads.get(join(dir,'stat')),3,'two counter-bound identity reads plus one final identity-only read');assert.equal(f.reads.get(join(dir,'schedstat')),1);assert.equal(f.reads.get(join(dir,'wchan')),1);}
   const receipt=summary(sample.owner),prior=new Map();recordHostInventory(receipt,sample,prior);recordHostInventory(receipt,sample,prior);
   assert.equal(requireHostInventoryCoverage(receipt),true);assert.equal(receipt.newbornTasksMeasured,2);assert.equal(receipt.finalIdentitiesVerified,360);assert.equal(receipt.unobservedExits,0);
@@ -88,13 +88,13 @@ for(const kind of ['newbornExit','oldExit'])test('terminal absence retains a ful
   recordHostInventory(summary(sample.owner),sample);
 });
 
-test('a task born only in afterFinal has no counter pass and cannot be accepted',()=>{
+test('a task first seen in afterFinal stays explicitly outside cohort without a read or coverage credit',()=>{
   const f=replay({lateBirth:true}),sample=f.sample;
-  assert.equal(sample.inventory.coverageComplete,false);assert.ok(!sample.threads.some(t=>t.pid===99999));
+  assert.equal(sample.inventory.coverageComplete,true);assert.deepEqual(sample.coverage.observedOutsideCohort,[99999]);assert.ok(!sample.threads.some(t=>t.pid===99999));
   assert.equal(f.reads.get(join(f.taskRoot,'99999','schedstat')),undefined);
-  assert.equal(f.reads.get(join(f.taskRoot,'99999','stat')),1,'only closing identity is attempted, never guessed counters');
-  assert.ok(sample.lifecycle.some(e=>e.tid===99999&&e.phase==='final'&&e.startTicks===null));
-  assert.throws(()=>recordHostInventory(summary(sample.owner),sample),/incomplete/);
+  assert.equal(f.reads.get(join(f.taskRoot,'99999','stat')),undefined,'no closing identity is attempted outside the fixed cohort');
+  assert.ok(sample.lifecycle.some(e=>e.tid===99999&&e.kind==='observed-outside-cohort'&&e.phase==='final'&&e.startTicks===null&&e.identity===null&&e.counters===null));
+  recordHostInventory(summary(sample.owner),sample);assert.ok(!sample.finalIdentities.some(t=>t.pid===99999));
 });
 
 for(const kind of ['original','newborn']){
@@ -127,7 +127,7 @@ test('newborn counters must remain monotone in the same observed lifetime',()=>{
   const normal=replay().sample,receipt=summary(normal.owner),prior=new Map();recordHostInventory(receipt,normal,prior);
   assert.throws(()=>recordHostInventory(receipt,replay({decreasingNewborn:true}).sample,prior),/counter decreased/);
 });
-test('sample and summary consumers require actual final identities and v4 accounting',()=>{
+test('sample and summary consumers require actual final identities and v5 accounting',()=>{
   const sample=replay().sample;
   for(const mutate of [s=>{s.finalIdentities.pop();},s=>{s.finalIdentities[1]=s.finalIdentities[0];},s=>{s.finalIdentities[1].startTicks='999999';},s=>{s.finalIdentities[1].identityVerified=false;},s=>{s.finalIdentities[1].identityVerified=undefined;},s=>{s.finalIdentityReadCount--;},s=>{s.inventory.afterDiscovery=s.inventory.before;},s=>{s.inventory.coverageVersion=2;},s=>{s.inventory.coverageContract='observed-live-owned-host-tasks-v2';}]){
     const forged=structuredClone(sample);mutate(forged);assert.throws(()=>recordHostInventory(summary(sample.owner),forged),/incomplete/);
