@@ -4,9 +4,9 @@ import {readFileSync,writeFileSync,mkdirSync,mkdtempSync,existsSync,readdirSync,
 import {resolve,join,dirname,basename} from 'node:path';
 import {tmpdir} from 'node:os';
 import {spawnSync} from 'node:child_process';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
-import {actualFile,validateActualSdk,requireAppCheckout,requireStableProof,bindWorkflowInputs,requireOneShot} from '../scripts/qa/android-native-isolated/warm-content/workflow-proof.mjs';
+import {actualFile,validateActualSdk,requireAppCheckout,requireStableProof,bindWorkflowInputs,requireOneShot,verifyOriginalHelpers} from '../scripts/qa/android-native-isolated/warm-content/workflow-proof.mjs';
 
 const wrapper=readFileSync(new URL('../scripts/qa/android-native-isolated/warm-content/arm.sh',import.meta.url),'utf8').replaceAll('\r\n','\n');
 const workflow=readFileSync(new URL('../.github/workflows/android-warm-content-abba-20261016.yml',import.meta.url),'utf8').replaceAll('\r\n','\n');
@@ -95,6 +95,22 @@ test('actual file proof rejects nonexistent, empty, relative and escaped inputs'
   const root=temporary(t),inside=join(root,'inside');mkdirSync(inside);writeFileSync(join(inside,'real.bin'),'actual synthetic bytes');writeFileSync(join(root,'outside.bin'),'outside');writeFileSync(join(inside,'empty.bin'),'');
   assert.equal(actualFile(join(inside,'real.bin'),{inside}).bytes,22);
   for(const file of ['relative.bin',join(inside,'missing.bin'),join(inside,'empty.bin'),join(root,'outside.bin')])assert.throws(()=>actualFile(file,{inside}));
+});
+
+test('actual shallow tools checkout verifies helpers from the separate canonical Git repository',t=>{
+  const root=temporary(t),backing=join(root,'backing'),canonical=join(root,'canonical'),tools=join(root,'tools');mkdirSync(backing);
+  const git=(cwd,...args)=>{const r=spawnSync('git',['-C',cwd,...args],{encoding:'utf8',timeout:10000,windowsHide:true});assert.equal(r.error,undefined,String(r.error));assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
+  git(backing,'init','--initial-branch=main');git(backing,'config','user.name','Synthetic regression');git(backing,'config','user.email','synthetic@example.invalid');git(backing,'config','core.autocrlf','false');
+  const prefix='scripts/qa/android-native-isolated/';mkdirSync(join(backing,prefix),{recursive:true});
+  for(let n=0;n<37;n++)writeFileSync(join(backing,prefix,'helper-'+n+'.mjs'),'export const synthetic='+n+';\n');
+  git(backing,'add','.');git(backing,'commit','-m','synthetic canonical source');const source=git(backing,'rev-parse','HEAD');git(backing,'worktree','add','--detach',canonical,source);
+  writeFileSync(join(backing,'tools-only.txt'),'synthetic tools tip\n');git(backing,'add','.');git(backing,'commit','-m','synthetic tools source');
+  git(root,'clone','--depth','1',pathToFileURL(backing).href,tools);git(tools,'config','user.name','Synthetic regression');git(tools,'config','user.email','synthetic@example.invalid');git(tools,'config','core.autocrlf','false');
+  assert.equal(git(tools,'rev-parse','--is-shallow-repository'),'true');
+  const missing=spawnSync('git',['-C',tools,'cat-file','-e',source+'^{commit}'],{encoding:'utf8',timeout:10000,windowsHide:true});assert.equal(missing.error,undefined);assert.notEqual(missing.status,0,'Canonical history must really be absent from tools');
+  assert.doesNotThrow(()=>assert.equal(verifyOriginalHelpers(tools,canonical).length,37));
+  writeFileSync(join(tools,prefix,'helper-0.mjs'),'export const synthetic="changed";\n');git(tools,'add','.');git(tools,'commit','-m','synthetic helper mismatch');
+  assert.throws(()=>verifyOriginalHelpers(tools,canonical),/helper changed/);
 });
 test('actual SDK guard rejects placeholder executables before accepting any ready JSON',t=>{
   const root=temporary(t);let calls=0;

@@ -28,6 +28,9 @@ paths and hashes, actual Debug signer, and actual SDK ELF/launcher/JAR files,
 metadata, guest kernel/ramdisk/system/vendor and platform-JAR hashes, and executable
 version protocols. Large image files are hashed in bounded chunks and changes
 during hashing fail; original capture caps and foreground budgets are unchanged.
+Canonical helper objects come from the verified c14 application repository;
+the separate tools checkout can remain shallow. A real shallow local Git-clone
+regression verifies this boundary and rejects a changed helper blob.
 Ready JSON or a filename alone is
 insufficient. Command stdout/stderr are retained. The stable SDK comparison uses
 actual file hashes/metadata and parsed versions; raw temporary crash-log paths

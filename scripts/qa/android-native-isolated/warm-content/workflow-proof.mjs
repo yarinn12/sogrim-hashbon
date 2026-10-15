@@ -59,18 +59,25 @@ export function requireAppCheckout(root){
   const changed=git(root,'diff','--name-only','HEAD').split(/\r?\n/).filter(Boolean);if(changed.some(p=>!sourceFiles.includes(p)))throw new Error('Unexpected tracked application changes');
   return {source,tree,generatedChanges:changed};
 }
-function requireTools(env){
+export function verifyOriginalHelpers(toolCheckout,canonicalCheckout){
+  // Checkout actions keep these repositories separate and may fetch only one
+  // commit. Read canonical objects from the already verified application repo.
+  const originals=git(canonicalCheckout,'ls-tree','-r','--name-only','HEAD','--','scripts/qa/android-native-isolated').split(/\r?\n/).filter(Boolean);if(originals.length!==37)throw new Error('Require original 37 c14 helpers');
+  for(const path of originals)if(git(toolCheckout,'rev-parse','HEAD:'+path)!==git(canonicalCheckout,'rev-parse','HEAD:'+path))throw new Error('Original c14 helper changed in tools');
+  return originals;
+}
+function requireTools(env,canonicalCheckout){
   if(realpathSync(env.GITHUB_WORKSPACE)!==realpathSync(toolsRoot)||git(toolsRoot,'rev-parse','HEAD')!==env.GITHUB_SHA||env.GITHUB_SHA===APP_SOURCE)throw new Error('Actual separate tools checkout differs from guarded workflow');
   const paths=git(toolsRoot,'ls-tree','-r','--name-only','HEAD','--','scripts/qa/android-native-isolated').split(/\r?\n/).filter(Boolean);
   for(const path of paths){const canonical=execFileSync('git',['-C',toolsRoot,'show','HEAD:'+path]);if(!readFileSync(join(toolsRoot,path)).equals(canonical))throw new Error('Actual tools bytes differ from immutable Git blob: '+path);}
-  const originals=git(toolsRoot,'ls-tree','-r','--name-only',APP_SOURCE,'--','scripts/qa/android-native-isolated').split(/\r?\n/).filter(Boolean);if(originals.length!==37)throw new Error('Require original 37 c14 helpers');
-  for(const path of originals)if(git(toolsRoot,'rev-parse','HEAD:'+path)!==git(toolsRoot,'rev-parse',APP_SOURCE+':'+path))throw new Error('Original c14 helper changed in tools');
+  verifyOriginalHelpers(toolsRoot,canonicalCheckout);
   return {toolsSource:env.GITHUB_SHA,toolsTree:git(toolsRoot,'rev-parse','HEAD^{tree}')};
 }
 export function bindWorkflowInputs(env,{run=spawnSync,platform=process.platform}={}){
   if(platform!=='linux'||env.ANDROID_WARM_CONTENT_RUN!=='reviewed-diagnostic-only'||env.SOGRIM_DISABLE_PRIVATE_ENV_AUTOLOAD!=='1'||env.ANDROID_QA_DEVICE!=='emulator-5582'||env.ANDROID_QA_SOURCE!==APP_SOURCE)throw new Error('Require guarded isolated Linux warm-content workflow');
   requireOneShot(env);
-  const tools=requireTools(env),build=realpathSync(env.ANDROID_WARM_BUILD_ROOT),app=requireAppCheckout(process.cwd());requireAppCheckout(build);
+  const build=realpathSync(env.ANDROID_WARM_BUILD_ROOT),app=requireAppCheckout(process.cwd());requireAppCheckout(build);
+  const tools=requireTools(env,build);
   const pairRoot=join(build,'artifacts/android-native-isolated/warm-content-apks');
   const expected={ANDROID_WARM_PAIR_MANIFEST:join(pairRoot,'manifest.json'),ANDROID_WARM_PRODUCT_AUDIT:join(build,'artifacts/android-native-isolated/apk-assets.json'),ANDROID_WARM_FIXTURE_RECEIPT:join(build,'artifacts/android-native-isolated/fixture-provenance.json'),ANDROID_WARM_CONTROL_INDEX:join(here,'control-index.html')};
   const inputFiles={};for(const[k,path]of Object.entries(expected)){
