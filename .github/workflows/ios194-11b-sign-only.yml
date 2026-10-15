@@ -1,9 +1,9 @@
-name: iOS194 fdce private signed artifact only
-run-name: iOS signed artifact 4.58 (194) from fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae
+name: iOS194 11b private signed artifact only
+run-name: iOS signed artifact 4.58 (194) from 11b083ad804392c2d8273167837fda305af5182c
 
 on:
   push:
-    branches: [codex/ios194-fdce-sign-only-20261015]
+    branches: [codex/ios194-11b-sign-only-20261015]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-fdce-sign-only-20261015' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-11b-sign-only-20261015' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -24,11 +24,11 @@ jobs:
         shell: bash
         working-directory: app
     env:
-      SOURCE_SHA: "fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae"
-      SOURCE_QA_RUN: "38701027824"
-      SOURCE_WINDOWS_QA_RUN: "38701027683"
-      SOURCE_FONT_QA_RUN: "38701027748"
-      SOURCE_AUTH_QA_RUN: "38701027612"
+      SOURCE_SHA: "11b083ad804392c2d8273167837fda305af5182c"
+      SOURCE_QA_RUN: "38704274623"
+      SOURCE_WINDOWS_QA_RUN: "38704274675"
+      SOURCE_FONT_QA_RUN: "38704274571"
+      SOURCE_AUTH_QA_RUN: "38704274753"
       WORKFLOW_COMMIT: ${{ github.workflow_sha }}
       WORKFLOW_REF: ${{ github.workflow_ref }}
       APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -44,12 +44,12 @@ jobs:
       - name: Validate mandatory frozen source and release inputs
         working-directory: ${{ github.workspace }}
         run: |
-          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"194");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
+          node -e 'const a=require("node:assert/strict");a.match(process.env.SOURCE_SHA??"",/^[0-9a-f]{40}$/);a.equal(process.env.SOURCE_SHA,"11b083ad804392c2d8273167837fda305af5182c");a.equal(process.env.IOS_VERSION,"4.58");a.equal(process.env.IOS_BUILD,"194");for(const k of ["SOURCE_QA_RUN","SOURCE_WINDOWS_QA_RUN","SOURCE_FONT_QA_RUN","SOURCE_AUTH_QA_RUN"])a.match(process.env[k]??"",/^[1-9][0-9]*$/);'
 
       - name: Checkout the frozen application source explicitly
         uses: actions/checkout@v6
         with:
-          ref: "fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae"
+          ref: "11b083ad804392c2d8273167837fda305af5182c"
           path: app
           persist-credentials: false
 
@@ -209,7 +209,7 @@ jobs:
       - name: Record preparation outcome
         run: |
           printf '%s\n' \
-            'Signed iOS 4.58 (194) artifact prepared from fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae.' \
+            'Signed iOS 4.58 (194) artifact prepared from 11b083ad804392c2d8273167837fda305af5182c.' \
             'The retained artifact is encrypted and requires the existing App Store API private key to decrypt.' \
             'No TestFlight upload, App Review submission, device acceptance or build-number reservation was performed.' \
             >> "$GITHUB_STEP_SUMMARY"

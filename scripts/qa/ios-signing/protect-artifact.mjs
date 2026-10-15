@@ -6,8 +6,8 @@ import {fileURLToPath} from 'node:url';
 
 const CONTEXT = 'sogrim-ios-private-artifact-v1';
 const SOURCE = process.env.SOURCE_SHA;
-const TREE = '682af39805201c4f3e287ce8a81f90e84fc50c1d';
-assert.equal(SOURCE, 'fdce6de7bb15aa0d9122bedbdca1d50acbbcaeae', 'Expected the coordinator frozen release source');
+const TREE = 'ba1dc34368fbe0988389281c1988bc2e53346fa9';
+assert.equal(SOURCE, '11b083ad804392c2d8273167837fda305af5182c', 'Expected the coordinator frozen release source');
 const hash = data => createHash('sha256').update(data).digest('hex');
 
 function derive(pem, salt, aad) {
