@@ -43,7 +43,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Manual dispatch is disabled; only the separate frozen one-shot may sign.
   build-export-verify-private:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: macos-26
     timeout-minutes: 75
     defaults:

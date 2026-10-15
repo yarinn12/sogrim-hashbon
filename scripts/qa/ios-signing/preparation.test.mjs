@@ -198,3 +198,14 @@ test('actual one-shot workflow keeps signing gates and creates encrypted artifac
  assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));
 });
+
+
+test('manual preparation is disabled so input CI runs cannot replace the frozen one-shot run set',()=>{
+ const workflow=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
+ const jobs=workflow.split('\njobs:\n')[1];
+ const triggers=workflow.split('\non:\n')[1].split('\npermissions:')[0];
+ assert.deepEqual(triggers.match(/^  [a-zA-Z0-9_-]+:\r?$/gm),['  workflow_dispatch:']);
+ assert.ok(jobs,'manual template jobs must remain inspectable');
+ assert.equal((jobs.match(/^  [a-zA-Z0-9_-]+:\r?$/gm)||[]).length,1,'no second enabled manual job');
+ assert.match(jobs,/^  build-export-verify-private:\r?\n    if: github\.event_name != 'workflow_dispatch'\r?\n/m);
+});
