@@ -4,23 +4,27 @@ import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {assertHostOwner} from './trace-diagnostics.mjs';
 import {assertNoTargetAppAnr} from './anr-diagnostics.mjs';
+import {actualDefaultDisplayFocus} from './orientation.mjs';
 
 const launcher='com.google.android.apps.nexuslauncher',target='com.sogrimhashbon.app.debug';
 
 export function inspectPreparationWindow(raw){
   if(typeof raw!=='string'||!raw.trim())throw new Error('Missing actual preparation window dump');
-  const focuses=[...new Set([...raw.matchAll(/^\s*mCurrentFocus=([^\r\n]+)$/gm)].map(row=>row[1].trim()))];
-  if(focuses.length!==1)throw new Error('Unclear preparation focus');
-  const focus=focuses[0],anrs=[...raw.matchAll(/Application Not Responding:\s*([^\s}]+)/g)].map(row=>row[1]);
-  if(focus==='null'){
-    if(anrs.length)throw new Error('ANR window remains despite null focus');
-    return {focus,launcherAnr:false};
-  }
+  const focus=actualDefaultDisplayFocus(raw).slice('mCurrentFocus='.length).trim();
+  if(focus==='null')return {focus,launcherAnr:false};
   const window=/^Window\{[a-f0-9]+ u0 ([^}\r\n]+)\}$/.exec(focus);
   if(!window)throw new Error('Unclear preparation focus window or user');
   const launcherAnr=window[1]===`Application Not Responding: ${launcher}`;
-  if(anrs.some(pkg=>pkg!==launcher)||anrs.length&&!launcherAnr||/\bANR\b|Not Responding/i.test(window[1])&&!launcherAnr)throw new Error('Refuse foreign, target or unclear ANR focus');
+  if(/\bANR\b|Not Responding/i.test(window[1])&&!launcherAnr)throw new Error('Refuse foreign, target or unclear ANR focus');
   return {focus,launcherAnr};
+}
+
+function assertNoTargetLastAnr(raw){
+  const name=target.replaceAll('.','\\.'),boundary='(?=[:/\\s(}]|$)';
+  const process='(?:ProcessRecord\\{[^}\\r\\n]*?\\s\\d+:)?'+name+boundary;
+  const identity=new RegExp('^\\s*(?:Process:\\s*|ANR in\\s+|Application Not Responding:\\s*)'+process,'m');
+  const reason=new RegExp('^\\s*Reason:.*'+name+boundary,'m');
+  if(identity.test(raw)||reason.test(raw))throw new Error('Target app ANR remains in lastanr history');
 }
 
 export function prepareOwnedLauncher(options,{run=spawnSync,read=readFileSync,procRoot='/proc'}={}){
@@ -56,7 +60,7 @@ export function prepareOwnedLauncher(options,{run=spawnSync,read=readFileSync,pr
     state.packages=observe(phase+'-packages',['shell','cmd','package','list','packages','--user','0',target]);
     state.logcat=observe(phase+'-logcat',['logcat','-b','all','-d','-v','threadtime']);
     state.lastAnr=observe(phase+'-last-anr',['shell','dumpsys','activity','lastanr']);
-    state.window=observe(phase+'-window',['shell','dumpsys','window']);
+    state.window=observe(phase+'-window',['shell','dumpsys','window','displays']);
     return state;
   }
   function assertEligible(state){
@@ -66,7 +70,7 @@ export function prepareOwnedLauncher(options,{run=spawnSync,read=readFileSync,pr
     // Every snapshot is complete, unfiltered logcat. Retain all earlier snapshots
     // as well, so recovery or buffer turnover cannot erase an observed app ANR.
     report.anrEvidence=assertNoTargetAppAnr([report.before,report.preAction,report.after].filter(Boolean).map(s=>s.logcat||'').join('\n'));
-    if(new RegExp('^\\s*Reason:.*'+target.replaceAll('.','\\.')+'(?=[:/\\s(]|$)','m').test(state.lastAnr))throw new Error('Target app ANR remains in lastanr history');
+    assertNoTargetLastAnr(state.lastAnr);
     state.focus=inspectPreparationWindow(state.window);
     return state.focus;
   }
