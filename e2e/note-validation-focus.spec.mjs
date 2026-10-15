@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { openHeldRenderedHome, requireHeldHomeReadiness } from "./helpers/heldHomeReadinessControl.mjs";
+import { resetLocalQaStateFresh } from "./helpers/resetLocalQaStateFresh.mjs";
 
 requireHeldHomeReadiness(test);
 import { installDelayedDialogFrameFixture } from "./helpers/noteEditorDiagnostics.mjs";
 
 test.use({ serviceWorkers: "block" });
 
-test("validation feedback cannot redirect continued note typing into the wrong field", async ({ page, request }) => {
+test("validation feedback cannot redirect continued note typing into the wrong field", async ({ page, request, baseURL }) => {
   const owner = "person-validation-owner", eventId = "event-validation-focus";
   const state = {
     currentParticipantId: owner,
@@ -17,7 +18,7 @@ test("validation feedback cannot redirect continued note typing into the wrong f
       createdAt: "2026-09-01T08:00:00.000Z", updatedAt: "2026-09-01T08:00:00.000Z",
       expenses: [], transfers: [], notes: [], activityLog: [] }]
   };
-  await request.post("/api/reset");
+  await resetLocalQaStateFresh(baseURL);
   await request.put("/api/state", { data: state });
   await page.addInitScript(({ state, owner }) => {
     localStorage.clear(); sessionStorage.clear();
