@@ -176,6 +176,14 @@ const CSS = `
     transform: translateY(-1px) !important;
   }
 
+  /* Touch browsers can retain :hover after a tap. Keep the tappable edge fixed. */
+  @media (hover: none) {
+    html.ledger-workspace-v1 .primary-button:hover:not(:active):not(:disabled) {
+      transform: none !important;
+    }
+  }
+
+
   html.ledger-workspace-v1 button:disabled,
   html.ledger-workspace-v1 .primary-button:disabled,
   html.ledger-workspace-v1 .secondary-button:disabled {
