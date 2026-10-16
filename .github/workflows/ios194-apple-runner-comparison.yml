@@ -1,14 +1,18 @@
-name: Apple194 scoped read-only readiness probe
+name: Apple194 scoped GET runner comparison
 on:
   push:
-    branches: [codex/ios194-apple-readiness-probe-20261016]
+    branches: [codex/ios194-apple-runner-comparison-20261016]
 permissions:
   contents: read
   actions: read
 jobs:
   readonly:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-apple-readiness-probe-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
-    runs-on: ubuntu-latest
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-apple-runner-comparison-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-26, macos-26-intel]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
     defaults:
       run:
@@ -48,7 +52,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: always()
         with:
-          name: ios194-apple-readiness-${{ github.run_id }}
+          name: ios194-apple-readiness-${{ matrix.runner }}-${{ github.run_id }}
           path: readiness-output/*.json
           if-no-files-found: warn
           retention-days: 7

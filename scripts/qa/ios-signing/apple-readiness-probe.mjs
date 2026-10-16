@@ -7,8 +7,8 @@ import {verifyCommit,verifyRuns,requireUnusedArtifactSlot,readUnusedBuild,RELEAS
 const env=process.env, phase=process.argv[2];
 assert.ok(['ci','apple'].includes(phase));
 assert.equal(env.GITHUB_REPOSITORY,'yarinn12/sogrim-hashbon');
-assert.equal(env.GITHUB_REF,'refs/heads/codex/ios194-apple-readiness-probe-20261016');
-assert.equal(env.GITHUB_WORKFLOW_REF,'yarinn12/sogrim-hashbon/.github/workflows/ios194-apple-readiness-probe.yml@refs/heads/codex/ios194-apple-readiness-probe-20261016');
+assert.equal(env.GITHUB_REF,'refs/heads/codex/ios194-apple-runner-comparison-20261016');
+assert.equal(env.GITHUB_WORKFLOW_REF,'yarinn12/sogrim-hashbon/.github/workflows/ios194-apple-runner-comparison.yml@refs/heads/codex/ios194-apple-runner-comparison-20261016');
 assert.equal(env.GITHUB_EVENT_NAME,'push');assert.equal(env.GITHUB_RUN_ATTEMPT,'1');assert.equal(env.GITHUB_RUN_NUMBER,'1');
 const git=args=>execFileSync('git',args,{encoding:'utf8'}).trim();
 assert.equal(git(['rev-parse','HEAD']),RELEASE_SOURCE);assert.equal(git(['rev-parse','HEAD^{tree}']),RELEASE_TREE);assert.equal(git(['status','--porcelain']),'');
