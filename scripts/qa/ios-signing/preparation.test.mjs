@@ -5,7 +5,7 @@ import {test} from 'node:test';
 import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCommit,
   requireUnusedArtifactSlot, readUnusedBuild, verifyCheckout, APPLE_APP_ID, SOURCE_BRANCH} from './source-guard.mjs';
 import {protect, unprotect} from './protect-artifact.mjs';
-import {verifyRuns as verifyIntakeRuns} from './intake-source-guard.mjs';
+import {verifyRuns as verifyIntakeRuns, readUnusedBuild as readIntakeUnusedBuild} from './intake-source-guard.mjs';
 
 const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38905815331', SOURCE_WINDOWS_QA_RUN: '38905815402',
   SOURCE_FONT_QA_RUN: '38905815300', SOURCE_AUTH_QA_RUN: '38905815560',
@@ -184,8 +184,8 @@ for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios194-2cf-timeout-safe-sign-only-20261016',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-timeout-safe-sign-only.yml@refs/heads/codex/ios194-2cf-timeout-safe-sign-only-20261016',
+ GITHUB_REF:'refs/heads/codex/ios194-2cf-resilient-sign-only-20261016',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-resilient-sign-only.yml@refs/heads/codex/ios194-2cf-resilient-sign-only-20261016',
  GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -196,9 +196,9 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
- const actual=readFileSync(new URL('../../../.github/workflows/ios194-2cf-timeout-safe-sign-only.yml',import.meta.url),'utf8');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios194-2cf-resilient-sign-only.yml',import.meta.url),'utf8');
  assert.ok(actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
- assert.ok(actual.includes('branches: [codex/ios194-2cf-timeout-safe-sign-only-20261016]'));
+ assert.ok(actual.includes('branches: [codex/ios194-2cf-resilient-sign-only-20261016]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));
@@ -243,7 +243,7 @@ for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
  });
 
 test('2cf one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios194-2cf-timeout-safe-sign-only.yml',import.meta.url),'utf8');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios194-2cf-resilient-sign-only.yml',import.meta.url),'utf8');
  assert.equal(RELEASE_SOURCE,'2cf78afc23c1d9330834de63ed5f81ba4da5b052');
  assert.equal(RELEASE_TREE,'52105dddf3b9a8edb61032c6149eac1b392c460a');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
@@ -270,3 +270,18 @@ test('unused-build gate recovers from one Apple500 without reserving or mutating
  assert.equal(count,3);assert.equal(proof.maximumUploadedBuild,193);assert.equal(proof.reserved,false);
  assert.equal(calls[0].path,calls[1].path);
 });
+
+for(const [label,readiness] of [['signing',readUnusedBuild],['intake',readIntakeUnusedBuild]])
+ test(label+' minimal build-read query retains exact app, IOS scope and complete pagination',async()=>{
+  const pages=[];
+  const proof=await readiness(async(path,options)=>{
+   assert.deepEqual(options,{method:'GET'});
+   if(path.startsWith('/v1/apps/')){assert.equal(path,'/v1/apps/6809952514');return{data:{attributes:{bundleId:'com.sogrimhashbon.app'}}};}
+   const url=new URL(path,'https://api.appstoreconnect.apple.com');
+   assert.equal(url.pathname,'/v1/builds');assert.equal(url.searchParams.get('filter[app]'),'6809952514');
+   assert.equal(url.searchParams.get('filter[preReleaseVersion.platform]'),'IOS');assert.equal(url.searchParams.get('limit'),'200');
+   assert.equal(url.searchParams.get('fields[builds]'),'version');pages.push(path);
+   return{data:[{attributes:{version:pages.length===1?'192':'193'}}],links:{next:pages.length===1?url.href+'&cursor=next':null}};
+  });
+  assert.equal(pages.length,2);assert.equal(proof.maximumUploadedBuild,193);assert.equal(proof.reserved,false);
+ });

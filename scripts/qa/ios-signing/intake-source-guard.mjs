@@ -110,7 +110,7 @@ export async function readUnusedBuild(request) {
   const app = (await request('/v1/apps/' + APPLE_APP_ID, {method: 'GET'})).data;
   assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
   let next = '/v1/builds?' + new URLSearchParams({
-    'filter[app]': APPLE_APP_ID, 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
+    'filter[app]': APPLE_APP_ID, 'filter[preReleaseVersion.platform]': 'IOS', 'fields[builds]': 'version', limit: '200'
   });
   let maximum = 0;
   for (let page = 0; next && page < 20; page++) {

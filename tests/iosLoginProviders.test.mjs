@@ -57,7 +57,7 @@ function assertProviderBeforeSigning(workflow) {
 }
 
 test("both private signing definitions gate preparation and archive on public Apple provider readiness", async () => {
-  for (const path of ["ios-testflight.yml", "ios194-2cf-timeout-safe-sign-only.yml"]) {
+  for (const path of ["ios-testflight.yml", "ios194-2cf-resilient-sign-only.yml"]) {
     const workflow = await readFile(new URL("../.github/workflows/" + path, import.meta.url), "utf8");
     assertProviderBeforeSigning(workflow);
     assert.doesNotMatch(workflow, /apple-actions\/upload-testflight-build|complete-ios-testflight/,
@@ -68,7 +68,7 @@ test("both private signing definitions gate preparation and archive on public Ap
 });
 
 test("provider-order contract rejects missing, bypassed and post-archive provider checks", async () => {
-  const workflow = (await readFile(new URL("../.github/workflows/ios194-2cf-timeout-safe-sign-only.yml", import.meta.url), "utf8"))
+  const workflow = (await readFile(new URL("../.github/workflows/ios194-2cf-resilient-sign-only.yml", import.meta.url), "utf8"))
     .replace(/\r\n/g, "\n");
   const gate = "        run: npm run qa:ios:providers";
   const moved = workflow.replace(gate, "        run: echo provider-gate-removed") +
