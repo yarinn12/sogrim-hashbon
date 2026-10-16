@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { createDeniedSessionDocumentBoundary } from "./helpers/denied-session-document.mjs";
 
 test.use({ serviceWorkers: "block" });
 
@@ -40,7 +41,8 @@ const cloudState = {
 
 async function verifyGoogleSession({ page }, testInfo, {
   backgroundWorkspaceStatus = 0, backgroundAuthUserCode = "",
-  refreshRejectStatus = 401, refreshRejectCode = ""
+  refreshRejectStatus = 401, refreshRejectCode = "",
+  holdSignedInDocumentLoad = false
 } = {}) {
   const corsHeaders = {
     "access-control-allow-origin": "*",
@@ -52,6 +54,7 @@ async function verifyGoogleSession({ page }, testInfo, {
   let ensureWorkspaceRequests = 0;
   let successfulEnsureWorkspaceResponses = 0;
   let acknowledgedWorkspaceResponses = 0;
+  const denialBoundary = createDeniedSessionDocumentBoundary();
   let markBackgroundWorkspaceRejected;
   const backgroundWorkspaceRejected = new Promise(resolve => {
     markBackgroundWorkspaceRejected = resolve;
@@ -64,6 +67,25 @@ async function verifyGoogleSession({ page }, testInfo, {
   const googleScriptRequested = new Promise((resolve) => {
     markGoogleScriptRequested = resolve;
   });
+  let releaseHeldResource = () => {};
+  if (holdSignedInDocumentLoad) {
+    let documentResponses = 0;
+    const heldResourceRelease = new Promise(resolve => { releaseHeldResource = resolve; });
+    await page.route("**/__qa_held_signed_in_image__", async route => {
+      await heldResourceRelease;
+      // The signed-in document has already been replaced at this point.
+      await route.abort();
+    });
+    await page.route(/^http:\/\/127\.0\.0\.1:\d+\/\?pwa_release=403$/, async route => {
+      documentResponses += 1;
+      const response = await route.fetch();
+      if (documentResponses !== 2) return route.fulfill({ response });
+      const body = (await response.text()).replace(
+        "</body>", '<img src="/__qa_held_signed_in_image__" alt=""></body>'
+      );
+      return route.fulfill({ response, body });
+    });
+  }
 
   await page.route("**/api/config", (route) => route.fulfill({
     json: {
@@ -144,6 +166,7 @@ async function verifyGoogleSession({ page }, testInfo, {
     if (url.pathname.endsWith("/auth/v1/user")) {
       authUserRequests += 1;
       if (backgroundAuthUserCode && authUserRequests === 2) {
+        denialBoundary.deny(await page.evaluate(() => window.__qaDocumentIdentity));
         await route.fulfill({
           status: 403, headers: corsHeaders,
           json: { message: "Account is unavailable", code: backgroundAuthUserCode }
@@ -156,6 +179,9 @@ async function verifyGoogleSession({ page }, testInfo, {
     if (url.pathname.endsWith("/rest/v1/rpc/ensure_account_workspace")) {
       ensureWorkspaceRequests += 1;
       if (backgroundWorkspaceStatus && ensureWorkspaceRequests === 2) {
+        if (backgroundWorkspaceStatus === 401) {
+          denialBoundary.deny(await page.evaluate(() => window.__qaDocumentIdentity));
+        }
         await route.fulfill({
           status: backgroundWorkspaceStatus, headers: corsHeaders,
           json: { message: backgroundWorkspaceStatus === 401
@@ -186,6 +212,9 @@ async function verifyGoogleSession({ page }, testInfo, {
     return route.fulfill({ headers: corsHeaders, json: [] });
   });
 
+  await page.addInitScript(() => {
+    window.__qaDocumentIdentity = `${Date.now()}:${Math.random()}`;
+  });
   await page.addInitScript(() => {
     if (!localStorage.getItem("iphone-google-test-ready")) {
       localStorage.clear();
@@ -235,7 +264,11 @@ async function verifyGoogleSession({ page }, testInfo, {
     [page, "crash", () => record("page-crash")],
     [page, "close", () => record("page-close")],
     [page, "domcontentloaded", () => record("dom-content-loaded")],
-    [page, "load", () => { completedDocumentLoads++; record("document-load"); }],
+    [page, "load", () => {
+      completedDocumentLoads++;
+      denialBoundary.load();
+      record("document-load");
+    }],
     [page, "pageerror", error => record("page-error", { message: String(error.message).slice(0, 300) })],
     [page, "console", message => {
       if (message.type() === "error" || message.type() === "warning") {
@@ -243,7 +276,10 @@ async function verifyGoogleSession({ page }, testInfo, {
       }
     }],
     [page, "framenavigated", frame => {
-      if (frame === page.mainFrame()) record("main-frame-navigation", { path: pathOf(frame.url()) });
+      if (frame === page.mainFrame()) {
+        denialBoundary.commit();
+        record("main-frame-navigation", { path: pathOf(frame.url()) });
+      }
     }],
     [page, "request", request => {
       if (request.isNavigationRequest()) {
@@ -269,6 +305,9 @@ async function verifyGoogleSession({ page }, testInfo, {
       if (response.url().includes("/rest/v1/rpc/ensure_account_workspace") &&
           response.status() === 200) acknowledgedWorkspaceResponses += 1;
       if (response.request().isNavigationRequest()) {
+        if (response.request().frame() === page.mainFrame() && response.ok()) {
+          denialBoundary.response();
+        }
         record("navigation-response", { path: pathOf(response.url()), status: response.status() });
       } else if (/\/api\/config|\/auth\/v1\/|\/rest\/v1\/rpc\/ensure_account_workspace/.test(response.url())) {
         record("auth-response", { path: pathOf(response.url()), status: response.status() });
@@ -281,17 +320,52 @@ async function verifyGoogleSession({ page }, testInfo, {
   await googleButton.click();
   record("google-click-returned");
   if (backgroundWorkspaceStatus === 401 || backgroundAuthUserCode) {
-    await backgroundWorkspaceRejected;
-    // The denied session locks the gate and schedules a second document load.
-    // Read storage only after that navigation has completed.
-    await expect.poll(() => completedDocumentLoads).toBeGreaterThanOrEqual(2);
-    await expect(page.locator("#public-account-auth-gate")).toBeVisible();
-    expect(await page.evaluate(() =>
-      localStorage.getItem("settle-friends-account-session")
-    )).toBeNull();
-    expect(successfulEnsureWorkspaceResponses).toBe(1);
-    expect(idTokenRequests).toBe(1);
-    for (const [target, event, handler] of listeners) target.off(event, handler);
+    let denialFailure;
+    try {
+      await backgroundWorkspaceRejected;
+      // A newly initialized document proves the scheduled reload. The
+      // signed-in document can be interrupted before its load event fires.
+      await expect.poll(async () => {
+        try {
+          denialBoundary.observe(await page.evaluate(() => window.__qaDocumentIdentity));
+          return denialBoundary.hasPostDenialDocument();
+        } catch (error) {
+          if (/Execution context was destroyed|Cannot find context with specified id/.test(String(error))) {
+            return false;
+          }
+          throw error;
+        }
+      }).toBe(true);
+      await expect(page.locator("#public-account-auth-gate")).toBeVisible();
+      if (holdSignedInDocumentLoad) {
+        await expect.poll(() => completedDocumentLoads).toBeGreaterThanOrEqual(1);
+        expect(completedDocumentLoads).toBe(1);
+      }
+      expect(await page.evaluate(() =>
+        localStorage.getItem("settle-friends-account-session")
+      )).toBeNull();
+      expect(successfulEnsureWorkspaceResponses).toBe(1);
+      expect(idTokenRequests).toBe(1);
+    } catch (error) {
+      denialFailure = error;
+      throw error;
+    } finally {
+      releaseHeldResource();
+      for (const [target, event, handler] of listeners) target.off(event, handler);
+      const evidence = { project: testInfo.project.name, retry: testInfo.retry,
+        boundary: denialBoundary.receipt(), signals: reloadSignals,
+        ...(denialFailure ? { failure: { name: String(denialFailure.name),
+          message: String(denialFailure.message).slice(0, 1_000) } } : {}) };
+      try {
+        await testInfo.attach("google-session-denial-boundary", {
+          body: JSON.stringify(evidence, null, 2), contentType: "application/json"
+        });
+      } catch (attachmentError) {
+        if (denialFailure) throw new AggregateError([denialFailure, attachmentError],
+          "credential denial failed and its QA evidence could not be attached");
+        throw attachmentError;
+      }
+    }
     return;
   }
   await expect(page.locator("#public-account-auth-gate")).toHaveCount(0);
@@ -413,3 +487,10 @@ for (const code of ["user_banned", "user_not_found"]) {
     });
   });
 }
+
+test("iPhone Google denial reloads after an interrupted signed-in document load", async ({ page }, testInfo) => {
+  await verifyGoogleSession({ page }, testInfo, {
+    backgroundAuthUserCode: "user_banned", refreshRejectStatus: 403,
+    holdSignedInDocumentLoad: true
+  });
+});
