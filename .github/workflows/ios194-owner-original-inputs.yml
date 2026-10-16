@@ -1,0 +1,32 @@
+name: iOS194 public GitHub metadata — no Apple data or ZIPs
+on:
+  push:
+    branches: [codex/ios194-owner-input-collector-20261016]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  collect-originals:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-owner-input-collector-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Verify original-input rejection controls
+        run: node --test tests/iosOwnerOriginalInputs.test.mjs
+      - name: Preserve ten public GitHub JSON files without archive downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/qa/ios-signing/collect-owner-original-inputs.mjs
+      - uses: actions/upload-artifact@v6
+        with:
+          name: ios194-owner-original-inputs-${{ github.run_id }}
+          path: original-inputs/*
+          if-no-files-found: error
+          retention-days: 7
