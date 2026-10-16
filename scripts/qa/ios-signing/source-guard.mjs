@@ -5,8 +5,8 @@ import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 
-export const RELEASE_SOURCE = '49d5ab62af3403be0a8cad6b69496a016211e6cf';
-export const RELEASE_TREE = '3dea406483faec7014f38bf7a00047ede83a4263';
+export const RELEASE_SOURCE = '2cf78afc23c1d9330834de63ed5f81ba4da5b052';
+export const RELEASE_TREE = '52105dddf3b9a8edb61032c6149eac1b392c460a';
 export const SOURCE = process.env.SOURCE_SHA;
 export const ARTIFACT_NAME = 'sogrim-ios-4.58-194-encrypted';
 export const APPLE_APP_ID = '6809952514';
@@ -139,9 +139,9 @@ export async function readUnusedBuild(request) {
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
   if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-49d-sign-only-20261016');
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-2cf-root-sign-only-20261016');
     assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios194-49d-sign-only.yml@refs/heads/codex/ios194-49d-sign-only-20261016');
+      'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-root-sign-only.yml@refs/heads/codex/ios194-2cf-root-sign-only-20261016');
     assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
     assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
   } else {
