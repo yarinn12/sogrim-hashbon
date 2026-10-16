@@ -14,7 +14,10 @@ spec = spec_from_file_location("ios_validator", path)
 validator = module_from_spec(spec)
 spec.loader.exec_module(validator)
 SHA, TREE = "a" * 40, "b" * 40
-PHASES = ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]
+FIXTURE_SHA, FIXTURE_TREE = "c" * 40, "d" * 40
+COLD, RELAUNCH = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"
+PHASES = ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile", "keyboard-ready", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]
+VISUAL_SCREENS = {"home": "home", "summary": "settlement", "transfers": "settlement", "profile": "profile"}
 
 
 def report(enlarged=False):
@@ -40,6 +43,9 @@ def report(enlarged=False):
     result["records"] = []
     for phase in PHASES:
         metrics = {"heading": deepcopy(metric)}
+        if phase == "home":
+            metrics["heading"].update({"text": "מה סוגרים היום?", "fontSize": 24 * factor,
+                                       "textRows": 1 if not enlarged else 2})
         if phase == "expenses": metrics = {key: deepcopy(metric) for key in ["tab", "tab2", "tab3"]}
         if phase == "notes": metrics = {key: deepcopy(metric) for key in ["title", "preview"]}
         if phase == "transfers":
@@ -57,11 +63,31 @@ def report(enlarged=False):
             metrics["groupTotal"]["text"] = "₪120.00"
             metrics["groupTotal"]["textRows"] = 1
             metrics["groupTotal"]["words"] = [{"text": "₪120.00", "rows": 1, "outsideTab": False}]
-        result["records"].append({"phase": phase, "native": deepcopy(native), "nativeShell": True, "platform": "ios",
+        home_reference = ({"title": "מה סוגרים היום?", "fontSize": 24 * factor,
+                           "lineCount": 1 if not enlarged else 2, "eyebrowVisible": False,
+                           "viewport": {"width": 393, "height": 852},
+                           "pointer": {"coarse": False, "fine": False},
+                           "rootFontSize": 16 * factor,
+                           "textPreference": "normal" if not enlarged else "extra-large",
+                           "dynamicTypeActive": enlarged,
+                           "titleBounds": {"left": 40, "right": 353, "top": 150, "bottom": 178},
+                           "hero": {"left": 16, "right": 377, "top": 120, "bottom": 300,
+                                    "width": 361, "height": 180},
+                           "action": {"left": 100, "right": 293, "top": 272, "bottom": 330,
+                                      "width": 193, "height": 58},
+                           "actionFits": True}) if phase == "home" else None
+        session = RELAUNCH if phase == "restored" else COLD
+        result["records"].append({"phase": phase, "index": 1 if phase == "restored" else len(result["records"]) + 1,
+                                  "captureSession": session,
+                                  "visualCapture": {"phase": phase, "screen": VISUAL_SCREENS.get(phase, "event"),
+                                                    "splashAbsent": True, "splashMarkMs": 100,
+                                                    "capturedAtMs": 1000 + len(result["records"])},
+                                  "native": deepcopy(native), "nativeShell": True, "platform": "ios",
                                   "appUrl": "capacitor://localhost/", "nativeAppInfo": {"id": "com.sogrimhashbon.app"},
                                   "errors": [], "documentWidth": 393, "rootFontSize": 16 * factor,
                                   "viewport": {"width": 393, "height": 852, "visualHeight": 476 if phase.startswith("keyboard-") else 852, "visualTop": 0},
-                                  "metrics": metrics, "writes": [{"ok": True}], "pendingOutbox": [],
+                                  "metrics": metrics, "homeReference": home_reference,
+                                  "writes": [{"ok": True}], "pendingOutbox": [],
                                   "keyboardLayout": {"header": {"top": 0, "bottom": 120},
                                                      "headerControls": {"back": {"top": 64, "bottom": 112, "left": 280, "right": 328},
                                                                         "accessibility": {"top": 64, "bottom": 112, "left": 224, "right": 272},
@@ -79,6 +105,28 @@ def report(enlarged=False):
 class AcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.reports = {"default": report(), "accessibility-extra-large": report(True)}
+        self.omit_screenshot = None
+        self.evidence = {}
+        for mode in self.reports:
+            startup = {}
+            status = {}
+            for session, phases, origin in [(COLD, PHASES[:-1], 1000), (RELAUNCH, ["restored"], 2000)]:
+                identity = {"session": session, "sourceSha": SHA, "sourceTree": TREE,
+                            "fixtureSha": FIXTURE_SHA, "fixtureTree": FIXTURE_TREE}
+                startup[session] = [{**identity, "event": "capacitorDidLoad-enter", "time": 1},
+                                    {**identity, "event": "web-stage", "stage": "script-injected",
+                                     "time": 1.5, "timeOriginMs": origin},
+                                    {**identity, "event": "web-stage", "stage": "startup-milestone",
+                                     "milestone": "splash-dismissed", "time": 2, "timeOriginMs": origin,
+                                     "startMs": 100}]
+                status[session] = []
+                for index, phase in enumerate(phases, 1):
+                    for event, offset in [("captureReceived", 0), ("captureWritten", 0.1), ("captureAckCallback", 0.2)]:
+                        status[session].append({**identity, "event": event, "index": index,
+                                                "phase": phase if event == "captureReceived" else None,
+                                                "error": "" if event == "captureAckCallback" else None,
+                                                "time": 3 + index + offset})
+            self.evidence[mode] = {"startup": startup, "status": status}
 
     def record(self, phase):
         return next(r for r in self.reports["accessibility-extra-large"]["records"] if r["phase"] == phase)
@@ -100,13 +148,19 @@ class AcceptanceTests(unittest.TestCase):
     def accept(self):
         with TemporaryDirectory() as temporary:
             out = Path(temporary)
-            (out / "package-manifest.json").write_text(json.dumps({"sourceSha": SHA, "sourceTree": TREE}))
+            (out / "package-manifest.json").write_text(json.dumps({"sourceSha": SHA, "sourceTree": TREE,
+                                                                    "fixtureSha": FIXTURE_SHA, "fixtureTree": FIXTURE_TREE}))
             for mode, data in self.reports.items():
                 directory = out / mode
                 directory.mkdir()
                 (directory / "native-parity.json").write_text(json.dumps(data))
                 for phase in PHASES:
-                    (directory / f"native-parity-{phase}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 1100)
+                    if self.omit_screenshot != (mode, phase):
+                        (directory / f"native-parity-{phase}.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 1100)
+                for kind in ["startup", "status"]:
+                    for session, rows in self.evidence[mode][kind].items():
+                        (directory / f"native-parity-{kind}-{session}.log").write_text(
+                            "".join(json.dumps(row) + "\n" for row in rows))
             with redirect_stdout(io.StringIO()): validator.validate(out, SHA)
 
     def rejects(self):
@@ -117,6 +171,47 @@ class AcceptanceTests(unittest.TestCase):
             self.accept()
 
     def test_complete_artifacts_pass(self): self.accept()
+    def test_home_capture_before_splash_dismissal_fails(self):
+        self.evidence["accessibility-extra-large"]["startup"][COLD][-1]["startMs"] = 1200
+        self.record("home")["visualCapture"]["splashMarkMs"] = 1200
+        with self.assertRaisesRegex(AssertionError, "capture predates original splash mark"): self.accept()
+    def test_delayed_milestone_delivery_after_native_capture_passes(self):
+        # The original JS mark predates capture; its bridge log may arrive later.
+        self.evidence["accessibility-extra-large"]["startup"][COLD][-1]["time"] = 5
+        self.accept()
+    def test_visible_phase_mismatch_fails(self):
+        self.record("summary")["visualCapture"]["screen"] = "home"
+        with self.assertRaisesRegex(AssertionError, "wrong visible screen"): self.accept()
+    def test_splash_overlay_still_visible_fails(self):
+        self.record("home")["visualCapture"]["splashAbsent"] = False
+        with self.assertRaisesRegex(AssertionError, "splash covers measured screen"): self.accept()
+    def test_missing_native_capture_ack_fails(self):
+        self.evidence["default"]["status"][COLD] = [row for row in self.evidence["default"]["status"][COLD]
+                                                     if not (row["event"] == "captureAckCallback" and row["index"] == 1)]
+        with self.assertRaisesRegex(AssertionError, "capture/ACK count mismatch"): self.accept()
+    def test_relaunch_must_use_a_separate_session(self):
+        self.record("restored")["captureSession"] = COLD
+        with self.assertRaisesRegex(AssertionError, "cold/relaunch session overlap"): self.accept()
+    def test_keyboard_ready_screenshot_is_required(self):
+        self.omit_screenshot = ("default", "keyboard-ready")
+        with self.assertRaisesRegex(AssertionError, "missing visual capture"): self.accept()
+    def test_home_reference_rejects_29px_title(self):
+        for mode, factor in [("default", 1), ("accessibility-extra-large", 40 / 17)]:
+            home = self.reports[mode]["records"][0]
+            home["homeReference"]["fontSize"] = 29 * factor
+            home["metrics"]["heading"]["fontSize"] = 29 * factor
+        self.rejects()
+    def test_home_reference_rejects_two_title_lines(self):
+        home = self.reports["default"]["records"][0]
+        home["homeReference"]["lineCount"] = 2
+        home["metrics"]["heading"]["textRows"] = 2
+        self.rejects()
+    def test_home_reference_rejects_extra_eyebrow(self):
+        self.reports["default"]["records"][0]["homeReference"]["eyebrowVisible"] = True
+        self.rejects()
+    def test_home_reference_requires_actual_pointer_readback(self):
+        del self.reports["default"]["records"][0]["homeReference"]["pointer"]
+        self.rejects()
     def test_profile_content_clipping_fails(self):
         self.record("profile")["metrics"]["heading"]["scrollWidth"] = 1800
         self.rejects()
@@ -283,6 +378,33 @@ class AcceptanceTests(unittest.TestCase):
         metric["words"] = [{"text": "₪", "rows": 1, "outsideTab": False},
                            {"text": "120.00", "rows": 1, "outsideTab": False}]
         self.rejects()
+
+
+class StatusPublicationWiringTests(unittest.TestCase):
+    def test_generated_app_and_test_target_use_identical_swift_policy(self):
+        policy = (validator.FIXTURES / "StatusPublicationPolicy.swift").read_text(encoding="utf8")
+        driver = (validator.FIXTURES / "ParityUITests.swift").read_text(encoding="utf8")
+        delegate = validator.inject_status_policy("import WebKit\nclass App {}", "import WebKit")
+        target = validator.test_target_source()
+        self.assertEqual(delegate.count(policy), 1)
+        self.assertEqual(target.count(policy), 1)
+        self.assertTrue(target.startswith("import XCTest\n" + policy))
+        self.assertIn(driver.removeprefix("import XCTest"), target)
+        self.assertIn("final class StatusPublicationPolicyTests", target)
+        prepare = (validator.FIXTURES / "prepare.py").read_text(encoding="utf8")
+        self.assertIn('source = inject_status_policy(source, "import WebKit")', prepare)
+        self.assertIn('write_text(test_target_source(), encoding="utf8")', prepare)
+
+    def test_capture_and_resumed_trigger_precede_label_deduplication(self):
+        bridge = (validator.FIXTURES / "ParityBridge.swift").read_text(encoding="utf8")
+        self.assertLess(bridge.index("__iosParityCaptureCurrent?.('resumed')"),
+                        bridge.index("statusPublicationPolicy.candidate(for: state)"))
+        self.assertLess(bridge.index("statusPublicationPolicy.candidate(for: state)"),
+                        bridge.index("self.status.text = result"))
+        self.assertLess(bridge.index("self.status.text = result"),
+                        bridge.index("statusPublicationPolicy.didPublish(encoded)"))
+        self.assertIn('record["native"] = nativeInfo()', bridge)
+        self.assertIn('report = nativeInfo(); report["records"] = records', bridge)
 
 
 if __name__ == "__main__": unittest.main()

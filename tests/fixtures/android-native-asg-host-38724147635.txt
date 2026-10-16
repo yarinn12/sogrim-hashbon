@@ -1,0 +1,22 @@
+INFO         | Graphics backend: gfxstream
+INFO         | emuglConfig_init: vulkan_mode_selected:swiftshader gles_mode_selected:swiftshader
+DEBUG   | setCurrentRenderer: swiftshader swiftshader gles:Swiftshader Indirect vulkan:Swiftshader Indirect
+DEBUG   | gfxstreamFeature:Vulkan = 0
+DEBUG   | gfxstreamFeature:HasSharedSlotsHostMemoryAllocator = 1
+DEBUG   | gfxstreamFeature:GlDirectMem = 1
+DEBUG   | gfxstreamFeature:VirtioGpuNext = 0
+DEBUG   | gfxstreamFeature:Minigbm = 0
+DEBUG   | Performing composition using CompositorGl.
+INFO         | Graphics Adapter Android Emulator OpenGL ES Translator (Google SwiftShader)
+INFO         | Graphics API Version OpenGL ES 3.0 (OpenGL ES 3.0 SwiftShader 4.0.0.1)
+INFO         |   androidboot.hardware.gltransport=asg
+INFO         |   androidboot.qemu.gltransport.name=asg
+INFO         |   androidboot.hardware.gltransport="asg"
+INFO         |   androidboot.qemu.gltransport.name="asg"
+INFO         | 	hw.gltransport = asg
+INFO         | 	hw.gltransport.asg.writeBufferSize = 1048576
+INFO         | 	hw.gltransport.asg.writeStepSize = 4096
+INFO         | 	hw.gltransport.asg.dataRingSize = 32768
+INFO         | 	hw.gltransport.drawFlushInterval = 800
+INFO         |   androidboot.debug.hwui.renderer=skiagl
+INFO         |   androidboot.debug.hwui.renderer="skiagl"

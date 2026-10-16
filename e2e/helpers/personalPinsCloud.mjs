@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import { recordPersonalPinsCloudErrors } from "./personalPinsCloudErrors.mjs";
+import { refreshPersonalPinsSnapshot } from "./personalPinsCloudRefresh.mjs";
 
 // A synthetic account workspace served through the real cloud read/write APIs.
 // The private account snapshot is shared by independently connected contexts.
@@ -76,6 +77,7 @@ export async function personalPinsCloud(page, baseURL, initialState, { legacyPin
   }
   await connectPage(page);
   return { reads, writes, errors: errorMonitor.errors, diagnostics: errorMonitor.diagnostics,
+    refresh: () => refreshPersonalPinsSnapshot(page, { origin, space, updatedAt: current.updated_at }),
     reload: () => errorMonitor.withReload(() => page.reload()), state: () => structuredClone(current.state),
     update: next => { current = { ...current, state: structuredClone(next), updated_at: stamp() }; },
     conflicts: () => conflicts,

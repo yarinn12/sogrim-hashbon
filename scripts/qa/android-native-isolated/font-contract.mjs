@@ -6,28 +6,28 @@ const headings=new Set(['.product-home-screen .top .brand h1','.event-overview-h
 export async function readCurrentFontContract(page,scale){return{...(await page.evaluate(fontContractContextExpression)),scale};}
 export function hasAuthoredFontContract(selector){return headings.has(selector)||['.event-header-action-label','.event-workspace-tab strong'].includes(selector);}
 
-// Fixed authored sizes come from the public 9e96d41 design, not the measured
-// Native font. The independent APK CSS/font replay records the same values at
-// CSS root16, both pointer families and the actual Native CSS viewports.
+// Reference sizes come from the accepted compact layout at CSS root16, not
+// the measured Native font. Native reports the real viewport and pointer media;
+// a touch screen may report neither a coarse nor a fine primary pointer.
 export function authoredNativeFontBase(selector,context){
   if(!hasAuthoredFontContract(selector))throw new Error('No authored font contract for '+selector);
-  const {scale,width,height,pointerCoarse,orientation,active,dynamicType}=context;
-  if(![1,1.5,2].includes(scale)||!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0||typeof pointerCoarse!=='boolean')throw new Error('Actual scale, viewport and pointer media readbacks are required');
+  const {scale,width,height,pointerCoarse,pointerFine,orientation,active,dynamicType}=context;
+  if(![1,1.5,2].includes(scale)||!Number.isFinite(width)||!Number.isFinite(height)||width<=0||height<=0||typeof pointerCoarse!=='boolean'||typeof pointerFine!=='boolean'||pointerCoarse&&pointerFine)throw new Error('Actual scale, viewport and pointer media readbacks are required');
   if(orientation!==(width>height?'landscape':'portrait'))throw new Error('Font contract orientation differs from actual viewport');
   if(active!==(scale>1)||dynamicType!==(scale===1?'normal':'extra-large'))throw new Error('Font contract requires the actual settled dynamic type class');
-  const coarsePortrait=pointerCoarse&&orientation==='portrait'&&width<=720;
-  const coarseLandscape=pointerCoarse&&orientation==='landscape'&&height<=450;
-  if(selector==='.event-workspace-tab strong')return coarsePortrait||coarseLandscape?14:13.5;
+  const compactPortrait=orientation==='portrait'&&width<=720;
+  const compactLandscape=orientation==='landscape'&&width<=1024&&height<=450;
+  if(selector==='.event-workspace-tab strong')return compactPortrait||compactLandscape?14:13.5;
   // The user restored the shared card contract. Its authored header rule is
   // --dynamic-text-11 at every OS ratio; detached utility bars are invalid.
   if(selector==='.event-header-action-label'){
     if(context.headerUtilitiesContained!==true)throw new Error('Utilities must be contained in the shared event header');
     return 11;
   }
-  // publicDesignCoherenceLayer's two pointer:coarse queries deliberately use
-  // 1.5rem/1.25rem headings. They outrank the general AX h1 size.
-  if(coarsePortrait)return 24;
-  if(coarseLandscape)return 20;
+  // The accepted compact phone layout uses 1.5rem/1.25rem headings at every
+  // pointer media value. Root font scaling applies the requested OS ratio.
+  if(compactPortrait)return 24;
+  if(compactLandscape)return 20;
   if(active){
     // The phone home/event rules use28; the other AX headings use32. Wide
     // event/home screens fall back to the general32px semantic heading.

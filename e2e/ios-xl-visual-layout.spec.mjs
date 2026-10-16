@@ -169,15 +169,160 @@ for (const mode of ['normal', '32', 'AX']) {
         body: await page.screenshot(), contentType: 'image/png'
       });
     }
-    // A user can scroll back to read the complete step title and eyebrow
-    // without dismissing the keyboard; only the focused-field view scrolls it.
-    await page.locator('.expense-step-modal').evaluate(modal => { modal.scrollTop = 0; });
+    // Queue the real input and layout observers before the user's scroll-to-top
+    // intent. The keyboard reveal must not replay a stale scroll on the next
+    // frame and hide the title again.
+    const scrollIntent = await page.locator('.expense-step-modal').evaluate(modal => {
+      const header = modal.querySelector('.expense-modal-step-header');
+      const name = modal.querySelector('[data-action="expense-name"]');
+      header.style.setProperty('padding-top',
+        `${parseFloat(getComputedStyle(header).paddingTop) + 1}px`, 'important');
+      name.dispatchEvent(new Event('input', { bubbles: true }));
+      modal.scrollTop = 0;
+      const bounds = selector => {
+        const box = modal.querySelector(selector).getBoundingClientRect();
+        return { top: box.top, bottom: box.bottom };
+      };
+      return { scrollTop: modal.scrollTop,
+        heading: bounds('#expense-modal-title'),
+        eyebrow: bounds('.expense-modal-step-header .eyebrow') };
+    });
+    await testInfo.attach('keyboard-scroll-intent', {
+      body: JSON.stringify({ mode, scrollIntent }, null, 2), contentType: 'application/json'
+    });
+    expect(scrollIntent.scrollTop).toBe(0);
+    for (const target of [scrollIntent.heading, scrollIntent.eyebrow]) {
+      expect(target.top).toBeGreaterThanOrEqual(115);
+      expect(target.bottom).toBeLessThanOrEqual(449);
+    }
+    await page.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const heading = await page.locator('#expense-modal-title').boundingBox();
     const step = await page.locator('.expense-modal-step-header .eyebrow').boundingBox();
     expect(heading.y).toBeGreaterThanOrEqual(115);
     expect(heading.y + heading.height).toBeLessThanOrEqual(449);
     expect(step.y).toBeGreaterThanOrEqual(115);
     expect(step.y + step.height).toBeLessThanOrEqual(449);
+    if (testInfo.project.name === 'desktop-webkit') {
+      // Desktop WebKit accepts real wheel input at this mobile canvas width;
+      // mobile WebKit's Playwright wheel API is unsupported. Exercise both
+      // routes without substituting a synthetic wheel event for a user action.
+      const modal = page.locator('.expense-step-modal');
+      const wheelStart = await modal.evaluate((node, scrollTop) => {
+        node.scrollTop = Math.max(200, scrollTop);
+        const evidence = { startTop: node.scrollTop, wheels: [], scrolls: [] };
+        node.__qaWheelEvidence = evidence;
+        node.addEventListener('wheel', event => {
+          evidence.wheels.push({ at: performance.now(), deltaY: event.deltaY,
+            trusted: event.isTrusted, top: node.scrollTop });
+        }, { capture: true, passive: true });
+        node.addEventListener('scroll', event => {
+          evidence.scrolls.push({ at: performance.now(), trusted: event.isTrusted,
+            top: node.scrollTop });
+        }, { passive: true });
+        return evidence.startTop;
+      }, geometry.scrollport.scrollTop);
+      expect(wheelStart).toBeGreaterThanOrEqual(200);
+      const box = await modal.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 180));
+      await page.mouse.wheel(0, -900);
+      try {
+        // Playwright resolves mouse.wheel before WebKit has finished scrolling.
+        // Observe the actual user wheel and scroll to the top before checking
+        // layout. A stalled wheel or a later keyboard reveal must still fail.
+        await expect.poll(() => modal.evaluate(node => {
+          const { startTop, wheels, scrolls } = node.__qaWheelEvidence;
+          const userWheel = wheels.find(event => event.trusted && event.deltaY < 0);
+          return Boolean(userWheel && node.scrollTop === 0 && scrolls.some(event =>
+            event.at >= userWheel.at && event.top < startTop));
+        }), { message: 'the real upward wheel scroll reaches the modal top' }).toBe(true);
+        await page.evaluate(() => new Promise(resolve =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const wheelHeading = await page.locator('#expense-modal-title').boundingBox();
+        const wheelStep = await page.locator('.expense-modal-step-header .eyebrow').boundingBox();
+        expect(wheelHeading.y).toBeGreaterThanOrEqual(115);
+        expect(wheelHeading.y + wheelHeading.height).toBeLessThanOrEqual(449);
+        expect(wheelStep.y).toBeGreaterThanOrEqual(115);
+        expect(wheelStep.y + wheelStep.height).toBeLessThanOrEqual(449);
+      } finally {
+        const wheelEvidence = await modal.evaluate(node => ({
+          ...node.__qaWheelEvidence, finalTop: node.scrollTop
+        }));
+        await testInfo.attach('keyboard-wheel-scroll', {
+          body: JSON.stringify({ mode, wheelEvidence }, null, 2), contentType: 'application/json'
+        });
+      }
+    }
+    const nextFramePair = () => page.evaluate(() => new Promise(resolve =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const assertFreshReveal = async label => {
+      await nextFramePair();
+      const refreshed = await page.evaluate(() => {
+        const modal = document.querySelector('.expense-step-modal');
+        const bounds = selector => {
+          const element = modal.querySelector(selector);
+          const box = element.getBoundingClientRect();
+          const atCenter = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return { top: box.top, bottom: box.bottom,
+            hittable: Boolean(atCenter && (atCenter === element || element.contains(atCenter))) };
+        };
+        return { scrollTop: modal.scrollTop,
+          back: bounds('[data-action="expense-step-back"]'),
+          accessibility: bounds('.expense-accessibility-button'),
+          name: bounds('[data-action="expense-name"]'),
+          next: bounds('[data-action="expense-step-next"]') };
+      });
+      await testInfo.attach(`keyboard-fresh-${label}`, {
+        body: JSON.stringify({ mode, refreshed }, null, 2), contentType: 'application/json'
+      });
+      for (const key of ['back', 'accessibility', 'name', 'next']) {
+        expect(refreshed[key].top, `${label}: ${key} top`).toBeGreaterThanOrEqual(59);
+        expect(refreshed[key].bottom, `${label}: ${key} bottom`).toBeLessThanOrEqual(449);
+        expect(refreshed[key].hittable, `${label}: ${key} hit target`).toBe(true);
+      }
+    };
+    const scrollBackToTitle = async () => {
+      await page.locator('.expense-step-modal').evaluate(modal => { modal.scrollTop = 0; });
+      await nextFramePair();
+      const title = await page.locator('#expense-modal-title').boundingBox();
+      const eyebrow = await page.locator('.expense-modal-step-header .eyebrow').boundingBox();
+      for (const target of [title, eyebrow]) {
+        expect(target.y).toBeGreaterThanOrEqual(115);
+        expect(target.y + target.height).toBeLessThanOrEqual(449);
+      }
+    };
+    // A later editing, viewport or focus action is newer than the reader's
+    // scroll intent and must bring the focused field back into the safe area.
+    await page.evaluate(() => {
+      const field = document.querySelector('[data-action="expense-name"]');
+      field.value += ' x';
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await assertFreshReveal('input');
+    await scrollBackToTitle();
+    await page.evaluate(() => window.__setLayoutKeyboardHeight(449));
+    await assertFreshReveal('viewport');
+    await scrollBackToTitle();
+    await page.evaluate(() => {
+      const field = document.querySelector('[data-action="expense-name"]');
+      field.blur();
+      field.focus();
+    });
+    await assertFreshReveal('focus');
+    const alreadyVisible = await page.locator('.expense-step-modal').evaluate(modal => {
+      const field = modal.querySelector('[data-action="expense-name"]');
+      const bounds = field.getBoundingClientRect();
+      const actionTop = modal.querySelector('.expense-modal-actions').getBoundingClientRect().top;
+      return { scrollTop: modal.scrollTop, fieldTop: bounds.top, fieldBottom: bounds.bottom,
+        actionTop };
+    });
+    expect(alreadyVisible.fieldTop).toBeGreaterThanOrEqual(115);
+    expect(alreadyVisible.fieldBottom).toBeLessThanOrEqual(alreadyVisible.actionTop - 8);
+    await page.evaluate(() => window.__setLayoutKeyboardHeight(449));
+    await nextFramePair();
+    const retainedScrollTop = await page.locator('.expense-step-modal').evaluate(modal => modal.scrollTop);
+    expect(retainedScrollTop, 'a visible focused name keeps its scroll position').toBeCloseTo(
+      alreadyVisible.scrollTop, 0);
     await page.locator('[data-action="expense-step-back"]').click();
     await expect(page.locator('.expense-step-modal')).toHaveAttribute('data-expense-step', 'amount');
   });

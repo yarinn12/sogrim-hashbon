@@ -150,3 +150,80 @@ test("home, notifications, and profile keep one identical brand mark", async ({ 
     transform: homePresentation.transform
   });
 });
+
+for (const route of ['timer', 'touch-contextmenu']) {
+  test(`queued81ms event tap delivered at733ms opens once: ${route}`, async ({page}) => {
+    const target = page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+    await expect(target).toBeVisible();
+    await target.evaluate(async (button, mode) => {
+      const start = performance.now();
+      const emit = (type, stamp) => {
+        const event = new PointerEvent(type, {bubbles:true, cancelable:true, pointerType:'touch', pointerId:31, isPrimary:true, button:0, clientX:50, clientY:50});
+        Object.defineProperty(event, 'timeStamp', {value:stamp});
+        button.dispatchEvent(event);
+      };
+      emit('pointerdown', start);
+      await new Promise(resolve => setTimeout(resolve,560));
+      if (mode === 'touch-contextmenu') emit('contextmenu', start+560);
+      await new Promise(resolve => setTimeout(resolve,173));
+      emit('pointerup', start+81);
+      button.dispatchEvent(new MouseEvent('click', {bubbles:true, cancelable:true, detail:1, button:0}));
+    }, route);
+    await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
+    await expect(page.locator('.event-status-menu')).toHaveCount(0);
+    await page.goBack();
+    await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+  });
+}
+
+test('held event gesture consumes compatibility archive clicks after render and allows deliberate selection', async ({page}) => {
+  const target = page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+  await expect(target).toBeVisible();
+  await target.evaluate(async button => {
+    const start = performance.now();
+    for (const [type, stamp] of [['pointerdown',start],['pointerup',start+600]]) {
+      if (type === 'pointerup') await new Promise(resolve => setTimeout(resolve,600));
+      const event = new PointerEvent(type,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:31,isPrimary:true,button:0,clientX:50,clientY:50});
+      Object.defineProperty(event,'timeStamp',{value:stamp}); button.dispatchEvent(event);
+    }
+  });
+  const menu = page.locator('.event-status-menu');
+  await expect(menu).toBeVisible();
+  const archive = menu.locator('[data-action="toggle-personal-event-archive"]');
+  await archive.evaluate(button => button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1,button:0})));
+  await expect(menu).toBeVisible();
+  await archive.click();
+  await expect(menu).toHaveCount(0);
+  await expect(page.locator(`.event-row[data-event-id="${EVENT_ID}"]`)).toHaveCount(0);
+});
+
+test('keyboard activation immediately after closing a held menu opens the event', async ({page}) => {
+  const target=page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+  await target.evaluate(async button=>{
+    const start=performance.now();
+    for(const [type,stamp] of [['pointerdown',start],['pointerup',start+600]]){
+      if(type==='pointerup')await new Promise(resolve=>setTimeout(resolve,600));
+      const event=new PointerEvent(type,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:31,isPrimary:true,button:0,clientX:50,clientY:50});
+      Object.defineProperty(event,'timeStamp',{value:stamp});button.dispatchEvent(event);
+    }
+  });
+  const menu=page.locator('.event-status-menu');await expect(menu).toBeVisible();
+  await menu.locator('[data-action="cancel-event-status-menu"]').press('Enter');
+  await expect(menu).toHaveCount(0);await target.focus();await target.press('Enter');
+  await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
+});
+
+test('a touch context menu followed by cancellation leaves home intact and the next tap works',async ({page})=>{
+  const target=page.locator(`[data-action="open-event"][data-event-id="${EVENT_ID}"]`);
+  await target.evaluate(button=>{
+    const start=performance.now();
+    for(const [type,stamp] of [['pointerdown',start],['contextmenu',start+560],['pointercancel',start+560]]){
+      const event=new PointerEvent(type,{bubbles:true,cancelable:true,pointerType:'touch',pointerId:31,isPrimary:true,button:0,clientX:50,clientY:50});
+      Object.defineProperty(event,'timeStamp',{value:stamp});button.dispatchEvent(event);
+    }
+    button.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,detail:1,button:0}));
+  });
+  await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+  await expect(page.locator('.event-status-menu')).toHaveCount(0);
+  await target.click();await expect(page.locator('.screen[data-screen-kind="event"]')).toBeVisible();
+});

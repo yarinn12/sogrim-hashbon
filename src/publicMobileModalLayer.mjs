@@ -10,7 +10,7 @@ const CSS = `
     pointer-events: none !important;
   }
 
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  @media (max-width: 1366px) {
     .expense-modal-backdrop,
     .event-modal-backdrop,
     html.product-v1 .expense-modal-backdrop,
@@ -336,8 +336,7 @@ const CSS = `
   /* Safari can leave 100dvh unchanged while the software keyboard covers it.
      Use the visual viewport only during that state and return to the ordinary
      route geometry when it closes. Navigation is already behind the keyboard. */
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
-    html.app-software-keyboard-open.ledger-workspace-v1 body #app
+  html.app-software-keyboard-open.ledger-workspace-v1 body #app
       :is(.expense-modal-backdrop, .event-modal-backdrop) {
       top: var(--app-keyboard-viewport-top) !important;
       bottom: auto !important;
@@ -444,18 +443,17 @@ const CSS = `
       visibility: hidden !important;
       pointer-events: none !important;
     }
-  }
 
-  /* Desktop pointer layouts keep the same bottom navigation, so the roster
+  /* Desktop layouts keep the same bottom navigation, so the roster
      needs its own scrollport above that navigation as well. */
-  @media (min-width: 1025px) and (hover: hover) and (pointer: fine) {
+  @media (min-width: 1025px) {
     html.ledger-workspace-v1 body #app
       .event-participant-route-backdrop[data-event-route-dialog="true"]
       .event-participant-roster-modal {
       box-sizing: border-box !important;
-      height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 16px - env(safe-area-inset-bottom)) !important;
       min-height: 0 !important;
-      max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 32px - env(safe-area-inset-bottom)) !important;
+      max-height: calc(100dvh - var(--event-route-nav-safe-height, 96px) - 16px - env(safe-area-inset-bottom)) !important;
       display: block !important;
       overflow-y: auto !important;
       scroll-padding-block: 12px !important;
@@ -538,6 +536,20 @@ function setupKeyboardViewport() {
   let keyboardOpen = false;
   let safeAreaProbe;
   let observedModal;
+  let scheduledScroll;
+  let userScrollModal;
+  let intentSequence = 0;
+  let userScrollSequence = 0;
+  let revealSequence = 0;
+
+  const markUserScroll = event => {
+    const modal = event.target instanceof Element
+      ? event.target.closest(".expense-step-modal")
+      : null;
+    if (!modal || !root.classList.contains("app-software-keyboard-open")) return;
+    userScrollModal = modal;
+    userScrollSequence = ++intentSequence;
+  };
 
   const safeAreaTop = () => {
     const configured = Number.parseFloat(getComputedStyle(root).getPropertyValue("--app-keyboard-safe-area-top"));
@@ -586,6 +598,8 @@ function setupKeyboardViewport() {
 
   const sync = () => {
     frame = 0;
+    const pendingScroll = scheduledScroll;
+    scheduledScroll = null;
     const active = document.activeElement;
     const editing = !active?.readOnly && !active?.disabled && active?.matches?.(
       'textarea, [contenteditable]:not([contenteditable="false"]), input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="range"]):not([type="color"]):not([type="file"]):not([type="hidden"])'
@@ -625,31 +639,50 @@ function setupKeyboardViewport() {
       root.style.removeProperty("--app-keyboard-viewport-height");
       root.style.removeProperty("--app-keyboard-viewport-top");
     }
-    if (keyboardOpen) revealFocusedExpenseField(visibleHeight, offsetTop);
+    if (keyboardOpen && modal) {
+      // A scroll made after this frame was scheduled is newer than its layout
+      // measurement. Let the user read the title until another editing or
+      // viewport action explicitly asks to reveal the focused field again.
+      if (pendingScroll?.modal === modal
+        && modal.scrollTop < pendingScroll.top - 1) {
+        userScrollModal = modal;
+        userScrollSequence = ++intentSequence;
+      }
+      if (revealSequence > userScrollSequence) userScrollModal = null;
+      if (userScrollModal !== modal) revealFocusedExpenseField(visibleHeight, offsetTop);
+    } else if (!keyboardOpen) {
+      userScrollModal = null;
+    }
   };
-  const schedule = () => {
+  const schedule = (reason = "layout") => {
+    const modal = document.activeElement?.closest?.(".expense-step-modal");
+    // Preserve the first layout snapshot while its frame is pending. A later
+    // user scroll must not be hidden by another ResizeObserver notification.
+    if (!frame || reason !== "layout") {
+      scheduledScroll = modal ? { modal, top: modal.scrollTop, reason } : null;
+    }
+    if (reason !== "layout") revealSequence = ++intentSequence;
     if (!frame) frame = requestAnimationFrame(sync);
   };
   const focusedLayoutObserver = typeof ResizeObserver === "function"
-    ? new ResizeObserver(schedule)
+    ? new ResizeObserver(() => schedule())
     : null;
-  viewport.addEventListener("resize", schedule, { passive: true });
-  viewport.addEventListener("scroll", schedule, { passive: true });
-  window.addEventListener("resize", schedule, { passive: true });
-  document.addEventListener("focusin", schedule, { passive: true });
-  document.addEventListener("input", schedule, { passive: true });
+  viewport.addEventListener("resize", () => schedule("viewport"), { passive: true });
+  viewport.addEventListener("scroll", () => schedule("viewport"), { passive: true });
+  window.addEventListener("resize", () => schedule("viewport"), { passive: true });
+  document.addEventListener("focusin", () => schedule("editing"), { passive: true });
+  document.addEventListener("input", () => schedule("editing"), { passive: true });
+  document.addEventListener("wheel", markUserScroll, { capture: true, passive: true });
+  document.addEventListener("touchmove", markUserScroll, { capture: true, passive: true });
   schedule();
 }
 
 function syncResponsiveTabletShell() {
   const isTabletViewport = window.innerWidth >= 721 && window.innerWidth <= 1366;
-  const userAgent = String(globalThis.navigator?.userAgent ?? "");
-  const hasTouch =
-    Number(globalThis.navigator?.maxTouchPoints ?? 0) > 0 || /iPad|Mobile\//i.test(userAgent);
   document.documentElement.classList.remove("compact-tablet-phone-shell");
   document.documentElement.classList.toggle(
     "responsive-tablet-shell",
-    isTabletViewport && hasTouch
+    isTabletViewport
   );
 }
 

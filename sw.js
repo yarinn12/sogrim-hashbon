@@ -1,5 +1,5 @@
-const PWA_RELEASE = "515";
-const CACHE_NAME = "settle-friends-live-v515";
+const PWA_RELEASE = "516";
+const CACHE_NAME = "settle-friends-live-v516";
 const CACHE_PREFIX = "settle-friends-live-v";
 const NETWORK_FIRST_TIMEOUT_MS = 6_000;
 const CACHE_FILES = [
@@ -53,6 +53,7 @@ const CACHE_FILES = [
   "/account-deletion.html",
   "/src/app.mjs",
   "/src/ui/eventHeader.mjs",
+  "/src/ui/eventPressGesture.mjs",
   "/src/domain/stateIdentity.mjs",
   "/src/domain/personalEventPinMerge.mjs",
   "/src/accountSessionResume.mjs",

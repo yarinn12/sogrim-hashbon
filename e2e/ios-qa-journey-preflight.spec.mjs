@@ -9,7 +9,7 @@ const syntheticService = await readFile(new URL('../scripts/qa/ios-parity/synthe
 const journey = await readFile(new URL('../scripts/qa/ios-parity/journey.js', import.meta.url), 'utf8');
 const phases = ['home', 'expenses', 'summary', 'transfers', 'notes', 'note-opened', 'profile', 'keyboard-ready'];
 const fields = {
-  home: ['brand', 'description'],
+  home: ['brand', 'heading', 'description'],
   expenses: ['heading', 'tab', 'tab2', 'tab3'],
   summary: ['description', 'status', 'helper'],
   transfers: ['longName', 'amount', 'badge', 'debt', 'equation'],
@@ -141,6 +141,7 @@ test('a native bootstrap error is exposed before the first capture rather than h
 
 
 test('the isolated iOS QA journey reaches keyboard-ready through the real DOM controls', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 393, height: 852 });
   await page.addInitScript({ content: syntheticService });
   await openPreflightHome(page);
 
@@ -184,6 +185,25 @@ test('the isolated iOS QA journey reaches keyboard-ready through the real DOM co
       if (!metric.isTextControl) expect(metric.words.length).toBeGreaterThan(0);
     }
   }
+  const home = records.find(record => record.phase === 'home');
+  const coarseProjects = new Set(['android-mobile', 'iphone-webkit', 'ipad-webkit', 'iphone-large-text']);
+  const fineProjects = new Set(['reflow-200', 'desktop-chromium', 'desktop-firefox',
+    'desktop-webkit', 'compact-firefox']);
+  expect(coarseProjects.has(testInfo.project.name) || fineProjects.has(testInfo.project.name),
+    `known browser pointer profile: ${testInfo.project.name}`).toBe(true);
+  expect(home.homeReference.title).toBe('מה סוגרים היום?');
+  expect(home.homeReference.viewport).toEqual({ width: 393, height: 852 });
+  expect(home.homeReference.pointer).toEqual({
+    coarse: coarseProjects.has(testInfo.project.name),
+    fine: fineProjects.has(testInfo.project.name)
+  });
+  expect(home.homeReference.rootFontSize).toBeCloseTo(16, 1);
+  expect(home.homeReference.fontSize).toBeCloseTo(24, 1);
+  expect(home.homeReference.lineCount).toBe(1);
+  expect(home.homeReference.eyebrowVisible).toBe(false);
+  expect(home.homeReference.actionFits).toBe(true);
+  expect(home.metrics.heading.text).toBe(home.homeReference.title);
+  expect(home.metrics.heading.fontSize).toBeCloseTo(24, 1);
   const note = records.find(record => record.phase === 'note-opened');
   const saved = note.saved.state.events[0].notes[0];
   expect(note.openedNote).toEqual({ title: saved.title, body: saved.body });

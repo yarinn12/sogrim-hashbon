@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {observeFreshWebViewBounds} from './native-observation.mjs';
+import {cardInputTraceInstallExpression} from './card-input-trace.mjs';
 
 export const device = process.env.ANDROID_QA_DEVICE;
 export const avd = process.env.ANDROID_QA_AVD;
@@ -10,8 +11,13 @@ const adbPath = process.env.ADB_PATH;
 if (!/^emulator-\d+$/.test(device || '') || !/^sogrim_(?:ci_[a-z0-9_]+|[a-z0-9_]+_20261010)$/.test(avd || '') || !adbPath) {
   throw new Error('Require explicit isolated emulator serial, QA AVD name and ADB_PATH');
 }
-export function adb(args, binary = false) {
+export function adbStatus(args, binary = false) {
   const result = spawnSync(adbPath, ['-s', device, ...args], { encoding: binary ? null : 'utf8', windowsHide: true, timeout: args.includes('-W')?60000:20000, maxBuffer: 20 * 1024 * 1024 });
+  if (result.error || result.signal || !Number.isInteger(result.status)) throw new Error(`ADB ${args.join(' ')} could not report a status: ${result.error || result.stderr}`);
+  return result;
+}
+export function adb(args, binary = false) {
+  const result = adbStatus(args, binary);
   if (result.error || result.status !== 0) throw new Error(`ADB ${args.join(' ')} failed: ${result.error || result.stderr} ${String(result.stdout||'').slice(-700)}`);
   return result.stdout;
 }
@@ -84,6 +90,19 @@ class Cdp {
     if(x<left||x>=right||y<top||y>=bottom)throw new Error('Native tap point outside WebView');
     adb(['shell','input','tap',String(x),String(y)]);return{...point,xPhysical:x,yPhysical:y,webViewBounds:observed.bounds,observationAttempts:observed.attempts};
   }
+  async hold(selector,durationMs=650){
+    if(!Number.isSafeInteger(durationMs)||durationMs!==650)throw new Error('Native hold requires approved 650ms integer duration');
+    const locate=()=>this.evaluate(`(async()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw new Error('Hold control unavailable');e.scrollIntoView({block:'center'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2;const hit=document.elementFromPoint(x,y);if(!(hit===e||e.contains(hit)))throw new Error('Hold target covered by '+hit?.outerHTML?.slice(0,200));return{x,y,dpr:devicePixelRatio,action:e.dataset.action};})()`);
+    await locate();
+    const observed=await observeFreshWebViewBounds({packageName,dump:path=>adb(['shell','uiautomator','dump','--compressed',path]),read:path=>adb(['shell','cat',path]),delay:sleep,makePath:attempt=>`/sdcard/qa-native-window-${Date.now()}-${++this.sequence}-${attempt}.xml`,onAttempt:record=>this.nativeObservations.push({...record,selector})});
+    // The observed WebView may move while the target is being located.
+    const point=await locate(),[left,top,right,bottom]=observed.bounds;
+    const x=Math.round(left+point.x*point.dpr),y=Math.round(top+point.y*point.dpr);
+    if(x<left||x>=right||y<top||y>=bottom)throw new Error('Native hold point outside WebView');
+    const inputCommand=['shell','input','swipe',String(x),String(y),String(x),String(y),String(durationMs)];
+    adb(inputCommand);
+    return{...point,xPhysical:x,yPhysical:y,webViewBounds:observed.bounds,observationAttempts:observed.attempts,durationMs,inputCommand};
+  }
   close() { this.socket.close(); }
 }
 export async function launch() {
@@ -95,12 +114,13 @@ export async function launch() {
   catch { adb(['shell', 'am', 'start', '-n', `${packageName}/com.sogrimhashbon.app.MainActivity`]); }
   const cdp = await connect(); await cdp.command('Runtime.enable');
   await waitFor(() => cdp.evaluate(`Boolean(document.querySelector('#app')?.dataset.screen && !document.querySelector('#app-splash'))`), 'Application screen', 30000);
-  await cdp.evaluate('document.fonts.ready.then(() => true)');
+  await cdp.evaluate(`${cardInputTraceInstallExpression}; document.fonts.ready.then(() => true)`);
   return cdp;
 }
 export function screenshot(path) { mkdirSync(resolve(path, '..'), { recursive: true }); writeFileSync(path, adb(['exec-out', 'screencap', '-p'], true)); }
 export const inspectExpression = `(() => {
   const app = document.querySelector('#app'), root = document.documentElement;
+  const cardInputTrace = (globalThis.__qaCardInputTrace || []).slice(0,32);
   const controls = [...document.querySelectorAll('button,input,textarea,select')].filter(e => { const r=e.getBoundingClientRect(); return r.width>0 && r.height>0 && getComputedStyle(e).visibility!=='hidden'; });
-  return { url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), nativeMethods:(Capacitor.PluginHeaders?.find(plugin=>plugin.name==='SogrimCapabilities')?.methods||[]).map(method=>method.name), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
+  return { cardInputTrace, url: location.href, screen: app?.dataset.screen, overlay: document.querySelector('.modal-overlay')?.dataset, dimensions: { width:innerWidth,height:innerHeight,dpr:devicePixelRatio,visualHeight:visualViewport.height,appWidth:app?.scrollWidth,rootWidth:root.scrollWidth }, fontScale: getComputedStyle(root).getPropertyValue('--android-font-scale'), rootFontSize:getComputedStyle(root).fontSize, bodyFontSize:getComputedStyle(document.body).fontSize, userAgent:navigator.userAgent, dynamicType: root.dataset.dynamicType, rootClasses:root.className, native:Capacitor.isNativePlatform(), platform:Capacitor.getPlatform(), plugins:Object.keys(Capacitor.Plugins), nativeMethods:(Capacitor.PluginHeaders?.find(plugin=>plugin.name==='SogrimCapabilities')?.methods||[]).map(method=>method.name), text:app?.innerText.slice(0,7000), controls:controls.map(e=>({action:e.dataset.action, step:e.dataset.expenseStep, label:e.getAttribute('aria-label'),text:e.innerText?.slice(0,60),tag:e.tagName,rect:e.getBoundingClientRect().toJSON()})), fixtureUnhandled:JSON.parse(localStorage.getItem('qa-native-unhandled')||'[]'), blocked:JSON.parse(localStorage.getItem('qa-native-blocked-network')||'[]'), writes:JSON.parse(localStorage.getItem('qa-native-writes')||'[]').length };
 })()`;

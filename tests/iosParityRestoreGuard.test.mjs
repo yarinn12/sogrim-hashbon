@@ -32,10 +32,17 @@ async function runJourney(script, renderedExpensePresent) {
     'settle-friends-state:ios-native-qa-space': JSON.stringify(row.state)
   };
   const localStorage = { getItem: key => storage[key] ?? null };
+  // This fixture starts after the original splash lifecycle. The relaunch
+  // assertion below still checks the rendered expense before capture.
+  const postSplashPerformance = {
+    now: () => performance.now(),
+    getEntriesByName: (name, type) => name === 'sogrim:start:splash-dismissed' && type === 'mark'
+      ? [{ startTime: 0 }] : []
+  };
   const document = {
     fonts: { ready: Promise.resolve() },
-    documentElement: { scrollWidth: 393 },
-    querySelector: () => null,
+    documentElement: { scrollWidth: 393, classList: { contains: () => false } },
+    querySelector: selector => selector === '#app' ? { dataset: { screen: 'event' } } : null,
     elementFromPoint: () => opener,
     querySelectorAll: selector => {
       if (selector === '[data-screen-kind="home"]') return [opener];
@@ -51,7 +58,7 @@ async function runJourney(script, renderedExpensePresent) {
   };
   const sandbox = {
     document, localStorage, innerWidth: 393, innerHeight: 852,
-    performance, history: { state: null },
+    performance: postSplashPerformance, history: { state: null },
     scrollX: 0, scrollY: 0,
     visualViewport: { height: 852 },
     location: { href: 'capacitor://localhost/' },

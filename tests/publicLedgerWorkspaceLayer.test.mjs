@@ -22,7 +22,7 @@ test("mobile headers, tablet workspaces and compact actions keep safe geometry",
   );
   assert.match(
     ledger,
-    /@media \(min-width: 721px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?body #app \.screen,[\s\S]*?max-width: 960px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 960px !important;/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) \{\s*html\.ledger-workspace-v1 body #app \.screen,[\s\S]*?width: min\(calc\(100% - 32px\), 960px\) !important;[\s\S]*?max-width: 960px !important;[\s\S]*?\.product-home-screen\) \{[\s\S]*?max-width: 960px !important;/
   );
   assert.match(
     ledger,
@@ -922,7 +922,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   assert.match(layer, /\.product-home-screen > \.top \+ \.home-quick-actions,[\s\S]*?\.top \+ \.app-toast \+ \.home-quick-actions \{\s*margin-top: calc\(-1 \* var\(--home-create-overlap, 28px\)\) !important;/);
   assert.match(
     layer,
-    /@media \(min-width: 721px\) and \(max-width: 1024px\),[\s\S]*?max-width: 960px !important/
+    /@media \(min-width: 721px\) and \(max-width: 1366px\) \{\s*html\.circle-design-v1\.ledger-workspace-v1 body #app\s*\.screen\[data-screen-kind="home"\] \{[\s\S]*?max-width: 960px !important/
   );
   assert.match(layer, /aspect-ratio: 1672 \/ 941 !important/);
   assert.match(layer, /object-fit: contain !important;[\s\S]*?transform: none !important/);

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { mkdirSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { adb, connect, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
+import { adb, adbStatus, connect, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
+import {launchColdJourney} from './cold-configuration.mjs';
+import {launchForOwnedOrientation} from './orientation.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated'); mkdirSync(out,{recursive:true});
 const checks=[], evidence={provenance:acceptanceRunProvenance(),source:process.env.ANDROID_QA_SOURCE,checks};
 let page;
@@ -19,10 +21,17 @@ async function nativeFocus(selector){
   evidence.keyboard={tap:actualTap,webViewBounds:actualTap.webViewBounds,inputMethod:adb(['shell','dumpsys','input_method']).split('\n').filter(l=>/mInputShown|mIsInputViewShown|mImeWindowVis/.test(l))};
 }
 try{
-  adb(['shell','settings','put','system','font_scale','1']);
-  adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','wm','user-rotation','lock','0']);
   evidence.initialWarmAttach=process.env.ANDROID_QA_WARM_ATTACH==='1';
-  page=evidence.initialWarmAttach?await connect():await launch(); await page.command('Runtime.enable');
+  if(evidence.initialWarmAttach){
+    // The declared warm-attach diagnostic intentionally keeps the current app.
+    adb(['shell','settings','put','system','font_scale','1']);
+    adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','wm','user-rotation','lock','0']);
+    page=await connect();
+  }else{
+    const started=await launchColdJourney({adb,adbStatus,sleep,launch,waitFor,launchForOwnedOrientation});
+    page=started.page;evidence.coldConfiguration=started.coldConfiguration;evidence.rotationReceipt=started.rotationReceipt;
+  }
+  await page.command('Runtime.enable');
   await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='home'`),'Home screen',30000);await openEvent();
   await page.click('[data-action="show-expense-form"]'); await waitFor(async()=>await step()==='amount','Amount step');
   const before=await page.evaluate('({height:innerHeight,visual:visualViewport.height})');
@@ -59,11 +68,16 @@ try{
   adb(['shell','input','keyevent','4']);await sleep(250);await snapshot('settings-back');
   check('Native Back retains event and leaves settings subsection',await page.evaluate(`document.querySelector('#app').dataset.screen==='event'&&!document.querySelector('[data-action="set-event-currency"]')`));
   adb(['shell','input','keyevent','4']);await sleep(250);
-  await page.click('[data-action="home"]');page.close();page=await launch();await openEvent();
+  await page.click('[data-action="home"]');page.close();
+  try{
+    const restarted=await launchForOwnedOrientation({adb,launch,waitFor,orientation:'portrait',rotation:0,onPage:launched=>{page=launched;}});
+    page=restarted.page;evidence.restartRotationReceipt=restarted.receipt;
+  }catch(error){if(error.rotationReceipt)evidence.restartRotationReceipt=error.rotationReceipt;throw error;}
+  await openEvent();
   const restart=await page.evaluate(`(() => {const row=JSON.parse(localStorage.getItem('qa-native-server-row'));const local=JSON.parse(localStorage.getItem('settle-friends-state:android-native-qa-space'));return {row,local,text:document.querySelector('#app').innerText,pending:Object.entries(localStorage).filter(([k])=>k.startsWith('settle-friends-pending-sync:'))};})()`);
   evidence.restart=restart;
   check('Force-stop/relaunch retains edited expense locally and on fixture server',restart.row.state.events[0].expenses.some(e=>e.id===id&&e.total===15000)&&restart.local.events[0].expenses.some(e=>e.id===id&&e.total===15000)&&restart.text.includes('QA Native Edited'));
   check('Acknowledged save leaves no pending outbox after restart',restart.pending.length===0);
   await snapshot('restarted-event');
-}catch(error){evidence.error=error.stack;process.exitCode=1;}
+}catch(error){evidence.error=error.stack;if(error.coldConfiguration)evidence.coldConfiguration=error.coldConfiguration;if(error.rotationReceipt&&!evidence.rotationReceipt)evidence.rotationReceipt=error.rotationReceipt;process.exitCode=1;}
 finally{if(page){evidence.final=await page.evaluate(inspectExpression).catch(e=>({error:e.message}));evidence.exceptions=page.exceptions;page.close();}if(checks.length!==8||checks.some(check=>!check.ok)||evidence.exceptions?.length||evidence.final?.fixtureUnhandled?.length)process.exitCode=1;writeFileSync(resolve(out,'journey.json'),JSON.stringify(evidence,null,2));console.log(JSON.stringify({checks,error:evidence.error,keyboard:evidence.keyboard},null,2));}

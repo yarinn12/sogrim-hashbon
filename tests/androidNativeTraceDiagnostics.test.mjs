@@ -4,6 +4,7 @@ import {mkdtempSync,readFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,sep} from 'node:path';
 import {createHash} from 'node:crypto';
+import {assertNoTargetAppAnr} from '../scripts/qa/android-native-isolated/anr-diagnostics.mjs';
 const recordedPullRaw=readFileSync(new URL('./fixtures/android-native-7b969f8-pull-raw.txt',import.meta.url),'utf8');
 const recordedCloseRaw=readFileSync(new URL('./fixtures/android-native-7b969f8-close-raw.txt',import.meta.url),'utf8');
 const recordedPath='/data/misc/perfetto-traces/sogrim_ci_38113596895_1_82faf9fb4cbf5f9e.pftrace';
@@ -83,7 +84,7 @@ function fixture(t){
     throw new Error('Unexpected boundary command '+JSON.stringify(command));
   }
   const deps={run,platform:'linux',procRoot:proc,launchHost:async()=>({pid:99,ready:{boundaryOnly:true}})};
-  const stopHost=async()=>{state.hostStopped=true;return{source:options.source,captureComplete:true,samples:2,boundaryOnly:true};};
+  const stopHost=async()=>{state.hostStopped=true;const started=JSON.parse(readFileSync(join(options.output,'trace-start.json'),'utf8')),owner=assertHostOwner(options,{procRoot:proc});return{diagnosticsVersion:2,diagnosticsContract:'owned-transport-and-cohort-v2',diagnosticsProducer:'owned-host-observer-v2',source:options.source,session:started.session,owner,captureComplete:true,hostObservationIntegrity:true,hostCaptureWindowComplete:true,errors:[],observationErrors:[],windowErrors:[],data:{bytes:4,sha256:'e'.repeat(64)},expectedJournal:{bytes:4,sha256:'e'.repeat(64)},ownedStop:{stopVersion:1,source:options.source,session:started.session,owner:{pid:owner.pid,startTicks:owner.startTicks},verified:true,observedAtUtc:'2026-10-15T15:00:00.000Z'},samples:2,cohortTasksTargeted:4,observedOutsideCohort:0,samplesWithOutsideCohort:0,coverageVersion:5,coverageContract:'observed-owned-cohort-v5',coverageScope:'observed-owned-cohort',cohortSelection:'union-before-afterDiscovery',inventoryAtomic:false,lifetimeCoverageProven:false,identityContinuityProven:false,allThreadsCoverageProven:false,coverageSamples:2,survivorsVerified:4,nonMainSurvivorsVerified:2,departedVerified:0,departedPartial:0,unresolvedGaps:0,counterRecordsVerified:4,nonMainTasksMeasured:2,unobservedExits:0,samplesWithUnobservedExits:0,newbornTasksMeasured:0,finalIdentitiesVerified:4,rendererRoleProven:false,boundaryOnly:true};};
   return{root,proc,processDir,options,state,calls,run,deps,stopHost};
 }
 
@@ -163,7 +164,7 @@ test('host sampling scopes all reads to the owned process and records CPU/runque
   const sample=sampleOwnedHost(f.options,{procRoot:f.proc,read,expectedStartTicks:'12345'});
   assert.equal(sample.threads.length,2);assert.equal(sample.threads[1].runNs,'100');assert.equal(sample.threads[1].runQueueWaitNs,'20');assert.equal(sample.threads[1].wchan,'futex_wait');assert.equal(sample.unavailable.length,0);
   assert.ok(paths.every(path=>path.startsWith(f.processDir+sep)));
-  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,10);
+  assert.equal(sample.threadsScanned,2);assert.equal(sample.selectedThreads,2);assert.equal(sample.readCount,14);
 });
 test('unavailable kernel wait channels and disappearing task reads remain explicit',t=>{
   const f=fixture(t);writeFileSync(join(f.processDir,'task','3450','wchan'),'0\n');
@@ -185,6 +186,18 @@ test('successful scoped start/finalize keeps ownership, raw command outputs and 
   const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:f.stopHost});assert.equal(finish.captureComplete,true);assert.equal(finish.nativeAcceptance,false);assert.equal(finish.structure.semanticCoverageValidated,false);assert.equal(f.state.hostStopped,true);
   assert.equal(finish.writerClose.verified,true);assert.ok(f.calls.some(x=>x.includes('timeout')));assert.ok(f.calls.every(x=>!x.includes('force-stop')&&!x.includes('settings')&&!x.includes('emu-kill')));
   assert.notEqual(start.commands[0].output.path,finish.commands[0].output.path);assert.ok(start.commands[0].output.sha256);
+});
+
+test('finisher requires the versioned observed-cohort contract and explicit quality accounting',async t=>{
+  for(const changes of [{coverageVersion:3},{survivorsVerified:undefined},{nonMainSurvivorsVerified:0},{departedVerified:undefined},{departedPartial:undefined},{unresolvedGaps:1},{counterRecordsVerified:undefined},{coverageVersion:1},{coverageVersion:2},{coverageContract:'observed-live-owned-host-tasks-v2'},{coverageContract:'all-owned-host-tasks-v1'},{coverageScope:'all-owned-host-tasks'},{inventoryAtomic:true},{lifetimeCoverageProven:true},{rendererRoleProven:true},{rendererRoleProven:undefined},{rendererRoleProven:'false'},{unobservedExits:undefined},{samplesWithUnobservedExits:undefined},{unobservedExits:1,samplesWithUnobservedExits:0},{unobservedExits:1,samplesWithUnobservedExits:3},{newbornTasksMeasured:undefined},{finalIdentitiesVerified:undefined},{finalIdentitiesVerified:3}]){
+    const f=fixture(t);await startOwnedTrace(f.options,f.deps);
+    const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),...changes})});
+    assert.equal(finish.captureComplete,false,JSON.stringify(changes));assert.match(finish.errors.join(),/Observed cohort.*coverage is missing/);
+    assert.equal(finish.writerClose.verified,true);assert.ok(finish.trace.sha256);assert.equal(finish.nativeAcceptance,false);
+  }
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);
+  const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:async()=>({...await f.stopHost(),unobservedExits:1,samplesWithUnobservedExits:1,cohortTasksTargeted:5})});
+  assert.equal(finish.captureComplete,true,finish.errors.join('\n'));assert.equal(finish.host.unobservedExits,1);assert.equal(finish.nativeAcceptance,false);
 });
 test('foreign AVD blocks start before any trace mutation and blocks finalization guest kill/pull',async t=>{
   const f=fixture(t);f.state.owner='foreign_avd';const start=await startOwnedTrace(f.options,f.deps);assert.equal(start.captureStarted,false);assert.equal(f.calls.length,1);assert.match(start.errors.join(),/foreign/);
@@ -255,4 +268,40 @@ test('workflow preserves original historical ANR collection and owned emulator c
   const workflow=readFileSync(new URL('../.github/workflows/android-native-parity-qa.yml',import.meta.url),'utf8');
   assert.match(workflow,/trace-diagnostics\.mjs start/);const finish=workflow.indexOf('trace-diagnostics.mjs finish'),anr=workflow.indexOf('anr-diagnostics.mjs ||'),kill=workflow.indexOf('emu kill');assert.ok(finish<anr&&anr<kill);
   assert.match(workflow,/finish \|\| trace_status=\$\?/);assert.match(workflow,/if \[\[ "\$diagnostic_status" != 0 \]\]/);assert.match(workflow,/exit "\$trace_status"/);
+});
+test('v2 separates valid guest transport from an integral but interrupted host prefix and still rejects recorded ANR',async t=>{
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);
+  const stopHost=async()=>{const host=await f.stopHost(),error='Controlled prefix ended without an owned stop';return{...host,ownedStop:undefined,captureComplete:false,hostCaptureWindowComplete:false,errors:[error],windowErrors:[{code:'MISSING_OWNED_STOP',error}]};};
+  const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost});
+  assert.equal(finish.diagnosticsVersion,2);assert.equal(finish.diagnosticsProducer,'owned-trace-finish-v2');
+  assert.equal(finish.guestTransportComplete,true);assert.equal(finish.hostObservationIntegrity,true);assert.equal(finish.hostCaptureWindowComplete,false);assert.equal(finish.captureComplete,false);assert.equal(finish.nativeAcceptance,false);
+  assert.equal(finish.structure.semanticCoverageValidated,false);assert.ok(finish.trace.sha256);assert.ok(finish.writerClose.verified);
+  const historicalAnr=readFileSync(new URL('./fixtures/android-native-qa469-target-anr.txt',import.meta.url));
+  assert.equal(createHash('sha256').update(historicalAnr).digest('hex'),'5623e4631d9ddc63e8987ccea186d5d5316cbe105ebdd2e2480f0923e29e0cc0');
+  assert.throws(()=>assertNoTargetAppAnr(historicalAnr.toString('utf8')),error=>error.anrEvidence?.targetAppAnrLines.length===12&&/later recovery cannot accept/.test(error.message));
+});
+test('v2 guest transport may complete after host launch failure while aggregate capture remains failed',async t=>{
+  const f=fixture(t),start=await startOwnedTrace(f.options,{...f.deps,launchHost:async()=>{throw new Error('Controlled host launch failure');}});
+  assert.equal(start.guestTransportStarted,true);assert.equal(start.captureStarted,false);assert.equal(start.guestTransportErrors.length,0);assert.equal(start.hostObservationErrors.length,1);
+  const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:f.stopHost});
+  assert.equal(finish.guestTransportComplete,true);assert.equal(finish.hostObservationIntegrity,false);assert.equal(finish.hostCaptureWindowComplete,false);assert.equal(finish.captureComplete,false);assert.equal(finish.nativeAcceptance,false);assert.ok(finish.errors.some(e=>e.includes('Controlled host launch failure')));
+});
+test('v2 still requires actual close/hash/framing independently of a complete host window',async t=>{
+  const f=fixture(t);await startOwnedTrace(f.options,f.deps);f.state.stopFail=true;
+  const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:f.stopHost});
+  assert.equal(finish.hostObservationIntegrity,true);assert.equal(finish.hostCaptureWindowComplete,true);assert.equal(finish.guestTransportComplete,false);assert.equal(finish.captureComplete,false);assert.equal(finish.nativeAcceptance,false);
+});
+test('v2 producer and consumer never silently adopt an old start or old host completion contract',async t=>{
+  for(const kind of ['start','host']){
+    const f=fixture(t);await startOwnedTrace(f.options,f.deps);f.calls.length=0;
+    if(kind==='start'){const file=join(f.options.output,'trace-start.json'),legacy=JSON.parse(readFileSync(file,'utf8'));delete legacy.diagnosticsVersion;writeFileSync(file,JSON.stringify(legacy));}
+    const finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:kind==='host'?async()=>({...await f.stopHost(),diagnosticsVersion:1,coverageVersion:4}):f.stopHost});
+    assert.equal(finish.captureComplete,false);assert.equal(finish.hostCaptureWindowComplete,false);assert.match(finish.errors.join(),/schema\/producer/);assert.equal(finish.nativeAcceptance,false);
+    if(kind==='start'){assert.equal(f.calls.length,0);assert.equal(finish.guestTransportComplete,false);}else assert.equal(finish.guestTransportComplete,true);
+  }
+});
+test('a successful v2 aggregate remains diagnostic only, with all explicit component flags',async t=>{
+  const f=fixture(t),start=await startOwnedTrace(f.options,f.deps),finish=await finishOwnedTrace(f.options,{run:f.run,stopHost:f.stopHost});
+  assert.equal(start.diagnosticsVersion,2);assert.equal(start.diagnosticsProducer,'owned-trace-start-v2');
+  assert.equal(finish.captureComplete,true);assert.equal(finish.guestTransportComplete,true);assert.equal(finish.hostObservationIntegrity,true);assert.equal(finish.hostCaptureWindowComplete,true);assert.equal(finish.nativeAcceptance,false);assert.equal(finish.structure.semanticCoverageValidated,false);
 });

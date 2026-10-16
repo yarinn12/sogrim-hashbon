@@ -28,7 +28,7 @@ async function probeHealth(request, requestId) {
   const startedAt = new Date().toISOString();
   try {
     const response = await request.get("/api/health", {
-      headers: { "x-sogrim-request-id": `${requestId}-health` },
+      headers: { "x-sogrim-request-id": `${requestId}-health`, connection: "close" },
       timeout: 2_000
     });
     const body = responseSummary("/api/health", await response.text());
@@ -60,7 +60,9 @@ export async function recordQaStateBoundary({ request, testInfo, scenario, engin
   let response;
   try {
     response = await request[method](path, {
-      headers: { "x-sogrim-request-id": requestId },
+      // Each QA mutation has its own acknowledged HTTP boundary. Do not reuse
+      // an idle socket that the local server may have closed between engines.
+      headers: { "x-sogrim-request-id": requestId, connection: "close" },
       ...(data === undefined ? {} : { data })
     });
     evidence.status = response.status();

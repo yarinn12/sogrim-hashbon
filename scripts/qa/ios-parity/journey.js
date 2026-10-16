@@ -22,11 +22,22 @@
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   async function until(predicate, name, timeout = 30000) {
     const deadline = Date.now() + timeout;
+    let probeCount = 0;
+    const observe = (state, selectedHome) => {
+      // A diagnostic must never change a readiness result or its deadline.
+      if (name !== 'home') return;
+      try { observeHomeWait({ state, deadline, probeCount, timeout, selectedHome }); } catch {}
+    };
+    observe('start');
     while (Date.now() < deadline) {
-      const value = predicate();
-      if (value) return value;
+      let value;
+      try { value = predicate(); }
+      catch (error) { observe('error'); throw error; }
+      probeCount++;
+      if (value) { observe('ready', value); return value; }
       await sleep(100);
     }
+    observe('timeout');
     throw new Error(`iOS QA timed out: ${name}`);
   }
   function visible(element) {
@@ -35,6 +46,37 @@
     return box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
   }
   function first(selector) { return [...document.querySelectorAll(selector)].find(visible); }
+  function observeHomeWait({state, deadline, probeCount, timeout, selectedHome}) {
+    const homes = document.querySelectorAll('[data-screen-kind="home"]');
+    const home = selectedHome || homes[0] || null;
+    let box = null, style = null;
+    try { box = home?.getBoundingClientRect() || null; } catch {}
+    try { style = home ? getComputedStyle(home) : null; } catch {}
+    const root = document.documentElement;
+    const app = document.querySelector('#app');
+    const nativeStyle = document.querySelector('link[data-native-layers="true"]');
+    const markTime = name => performance.getEntriesByName?.(`sogrim:start:${name}`, 'mark')?.[0]?.startTime;
+    globalThis.__iosParityStartup?.mark(`home-wait-${state}`, {
+      deadlineEpochMs: deadline, timeoutMs: timeout, probeCount,
+      readyState: document.readyState,
+      urlScheme: location.protocol.replace(/:$/, ''),
+      rootNativeStylesPending: root.classList.contains('native-styles-pending'),
+      rootSplashActive: root.classList.contains('app-splash-active'),
+      rootAuthPending: root.classList.contains('account-auth-pending'),
+      rootUpdateChecking: root.classList.contains('mandatory-update-checking'),
+      appBoot: Boolean(app?.classList.contains('app-boot')),
+      appScreen: ['home', 'boot'].includes(app?.dataset.screen) ? app.dataset.screen : app ? 'other' : 'none',
+      homeCount: Math.min(homes.length, 1000),
+      homeVisible: Boolean(box && style && box.width > 0 && box.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'),
+      homeLeft: box?.left, homeTop: box?.top, homeWidth: box?.width, homeHeight: box?.height,
+      homeDisplay: style?.display || 'absent', homeVisibility: style?.visibility || 'absent',
+      fontStatus: document.fonts?.status || 'unavailable',
+      nativeStyleMedia: nativeStyle ? nativeStyle.media || 'all' : 'absent',
+      nativeStyleSheetPresent: Boolean(nativeStyle?.sheet),
+      authReadyMs: markTime('auth-ready'), appModuleReadyMs: markTime('app-module-ready'),
+      firstScreenRenderedMs: markTime('first-screen-rendered'), splashDismissedMs: markTime('splash-dismissed')
+    });
+  }
   function point(selector) {
     const element = first(selector);
     if (!element || element.disabled) return null;
@@ -138,9 +180,64 @@
       textOverflow: style.textOverflow, overflowX: style.overflowX,
       bounds: { top: bounds.top, bottom: bounds.bottom, left: bounds.left, right: bounds.right } };
   }
+  function homeReference() {
+    const title = first('.product-home-screen .top .brand h1');
+    const hero = first('.product-home-screen > .top');
+    const action = first('.home-create-event-action');
+    if (!title || !hero || !action) throw new Error('Required iOS home reference target is missing');
+    const eyebrow = hero.querySelector('.brand > .eyebrow');
+    const bounds = element => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom,
+        width: rect.width, height: rect.height };
+    };
+    const lines = new Set(), walker = document.createTreeWalker(title, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      for (let index = 0; index < node.length; index += 1) {
+        if (!node.data[index].trim()) continue;
+        const range = document.createRange();
+        range.setStart(node, index); range.setEnd(node, index + 1);
+        const rect = range.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) lines.add(Math.round(rect.top));
+      }
+    }
+    const root = document.documentElement;
+    return { title: title.textContent.trim(), fontSize: parseFloat(getComputedStyle(title).fontSize),
+      lineCount: lines.size, eyebrowVisible: Boolean(eyebrow && visible(eyebrow)),
+      titleBounds: bounds(title), hero: bounds(hero), action: bounds(action),
+      actionFits: action.scrollWidth <= action.clientWidth + 1,
+      viewport: { width: innerWidth, height: innerHeight },
+      pointer: { coarse: matchMedia('(pointer: coarse)').matches,
+        fine: matchMedia('(pointer: fine)').matches },
+      rootFontSize: parseFloat(getComputedStyle(root).fontSize),
+      textPreference: root.dataset.dynamicType,
+      dynamicTypeActive: root.classList.contains('dynamic-type-active') };
+  }
   let captureIndex = 0;
   const pending = new Map();
   globalThis.__iosParityCaptureAck = index => { pending.get(index)?.(); pending.delete(index); };
+  const expectedCaptureScreen = {
+    home: 'home', expenses: 'event', summary: 'settlement', transfers: 'settlement',
+    notes: 'event', 'note-opened': 'event', profile: 'profile',
+    'keyboard-ready': 'event', 'keyboard-amount': 'event', 'keyboard-name': 'event',
+    saved: 'event', resumed: 'event', restored: 'event'
+  };
+  function visualCapture(name) {
+    const splashMark = performance.getEntriesByName?.('sogrim:start:splash-dismissed', 'mark')?.[0];
+    const splashAbsent = !document.querySelector('#app-splash') &&
+      !document.documentElement.classList.contains('app-splash-active');
+    const screen = document.querySelector('#app')?.dataset.screen;
+    if (!splashMark || !splashAbsent || screen !== expectedCaptureScreen[name]) {
+      throw new Error(`iOS QA visible phase mismatch: ${name}`);
+    }
+    return { phase: name, screen, splashAbsent: true,
+      splashMarkMs: splashMark.startTime, capturedAtMs: performance.now() };
+  }
+  async function waitForOriginalSplashRemoval() {
+    await until(() => performance.getEntriesByName?.('sogrim:start:splash-dismissed', 'mark')?.length &&
+      !document.querySelector('#app-splash') &&
+      !document.documentElement.classList.contains('app-splash-active'), 'original splash removed');
+  }
   function keyboardLayout(name, selectors) {
     if (name !== 'keyboard-amount' && name !== 'keyboard-name') return null;
     const field = name === 'keyboard-amount' ? 'amount' : 'name';
@@ -181,16 +278,28 @@
     }
     webkit.messageHandlers.iosParity.postMessage({ kind: 'keyboard-geometry-diagnostic', index, phase: name, snapshots });
   }
+  function observeFirstCapture(stage, name, index) {
+    if (name !== 'home' && name !== 'restored') return;
+    try { globalThis.__iosParityStartup?.mark(stage, { phase: name, index }); } catch {}
+  }
   async function capture(name, selectors) {
+    observeFirstCapture('capture-start', name);
+    observeFirstCapture('fonts-wait-start', name);
     await document.fonts.ready;
+    observeFirstCapture('fonts-ready', name);
+    observeFirstCapture('raf-wait-start', name);
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    observeFirstCapture('raf-ready', name);
+    const visiblePhase = visualCapture(name);
     const metrics = Object.fromEntries(Object.entries(selectors).map(([key, selector]) => [key, measure(selector)]));
     phase = name;
     globalThis.__iosParityInputTrace?.setPhase(name);
     if (name === 'keyboard-ready') globalThis.__iosParityInputTrace?.arm();
     const index = ++captureIndex;
     const completed = new Promise(resolve => pending.set(index, resolve));
-    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, keyboardLayout: keyboardLayout(name, selectors),
+    webkit.messageHandlers.iosParity.postMessage({ index, phase, metrics, visualCapture: visiblePhase,
+      homeReference: name === 'home' ? homeReference() : null,
+      keyboardLayout: keyboardLayout(name, selectors),
       nativeShell: Capacitor.isNativePlatform(), platform: Capacitor.getPlatform(),
       appUrl: location.href,
       rootFontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -205,8 +314,12 @@
       writes: JSON.parse(localStorage.getItem('qa-native-writes') || '[]'),
       pendingOutbox: Object.keys(localStorage).filter(key => key.startsWith('settle-friends-pending-sync:'))
     });
+    // Queued in JavaScript; only the separate capture-ack proves Native completion.
+    observeFirstCapture('capture-post', name, index);
     await Promise.race([completed, sleep(10000).then(() => { throw new Error('Native screenshot acknowledgement missing'); })]);
+    observeFirstCapture('capture-ack', name, index);
     if (name === 'home' || name === 'restored') nativeStatusReady = true;
+    observeFirstCapture('readiness-committed', name, index);
     // Observe subsequent geometry without replacing the sealed original
     // capture or delaying the trusted XCTest actions that consume its phase.
     if (name === 'keyboard-amount' || name === 'keyboard-name') {
@@ -230,11 +343,15 @@
       const rendered = await until(() => first(expenseSelector), 'restored expense rendered in the native UI');
       if (!rendered.textContent.includes('QA iOS')) throw new Error('The restored expense name differs in the UI');
       rendered.scrollIntoView({ block: 'center' });
+      await waitForOriginalSplashRemoval();
       await capture('restored', { heading: '.event-overview-header h1', expense: expenseSelector,
         groupTotal: '.expense-day-summary .amount' });
       return;
     }
-    await capture('home', { brand: '.product-brand-copy strong', description: '.product-home-screen .top .brand .muted' });
+    await waitForOriginalSplashRemoval();
+    await capture('home', { brand: '.product-brand-copy strong',
+      heading: '.product-home-screen .top .brand h1',
+      description: '.product-home-screen .top .brand .muted' });
     await click(`[data-action="open-event"][data-event-id="${EVENT}"]`);
     await capture('expenses', { heading: '.event-overview-header h1',
       tab: '.event-workspace-tab:nth-child(1) strong',

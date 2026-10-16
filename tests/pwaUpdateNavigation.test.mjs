@@ -126,7 +126,7 @@ async function activateUpdatedWorker({ oldPageReloads, reportsClientId = true, p
     }
   };
   const caches = {
-    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v515"]; },
+    async keys() { return ["settle-friends-live-v510", "settle-friends-live-v516"]; },
     async delete() { return true; },
     async match() { return null; },
     async open() { return { put: async () => {} }; }

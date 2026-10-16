@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { setTimeout as delay } from "node:timers/promises";
+import { request as playwrightRequest } from "@playwright/test";
 import { recordQaStateBoundary } from "../e2e-parity/helpers/qaStateBoundaryDiagnostics.mjs";
 
 function response(status, body, requestId = "qa-ack") {
@@ -39,6 +42,7 @@ test("reset and state writes retain separate status, acknowledged body and reque
   await recordQaStateBoundary({ request, testInfo, ...base,
     phase: "state", method: "put", path: "/api/state", data: { synthetic: true } });
   assert.deepEqual(calls.map(call => call.path), ["/api/reset", "/api/state"]);
+  assert.deepEqual(calls.map(call => call.options.headers.connection), ["close", "close"]);
   assert.deepEqual(attachments.map(item => [item.value.phase, item.value.status]), [["reset", 200], ["state", 200]]);
   assert.deepEqual(attachments[0].value.body, { json: true, events: 0, participants: 0 });
   assert.deepEqual(attachments[1].value.body, { json: true, ok: true, code: "", error: "" });
@@ -53,11 +57,16 @@ test("a socket failure is not retried and keeps the original error with a bounde
   let resets = 0;
   let health = 0;
   const request = {
-    post: async () => { resets++; throw socketError; },
+    post: async (path, options) => {
+      resets++;
+      assert.equal(options.headers.connection, "close");
+      throw socketError;
+    },
     get: async (path, options) => {
       health++;
       assert.equal(path, "/api/health");
       assert.equal(options.timeout, 2_000);
+      assert.equal(options.headers.connection, "close");
       return response(200, { ok: true, storageMode: "local" });
     }
   };
@@ -93,4 +102,106 @@ test("an invalid reset body cannot silently satisfy the QA boundary", async () =
     phase: "reset", method: "post", path: "/api/reset" }),
   /reset did not acknowledge a state snapshot/);
   assert.equal(attachments[0].value.status, 200);
+  assert.equal(attachments[0].value.health.status, 200);
+});
+
+test("an HTTP rejection remains a failure with status and health diagnostics", async () => {
+  const { attachments, testInfo } = evidenceSink();
+  let resets = 0;
+  const request = {
+    post: async () => {
+      resets++;
+      return response(503, { ok: false, error: "synthetic rejection" });
+    },
+    get: async () => response(200, { ok: true, storageMode: "local" })
+  };
+  await assert.rejects(recordQaStateBoundary({ request, testInfo, ...base,
+    phase: "reset", method: "post", path: "/api/reset" }), /reset returned HTTP 503/);
+  assert.equal(resets, 1);
+  assert.equal(attachments.length, 1);
+  assert.equal(attachments[0].value.status, 503);
+  assert.equal(attachments[0].value.health.status, 200);
+  assert.match(attachments[0].value.failure.message, /reset returned HTTP 503/);
+});
+
+test("a real socket disconnect still fails once and records a healthy server", async () => {
+  let posts = 0;
+  let health = 0;
+  const server = createServer((incoming, outgoing) => {
+    if (incoming.url === "/api/reset") {
+      posts++;
+      incoming.socket.destroy();
+      return;
+    }
+    health++;
+    outgoing.setHeader("x-sogrim-request-id", incoming.headers["x-sogrim-request-id"]);
+    outgoing.setHeader("content-type", "application/json");
+    outgoing.end(JSON.stringify({ ok: true, storageMode: "local" }));
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const request = await playwrightRequest.newContext({
+    baseURL: `http://127.0.0.1:${server.address().port}`
+  });
+  const { attachments, testInfo } = evidenceSink();
+  try {
+    await assert.rejects(recordQaStateBoundary({ request, testInfo, ...base,
+      phase: "reset", method: "post", path: "/api/reset" }), /socket hang up/);
+    assert.equal(posts, 1);
+    assert.equal(health, 1);
+    assert.equal(attachments.length, 1);
+    assert.match(attachments[0].value.failure.message, /socket hang up/);
+    assert.equal(attachments[0].value.health.status, 200);
+  } finally {
+    await request.dispose();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test("independent HTTP state boundaries survive a server-side close of an idle connection", async () => {
+  const seenBySocket = new WeakMap();
+  const requests = [];
+  let nextSocketId = 0;
+  const server = createServer((incoming, outgoing) => {
+    const socket = incoming.socket;
+    const previous = seenBySocket.get(socket) ?? 0;
+    seenBySocket.set(socket, previous + 1);
+    requests.push({ socketId: socket.__qaId, path: incoming.url,
+      requestId: incoming.headers["x-sogrim-request-id"],
+      connection: incoming.headers.connection });
+    if (previous > 0) {
+      // Force the real transport edge: the server closes a reused socket
+      // before it can acknowledge the next state mutation.
+      socket.destroy();
+      return;
+    }
+    outgoing.setHeader("x-sogrim-request-id", incoming.headers["x-sogrim-request-id"]);
+    outgoing.setHeader("content-type", "application/json");
+    outgoing.end(JSON.stringify({ events: [], participants: [] }));
+  });
+  server.on("connection", socket => { socket.__qaId = ++nextSocketId; });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const request = await playwrightRequest.newContext({
+    baseURL: `http://127.0.0.1:${server.address().port}`
+  });
+  const { attachments, testInfo } = evidenceSink();
+  try {
+    await recordQaStateBoundary({ request, testInfo, ...base,
+      phase: "reset-one", method: "post", path: "/api/reset" });
+    await delay(20);
+    await recordQaStateBoundary({ request, testInfo, ...base,
+      phase: "reset-two", method: "post", path: "/api/reset" });
+    assert.equal(requests.length, 2, "each mutation is sent exactly once");
+    assert.equal(new Set(requests.map(item => item.socketId)).size, 2);
+    assert.deepEqual(requests.map(item => item.connection), ["close", "close"]);
+    assert.deepEqual(attachments.map(item => item.value.status), [200, 200]);
+    assert.deepEqual(attachments.map(item => item.value.responseRequestId),
+      requests.map(item => item.requestId));
+    assert.ok(attachments.every(item => item.value.body.events === 0 &&
+      item.value.body.participants === 0));
+  } finally {
+    await request.dispose();
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+  }
 });

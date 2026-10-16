@@ -8,22 +8,32 @@ const source = await readFile(process.env.IOS_PARITY_XCTEST_SOURCE ||
 const bridgeSource = await readFile(process.env.IOS_PARITY_BRIDGE_SOURCE ||
   new URL('../scripts/qa/ios-parity/ParityBridge.swift', import.meta.url), 'utf8');
 
+const backgroundFailure = JSON.parse(await readFile(new URL('./fixtures/ios-background-state-qa461.json',import.meta.url),'utf8'));
+
 function planFromXCTest(swift) {
   const start = swift.indexOf('wait("acknowledged save"');
   const end = swift.indexOf('systemScreenshot("resumed")', start);
   assert.ok(start >= 0 && end > start, 'the native save-to-resume journey must exist');
   const path = swift.slice(start, end);
-  const actions = [...path.matchAll(/XCUIDevice\.shared\.press\(\.home\)|wait\("native background"|app\.activate\(\)|wait\("native background and foreground"/g)]
+  const helperStart = swift.indexOf('func waitForNativeBackground(');
+  const helperEnd = swift.indexOf('func tap(', helperStart);
+  const helper = helperStart >= 0 ? swift.slice(helperStart, helperEnd) : '';
+  const background = helper || path;
+  const actions = [...path.matchAll(/XCUIDevice\.shared\.press\(\.home\)|wait\("native background"|waitForNativeBackground\(deadline:|app\.activate\(\)|wait\("native background and foreground"/g)]
     .map(match => match[0].includes('press') ? 'home' : match[0].includes('activate') ? 'activate' :
       match[0].includes('and foreground') ? 'await-resume' : 'await-background');
+  const backgroundDeadline = helper
+    ? /guard waitForNativeBackground\(deadline: lifecycleDeadline\) else \{ return \}/.test(path) &&
+      /let remaining = max\(0, deadline\.timeIntervalSinceNow\)/.test(helper)
+    : /wait\("native background", deadline: lifecycleDeadline(?:, readWebState: false)?\)/.test(path);
   const sharedDeadline = /let end = deadline \?\? Date\(\)\.addingTimeInterval\(timeout\)/.test(swift) &&
-    /let lifecycleDeadline = Date\(\)\.addingTimeInterval\(35\)/.test(path) &&
-    /wait\("native background", deadline: lifecycleDeadline\)/.test(path) &&
+    /let lifecycleDeadline = Date\(\)\.addingTimeInterval\(35\)/.test(path) && backgroundDeadline &&
     /wait\("native background and foreground", deadline: lifecycleDeadline\)/.test(path);
   return {
-    actions, sharedDeadline,
-    observesBackground: /app\.state == \.runningBackground/.test(path),
-    observesSuspendedBackground: /app\.state == \.runningBackgroundSuspended/.test(path),
+    actions, sharedDeadline, helper,
+    usesBackgroundWaiter: /XCTNSPredicateExpectation/.test(helper) && /XCTWaiter\.wait\(/.test(helper),
+    observesBackground: /app\.state == \.runningBackground\b/.test(background),
+    observesSuspendedBackground: /app\.state == \.runningBackgroundSuspended\b/.test(background),
     observesForeground: /app\.state == \.runningForeground/.test(path),
     requiresNewBackground: /backgrounds[^\n]*>[^\n]*priorBackgrounds/.test(path),
     requiresNewForeground: /foregrounds[^\n]*>[^\n]*priorForegrounds/.test(path),
@@ -36,7 +46,7 @@ function planFromXCTest(swift) {
 function runLifecycle(plan, {
   homeDelay = 6, activationDelay = 1, foregroundCallback = true,
   resumedDelay = 2, forceResumed = false, forceBackgroundAfterActivation = false,
-  initialBackgrounds = 0
+  initialBackgrounds = 0, asynchronousStateMonitor = false, homeState = 'background'
 } = {}) {
   let now = 0;
   let state = 'foreground';
@@ -49,7 +59,10 @@ function runLifecycle(plan, {
   let renewedBackgroundAt = Infinity;
   function advance(target) {
     for (let second = now + 1; second <= target; second++) {
-      if (second === homeAt) { state = 'background'; backgrounds++; }
+      if (second === homeAt) {
+        backgrounds++;
+        if (!asynchronousStateMonitor || plan.usesBackgroundWaiter) state = homeState;
+      }
       if (second === renewedBackgroundAt) state = 'background';
       if (second === resumeAt) phase = 'resumed';
     }
@@ -67,7 +80,8 @@ function runLifecycle(plan, {
     if (action === 'home') homeAt = now + homeDelay;
     if (action === 'await-background') {
       const deadline = plan.sharedDeadline ? 35 : now + 35;
-      if (!waitUntil(() => plan.observesBackground && state === 'background', deadline))
+      if (!waitUntil(() => (plan.observesBackground && state === 'background') ||
+        (plan.observesSuspendedBackground && state === 'suspended'), deadline))
         return { accepted: false, activated, now, state };
     }
     if (action === 'activate') {
@@ -158,4 +172,34 @@ test('native resumed capture starts only after a new active callback', () => {
   // after Home while JavaScript capture cannot complete in the background.
   assert.equal(poll(false, 1, 1), false, 'background polling must not consume the capture latch');
   assert.equal(poll(true, 2, 1), true, 'a fresh foreground callback may request the capture once');
+});
+
+
+test('native background waiting processes asynchronous monitor delivery without AX or sleep polling',()=>{
+  const {helper} = planFromXCTest(source);
+  assert.ok(helper,'the OS transition needs its own asynchronous expectation');
+  assert.match(helper,/XCTNSPredicateExpectation/);
+  assert.match(helper,/XCTWaiter\.wait\(for: \[background\], timeout: remaining\)/);
+  assert.doesNotMatch(helper,/Thread\.sleep|\bstate\(\)|staticTexts|status\./);
+  assert.match(helper,/guard remaining > 0 else/);
+  assert.match(helper,/result == \.completed, Date\(\) < deadline/);
+});
+
+test('QA461 queued background state arrives inside the original shared budget',()=>{
+  assert.equal(backgroundFailure.firstOSState,4);
+  assert.equal(backgroundFailure.diagnosticOSState,3);
+  assert.ok(backgroundFailure.failureScreenshotAtSeconds-backgroundFailure.homePressAtSeconds > backgroundFailure.lifecycleBudgetSeconds);
+  const plan = planFromXCTest(source), scenario={asynchronousStateMonitor:true,homeDelay:1};
+  const result = runLifecycle(plan,scenario);
+  assert.equal(result.accepted,true,JSON.stringify(result));
+  assert.equal(result.state,'foreground');
+  const blocked=runLifecycle({...plan,usesBackgroundWaiter:false},scenario);
+  assert.equal(blocked.accepted,false,'sleep-only polling must reproduce the stale monitor timeout');
+  assert.equal(blocked.activated,false,'late diagnostic state cannot trigger activation after timeout');
+});
+
+test('a queued suspended-background observation also reaches the single activation',()=>{
+  const result=runLifecycle(planFromXCTest(source),{asynchronousStateMonitor:true,homeState:'suspended',homeDelay:1});
+  assert.equal(result.accepted,true,JSON.stringify(result));
+  assert.equal(result.state,'foreground');
 });

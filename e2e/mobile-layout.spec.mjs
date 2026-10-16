@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { calculateSettlement } from "../src/domain/settlement.mjs";
+import { prepareMobileLayoutFixture } from "./helpers/prepareMobileLayoutFixture.mjs";
 
 const EVENT_ID = "event-layout-ci";
 const OWNER_ID = "person-owner";
@@ -89,7 +90,7 @@ const seededState = {
   deletedParticipants: []
 };
 
-test.beforeEach(async ({ page, request }, testInfo) => {
+test.beforeEach(async ({ page }, testInfo) => {
   runtimeIssues = [];
   page.on("pageerror", (error) => runtimeIssues.push(`pageerror: ${error.message}`));
   page.on("console", (message) => {
@@ -111,8 +112,7 @@ test.beforeEach(async ({ page, request }, testInfo) => {
     }
   });
 
-  await request.post("/api/reset");
-  await request.put("/api/state", { data: seededState });
+  await prepareMobileLayoutFixture({ baseURL: testInfo.project.use.baseURL, state: seededState });
 
   await page.addInitScript(({ participantId, displayName, state }) => {
     localStorage.clear();

@@ -414,8 +414,14 @@ not yet been measured; the observer and guest ftrace can perturb scheduling.
 Native acceptance must still pass all original font/geometry/history/health gates.
 `nativeAcceptance` is always false in these diagnostic receipts.
 
-`captureComplete` means acknowledged diagnostic transport only. The bounded
-protobuf check rejects empty, text, truncated and metadata-only files; it does
+Envelopev2 separates `guestTransportComplete` (owned, acknowledged transport with
+actual hash/framing/cap checks), `hostObservationIntegrity` (verified retained
+cohort/journal observations), and `hostCaptureWindowComplete` (an integral window
+through an owned stop strictly before the duration cap). A partial prefix is not
+a completed window. Final `captureComplete` aggregates all three, acknowledged
+overall start and no retained errors; it is never transport-only or Native
+acceptance. See the [v5 contract](../../../docs/android-observed-cohort-v5.md).
+The bounded protobuf check rejects empty, text, truncated and metadata-only files; it does
 not validate semantic coverage or losses. Before drawing a cause conclusion,
 use Trace Processor on the real trace to verify parser/ftrace/buffer-loss stats,
 clock mapping, sched_switch/waking data, target main/RenderThread/GPU identities,

@@ -882,6 +882,12 @@ async function reconcileResumedAccountSession(resumedSession) {
     try {
       restoredSession = await restoreAccountSession(resumedSession);
     } catch (error) {
+      if (
+        requestGeneration !== accountRefreshGeneration ||
+        accountSession !== resumedSession
+      ) {
+        return null;
+      }
       if (!isUnauthorizedAccountError(error) || !resumedSession.refresh_token) {
         throw error;
       }
@@ -913,7 +919,10 @@ async function reconcileResumedAccountSession(resumedSession) {
     ) {
       return null;
     }
-    if (isTransientAccountError(error)) {
+    // A background workspace/profile rejection is not proof that the saved
+    // credentials are invalid. Keep the locally resumed account and retry;
+    // only an explicit auth rejection may end this session.
+    if (isTransientAccountError(error) || !isUnauthorizedAccountError(error)) {
       scheduleAccountSessionRefresh(ACCOUNT_REFRESH_RETRY_MS);
       return null;
     }
@@ -2905,6 +2914,15 @@ function canResumeOffline(session, error) {
 function isUnauthorizedAccountError(error) {
   const status = Number(error?.status);
   if (status === 401) return true;
+  const authCode = String(error?.authCode ?? "").trim().toLowerCase();
+  if (
+    (status === 400 || status === 403) &&
+    [
+      "bad_jwt", "invalid_credentials", "refresh_token_already_used",
+      "refresh_token_not_found", "session_expired", "session_not_found",
+      "user_banned", "user_not_found"
+    ].includes(authCode)
+  ) return true;
   if (status !== 403) return false;
   const message = String(error?.message ?? "").toLowerCase();
   return (
@@ -4205,8 +4223,7 @@ function injectStyle() {
       pointer-events: none;
     }
 
-    @media (max-width: 760px),
-      (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (max-width: 1366px) {
       .account-auth-gate {
         place-items: stretch;
         padding: 0;
@@ -4371,7 +4388,7 @@ function injectStyle() {
 
     /* iPad home-screen apps keep a readable form measure without collapsing
        the entire authentication experience into a phone-width strip. */
-    @media (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+    @media (min-width: 761px) and (max-width: 1366px) {
       .account-auth-gate {
         justify-items: center;
         padding-inline:

@@ -13,7 +13,7 @@ test("account auth layer loads before the app and visual layers", async () => {
   assert.ok(accountIndex > profileIndex);
   assert.ok(appIndex > accountIndex);
   assert.ok(designIndex > accountIndex);
-  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=515"><\/script>/);
+  assert.match(index, /<script defer src="\.\/src\/vendor\/framer-motion-dom\.js\?pwa_release=516"><\/script>/);
 });
 
 test("username repair never blocks the first authenticated paint", async () => {
@@ -591,14 +591,17 @@ test("account gate prioritizes provider login and progressively reveals email", 
     layer,
     /input\.scrollIntoView\(\{ block: "center", inline: "nearest" \}\)/
   );
-  assert.match(
-    layer,
-    /@media \(max-width: 760px\)[\s\S]*?\.account-auth-shell \{[\s\S]*?overflow: visible;/
-  );
-  assert.match(
-    layer,
-    /\(min-width: 761px\) and \(max-width: 1366px\) and \(hover: none\) and \(pointer: coarse\)[\s\S]*?\.account-auth-brand \{[\s\S]*?safe-area-inset-top/
-  );
+  const compactStart = layer.indexOf("@media (max-width: 1366px) {", layer.indexOf("function injectStyle()"));
+  const tabletStart = layer.indexOf("@media (min-width: 761px) and (max-width: 1366px) {", compactStart);
+  assert.ok(compactStart >= 0 && tabletStart > compactStart, "auth gate follows viewport boundaries");
+  const compactRules = layer.slice(compactStart, tabletStart);
+  const tabletRules = layer.slice(tabletStart);
+  assert.match(compactRules, /\.account-auth-gate \{[\s\S]*?scroll-padding-block-end: calc\(120px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(compactRules, /\.account-auth-shell \{[\s\S]*?overflow: visible;/);
+  assert.match(compactRules, /\.account-auth-brand \{[\s\S]*?padding-top: calc\(24px \+ env\(safe-area-inset-top\)\);[\s\S]*?safe-area-inset-left[\s\S]*?safe-area-inset-right/);
+  assert.match(compactRules, /\.account-auth-form-panel \{[\s\S]*?padding-bottom: calc\(28px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(tabletRules, /\.account-auth-gate \{[\s\S]*?safe-area-inset-left[\s\S]*?safe-area-inset-right/);
+  assert.match(tabletRules, /\.account-auth-shell \{[\s\S]*?width: min\(calc\(100% - 32px\), 760px\);/);
   assert.match(
     layer,
     /iPad home-screen apps[\s\S]*?\.account-auth-shell \{[\s\S]*?width: min\(calc\(100% - 32px\), 760px\);/

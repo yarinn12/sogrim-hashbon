@@ -1,6 +1,6 @@
 import {writeFileSync,mkdirSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {adb,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
+import {adb,adbStatus,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
 import {matrixExitCode} from './matrix-verdict.mjs';
 import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
@@ -8,19 +8,21 @@ import {fontProbeExpression} from './font-probes.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {readCurrentFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
+import {captureHoldFailure} from './hold-failure-evidence.mjs';
+import {beginColdMatrix,launchColdFontCase,restoreColdMatrix} from './cold-configuration.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
 const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
 const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11.5,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
-let page;
+let page,coldSetup;
 try{
-  adb(['shell','settings','put','system','accelerometer_rotation','0']);
+  coldSetup=await beginColdMatrix({adb,adbStatus,sleep});
   for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
-    const row={scale,orientation,checks:[],nativeTaps:[]};results.push(row);
+    const row={scale,orientation,checks:[],nativeHolds:[],nativeTaps:[]};results.push(row);
+    let measuringHold=false,holdPhase;
     const check=(name,ok,detail={})=>row.checks.push({name,ok:Boolean(ok),...detail});
     try{
-      adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
-      const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;
+      const oriented=await launchColdFontCase({adb,adbStatus,sleep,value:scale,launchForOwnedOrientation,launch,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;row.coldConfiguration=oriented.coldConfiguration;
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
       row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
@@ -56,12 +58,50 @@ try{
       check('Actual requested viewport orientation',orientation==='portrait'?row.state.dimensions.height>row.state.dimensions.width:row.state.dimensions.width>row.state.dimensions.height);
       if(process.env.ANDROID_QA_INJECT_FAILURE==='1'&&results.length===1)check('Controlled QA failure injection',false);
       for(const [label,selector] of [['header','.product-app-identity'],['hero','.settlement-hero'],['transfer','.transfer-row']]){await page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'center'})`);await sleep(200);screenshot(resolve(out,`${orientation}-scale-${scale}-${label}.png`));}
+      // Keep the original first tap cold; exercise hold only in a separate launch.
       row.exceptions=page.exceptions;
-    }catch(error){row.error=error.stack;row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;}
+      measuringHold=true;
+      holdPhase='foreground-orientation';
+      page.close();page=null;
+      const heldOriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});
+      row.holdRotationReceipt=heldOriented.receipt;
+      holdPhase='hold-input';
+      row.nativeHolds.push(await page.hold('[data-action="open-event"][data-event-id="android-native-event"]',650));
+      holdPhase='menu-open';
+      const held=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),tabs=Boolean(document.querySelector('.event-workspace-nav'));return menu||app?.dataset.screen!=='home'||tabs?{home:app?.dataset.screen==='home',menu,tabs}:false})()`),'Native hold opens event options on Home');
+      check('Native hold opens event options on Home',held.home&&held.menu&&!held.tabs,held);
+      if(!held.home||!held.menu||held.tabs)throw new Error('Native hold did not leave event options open on Home');
+      holdPhase='menu-close';
+      row.nativeTaps.push(await page.tap('[data-action="cancel-event-status-menu"]'));
+      const closed=await waitFor(()=>page.evaluate(`(()=>{const app=document.querySelector('#app'),menu=Boolean(document.querySelector('.event-status-menu[data-event-id="android-native-event"]')),open=Boolean(document.querySelector('[data-action="open-event"][data-event-id="android-native-event"]'));return !menu?{home:app?.dataset.screen==='home',menu,open}:false})()`),'Native tap closes event options');
+      check('Native tap closes event options on Home',closed.home&&!closed.menu&&closed.open,closed);
+      if(!closed.home||closed.menu||!closed.open)throw new Error('Native tap did not close event options on Home');
+      holdPhase='ordinary-tap';
+      row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
+      await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-workspace-nav'))`),'Three event tabs');
+      holdPhase='final-state';
+      row.holdState=await page.evaluate(inspectExpression);
+      row.holdExceptions=page.exceptions;
+      check('Native hold session has no JS exceptions',row.holdExceptions.length===0);
+    }catch(error){
+      row.error=error.stack;
+      if(measuringHold){
+        const errorAtUtc=new Date().toISOString();
+        try{row.holdFailureEvidence=captureHoldFailure({error,errorAtUtc,phase:holdPhase,scale,orientation,source:provenance.sourceCommit,device:process.env.ANDROID_QA_DEVICE,avd:process.env.ANDROID_QA_AVD,adbPath:process.env.ADB_PATH,emulatorPidFile:'artifacts/android-native-isolated/emulator.pid',traceStartFile:'artifacts/android-native-isolated/trace-diagnostics/trace-start.json',output:resolve(out,`hold-failure-${orientation}-scale-${scale}`)});}
+        catch(diagnosticError){row.holdFailureEvidence={diagnosticOnly:true,errorAtUtc,unavailable:diagnosticError.message};}
+      }
+      const failureState=page?await page.evaluate(inspectExpression).catch(error=>({error:error.message})):null;
+      if(measuringHold){
+        row.holdRotationReceipt=error.rotationReceipt||row.holdRotationReceipt;
+        row.holdState=failureState;row.holdExceptions=page?.exceptions||[];
+      }else{
+        row.rotationReceipt=error.rotationReceipt||row.rotationReceipt;row.state=failureState;
+      }
+    }
     finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }
 }finally{
-  page?.close();for(const [key,value] of Object.entries(original))adb(value==='null'?['shell','settings','delete','system',key]:['shell','settings','put','system',key,value]);
-  adb(['shell','wm','user-rotation','lock',original.user_rotation==='null'?'0':original.user_rotation]);
-  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));process.exitCode=matrixExitCode(results);
+  page?.close();let coldRestore,coldRestoreError;
+  try{coldRestore=await restoreColdMatrix({adb,adbStatus,sleep,original});}catch(error){coldRestoreError=error.stack;}
+  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,coldSetup,coldRestore,coldRestoreError,results},null,2));process.exitCode=coldRestoreError?1:matrixExitCode(results);
 }

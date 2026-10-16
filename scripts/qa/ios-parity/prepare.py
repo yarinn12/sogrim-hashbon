@@ -12,6 +12,18 @@ from urllib.parse import urlsplit
 FIXTURES = Path(__file__).parent
 
 
+def inject_status_policy(source: str, import_line: str) -> str:
+    assert source.count(import_line) == 1
+    policy = (FIXTURES / "StatusPublicationPolicy.swift").read_text(encoding="utf8")
+    return source.replace(import_line, import_line + "\n" + policy, 1)
+
+
+def test_target_source() -> str:
+    driver = (FIXTURES / "ParityUITests.swift").read_text(encoding="utf8")
+    tests = (FIXTURES / "StatusPublicationPolicyTests.swift").read_text(encoding="utf8")
+    return inject_status_policy(driver, "import XCTest") + "\n" + tests
+
+
 def prepare(app: Path, source_sha: str) -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", source_sha)
     assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=app, text=True).strip() == source_sha
@@ -20,7 +32,10 @@ def prepare(app: Path, source_sha: str) -> None:
     public = app / "ios/App/App/public"
     assert public.is_dir()
     source_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=app, text=True).strip()
-    manifest = {"sourceSha": source_sha, "sourceTree": source_tree, "source": {}, "www": {}, "qaFixtures": {}}
+    fixture_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=FIXTURES, text=True).strip()
+    fixture_tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=FIXTURES, text=True).strip()
+    manifest = {"sourceSha": source_sha, "sourceTree": source_tree, "fixtureSha": fixture_sha,
+                "fixtureTree": fixture_tree, "source": {}, "www": {}, "qaFixtures": {}}
     for path in sorted(FIXTURES.iterdir()):
         if path.is_file():
             manifest["qaFixtures"][path.name] = sha256(path.read_bytes()).hexdigest()
@@ -30,14 +45,15 @@ def prepare(app: Path, source_sha: str) -> None:
         if path.is_file():
             manifest["www"][str(path.relative_to(public))] = sha256(path.read_bytes()).hexdigest()
     (out / "package-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf8")
-    for name in ["synthetic-service", "input-trace", "journey"]:
+    for name in ["startup-diagnostics", "synthetic-service", "input-trace", "journey"]:
         (public / f"ios-parity-{name}.js").write_bytes((FIXTURES / f"{name}.js").read_bytes())
     delegate = app / "ios/App/App/AppDelegate.swift"
     source = delegate.read_text(encoding="utf8")
     assert "class SogrimBridgeViewController: CAPBridgeViewController" in source
     assert source.count("import AuthenticationServices") == 1
     source = source.replace("import AuthenticationServices", "import AuthenticationServices\nimport WebKit")
-    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree)
+    source = inject_status_policy(source, "import WebKit")
+    source += (FIXTURES / "ParityBridge.swift").read_text(encoding="utf8").replace("__APP_SHA__", source_sha).replace("__APP_TREE__", source_tree).replace("__FIXTURE_SHA__", fixture_sha).replace("__FIXTURE_TREE__", fixture_tree)
     delegate.write_text(source, encoding="utf8")
     story = app / "ios/App/App/Base.lproj/Main.storyboard"
     markup = story.read_text(encoding="utf8")
@@ -81,7 +97,72 @@ def install_test_target(app: Path) -> None:
     content = content.replace("<Testables>", '<Testables><TestableReference skipped="NO">' + reference + '</TestableReference>')
     content = content.replace("<BuildActionEntries>", '<BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="NO" buildForProfiling="NO" buildForArchiving="NO" buildForAnalyzing="NO">' + reference + '</BuildActionEntry>')
     scheme.write_text(content, encoding="utf8")
-    (app / "ios/App/ParityProbeUITests.swift").write_bytes((FIXTURES / "ParityUITests.swift").read_bytes())
+    (app / "ios/App/ParityProbeUITests.swift").write_text(test_target_source(), encoding="utf8")
+
+
+CAPTURE_PHASES = ["home", "expenses", "summary", "transfers", "notes", "note-opened", "profile",
+                  "keyboard-ready", "keyboard-amount", "keyboard-name", "saved", "resumed", "restored"]
+CAPTURE_SCREENS = {"home": "home", "summary": "settlement", "transfers": "settlement", "profile": "profile"}
+
+
+def read_journal(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf8").splitlines() if line.strip()]
+
+
+def validate_capture_evidence(directory: Path, report: dict, manifest: dict) -> None:
+    records = report["records"]
+    assert [record["phase"] for record in records] == CAPTURE_PHASES, "missing or reordered Native capture"
+    cold, relaunch = records[0]["captureSession"], records[-1]["captureSession"]
+    assert cold != relaunch and all(record["captureSession"] == cold for record in records[:-1]), "cold/relaunch session overlap"
+    sessions = {cold, relaunch}
+    startup_files = {path.stem.removeprefix("native-parity-startup-"): path
+                     for path in directory.glob("native-parity-startup-*.log")}
+    status_files = {path.stem.removeprefix("native-parity-status-"): path
+                    for path in directory.glob("native-parity-status-*.log")}
+    assert set(startup_files) == sessions and set(status_files) == sessions, "missing or foreign startup session"
+    origins = []
+    for session in [cold, relaunch]:
+        startup = read_journal(startup_files[session])
+        status = read_journal(status_files[session])
+        assert startup and status
+        for row in startup:
+            assert row["session"] == session and row["sourceSha"] == manifest["sourceSha"]
+            assert row["sourceTree"] == manifest["sourceTree"]
+            assert row["fixtureSha"] == manifest["fixtureSha"] and row["fixtureTree"] == manifest["fixtureTree"]
+        for row in status:
+            assert row["session"] == session and row["sourceSha"] == manifest["sourceSha"]
+            assert row["sourceTree"] == manifest["sourceTree"]
+        injected = [row for row in startup if row.get("event") == "web-stage" and row.get("stage") == "script-injected"]
+        dismissed = [row for row in startup if row.get("event") == "web-stage" and
+                     row.get("stage") == "startup-milestone" and row.get("milestone") == "splash-dismissed"]
+        assert len(injected) == len(dismissed) == 1, "original splash lifecycle missing"
+        assert injected[0]["time"] <= dismissed[0]["time"]
+        origin = injected[0]["timeOriginMs"]
+        assert isinstance(origin, (int, float)) and math.isfinite(origin) and origin > 0
+        assert dismissed[0]["timeOriginMs"] == origin
+        origins.append(origin)
+        expected = [record for record in records if record["captureSession"] == session]
+        received = [row for row in status if row.get("event") == "captureReceived"]
+        written = [row for row in status if row.get("event") == "captureWritten"]
+        acknowledged = [row for row in status if row.get("event") == "captureAckCallback"]
+        assert len(received) == len(written) == len(acknowledged) == len(expected), "capture/ACK count mismatch"
+        for record in expected:
+            phase, index = record["phase"], record["index"]
+            witness = record["visualCapture"]
+            assert witness["phase"] == phase and witness["screen"] == CAPTURE_SCREENS.get(phase, "event"), (phase, "wrong visible screen")
+            assert witness["splashAbsent"] is True, (phase, "splash covers measured screen")
+            mark, captured = witness["splashMarkMs"], witness["capturedAtMs"]
+            assert all(isinstance(value, (int, float)) and math.isfinite(value) and value >= 0 for value in [mark, captured])
+            assert math.isclose(mark, dismissed[0]["startMs"], abs_tol=0.5), (phase, "wrong original splash mark")
+            assert mark <= captured, (phase, "capture predates original splash mark")
+            matching = lambda rows: [row for row in rows if row.get("index") == index]
+            begin, saved, ack = matching(received), matching(written), matching(acknowledged)
+            assert len(begin) == len(saved) == len(ack) == 1 and begin[0]["phase"] == phase, (phase, "capture/ACK identity")
+            assert begin[0]["time"] <= saved[0]["time"] <= ack[0]["time"], (phase, "capture/ACK order")
+            assert ack[0].get("error") == "", (phase, "native capture ACK failed")
+            screenshot = directory / f"native-parity-{phase}.png"
+            assert screenshot.is_file() and screenshot.stat().st_size > 1000, (phase, "missing visual capture")
+    assert origins[0] != origins[1], "cold and relaunch document clocks reused"
 
 
 def validate(out: Path, source_sha: str) -> None:
@@ -140,6 +221,33 @@ def validate(out: Path, source_sha: str) -> None:
                     assert metric["clippedByAncestor"] is False
             screenshot = out / mode / f"native-parity-{phase}.png"
             assert screenshot.is_file() and screenshot.stat().st_size > 1000
+        home = records["home"]
+        reference = home["homeReference"]
+        assert reference["title"] == "מה סוגרים היום?", (mode, "home reference title")
+        assert reference["viewport"] == {key: home["viewport"][key] for key in ("width", "height")}
+        assert reference["viewport"]["width"] <= 720
+        pointer = reference["pointer"]
+        assert type(pointer["coarse"]) is bool and type(pointer["fine"]) is bool
+        assert not (pointer["coarse"] and pointer["fine"]), (mode, "contradictory primary pointer")
+        assert math.isclose(reference["rootFontSize"], home["rootFontSize"], abs_tol=0.002)
+        assert reference["textPreference"] == ("normal" if mode == "default" else "extra-large")
+        assert reference["dynamicTypeActive"] is (mode != "default")
+        assert math.isclose(reference["fontSize"], home["metrics"]["heading"]["fontSize"], abs_tol=0.2)
+        assert reference["lineCount"] == home["metrics"]["heading"]["textRows"]
+        assert type(reference["lineCount"]) is int and reference["lineCount"] >= 1
+        assert reference["eyebrowVisible"] is False, (mode, "extra home greeting tag")
+        title, hero, action = (reference[key] for key in ("titleBounds", "hero", "action"))
+        assert title["left"] >= hero["left"] - 1 and title["right"] <= hero["right"] + 1
+        assert title["top"] >= hero["top"] - 1 and title["bottom"] <= hero["bottom"] + 1
+        assert hero["width"] > 0 and action["width"] >= 44 and action["height"] >= 44
+        assert action["left"] >= hero["left"] - 1 and action["right"] <= hero["right"] + 1
+        assert abs((action["left"] + action["right"] - hero["left"] - hero["right"]) / 2) <= 3
+        assert action["top"] < hero["bottom"] and action["bottom"] > hero["bottom"]
+        assert reference["actionFits"] is True
+        if mode == "default":
+            assert math.isclose(reference["rootFontSize"], 16, abs_tol=0.002)
+            assert math.isclose(reference["fontSize"], 24, abs_tol=0.2), "normal home title must be 1.5rem"
+            assert reference["lineCount"] == 1, "normal home question must stay on one line"
         saved = records["saved"]
         assert "שם ארוך" in records["transfers"]["metrics"]["longName"]["text"]
         opened = records["note-opened"]["openedNote"]
@@ -223,6 +331,7 @@ def validate(out: Path, source_sha: str) -> None:
         group_total = records["restored"]["metrics"]["groupTotal"]
         assert group_total["textRows"] == 1, (mode, "groupTotal", "currency split across rows")
         assert group_total["words"] and all(word["rows"] == 1 for word in group_total["words"]), (mode, "groupTotal", "digit split across rows")
+        validate_capture_evidence(out / mode, report, manifest)
         reports[mode] = report
     normal, enlarged = reports["default"], reports["accessibility-extra-large"]
     assert normal["preferredContentSizeCategory"] == "UICTContentSizeCategoryL"
@@ -235,6 +344,9 @@ def validate(out: Path, source_sha: str) -> None:
         assert math.isclose(b["rootFontSize"], a["rootFontSize"] * factor, abs_tol=0.002)
         for key, metric in a["metrics"].items():
             assert math.isclose(b["metrics"][key]["fontSize"], metric["fontSize"] * factor, abs_tol=0.2), (phase, key)
+    a = next(record for record in normal["records"] if record["phase"] == "home")["homeReference"]
+    b = next(record for record in enlarged["records"] if record["phase"] == "home")["homeReference"]
+    assert math.isclose(b["fontSize"], a["fontSize"] * factor, abs_tol=0.2)
     print(json.dumps({"sourceSha": source_sha, "status": "passed", "nativeController": normal["controller"], "iOS": normal["systemVersion"], "categories": [normal["preferredContentSizeCategory"], enlarged["preferredContentSizeCategory"]]}))
 
 

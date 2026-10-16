@@ -176,6 +176,14 @@ const CSS = `
     transform: translateY(-1px) !important;
   }
 
+  /* Touch browsers can retain :hover after a tap. Keep the tappable edge fixed. */
+  @media (hover: none) {
+    html.ledger-workspace-v1 .primary-button:hover:not(:active):not(:disabled) {
+      transform: none !important;
+    }
+  }
+
+
   html.ledger-workspace-v1 button:disabled,
   html.ledger-workspace-v1 .primary-button:disabled,
   html.ledger-workspace-v1 .secondary-button:disabled {
@@ -3415,6 +3423,11 @@ const CSS = `
     }
   }
 
+  /* Dialog panels stay anchored while the pointer moves across their content. */
+  html.ledger-workspace-v1 .panel:is(.expense-modal, .event-modal) {
+    transform: none !important;
+  }
+
   html.ledger-workspace-v1 .status-chip,
   html.ledger-workspace-v1 .event-type-chip {
     min-height: 26px !important;
@@ -5993,6 +6006,50 @@ const CSS = `
     font-size: 9.5px !important;
     font-weight: 800 !important;
     line-height: 1 !important;
+  }
+
+  /* Keep lifecycle labels whole when an enlarged font outgrows four columns. */
+  @media (max-width: 480px) {
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      grid-auto-flow: row !important;
+      grid-auto-columns: auto !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button {
+      min-height: 68px !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content {
+      height: 100% !important;
+      grid-template-rows: minmax(0, 1fr) auto !important;
+      row-gap: 2px !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"]
+      .event-lifecycle-option-content > span:first-child {
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
+    }
+
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button .font-num {
+      height: auto !important;
+      min-height: 1em !important;
+    }
+  }
+
+  @media (max-width: 339px) {
+    html.ledger-workspace-v1:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
   }
 
   html.ledger-workspace-v1 .event-list {
@@ -9459,7 +9516,7 @@ const CSS = `
     width: 100% !important;
   }
 
-  @media (max-width: 1024px), (hover: none) and (pointer: coarse) {
+  @media (max-width: 1366px) {
     html.ledger-workspace-v1 .expense-modal-backdrop,
     html.ledger-workspace-v1 .event-modal-backdrop {
       align-items: stretch !important;
@@ -17409,8 +17466,7 @@ const CSS = `
     background: #004d47 !important;
   }
 
-  @media (min-width: 721px) and (max-width: 1024px),
-    (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+  @media (min-width: 721px) and (max-width: 1366px) {
     html.circle-design-v1.ledger-workspace-v1 body #app
       .screen[data-screen-kind="home"] {
       width: 100% !important;
@@ -17839,8 +17895,7 @@ const CSS = `
     color: #ffffff !important;
   }
   /* Keep the legal links and their bottom padding inside the mobile scroll range. */
-  @media (max-width: 760px),
-    (min-width: 761px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+  @media (max-width: 1366px) {
     html.ledger-workspace-v1 #public-account-auth-gate .account-auth-shell {
       overflow: visible !important;
       grid-template-rows: auto auto !important;
@@ -20155,7 +20210,7 @@ const CSS = `
     }
   }
 
-  @media (min-width: 721px) and (max-width: 1366px) and (hover: none) and (pointer: coarse) {
+  @media (min-width: 721px) and (max-width: 1366px) {
     html.ledger-workspace-v1 body #app .screen,
     html.ledger-workspace-v1 body #app .friends-hub-screen {
       box-sizing: border-box !important;

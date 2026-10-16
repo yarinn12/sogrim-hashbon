@@ -1,14 +1,37 @@
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {adb,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
+import {adb,adbStatus,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
 import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer,notePreviewFitsContainer} from './text-measurement.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {fontContractContextExpression,hasAuthoredFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
+import {launchColdFontCase,restoreColdPages} from './cold-configuration.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/pages');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),originalScale=adb(['shell','settings','get','system','font_scale']).trim(),originalRotation=adb(['shell','settings','get','system','user_rotation']).trim();
 const targets={home:['.product-brand-copy strong','.product-home-screen .top .brand h1','.home-create-event-action'],event:['.product-brand-copy strong','.event-overview-header h1','.event-header-action-label','.expense-row strong','.event-workspace-tab strong'],notes:['.product-brand-copy strong','[data-screen-kind="event-notes"] h1','.event-note-title-line strong','.event-note-preview','.event-workspace-tab strong'],profile:['.product-brand-copy strong','[data-screen-kind="profile"] h1','.profile-identity-copy strong']};
+const referenceHomeExpression=`(()=>{
+  const title=document.querySelector('.product-home-screen .top .brand h1');
+  const eyebrow=document.querySelector('.product-home-screen .top .brand > .eyebrow');
+  const action=document.querySelector('.home-create-event-action');
+  const hero=document.querySelector('.product-home-screen > .top');
+  if(!title||!action||!hero)return {missing:true};
+  const lines=new Set(),text=title.firstChild;
+  if(text?.nodeType===Node.TEXT_NODE)for(let i=0;i<text.length;i++){
+    if(!text.data[i].trim())continue;
+    const range=document.createRange();range.setStart(text,i);range.setEnd(text,i+1);
+    const rect=range.getBoundingClientRect();if(rect.width>0&&rect.height>0)lines.add(Math.round(rect.top));
+  }
+  const eyebrowRect=eyebrow?.getBoundingClientRect(),actionRect=action.getBoundingClientRect(),heroRect=hero.getBoundingClientRect();
+  return {text:title.textContent.trim(),lineCount:lines.size,
+    eyebrowVisible:Boolean(eyebrow&&getComputedStyle(eyebrow).display!=='none'&&eyebrowRect.width>0&&eyebrowRect.height>0),
+    actionHeight:actionRect.height,actionFits:action.scrollWidth<=action.clientWidth+1,
+    actionCenter:(actionRect.left+actionRect.right)/2,heroCenter:(heroRect.left+heroRect.right)/2,
+    actionTop:actionRect.top,actionBottom:actionRect.bottom,heroBottom:heroRect.bottom,
+    viewport:{width:innerWidth,height:innerHeight},
+    pointer:{coarse:matchMedia('(pointer: coarse)').matches,fine:matchMedia('(pointer: fine)').matches},
+    textPreference:document.documentElement.dataset.dynamicType};
+})()`;
 const samples=[],checks=[],orientationAttempts=[];let page;
 async function noteDisclosure(rows,scale,orientation){
   const title=rows.find(row=>row.selector==='.event-note-title-line strong')?.text,body=rows.find(row=>row.selector==='.event-note-preview')?.text;
@@ -38,10 +61,12 @@ async function sample(scale,orientation,screen){
   const fontContract={...(await page.evaluate(fontContractContextExpression)),scale};
   const fontContractRules=await actualAuthoredFontRules(page,targets[screen].filter(hasAuthoredFontContract));
   const rows=await page.evaluate(textMeasurementExpression(targets[screen]));
-  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure,fontContract,fontContractRules});
+  const referenceHome=screen==='home'?await page.evaluate(referenceHomeExpression):null;
+  const state=await page.evaluate(inspectExpression),disclosure=screen==='notes'?await noteDisclosure(rows,scale,orientation):null;samples.push({scale,orientation,screen,rows,state,disclosure,referenceHome,fontContract,fontContractRules});
   screenshot(resolve(out,`${orientation}-${screen}-scale-${scale}.png`));
   const prefix=`${scale}/${orientation}/${screen}`;
   checks.push({name:prefix+': no horizontal overflow',ok:state.dimensions.appWidth<=state.dimensions.width+1&&state.dimensions.rootWidth<=state.dimensions.width+1});
+  if(screen==='home'&&scale===1&&orientation==='portrait')checks.push({name:prefix+': accepted 4.57 home composition from actual Native viewport/pointer readbacks',ok:referenceHome?.text==='מה סוגרים היום?'&&referenceHome.lineCount===1&&!referenceHome.eyebrowVisible&&referenceHome.actionFits&&referenceHome.actionHeight>=44&&Math.abs(referenceHome.actionCenter-referenceHome.heroCenter)<=3&&referenceHome.actionTop<referenceHome.heroBottom&&referenceHome.actionBottom>referenceHome.heroBottom&&referenceHome.viewport.width===fontContract.width&&referenceHome.viewport.height===fontContract.height&&referenceHome.pointer.coarse===fontContract.pointerCoarse&&referenceHome.pointer.fine===fontContract.pointerFine&&referenceHome.textPreference===fontContract.dynamicType});
   if(screen==='notes')checks.push({name:prefix+': full note title/body retained, reachable and scaled in disclosure',ok:disclosure.ok});
   for(const selector of targets[screen]){
     const values=rows.filter(row=>row.selector===selector);checks.push({name:prefix+'/'+selector+': rendered text exists',ok:values.length>0});
@@ -55,8 +80,7 @@ async function sample(scale,orientation,screen){
 try{
   for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
     try{
-      adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
-      const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,onPage:value=>{page=value;}});orientationAttempts.push({...oriented.receipt,scale});
+      const oriented=await launchColdFontCase({adb,adbStatus,sleep,value:scale,launchForOwnedOrientation,launch,waitFor,orientation,rotation,onPage:value=>{page=value;}});orientationAttempts.push({...oriented.receipt,scale,coldConfiguration:oriented.coldConfiguration});
       await waitFor(async()=>Math.abs((await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()')).fontScale-scale)<.01,'Actual native OS font scale');
       await sample(scale,orientation,'home');await page.click('[data-action="open-event"][data-event-id="android-native-event"]');await sample(scale,orientation,'event');
       await page.click('[data-action="open-event-notes"]');await waitFor(()=>page.evaluate(`Boolean(document.querySelector('[data-screen-kind="event-notes"]'))`),'Notes');await sample(scale,orientation,'notes');
@@ -64,4 +88,4 @@ try{
     }catch(error){if(error.rotationReceipt)orientationAttempts.push({...error.rotationReceipt,scale});checks.push({name:`${scale}/${orientation}: `+error.stack,ok:false});}
     finally{page?.close();page=null;writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,navigationMethod:'DOM for typography measurements; Native taps tested by matrix and journey',orientationAttempts,samples,checks},null,2));}
   }
-}finally{page?.close();adb(['shell','settings','put','system','font_scale',originalScale]);adb(['shell','wm','user-rotation','lock',originalRotation==='null'?'0':originalRotation]);writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,orientationAttempts,samples,checks},null,2));if(samples.length!==24||checks.some(check=>!check.ok))process.exitCode=1;}
+}finally{page?.close();let coldRestore,coldRestoreError;try{coldRestore=await restoreColdPages({adb,adbStatus,sleep,originalScale,originalRotation});}catch(error){coldRestoreError=error.stack;}writeFileSync(resolve(out,'pages.json'),JSON.stringify({provenance,orientationAttempts,coldRestore,coldRestoreError,samples,checks},null,2));if(coldRestoreError||samples.length!==24||checks.some(check=>!check.ok))process.exitCode=1;}
