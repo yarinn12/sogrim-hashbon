@@ -10,7 +10,7 @@ on:
         default: audit
         required: true
       source_sha:
-        description: Frozen application SHA 11b083ad804392c2d8273167837fda305af5182c
+        description: Frozen application SHA 2cf78afc23c1d9330834de63ed5f81ba4da5b052
         required: true
         type: string
       qa_run:
@@ -78,6 +78,11 @@ jobs:
       IOS_VERSION: '4.58'
       IOS_BUILD: '194'
     steps:
+      - name: Require frozen source and the four coordinator CI run IDs
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          node -e 'const a=require("node:assert/strict");for(const[k,v]of Object.entries({SOURCE_SHA:"2cf78afc23c1d9330834de63ed5f81ba4da5b052",SOURCE_QA_RUN:"38905815331",SOURCE_WINDOWS_QA_RUN:"38905815402",SOURCE_FONT_QA_RUN:"38905815300",SOURCE_AUTH_QA_RUN:"38905815560",IOS_VERSION:"4.58",IOS_BUILD:"194"}))a.equal(process.env[k],v,"Frozen intake binding: "+k);'
       - name: Checkout frozen application source
         uses: actions/checkout@v6
         with:

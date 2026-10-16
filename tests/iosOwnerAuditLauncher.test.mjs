@@ -19,7 +19,7 @@ const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const ROOT='scripts/qa/ios-signing/',API='https://api.github.com/repos/yarinn12/sogrim-hashbon',REPO='yarinn12/sogrim-hashbon';
 const P=text('signed-audit-policy.mjs'),B=text('audit-prekey-bootstrap.mjs'),X=text('audit-execution-context.mjs'),G=text('intake-source-guard.mjs');
 let helper=F.slice(0,F.indexOf("test('PENDING anchors before"));
-for(const [name,value] of Object.entries({policySource:P,bootstrapSource:B,contextSource:X,guardSource:G}))
+for(const [name,value] of Object.entries({policySource:P,bootstrapSource:B,contextSource:X,guardSource:G,appleReadRetrySource:text('apple-read-retry.mjs')}))
   helper=helper.replace(new RegExp('const '+name+'=readFileSync[^\\n]+;'),()=> 'const '+name+'='+JSON.stringify(value)+';');
 helper+='\nexport {fixture,repack,loadBootstrap,policyModule};';
 const HF=await import(url(helper));
@@ -257,6 +257,7 @@ function fullFixture(mode) {
     const modules={
       [ROOT+'signed-audit-policy.mjs']:P,[ROOT+'audit-prekey-bootstrap.mjs']:boundBootstrap,
       [ROOT+'audit-execution-context.mjs']:X,[ROOT+'intake-source-guard.mjs']:guard,
+      [ROOT+'apple-read-retry.mjs']:text('apple-read-retry.mjs'),
       [ROOT+'verify_successful_intake.py']:origin.boundSource,[ROOT+'owner-audit-launcher.mjs']:L,
       ['scripts/lib/app-store-release.mjs']:A,[ROOT+'collect-owner-snapshot.mjs']:K,
       [ROOT+'owner-post-intake-audit-template.mjs']:text('owner-post-intake-audit-template.mjs')

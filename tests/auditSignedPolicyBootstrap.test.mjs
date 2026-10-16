@@ -8,6 +8,7 @@ const policySource=readFileSync(new URL('../scripts/qa/ios-signing/signed-audit-
 const bootstrapSource=readFileSync(new URL('../scripts/qa/ios-signing/audit-prekey-bootstrap.mjs',import.meta.url),'utf8');
 const contextSource=readFileSync(new URL('../scripts/qa/ios-signing/audit-execution-context.mjs',import.meta.url),'utf8');
 const guardSource=readFileSync(new URL('../scripts/qa/ios-signing/intake-source-guard.mjs',import.meta.url),'utf8');
+const appleReadRetrySource=readFileSync(new URL('../scripts/qa/ios-signing/apple-read-retry.mjs',import.meta.url),'utf8');
 const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
 const policyModule=await import(url(policySource));
 const contextModule=await import(url(contextSource));
@@ -263,7 +264,8 @@ test('actual shared CI guard and authenticated client execute in sanitized child
   assert.equal(qaRoles.length,18);
   const guard=guardSource.replace(/export const RELEASE_SOURCE = '[^']+';/,()=> "export const RELEASE_SOURCE = '"+p.source.sha+"';")
     .replace(/export const RELEASE_TREE = '[^']+';/,()=> "export const RELEASE_TREE = '"+p.source.tree+"';")
-    .replace(/export const SOURCE_BRANCH = '[^']+';/,()=> "export const SOURCE_BRANCH = '"+p.source.branch+"';");
+    .replace(/export const SOURCE_BRANCH = '[^']+';/,()=> "export const SOURCE_BRANCH = '"+p.source.branch+"';")
+    .replace("from './apple-read-retry.mjs'",()=> "from '"+url(appleReadRetrySource)+"'");
   const prefix="const records="+JSON.stringify(r)+";globalThis.fetch=async(u,o)=>{if(o.method!=='GET'||o.redirect!=='error'||Object.hasOwn(o,'body')||o.headers.Authorization!=='Bearer synthetic-gh-token')throw Error('Transport mismatch');if(!records[u])throw Error('Unplanned URL');const response=new Response(JSON.stringify(records[u]));Object.defineProperty(response,'url',{value:u});return response;};\n";
   const result=await module.child(process.execPath,['--input-type=module','-e',prefix+module.NODE_CI],
     {policy:p,token:'synthetic-gh-token',guardUrl:url(guard),clientUrl:url(policySource)},

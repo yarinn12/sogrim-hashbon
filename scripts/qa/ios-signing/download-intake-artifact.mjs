@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {mkdirSync,writeFileSync} from 'node:fs';
-import {ARTIFACT_ID,ZIP_SHA} from './intake-origin-guard.mjs';
+import {ARTIFACT_ID,ZIP_SHA,requireBoundIntakePins} from './intake-origin-guard.mjs';
+requireBoundIntakePins();
 const MAX=536870912;
 const response=await fetch('https://api.github.com/repos/yarinn12/sogrim-hashbon/actions/artifacts/'+ARTIFACT_ID+'/zip',{
  method:'GET',redirect:'manual',signal:AbortSignal.timeout(30000),headers:{Authorization:'Bearer '+process.env.GH_TOKEN}});

@@ -4,19 +4,20 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-export const SOURCE='11b083ad804392c2d8273167837fda305af5182c';
-export const TREE='ba1dc34368fbe0988389281c1988bc2e53346fa9';
-export const SIGNING_TOOLS='226d39ac1e8fa5779b10b84530ca74b8cfffc416';
+export const SOURCE='2cf78afc23c1d9330834de63ed5f81ba4da5b052';
+export const TREE='52105dddf3b9a8edb61032c6149eac1b392c460a';
+export const SIGNING_TOOLS='8532bcaf4cb29b329c988f03a9ec4d6ec45121f8';
 const REPO='yarinn12/sogrim-hashbon';
 const positive=v=>assert.match(String(v??''),/^[1-9][0-9]*$/);
 const sha=v=>assert.match(v??'',/^[0-9a-f]{64}$/);
 
 export function verifyOrigin(run,artifact,jobs,env,now=Date.now()){
+  assert.equal(env.SOURCE_SHA,SOURCE,'Original artifact must belong to the frozen application source');
   positive(env.SIGNED_RUN_ID);positive(env.SIGNED_ARTIFACT_ID);sha(env.SIGNED_IPA_SHA256);sha(env.SIGNED_ARTIFACT_ZIP_SHA256);
   assert.equal(String(run.id),env.SIGNED_RUN_ID);
   assert.equal(run.repository.full_name,REPO);assert.equal(run.head_repository.full_name,REPO);
-  assert.equal(run.head_sha,SIGNING_TOOLS);assert.equal(run.head_branch,'codex/ios194-11b-sign-only-20261015');
-  assert.equal(run.path,'.github/workflows/ios194-11b-sign-only.yml');assert.equal(run.event,'push');assert.equal(run.run_number,1);
+  assert.equal(run.head_sha,SIGNING_TOOLS);assert.equal(run.head_branch,'codex/ios194-2cf-resilient-sign-only-20261016');
+  assert.equal(run.path,'.github/workflows/ios194-2cf-resilient-sign-only.yml');assert.equal(run.event,'push');assert.equal(run.run_number,1);
   assert.equal(run.run_attempt,1);assert.equal(run.status,'completed');assert.equal(run.conclusion,'success');
   assert.equal(jobs.length,1);assert.equal(jobs[0].name,'build-export-verify-private');
   assert.equal(jobs[0].status,'completed');assert.equal(jobs[0].conclusion,'success');

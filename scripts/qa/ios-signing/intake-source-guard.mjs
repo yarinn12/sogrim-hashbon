@@ -4,6 +4,7 @@ import {createHash} from 'node:crypto';
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {readAppleReadiness} from './apple-read-retry.mjs';
 
 export const RELEASE_SOURCE = '2cf78afc23c1d9330834de63ed5f81ba4da5b052';
 export const RELEASE_TREE = '52105dddf3b9a8edb61032c6149eac1b392c460a';
@@ -107,10 +108,10 @@ export async function requireUnusedArtifactSlot(fetchImpl, token) {
 }
 
 export async function readUnusedBuild(request) {
-  const app = (await request('/v1/apps/' + APPLE_APP_ID, {method: 'GET'})).data;
+  const app = (await readAppleReadiness(request, '/v1/apps/' + APPLE_APP_ID)).data;
   assert.equal(app?.attributes?.bundleId, 'com.sogrimhashbon.app');
   let next = '/v1/builds?' + new URLSearchParams({
-    'filter[app]': APPLE_APP_ID, 'filter[preReleaseVersion.platform]': 'IOS', limit: '200'
+    'filter[app]': APPLE_APP_ID, 'filter[preReleaseVersion.platform]': 'IOS', 'fields[builds]': 'version', limit: '200'
   });
   let maximum = 0;
   for (let page = 0; next && page < 20; page++) {
@@ -120,7 +121,7 @@ export async function readUnusedBuild(request) {
       next = url.pathname + url.search;
     }
     assert.ok(next.startsWith('/v1/builds?'), 'Unexpected Apple pagination target');
-    const response = await request(next, {method: 'GET'});
+    const response = await readAppleReadiness(request, next);
     assert.ok(Array.isArray(response.data), 'Incomplete Apple build list');
     for (const build of response.data) {
       assert.match(build.attributes?.version ?? '', /^[1-9][0-9]*$/);
@@ -139,9 +140,9 @@ export async function readUnusedBuild(request) {
 export function verifyCheckout(runGit, readText, env) {
   assert.equal(env.GITHUB_REPOSITORY, 'yarinn12/sogrim-hashbon');
   if (env.GITHUB_EVENT_NAME === 'push') {
-    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-11b-intake-only-20261015');
+    assert.equal(env.GITHUB_REF, 'refs/heads/codex/ios194-2cf-root-intake-only-20261016');
     assert.equal(env.GITHUB_WORKFLOW_REF,
-      'yarinn12/sogrim-hashbon/.github/workflows/ios194-11b-intake-only.yml@refs/heads/codex/ios194-11b-intake-only-20261015');
+      'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-root-intake-only.yml@refs/heads/codex/ios194-2cf-root-intake-only-20261016');
     assert.equal(String(env.GITHUB_RUN_ATTEMPT), '1', 'No signing retry');
     assert.equal(String(env.GITHUB_RUN_NUMBER), '1', 'Only the first one-shot signing run may proceed');
   } else {
