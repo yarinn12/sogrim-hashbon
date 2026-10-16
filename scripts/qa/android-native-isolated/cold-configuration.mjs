@@ -68,18 +68,23 @@ export async function restoreColdPages({adb,adbStatus,sleep,originalScale,origin
   return receipt;
 }
 
-export async function launchColdGeometry({adb,adbStatus,sleep,launch}){
-  const coldConfiguration=await setColdFontScale({adb,adbStatus,sleep,value:2,settleMs:0});
-  writeWhileStopped(adb,adbStatus,['shell','wm','user-rotation','lock','0'],coldConfiguration);
-  await sleep(500);
-  requireAbsent(adbStatus,coldConfiguration.processReadbacks);
-  return {page:await launch(),coldConfiguration};
+async function launchVerifiedPortrait({adb,launch,waitFor,launchForOwnedOrientation},coldConfiguration){
+  try{
+    const oriented=await launchForOwnedOrientation({adb,launch,waitFor,orientation:'portrait',rotation:0});
+    return {page:oriented.page,coldConfiguration,rotationReceipt:oriented.receipt};
+  }catch(error){error.coldConfiguration=coldConfiguration;throw error;}
 }
 
-export async function launchColdJourney({adb,adbStatus,sleep,launch}){
+export async function launchColdGeometry({adb,adbStatus,sleep,launch,waitFor,launchForOwnedOrientation}){
+  const coldConfiguration=await setColdFontScale({adb,adbStatus,sleep,value:2,settleMs:0});
+  await sleep(500);
+  requireAbsent(adbStatus,coldConfiguration.processReadbacks);
+  return launchVerifiedPortrait({adb,launch,waitFor,launchForOwnedOrientation},coldConfiguration);
+}
+
+export async function launchColdJourney({adb,adbStatus,sleep,launch,waitFor,launchForOwnedOrientation}){
   const coldConfiguration=await stopOwnedBeforeConfiguration({adb,adbStatus,sleep});coldConfiguration.writes=[];
   writeWhileStopped(adb,adbStatus,['shell','settings','put','system','font_scale','1'],coldConfiguration);
   writeWhileStopped(adb,adbStatus,['shell','settings','put','system','accelerometer_rotation','0'],coldConfiguration);
-  writeWhileStopped(adb,adbStatus,['shell','wm','user-rotation','lock','0'],coldConfiguration);
-  return {page:await launch(),coldConfiguration};
+  return launchVerifiedPortrait({adb,launch,waitFor,launchForOwnedOrientation},coldConfiguration);
 }
