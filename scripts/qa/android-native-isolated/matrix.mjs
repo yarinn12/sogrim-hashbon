@@ -1,6 +1,6 @@
 import {writeFileSync,mkdirSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {adb,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
+import {adb,adbStatus,launch,waitFor,screenshot,inspectExpression,sleep} from './driver.mjs';
 import {matrixExitCode} from './matrix-verdict.mjs';
 import {scaledFontSizeMatches} from './font-ratio.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
@@ -9,20 +9,20 @@ import {acceptanceRunProvenance} from './run-provenance.mjs';
 import {readCurrentFontContract,authoredNativeFontBase,authoredNativeFontMatches,actualAuthoredFontRules} from './font-contract.mjs';
 import {launchForOwnedOrientation} from './orientation.mjs';
 import {captureHoldFailure} from './hold-failure-evidence.mjs';
+import {beginColdMatrix,launchColdFontCase,restoreColdMatrix} from './cold-configuration.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/matrix');mkdirSync(out,{recursive:true});
 const provenance=acceptanceRunProvenance(),results=[];
 const original=Object.fromEntries(['font_scale','accelerometer_rotation','user_rotation'].map(key=>[key,adb(['shell','settings','get','system',key]).trim()]));
 const required={'.settlement-hero-title-row .muted':{size:12,count:1},'.product-brand-copy strong':{size:17,count:1},'.event-header-action-label':{size:11.5,count:3},'.transfer-participant-copy strong':{size:14,count:4},'.transfer-amount > .amount':{size:20,count:2},'.personal-transfer-badge':{size:11,count:2},'.transfer-debt-summary':{size:14,count:1},'.transfer-equation-item > span':{size:10,count:3}};
-let page;
+let page,coldSetup;
 try{
-  adb(['shell','settings','put','system','accelerometer_rotation','0']);
+  coldSetup=await beginColdMatrix({adb,adbStatus,sleep});
   for(const scale of [1,1.5,2])for(const [orientation,rotation] of [['portrait',0],['landscape',1]]){
     const row={scale,orientation,checks:[],nativeHolds:[],nativeTaps:[]};results.push(row);
     let measuringHold=false,holdPhase;
     const check=(name,ok,detail={})=>row.checks.push({name,ok:Boolean(ok),...detail});
     try{
-      adb(['shell','settings','put','system','font_scale',String(scale)]);await sleep(750);
-      const oriented=await launchForOwnedOrientation({launch,adb,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;
+      const oriented=await launchColdFontCase({adb,adbStatus,sleep,value:scale,launchForOwnedOrientation,launch,waitFor,orientation,rotation,timeout:15000,onPage:value=>{page=value;}});row.rotationReceipt=oriented.receipt;row.coldConfiguration=oriented.coldConfiguration;
       row.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-scale)<.01&&cap;},'Actual Native OS font scale');
       await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType===${JSON.stringify(scale===1?'normal':'extra-large')}`),'Product reflow responds to actual OS preference');
       row.nativeTaps.push(await page.tap('[data-action="open-event"][data-event-id="android-native-event"]'));
@@ -101,7 +101,7 @@ try{
     finally{page?.close();page=null;writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));console.log(JSON.stringify({scale,orientation,failed:row.checks.filter(check=>!check.ok),error:row.error}));}
   }
 }finally{
-  page?.close();for(const [key,value] of Object.entries(original))adb(value==='null'?['shell','settings','delete','system',key]:['shell','settings','put','system',key,value]);
-  adb(['shell','wm','user-rotation','lock',original.user_rotation==='null'?'0':original.user_rotation]);
-  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,results},null,2));process.exitCode=matrixExitCode(results);
+  page?.close();let coldRestore,coldRestoreError;
+  try{coldRestore=await restoreColdMatrix({adb,adbStatus,sleep,original});}catch(error){coldRestoreError=error.stack;}
+  writeFileSync(resolve(out,'matrix.json'),JSON.stringify({provenance,original,coldSetup,coldRestore,coldRestoreError,results},null,2));process.exitCode=coldRestoreError?1:matrixExitCode(results);
 }

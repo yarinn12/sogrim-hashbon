@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {adb,launch,waitFor,screenshot,sleep} from './driver.mjs';
+import {adb,adbStatus,launch,waitFor,screenshot,sleep} from './driver.mjs';
+import {launchColdGeometry,restoreColdPages} from './cold-configuration.mjs';
 import {textMeasurementExpression,glyphsFitContainer} from './text-measurement.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated/geometry-regression');mkdirSync(out,{recursive:true});
@@ -21,7 +22,7 @@ async function control(selector,label,count,axis){
   report.checks.push({selector,label,count,axis,before,clipped,after,ok:true});
 }
 try{
-  adb(['shell','settings','put','system','font_scale','2']);adb(['shell','wm','user-rotation','lock','0']);await sleep(500);page=await launch();
+  const started=await launchColdGeometry({adb,adbStatus,sleep,launch});page=started.page;report.coldConfiguration=started.coldConfiguration;
   report.capabilities=await waitFor(async()=>{const cap=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');return Math.abs(cap.fontScale-2)<.01&&cap;},'Actual Native OS2');
   await page.tap('[data-action="open-event"][data-event-id="android-native-event"]');await waitFor(()=>page.evaluate(`Boolean(document.querySelector('.event-header-action-label'))`),'Event header labels');
   await control('.event-header-action-label','event-header-label-height',3,'y');
@@ -31,4 +32,4 @@ try{
   await control('.personal-transfer-badge','personal-transfer-badge-width',2,'x');
   report.exceptions=page.exceptions;assert.equal(page.exceptions.length,0);assert.equal(report.checks.length,4);report.ready=true;
 }catch(error){report.error=error.stack;process.exitCode=1;}
-finally{page?.close();adb(['shell','settings','put','system','font_scale',original.font]);adb(['shell','wm','user-rotation','lock',original.rotation==='null'?'0':original.rotation]);writeFileSync(resolve(out,'geometry-regression.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({ready:report.ready,checks:report.checks.map(({selector,ok})=>({selector,ok})),error:report.error}));}
+finally{page?.close();try{report.coldRestore=await restoreColdPages({adb,adbStatus,sleep,originalScale:original.font,originalRotation:original.rotation});}catch(error){report.coldRestoreError=error.stack;report.ready=false;process.exitCode=1;}writeFileSync(resolve(out,'geometry-regression.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({ready:report.ready,checks:report.checks.map(({selector,ok})=>({selector,ok})),error:report.error,coldRestoreError:report.coldRestoreError}));}

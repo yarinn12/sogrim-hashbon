@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {adb,launch,waitFor,inspectExpression,screenshot} from './driver.mjs';
+import {adb,adbStatus,launch,waitFor,inspectExpression,screenshot,sleep} from './driver.mjs';
+import {setColdFontScale} from './cold-configuration.mjs';
 import {fontProbeExpression,fontPaintDiagnosticExpression} from './font-probes.mjs';
 import {applyStylesheetFontFaultExpression,restoreStylesheetFontFaultExpression,actualFontRuleDiagnostic} from './font-fault.mjs';
 import {scaledFontSizeMatches} from './font-ratio.mjs';
@@ -11,7 +12,7 @@ const report={provenance:acceptanceRunProvenance(),kind:'Controlled DOM CSS muta
 const originalScale=adb(['shell','settings','get','system','font_scale']).trim();let page,saved;
 async function measure(){return {state:await page.evaluate(inspectExpression),probes:await page.evaluate(fontProbeExpression),brand:await page.evaluate(`parseFloat(getComputedStyle(document.querySelector('.product-brand-copy strong')).fontSize)`),brandGlyph:await page.evaluate(`(() => {const e=document.querySelector('.product-brand-copy strong');if(!e)throw new Error('Actual rendered brand missing');const range=document.createRange();range.selectNodeContents(e);return range.getBoundingClientRect().toJSON();})()`)};}
 try{
-  adb(['shell','settings','put','system','font_scale','1.5']);page=await launch();
+  report.coldConfiguration=await setColdFontScale({adb,adbStatus,sleep,value:1.5,settleMs:0});page=await launch();
   report.capabilities=await page.evaluate('Capacitor.Plugins.SogrimCapabilities.getCapabilities()');assert.equal(report.capabilities.fontScale,1.5);
   await waitFor(()=>page.evaluate(`document.documentElement.dataset.dynamicType==='extra-large'`),'Actual OS reflow');
   report.baseline=await measure();assert.ok(report.baseline.state.native&&report.baseline.state.platform==='android');
@@ -44,7 +45,7 @@ finally{
     report.exactRecoveryRestore=await page.evaluate(restoreStylesheetFontFaultExpression(saved));
     report.recoveryPaintDiagnostic=await page.evaluate(fontPaintDiagnosticExpression);
   }catch(error){report.recoveryError=error.stack;process.exitCode=1;}
-  try{originalScale==='null'?adb(['shell','settings','delete','system','font_scale']):adb(['shell','settings','put','system','font_scale',originalScale]);const readback=adb(['shell','settings','get','system','font_scale']).trim();report.osScaleRestore={original:originalScale,readback,exact:readback===originalScale};assert.equal(readback,originalScale,'Restore exact actual OS font_scale');}catch(error){report.osScaleRestoreError=error.stack;report.ready=false;process.exitCode=1;}
+  try{const restored=await setColdFontScale({adb,adbStatus,sleep,value:originalScale==='null'?null:originalScale,settleMs:0});const readback=restored.readback;report.coldRestore=restored;report.osScaleRestore={original:originalScale,readback,exact:readback===originalScale};assert.equal(readback,originalScale,'Restore exact actual OS font_scale');}catch(error){report.osScaleRestoreError=error.stack;report.ready=false;process.exitCode=1;}
   page?.close();
   writeFileSync(resolve(out,'font-regression.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({ready:report.ready,actualGuardResults:report.actualGuardResults,error:report.error,osScaleRestore:report.osScaleRestore,osScaleRestoreError:report.osScaleRestoreError}));
 }

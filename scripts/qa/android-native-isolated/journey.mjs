@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { mkdirSync,writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { adb, connect, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
+import { adb, adbStatus, connect, launch, waitFor, screenshot, inspectExpression, sleep } from './driver.mjs';
 import {acceptanceRunProvenance} from './run-provenance.mjs';
+import {launchColdJourney} from './cold-configuration.mjs';
 const out=resolve(process.env.ANDROID_QA_OUTPUT||'artifacts/android-native-isolated'); mkdirSync(out,{recursive:true});
 const checks=[], evidence={provenance:acceptanceRunProvenance(),source:process.env.ANDROID_QA_SOURCE,checks};
 let page;
@@ -19,10 +20,17 @@ async function nativeFocus(selector){
   evidence.keyboard={tap:actualTap,webViewBounds:actualTap.webViewBounds,inputMethod:adb(['shell','dumpsys','input_method']).split('\n').filter(l=>/mInputShown|mIsInputViewShown|mImeWindowVis/.test(l))};
 }
 try{
-  adb(['shell','settings','put','system','font_scale','1']);
-  adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','wm','user-rotation','lock','0']);
   evidence.initialWarmAttach=process.env.ANDROID_QA_WARM_ATTACH==='1';
-  page=evidence.initialWarmAttach?await connect():await launch(); await page.command('Runtime.enable');
+  if(evidence.initialWarmAttach){
+    // The declared warm-attach diagnostic intentionally keeps the current app.
+    adb(['shell','settings','put','system','font_scale','1']);
+    adb(['shell','settings','put','system','accelerometer_rotation','0']);adb(['shell','wm','user-rotation','lock','0']);
+    page=await connect();
+  }else{
+    const started=await launchColdJourney({adb,adbStatus,sleep,launch});
+    page=started.page;evidence.coldConfiguration=started.coldConfiguration;
+  }
+  await page.command('Runtime.enable');
   await waitFor(()=>page.evaluate(`document.querySelector('#app')?.dataset.screen==='home'`),'Home screen',30000);await openEvent();
   await page.click('[data-action="show-expense-form"]'); await waitFor(async()=>await step()==='amount','Amount step');
   const before=await page.evaluate('({height:innerHeight,visual:visualViewport.height})');

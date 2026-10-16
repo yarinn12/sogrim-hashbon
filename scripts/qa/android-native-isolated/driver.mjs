@@ -11,8 +11,13 @@ const adbPath = process.env.ADB_PATH;
 if (!/^emulator-\d+$/.test(device || '') || !/^sogrim_(?:ci_[a-z0-9_]+|[a-z0-9_]+_20261010)$/.test(avd || '') || !adbPath) {
   throw new Error('Require explicit isolated emulator serial, QA AVD name and ADB_PATH');
 }
-export function adb(args, binary = false) {
+export function adbStatus(args, binary = false) {
   const result = spawnSync(adbPath, ['-s', device, ...args], { encoding: binary ? null : 'utf8', windowsHide: true, timeout: args.includes('-W')?60000:20000, maxBuffer: 20 * 1024 * 1024 });
+  if (result.error || result.signal || !Number.isInteger(result.status)) throw new Error(`ADB ${args.join(' ')} could not report a status: ${result.error || result.stderr}`);
+  return result;
+}
+export function adb(args, binary = false) {
+  const result = adbStatus(args, binary);
   if (result.error || result.status !== 0) throw new Error(`ADB ${args.join(' ')} failed: ${result.error || result.stderr} ${String(result.stdout||'').slice(-700)}`);
   return result.stdout;
 }
