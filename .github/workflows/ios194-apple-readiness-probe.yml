@@ -1,0 +1,54 @@
+name: Apple194 scoped read-only readiness probe
+on:
+  push:
+    branches: [codex/ios194-apple-readiness-probe-20261016]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  readonly:
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-apple-readiness-probe-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: app
+    env:
+      SOURCE_SHA: '2cf78afc23c1d9330834de63ed5f81ba4da5b052'
+      SOURCE_QA_RUN: '38905815331'
+      SOURCE_WINDOWS_QA_RUN: '38905815402'
+      SOURCE_FONT_QA_RUN: '38905815300'
+      SOURCE_AUTH_QA_RUN: '38905815560'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 2cf78afc23c1d9330834de63ed5f81ba4da5b052
+          path: app
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: release-tools
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Require actual exact-source CI before Apple credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/apple-readiness-probe.mjs" ci
+      - name: Read only app identity, build availability and repository artifact slot
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/apple-readiness-probe.mjs" apple
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: ios194-apple-readiness-${{ github.run_id }}
+          path: readiness-output/*.json
+          if-no-files-found: warn
+          retention-days: 7
