@@ -1,9 +1,9 @@
-name: iOS194 2cf after readiness probe private signed artifact only
+name: iOS194 2cf timeout-safe private signed artifact only
 run-name: iOS signed artifact 4.58 (194) from 2cf78afc23c1d9330834de63ed5f81ba4da5b052
 
 on:
   push:
-    branches: [codex/ios194-2cf-post-probe-sign-only-20261016]
+    branches: [codex/ios194-2cf-timeout-safe-sign-only-20261016]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-2cf-post-probe-sign-only-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-2cf-timeout-safe-sign-only-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
@@ -72,7 +72,7 @@ jobs:
       - name: Check source CI, duplicate slots, application identity, encryption and web-asset rejection controls
         working-directory: ${{ github.workspace }}/release-tools/scripts/qa/ios-signing
         run: |
-          node --test preparation.test.mjs
+          node --test preparation.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs
           python3 test_web_assets.py
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"

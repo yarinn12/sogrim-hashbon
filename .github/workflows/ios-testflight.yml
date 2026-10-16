@@ -101,7 +101,7 @@ jobs:
       - name: Check source CI, duplicate slots, application identity, encryption and web-asset rejection controls
         working-directory: ${{ github.workspace }}/release-tools/scripts/qa/ios-signing
         run: |
-          node --test preparation.test.mjs
+          node --test preparation.test.mjs ../../../tests/iosReleaseAppleRead.test.mjs
           python3 test_web_assets.py
       - name: Check signing certificate command and rejection controls before Apple keys
         run: python3 "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/test-signing-certificate.py"

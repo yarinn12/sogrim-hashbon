@@ -72,7 +72,7 @@ test("private iOS signing remains source-gated, encrypted-artifact-only and sepa
   const [packageJson, workflow, oneShot, intakeWorkflow, script, workflowEnv, iconScript, submissionCheck, artifactCheck, liveReview, association, appleSecret, csrScript, p12Script, project, info, appDelegate, launchScreen, privacy, metadata, appleSetup, checklist, handoff, accessibility, reviewNotes, exampleEnv] = await Promise.all([
     readFile("package.json", "utf8").then(JSON.parse),
     readFile(".github/workflows/ios-testflight.yml", "utf8"),
-    readFile(".github/workflows/ios194-2cf-post-probe-sign-only.yml", "utf8"),
+    readFile(".github/workflows/ios194-2cf-timeout-safe-sign-only.yml", "utf8"),
     readFile("scripts/qa/ios-signing/intake-workflow-template.yml", "utf8"),
     readFile("scripts/prepare-ios-release.mjs", "utf8"),
     readFile("scripts/verify-ios-workflow-env.mjs", "utf8"),
@@ -229,7 +229,7 @@ test("private signing contracts reject reenabled legacy dispatch, extra triggers
     assert.notEqual(mutation, legacy);
     assert.throws(() => assertManualSigningDisabled(mutation));
   }
-  const oneShot = await readFile(".github/workflows/ios194-2cf-post-probe-sign-only.yml", "utf8");
+  const oneShot = await readFile(".github/workflows/ios194-2cf-timeout-safe-sign-only.yml", "utf8");
   for (const mutation of [
     oneShot.replace('source-guard.mjs" ci-only', 'source-guard.mjs" removed'),
     oneShot.replace('        run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only', '        # run: node "$GITHUB_WORKSPACE/release-tools/scripts/qa/ios-signing/source-guard.mjs" ci-only'),
@@ -243,7 +243,7 @@ test("private signing contracts reject reenabled legacy dispatch, extra triggers
 
 test("one-shot source checkout and all source CI lanes fail closed for stale or failed proof", async () => {
   const guard = await signingGuard();
-  const workflow = (await readFile(".github/workflows/ios194-2cf-post-probe-sign-only.yml", "utf8")).replace(/\r\n/g, "\n");
+  const workflow = (await readFile(".github/workflows/ios194-2cf-timeout-safe-sign-only.yml", "utf8")).replace(/\r\n/g, "\n");
   assert.match(workflow, /github\.event_name == 'push' && github\.run_attempt == 1 && github\.run_number == 1/);
   assert.doesNotMatch(workflow.split("\npermissions:")[0], /workflow_dispatch|pull_request|schedule/);
   assert.equal(workflow.match(/^      SOURCE_SHA: "([0-9a-f]{40})"$/m)?.[1], guard.RELEASE_SOURCE);
@@ -253,7 +253,7 @@ test("one-shot source checkout and all source CI lanes fail closed for stale or 
   const ref = workflow.match(/github\.ref == '([^']+)'/)?.[1];
   const env = {
     GITHUB_REPOSITORY: "yarinn12/sogrim-hashbon", GITHUB_EVENT_NAME: "push",
-    GITHUB_REF: ref, GITHUB_WORKFLOW_REF: "yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-post-probe-sign-only.yml@" + ref,
+    GITHUB_REF: ref, GITHUB_WORKFLOW_REF: "yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-timeout-safe-sign-only.yml@" + ref,
     GITHUB_RUN_ATTEMPT: "1", GITHUB_RUN_NUMBER: "1", APPLE_TEAM_ID: "MA9S4L7WKS",
     SOURCE_SHA: guard.RELEASE_SOURCE, IOS_VERSION: "4.58", IOS_BUILD: "194",
     ...Object.fromEntries([...workflow.matchAll(/^      (SOURCE_(?:QA|WINDOWS_QA|FONT_QA|AUTH_QA)_RUN): "([1-9][0-9]*)"$/gm)].map(m => [m[1], m[2]]))
@@ -525,7 +525,7 @@ test("TestFlight archive selects the installed distribution profile without alte
 });
 
 test("both signing definitions retain the prepared manual distribution configuration", async () => {
-  for (const path of ["ios-testflight.yml", "ios194-2cf-post-probe-sign-only.yml"]) {
+  for (const path of ["ios-testflight.yml", "ios194-2cf-timeout-safe-sign-only.yml"]) {
     const workflow = await readFile(".github/workflows/" + path, "utf8");
     assert.match(workflow, /IOS_PROVISIONING_PROFILE: "Sogrim Hashbon App Store 2026"/);
     const archiveStep = workflow.split("- name: Archive signed iOS app")[1].split("- name: Export IPA")[0];
