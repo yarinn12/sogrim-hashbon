@@ -7,8 +7,8 @@ import {RELEASE_SOURCE, RELEASE_TREE, SOURCE, requiredRuns, verifyRuns, verifyCo
 import {protect, unprotect} from './protect-artifact.mjs';
 import {verifyRuns as verifyIntakeRuns} from './intake-source-guard.mjs';
 
-const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38280270544', SOURCE_WINDOWS_QA_RUN: '38280270132',
-  SOURCE_FONT_QA_RUN: '38280270159', SOURCE_AUTH_QA_RUN: '38280270319',
+const env = {SOURCE_SHA: SOURCE, SOURCE_QA_RUN: '38900326989', SOURCE_WINDOWS_QA_RUN: '38900326906',
+  SOURCE_FONT_QA_RUN: '38900327004', SOURCE_AUTH_QA_RUN: '38900326955',
   GITHUB_REPOSITORY: 'yarinn12/sogrim-hashbon', GITHUB_EVENT_NAME: 'workflow_dispatch',
   APPLE_TEAM_ID: 'MA9S4L7WKS', IOS_VERSION: '4.58', IOS_BUILD: '194'};
 const names = ['unit','cross-platform','cross-platform-shard-1','cross-platform-shard-2',
@@ -184,8 +184,8 @@ for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios194-11b-sign-only-20261015',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-11b-sign-only.yml@refs/heads/codex/ios194-11b-sign-only-20261015',
+ GITHUB_REF:'refs/heads/codex/ios194-49d-sign-only-20261016',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-49d-sign-only.yml@refs/heads/codex/ios194-49d-sign-only-20261016',
  GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -196,9 +196,9 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
- const actual=readFileSync(new URL('../../../.github/workflows/ios194-11b-sign-only.yml',import.meta.url),'utf8');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios194-49d-sign-only.yml',import.meta.url),'utf8');
  assert.ok(actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
- assert.ok(actual.includes('branches: [codex/ios194-11b-sign-only-20261015]'));
+ assert.ok(actual.includes('branches: [codex/ios194-49d-sign-only-20261016]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));
@@ -241,3 +241,19 @@ for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
    }
   }),'synthetic-token',env),error=>error.expected===1&&error.message.includes('Missing QA lane: '+name));
  });
+
+test('49d one-shot binds the exact application tree and all four coordinator run IDs',()=>{
+ const raw=readFileSync(new URL('../../../.github/workflows/ios194-49d-sign-only.yml',import.meta.url),'utf8');
+ assert.equal(RELEASE_SOURCE,'49d5ab62af3403be0a8cad6b69496a016211e6cf');
+ assert.equal(RELEASE_TREE,'3dea406483faec7014f38bf7a00047ede83a4263');
+ for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
+  ['SOURCE_WINDOWS_QA_RUN',env.SOURCE_WINDOWS_QA_RUN],['SOURCE_FONT_QA_RUN',env.SOURCE_FONT_QA_RUN],
+  ['SOURCE_AUTH_QA_RUN',env.SOURCE_AUTH_QA_RUN],['IOS_VERSION','4.58'],['IOS_BUILD','194']]){
+  const matches=[...raw.matchAll(new RegExp('^      '+name+': "([^"]+)"$','gm'))];
+  assert.equal(matches.length,1,'one immutable '+name);
+  assert.equal(matches[0][1],value,'stale '+name);
+ }
+ assert.ok(raw.includes('ref: "'+RELEASE_SOURCE+'"'));
+ assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,SOURCE_SHA:'11b083ad804392c2d8273167837fda305af5182c'}));
+ assert.throws(()=>verifyCheckout(args=>args[1]==='HEAD^{tree}'?'ba1dc34368fbe0988389281c1988bc2e53346fa9':git(args),readText,oneShotEnv));
+});
