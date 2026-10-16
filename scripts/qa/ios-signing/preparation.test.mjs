@@ -184,8 +184,8 @@ for (const name of ['cross-platform-shard-1', 'cross-platform-shard-2',
 }
 
 const oneShotEnv={...env,GITHUB_EVENT_NAME:'push',
- GITHUB_REF:'refs/heads/codex/ios194-2cf-root-sign-only-20261016',
- GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-root-sign-only.yml@refs/heads/codex/ios194-2cf-root-sign-only-20261016',
+ GITHUB_REF:'refs/heads/codex/ios194-2cf-reliable-sign-only-20261016',
+ GITHUB_WORKFLOW_REF:'yarinn12/sogrim-hashbon/.github/workflows/ios194-2cf-reliable-sign-only.yml@refs/heads/codex/ios194-2cf-reliable-sign-only-20261016',
  GITHUB_RUN_NUMBER:'1',GITHUB_RUN_ATTEMPT:'1'};
 test('one-shot artifact preparation accepts only the explicitly frozen push scope',()=>{
  assert.equal(verifyCheckout(git,readText,oneShotEnv).sourceCommit,RELEASE_SOURCE);
@@ -196,9 +196,9 @@ for(const [name,change] of [['branch',{GITHUB_REF:'refs/heads/main'}],
  test('one-shot preparation rejects wrong '+name,()=>assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,...change})));
 test('actual one-shot workflow keeps signing gates and creates encrypted artifact only',()=>{
  const original=readFileSync(new URL('../../../.github/workflows/ios-testflight.yml',import.meta.url),'utf8');
- const actual=readFileSync(new URL('../../../.github/workflows/ios194-2cf-root-sign-only.yml',import.meta.url),'utf8');
+ const actual=readFileSync(new URL('../../../.github/workflows/ios194-2cf-reliable-sign-only.yml',import.meta.url),'utf8');
  assert.ok(actual.includes('github.run_number == 1')&&actual.includes('github.run_attempt == 1'));
- assert.ok(actual.includes('branches: [codex/ios194-2cf-root-sign-only-20261016]'));
+ assert.ok(actual.includes('branches: [codex/ios194-2cf-reliable-sign-only-20261016]'));
  assert.ok(actual.indexOf('source-guard.mjs" ci-only')<actual.indexOf('secrets.APPSTORE'));
  assert.equal(actual.split('      - name: Set up Node.js')[1],original.split('      - name: Set up Node.js')[1]);
  assert.ok(!/upload-testflight-build|complete-ios-testflight|reviewSubmission|appStoreVersionReleaseRequest/.test(actual));
@@ -243,7 +243,7 @@ for(const name of ['cross-platform-shard-1','cross-platform-shard-2'])
  });
 
 test('2cf one-shot binds the exact application tree and all four coordinator run IDs',()=>{
- const raw=readFileSync(new URL('../../../.github/workflows/ios194-2cf-root-sign-only.yml',import.meta.url),'utf8');
+ const raw=readFileSync(new URL('../../../.github/workflows/ios194-2cf-reliable-sign-only.yml',import.meta.url),'utf8');
  assert.equal(RELEASE_SOURCE,'2cf78afc23c1d9330834de63ed5f81ba4da5b052');
  assert.equal(RELEASE_TREE,'52105dddf3b9a8edb61032c6149eac1b392c460a');
  for(const [name,value]of [['SOURCE_SHA',RELEASE_SOURCE],['SOURCE_QA_RUN',env.SOURCE_QA_RUN],
@@ -256,4 +256,17 @@ test('2cf one-shot binds the exact application tree and all four coordinator run
  assert.ok(raw.includes('ref: "'+RELEASE_SOURCE+'"'));
  assert.throws(()=>verifyCheckout(git,readText,{...oneShotEnv,SOURCE_SHA:'11b083ad804392c2d8273167837fda305af5182c'}));
  assert.throws(()=>verifyCheckout(args=>args[1]==='HEAD^{tree}'?'ba1dc34368fbe0988389281c1988bc2e53346fa9':git(args),readText,oneShotEnv));
+});
+
+// Reproduces the actual Apple500 failure before signing; all existing build gates still run.
+test('unused-build gate recovers from one Apple500 without reserving or mutating', async () => {
+ let count=0; const calls=[];
+ const proof=await readUnusedBuild(async(path,options)=>{
+  calls.push({path,options}); assert.deepEqual(options,{method:'GET'});
+  if(++count===1)throw Object.assign(new Error('Apple temporary500'),{status:500});
+  if(path.startsWith('/v1/apps/'))return {data:{attributes:{bundleId:'com.sogrimhashbon.app'}}};
+  return {data:[{attributes:{version:'193'}}],links:{next:null}};
+ });
+ assert.equal(count,3);assert.equal(proof.maximumUploadedBuild,193);assert.equal(proof.reserved,false);
+ assert.equal(calls[0].path,calls[1].path);
 });

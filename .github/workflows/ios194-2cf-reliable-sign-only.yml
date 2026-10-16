@@ -1,9 +1,9 @@
-name: iOS194 2cf private signed artifact only
+name: iOS194 2cf reliable private signed artifact only
 run-name: iOS signed artifact 4.58 (194) from 2cf78afc23c1d9330834de63ed5f81ba4da5b052
 
 on:
   push:
-    branches: [codex/ios194-2cf-root-sign-only-20261016]
+    branches: [codex/ios194-2cf-reliable-sign-only-20261016]
 
 permissions:
   contents: read
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-export-verify-private:
-    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-2cf-root-sign-only-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
+    if: github.repository == 'yarinn12/sogrim-hashbon' && github.ref == 'refs/heads/codex/ios194-2cf-reliable-sign-only-20261016' && github.event_name == 'push' && github.run_attempt == 1 && github.run_number == 1
     runs-on: macos-26
     timeout-minutes: 75
     defaults:
