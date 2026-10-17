@@ -389,12 +389,20 @@ async function expectCenteredHomeCreateAction(page) {
     const hero = element.querySelector(":scope > .top").getBoundingClientRect();
     const button = element.querySelector('[data-action="new-event"]');
     const action = button.getBoundingClientRect();
+    const icon = button.querySelector("svg").getBoundingClientRect();
+    const label = button.querySelector("strong").getBoundingClientRect();
+    const contentStart = Math.min(icon.left, label.left);
+    const contentEnd = Math.max(icon.right, label.right);
     const copy = element.querySelector(":scope > .top .brand").getBoundingClientRect();
     const benefits = element.querySelector(".home-benefit-actions").getBoundingClientRect();
     const wrapper = element.querySelector(".home-quick-actions");
     return {
       directChild: wrapper.parentElement === element,
       centerOffset: Math.abs((action.left + action.right - hero.left - hero.right) / 2),
+      iconLabelGap: Math.max(icon.left, label.left) - Math.min(icon.right, label.right),
+      contentCenterOffset: Math.abs((contentStart + contentEnd - action.left - action.right) / 2),
+      contentVerticalOffset: Math.abs((icon.top + icon.bottom - label.top - label.bottom) / 2),
+      tapHeight: action.height,
       edgeOffset: Math.abs((action.top + action.bottom) / 2 - hero.bottom),
       copyGap: action.top - copy.bottom,
       bothHalvesClickable: [0.25, 0.75].every((fraction) =>
@@ -406,6 +414,11 @@ async function expectCenteredHomeCreateAction(page) {
   });
   expect(placement.directChild).toBe(true);
   expect(placement.centerOffset).toBeLessThanOrEqual(1);
+  expect(placement.iconLabelGap).toBeGreaterThanOrEqual(6);
+  expect(placement.iconLabelGap).toBeLessThanOrEqual(10);
+  expect(placement.contentCenterOffset).toBeLessThanOrEqual(1);
+  expect(placement.contentVerticalOffset).toBeLessThanOrEqual(1);
+  expect(placement.tapHeight).toBeGreaterThanOrEqual(44);
   expect(placement.edgeOffset).toBeLessThanOrEqual(3);
   expect(placement.copyGap).toBeGreaterThanOrEqual(0);
   expect(placement.bothHalvesClickable).toBe(true);

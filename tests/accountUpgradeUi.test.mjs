@@ -109,8 +109,9 @@ test("missing admin aggregates remain unavailable while actual zero is shown as 
   }
 });
 
-test("the home creation control and roster action center their icon and label", () => {
-  assert.match(styles, /\.home-create-event-action[^\{]*\{[^}]*gap: 2px !important/);
+test("the home creation control centers a compact icon-label group without an oversized decorative icon", () => {
+  assert.match(styles, /\.home-create-event-action\.is-primary[^\{]*\{[^}]*gap: 8px !important;[^}]*padding-inline: 20px !important/);
+  assert.match(styles, /\.home-create-event-action\.is-primary \.home-quick-action-icon[^\{]*\{[^}]*width: 22px !important;[^}]*min-width: 22px !important;[^}]*height: 22px !important;[^}]*min-height: 22px !important;[^}]*flex: 0 0 22px !important/);
   assert.match(styles, /\.event-participant-primary-actions \{[^}]*grid-template-columns: minmax\(0, 1fr\) !important/);
   assert.match(app, /event-participant-add-launch[\s\S]*?iconSvg\("user-plus"\)/);
 });

@@ -17555,14 +17555,9 @@ const CSS = `
       0 3px 9px rgba(18, 58, 46, 0.06) !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-create-event-action {
-    gap: 2px !important;
-    padding-inline: 10px 14px !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-create-event-action .home-quick-action-icon {
-    width: 34px !important;
-    min-width: 34px !important;
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action.is-primary {
+    gap: 8px !important;
+    padding-inline: 20px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary > span:nth-child(2) {
@@ -17593,6 +17588,16 @@ const CSS = `
     transition-property: scale, background-color, box-shadow !important;
     transition-duration: 160ms !important;
     transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
+  }
+
+  /* The whole button is the touch target; its decorative icon must not reserve
+     another touch-sized box that pushes the visible plus away from the label. */
+  html.ledger-workspace-v1 .product-home-screen .home-create-event-action.is-primary .home-quick-action-icon {
+    width: 22px !important;
+    min-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    flex: 0 0 22px !important;
   }
 
   html.ledger-workspace-v1 .product-home-screen .home-quick-action.is-primary .home-quick-action-icon svg {
