@@ -326,3 +326,35 @@ test("a new save stays silent after the previous outbox is acknowledged", () => 
   assert.equal(h.timers.size, 0);
   assert.equal(h.context.pendingSync, true);
 });
+
+
+test("the five-event permission summary names every event and keeps its controls stable", () => {
+  const node = () => ({ dataset: {}, children: [], textContent: "", setAttribute() {},
+    replaceChildren() { this.children = []; }, append(...children) { this.children.push(...children); },
+    contains(child) { return this.children.some(item => item === child || item.contains?.(child)); }, querySelector: () => null });
+  const events = [1, 2, 3, 4, 5].map(number => ({ id: `event-${number}`, name: `אירוע ${number}` }));
+  const target = node();
+  target.dataset.syncAccountSummary = "";
+  target.dataset.syncAccountEvents = JSON.stringify(events);
+  const document = { querySelectorAll: () => [], createElement: node,
+    createTextNode: textContent => ({ textContent }) };
+  const context = vm.createContext({ document, pendingEventIds: events.map(event => event.id) });
+  vm.runInContext(functionSource("renderAccountPendingSummary"), context);
+  const descendants = root => root.children.flatMap(child => [child, ...(child.children ? descendants(child) : [])]);
+  const failureDetails = { failureKind: "permission", eventFailures: [{ id: "event-1", failureKind: "permission" }] };
+  context.renderAccountPendingSummary(target, pendingSaveMessage("permission"), failureDetails);
+  assert.equal(descendants(target).filter(child => child.textContent?.includes("— השמירה נחסמה בגלל הרשאה")).length, 1,
+    "one known403 cannot be attributed to all five pending events");
+  const buttons = descendants(target).filter(child => child.dataset?.action === "open-event");
+  assert.deepEqual(buttons.map(button => button.dataset.eventId), events.map(event => event.id));
+  assert.deepEqual(buttons.map(button => button.textContent), events.map(event => event.name));
+  const details = descendants(target).find(child => child.dataset?.syncEventDetails !== undefined);
+  assert.ok(details, "all affected events can be reviewed without guessing which one the summary means");
+  details.open = true;
+  for (let pass = 0; pass < 4; pass++) {
+    context.renderAccountPendingSummary(target, pendingSaveMessage("permission"), failureDetails);
+    assert.equal(descendants(target).find(child => child.dataset?.syncEventDetails !== undefined), details);
+    assert.equal(details.open, true, "unchanged status cannot collapse or rebuild the open list");
+  }
+  assert.equal(descendants(target).filter(child => child.dataset?.syncRetry !== undefined).length, 1);
+});

@@ -114,7 +114,9 @@ for (const mutation of ["note", "expense", "settings"]) {
       assert.equal(result.reverted, undefined);
       const { __pendingSync, ...queuedState } = JSON.parse(storage.getItem(pendingKey));
       assert.deepEqual(queuedState, changed);
-      assert.deepEqual(__pendingSync, { version: 1, selection: { eventIds: ["event-recovery"], deletedEventIds: [] } });
+      assert.match(__pendingSync.revision, /^[a-z0-9-]{16,}$/i, "the local revision identifies this exact outbox write");
+      assert.deepEqual(__pendingSync, { version: 1, revision: __pendingSync.revision,
+        selection: { eventIds: ["event-recovery"], deletedEventIds: [] } });
       assert.deepEqual(JSON.parse(storage.getItem(`settle-friends-state:${spaceId}`)), changed);
       for (let attempt = 0; attempt < 8; attempt += 1) await runRetry();
       assert.deepEqual(delays, [1_200, 3_500, 8_000, 15_000, 30_000, 60_000, 120_000, 120_000, 120_000], "persistent restrictions use capped backoff, not a tight retry loop");

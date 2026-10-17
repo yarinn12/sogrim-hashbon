@@ -175,7 +175,7 @@ test("queued cloud writes use immutable snapshots and stale completions cannot r
   );
   assert.match(
     save,
-    /syncAndPersistCloudState\(\s*freshRuntimeConfig,\s*sharedState,\s*syncSelection/,
+    /const selection = selectionWithPendingFailure\(freshRuntimeConfig, syncSelection\);[\s\S]*syncAndPersistCloudState\(freshRuntimeConfig, sharedState, selection/,
     "the queued write persists the captured snapshot"
   );
 });

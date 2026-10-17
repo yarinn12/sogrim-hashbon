@@ -1182,6 +1182,12 @@ for (const author of [0,1]) {
       await a.screenshot({path:testInfo.outputPath('confirmed-group-personal-receipt-pending.png')});
       f.failWorkspace(author,0);
       await restartCompletedDelivery();
+      // Permanent receipt denials stay held across restart. Recovery must be
+      // explicitly requested and ACK only the personal index, never republish
+      // the already-confirmed shared note.
+      await expect(a.locator('[data-sync-account-summary]')).toBeVisible();
+      expect(await a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).not.toBeNull();
+      await a.locator('[data-sync-account-summary] [data-sync-retry]').click();
       await expect.poll(()=>a.evaluate(spaceId=>localStorage.getItem(`settle-friends-pending-sync:${spaceId}`),f.personal[author].id)).toBe(null);
       expect(f.writes.filter(w=>w.client===author)).toHaveLength(writesBeforeRestart);
       expect(f.personal[author].state.events.find(e=>e.id===eventId).notes.filter(n=>n.id===noteId)).toHaveLength(1);

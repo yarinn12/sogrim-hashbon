@@ -219,7 +219,7 @@ test("new event participants offer friends, offline names, and an invite link or
     createFlow,
     /events: state\.events\.filter\(item => item\.id !== event\.id\)/
   );
-  assert.match(createFlow, /void finishCreatedEventPublication\(saveResult/);
+  assert.match(createFlow, /void finishCreatedEventPublication\(publication/);
   assert.match(createFlow, /const result = await completedSaveResult\(saveResult\)/);
   assert.match(createFlow, /result\.mode !== "cloud"/);
   assert.match(
@@ -253,8 +253,10 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(createFlow, /if \(createEventBusy\) return/);
   assert.match(createFlow, /finally \{[\s\S]*?createEventBusy = false/);
   assert.doesNotMatch(createFlow, /Promise\.resolve\(saveRequest\)\.catch/);
-  assert.match(createFlow, /await openPreparedEventShare/);
-  assert.match(createFlow, /openPreparedEventShare\(eventId, app\.querySelector\('\[data-action="open-event-share"\]'\), "link"\)/);
+  assert.match(createFlow, /const publication = completedSaveResult\(saveResult\)/);
+  assert.match(createFlow, /void openPreparedEventShare\(event\.id,[\s\S]*?"link", \{ waitForSave: publication \}/);
+  assert.ok(createFlow.indexOf("const saveResult = await saveRequest") < createFlow.indexOf("void openPreparedEventShare"),
+    "open sharing only after durable local creation has been accepted");
   assert.match(ledgerStyles, /\.new-event-participant-route-action/);
 });
 

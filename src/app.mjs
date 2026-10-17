@@ -496,6 +496,7 @@ let screen = initialScreenFromLaunchAction();
 let newEventDraft = null;
 let createEventBusy = false;
 let createEventRequest = null;
+const pendingCreatedEventDrafts = new Map();
 let joinEventDraft = null;
 let joinEventBusy = false;
 let expenseDraft = null;
@@ -844,7 +845,20 @@ function incomingPushStateIsVisible(notification) {
 }
 
 function handleSharedSaveReverted(event) {
+  const creationId = screen.name === "event" ? screen.eventId : "";
+  const creation = pendingCreatedEventDrafts.get(creationId);
   state = loadState();
+  if (creation?.request.isCurrent() && !getEvent(creationId) && !newEventDraft && !expenseDraft &&
+      event?.detail?.eventIds?.includes(creationId)) {
+    // A queued creation may be rejected after its share route has opened.
+    // Preserve the submitted form before render redirects the missing event.
+    newEventDraft = structuredClone(creation.draft);
+    eventDialog = null;
+    screen = { name: "new-event-settlement" };
+    notice = saveFailureMessage({ failureKind: event.detail.failureKind }, "האירוע לא נשמר.", { draft: true });
+    render();
+    return;
+  }
   const requestedAt = Number(event?.detail?.requestedAt ?? 0);
   const noticeAgeMs = Date.now() - requestedAt;
   const recentForegroundMutation = Boolean(
@@ -2503,7 +2517,9 @@ function renderHome() {
   const homeTitle = "מה סוגרים היום?";
   const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
   const pendingHomeEventIds = pendingSharedSyncStatus().pendingEventIds;
-  const pendingHomeEvent = sortedEvents.find((event) => pendingHomeEventIds.includes(event.id));
+  const pendingHomeEvents = sortedEvents.filter(event => pendingHomeEventIds.includes(event.id))
+    .map(({ id, name }) => ({ id, name }));
+  const pendingHomeEvent = pendingHomeEvents[0];
   const awaitingAuthoritativeEvents =
     sortedEvents.length === 0 &&
     !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
@@ -2531,9 +2547,10 @@ function renderHome() {
             </section>`
       }
 
-      <p class="muted" data-inline-sync-status data-sync-account-summary
+      <div class="muted" data-inline-sync-status data-sync-account-summary
+        data-sync-account-events="${escapeAttribute(JSON.stringify(pendingHomeEvents))}"
         ${pendingHomeEvent ? `data-sync-account-event-id="${escapeAttribute(pendingHomeEvent.id)}" data-sync-account-event-name="${escapeAttribute(pendingHomeEvent.name)}"` : ""}
-        role="status" aria-live="polite" hidden></p>
+        role="status" aria-live="polite" hidden></div>
 
       ${
         sortedEvents.length
@@ -15384,9 +15401,11 @@ async function createEventFromDraft({ openInvite = false } = {}) {
   }
 
   state.events.unshift(event);
+  pendingCreatedEventDrafts.set(event.id, { request, draft: submittedDraft });
   createEventRequest = request;
   createEventBusy = true;
   const restoreRejectedCreation = (result) => {
+    pendingCreatedEventDrafts.delete(event.id);
     if (!request.isCurrent()) return;
     // Never restore the entire pre-save account: another event may have been
     // edited or synchronized while this request was waiting.
@@ -15435,9 +15454,22 @@ async function createEventFromDraft({ openInvite = false } = {}) {
     if (saveResult?.pending) {
       schedulePendingMutationRecovery({ resetBackoff: true });
     }
-    // Invitations/link preparation are follow-up work, not part of the form
-    // lock or its rollback. They must wait for a confirmed cloud save.
-    void finishCreatedEventPublication(saveResult, event.id, invitedAccountParticipants, request, openInvite);
+    // The requested share route opens once creation is durable locally. Its
+    // existing verified-link preparation waits for the original save, then
+    // confirms this event independently of unrelated older pending deliveries.
+    const publication = completedSaveResult(saveResult);
+    void publication.then(() => pendingCreatedEventDrafts.delete(event.id),
+      () => pendingCreatedEventDrafts.delete(event.id));
+    if (openInvite && screen.name === "event" && screen.eventId === event.id &&
+        !newEventDraft && !expenseDraft && !eventDialog) {
+      void openPreparedEventShare(event.id, app.querySelector('[data-action="open-event-share"]'),
+        "link", { waitForSave: publication }).catch(error => {
+        if (request.isCurrent()) emitOperationFailure("event_invite", { screen: "new_event", error });
+      });
+    }
+    // Invitations are independent follow-up work, outside the form lock and
+    // rollback. Their own publication checks still require server receipts.
+    void finishCreatedEventPublication(publication, event.id, invitedAccountParticipants, request);
   } catch (error) {
     restoreRejectedCreation({ ok: false, error });
   } finally {
@@ -15449,7 +15481,7 @@ async function createEventFromDraft({ openInvite = false } = {}) {
   }
 }
 
-async function finishCreatedEventPublication(saveResult, eventId, participants, request, openInvite) {
+async function finishCreatedEventPublication(saveResult, eventId, participants, request) {
   try {
     const result = await completedSaveResult(saveResult);
     if (!request.isCurrent() || !getEvent(eventId)) return;
@@ -15458,10 +15490,6 @@ async function finishCreatedEventPublication(saveResult, eventId, participants, 
       if (!request.isCurrent() || !getEvent(eventId)?.participantIds.includes(participant.id)) return;
       await publishEventInvitation(eventId, participant, { showMessage: false });
     }
-    // Do not open a delayed share sheet on top of newer navigation or editing.
-    if (!request.isCurrent() || !openInvite || screen.name !== "event" ||
-        screen.eventId !== eventId || newEventDraft || expenseDraft || eventDialog) return;
-    await openPreparedEventShare(eventId, app.querySelector('[data-action="open-event-share"]'), "link");
   } catch (error) {
     if (!request.isCurrent()) return;
     emitOperationDeferred("event_invite", { screen: "new_event", error });
@@ -19143,7 +19171,8 @@ async function preparePrivateEventInvitationNow(eventId) {
   }
 }
 
-async function openPreparedEventShare(eventId, trigger, shareView = "") {
+async function openPreparedEventShare(eventId, trigger, shareView = "", { waitForSave = null } = {}) {
+  const request = captureFriendAccountContext();
   const event = getEvent(eventId);
   if (!event) return;
   if (isEventClosed(event)) {
@@ -19152,7 +19181,12 @@ async function openPreparedEventShare(eventId, trigger, shareView = "") {
     return;
   }
 
-  const sharePreparation = prepareEventShare(eventId);
+  const sharePreparation = waitForSave
+    ? Promise.resolve(waitForSave).then(() => {
+        if (!request.isCurrent() || eventDialog?.eventId !== eventId || eventDialog.kind !== "share") return;
+        return prepareEventShare(eventId);
+      })
+    : prepareEventShare(eventId);
   openEventDialogWithDetails(
     eventId,
     "share",
@@ -19162,6 +19196,7 @@ async function openPreparedEventShare(eventId, trigger, shareView = "") {
   try {
     await sharePreparation;
   } catch (error) {
+    if (!request.isCurrent()) return;
     const stillPreparing = error?.code === "EVENT_INVITE_TIMEOUT";
     (stillPreparing ? emitOperationDeferred : emitOperationFailure)(
       "event_invite",
@@ -19181,8 +19216,9 @@ async function openPreparedEventShare(eventId, trigger, shareView = "") {
     return;
   }
 
-  notice = "קישור ההצטרפות מוכן לשיתוף.";
+  if (!request.isCurrent()) return;
   if (eventDialog?.eventId === eventId && eventDialog.kind === "share") {
+    notice = "קישור ההצטרפות מוכן לשיתוף.";
     render();
     reactivateDialogAfterRender(".event-modal");
   }

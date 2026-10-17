@@ -31,10 +31,10 @@ const ONLINE_MUTATION_ACTIONS = new Set([
 const ONLINE_MUTATION_CHANGE_ACTIONS = new Set();
 
 let currentStatus = "";
-const initialPendingStatus = pendingSharedSyncStatus();
+const initialPendingStatus = pendingSharedSyncStatus({ includeFailureKind: true });
 let pendingSync = initialPendingStatus.pending;
 let pendingEventIds = initialPendingStatus.pendingEventIds;
-let pendingFailureKind = "";
+let pendingFailureKind = initialPendingStatus.failureKind ?? "";
 let connectivityRevision = 0;
 let lastScreenSignature = screenSignature();
 let activeSaveScreenSignature = "";
@@ -112,7 +112,7 @@ function refreshPendingStatusFromStorage(event) {
 }
 
 function refreshPendingStatus() {
-  const pendingStatus = pendingSharedSyncStatus();
+  const pendingStatus = pendingSharedSyncStatus({ includeFailureKind: true });
   handleSyncStatus({ detail: {
     status: pendingStatus.pending ? "reconnecting" : "",
     ...pendingStatus
@@ -350,7 +350,7 @@ function syncInlineStatusTargets() {
     const pendingHere = pendingSync && (!eventId || pendingEventIds === null || pendingEventIds.includes(eventId));
     const message = pendingHere ? pendingSaveMessage(pendingFailureKind) : "";
     if (target.dataset.syncAccountSummary !== undefined) {
-      renderAccountPendingSummary(target, message);
+      renderAccountPendingSummary(target, message, pendingSharedSyncStatus({ includeFailureKind: true }));
     } else if (target.textContent !== message) {
       target.textContent = message;
     }
@@ -368,41 +368,75 @@ function syncInlineStatusTargets() {
   syncMutationControls();
 }
 
-function renderAccountPendingSummary(target, message) {
+function renderAccountPendingSummary(target, message, failureDetails = {}) {
   const ids = Array.isArray(pendingEventIds) ? [...new Set(pendingEventIds)] : [];
-  const homeEvent = ids.find((id) => id === target.dataset.syncAccountEventId);
-  const row = homeEvent ? null : [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
-    .find((button) => !target.contains(button) && ids.includes(button.dataset.eventId));
-  const eventId = homeEvent || row?.dataset.eventId || "";
-  const eventName = homeEvent
-    ? target.dataset.syncAccountEventName || ""
-    : row?.querySelector(".event-row-title strong, .recent-event-main strong")?.textContent?.trim() || "";
-  const key = JSON.stringify([message, ids.length, eventId, eventName]);
+  let supplied = [];
+  try {
+    const parsed = JSON.parse(target.dataset.syncAccountEvents || "[]");
+    if (Array.isArray(parsed)) supplied = parsed.filter(item =>
+      typeof item?.id === "string" && typeof item?.name === "string");
+  } catch { /* Older home markup can still resolve its visible event row. */ }
+  const rows = [...document.querySelectorAll('.product-home-screen [data-action="open-event"]')]
+    .filter(button => !target.contains(button));
+  const events = ids.map(id => {
+    const row = rows.find(button => button.dataset.eventId === id);
+    const name = supplied.find(item => item.id === id)?.name ||
+      (id === target.dataset.syncAccountEventId ? target.dataset.syncAccountEventName : "") ||
+      row?.querySelector(".event-row-title strong, .recent-event-main strong")?.textContent?.trim() || "";
+    return { id, name, failureKind: failureDetails.eventFailures?.find(item => item.id === id)?.failureKind || "" };
+  });
+  const key = JSON.stringify([message, events]);
   if (target.dataset.syncSummaryKey === key) return;
   target.dataset.syncSummaryKey = key;
   target.replaceChildren();
   if (!message) return;
 
+  const eventName = events[0]?.name;
   const context = ids.length > 1
-    ? `שינויים ב־${ids.length} אירועים ממתינים לשמירה. `
-    : eventName ? `השינוי באירוע ״${eventName}״ ממתין לשמירה. `
-      : ids.length === 1 ? "שינוי באירוע ממתין לשמירה. " : "שמירת החשבון ממתינה. ";
-  target.append(document.createTextNode(`${context}${message}`));
+    ? `עדכונים ב־${ids.length} אירועים לא סונכרנו. `
+    : eventName ? `עדכונים באירוע ״${eventName}״ לא סונכרנו. `
+      : ids.length === 1 ? "עדכונים באירוע לא סונכרנו. " : "עדכונים בחשבון לא סונכרנו. ";
+  const guidance = failureDetails.failureKind === "permission"
+    ? "השרת דחה שמירה בגלל הרשאה. פרטי האירועים מופיעים כאן."
+    : message;
+  target.append(document.createTextNode(`${context}${guidance} העדכונים הממתינים שמורים במכשיר הזה.`));
   const retry = document.createElement("button");
   retry.type = "button";
   retry.className = "pending-sync-review";
   retry.dataset.syncRetry = "";
-  retry.textContent = "נסה שוב";
+  retry.textContent = "ניסיון סנכרון נוסף";
   target.append(document.createTextNode(" "), retry);
-  if (!eventId || !eventName) return;
-  const review = document.createElement("button");
-  review.type = "button";
-  review.className = "pending-sync-review";
-  review.dataset.action = "open-event";
-  review.dataset.eventId = eventId;
-  review.textContent = "בדקו את האירוע";
-  review.setAttribute("aria-label", `פתיחת האירוע ${eventName} לבדיקת השינוי הממתין`);
-  target.append(document.createTextNode(" "), review);
+  const addReview = (container, event) => {
+    if (!event.name) {
+      container.append(document.createTextNode("אירוע שהוסר או אינו זמין — עדכון ממתין לסנכרון"));
+      return;
+    }
+    const review = document.createElement("button");
+    review.type = "button";
+    review.className = "pending-sync-review";
+    review.dataset.action = "open-event";
+    review.dataset.eventId = event.id;
+    review.textContent = event.name;
+    review.setAttribute("aria-label", `פתיחת האירוע ${event.name} לבדיקת העדכון הממתין`);
+    container.append(document.createTextNode(" "), review);
+    if (event.failureKind) container.append(document.createTextNode(
+      event.failureKind === "permission" ? " — השמירה נחסמה בגלל הרשאה" : " — נדרש לבדוק את העדכון"));
+  };
+  if (events.length === 1) { addReview(target, events[0]); return; }
+  if (!events.length) return;
+  const details = document.createElement("details");
+  details.dataset.syncEventDetails = "";
+  const summary = document.createElement("summary");
+  summary.className = "pending-sync-review";
+  summary.textContent = `הצגת ${events.length} האירועים`;
+  const list = document.createElement("ul");
+  for (const event of events) {
+    const item = document.createElement("li");
+    addReview(item, event);
+    list.append(item);
+  }
+  details.append(summary, list);
+  target.append(details);
 }
 
 function syncMutationControls() {
