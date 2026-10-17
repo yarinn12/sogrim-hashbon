@@ -20036,6 +20036,25 @@ const CSS = `
     height: 100% !important;
   }
 
+  /* Event metadata must fit the text column at normal phone sizes too.
+     Keep complete status and participant text by allowing natural line breaks. */
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-meta {
+    max-width: 100% !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-state {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-row-details {
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+  }
+
   /* Home event pictures belong to the event-card action. Keep the stack compact;
      the surrounding event button provides the full accessible touch target. */
   html.ledger-workspace-v1 .event-row-open {

@@ -47,6 +47,19 @@ test('system text at startup grows real Home glyphs without clipping, collisions
     sessionStorage.setItem('settle-friends-skip-next-splash', '1');
   }, { state, owner });
 
+  // Normal-size text also needs to fit the narrow event text column. Before
+  // wrapping was allowed, status and participant glyphs extended under the menu.
+  for (const width of [320, 393]) {
+    await page.setViewportSize({ width, height: 852 });
+    await openHeldRenderedHome(page);
+    await page.evaluate(() => document.fonts.ready);
+    const copy = await readGlyphs(page,
+      '.event-row-state, .event-row-details span:not([aria-hidden="true"])');
+    expect(copy.length).toBeGreaterThan(0);
+    for (const glyph of copy) expect(glyph.fits, width + 'px: ' + glyph.text).toBe(true);
+    await expect(page.locator('.event-lifecycle-filter')).toHaveCount(0);
+  }
+
   // Synthetic system-probe measurement before app startup. This exercises the
   // actual Apple sizing path, but is not a real-device or native WebView test.
   await page.addInitScript(() => {
@@ -87,15 +100,15 @@ test('system text at startup grows real Home glyphs without clipping, collisions
 
       const [action] = await readGlyphs(page, '.home-create-event-action strong');
       const titles = await readGlyphs(page, '.event-row-title strong');
-      const filters = await readGlyphs(page,
-        '.event-lifecycle-option-content > span, .event-lifecycle-option-content .font-num');
+      const filters = await readGlyphs(page, '.event-primary-filter button > span');
       const labels = await readGlyphs(page,
         '.product-app-nav .product-nav-button > span:not(.product-nav-badge)');
       const eventCopy = await readGlyphs(page,
         '.event-row-state, .event-row-details span:not([aria-hidden="true"])');
 
       expect(labels).toHaveLength(4);
-      expect(filters).toHaveLength(8);
+      expect(filters).toHaveLength(2);
+      await expect(page.locator('.event-lifecycle-filter')).toHaveCount(0);
       expect(titles.length).toBeGreaterThan(0);
       for (const glyph of [action, ...titles, ...filters, ...labels, ...eventCopy]) {
         expect(glyph.fits, `${width}px/${size}px: ${glyph.text}`).toBe(true);

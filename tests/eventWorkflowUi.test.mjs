@@ -1600,30 +1600,40 @@ test("home screen separates the personal event list from the personal archive", 
   assert.match(styles, /\.segmented-control/);
 });
 
-test("home event list offers a compact lifecycle status filter", async () => {
+test("home lists every event lifecycle without extra filters and preserves the personal archive", async () => {
   const app = await readFile("src/app.mjs", "utf8");
-  const styles = await readFile("styles.css", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderHomeCreateEventAction");
-
-  assert.match(app, /EVENT_LIFECYCLE_FILTERS/);
-  assert.match(app, /\{ id: "all", label: "הכול" \}/);
-  assert.match(app, /\{ id: "adding", label: "מוסיפים הוצאות" \}/);
-  assert.match(app, /\{ id: "settling", label: "מתחשבנים" \}/);
-  assert.match(app, /\{ id: "paid", label: "הכול שולם" \}/);
-  assert.match(home, /renderEventLifecycleFilter/);
-  assert.match(app, /data-action="event-lifecycle-filter"/);
-  assert.match(app, /aria-label="סינון אירועים לפי סטטוס"/);
-  assert.match(app, /eventHomeStatusId\(event\) === eventLifecycleFilter/);
-  assert.match(app, /renderEventLifecycleFilter\(currentEvents\)/);
-  assert.match(app, /const counts = new Map/);
-  assert.match(app, /class="event-lifecycle-option-content"/);
-  assert.match(app, /<strong><span class="font-num">\$\{counts\.get\(filter\.id\) \?\? 0\}<\/span><\/strong>/);
-  assert.match(app, /class="segmented-control event-lifecycle-filter"/);
-  assert.match(styles, /\.event-lifecycle-filter/);
-  assert.match(
-    styles,
-    /\.event-lifecycle-filter button \{[\s\S]*?min-height: 44px;/
-  );
+  const fixture = ["adding", "settling", "paid", "archived"].map((lifecycle) => ({
+    id: lifecycle, name: lifecycle, lifecycle, createdAt: "2026-10-17T06:00:00Z"
+  }));
+  const context = {
+    state: {currentParticipantId: "owner", participants: [{id: "owner"}]},
+    pinnedEventIdsForState: () => new Set(), pinnedEventsFirst: events => events,
+    visibleEventsForParticipant: () => [...fixture],
+    eventRelevanceTimestamp: () => 0, creationTimestamp: () => 0,
+    eventDialog: null, personalArchivedEventIds: () => new Set(["archived"]),
+    avatarSourceForParticipant: () => "", escapeAttribute: String, escapeHtml: String,
+    participantName: () => "QA", pendingSharedSyncStatus: () => ({pendingEventIds: []}),
+    accountEventsHydrationStatus: "ready", canRenderConfirmedEmptyAccount: () => true,
+    renderAppBackButton: () => "", renderNotice: () => "",
+    renderHomeCreateEventAction: () => '<button>אירוע חדש</button>',
+    renderEventStatusFilter: () => '<div>אירועים / ארכיון</div>',
+    renderEventLifecycleFilter: () => '<div>obsolete-lifecycle-controls</div>',
+    eventHomeStatusId: event => event.lifecycle,
+    renderEventRow: event => '<article data-event-id="' + event.id + '">' + event.lifecycle + '</article>'
+  };
+  for (const oldSelection of ["all", "adding", "settling", "paid"]) {
+    for (const tab of ["events", "archive"]) {
+      const values = {...context, eventStatusFilter: tab, eventLifecycleFilter: oldSelection};
+      const render = new Function(...Object.keys(values), home + '\nreturn renderHome();');
+      const html = render(...Object.values(values));
+      assert.doesNotMatch(html, /obsolete-lifecycle-controls|event-lifecycle-filter/);
+      assert.match(html, /אירועים \/ ארכיון/);
+      const rendered = [...html.matchAll(/data-event-id="([^"]+)"/g)].map(match => match[1]);
+      assert.deepEqual(rendered, tab === "events" ? ["adding", "settling", "paid"] : ["archived"],
+        tab + ': previous lifecycle selection must not hide events');
+    }
+  }
 });
 
 test("home stays list focused while expense entry prioritizes the amount", async () => {

@@ -374,12 +374,6 @@ const EVENT_STATUS_FILTERS = [
   { id: "events", label: "אירועים" },
   { id: "archive", label: "ארכיון" }
 ];
-const EVENT_LIFECYCLE_FILTERS = [
-  { id: "all", label: "הכול" },
-  { id: "adding", label: "מוסיפים הוצאות" },
-  { id: "settling", label: "מתחשבנים" },
-  { id: "paid", label: "הכול שולם" }
-];
 const NEW_EVENT_FLOW_SCREENS = new Set([
   "new-event-type",
   "new-event",
@@ -603,7 +597,6 @@ let runtimeConfig = {
   }
 };
 let eventStatusFilter = "events";
-let eventLifecycleFilter = "all";
 let appHistoryDepth = 0;
 let homeBackNavigationPending = false;
 let lastNavigationViewKey = "";
@@ -2498,15 +2491,9 @@ function renderHome() {
     eventDialog?.kind === "share" ? getEvent(eventDialog.eventId) : null;
   const archivedEventIds = personalArchivedEventIds();
   const currentEvents = sortedEvents.filter((event) => !archivedEventIds.has(event.id));
-  const events = (eventStatusFilter === "archive"
+  const events = eventStatusFilter === "archive"
     ? sortedEvents.filter((event) => archivedEventIds.has(event.id))
-    : currentEvents
-  )
-    .filter((event) =>
-      eventStatusFilter === "archive" ||
-      eventLifecycleFilter === "all" ||
-      eventHomeStatusId(event) === eventLifecycleFilter
-    );
+    : currentEvents;
   const homeParticipant = state.participants.find(
     (participant) => participant.id === state.currentParticipantId
   );
@@ -2551,7 +2538,6 @@ function renderHome() {
                 </div>
                 ${renderEventStatusFilter(sortedEvents)}
               </div>
-              ${eventStatusFilter === "events" ? renderEventLifecycleFilter(currentEvents) : ""}
               <div class="event-list">
                 ${
                   events.length
@@ -2891,38 +2877,6 @@ function renderEventStatusFilter(events) {
             aria-pressed="${eventStatusFilter === filter.id}"
           >
             <span>${filter.label}</span>
-          </button>
-        `
-      ).join("")}
-    </div>
-  `;
-}
-
-function renderEventLifecycleFilter(events) {
-  const counts = new Map(
-    EVENT_LIFECYCLE_FILTERS.map((filter) => [
-      filter.id,
-      filter.id === "all"
-        ? events.length
-        : events.filter((event) => eventHomeStatusId(event) === filter.id).length
-    ])
-  );
-
-  return `
-    <div class="segmented-control event-lifecycle-filter" role="group" aria-label="סינון אירועים לפי סטטוס">
-      ${EVENT_LIFECYCLE_FILTERS.map(
-        (filter) => `
-          <button
-            type="button"
-            class="${eventLifecycleFilter === filter.id ? "is-active" : ""}"
-            data-action="event-lifecycle-filter"
-            data-filter="${filter.id}"
-            aria-pressed="${eventLifecycleFilter === filter.id}"
-          >
-            <span class="event-lifecycle-option-content">
-              <span>${filter.label}</span>
-              <strong><span class="font-num">${counts.get(filter.id) ?? 0}</span></strong>
-            </span>
           </button>
         `
       ).join("")}
@@ -12982,16 +12936,6 @@ async function handleClick(event) {
 
   if (action === "event-status-filter") {
     eventStatusFilter = target.dataset.filter === "archive" ? "archive" : "events";
-    render();
-  }
-
-  if (action === "event-lifecycle-filter") {
-    const nextFilter = EVENT_LIFECYCLE_FILTERS.some(
-      (filter) => filter.id === target.dataset.filter
-    )
-      ? target.dataset.filter
-      : "all";
-    eventLifecycleFilter = nextFilter;
     render();
   }
 
