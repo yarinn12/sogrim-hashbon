@@ -81,3 +81,13 @@ test("native extraction leaves interpolated CSS and unrelated inline templates a
   const unrelated = 'style.textContent = `.other { color: red; }`;';
   assert.equal([...unrelated.matchAll(nativeStaticCssTemplatePattern("src/publicOtherLayer.mjs"))].length, 0);
 });
+
+test("native CSS includes the approved creation tabs before runtime starts", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{path: ledger}], "fixture-assets");
+  assert.ok(paths.has(ledger), "Ledger must remain statically extractable for native bundles");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  assert.match(css, /\.event-creation-tabs\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.event-creation-tabs > li\.is-active > button\s*\{[\s\S]*?background: var\(--ledger-accent-soft\)/);
+});

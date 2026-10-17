@@ -20834,6 +20834,84 @@ const CSS = `
     box-shadow: var(--ledger-task-shadow) !important;
   }
 
+/* Approved event creation tabs: reuse Home events/archive tokens. */
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 4px !important;
+  min-width: 0 !important;
+  min-height: 48px !important;
+  margin: 2px 0 14px !important;
+  padding: 4px !important;
+  list-style: none !important;
+  border: 1px solid var(--ledger-line) !important;
+  border-radius: 12px !important;
+  background: var(--ledger-surface) !important;
+  box-shadow: none !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li {
+  display: block !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 44px !important;
+  padding: 6px 2px !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  color: var(--ledger-muted) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-family: inherit !important;
+  font-size: var(--dynamic-text-13, .84375rem) !important;
+  font-weight: 800 !important;
+  line-height: 1.3 !important;
+  white-space: normal !important;
+  text-align: center !important;
+  opacity: 1 !important;
+  cursor: pointer;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button:disabled {
+  color: #65766e !important;
+  cursor: default;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button > strong {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  white-space: normal !important;
+  overflow-wrap: normal !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li.is-complete > button {
+  color: var(--ledger-brand) !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li.is-active > button {
+  color: var(--ledger-brand) !important;
+  background: var(--ledger-accent-soft) !important;
+  box-shadow: inset 0 0 0 1px rgba(33, 170, 166, .08) !important;
+}
+html.ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs > li > button:focus-visible {
+  outline: 2px solid var(--ledger-brand) !important;
+  outline-offset: -2px !important;
+}
+@media (max-width: 720px) {
+  html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1 body #app .screen[data-event-creation-step] .event-creation-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
 `;
 
 const RETIRED_ROOT_CLASSES = [

@@ -1,3 +1,4 @@
+import { renderEventCreationProgressView } from "./ui/eventCreationProgress.mjs";
 import { renderEventHeaderView, renderEventHeaderActionsView, renderEventHeaderMetaView } from "./ui/eventHeader.mjs";
 import { createEventPressGesture } from "./ui/eventPressGesture.mjs";
 import { formatMoney, parseMoneyInput, sumMoneyAmounts } from "./domain/money.mjs";
@@ -4497,30 +4498,10 @@ function focusNewEventParticipantAfterSelection(participantId, searchQuery = "")
 }
 
 function renderEventCreationProgress(activeStep) {
-  const steps = [
-    { id: "type", label: "אירוע" },
-    { id: "details", label: "פרטים" },
-    { id: "settlement", label: "הגדרות חשבון" },
-    { id: "participants", label: "משתתפים" }
-  ];
-  const activeIndex = Math.max(0, steps.findIndex((step) => step.id === activeStep));
-
-  return `
-    <ol class="event-creation-progress" aria-label="שלבי יצירת אירוע">
-      ${steps
-        .map(
-          (step, index) => `
-            <li class="${index === activeIndex ? "is-active" : index < activeIndex ? "is-complete" : ""}" ${index === activeIndex ? 'aria-current="step"' : ""}>
-              <button type="button" data-action="go-new-event-step" data-new-event-step="${step.id}" ${!newEventDraft?.eventType && step.id !== "type" ? "disabled" : ""}>
-                <span aria-hidden="true">${index + 1}</span>
-                <strong>${step.label}</strong>
-              </button>
-            </li>
-          `
-        )
-        .join("")}
-    </ol>
-  `;
+  return renderEventCreationProgressView({
+    activeStep,
+    eventTypeSelected: Boolean(newEventDraft?.eventType)
+  });
 }
 
 function renderJoinEvent() {

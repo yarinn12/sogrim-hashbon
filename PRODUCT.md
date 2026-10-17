@@ -27,6 +27,8 @@ Avoid student-project screens, old web-app styling, crowded dashboards, repeated
 - Personal memory is core: the product should remember the user and only show relevant history.
 - Prefer fewer high-confidence actions over repeated buttons in several places.
 - Make money flows calm and inspectable, with clear names, totals, participants, and transfer status.
+- Reuse the approved Home control colors, typography, corner radii and selected states across screens; avoid adding generic wizard decoration.
+- Event creation stages remain direct navigation shortcuts. Visual simplification must preserve stage access and draft contents.
 
 ## Accessibility & Inclusion
 

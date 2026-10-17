@@ -553,13 +553,15 @@ test("profile identity fields stay stacked at every viewport width", async () =>
 
   assert.match(app, /data-profile-identity="display-name"/);
   assert.match(app, /data-profile-identity="username"/);
+  // Bound each check to the identity rule; later unrelated two-column layouts
+  // must not be mistaken for profile field declarations.
   assert.match(
     layer,
-    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) !important/
+    /\.profile-identity-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\) !important/
   );
   assert.doesNotMatch(
     layer,
-    /\.profile-identity-grid \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
+    /\.profile-identity-grid \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/
   );
 });
 

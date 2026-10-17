@@ -1017,6 +1017,40 @@ test("large text navigation fits its labels without reserving a tall empty block
   }
 });
 
+test("creation tabs fit normal phone widths and keep direct navigation with the draft", async ({ page }) => {
+  await page.locator('[data-action="new-event"]').first().click();
+  const progress = page.locator('.event-creation-progress');
+  for (const width of [320, 393, 411]) {
+    await page.setViewportSize({ width, height: 852 });
+    await page.evaluate(() => document.fonts.ready);
+    await settleCoherenceMotion(page);
+    const controls = await progress.locator('button').evaluateAll(nodes => nodes.map(button => {
+      const bounds = button.getBoundingClientRect();
+      const label = button.querySelector('strong');
+      const range = document.createRange(); range.selectNodeContents(label);
+      return { text: label.textContent, width: bounds.width, height: bounds.height,
+        fits: [...range.getClientRects()].every(rect => rect.left >= bounds.left - 1
+          && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1
+          && rect.bottom <= bounds.bottom + 1) };
+    }));
+    expect(controls).toHaveLength(4);
+    for (const control of controls) {
+      expect(control.fits, width + 'px: ' + control.text).toBe(true);
+      expect(control.width).toBeGreaterThanOrEqual(44);
+      expect(control.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(progress.locator('button > span')).toHaveCount(0);
+  }
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.locator('[data-action="new-event-name"]').fill('בדיקת ניווט בין שלבים');
+  for (const step of ['settlement', 'participants', 'type', 'details']) {
+    await progress.locator('[data-new-event-step="' + step + '"]').click();
+    await expect(page.locator('[data-event-creation-step="' + step + '"]')).toBeVisible();
+    await expect(progress.locator('[aria-current="step"] button')).toHaveAttribute('data-new-event-step', step);
+  }
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue('בדיקת ניווט בין שלבים');
+});
+
 test("large text keeps creation step labels whole and the steps reachable", async ({ page }, testInfo) => {
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.goto("/?dynamic-type-preview=32");

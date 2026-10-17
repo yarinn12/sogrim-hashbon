@@ -102,14 +102,18 @@ test("event creation shows a clear four-step progress indicator", async () => {
 
   assert.match(typeStep, /renderEventCreationProgress\("type"\)/);
   assert.match(detailsStep, /renderEventCreationProgress\("details"\)/);
-  assert.match(progress, /event-creation-progress/);
-  assert.match(progress, /aria-current="step"/);
-  assert.match(progress, /label: "אירוע"/);
-  assert.match(progress, /פרטים/);
-  assert.match(progress, /label: "הגדרות חשבון"/);
-  assert.match(progress, /label: "משתתפים"/);
-  assert.doesNotMatch(progress, /label: "ניהול"/);
-  assert.match(ledgerStyles, /\.event-creation-progress\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important;/);
+  const component = await readFile("src/ui/eventCreationProgress.mjs", "utf8");
+  assert.match(progress, /renderEventCreationProgressView/);
+  assert.match(progress, /eventTypeSelected: Boolean\(newEventDraft\?\.eventType\)/);
+  assert.match(ledgerStyles, /Approved event creation tabs/);
+  assert.match(component, /event-creation-progress/);
+  assert.match(component, /aria-current="step"/);
+  assert.match(component, /label: "אירוע"/);
+  assert.match(component, /פרטים/);
+  assert.match(component, /label: "הגדרות חשבון"/);
+  assert.match(component, /label: "משתתפים"/);
+  assert.doesNotMatch(component, /label: "ניהול"/);
+  assert.match(ledgerStyles, /\.event-creation-tabs\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\) !important;/);
 });
 
 test("event details open settlement before participant management", async () => {
