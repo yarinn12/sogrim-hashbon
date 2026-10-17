@@ -42,3 +42,14 @@ When handing off a bug fix, briefly state the cause, the regression scenario, th
 - `npm run qa:mobile`: mobile UI matrix; use the relevant projects and focused cases during development.
 
 GitHub QA already runs these suites. Do not claim that they block every deployment path without checking the actual deployment configuration.
+
+
+## Screen-by-screen design review
+
+The user reviews one page/area at a time. For every page we work on:
+
+- Capture the current screen and its relevant scrolled, menu, empty and enlarged-text states. Use synthetic data and record browser/viewport limits; do not describe a browser preview as a physical Android/iPhone check.
+- Inspect the whole page for alignment, spacing, actual SVG-to-text gaps, centered visible groups, RTL, wrapping, clipping, touch targets and content hidden by persistent navigation. Measure visible glyphs and text, not only their wrapper boxes.
+- Explicitly report elements that feel like generic AI/template design: unnecessary card nesting, excessive glow/shadows, decoration without a purpose, repeated promotional blocks, inconsistent controls and generic copy. Explain the specific visual concern; appearance does not prove how the code was authored.
+- Separate reproducible layout defects from subjective design choices. Preserve the agreed green brand, home hero and subtle glow; discuss broader visual changes with the user before applying them.
+- Show findings and a concrete local preview for the current area, collect feedback and finish the agreed changes before advancing to another page. Keep the existing regression-test and release gates.
