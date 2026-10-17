@@ -2998,3 +2998,57 @@ test("new event participants keep enlarged identity text, contextual routes and 
     await testInfo.attach(`participants-${rootSize}`, { body: await page.screenshot(), contentType: 'image/png' });
   }
 });
+
+
+test("friends picker scales real name glyphs and retains selection at enlarged text sizes", async ({ page, request }) => {
+  const friendState = structuredClone(seededState);
+  friendState.friendContacts = friendState.participants.slice(1).map(person => ({
+    id: `contact-${person.id}`, participantId: person.id, active: true,
+    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
+  }));
+  await request.put("/api/state", { data: friendState });
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), friendState);
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto("/");
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    if (rootSize === 32) await page.goto('/?dynamic-type-preview=32');
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    await page.locator('[data-participant-view="friends"]').click();
+    const screen = page.locator('[data-new-event-participant-subview="friends"]');
+    await expect(screen.locator('.participant-pill-name').filter({ hasText: 'אריאל ניזרי מהטיול המשפחתי' })).toBeVisible();
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await screen.evaluate(node => ({
+        client: document.documentElement.clientWidth, documentWidth: document.documentElement.scrollWidth,
+        text: [...node.querySelectorAll('.participant-pill-name,.participant-identity-group-copy>strong')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange();
+          range.selectNodeContents(element);
+          return { text: element.textContent.trim(), font: parseFloat(getComputedStyle(element).fontSize),
+            visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        })
+      }));
+      expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.text.length).toBeGreaterThan(2);
+      for (const text of geometry.text) {
+        expect(text.font, text.text).toBeCloseTo(14 * rootSize / 16, 2);
+        expect(text.visible && text.fits, text.text).toBe(true);
+      }
+      await assertNewEventActionReachable(page, '[data-action="close-new-event-participant-view"]', `${width}/${rootSize} friends`);
+    }
+    const ariel = screen.locator('label.participant-pill[data-participant-id="person-ariel"]');
+    await ariel.click();
+    await expect(ariel.locator('input')).toBeChecked();
+    await screen.locator('[data-action="close-new-event-participant-view"]').click();
+    await expect(page.locator('.new-event-selected-participant[data-participant-id="person-ariel"]')).toBeVisible();
+    await page.locator('[data-participant-view="friends"]').click();
+    await expect(ariel.locator('input')).toBeChecked();
+  }
+});

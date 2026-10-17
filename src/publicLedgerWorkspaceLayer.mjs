@@ -21467,6 +21467,17 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-scre
 html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-self {display:block !important;visibility:visible !important;}
 html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .participant-connection-badge {display:inline-flex !important;visibility:visible !important;}
 
+
+/* Approved friends picker: preserve normal14px text while respecting enlargement. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] .participant-pill-name {
+ font-size: .875rem !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] .participant-identity-group-copy > strong {
+ font-size: .875rem !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

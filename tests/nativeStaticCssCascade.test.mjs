@@ -191,3 +191,19 @@ test("native participants overview retains owner role and participant status in 
     assert.ok(rule.includes("visibility:visible !important;"));
   }
 });
+
+
+test("native friends picker enlarges participant names and group headings with system text", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="friends"] ';
+  for (const selector of [".participant-pill-name", ".participant-identity-group-copy > strong"]) {
+    const from = css.indexOf(prefix + selector + " {");
+    assert.ok(from >= 0, `Native friends text needs a scoped scalable rule: ${selector}`);
+    const rule = css.slice(from, css.indexOf("}", from));
+    assert.match(rule, /font-size: \.875rem !important;/,
+      "14px normal text must become17.5px at root20 and28px at root32");
+  }
+});
