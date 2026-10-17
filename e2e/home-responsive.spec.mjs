@@ -449,3 +449,43 @@ async function waitForHomePresentation(page) {
   // 500ms. Measure only the settled layout, never a translucent mid-frame.
   await page.waitForTimeout(600);
 }
+
+
+test("events and archive tabs fill equal halves with centered labels", async ({ page, request }) => {
+  await request.put("/api/state", { data: populatedAccountState });
+  await page.addInitScript(state => {
+    localStorage.setItem("settle-friends-state", JSON.stringify(state));
+  }, populatedAccountState);
+  for (const width of [320, 393, 411, 768]) {
+    await page.setViewportSize({ width, height: 852 });
+    await openHeldRenderedHome(page);
+    await waitForHomePresentation(page);
+    const selector = page.getByRole("group", { name: "אירועים וארכיון", exact: true });
+    for (const name of ["ארכיון", "אירועים"]) {
+      await selector.getByRole("button", { name, exact: true }).click();
+      const layout = await selector.evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const buttons = [...element.querySelectorAll("button")].map(button => {
+          const b = button.getBoundingClientRect();
+          const label = button.querySelector("span").getBoundingClientRect();
+          return { left: b.left, right: b.right, width: b.width, height: b.height,
+            centerOffset: Math.abs((label.left + label.right - b.left - b.right) / 2),
+            textFits: button.scrollWidth <= button.clientWidth + 1 };
+        });
+        return { buttons, available: element.clientWidth - parseFloat(style.paddingLeft) -
+          parseFloat(style.paddingRight) - parseFloat(style.columnGap),
+          contained: buttons.every(button => button.left >= box.left && button.right <= box.right) };
+      });
+      expect(layout.buttons).toHaveLength(2);
+      expect(Math.abs(layout.buttons[0].width - layout.buttons[1].width)).toBeLessThanOrEqual(1);
+      for (const button of layout.buttons) {
+        expect(Math.abs(button.width - layout.available / 2)).toBeLessThanOrEqual(1);
+        expect(button.centerOffset).toBeLessThanOrEqual(1);
+        expect(button.height).toBeGreaterThanOrEqual(44);
+        expect(button.textFits).toBe(true);
+      }
+      expect(layout.contained).toBe(true);
+    }
+  }
+});

@@ -955,3 +955,17 @@ test("home makes the new-event action primary and keeps the empty state on the s
     /\.home-quick-action\.is-primary \.home-quick-action-icon:active:not\(:disabled\) \{[\s\S]*?scale: 0\.96 !important/
   );
 });
+
+
+test("home event archive selector fills two equal centered columns", async () => {
+  const layer = await readFile("src/publicLedgerWorkspaceLayer.mjs", "utf8");
+  const selectorRule = layer.match(/\.event-primary-filter \{([^}]+)\}/)?.[1] ?? "";
+  const buttonRule = layer.match(/\.event-primary-filter button \{([^}]+)\}/)?.[1] ?? "";
+  assert.ok(/display: grid !important/.test(selectorRule), "Events/archive must use a two-column layout");
+  assert.ok(/grid-template-columns: repeat\(2, minmax\(0, 1fr\)\) !important/.test(selectorRule), "Both tabs must reserve an equal share of the selector");
+  assert.ok(/min-width: 0 !important/.test(buttonRule));
+  assert.ok(/width: 100% !important/.test(buttonRule));
+  assert.ok(/justify-content: center !important/.test(buttonRule), "Visible labels must stay centered in each half");
+  assert.ok(/text-align: center !important/.test(buttonRule));
+  assert.ok(/min-height: 44px !important/.test(buttonRule), "The tab touch targets must remain usable");
+});

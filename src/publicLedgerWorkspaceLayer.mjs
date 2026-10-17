@@ -5935,6 +5935,8 @@ const CSS = `
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter {
     min-height: 48px !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 4px !important;
     padding: 4px !important;
     border: 1px solid var(--ledger-line) !important;
@@ -5943,7 +5945,11 @@ const CSS = `
   }
 
   html.ledger-workspace-v1 .screen[data-screen-kind="home"] .event-primary-filter button {
+    min-width: 0 !important;
+    width: 100% !important;
     min-height: 44px !important;
+    justify-content: center !important;
+    text-align: center !important;
     padding-inline: 18px !important;
     border-radius: 8px !important;
     font-size: 13.5px !important;
