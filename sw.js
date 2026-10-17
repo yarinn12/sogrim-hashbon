@@ -54,6 +54,7 @@ const CACHE_FILES = [
   "/src/app.mjs",
   "/src/ui/eventHeader.mjs",
   "/src/ui/primaryNavigationState.mjs",
+  "/src/ui/dynamicTypeNavigation.mjs",
   "/src/ui/eventPressGesture.mjs",
   "/src/domain/stateIdentity.mjs",
   "/src/domain/personalEventPinMerge.mjs",

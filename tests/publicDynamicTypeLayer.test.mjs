@@ -264,7 +264,8 @@ test("large text lets event titles and account copy wrap without clipping", () =
 });
 
 test("large text combines content-sized navigation with a rem-based safe gap", () => {
-  assert.match(layer, /--dynamic-type-bottom-nav-block: 82px/);
+  assert.match(layer, /--dynamic-type-bottom-nav-block: var\(--dynamic-type-measured-nav-block, 82px\)/);
+  assert.doesNotMatch(layer, /min-height: calc\(\s*var\(--dynamic-type-bottom-nav-block/);
   assert.match(layer, /--dynamic-type-bottom-gap: max\(28px, 2rem\)/);
   assert.match(
     layer,

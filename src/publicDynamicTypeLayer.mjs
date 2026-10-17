@@ -1,3 +1,5 @@
+import { primaryNavigationNeedsTwoRows } from "./ui/dynamicTypeNavigation.mjs";
+
 const STYLE_ID = "public-dynamic-type-style";
 const ACTIVE_CLASS = "dynamic-type-active";
 const APPLE_CLASS = "dynamic-type-apple";
@@ -894,9 +896,7 @@ function injectDynamicTypeStyles(document) {
       .product-app-nav {
       height: auto !important;
       max-height: none !important;
-      min-height: calc(
-        var(--dynamic-type-bottom-nav-block, 82px) + env(safe-area-inset-bottom)
-      ) !important;
+      min-height: calc(82px + env(safe-area-inset-bottom)) !important;
     }
 
     html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview)
@@ -933,7 +933,7 @@ function injectDynamicTypeStyles(document) {
       html:is(.${LARGE_CLASS}, .${EXTRA_LARGE_CLASS}, .dynamic-type-preview) {
         /* The bar may grow with its content, but must not reserve five text
            lines of empty space when its labels occupy a single line. */
-        --dynamic-type-bottom-nav-block: 82px;
+        --dynamic-type-bottom-nav-block: var(--dynamic-type-measured-nav-block, 82px);
         --dynamic-type-bottom-gap: max(28px, 2rem);
         --dynamic-type-screen-end-space: calc(
           var(--dynamic-type-bottom-nav-block) +
@@ -1312,9 +1312,201 @@ function injectDynamicTypeStyles(document) {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
       }
     }
+    /* Grow the glyphs themselves, not only their button wrappers. */
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav .product-nav-button {
+      min-width: 0 !important;
+      padding-inline: 2px !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav .product-nav-button > span:not(.product-nav-badge) {
+      font-size: var(--dynamic-text-12, 0.75rem) !important;
+      line-height: 1.2 !important;
+      max-width: none !important;
+      white-space: nowrap !important;
+      overflow-wrap: normal !important;
+    }
+
+    html.${NAV_STACKED_CLASS}.design-coherence-v1.ledger-workspace-v1
+      body #app .product-app-nav {
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-quick-actions {
+      --home-create-overlap: var(--dynamic-home-action-half, calc(0.6rem + 11px));
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary {
+      width: max-content !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      height: auto !important;
+      min-height: 56px !important;
+      padding: 10px 20px !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary > span:nth-child(2) {
+      min-width: 0 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .product-home-screen .home-create-event-action.is-primary strong {
+      font-size: var(--dynamic-text-16, 1rem) !important;
+      line-height: 1.2 !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: normal !important;
+    }
+
+    /* Match the existing Home type hierarchy at the user's system scale. */
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-title strong {
+      font-size: var(--dynamic-text-16, 1rem) !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      overflow-wrap: anywhere !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-meta {
+      font-size: var(--dynamic-text-11, 0.6875rem) !important;
+      line-height: 1.4 !important;
+      overflow: visible !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-state {
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      line-height: 1.3 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-details {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      gap: 4px 8px !important;
+      height: auto !important;
+      white-space: normal !important;
+      overflow: visible !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-row-details :is(span, time, bdi) {
+      font-size: inherit !important;
+      line-height: inherit !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button {
+      height: auto !important;
+      font-size: var(--dynamic-text-11, 0.6875rem) !important;
+      line-height: 1.25 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content > span:first-child {
+      font-size: inherit !important;
+      line-height: 1.25 !important;
+      white-space: normal !important;
+      overflow-wrap: normal !important;
+      word-break: keep-all !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-option-content > strong {
+      font-size: var(--dynamic-text-10, 0.625rem) !important;
+      line-height: 1.2 !important;
+    }
+
+    html:is(.${ACTIVE_CLASS}, .dynamic-type-preview).ledger-workspace-v1
+      body #app .screen[data-screen-kind="home"] .event-lifecycle-filter button .font-num {
+      width: auto !important;
+      height: auto !important;
+      min-height: 1em !important;
+      font-size: inherit !important;
+      line-height: 1.2 !important;
+    }
+
   `;
   document.head.append(style);
 }
+
+const NAV_STACKED_CLASS = "dynamic-type-nav-stacked";
+const NAV_MEASURED_PROPERTY = "--dynamic-type-measured-nav-block";
+const HOME_HALF_PROPERTY = "--dynamic-home-action-half";
+
+export function refreshDynamicTypeControls(root = globalThis.document?.documentElement) {
+  if (!root) return;
+  const document = root.ownerDocument;
+  const view = document.defaultView;
+  const active = root.classList.contains(ACTIVE_CLASS) || root.classList.contains("dynamic-type-preview");
+  if (!active) {
+    if (root.classList.contains(NAV_STACKED_CLASS)) root.classList.remove(NAV_STACKED_CLASS);
+    root.style.removeProperty(NAV_MEASURED_PROPERTY);
+    root.style.removeProperty(HOME_HALF_PROPERTY);
+    return;
+  }
+  const navs = [...document.querySelectorAll("#app .product-app-nav")]
+    .filter(nav => nav.getBoundingClientRect().width > 0);
+  const stacked = navs.some(nav => {
+    const style = view.getComputedStyle(nav);
+    const number = value => Number.parseFloat(value) || 0;
+    const width = nav.clientWidth - number(style.paddingLeft) - number(style.paddingRight);
+    const labelWidths = [...nav.querySelectorAll(".product-nav-button > span:not(.product-nav-badge)")]
+      .map(label => {
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        return range.getBoundingClientRect().width;
+      });
+    return primaryNavigationNeedsTwoRows({ width, labelWidths, gap: number(style.columnGap), inlinePadding: 4 });
+  });
+  if (root.classList.contains(NAV_STACKED_CLASS) !== stacked) root.classList.toggle(NAV_STACKED_CLASS, stacked);
+  const set = (property, value) => {
+    if (root.style.getPropertyValue(property) !== value) root.style.setProperty(property, value);
+  };
+  if (navs.length) set(NAV_MEASURED_PROPERTY, `${Math.ceil(Math.max(...navs.map(nav => nav.getBoundingClientRect().height)))}px`);
+  else root.style.removeProperty(NAV_MEASURED_PROPERTY);
+  const action = document.querySelector("#app .home-create-event-action");
+  if (action?.getBoundingClientRect().height) set(HOME_HALF_PROPERTY, `${action.getBoundingClientRect().height / 2}px`);
+  return { stacked, navCount: navs.length };
+}
+
+function watchDynamicTypeControls(root = document.documentElement) {
+  const view = root.ownerDocument.defaultView;
+  const observed = new Set();
+  let pending = false;
+  const schedule = () => {
+    if (pending) return;
+    pending = true;
+    view.requestAnimationFrame(() => {
+      pending = false;
+      const targets = new Set([root, ...document.querySelectorAll(
+        "#app .product-app-nav, #app .product-nav-button > span:not(.product-nav-badge), #app .home-create-event-action"
+      )]);
+      for (const target of observed) if (!targets.has(target)) { observer?.unobserve(target); observed.delete(target); }
+      for (const target of targets) if (!observed.has(target)) { observer?.observe(target); observed.add(target); }
+      refreshDynamicTypeControls(root);
+    });
+  };
+  const observer = view.ResizeObserver ? new view.ResizeObserver(schedule) : null;
+  document.addEventListener("settle-friends:screen-rendered", schedule);
+  document.addEventListener("settle-friends:accessibility-preferences-changed", schedule);
+  view.addEventListener("resize", schedule);
+  view.addEventListener("pageshow", schedule);
+  document.fonts?.ready?.then(schedule);
+  document.fonts?.addEventListener?.("loadingdone", schedule);
+  schedule();
+}
+
 
 function initializeDynamicType() {
   injectDynamicTypeStyles(document);
@@ -1326,6 +1518,7 @@ function initializeDynamicType() {
   }
   refreshAccessibleText();
   watchAppleDynamicType();
+  watchDynamicTypeControls();
 }
 
 function refreshAccessibleText() {
