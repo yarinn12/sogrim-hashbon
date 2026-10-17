@@ -9,9 +9,9 @@ const headers = { "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
 
-for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected"]) {
-test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
-  const personalCreation = mode === "personal-old-rejected";
+for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected", "five-old-rejected"]) {
+test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
+  const personalCreation = ["personal-old-rejected", "five-old-rejected"].includes(mode);
   const version = new Date().toISOString();
   const profiles = [owner, peer].map((id, index) => ({ user_id: id,
     display_name: index ? "חבר לבדיקה" : "משתמש בדיקה", username: index ? "qa_peer" : "qa_owner",
@@ -28,13 +28,17 @@ test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creat
     notes: [{ id: "old-pending-note", body: "Keep old local intent", createdAt: version, updatedAt: version,
       createdByParticipantId: `account-${owner}`, updatedByParticipantId: `account-${owner}` }]
   });
+  if (mode === "five-old-rejected") for (let number = 2; number <= 5; number++) initial.events.push({
+    ...structuredClone(initial.events[0]), id: `${oldEventId}-${number}`, name: `אירוע ממתין ${number}`,
+    sharedSpaceId: `${oldSpaceId}-${number}`
+  });
   const user = { id: owner, email: "creation-qa@example.test", app_metadata: { provider: "google" },
     user_metadata: { full_name: profiles[0].display_name, username: "qa_owner", account_space_id: spaceId, account_space_key: spaceKey } };
   let personal = { id: spaceId, state: structuredClone(initial), updated_at: version };
-  const canonical = new Map(); let creates = 0, notifications = 0;
-  if (personalCreation) personal.state.events[0].notes = [];
-  if (mode.endsWith("old-rejected")) canonical.set(oldSpaceId, { id: oldSpaceId,
-    state: { ...structuredClone(initial), events: [{ ...structuredClone(initial.events[0]), notes: [] }] }, updated_at: version });
+  const canonical = new Map(); let creates = 0, notifications = 0, deniedWrites = 0;
+  if (personalCreation) for (const event of personal.state.events) event.notes = [];
+  if (mode.endsWith("old-rejected")) for (const event of initial.events) canonical.set(event.sharedSpaceId, {
+    id: event.sharedSpaceId, state: { ...structuredClone(initial), events: [{ ...structuredClone(event), notes: [] }] }, updated_at: version });
   let release; const gate = new Promise(resolve => { release = resolve; });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(testInfo.project.use.baseURL).origin ? route.continue() : route.abort());
@@ -71,7 +75,10 @@ test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creat
     }
     if (url.pathname.endsWith("/update_shared_event_snapshot")) {
       const payload = request.postDataJSON();
-      if (payload.p_snapshot_id === oldSpaceId) return reply({ code: "42501", message: "Synthetic old group remains rejected" }, 403);
+      if (payload.p_snapshot_id.startsWith(oldSpaceId)) {
+        deniedWrites++;
+        return reply({ code: "42501", message: "Synthetic old group remains rejected" }, 403);
+      }
       const row = { id: payload.p_snapshot_id, state: payload.p_state, updated_at: new Date().toISOString() };
       canonical.set(row.id, row); return reply({ status: "updated", updatedAt: row.updated_at });
     }
@@ -91,6 +98,10 @@ test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creat
     return request.method() === "GET" ? reply([]) : route.fulfill({ headers, status: 204 });
   });
   await page.addInitScript(({ user, initial, spaceId, spaceKey, mode }) => {
+    if (mode === "five-old-rejected") {
+      if (sessionStorage.getItem("five-event-fixture-seeded")) return;
+      sessionStorage.setItem("five-event-fixture-seeded", "1");
+    }
     localStorage.setItem("settle-friends-account-session", JSON.stringify({ access_token: "qa-token", refresh_token: "qa-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
     localStorage.setItem("settle-friends-cloud-space", spaceId);
     localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
@@ -104,6 +115,33 @@ test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creat
   try {
     await page.goto("/");
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+    if (mode === "five-old-rejected") {
+      const notice = page.locator("[data-sync-account-summary]");
+      await expect.poll(() => page.evaluate(spaceId => JSON.parse(localStorage.getItem(
+        `settle-friends-pending-sync:${spaceId}`))?.__pendingSync?.blocked?.deferredFailures?.length, spaceId)).toBe(5);
+      await expect(notice).toContainText("5 אירועים לא סונכרנו");
+      await notice.locator("summary").click();
+      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
+      for (const event of initial.events) await expect(notice.locator(`[data-event-id="${event.id}"]`)).toHaveText(event.name);
+      const originalDenied = deniedWrites;
+      await page.reload();
+      await expect(notice).toContainText("5 אירועים לא סונכרנו");
+      const automatic = await page.evaluate(async () => {
+        const store = await import("/src/data/localStore.mjs");
+        return store.flushPendingSharedState({ automatic: true });
+      });
+      console.log(JSON.stringify({ kind: "known-denial-restart", device: testInfo.project.name,
+        blocked: automatic.blocked, originalDenied, afterRestartDenied: deniedWrites }));
+      expect(automatic.blocked).toBe(true);
+      expect(deniedWrites).toBe(originalDenied, "a fresh document cannot replay the known five denials");
+      await notice.locator("summary").click();
+      await notice.locator("[data-sync-retry]").click();
+      await expect.poll(() => deniedWrites).toBe(originalDenied + 5);
+      await expect(notice.locator("details")).toHaveAttribute("open", "");
+      await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
+      await expect(page.locator("[data-sync-account-summary]:visible")).toHaveCount(1);
+      await page.screenshot({ path: testInfo.outputPath("five-pending-events-explained.png"), fullPage: true });
+    }
     await page.locator('[data-action="new-event"]').first().click();
     await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
     await page.locator('[data-action="new-event-name"]').fill("בדיקת יצירה עם חבר");
@@ -129,8 +167,11 @@ test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creat
       expect(personal.state.events.find(event => event.id === oldEventId).notes).toEqual([]);
       const retained = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
       expect(retained.events.find(event => event.id === oldEventId).notes).toEqual(initial.events[0].notes);
-      expect(retained.__pendingSync.selection.eventIds).toEqual([oldEventId]);
-      expect(canonical.get(oldSpaceId).state.events[0].notes).toEqual([]);
+      expect(retained.__pendingSync.selection.eventIds.slice().sort()).toEqual(initial.events.map(event => event.id).sort());
+      for (const event of initial.events) {
+        expect(retained.events.find(item => item.id === event.id).notes).toEqual(event.notes);
+        expect(canonical.get(event.sharedSpaceId).state.events[0].notes).toEqual([]);
+      }
       await page.screenshot({ path: testInfo.outputPath("personal-created-with-old-permission-failure.png"), fullPage: true });
       await page.locator('[data-nav-destination="home"]').click();
       await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();

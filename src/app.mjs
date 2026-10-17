@@ -2503,7 +2503,9 @@ function renderHome() {
   const homeTitle = "מה סוגרים היום?";
   const homeDescription = "אירוע חדש, חברים קבועים, או חשבון שכבר מחכה לסגירה.";
   const pendingHomeEventIds = pendingSharedSyncStatus().pendingEventIds;
-  const pendingHomeEvent = sortedEvents.find((event) => pendingHomeEventIds.includes(event.id));
+  const pendingHomeEvents = sortedEvents.filter(event => pendingHomeEventIds.includes(event.id))
+    .map(({ id, name }) => ({ id, name }));
+  const pendingHomeEvent = pendingHomeEvents[0];
   const awaitingAuthoritativeEvents =
     sortedEvents.length === 0 &&
     !canRenderConfirmedEmptyAccount(accountEventsHydrationStatus);
@@ -2531,9 +2533,10 @@ function renderHome() {
             </section>`
       }
 
-      <p class="muted" data-inline-sync-status data-sync-account-summary
+      <div class="muted" data-inline-sync-status data-sync-account-summary
+        data-sync-account-events="${escapeAttribute(JSON.stringify(pendingHomeEvents))}"
         ${pendingHomeEvent ? `data-sync-account-event-id="${escapeAttribute(pendingHomeEvent.id)}" data-sync-account-event-name="${escapeAttribute(pendingHomeEvent.name)}"` : ""}
-        role="status" aria-live="polite" hidden></p>
+        role="status" aria-live="polite" hidden></div>
 
       ${
         sortedEvents.length

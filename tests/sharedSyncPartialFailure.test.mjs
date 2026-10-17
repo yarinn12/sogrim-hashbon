@@ -1234,3 +1234,109 @@ for (const personalStatus of [403, 409]) {
     assert.equal(h.canonical.get("space-partial-failing").events[0].notes.some(item => item.id === "retained-before-private"), false);
   }, { workspaceStatus: attempt => attempt === 1 ? personalStatus : 200 }));
 }
+
+
+test("a known permission rejection stays blocked after restart until an explicit retry", async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  let writes = 0;
+  const transport = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/rpc/update_shared_event_snapshot")) writes++;
+    return transport(url, options);
+  };
+  const first = await import(`../src/data/localStore.mjs?denied-before-restart=${crypto.randomUUID()}`);
+  assert.equal((await first.flushPendingSharedState()).ok, false);
+  assert.equal(writes, 2);
+  const retained = h.storage.getItem(key);
+  const restarted = await import(`../src/data/localStore.mjs?denied-after-restart=${crypto.randomUUID()}`);
+  const result = await restarted.flushPendingSharedState({ automatic: true });
+  assert.equal(result.blocked, true, "restart must not automatically replay the same403");
+  assert.equal(writes, 2);
+  assert.equal(h.storage.getItem(key), retained, "the original pending changes must stay durable");
+  assert.equal(restarted.pendingSharedSyncStatus({ includeFailureKind: true }).failureKind, "permission");
+  assert.equal((await restarted.flushPendingSharedState()).ok, false);
+  assert.equal(writes, 4, "an explicit user retry still reaches the actual write boundary");
+  h.recover();
+  assert.equal((await restarted.flushPendingSharedState()).ok, true);
+  assert.equal(h.storage.getItem(key), null);
+  for (const id of ["healthy", "failing"]) assert.ok(h.canonical.get(`space-partial-${id}`)
+    .events[0].notes.some(item => item.id === `local-${id}-note`));
+}, { allFail: true, status: 403 }));
+
+
+test("a private bootstrap save does not restart unchanged denied shared deliveries", async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  let writes = 0;
+  const transport = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/rpc/update_shared_event_snapshot")) writes++;
+    return transport(url, options);
+  };
+  const store = await import(`../src/data/localStore.mjs?private-bootstrap-hold=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  assert.equal(writes, 2);
+  const next = { ...store.loadState(), groups: [{ id: "private-bootstrap", name: "Private", participantIds: [h.state.currentParticipantId] }] };
+  const result = await store.saveSharedState(next, { awaitCloud: true });
+  assert.equal(result.personalWorkspacePersisted, true);
+  assert.equal(writes, 2, "an unrelated save cannot automatically replay the old denied event payloads");
+  assert.equal(h.workspaceWrites.at(-1).groups[0].id, "private-bootstrap");
+  const pending = JSON.parse(h.storage.getItem(key));
+  for (const id of ["healthy", "failing"]) assert.ok(pending.events.find(event => event.id === id)
+    .notes.some(note => note.id === `local-${id}-note`));
+}, { allFail: true, status: 403 }));
+
+
+for (const invalid of ["foreign-account", "retryable-status", "invalid-version"]) {
+  test(`a ${invalid} persisted hold cannot suppress actual pending delivery`, async () => fixture(async h => {
+    const key = `settle-friends-pending-sync:${h.workspaceId}`;
+    h.storage.setItem(key, JSON.stringify(h.pending));
+    let writes = 0;
+    const transport = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      if (String(url).endsWith("/rpc/update_shared_event_snapshot")) writes++;
+      return transport(url, options);
+    };
+    const original = await import(`../src/data/localStore.mjs?invalid-hold-before-${invalid}=${crypto.randomUUID()}`);
+    await original.flushPendingSharedState();
+    const saved = JSON.parse(h.storage.getItem(key));
+    const held = saved.__pendingSync.blocked;
+    if (invalid === "foreign-account") held.accountUserId = "other-account";
+    if (invalid === "retryable-status") held.deferredFailures[0].status = 503;
+    if (invalid === "invalid-version") held.version = 999;
+    h.storage.setItem(key, JSON.stringify(saved));
+    const restarted = await import(`../src/data/localStore.mjs?invalid-hold-after-${invalid}=${crypto.randomUUID()}`);
+    const result = await restarted.flushPendingSharedState({ automatic: true });
+    assert.notEqual(result.blocked, true);
+    assert.equal(writes, 4, "invalid metadata cannot block the two real write attempts");
+    const retained = JSON.parse(h.storage.getItem(key));
+    for (const id of ["healthy", "failing"]) assert.ok(retained.events.find(event => event.id === id)
+      .notes.some(note => note.id === `local-${id}-note`));
+  }, { allFail: true, status: 403 }));
+}
+
+test("new intent releases only its event hold and requires the actual canonical ACK", async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  h.storage.setItem(`settle-friends-state:${h.workspaceId}`, JSON.stringify(h.pending));
+  const attempts = [];
+  const transport = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).endsWith("/rpc/update_shared_event_snapshot")) attempts.push(JSON.parse(options.body).p_snapshot_id);
+    return transport(url, options);
+  };
+  const store = await import(`../src/data/localStore.mjs?changed-intent-hold=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  assert.equal(attempts.length, 2);
+  h.recover();
+  const result = await store.saveSharedState(addEventNote(store.loadState(), "healthy",
+    { id: "changed-intent-after-hold", body: "A new explicit edit" }), { awaitCloud: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.pending, true);
+  assert.deepEqual(attempts.slice(2), ["space-partial-healthy"]);
+  assert.ok(h.canonical.get("space-partial-healthy").events[0].notes.some(note => note.id === "changed-intent-after-hold"));
+  const retained = JSON.parse(h.storage.getItem(key));
+  assert.deepEqual(retained.__pendingSync.selection.eventIds, ["failing"]);
+  assert.ok(retained.events.find(event => event.id === "failing").notes.some(note => note.id === "local-failing-note"));
+}, { allFail: true, status: 403 }));

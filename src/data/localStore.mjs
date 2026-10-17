@@ -9,7 +9,8 @@ import { saveCloudStateWithConflictRetry } from "./cloudConflictRetry.mjs";
 import {
   applyLocalParticipantId,
   hasSharedStateChanged as hasCloudStateChanged,
-  toSharedState
+  toSharedState,
+  jsonValuesEqual
 } from "./localIdentity.mjs";
 import {
   isFullProfileName,
@@ -1343,12 +1344,21 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
         try {
           const saved = await withFreshCloudAccount(
             runtimeConfig,
-            (freshRuntimeConfig) => syncAndPersistCloudState(
-              freshRuntimeConfig,
-              sharedState,
-              syncSelection,
-              { allowPersonalProgress }
-            )
+            (freshRuntimeConfig) => {
+              const selection = selectionWithPendingFailure(freshRuntimeConfig, syncSelection);
+              const held = selection?.deferredFailures ?? [];
+              const currentTargets = [
+                ...requestedSyncSelection.eventIds.map(id => ({ id, kind: "event" })),
+                ...requestedSyncSelection.deletedEventIds.map(id => ({ id, kind: "deletion" }))
+              ];
+              // Bootstrap profile/default normalization is not a reason to
+              // resend an unchanged denied event. Keep personal progress
+              // independent while those exact event payloads remain held.
+              const onlyHeldTargets = held.length > 0 && currentTargets.every(target =>
+                held.some(item => item.id === target.id && item.kind === target.kind));
+              return syncAndPersistCloudState(freshRuntimeConfig, sharedState, selection,
+                { allowPersonalProgress: allowPersonalProgress || onlyHeldTargets });
+            }
           );
           // Re-read durable identity after I/O, before *any* local mutation,
           // outbox acknowledgement, retry timer or global sync notification.
@@ -2275,10 +2285,24 @@ function selectionWithPermanentFailures(selection, error) {
 }
 
 function matchingBlockedPendingFailure(config) {
+  const key = pendingSyncStorageKey(config);
+  const payload = pendingSharedStateRaw(config);
   const blocked = pendingSyncPermanentFailure;
-  return blocked?.key === pendingSyncStorageKey(config) &&
-    blocked.payload === pendingSharedStateRaw(config) &&
-    blocked.accountGeneration === accountStorageGeneration ? blocked : null;
+  if (blocked?.key === key && blocked.payload === payload &&
+      blocked.accountGeneration === accountStorageGeneration) return blocked;
+  try {
+    const held = JSON.parse(payload)?.[PENDING_SYNC_METADATA_KEY]?.blocked;
+    if (held?.version !== 1 || !activeAccountUserId() ||
+        held.accountUserId !== activeAccountUserId() ||
+        typeof held.blockAll !== "boolean" || !Array.isArray(held.deferredFailures) ||
+        !["permission", "rejected", "missing", "storage", "unavailable", "conflict", "fx-conflict"].includes(held.failureKind) ||
+        !held.deferredFailures.every(item => ["event", "deletion"].includes(item?.kind) &&
+          typeof item.id === "string" && item.id && typeof item.code === "string" &&
+          Number.isInteger(item.status) && !isRetryablePendingSyncFailure(item)) ||
+        (!held.blockAll && !held.deferredFailures.length)) return null;
+    pendingSyncPermanentFailure = { ...held, key, payload, accountGeneration: accountStorageGeneration };
+    return pendingSyncPermanentFailure;
+  } catch { return null; }
 }
 
 function selectionWithPendingFailure(config, selection) {
@@ -2300,6 +2324,31 @@ function allPendingTargetsBlocked(config, selection) {
     blocked.deferredFailures.some(held => held.kind === item.kind && held.id === item.id));
 }
 
+function carryPendingFailure(config, next, selection) {
+  const held = matchingBlockedPendingFailure(config);
+  if (!held) return null;
+  const before = loadPendingSharedState(config);
+  if (!before) return null;
+  const previous = mergeSharedStates(before, before);
+  const candidate = mergeSharedStates(next, next);
+  const deferredFailures = held.deferredFailures.filter(item => {
+    if (item.kind === "deletion") return selection.deletedEventIds.includes(item.id) && jsonValuesEqual(
+      previous.deletedEvents?.find(event => event.id === item.id),
+      candidate.deletedEvents?.find(event => event.id === item.id));
+    // Profile/bootstrap attributes outside the event cannot resolve a rejected
+    // event edit. A new note, expense, membership/settings change or sharing
+    // credential inside this event does clear its hold; explicit flush always
+    // bypasses it. Self-normalization ignores harmless absent merge defaults.
+    return selection.eventIds.includes(item.id) && jsonValuesEqual(
+      previous.events?.find(event => event.id === item.id),
+      candidate.events?.find(event => event.id === item.id));
+  });
+  const blockAll = held.blockAll && jsonValuesEqual(previous, candidate);
+  if (!blockAll && !deferredFailures.length) return null;
+  return { version: 1, accountUserId: held.accountUserId, deferredFailures, blockAll,
+    failureKind: blockAll ? held.failureKind : saveFailureKind({ failures: deferredFailures }) };
+}
+
 function savePendingSharedState(config, sharedState, syncSelection = null, { replaceSelection = false } = {}) {
   try {
     const inherited = replaceSelection ? null : pendingSharedStateSelection(config);
@@ -2312,13 +2361,13 @@ function savePendingSharedState(config, sharedState, syncSelection = null, { rep
     // leave a new note paired with an older, narrower list of delivery targets.
     // Keep the state at the top level for older clients, and strip metadata at
     // the read boundary so it cannot leak into personal/shared cloud snapshots.
+    const blocked = carryPendingFailure(config, sharedState, selection);
     const payload = JSON.stringify({ ...sharedState,
-      [PENDING_SYNC_METADATA_KEY]: { version: 1, selection }
+      [PENDING_SYNC_METADATA_KEY]: { version: 1, selection, ...(blocked ? { blocked } : {}) }
     });
     window.localStorage.setItem(key, payload);
-    if (pendingSyncPermanentFailure?.key === key && pendingSyncPermanentFailure.payload !== payload) {
-      pendingSyncPermanentFailure = null;
-    }
+    if (blocked) pendingSyncPermanentFailure = { ...blocked, key, payload, accountGeneration: accountStorageGeneration };
+    else if (pendingSyncPermanentFailure?.key === key) pendingSyncPermanentFailure = null;
     // Preserve the union while a later snapshot supersedes an earlier one.
     // Its eventual success may acknowledge only a write that covers them all.
     pendingSharedSyncCoverage = { key, payload, selection };
@@ -2442,17 +2491,25 @@ function resetPendingSharedStateRetry() {
 function blockAutomaticPendingSharedStateRetry(config, error) {
   const deferredFailures = permanentSharedFailures(error);
   if (!deferredFailures.length && isRetryablePendingSyncFailure(error)) return;
-  const payload = pendingSharedStateRaw(config);
+  let payload = pendingSharedStateRaw(config);
   if (!payload) return;
-  // Keep reads active, but do not re-send the same rejected payload on every
-  // home refresh. A new outbox, account, or explicit flush may try again;
-  // rotating the same account's token does not change a permission denial.
-  pendingSyncPermanentFailure = {
-    key: pendingSyncStorageKey(config), payload,
-    accountGeneration: accountStorageGeneration,
-    deferredFailures,
-    blockAll: deferredFailures.length === 0
-  };
+  const key = pendingSyncStorageKey(config);
+  const held = { version: 1, accountUserId: activeAccountUserId(), deferredFailures,
+    blockAll: deferredFailures.length === 0, failureKind: saveFailureKind(error) };
+  // Store the hold beside the exact pending snapshot, atomically. Reloading a
+  // WebView must not replay known permanent denials. New intent replaces this
+  // metadata; explicit retry bypasses it. Cloud readers strip all __pendingSync.
+  try {
+    const pending = JSON.parse(payload);
+    pending[PENDING_SYNC_METADATA_KEY] = { version: 1,
+      selection: pendingSharedStateSelection(config), blocked: held };
+    const durablePayload = JSON.stringify(pending);
+    window.localStorage.setItem(key, durablePayload);
+    payload = durablePayload;
+    pendingSharedSyncCoverage = null;
+  } catch { /* Keep the original outbox and the in-memory hold if storage is full. */ }
+  pendingSyncPermanentFailure = { ...held, key, payload,
+    accountGeneration: accountStorageGeneration };
 }
 
 function shouldDeferPendingSharedStateRetry(config) {
@@ -2538,13 +2595,15 @@ function publishSyncStatus(status, details = {}) {
   window.dispatchEvent(new EventConstructor(SYNC_STATUS_EVENT, { detail }));
 }
 
-export function pendingSharedSyncStatus() {
+export function pendingSharedSyncStatus({ includeFailureKind = false } = {}) {
   const config = pendingSyncConfig(LOCAL_RUNTIME_CONFIG);
   const pending = Boolean(config && pendingSharedStateRaw(config));
   const selection = pending ? pendingSharedStateSelection(config) : null;
+  const blocked = pending && includeFailureKind ? matchingBlockedPendingFailure(config) : null;
   return { pending, pendingEventIds: [...new Set([
     ...(selection?.eventIds ?? []), ...(selection?.deletedEventIds ?? [])
-  ])] };
+  ])], ...(blocked ? { failureKind: blocked.failureKind,
+    eventFailures: blocked.deferredFailures.map(item => ({ id: item.id, failureKind: saveFailureKind(item) })) } : {}) };
 }
 
 function publishSharedSaveReverted(
