@@ -1300,12 +1300,13 @@ for (const invalid of ["foreign-account", "retryable-status", "invalid-version"]
     };
     const original = await import(`../src/data/localStore.mjs?invalid-hold-before-${invalid}=${crypto.randomUUID()}`);
     await original.flushPendingSharedState();
-    const saved = JSON.parse(h.storage.getItem(key));
-    const held = saved.__pendingSync.blocked;
+    const receiptKey = `settle-friends-pending-sync-failure:${h.workspaceId}`;
+    const saved = JSON.parse(h.storage.getItem(receiptKey));
+    const held = saved.blocked;
     if (invalid === "foreign-account") held.accountUserId = "other-account";
     if (invalid === "retryable-status") held.deferredFailures[0].status = 503;
     if (invalid === "invalid-version") held.version = 999;
-    h.storage.setItem(key, JSON.stringify(saved));
+    h.storage.setItem(receiptKey, JSON.stringify(saved));
     const restarted = await import(`../src/data/localStore.mjs?invalid-hold-after-${invalid}=${crypto.randomUUID()}`);
     const result = await restarted.flushPendingSharedState({ automatic: true });
     assert.notEqual(result.blocked, true);
@@ -1340,3 +1341,88 @@ test("new intent releases only its event hold and requires the actual canonical 
   assert.deepEqual(retained.__pendingSync.selection.eventIds, ["failing"]);
   assert.ok(retained.events.find(event => event.id === "failing").notes.some(note => note.id === "local-failing-note"));
 }, { allFail: true, status: 403 }));
+
+
+test("a fresh shared participant profile clears its event holds and reaches the canonical ACK", async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  const store = await import(`../src/data/localStore.mjs?changed-profile-hold=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  h.recover();
+  const next = store.loadState();
+  next.participants[0] = { ...next.participants[0], displayName: "Updated participant",
+    profileUpdatedAt: "2026-08-24T10:00:00.000Z" };
+  const result = await store.saveSharedState(next, { awaitCloud: true,
+    forceSharedParticipantIds: [next.participants[0].id] });
+  assert.equal(result.ok, true);
+  assert.equal(result.pending, undefined);
+  assert.deepEqual(new Set(h.canonicalWrites), new Set(["space-partial-healthy", "space-partial-failing"]));
+  for (const state of h.canonical.values()) assert.equal(state.participants[0].displayName, "Updated participant");
+  assert.equal(h.storage.getItem(key), null, "clear only after both canonical deliveries and the personal receipt");
+}, { allFail: true, status: 403 }));
+
+for (const point of ["before-marker-write", "inside-marker-write"]) {
+test(`permission hold preserves a newer second-tab outbox ${point}`, async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  const store = await import(`../src/data/localStore.mjs?hold-race-${point}=${crypto.randomUUID()}`);
+  const originalSet = h.storage.setItem;
+  let newer = "", collided = false;
+  h.storage.setItem = (writtenKey, value) => {
+    if (writtenKey.startsWith("settle-friends-pending-sync-failure:") && !collided) {
+      collided = true;
+      const current = JSON.parse(h.storage.getItem(key));
+      current.events[0].notes.push(note("second-tab-at-write"));
+      if (current.__pendingSync?.revision) current.__pendingSync.revision = crypto.randomUUID();
+      newer = JSON.stringify(current);
+      if (point === "before-marker-write") originalSet(key, newer);
+      originalSet(writtenKey, value);
+      if (point === "inside-marker-write") originalSet(key, newer);
+    } else originalSet(writtenKey, value);
+  };
+  await store.flushPendingSharedState();
+  assert.equal(collided, true);
+  assert.equal(h.storage.getItem(key), newer, "a denial receipt cannot write the primary outbox");
+  h.recover();
+  const restarted = await import(`../src/data/localStore.mjs?hold-race-restart-${point}=${crypto.randomUUID()}`);
+  assert.equal((await restarted.flushPendingSharedState({ automatic: true })).ok, true,
+    "an obsolete denial must not block newer intent");
+  assert.ok(h.canonical.get("space-partial-healthy").events[0].notes.some(n => n.id === "second-tab-at-write"));
+  assert.equal(h.storage.getItem(key), null);
+}, { allFail: true, status: 403 }));
+}
+
+
+test("outbox persistence works without crypto.randomUUID on older iOS", async () => fixture(async h => {
+  const originalCrypto = globalThis.crypto;
+  const store = await import(`../src/data/localStore.mjs?no-randomuuid=${Date.now()}`);
+  h.recover();
+  try {
+    Object.defineProperty(globalThis, "crypto", { configurable: true,
+      value: { getRandomValues: originalCrypto.getRandomValues.bind(originalCrypto) } });
+    const result = await store.saveSharedState(h.pending, { awaitCloud: true });
+    assert.equal(result.pending, true, "a failed personal receipt still retains durable work");
+    const pending = JSON.parse(h.storage.getItem(`settle-friends-pending-sync:${h.workspaceId}`));
+    assert.equal(typeof pending?.__pendingSync?.revision, "string");
+    assert.ok(pending.__pendingSync.revision.length >= 16);
+    for (const id of ["healthy", "failing"]) assert.ok(pending.events.find(e => e.id === id).notes.some(n => n.id === `local-${id}-note`));
+  } finally { Object.defineProperty(globalThis, "crypto", { configurable: true, value: originalCrypto }); }
+}, { workspaceStatus: 503 }));
+
+for (const cleanup of ["acknowledgement", "account-clear"]) {
+test(`local permission receipts are removed after ${cleanup}`, async () => fixture(async h => {
+  const key = `settle-friends-pending-sync:${h.workspaceId}`;
+  const marker = `settle-friends-pending-sync-failure:${h.workspaceId}`;
+  const other = "settle-friends-pending-sync-failure:other-account";
+  h.storage.setItem(other, "other receipt");
+  h.storage.setItem(key, JSON.stringify(h.pending));
+  const store = await import(`../src/data/localStore.mjs?receipt-cleanup-${cleanup}=${crypto.randomUUID()}`);
+  await store.flushPendingSharedState();
+  assert.ok(h.storage.getItem(marker), "the legacy pending payload has a separate durable hold");
+  if (cleanup === "account-clear") store.clearLocalAccountData(h.workspaceId, "partial-a");
+  else { h.recover(); assert.equal((await store.flushPendingSharedState()).ok, true); }
+  assert.equal(h.storage.getItem(key), null);
+  assert.equal(h.storage.getItem(marker), null, "no redundant legacy account snapshot remains after cleanup");
+  assert.equal(h.storage.getItem(other), "other receipt");
+}, { allFail: true, status: 403 }));
+}

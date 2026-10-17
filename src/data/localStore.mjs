@@ -66,6 +66,7 @@ const LOCAL_PROFILE_KEY = "settle-friends-local-profile";
 const ACCOUNT_STORAGE_KEY_SEGMENT = "account";
 const PENDING_SYNC_KEY_PREFIX = "settle-friends-pending-sync:";
 const PENDING_SYNC_METADATA_KEY = "__pendingSync";
+const PENDING_SYNC_FAILURE_KEY_PREFIX = "settle-friends-pending-sync-failure:";
 const SYNC_STATUS_EVENT = "sogrim:sync-status";
 const SHARED_SAVE_REVERTED_EVENT = "sogrim:shared-save-reverted";
 const FOREGROUND_SAVE_BUDGET_MS = 1_500;
@@ -1996,6 +1997,7 @@ export function clearLocalAccountData(accountSpaceId = "", accountUserId = "") {
     window.localStorage.removeItem(STORAGE_KEY);
     if (activeSpaceId) {
       window.localStorage.removeItem(`${PENDING_SYNC_KEY_PREFIX}${activeSpaceId}`);
+      window.localStorage.removeItem(`${PENDING_SYNC_FAILURE_KEY_PREFIX}${activeSpaceId}`);
     }
   } catch {}
   clearLocalProfile(accountUserId);
@@ -2291,7 +2293,12 @@ function matchingBlockedPendingFailure(config) {
   if (blocked?.key === key && blocked.payload === payload &&
       blocked.accountGeneration === accountStorageGeneration) return blocked;
   try {
-    const held = JSON.parse(payload)?.[PENDING_SYNC_METADATA_KEY]?.blocked;
+    const metadata = JSON.parse(payload)?.[PENDING_SYNC_METADATA_KEY];
+    const persisted = JSON.parse(window.localStorage.getItem(pendingSyncFailureStorageKey(config)) ?? "null");
+    const matchingReceipt = persisted?.version === 1 && (metadata?.revision
+      ? persisted.revision === metadata.revision
+      : !persisted.revision && persisted.payload === payload);
+    const held = metadata?.blocked ?? (matchingReceipt ? persisted.blocked : null);
     if (held?.version !== 1 || !activeAccountUserId() ||
         held.accountUserId !== activeAccountUserId() ||
         typeof held.blockAll !== "boolean" || !Array.isArray(held.deferredFailures) ||
@@ -2335,11 +2342,12 @@ function carryPendingFailure(config, next, selection) {
     if (item.kind === "deletion") return selection.deletedEventIds.includes(item.id) && jsonValuesEqual(
       previous.deletedEvents?.find(event => event.id === item.id),
       candidate.deletedEvents?.find(event => event.id === item.id));
-    // Profile/bootstrap attributes outside the event cannot resolve a rejected
-    // event edit. A new note, expense, membership/settings change or sharing
-    // credential inside this event does clear its hold; explicit flush always
-    // bypasses it. Self-normalization ignores harmless absent merge defaults.
+    // Compare the actual shared projection, including referenced participant
+    // profiles. Private/bootstrap fields cannot release a denied delivery;
+    // fresh shared content can. Normalize absent merge defaults first.
     return selection.eventIds.includes(item.id) && jsonValuesEqual(
+      buildSharedEventState(previous, item.id),
+      buildSharedEventState(candidate, item.id)) && jsonValuesEqual(
       previous.events?.find(event => event.id === item.id),
       candidate.events?.find(event => event.id === item.id));
   });
@@ -2347,6 +2355,15 @@ function carryPendingFailure(config, next, selection) {
   if (!blockAll && !deferredFailures.length) return null;
   return { version: 1, accountUserId: held.accountUserId, deferredFailures, blockAll,
     failureKind: blockAll ? held.failureKind : saveFailureKind({ failures: deferredFailures }) };
+}
+
+function newPendingSyncRevision() {
+  if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+    return Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function savePendingSharedState(config, sharedState, syncSelection = null, { replaceSelection = false } = {}) {
@@ -2363,7 +2380,8 @@ function savePendingSharedState(config, sharedState, syncSelection = null, { rep
     // the read boundary so it cannot leak into personal/shared cloud snapshots.
     const blocked = carryPendingFailure(config, sharedState, selection);
     const payload = JSON.stringify({ ...sharedState,
-      [PENDING_SYNC_METADATA_KEY]: { version: 1, selection, ...(blocked ? { blocked } : {}) }
+      [PENDING_SYNC_METADATA_KEY]: { version: 1, revision: newPendingSyncRevision(),
+        selection, ...(blocked ? { blocked } : {}) }
     });
     window.localStorage.setItem(key, payload);
     if (blocked) pendingSyncPermanentFailure = { ...blocked, key, payload, accountGeneration: accountStorageGeneration };
@@ -2381,6 +2399,7 @@ function clearPendingSharedState(config) {
   try {
     const key = pendingSyncStorageKey(config);
     window.localStorage.removeItem(key);
+    window.localStorage.removeItem(pendingSyncFailureStorageKey(config));
     if (pendingSyncPermanentFailure?.key === key) pendingSyncPermanentFailure = null;
     if (pendingSharedSyncCoverage?.key === key) pendingSharedSyncCoverage = null;
   } catch {}
@@ -2488,26 +2507,28 @@ function resetPendingSharedStateRetry() {
   pendingSyncRetryNotBefore = 0;
 }
 
+function pendingSyncFailureStorageKey(config) {
+  return `${PENDING_SYNC_FAILURE_KEY_PREFIX}${config.storage.spaceId}`;
+}
+
 function blockAutomaticPendingSharedStateRetry(config, error) {
   const deferredFailures = permanentSharedFailures(error);
   if (!deferredFailures.length && isRetryablePendingSyncFailure(error)) return;
-  let payload = pendingSharedStateRaw(config);
+  const payload = pendingSharedStateRaw(config);
   if (!payload) return;
   const key = pendingSyncStorageKey(config);
   const held = { version: 1, accountUserId: activeAccountUserId(), deferredFailures,
     blockAll: deferredFailures.length === 0, failureKind: saveFailureKind(error) };
-  // Store the hold beside the exact pending snapshot, atomically. Reloading a
-  // WebView must not replay known permanent denials. New intent replaces this
-  // metadata; explicit retry bypasses it. Cloud readers strip all __pendingSync.
+  // Learning a denial never rewrites the outbox: another tab may save at the
+  // exact write boundary. This separate, local-only receipt is bound to the
+  // exact revision. Legacy outboxes have no revision, so compare their raw
+  // payload instead. An obsolete receipt can cause a retry, never erase intent
+  // or block a newer revision. No receipt metadata reaches cloud snapshots.
   try {
-    const pending = JSON.parse(payload);
-    pending[PENDING_SYNC_METADATA_KEY] = { version: 1,
-      selection: pendingSharedStateSelection(config), blocked: held };
-    const durablePayload = JSON.stringify(pending);
-    window.localStorage.setItem(key, durablePayload);
-    payload = durablePayload;
-    pendingSharedSyncCoverage = null;
-  } catch { /* Keep the original outbox and the in-memory hold if storage is full. */ }
+    const revision = JSON.parse(payload)?.[PENDING_SYNC_METADATA_KEY]?.revision;
+    const receipt = { version: 1, ...(revision ? { revision } : { payload }), blocked: held };
+    window.localStorage.setItem(pendingSyncFailureStorageKey(config), JSON.stringify(receipt));
+  } catch { /* Preserve the outbox and in-memory hold if receipt storage is full. */ }
   pendingSyncPermanentFailure = { ...held, key, payload,
     accountGeneration: accountStorageGeneration };
 }

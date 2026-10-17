@@ -9,9 +9,11 @@ const headers = { "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
 
-for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected", "five-old-rejected"]) {
+for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected", "five-old-rejected", "share-slow", "share-old-rejected", "share-rejected", "share-personal-old-rejected", "share-navigation"]) {
 test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
-  const personalCreation = ["personal-old-rejected", "five-old-rejected"].includes(mode);
+  const personalCreation = ["personal-old-rejected", "five-old-rejected", "share-personal-old-rejected"].includes(mode);
+  const creationShare = mode.startsWith("share-");
+  const cloudMode = creationShare ? mode.slice(6) : mode;
   const version = new Date().toISOString();
   const profiles = [owner, peer].map((id, index) => ({ user_id: id,
     display_name: index ? "חבר לבדיקה" : "משתמש בדיקה", username: index ? "qa_peer" : "qa_owner",
@@ -46,6 +48,15 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
     launch: { cloudStorageReady: true },
     publicUrl: testInfo.project.use.baseURL, storage: { mode: "supabase", url: origin, anonKey: "synthetic-anon", table: "app_snapshots" }
   } }));
+  let issuedLinks = 0;
+  const inviteToken = "synthetic_creation_invite_token_123456789";
+  await page.route("**/api/event-invites/open-link", route => {
+    const { eventId } = route.request().postDataJSON();
+    expect([...canonical.values()].some(row => row.state.events.some(event => event.id === eventId))).toBe(true);
+    expect(personal.state.events.some(event => event.id === eventId)).toBe(true);
+    issuedLinks++;
+    return route.fulfill({ json: { eventId, token: inviteToken } });
+  });
   await page.route("**/api/notifications/event-activity", route => {
     const payload = route.request().postDataJSON();
     expect(personal.state.events.some(event => event.id === payload.eventId && event.participantIds.includes(`account-${peer}`))).toBe(true);
@@ -69,6 +80,7 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       creates++;
       if (mode === "rejected") return reply({ message: "Synthetic publication rejection" }, 403);
       await gate;
+      if (cloudMode === "rejected") return reply({ message: "Synthetic publication rejection" }, 403);
       const payload = request.postDataJSON();
       canonical.set(payload.p_snapshot_id, { id: payload.p_snapshot_id, state: payload.p_state, updated_at: new Date().toISOString() });
       return reply(true);
@@ -117,8 +129,10 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
     if (mode === "five-old-rejected") {
       const notice = page.locator("[data-sync-account-summary]");
-      await expect.poll(() => page.evaluate(spaceId => JSON.parse(localStorage.getItem(
-        `settle-friends-pending-sync:${spaceId}`))?.__pendingSync?.blocked?.deferredFailures?.length, spaceId)).toBe(5);
+      await expect.poll(() => page.evaluate(async () => {
+        const store = await import("/src/data/localStore.mjs");
+        return store.pendingSharedSyncStatus({ includeFailureKind: true }).eventFailures?.length;
+      })).toBe(5);
       await expect(notice).toContainText("5 אירועים לא סונכרנו");
       await notice.locator("summary").click();
       await expect(notice.locator('[data-action="open-event"]')).toHaveCount(5);
@@ -154,7 +168,74 @@ test(`${["personal-old-rejected", "five-old-rejected"].includes(mode) ? "persona
       await page.locator('[data-action="close-new-event-participant-view"]').click();
     }
     const startedAt = performance.now();
-    await page.locator('[data-action="create-event"]').click();
+    await page.locator(`[data-action="${creationShare ? "create-event-and-open-invite" : "create-event"}"]`).click();
+    if (creationShare) {
+      const dialog = page.locator(".event-share-modal");
+      await expect(dialog).toBeVisible({ timeout: 3_000 });
+      await expect(dialog.locator('[data-event-share-view="link"]')).toBeVisible();
+      const copy = dialog.locator('[data-action="copy-invite"]');
+      const eventId = await copy.getAttribute("data-event-id");
+      await expect(copy).toBeDisabled();
+      await expect(dialog.locator('[data-public-invite-qr]')).toHaveCount(0);
+      expect(issuedLinks).toBe(0);
+      if (mode === "share-navigation") {
+        await dialog.locator('[data-action="event-share-view-back"]').click();
+        await expect(dialog).toBeHidden();
+        release();
+        await expect.poll(() => personal.state.events.some(event => event.id === eventId)).toBe(true);
+        await expect.poll(() => notifications).toBeGreaterThan(0);
+        await expect(dialog).toBeHidden();
+        expect(issuedLinks).toBe(0, "late confirmation cannot reopen or prepare sharing after navigation");
+        expect(errors).toEqual([]);
+        return;
+      }
+      release();
+      if (cloudMode === "rejected") {
+        await expect(dialog).toBeHidden();
+        await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+        await expect(page.locator(".notice")).toContainText("האירוע לא נשמר");
+        await expect(page.locator(".notice")).toContainText("הטיוטה נשארה כאן");
+        expect(issuedLinks).toBe(0); expect(canonical.size).toBe(0);
+        expect(personal.state.events).toHaveLength(0);
+        await page.locator('[data-action="go-new-event-step"][data-new-event-step="details"]').click();
+        await expect(page.locator('[data-action="new-event-name"]')).toHaveValue("בדיקת יצירה עם חבר");
+        await page.locator('[data-action="go-new-event-step"][data-new-event-step="participants"]').click();
+        await expect(page.locator('[data-action="create-event-and-open-invite"]')).toBeEnabled();
+        await expect(page.locator('.new-event-selected-participant')).toHaveCount(2);
+      } else {
+        await expect(copy).toBeEnabled();
+        const input = dialog.locator('input[name="eventInviteUrl"]');
+        const url = await input.inputValue();
+        expect(url).toContain(encodeURIComponent(eventId)); expect(url).toContain(inviteToken);
+        const qr = dialog.locator('[data-public-invite-qr]');
+        await expect(qr).toHaveCount(1);
+        const qrUrl = await qr.getAttribute("data-invite-url");
+        const parsed = await page.evaluate(async value => {
+          const { parseInviteEventId, parseInviteToken } = await import("/src/domain/inviteLinks.mjs");
+          return { id: parseInviteEventId(value), token: parseInviteToken(value) };
+        }, qrUrl);
+        expect(parsed).toEqual({ id: eventId, token: inviteToken });
+        await qr.locator("summary").click(); await expect(qr.locator("svg")).toBeVisible();
+        await page.screenshot({ path: testInfo.outputPath("creation-link-and-qr-ready.png"), fullPage: true });
+        // Reopen from the existing-event participant route and compare the
+        // actual verified URL, token and QR rather than a second screen mock.
+        await dialog.locator('[data-action="event-share-view-back"]').click();
+        await expect(dialog).toBeHidden();
+        await page.locator('[data-action="open-event-participant-add"]').first().click();
+        await page.locator('.event-participant-add-routes [data-action="open-event-share"]').click();
+        await expect(dialog.locator('[data-action="copy-invite"]')).toBeEnabled();
+        await expect(dialog.locator('input[name="eventInviteUrl"]')).toHaveValue(url);
+        await expect(dialog.locator('[data-public-invite-qr]')).toHaveAttribute("data-invite-url", qrUrl);
+        if (mode.endsWith("old-rejected")) {
+          const retained = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+          expect(retained.__pendingSync.selection.eventIds).toEqual([oldEventId]);
+          expect(retained.events.find(event => event.id === oldEventId).notes).toEqual(initial.events[0].notes);
+          expect(canonical.get(oldSpaceId).state.events[0].notes).toEqual([]);
+        }
+      }
+      expect(errors).toEqual([]);
+      return;
+    }
     if (personalCreation) {
       const eventScreen = page.locator('[data-screen-kind="event"][data-event-id]');
       await expect(eventScreen).toBeVisible({ timeout: 3_000 });

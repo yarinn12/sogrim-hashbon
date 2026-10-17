@@ -486,7 +486,7 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
       expect(deniedCounts).toEqual(Array(4).fill(deniedBeforeOnline));
       expect(await page.evaluate(spaceId =>
         localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).toBe(outboxBeforeOnline);
-      await expect(summary).toContainText("אין הרשאה לבצע את השינוי");
+      await expect(summary).toContainText("השרת דחה שמירה בגלל הרשאה");
       await expect(summary).toContainText("אירוע שני");
       const reviewButton = summary.locator('[data-action="open-event"]');
       await expect(reviewButton).toHaveAttribute("data-event-id", secondEventId);
@@ -538,6 +538,13 @@ test(`${offline ? "offline: " : ""}${delayedDialogFrame ? "delayed dialog frame:
     const recoveryStartedAt = Date.now();
     await reloadPage();
     await expect(eventButton).toBeVisible();
+    if (permissionContext) {
+      // A known permanent denial stays held after restart. The user explicitly
+      // retries once permission is restored; only the actual ACK clears it.
+      await expect(page.locator("[data-sync-account-summary]")).toContainText("השרת דחה שמירה בגלל הרשאה");
+      expect(await page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId)).not.toBeNull();
+      await page.locator("[data-sync-account-summary] [data-sync-retry]").click();
+    }
     await expect.poll(() => page.evaluate(spaceId => localStorage.getItem(`settle-friends-pending-sync:${spaceId}`), spaceId), { timeout: 15_000 }).toBeNull();
     if (partialRetry && !permissionContext) {
       expect(canonicalAttempts).toBe(1);
