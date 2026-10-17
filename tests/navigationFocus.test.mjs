@@ -197,7 +197,7 @@ test("legacy overlays do not merge event creation and joining back together", as
   assert.match(brandLayer, /\.product-app-nav\[hidden\]/);
 });
 
-test("primary navigation exposes home, events, notifications and profile as distinct destinations", async () => {
+test("primary navigation exposes home, friends, notifications and profile as distinct destinations", async () => {
   const [app, brandLayer, primaryNavigation] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicBrandLayer.mjs", "utf8"),
@@ -208,18 +208,18 @@ test("primary navigation exposes home, events, notifications and profile as dist
 
   assert.equal([...navigation.matchAll(/class="product-nav-button"/g)].length, 4);
   assert.match(navigation, /data-action="home" data-nav-destination="home"/);
-  assert.match(navigation, /data-nav-destination="events"/);
+  assert.match(navigation, /data-action="groups" data-nav-destination="friends" data-tab="people"/);
   assert.match(navigation, /data-action="open-notifications" data-nav-destination="notifications"/);
   assert.match(navigation, /class="product-nav-badge" hidden/);
   assert.match(navigation, /data-nav-destination="profile"/);
   assert.match(navigation, /aria-label="ניווט ראשי"/);
   assert.doesNotMatch(navigation, /data-public-action="go-home"/);
-  assert.doesNotMatch(navigation, /data-action="join-event-screen"|data-action="groups"/);
-  assert.match(brandLayer, /function focusHomeEvents\(\)/);
+  assert.doesNotMatch(navigation, /data-action="join-event-screen"|data-nav-destination="events"/);
+  assert.match(brandLayer, /primaryNavigationDestinationForScreen\(kind\)/);
   assert.match(brandLayer, /setPrimaryNavigationActiveDestination\(/);
   assert.doesNotMatch(home, /class="home-event-tools/);
   assert.doesNotMatch(home, /data-action="join-event-link"/);
   assert.doesNotMatch(home, /data-action="join-existing-event"/);
   assert.doesNotMatch(home, /data-action="join-event-screen"/);
-  assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
+  assert.doesNotMatch(home, /home-friends-action|home-benefit-actions/);
 });

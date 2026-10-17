@@ -414,13 +414,15 @@ test("a long saved-name list stays searchable while creating an event", async ({
 test("friends hub exposes tabs without reporting profile as the current page", async ({ page }) => {
   await page.locator('.product-nav-button[data-nav-destination="profile"]').click();
   await expect(page.locator('[data-screen-kind="profile"]')).toBeVisible();
-  await page.locator('[data-action="groups"][data-tab="people"]').click();
+  await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
 
   const friendsHub = page.locator('[data-screen-kind="groups"].friends-hub-screen');
   await expect(friendsHub).toBeVisible();
   await expect(friendsHub.locator('[role="tab"][aria-selected="true"]')).toHaveCount(1);
   await expect(friendsHub.locator('#friends-tab-people')).toHaveAttribute("aria-selected", "true");
-  await expect(friendsHub.locator('.product-nav-button[aria-current="page"]')).toHaveCount(0);
+  await expect(friendsHub.locator('.product-nav-button[aria-current="page"]')).toHaveCount(1);
+  await expect(friendsHub.locator('[data-nav-destination="friends"]')).toHaveAttribute("aria-current", "page");
+  await expect(friendsHub.locator('[data-nav-destination="profile"]')).not.toHaveAttribute("aria-current", "page");
 });
 
 async function assertShareRouteChoicesDoNotOverlap(shareDialog) {

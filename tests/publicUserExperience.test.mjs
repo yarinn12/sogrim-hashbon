@@ -189,7 +189,7 @@ test("public home screen focuses on event creation and the event list", async ()
   assert.doesNotMatch(homeMatch[0], /renderPersonalDashboard|renderPersonalActionList/);
 });
 
-test("public home keeps one primary action, a secondary friends entry and a compact referral benefit", async () => {
+test("public home keeps event creation primary and places friend referrals in the friends hub", async () => {
   const [app, referralLayer] = await Promise.all([
     readFile("src/app.mjs", "utf8"),
     readFile("src/publicReferralRewardsLayer.mjs", "utf8")
@@ -199,12 +199,13 @@ test("public home keeps one primary action, a secondary friends entry and a comp
   assert.ok(homeMatch);
   assert.match(homeMatch[0], /<header class="top">/);
   assert.match(homeMatch[0], /data-action="new-event"/);
-  assert.match(homeMatch[0], /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
+  assert.doesNotMatch(homeMatch[0], /home-friends-action|home-benefit-actions/);
   assert.doesNotMatch(homeMatch[0], /class="home-event-tools home-invite-hub"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-event-link"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-existing-event"/);
   assert.doesNotMatch(homeMatch[0], /data-action="join-event-screen"/);
-  assert.match(referralLayer, /referralRewardCard\("home"\)/);
+  assert.match(referralLayer, /referralRewardCard\("friends"\)/);
+  assert.doesNotMatch(referralLayer, /referralRewardCard\("home"\)/);
 });
 
 test("an empty home reuses the approved compact home hero copy", async () => {

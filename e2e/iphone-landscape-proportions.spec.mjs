@@ -99,13 +99,14 @@ async function recordGeometry(page, target, label, testInfo) {
 }
 
 for (const viewport of [{ width: 844, height: 390 }, { width: 667, height: 375 }]) {
-  test(`landscape home keeps its friends shortcut available on opening ${viewport.width}`, async ({ page }, testInfo) => {
+  test(`landscape home keeps friends available in primary navigation on opening ${viewport.width}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.evaluate(() => window.scrollTo(0, 0));
-    const friends = page.locator('[data-action="groups"]').first();
+    const friends = page.locator('.product-app-nav [data-nav-destination="friends"]');
     const geometry = await recordGeometry(page, friends, `home-${viewport.width}`, testInfo);
     expect(geometry.top).toBeGreaterThanOrEqual(0);
-    expect(geometry.bottom, 'home shortcuts must fit above the fixed navigation when the screen opens').toBeLessThanOrEqual(geometry.clipBottom + 1);
+    expect(geometry.bottom, 'the friends navigation target stays inside the viewport').toBeLessThanOrEqual(geometry.viewportHeight + 1);
+    expect(geometry.height).toBeGreaterThanOrEqual(44);
     expect(geometry.receivesTap).toBe(true);
     const create = page.locator('.home-create-event-action');
     const createGeometry = await recordGeometry(page, create, `home-create-${viewport.width}`, testInfo);

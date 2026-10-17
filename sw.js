@@ -53,6 +53,7 @@ const CACHE_FILES = [
   "/account-deletion.html",
   "/src/app.mjs",
   "/src/ui/eventHeader.mjs",
+  "/src/ui/primaryNavigationState.mjs",
   "/src/ui/eventPressGesture.mjs",
   "/src/domain/stateIdentity.mjs",
   "/src/domain/personalEventPinMerge.mjs",

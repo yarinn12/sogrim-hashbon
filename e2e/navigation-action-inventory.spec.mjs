@@ -110,7 +110,7 @@ test("home, event, notes, modal, notifications, profile and friends actions navi
   await expect(page.locator('.screen[data-screen-kind="profile"]')).toBeVisible();
   inventory.push(await recordControls(page, testInfo, "profile"));
   await page.locator('[data-nav-destination="home"]').click();
-  await home.locator('[data-action="groups"]').click();
+  await page.locator('.product-app-nav [data-nav-destination="friends"]').click();
   await expect(page.locator('.screen[data-screen-kind="groups"]')).toBeVisible();
   inventory.push(await recordControls(page, testInfo, "friends"));
 
@@ -203,4 +203,41 @@ test("late permission feedback keeps its event action stable before a nonessenti
   } finally {
     heldImage.release();
   }
+});
+
+
+test("friends navigation owns referrals and home remains focused on events", async ({ page }) => {
+  await openHeldRenderedHome(page);
+  const home = page.locator('.screen[data-screen-kind="home"]');
+  const friendsNav = page.locator('.product-app-nav [data-nav-destination="friends"]');
+  await expect(home.locator('.home-benefit-actions, [data-referral-reward-card]')).toHaveCount(0);
+  await expect(page.locator('[data-nav-destination="events"]')).toHaveCount(0);
+  await friendsNav.click();
+  await expect(page.locator('.groups-overview-screen')).toBeVisible();
+  await expect(friendsNav).toHaveAttribute("aria-current", "page");
+  const benefit = page.locator('#referral-reward-card-friends');
+  await expect(benefit).toHaveCount(1);
+  await page.locator('#friends-tab-requests').click();
+  await expect(benefit).toHaveCount(1);
+  await page.locator('#friends-tab-people').click();
+  await expect(benefit).toHaveCount(1);
+  await benefit.click();
+  await expect(page.locator('#public-referral-rewards-dialog')).toBeVisible();
+  await page.locator('#public-referral-rewards-dialog [data-referral-action="close"]').click();
+  await expect(page.locator('#public-referral-rewards-dialog')).toHaveCount(0);
+  await expect(friendsNav).toHaveAttribute("aria-current", "page");
+  await page.locator('.product-app-nav [data-nav-destination="home"]').click();
+  await expect(home).toBeVisible();
+  await expect(home.locator('[data-referral-reward-card]')).toHaveCount(0);
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
+  await expect(page.locator('.product-app-nav [data-nav-destination="home"]')).toHaveAttribute("aria-current", "page");
+  await page.locator('[data-action="show-expense-form"]').click();
+  await page.getByRole("textbox", { name: "סכום כולל ₪", exact: true }).fill("123.45");
+  await friendsNav.click();
+  await expect(page.locator('.groups-overview-screen')).toBeVisible();
+  await expect(benefit).toHaveCount(1);
+  await page.locator('.product-app-nav [data-nav-destination="home"]').click();
+  await page.locator(`[data-action="open-event"][data-event-id="${EVENT}"]`).first().click();
+  await page.locator('[data-action="show-expense-form"]').click();
+  await expect(page.getByRole("textbox", { name: "סכום כולל ₪", exact: true })).toHaveValue("123.45");
 });

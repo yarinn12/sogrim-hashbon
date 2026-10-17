@@ -14158,7 +14158,7 @@ const CSS = `
     font-size: 18px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends {
     grid-template-columns: 40px minmax(0, 1fr) auto !important;
     gap: 10px !important;
     margin: 0 0 14px !important;
@@ -14166,27 +14166,27 @@ const CSS = `
     border-radius: 15px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home::before {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends::before {
     display: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home .referral-reward-icon {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends .referral-reward-icon {
     width: 40px !important;
     height: 40px !important;
     border-radius: 11px !important;
   }
 
   html.ledger-workspace-v1
-    .referral-reward-card.is-home
+    .referral-reward-card.is-friends
     :is(.referral-reward-eyebrow, .referral-reward-detail) {
     display: none !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home .referral-reward-copy strong {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends .referral-reward-copy strong {
     font-size: 14px !important;
   }
 
-  html.ledger-workspace-v1 .referral-reward-card.is-home > button {
+  html.ledger-workspace-v1 .referral-reward-card.is-friends > button {
     grid-column: auto !important;
     width: auto !important;
     min-width: 0 !important;
@@ -14334,12 +14334,12 @@ const CSS = `
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
-    .referral-reward-card.is-home {
+    .referral-reward-card.is-friends {
     grid-template-columns: 40px minmax(0, 1fr) !important;
   }
 
   html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview)
-    .referral-reward-card.is-home
+    .referral-reward-card.is-friends
     > button {
     grid-column: 1 / -1 !important;
     width: 100% !important;
@@ -17482,14 +17482,6 @@ const CSS = `
 
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1.48fr) minmax(126px, 0.92fr) !important;
-    align-items: stretch !important;
-    gap: 8px !important;
-    margin: 0 0 6px !important;
-  }
-
   html.ledger-workspace-v1 .product-home-screen .home-quick-action {
     min-width: 0 !important;
     min-height: 92px !important;
@@ -17620,51 +17612,24 @@ const CSS = `
     outline-offset: 3px !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action {
-    grid-template-columns: 34px auto !important;
-    justify-content: center !important;
-    gap: 8px !important;
-    padding: 12px !important;
-    text-align: center !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action .home-quick-action-icon {
-    width: 34px !important;
-    height: 34px !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .home-friends-action {
-    min-height: 76px !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home {
+  html.ledger-workspace-v1 .groups-overview-screen .referral-reward-card.is-friends {
     width: 100% !important;
     min-width: 0 !important;
-    min-height: 76px !important;
+    min-height: 64px !important;
     grid-template-columns: 40px minmax(0, 1fr) !important;
-    align-items: center !important;
     gap: 10px !important;
-    margin: 0 !important;
+    margin: 16px 0 0 !important;
     padding: 12px 14px !important;
-    border: 1px solid rgba(10, 82, 63, 0.14) !important;
-    border-radius: 16px !important;
+    border: 1px solid var(--ledger-line) !important;
+    border-radius: 12px !important;
     color: var(--ledger-ink) !important;
-    background: #ffffff !important;
-    box-shadow: 0 8px 22px rgba(18, 58, 46, 0.07) !important;
+    background: var(--ledger-surface) !important;
+    box-shadow: none !important;
     text-align: start !important;
-    scale: 1 !important;
-    transition-property: scale, box-shadow !important;
-    transition-duration: 160ms !important;
-    transition-timing-function: cubic-bezier(0.2, 0, 0, 1) !important;
   }
 
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home:active:not(:disabled) {
+  html.ledger-workspace-v1 .groups-overview-screen .referral-reward-card.is-friends:active:not(:disabled) {
     scale: 0.96 !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-benefit-actions .referral-reward-card.is-home .referral-reward-copy strong {
-    font-size: 14px !important;
-    line-height: 1.3 !important;
   }
 
   @media (max-width: 390px) {
@@ -19673,13 +19638,6 @@ const CSS = `
 
   html.ledger-workspace-v1 .event-participant-route-backdrop .event-modal {
     max-height: calc(100dvh - 112px - env(safe-area-inset-bottom)) !important;
-  }
-
-  html.ledger-workspace-v1 .product-home-screen .home-friends-action strong {
-    font-family: inherit !important;
-    font-size: 15.5px !important;
-    font-weight: 800 !important;
-    line-height: 1.25 !important;
   }
 
   /* Share is a focused route: one status, one primary action, no nested cards. */

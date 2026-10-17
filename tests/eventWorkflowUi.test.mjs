@@ -1657,7 +1657,7 @@ test("home dashboard only renders for actionable balances or pending transfers",
   assert.match(dashboard, /אליך · \$\{totals\.groupPendingTransfers\} בקבוצה/);
 });
 
-test("home screen keeps creation primary and exposes a secondary friends entry", async () => {
+test("home screen keeps creation primary followed by the event list", async () => {
   const app = await readFile("src/app.mjs", "utf8");
   const home = sourceBetween(app, "function renderHome()", "function renderRecentEventShortcut");
   const createAction = sourceBetween(
@@ -1672,14 +1672,14 @@ test("home screen keeps creation primary and exposes a secondary friends entry",
   assert.equal([...home.matchAll(/renderHomeCreateEventAction\(\)/g)].length, 2); // One call and its declaration.
   assert.match(home, /<\/header>\s*\$\{renderNotice\(\)\}\s*\$\{awaitingAuthoritativeEvents \? "" : renderHomeCreateEventAction\(\)\}/);
   assert.doesNotMatch(home, /<h2>אירועים<\/h2>\s*\$\{renderHomeCreateEventAction\(\)\}/);
-  assert.ok(home.indexOf(': renderHomeCreateEventAction()') < home.indexOf('class="home-benefit-actions"'));
+  assert.ok(home.indexOf(': renderHomeCreateEventAction()') < home.indexOf('class="section"'));
   assert.match(home, /awaitingAuthoritativeEvents\s*\? renderHomeEventHydrationState\(\)/);
   assert.equal([...createAction.matchAll(/data-action="new-event"/g)].length, 1);
   assert.match(createAction, /<button class="home-quick-action is-primary home-create-event-action" data-action="new-event"/);
   assert.match(createAction, /<span class="home-quick-action-icon" aria-hidden="true">/);
-  assert.match(home, /<section class="home-benefit-actions" aria-label="הטבות וחברים">/);
+  assert.doesNotMatch(home, /home-benefit-actions/);
   assert.doesNotMatch(home, /renderHomeEventTools/);
-  assert.match(home, /class="home-quick-action home-friends-action" data-action="groups" data-tab="people"/);
+  assert.doesNotMatch(home, /home-friends-action/);
   assert.doesNotMatch(home, /data-action="join-event-link"/);
   assert.doesNotMatch(home, /data-action="join-existing-event"/);
   assert.doesNotMatch(home, /data-action="join-event-screen"/);

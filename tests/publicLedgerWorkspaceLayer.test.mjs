@@ -775,7 +775,7 @@ test("core task screens use a distilled progressive-disclosure layer", async () 
   );
   assert.match(layer, /\.settlement-hero:has\(\.settlement-more-actions\[open\]\) \{[\s\S]*?z-index: 30 !important;[\s\S]*?overflow: visible !important/);
   assert.match(layer, /\.settlement-more-actions > div \{[\s\S]*?position: absolute !important/);
-  assert.match(layer, /\.referral-reward-card\.is-home[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important/);
+  assert.match(layer, /\.referral-reward-card\.is-friends[\s\S]*?grid-template-columns: 40px minmax\(0, 1fr\) auto !important/);
   assert.match(
     layer,
     /\.profile-avatar-options \{[\s\S]*?display: grid !important;[\s\S]*?grid-template-columns: repeat\(3, minmax\(0, 1fr\)\) !important;[\s\S]*?overflow: visible !important;/
@@ -807,7 +807,7 @@ test("distilled task surfaces keep mobile controls reachable and narrow rows rea
     layer,
     /\.event-invite-rotate-button \{[\s\S]*?width: auto !important;[\s\S]*?min-height: 44px !important;[\s\S]*?text-decoration: none !important/
   );
-  assert.match(layer, /\.referral-reward-card\.is-home > button \{[\s\S]*?min-height: 44px !important/);
+  assert.match(layer, /\.referral-reward-card\.is-friends > button \{[\s\S]*?min-height: 44px !important/);
   assert.match(layer, /@media \(max-width: 380px\)[\s\S]*?\.event-row-open \{[\s\S]*?grid-template-columns: 70px minmax\(0, 1fr\) !important/);
 });
 
@@ -928,7 +928,7 @@ test("home makes the new-event action primary and keeps the empty state on the s
   assert.match(layer, /object-fit: contain !important;[\s\S]*?transform: none !important/);
   assert.match(
     layer,
-    /\.product-home-screen \.home-benefit-actions \{[\s\S]*?grid-template-columns: minmax\(0, 1\.48fr\) minmax\(126px, 0\.92fr\) !important/
+    /\.groups-overview-screen \.referral-reward-card\.is-friends \{[\s\S]*?width: 100% !important;[\s\S]*?box-shadow: none !important/
   );
   assert.match(
     layer,

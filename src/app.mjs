@@ -2536,17 +2536,6 @@ function renderHome() {
       </header>
       ${renderNotice()}
       ${awaitingAuthoritativeEvents ? "" : renderHomeCreateEventAction()}
-      ${
-        awaitingAuthoritativeEvents
-          ? ""
-          : `<section class="home-benefit-actions" aria-label="הטבות וחברים">
-              <button class="home-quick-action home-friends-action" data-action="groups" data-tab="people">
-                <span class="home-quick-action-icon" aria-hidden="true">${iconSvg("users")}</span>
-                <span><strong>חברים</strong></span>
-              </button>
-            </section>`
-      }
-
       <div class="muted" data-inline-sync-status data-sync-account-summary
         data-sync-account-events="${escapeAttribute(JSON.stringify(pendingHomeEvents))}"
         ${pendingHomeEvent ? `data-sync-account-event-id="${escapeAttribute(pendingHomeEvent.id)}" data-sync-account-event-name="${escapeAttribute(pendingHomeEvent.name)}"` : ""}

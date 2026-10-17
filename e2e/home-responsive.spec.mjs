@@ -394,7 +394,7 @@ async function expectCenteredHomeCreateAction(page) {
     const contentStart = Math.min(icon.left, label.left);
     const contentEnd = Math.max(icon.right, label.right);
     const copy = element.querySelector(":scope > .top .brand").getBoundingClientRect();
-    const benefits = element.querySelector(".home-benefit-actions").getBoundingClientRect();
+    const eventsSection = element.querySelector(":scope > .section").getBoundingClientRect();
     const wrapper = element.querySelector(".home-quick-actions");
     return {
       directChild: wrapper.parentElement === element,
@@ -408,7 +408,7 @@ async function expectCenteredHomeCreateAction(page) {
       bothHalvesClickable: [0.25, 0.75].every((fraction) =>
         button.contains(document.elementFromPoint((action.left + action.right) / 2, action.top + action.height * fraction))
       ),
-      benefitsGap: benefits.top - action.bottom,
+      eventsGap: eventsSection.top - action.bottom,
       withinHeroWidth: action.left >= hero.left && action.right <= hero.right
     };
   });
@@ -422,7 +422,7 @@ async function expectCenteredHomeCreateAction(page) {
   expect(placement.edgeOffset).toBeLessThanOrEqual(3);
   expect(placement.copyGap).toBeGreaterThanOrEqual(0);
   expect(placement.bothHalvesClickable).toBe(true);
-  expect(placement.benefitsGap).toBeGreaterThanOrEqual(12);
+  expect(placement.eventsGap).toBeGreaterThanOrEqual(12);
   expect(placement.withinHeroWidth).toBe(true);
 }
 

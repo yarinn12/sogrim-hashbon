@@ -982,10 +982,10 @@ test("large text navigation fits its labels without reserving a tall empty block
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.goto("/?dynamic-type-preview=32");
   await expect(page.locator("html")).toHaveCSS("font-size", "32px");
-  for (const destination of ["home", "profile", "notifications", "events"]) {
+  for (const destination of ["home", "profile", "notifications", "friends"]) {
     const nav = page.locator(".product-app-nav:visible");
     if (destination !== "home") await nav.locator(`[data-nav-destination="${destination}"]`).click();
-    await expect(page.locator(`[data-screen-kind="${destination === "events" ? "home" : destination}"]`)).toBeVisible();
+    await expect(page.locator(`[data-screen-kind="${destination === "friends" ? "groups" : destination}"]`)).toBeVisible();
     await page.evaluate(() => document.fonts.ready);
     await settleCoherenceMotion(page);
     const geometry = await nav.evaluate(node => {
@@ -1080,7 +1080,7 @@ test("routine background sync never opens a sync surface", async ({ page }) => {
 });
 
 test("offline friend names explain blank input and recover in the friends list", async ({ page }) => {
-  await page.getByRole("button", { name: "חברים", exact: true }).click();
+  await page.locator('.product-app-nav [data-nav-destination="friends"]').click();
   await page.getByRole("button", { name: "הוסף חבר", exact: true }).click();
   const input = page.getByRole("textbox", { name: "שם מלא", exact: true });
   await input.fill("   ");

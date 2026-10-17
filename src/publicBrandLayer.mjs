@@ -4,12 +4,12 @@ import {
 } from "./domain/avatarPresets.mjs";
 import { iconSvg } from "./uiIcons.mjs";
 import { renderPrimaryNavigation } from "./primaryNavigation.mjs";
+import { primaryNavigationDestinationForScreen } from "./ui/primaryNavigationState.mjs";
 
 const STYLE_ID = "public-brand-layer-style";
 const APP_NAME = "סוגרים חשבון";
 const APP_TAGLINE = "חובות בין חברים, בלי כאב ראש";
 let scheduledBranding = false;
-let preferredHomeDestination = "home";
 let lastResolvedHeaderProfileIdentity = { displayName: "", avatarSource: "" };
 
 injectBrandStyle();
@@ -213,19 +213,7 @@ function syncHeaderNavState() {
   }
   if (!nav) return;
 
-  const eventDestinations = new Set(["event", "settlement", "join-event"]);
-  const activeDestination =
-    kind === "notifications"
-      ? "notifications"
-      : kind === "profile"
-        ? "profile"
-        : kind === "admin"
-          ? "profile"
-          : kind === "home"
-            ? preferredHomeDestination
-            : eventDestinations.has(kind)
-              ? "events"
-              : "";
+  const activeDestination = primaryNavigationDestinationForScreen(kind);
 
   syncNotificationNavBadge(nav);
   setPrimaryNavigationActiveDestination(nav, activeDestination);
@@ -306,7 +294,6 @@ function handlePrimaryNavigationIntent(event) {
     destination
   );
   if (destination === "home") {
-    preferredHomeDestination = "home";
     requestAnimationFrame(() => {
       window.scrollTo({
         top: 0,
@@ -316,27 +303,6 @@ function handlePrimaryNavigationIntent(event) {
     return;
   }
 
-  if (destination === "events") {
-    preferredHomeDestination = "events";
-    requestAnimationFrame(focusHomeEvents);
-  }
-}
-
-function focusHomeEvents() {
-  const screen = document.querySelector('#app .screen[data-screen-kind="home"]');
-  const section =
-    screen?.querySelector(".event-list")?.closest(".section") ??
-    screen?.querySelector(".home-empty-events");
-  if (!section) return;
-
-  const heading = section.querySelector("h2");
-  if (heading && !heading.hasAttribute("tabindex")) heading.tabIndex = -1;
-  section.scrollIntoView({
-    block: "start",
-    behavior: prefersReducedMotion() ? "auto" : "smooth"
-  });
-  heading?.focus({ preventScroll: true });
-  syncHeaderNavState();
 }
 
 function prefersReducedMotion() {

@@ -333,26 +333,14 @@ function enhanceReferralEntryPoints() {
   const screen = document.querySelector("#app .screen");
   if (!screen) return;
 
-  const homeSection =
-    screen.matches('[data-screen-kind="home"]')
-      ? screen.querySelector(":scope > .section")
-      : null;
-  const homeBenefitActions = screen.matches('[data-screen-kind="home"]')
-    ? screen.querySelector(":scope > .home-benefit-actions")
+  const friendsPanel = screen.matches(".groups-overview-screen.friends-hub-screen")
+    ? screen.querySelector(".friends-hub-panel")
     : null;
-  if (homeBenefitActions || homeSection) {
-    syncReferralRewardCard(screen, "home", () => {
-      if (homeBenefitActions) {
-        homeBenefitActions.insertAdjacentHTML("afterbegin", referralRewardCard("home"));
-      } else {
-        homeSection.insertAdjacentHTML("beforebegin", referralRewardCard("home"));
-      }
+  if (friendsPanel) {
+    syncReferralRewardCard(screen, "friends", () => {
+      friendsPanel.insertAdjacentHTML("afterend", referralRewardCard("friends"));
     });
   }
-
-  screen
-    .querySelector('[data-referral-reward-card][data-referral-context="friends"]')
-    ?.remove();
 
   const profilePanel = screen.matches(".profile-edit-screen")
     ? screen.querySelector(".profile-setup-panel")
@@ -394,19 +382,19 @@ function syncReferralRewardCard(screen, context, insertCard) {
 function referralRewardCard(context = "friends") {
   const active = isAdFreeActive(referralStatus);
   const daysRemaining = adFreeDaysRemaining(referralStatus);
-  const isHome = context === "home";
+  const isFriends = context === "friends";
   const isProfile = context === "profile";
   const helper = active
     ? `ללא פרסומות עד ${formatDate(referralStatus.adFreeUntil)}`
     : isProfile
       ? `הזמנת חבר חדש פותחת ${referralStatus.rewardDays} ימים ללא פרסומות.`
       : "על כל חבר חדש שמצטרף ומשלים שימוש אמיתי.";
-  const title = isHome
+  const title = isFriends
     ? "חודש ללא פרסומות"
     : isProfile
       ? "פרסומות והטבות"
       : "מזמינים חברים";
-  const buttonLabel = isHome
+  const buttonLabel = isFriends
     ? "הזמנת חברים"
     : isProfile && active
       ? "להארכת ההטבה"
@@ -417,12 +405,12 @@ function referralRewardCard(context = "friends") {
   const buttonAriaLabel = active
     ? `${buttonLabel}: ${daysRemaining} ימים ללא פרסומות נותרו`
     : `${buttonLabel}: חודש ללא פרסומות`;
-  const cardTag = isHome ? "button" : "section";
-  const homeActionAttributes = isHome
+  const cardTag = isFriends ? "button" : "section";
+  const cardActionAttributes = isFriends
     ? `data-open-referral-rewards data-referral-context="${context}" type="button" aria-label="${buttonAriaLabel}"`
     : "";
   return `
-    <${cardTag} id="referral-reward-card-${context}" class="referral-reward-card is-${context}" data-referral-reward-card data-referral-context="${context}" aria-labelledby="referral-reward-title-${context}" ${homeActionAttributes}>
+    <${cardTag} id="referral-reward-card-${context}" class="referral-reward-card is-${context}" data-referral-reward-card data-referral-context="${context}" aria-labelledby="referral-reward-title-${context}" ${cardActionAttributes}>
       <span class="referral-reward-icon" aria-hidden="true">${giftIcon()}</span>
       <span class="referral-reward-copy">
         <small class="referral-reward-eyebrow">${eyebrow}</small>
@@ -437,7 +425,7 @@ function referralRewardCard(context = "friends") {
         }
       </span>
       ${
-        isHome
+        isFriends
           ? ""
           : `<button class="primary-button referral-reward-action" data-open-referral-rewards data-referral-context="${context}" type="button" aria-label="${buttonAriaLabel}">
               <span>${buttonLabel}</span>
@@ -929,28 +917,6 @@ function injectReferralStyles() {
       box-shadow:
         0 1px 0 rgba(255, 255, 255, 0.9) inset,
         0 16px 38px rgba(16, 77, 62, 0.1);
-    }
-
-    .referral-reward-card.is-home {
-      position: relative;
-      overflow: hidden;
-      isolation: isolate;
-      border-color: rgba(12, 83, 69, 0.12);
-    }
-
-    .referral-reward-card.is-home::before {
-      content: "";
-      position: absolute;
-      inset-block: 0;
-      inset-inline-start: 0;
-      width: 4px;
-      background: #1aa896;
-    }
-
-    .referral-reward-card.is-home:hover {
-      box-shadow:
-        0 1px 0 rgba(255, 255, 255, 0.95) inset,
-        0 20px 46px rgba(16, 77, 62, 0.14);
     }
 
     .referral-reward-card.is-profile {

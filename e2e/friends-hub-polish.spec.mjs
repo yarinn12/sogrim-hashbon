@@ -336,7 +336,7 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
   await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
   await page.locator('[data-nav-destination="profile"]').click();
-  await page.locator('[data-action="groups"][data-tab="people"]').click();
+  await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
   await expect(page.locator('[data-screen-kind="groups"][data-friends-tab="people"]'))
     .toBeVisible();
   await expect(page.locator('[data-friend-identity-section="connected"] .friend-row'))
@@ -420,7 +420,7 @@ test("accepting a friend while navigating away refreshes the roster without hija
     rpc.release();
     await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
     await page.locator('[data-nav-destination="profile"]').click();
-    await page.locator('[data-action="groups"][data-tab="people"]').click();
+    await page.locator('.profile-friends-entry[data-action="groups"][data-tab="people"]').click();
     await expect(page.locator('[data-friend-identity-section="connected"] .friend-row')).toHaveCount(2);
     await expect(page.locator('.friend-remove-button svg')).toHaveCount(5);
     await expect(page.locator('.friend-remove-button svg').first()).toBeVisible();
