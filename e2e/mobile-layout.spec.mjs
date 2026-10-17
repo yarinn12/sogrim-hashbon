@@ -1017,6 +1017,78 @@ test("large text navigation fits its labels without reserving a tall empty block
   }
 });
 
+
+test("event-type choices enlarge actual leaf text and keep both choices reachable", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await expect(page.locator('html')).toHaveCSS('font-size', '16px');
+  await page.locator('[data-action="new-event"]').first().click();
+  const choices = page.locator('.new-event-type-screen .event-type-option');
+  await expect(choices).toHaveCount(2);
+
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await choices.evaluateAll(nodes => nodes.map(button => {
+        const rect = button.getBoundingClientRect();
+        const texts = [button.querySelector('strong'), button.querySelector('span:not([class])')];
+        return {
+          height: rect.height,
+          right: rect.right,
+          left: rect.left,
+          text: texts.map(node => {
+            const range = document.createRange(); range.selectNodeContents(node);
+            const bounds = node.getBoundingClientRect();
+            return {
+              fontSize: parseFloat(getComputedStyle(node).fontSize),
+              fits: [...range.getClientRects()].filter(r => r.width && r.height).every(r =>
+                r.left >= bounds.left - 1 && r.right <= bounds.right + 1 &&
+                r.top >= bounds.top - 1 && r.bottom <= bounds.bottom + 1 &&
+                r.left >= rect.left && r.right <= rect.right)
+            };
+          })
+        };
+      }));
+      for (const row of geometry) {
+        expect(row.height).toBeGreaterThanOrEqual(44);
+        expect(row.left).toBeGreaterThanOrEqual(0);
+        expect(row.right).toBeLessThanOrEqual(width);
+        expect(row.text[0].fontSize).toBeCloseTo(18 * rootSize / 16, 1);
+        expect(row.text[1].fontSize).toBeCloseTo(13 * rootSize / 16, 1);
+        expect(row.text.every(text => text.fits)).toBe(true);
+      }
+      for (const choice of await choices.all()) {
+        await choice.scrollIntoViewIfNeeded();
+        const reachable = await choice.evaluate(button => {
+          const r = button.getBoundingClientRect();
+          const target = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return button === target || button.contains(target);
+        });
+        expect(reachable).toBe(true);
+      }
+    }
+  }
+
+  await page.locator('[data-event-type="standard"]').press('Enter');
+  await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
+  await page.locator('[data-action="new-event-name"]').fill('בדיקת בחירת סוג אירוע');
+  await page.locator('[data-new-event-step="type"]').click();
+  await expect(page.locator('[data-event-type="standard"]')).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-event-type="trip"]').click();
+  await expect(page.locator('[data-event-creation-step="details"]')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'טיול חדש', exact: true })).toBeVisible();
+  await expect(page.locator('[data-action="new-event-name"]')).toHaveValue('בדיקת בחירת סוג אירוע');
+});
+
 test("creation tabs fit normal phone widths and keep direct navigation with the draft", async ({ page }) => {
   await page.locator('[data-action="new-event"]').first().click();
   const progress = page.locator('.event-creation-progress');

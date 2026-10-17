@@ -91,3 +91,26 @@ test("native CSS includes the approved creation tabs before runtime starts", asy
   assert.match(css, /\.event-creation-tabs\s*\{[\s\S]*?grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.event-creation-tabs > li\.is-active > button\s*\{[\s\S]*?background: var\(--ledger-accent-soft\)/);
 });
+
+
+test("native event-type choices keep scalable leaf text and one frame", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  assert.ok(paths.has(ledger), "event choice styling must reach native bundles");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-event-creation-step="type"] ';
+  const rule = (selector) => {
+    const start = css.indexOf(prefix + selector + " {");
+    assert.ok(start >= 0, `Missing scoped native event-choice rule: ${selector}`);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".event-type-option > strong"), /font-size: 1\.125rem !important;/,
+    "fixed title pixels would ignore the requested text enlargement");
+  assert.match(rule(".event-type-option > span:not(.studio-event-type-icon):not(.event-choice-forward)"),
+    /font-size: \.8125rem !important;/,
+    "description glyphs must enlarge together with the root, not stay fixed");
+  assert.match(rule(".event-type-step-panel"), /border: 1px solid var\(--ledger-line\) !important;/);
+  assert.match(rule(".event-type-option"), /border: 0 !important;/);
+  assert.match(rule(".event-type-option"), /box-shadow: none !important;/);
+});
