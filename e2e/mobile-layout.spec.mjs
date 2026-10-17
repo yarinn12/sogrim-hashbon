@@ -1019,6 +1019,70 @@ test("large text navigation fits its labels without reserving a tall empty block
 
 
 
+
+test("settlement choices explain their current mode and retain it through participant navigation", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  const screen = page.locator('.new-event-settlement-screen');
+  const rounding = screen.locator('[data-picker-action="new-event-rounding-choice"]');
+  const repayment = screen.locator('[data-picker-action="new-event-repayment-choice"]');
+  await expect(rounding.locator('[data-choice-value="rounded"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(repayment.locator('[data-choice-value="direct"]')).toHaveAttribute('aria-pressed', 'true');
+  for (const choice of [
+    { rounding: 'exact', repayment: 'direct' },
+    { rounding: 'exact', repayment: 'optimized' },
+    { rounding: 'rounded', repayment: 'direct' },
+    { rounding: 'rounded', repayment: 'optimized' }
+  ]) {
+    await rounding.locator('summary').click();
+    await rounding.locator('[data-choice-value="' + choice.rounding + '"]').click();
+    await repayment.locator('summary').click();
+    await repayment.locator('[data-choice-value="' + choice.repayment + '"]').click();
+    await expect(rounding.locator('[data-choice-value="' + choice.rounding + '"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(repayment.locator('[data-choice-value="' + choice.repayment + '"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(rounding.locator(':scope > small')).toContainText(choice.rounding === 'exact' ? 'ללא עיגול' : 'ההוצאות נשארות מדויקות');
+    if (choice.rounding === 'exact') await expect(rounding.locator(':scope > small')).not.toContainText('מעגלים');
+    await expect(repayment.locator(':scope > small')).toContainText(choice.repayment === 'direct' ? 'למי ששילם עבורו' : 'למשתתף אחר ממי ששילם');
+  }
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const labels = await screen.locator('.field > span').evaluateAll(nodes => nodes.map(node => {
+        const r = node.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(node);
+        return { font: parseFloat(getComputedStyle(node).fontSize), fits: [...range.getClientRects()].every(g => g.left >= r.left - 1 && g.right <= r.right + 1) };
+      }));
+      expect(labels).toHaveLength(2);
+      for (const label of labels) {
+        expect(label.font).toBeCloseTo(14 * rootSize / 16, 1);
+        expect(label.fits).toBe(true);
+      }
+      const next = screen.locator('[data-action="open-new-event-participants"]');
+      await next.scrollIntoViewIfNeeded();
+      expect(await next.evaluate(node => {
+        const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return r.height >= 44 && (node === hit || node.contains(hit));
+      })).toBe(true);
+    }
+  }
+  await screen.locator('[data-action="open-new-event-participants"]').click();
+  await expect(page.locator('[data-event-creation-step="participants"]')).toBeVisible();
+  await page.locator('[data-new-event-step="settlement"]').click();
+  await expect(rounding.locator('[data-choice-value="rounded"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(repayment.locator('[data-choice-value="optimized"]')).toHaveAttribute('aria-pressed', 'true');
+});
+
 test("event details scale field labels and retain the draft through currency search and stage navigation", async ({ page }) => {
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.goto("/");

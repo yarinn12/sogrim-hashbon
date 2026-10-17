@@ -1,3 +1,4 @@
+import { eventSettlementOptionsView } from "./ui/eventSettlementOptions.mjs";
 import { renderEventDetailsNameFieldView } from "./ui/eventDetailsNameField.mjs";
 import { renderEventCreationProgressView } from "./ui/eventCreationProgress.mjs";
 import { renderEventHeaderView, renderEventHeaderActionsView, renderEventHeaderMetaView } from "./ui/eventHeader.mjs";
@@ -5385,18 +5386,20 @@ function renderEventRoutePrimaryNav() {
 
 function renderNewEventSettlement() {
   ensureNewEventDraft();
+  const options = eventSettlementOptionsView(newEventDraft);
   return `
     <section class="screen font-hebrew new-event-settlement-screen" data-screen-kind="new-event" data-event-creation-step="settlement">
       <header class="top">${renderAppBackButton()}<div class="brand"><p class="eyebrow">אירוע חדש</p><h1>איך סוגרים את החשבון?</h1></div></header>
       ${renderNotice()}
       ${renderEventCreationProgress("settlement")}
       <section class="panel create-event-panel new-event-settlement-panel">
-        ${renderNewEventInlinePicker({ label: "עיגול סכומים", valueLabel: newEventDraft.roundSettlementTransfers ? "סכומים נוחים (מומלץ)" : "דיוק מלא ללא עיגול", action: "new-event-rounding-choice", selectedValue: newEventDraft.roundSettlementTransfers ? "rounded" : "exact", options: [{ value: "rounded", label: "סכומים נוחים (מומלץ)" }, { value: "exact", label: "דיוק מלא ללא עיגול" }], hint: "מעגלים העברות ליחידות מטבע שלמות ומאזנים את ההפרש. ההוצאות נשארות מדויקות." })}
-        ${renderNewEventInlinePicker({ label: "חלוקת החזרים", valueLabel: newEventDraft.directSettlementTransfers ? "החזר לפי מי ששילם" : "קיזוז חכם (מומלץ) — פחות העברות", action: "new-event-repayment-choice", selectedValue: newEventDraft.directSettlementTransfers ? "direct" : "optimized", options: [{ value: "direct", label: "החזר לפי מי ששילם" }, { value: "optimized", label: "קיזוז חכם (מומלץ) — פחות העברות" }], hint: "קיזוז חכם מאזן חובות בין כולם ומצמצם העברות; החזר ישיר משלם למי שהוציא. אפשר לשנות בהגדרות האירוע." })}
-        <div class="actions section"><button class="primary-button" data-action="open-new-event-participants">המשך למשתתפים</button></div>
+        ${renderNewEventInlinePicker(options.rounding)}
+        ${renderNewEventInlinePicker(options.repayment)}
+        <div class="actions section"><button class="primary-button" data-action="open-new-event-participants">המשך למשתתפים</button><small class="settlement-change-hint">ניתן לשנות את הבחירות גם בהגדרות האירוע.</small></div>
       </section>
     </section>`;
 }
+
 
 function renderNewEventInlinePicker({ label, valueLabel, action, selectedValue, options, hint, searchable = false }) {
   return `<div class="field new-event-inline-picker" data-picker-action="${escapeAttribute(action)}"><span>${escapeHtml(label)}</span><details><summary><span>${escapeHtml(valueLabel)}</span><span class="new-event-inline-picker-chevron" aria-hidden="true">${iconSvg("chevron-left")}</span></summary><div class="new-event-inline-picker-menu">${searchable ? `<label class="new-event-currency-search"><span class="visually-hidden">חיפוש מטבע לפי שם או קוד</span><input type="search" data-action="new-event-currency-search" aria-label="חיפוש מטבע לפי שם או קוד" placeholder="חיפוש שם או קוד מטבע" autocomplete="off" /></label>` : ""}${options.map((option) => `<button type="button" class="${option.value === selectedValue ? "is-selected" : ""}" data-action="${action}" data-choice-value="${escapeAttribute(option.value)}" data-search-text="${escapeAttribute(`${option.label} ${option.value}`)}" aria-pressed="${option.value === selectedValue}"><span>${escapeHtml(option.label)}</span>${option.value === selectedValue ? `<span aria-hidden="true">${iconSvg("check")}</span>` : ""}</button>`).join("")}${searchable ? `<p class="muted" data-currency-search-empty hidden>לא נמצאו מטבעות</p>` : ""}</div></details><small>${escapeHtml(hint)}</small></div>`;

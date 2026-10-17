@@ -1,3 +1,4 @@
+import { eventSettlementOptionsView } from "../src/ui/eventSettlementOptions.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -14,6 +15,7 @@ test("the restored creation form renders its save failure notice", () => {
   const from = source.indexOf("function renderNewEventSettlement()");
   const to = source.indexOf("function renderNewEventInlinePicker", from);
   const ctx = vm.createContext({
+    eventSettlementOptionsView,
     ensureNewEventDraft() {}, newEventDraft: {}, renderAppBackButton: () => "",
     renderNotice: () => '<div role="status">creation rejected</div>',
     renderEventCreationProgress: () => "", renderNewEventInlinePicker: () => ""

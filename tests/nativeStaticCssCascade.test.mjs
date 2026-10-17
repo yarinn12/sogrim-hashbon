@@ -133,3 +133,21 @@ test("native event details keep scalable labels and a bounded currency list", as
   assert.match(rule(".new-event-inline-picker-menu"), /max-height: min\(18rem, 45dvh\) !important;/);
   assert.match(rule(".new-event-inline-picker-menu"), /overflow-y: auto !important;/);
 });
+
+
+test("native settlement settings include scalable labels and the approved full-width action", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  assert.ok(paths.has(ledger));
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] ';
+  const rule = selector => {
+    const start = css.indexOf(prefix + selector + " {");
+    assert.ok(start >= 0, `Missing native settlement rule: ${selector}`);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".field > span"), /font-size: \.875rem !important;/);
+  assert.match(rule(".field > small"), /font-weight: 400 !important;/);
+  assert.match(rule(".actions > .primary-button"), /width: 100% !important;/);
+});

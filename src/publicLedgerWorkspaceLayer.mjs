@@ -21113,6 +21113,94 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[da
  line-height: 1.5 !important;
 }
 
+/* Approved settlement settings: the existing choices with matching explanations. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .new-event-settlement-panel {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 24px !important;
+ padding: 18px !important;
+ border: 1px solid var(--ledger-line) !important;
+ border-radius: 12px !important;
+ background: var(--ledger-surface) !important;
+ box-shadow: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field {
+ display: grid !important;
+ gap: 8px !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field > span {
+ font-size: .875rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field summary {
+ min-width: 0 !important;
+ min-height: 52px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 12px 13px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+ font-weight: 650 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field summary > span:first-child {
+ min-width: 0 !important;
+ font-size: inherit !important;
+ font-weight: inherit !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .field > small {
+ display: block !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .new-event-inline-picker-menu > button {
+ min-height: 44px !important;
+ height: auto !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .actions {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 8px !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .actions > .primary-button {
+ width: 100% !important;
+ min-height: 52px !important;
+ height: auto !important;
+ padding: 12px 16px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen[data-event-creation-step="settlement"] .settlement-change-hint {
+ display: block !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ text-align: center !important;
+ white-space: normal !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
