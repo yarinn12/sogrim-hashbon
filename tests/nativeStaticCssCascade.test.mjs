@@ -114,3 +114,22 @@ test("native event-type choices keep scalable leaf text and one frame", async ()
   assert.match(rule(".event-type-option"), /border: 0 !important;/);
   assert.match(rule(".event-type-option"), /box-shadow: none !important;/);
 });
+
+
+test("native event details keep scalable labels and a bounded currency list", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  assert.ok(paths.has(ledger));
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] ';
+  const rule = selector => {
+    const start = css.indexOf(prefix + selector + " {");
+    assert.ok(start >= 0, `Missing native details rule: ${selector}`);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  assert.match(rule(".field > span"), /font-size: \.875rem !important;/,
+    "fixed field-label pixels would ignore the requested root text enlargement");
+  assert.match(rule(".new-event-inline-picker-menu"), /max-height: min\(18rem, 45dvh\) !important;/);
+  assert.match(rule(".new-event-inline-picker-menu"), /overflow-y: auto !important;/);
+});

@@ -1,3 +1,4 @@
+import { renderEventDetailsNameFieldView } from "./ui/eventDetailsNameField.mjs";
 import { renderEventCreationProgressView } from "./ui/eventCreationProgress.mjs";
 import { renderEventHeaderView, renderEventHeaderActionsView, renderEventHeaderMetaView } from "./ui/eventHeader.mjs";
 import { createEventPressGesture } from "./ui/eventPressGesture.mjs";
@@ -4413,16 +4414,10 @@ function renderNewEvent() {
       ${renderNotice()}
 
       <section class="panel create-event-panel">
-        <div class="section-title-row">
-          <div>
-            <h2>איך נקרא לאירוע?</h2>
-            <p class="muted">אפשר לתת שם, או להמשיך ולקבל שם אוטומטי.</p>
-          </div>
-        </div>
-        <label class="field">
-          <span>שם האירוע (לא חובה)</span>
-          <input data-action="new-event-name" name="eventName" autocomplete="off" enterkeyhint="next" value="${escapeAttribute(newEventDraft.name)}" placeholder="${escapeAttribute(eventTypeConfig(newEventDraft.eventType).namePlaceholder || EVENT_NAME_PLACEHOLDER)}" />
-        </label>
+        ${renderEventDetailsNameFieldView({
+          name: newEventDraft.name,
+          placeholder: eventTypeConfig(newEventDraft.eventType).namePlaceholder || EVENT_NAME_PLACEHOLDER
+        })}
         ${renderNewEventInlinePicker({
           label: "מטבע האירוע",
           valueLabel: currencySelectLabel(newEventDraft.currency),
@@ -4430,7 +4425,7 @@ function renderNewEvent() {
           selectedValue: newEventDraft.currency,
           options: currencyOptions().map((currency) => ({ value: currency.id, label: currencySelectLabel(currency.id) })),
           searchable: true,
-          hint: "כל ההוצאות וההעברות באירוע יוצגו במטבע הזה. אפשר לחפש לפי שם או קוד."
+          hint: "כל ההוצאות וההעברות יוצגו במטבע הזה."
         })}
 
         <div class="actions section">

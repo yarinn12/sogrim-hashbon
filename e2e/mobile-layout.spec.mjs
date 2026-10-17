@@ -1018,6 +1018,67 @@ test("large text navigation fits its labels without reserving a tall empty block
 });
 
 
+
+test("event details scale field labels and retain the draft through currency search and stage navigation", async ({ page }) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  await page.goto("/");
+  await page.locator('[data-action="new-event"]').first().click();
+  await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+  const screen = page.locator('.new-event-details-screen');
+  const name = screen.locator('[name="eventName"]');
+  await expect(name).toHaveAccessibleName('שם האירוע (לא חובה)');
+  await expect(name).toHaveAttribute('aria-describedby', 'new-event-name-hint');
+  await name.fill('ערב חברים & משפחה');
+  await screen.locator('.new-event-inline-picker summary').click();
+  const search = page.getByRole('searchbox', { name: 'חיפוש מטבע לפי שם או קוד', exact: true });
+  await search.fill('ZZZZ');
+  await expect(screen.locator('[data-currency-search-empty]')).toBeVisible();
+  await search.fill('USD');
+  await screen.locator('[data-action="new-event-currency-choice"][data-choice-value="USD"]').click();
+  for (const rootSize of [16, 20]) {
+    if (rootSize === 20) {
+      await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+      await page.getByRole('radio', { name: 'גדול מאוד', exact: true }).check();
+      await expect(page.locator('html')).toHaveCSS('font-size', '20px');
+      await page.getByRole('button', { name: 'סיום', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'נגישות', exact: true })).toHaveCount(0);
+    }
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const labels = await screen.locator('.field > span').evaluateAll(nodes => nodes.map(node => {
+        const r = node.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(node);
+        return { font: parseFloat(getComputedStyle(node).fontSize), fits: [...range.getClientRects()].every(g => g.left >= r.left - 1 && g.right <= r.right + 1) };
+      }));
+      expect(labels).toHaveLength(2);
+      for (const label of labels) {
+        expect(label.font).toBeCloseTo(14 * rootSize / 16, 1);
+        expect(label.fits).toBe(true);
+      }
+      for (const action of await screen.locator('.actions > button').all()) {
+        await action.scrollIntoViewIfNeeded();
+        expect(await action.evaluate(node => {
+          const r = node.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return r.height >= 44 && (node === hit || node.contains(hit));
+        })).toBe(true);
+      }
+    }
+  }
+  await screen.locator('.new-event-inline-picker summary').click();
+  const menu = screen.locator('.new-event-inline-picker-menu');
+  expect(await menu.evaluate(node => node.scrollHeight > node.clientHeight && getComputedStyle(node).overflowY === 'auto')).toBe(true);
+  await screen.locator('.new-event-inline-picker summary').click();
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+  await page.locator('[data-new-event-step="details"]').click();
+  await expect(name).toHaveValue('ערב חברים & משפחה');
+  await expect(screen.locator('.new-event-inline-picker summary')).toContainText('דולר אמריקאי');
+  await name.fill('');
+  await page.getByRole('button', { name: 'הבא', exact: true }).click();
+  await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
+});
+
 test("event-type choices enlarge actual leaf text and keep both choices reachable", async ({ page }) => {
   await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
   await page.goto("/");

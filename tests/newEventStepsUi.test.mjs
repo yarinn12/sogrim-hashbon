@@ -34,7 +34,8 @@ test("new event creation separates type and details", async () => {
   assert.doesNotMatch(typeStep, /data-action="create-event"/);
 
   assert.match(detailsStep, /data-event-creation-step="details"/);
-  assert.match(detailsStep, /data-action="new-event-name"/);
+  assert.match(detailsStep, /renderEventDetailsNameFieldView\(/);
+  assert.match(await readFile("src/ui/eventDetailsNameField.mjs", "utf8"), /data-action="new-event-name"/);
   assert.match(detailsStep, /data-action="open-new-event-settlement"/);
   assert.doesNotMatch(detailsStep, /data-action="create-event"/);
   assert.doesNotMatch(participantsStep, /data-action="new-event-group"/);
@@ -84,8 +85,10 @@ test("event name is clearly optional because a default is generated", async () =
   const app = await readFile("src/app.mjs", "utf8");
   const detailsStep = sourceBetween(app, "function renderNewEvent()", "function renderEventCreationProgress");
 
-  assert.match(detailsStep, /שם האירוע \(לא חובה\)/);
-  assert.match(detailsStep, /לקבל שם אוטומטי/);
+  assert.match(detailsStep, /renderEventDetailsNameFieldView\(/);
+  const field = await readFile("src/ui/eventDetailsNameField.mjs", "utf8");
+  assert.match(field, /שם האירוע \(לא חובה\)/);
+  assert.match(field, /לקבל שם אוטומטי/);
   assert.match(app, /newEventDraft\.name\.trim\(\) \|\|\s*uniqueDefaultEventName/);
 });
 
@@ -130,7 +133,7 @@ test("event details open settlement before participant management", async () => 
   assert.doesNotMatch(detailsStep, /data-new-event-participant-count/);
   assert.doesNotMatch(detailsStep, /new-event-participants-body/);
   assert.ok(
-    detailsStep.indexOf('data-action="new-event-name"') <
+    detailsStep.indexOf("renderEventDetailsNameFieldView(") <
       detailsStep.indexOf('data-action="open-new-event-settlement"')
   );
   assert.match(participantsStep, /function renderNewEventParticipants\(\)/);

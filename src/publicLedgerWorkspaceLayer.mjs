@@ -21013,6 +21013,106 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-type-screen[data-
   outline: 2px solid var(--ledger-brand) !important;
   outline-offset: -3px !important;
 }
+/* Approved event details: name and currency remain one clear task. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .create-event-panel {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 24px !important;
+ padding: 18px !important;
+ border: 1px solid var(--ledger-line) !important;
+ border-radius: 12px !important;
+ background: var(--ledger-surface) !important;
+ box-shadow: none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .create-event-panel > .field {
+ display: grid !important;
+ gap: 8px !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > span {
+ font-size: .875rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > input,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field summary {
+ min-width: 0 !important;
+ min-height: 52px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 12px 13px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+ font-weight: 650 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field summary > span:first-child {
+ min-width: 0 !important;
+ font-size: inherit !important;
+ font-weight: inherit !important;
+ white-space: normal !important;
+ overflow-wrap: anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .field > small {
+ display: block !important;
+ min-width: 0 !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ color: var(--ledger-muted) !important;
+ font-size: .8125rem !important;
+ font-weight: 400 !important;
+ line-height: 1.55 !important;
+ white-space: normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions {
+ display: grid !important;
+ grid-template-columns: minmax(0, 1fr) !important;
+ gap: 6px !important;
+ margin: 0 !important;
+ padding: 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions > .primary-button {
+ width: 100% !important;
+ min-height: 52px !important;
+ height: auto !important;
+ padding: 12px 16px !important;
+ border-radius: 12px !important;
+ font-size: 1rem !important;
+ font-weight: 700 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .actions > .secondary-button {
+ justify-self: center !important;
+ width: auto !important;
+ min-width: 64px !important;
+ min-height: 44px !important;
+ height: auto !important;
+ margin: 0 !important;
+ padding: 8px 12px !important;
+ border: 0 !important;
+ color: var(--ledger-muted) !important;
+ background: transparent !important;
+ box-shadow: none !important;
+ font-size: .875rem !important;
+ font-weight: 600 !important;
+ line-height: 1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu {
+ max-height: min(18rem, 45dvh) !important;
+ overflow-y: auto !important;
+ overscroll-behavior: contain;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu > button,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-details-screen[data-event-creation-step="details"] .new-event-inline-picker-menu input {
+ min-height: 44px !important;
+ height: auto !important;
+ font-size: 1rem !important;
+ line-height: 1.5 !important;
+}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [
