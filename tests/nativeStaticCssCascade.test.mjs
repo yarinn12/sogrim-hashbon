@@ -151,3 +151,43 @@ test("native settlement settings include scalable labels and the approved full-w
   assert.match(rule(".field > small"), /font-weight: 400 !important;/);
   assert.match(rule(".actions > .primary-button"), /width: 100% !important;/);
 });
+
+
+test("native participants overview scales names, counts, route titles and helper text", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  assert.ok(paths.has(ledger));
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) ';
+  for (const [selector, size] of [
+    [".new-event-selected-participant-copy strong", "1rem"],
+    [".new-event-selected-participants-heading>span", ".8125rem"],
+    [".new-event-participant-route-action strong", "1rem"],
+    [".new-event-participant-route-action small", ".8125rem"]
+  ]) {
+    const start = css.indexOf(prefix + selector + " {");
+    assert.ok(start >= 0, `Native participant leaf must scale instead of retaining fixed pixels: ${selector}`);
+    const rule = css.slice(start, css.indexOf("}", start));
+    assert.ok(rule.includes(`font-size:${size} !important;`));
+  }
+});
+
+test("native participants overview retains owner role and participant status in enlarged layouts", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) ';
+  for (const [selector, display] of [
+    [".new-event-selected-participant .avatar", "grid"],
+    [".new-event-selected-participant-self", "block"],
+    [".new-event-selected-participant .participant-connection-badge", "inline-flex"]
+  ]) {
+    const start = css.lastIndexOf(prefix + selector + " {");
+    assert.ok(start >= 0, `Native participant identity must remain visible: ${selector}`);
+    const rule = css.slice(start, css.indexOf("}", start));
+    assert.ok(rule.includes(`display:${display} !important;`));
+    assert.ok(rule.includes("visibility:visible !important;"));
+  }
+});

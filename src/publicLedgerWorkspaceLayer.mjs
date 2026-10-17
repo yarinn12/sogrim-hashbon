@@ -21201,6 +21201,272 @@ html.ledger-workspace-v1.circle-design-v1 body #app .new-event-settlement-screen
  white-space: normal !important;
 }
 
+
+/* Approved participants overview: scalable identities and grouped existing actions. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:18px !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading {
+ display:flex !important;
+ align-items:baseline !important;
+ justify-content:space-between !important;
+ flex-wrap:wrap !important;
+ gap:6px 12px !important;
+ padding:0 !important;
+ border:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading h2 {
+ margin:0 !important;
+ font-size:.875rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participants-heading>span {
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-list {
+ gap:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant {
+ display:grid !important;
+ grid-template-columns:44px minmax(0,1fr) 24px !important;
+ grid-template-areas:"avatar copy check" "avatar status check" !important;
+ min-height:56px !important;
+ gap:2px 12px !important;
+ align-items:center !important;
+ margin:0 !important;
+ padding:8px 0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant+.new-event-selected-participant {
+ border-top:1px solid var(--ledger-line) !important;
+ margin-top:8px !important;
+ padding-top:16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant.is-current-participant {
+ grid-template-columns:44px minmax(0,1fr) !important;
+ grid-template-areas:"avatar copy" "avatar status" !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .avatar {
+ grid-area:avatar !important;
+ width:44px !important;
+ min-width:44px !important;
+ height:44px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy {
+ grid-area:copy !important;
+ min-width:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy strong {
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ overflow:visible !important;
+ text-overflow:clip !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-copy .participant-username {
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ overflow:visible !important;
+ text-overflow:clip !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-self,
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-connection-badge {
+ grid-area:status !important;
+ grid-column:auto !important;
+ min-width:0 !important;
+ justify-self:start !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ font-weight:400 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-check {
+ grid-area:check !important;
+ width:24px !important;
+ height:24px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions>h2 {
+ margin:0 !important;
+ font-size:.875rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-actions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:0 !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action {
+ position:relative !important;
+ display:grid !important;
+ grid-template-columns:24px minmax(0,1fr) 16px !important;
+ align-items:center !important;
+ gap:12px !important;
+ width:100% !important;
+ min-width:0 !important;
+ min-height:78px !important;
+ height:auto !important;
+ margin:0 !important;
+ padding:14px 16px !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-ink) !important;
+ text-align:start !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action:first-child {
+ border-radius:12px 12px 0 0 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action:last-child {
+ border-radius:0 0 12px 12px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action+.new-event-participant-route-action::before {
+ content:"" !important;
+ position:absolute !important;
+ top:0 !important;
+ inset-inline:16px !important;
+ height:1px !important;
+ background:var(--ledger-line) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-icon {
+ display:grid !important;
+ place-items:center !important;
+ width:24px !important;
+ height:24px !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ color:var(--ledger-brand) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-icon svg {
+ width:22px !important;
+ height:22px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-copy {
+ display:grid !important;
+ min-width:0 !important;
+ gap:3px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action strong {
+ min-width:0 !important;
+ margin:0 !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-route-action small {
+ display:block !important;
+ min-width:0 !important;
+ margin:0 !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ line-height:1.5 !important;
+ font-weight:400 !important;
+ white-space:normal !important;
+ overflow-wrap:anywhere !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-chevron {
+ display:grid !important;
+ place-items:center !important;
+ width:16px !important;
+ height:20px !important;
+ color:var(--ledger-muted) !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .participant-route-chevron svg {
+ width:16px !important;
+ height:16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer {
+ position:static !important;
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:4px !important;
+ margin:20px 0 0 !important;
+ padding:0 !important;
+ border:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer>.primary-button {
+ width:100% !important;
+ min-width:0 !important;
+ min-height:52px !important;
+ height:auto !important;
+ padding:12px 16px !important;
+ border-radius:12px !important;
+ font-size:1rem !important;
+ font-weight:700 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-footer>.secondary-button {
+ width:100% !important;
+ min-width:0 !important;
+ min-height:44px !important;
+ height:auto !important;
+ margin:0 !important;
+ padding:10px 8px !important;
+ border:0 !important;
+ border-radius:8px !important;
+ background:transparent !important;
+ color:var(--ledger-muted) !important;
+ font-size:.8125rem !important;
+ font-weight:400 !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ box-shadow:none !important;
+}
+
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-participant-additions { margin-block-start:20px !important; }
+
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .avatar {display:grid !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant-self {display:block !important;visibility:visible !important;}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participants-screen:not(.new-event-participant-subscreen) .new-event-selected-participant .participant-connection-badge {display:inline-flex !important;visibility:visible !important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

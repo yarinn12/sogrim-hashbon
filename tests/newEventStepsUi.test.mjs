@@ -199,7 +199,7 @@ test("new event participants offer friends, offline names, and an invite link or
   assert.match(participantsStep, /בחר מחברים/);
   assert.match(participantsStep, /renderParticipantChecks\(newEventDraft\.participantIds, "new-event-participant"\)/);
   assert.match(participantsStep, /הוסף שם ידנית/);
-  assert.match(participantsStep, /הזמן בקישור/);
+  assert.match(participantsStep, /שתף בקישור או QR/);
   assert.match(participantsStep, /משתתפים שנבחרו/);
   assert.match(participantsStep, /new-event-participant-additions/);
   assert.match(participantsStep, /הוספת משתתפים/);

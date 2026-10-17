@@ -927,7 +927,10 @@ test("participant manager keeps the roster calm and moves adding into one focuse
   assert.match(app, /data-action="event-add-guest"/);
   assert.match(addDialog, /renderEventParticipantAddRoutes/);
   assert.match(app, /new-event-participant-actions/);
-  assert.match(app, /new-event-participant-route-action \$\{className\}/);
+  assert.match(app, /renderEventParticipantRouteView\(/);
+  const participantRoute = await readFile("src/ui/eventParticipantRoute.mjs", "utf8");
+  assert.match(participantRoute, /new-event-participant-route-action/);
+  assert.match(participantRoute, /escapeHtml\(className\)/);
   assert.match(app, /הזמן בקישור/);
   assert.match(app, /הוסף שם ידנית/);
   assert.match(app, /participant-add-privacy-note/);

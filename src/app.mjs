@@ -1,3 +1,4 @@
+import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
 import { eventSettlementOptionsView } from "./ui/eventSettlementOptions.mjs";
 import { renderEventDetailsNameFieldView } from "./ui/eventDetailsNameField.mjs";
 import { renderEventCreationProgressView } from "./ui/eventCreationProgress.mjs";
@@ -7076,30 +7077,10 @@ function renderEventShareMenu(event) {
   `;
 }
 
-function renderNewEventParticipantAction({
-  action,
-  icon,
-  title,
-  className = "",
-  pressed = false,
-  view = "",
-  disabled = false,
-  ariaLabel = ""
-}) {
-  return `
-    <button
-      class="new-event-participant-route-action ${className} ${pressed ? "is-active" : ""}"
-      type="button"
-      data-action="${escapeAttribute(action)}"
-      ${view ? `data-participant-view="${escapeAttribute(view)}"` : ""}
-      ${ariaLabel ? `aria-label="${escapeAttribute(ariaLabel)}"` : ""}
-      ${disabled ? "disabled" : ""}
-    >
-      <span class="new-event-participant-route-icon" aria-hidden="true">${iconSvg(icon)}</span>
-      <strong>${escapeHtml(title)}</strong>
-      ${pressed ? '<span class="new-event-participant-route-state">נבחר</span>' : ""}
-    </button>
-  `;
+function renderNewEventParticipantAction({ action, icon, title, hint = "", className = "",
+  pressed = false, view = "", disabled = false, ariaLabel = "" }) {
+  return renderEventParticipantRouteView({ action, title, hint, className, pressed, view,
+    disabled, ariaLabel, iconMarkup: iconSvg(icon), chevronMarkup: iconSvg("chevron-left") });
 }
 
 function renderNewEventSelectedParticipant(participant) {
@@ -7254,20 +7235,21 @@ function renderNewEventParticipants() {
 
       <section class="new-event-participant-additions" aria-labelledby="new-event-additions-title">
         <h2 id="new-event-additions-title">הוספת משתתפים</h2>
-        <p class="muted">שם ידני מיועד לאדם ללא חשבון באפליקציה; הוא לא יקבל גישה לאירוע. כדי שחבר יצטרף מהחשבון שלו, בחרו ״הזמן בקישור״ ושלחו לו את הקישור לאחר שמירת האירוע.</p>
         <div class="new-event-participant-actions" aria-label="דרכים להוספת משתתפים">
           ${renderNewEventParticipantAction({
             action: "create-event-and-open-invite",
             icon: "share",
-            title: createEventBusy ? "מכין הזמנה…" : "הזמן בקישור",
+            title: createEventBusy ? "מכין הזמנה…" : "שתף בקישור או QR",
+            hint: "האירוע ייווצר ואז ייפתח השיתוף.",
             className: "is-primary",
             disabled: createEventBusy || selectedParticipants.length === 0,
-            ariaLabel: "הזמן בקישור. האירוע יישמר תחילה ואז ייפתחו הקישור וקוד ה־QR"
+            ariaLabel: "שתף בקישור או QR. האירוע ייווצר תחילה ואז ייפתחו אפשרויות השיתוף"
           })}
           ${renderNewEventParticipantAction({
             action: "set-new-event-participant-view",
             icon: "users",
             title: "בחר מחברים",
+            hint: "משתתפים שכבר שמורים אצלך.",
             pressed: newEventDraft.participantView === "friends",
             view: "friends"
           })}
@@ -7275,6 +7257,7 @@ function renderNewEventParticipants() {
             action: "set-new-event-participant-view",
             icon: "user-plus",
             title: "הוסף שם ידנית",
+            hint: "ללא חשבון וללא גישה לאירוע.",
             pressed: newEventDraft.participantView === "manual",
             view: "manual"
           })}
@@ -7284,7 +7267,7 @@ function renderNewEventParticipants() {
 
       <div class="new-event-participant-footer">
         <button class="primary-button" type="button" data-action="create-event" ${selectedParticipants.length && !createEventBusy ? "" : "disabled"}>${escapeHtml(createEventBusy ? "שומר…" : createLabel)}</button>
-        <button class="secondary-button" type="button" data-action="cancel-new-event-participants">חזרה לפרטים</button>
+        <button class="secondary-button" type="button" data-action="cancel-new-event-participants">חזרה</button>
       </div>
     </section>
   `;

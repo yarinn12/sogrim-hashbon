@@ -2940,3 +2940,61 @@ test("AX summary actions keep whole labels and reachable controls at phone width
     await expect(page.locator('.settlement-stage-heading')).toBeInViewport();
   }
 });
+
+
+test("new event participants keep enlarged identity text, contextual routes and draft selection", async ({ page }, testInfo) => {
+  await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto("/");
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    // Reset the previous in-app preference before simulating system text at boot.
+    if (rootSize === 32) await page.goto("/?dynamic-type-preview=32");
+    await expect(page.locator('html')).toHaveCSS('font-size', `${rootSize}px`);
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    const screen = page.locator('.new-event-participants-screen:not(.new-event-participant-subscreen)');
+    const guestName = `משתתף בדיקה עם שם ארוך ${rootSize}`;
+    await screen.locator('[data-participant-view="manual"]').click();
+    await page.getByRole('textbox', { name: 'שם המשתתף', exact: true }).fill(guestName);
+    await page.locator('[data-action="close-new-event-participant-view"]').click();
+    await expect(screen.locator('.new-event-selected-participant-copy strong').filter({ hasText: guestName })).toBeVisible();
+    await expect(screen.locator('[data-action="create-event-and-open-invite"] small')).toContainText('האירוע ייווצר');
+    await expect(screen.locator('[data-participant-view="manual"] small')).toContainText('ללא גישה לאירוע');
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const layout = await screen.evaluate(node => {
+        const text = [...node.querySelectorAll('.new-event-selected-participant-copy strong,.new-event-selected-participants-heading>span,.new-event-participant-route-action strong,.new-event-participant-route-action small')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange();
+          range.selectNodeContents(element);
+          return { text: element.textContent.trim(), font: parseFloat(getComputedStyle(element).fontSize), visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        });
+        const targets = [...node.querySelectorAll('button,[role="button"],label:has(input)')].map(element => {
+          const rect = element.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        });
+        return { text, targets, client: document.documentElement.clientWidth, document: document.documentElement.scrollWidth };
+      });
+      expect(layout.document).toBeLessThanOrEqual(layout.client);
+      expect(layout.text.every(t => t.visible && t.fits)).toBe(true);
+      for (const leaf of layout.text) expect(leaf.font).toBeGreaterThanOrEqual(13 * rootSize / 16 - .01);
+      for (const target of layout.targets) {
+        expect(target.width).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+      }
+      await expect(screen.locator('.new-event-selected-participant-self')).toBeVisible();
+      await expect(screen.locator('.new-event-selected-participant .participant-connection-badge').last()).toBeVisible();
+      await assertNewEventActionReachable(page, '[data-action="create-event"]', `${width}/${rootSize} participants`);
+      await screen.locator('[data-action="create-event"]').click({ trial: true });
+    }
+    await page.getByRole('button', { name: 'הגדרות חשבון', exact: true }).click();
+    await page.getByRole('button', { name: 'המשך למשתתפים', exact: true }).click();
+    await expect(screen.locator('.new-event-selected-participant-copy strong').filter({ hasText: guestName })).toBeVisible();
+    await testInfo.attach(`participants-${rootSize}`, { body: await page.screenshot(), contentType: 'image/png' });
+  }
+});

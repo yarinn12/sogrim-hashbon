@@ -56,6 +56,7 @@ const CACHE_FILES = [
   "/src/ui/eventCreationProgress.mjs",
   "/src/ui/eventDetailsNameField.mjs",
   "/src/ui/eventSettlementOptions.mjs",
+  "/src/ui/eventParticipantRoute.mjs",
   "/src/ui/primaryNavigationState.mjs",
   "/src/ui/dynamicTypeNavigation.mjs",
   "/src/ui/eventPressGesture.mjs",
