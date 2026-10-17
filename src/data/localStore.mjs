@@ -156,7 +156,26 @@ async function loadCloudState(config, fallbackState, options = {}) {
   );
 }
 
-async function saveCloudStateWithRetry(config, state) {
+// A private edit may advance while older shared deliveries remain blocked.
+// Use the last acknowledged personal copies of those events, never their
+// rejected optimistic payloads. Apply the fence again on each CAS retry.
+function preservePersonalEventCopies(base, candidate, eventIds) {
+  if (!eventIds?.length) return candidate;
+  const held = new Set(eventIds);
+  return {
+    ...candidate,
+    events: [
+      ...(candidate.events ?? []).filter(event => !held.has(event.id)),
+      ...(base?.events ?? []).filter(event => held.has(event.id))
+    ],
+    deletedEvents: [
+      ...(candidate.deletedEvents ?? []).filter(event => !held.has(event.id)),
+      ...(base?.deletedEvents ?? []).filter(event => held.has(event.id))
+    ]
+  };
+}
+
+async function saveCloudStateWithRetry(config, state, { preserveEventIds = [] } = {}) {
   return withFreshCloudAccount(config, async (freshConfig) => {
     let expectedVersion = "";
     const readLatestForWrite = async () => {
@@ -169,8 +188,13 @@ async function saveCloudStateWithRetry(config, state) {
     const baseState = cached ? cached.state : await readLatestForWrite();
     // A background read may be newer than the open editor. Its version only
     // belongs to the payload it returned, not to this older local draft.
+    const mergeForPersonalWrite = (base, candidate) => mergeSharedStates(
+      base, preservePersonalEventCopies(base, candidate, preserveEventIds)
+    );
     return saveCloudStateWithConflictRetry({
-      state: baseState ? mergeSharedStates(baseState, state) : state,
+      state: baseState ? mergeForPersonalWrite(baseState, state)
+        : preservePersonalEventCopies(null, state, preserveEventIds),
+      mergeStates: mergeForPersonalWrite,
       loadLatest: readLatestForWrite,
       save: (candidate) => saveCloudStateRequest(
         freshConfig, candidate, globalThis.fetch, { expectedVersion }
@@ -179,7 +203,7 @@ async function saveCloudStateWithRetry(config, state) {
   });
 }
 
-async function syncAndPersistCloudStateOnce(config, state, syncSelection = null, sharedWriteAlreadyConfirmed = false) {
+async function syncAndPersistCloudStateOnce(config, state, syncSelection = null, sharedWriteAlreadyConfirmed = false, allowPersonalProgress = false) {
   const prioritizeSharedEventWrite = Boolean(
     syncSelection &&
     (
@@ -201,13 +225,11 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null,
       : state;
   } catch (error) {
     if (!error?.partialSharedState?.state ||
-        !error.partialSharedState.succeededEventIds?.length) throw error;
-    // A wholly rejected shared write has no committed progress to mirror.
-    // Copying its optimistic payload into the personal cloud would resurrect
-    // a rejected event on reload, even after the local rollback cleared it.
-    // A broken sibling must not freeze personal-only changes or discard the
-    // healthy events' merged state. Still rethrow after this best-effort save:
-    // personal persistence is not proof that all shared changes were delivered.
+        (!error.partialSharedState.succeededEventIds?.length && !allowPersonalProgress)) throw error;
+    // A wholly rejected current shared edit cannot advance the workspace.
+    // A private-only request can still save independently of an older outbox;
+    // fence every failed event below so rejected intent stays local and queued.
+    // Personal persistence never acknowledges those shared deliveries.
     deferredSharedFailure = error;
     syncedState = error.partialSharedState.state;
   }
@@ -215,7 +237,9 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null,
   try {
     initialSave = await saveCloudStateWithRetry(
       config,
-      toCloudState(config, syncedState)
+      toCloudState(config, syncedState),
+      { preserveEventIds: allowPersonalProgress
+        ? deferredSharedFailure?.partialSharedState?.failedEventIds ?? [] : [] }
     );
   } catch (error) {
     if (deferredSharedFailure) {
@@ -236,6 +260,7 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null,
     // a confirmed group's invitation proceed while rejected siblings stay
     // pending; it is not acknowledgement of those siblings' shared writes.
     deferredSharedFailure.personalWorkspacePersisted = true;
+    deferredSharedFailure.personalOnlyProgress = allowPersonalProgress;
     throw deferredSharedFailure;
   }
 
@@ -289,10 +314,11 @@ async function syncAndPersistCloudStateOnce(config, state, syncSelection = null,
 async function syncAndPersistCloudState(
   config,
   state,
-  syncSelection = null
+  syncSelection = null,
+  { allowPersonalProgress = false } = {}
 ) {
   try {
-    return await syncAndPersistCloudStateOnce(config, state, syncSelection);
+    return await syncAndPersistCloudStateOnce(config, state, syncSelection, false, allowPersonalProgress);
   } catch (error) {
     if (!isTransientSyncFailure(error)) throw error;
     const selectedIds = [
@@ -310,7 +336,7 @@ async function syncAndPersistCloudState(
     await new Promise((resolve) => setTimeout(resolve, 350));
     try {
       return await syncAndPersistCloudStateOnce(
-        config, retryState, selectionWithPermanentFailures(syncSelection, error), sharedWriteAlreadyConfirmed
+        config, retryState, selectionWithPermanentFailures(syncSelection, error), sharedWriteAlreadyConfirmed, allowPersonalProgress
       );
     } catch (retryError) {
       if (hasPriorProgress && !retryError.sharedEventPersisted) {
@@ -1199,6 +1225,10 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
       error: new Error("State does not belong to the active account")
     };
   }
+  const requestedSyncSelection = buildSharedEventSyncSelection(previousState, cleanState, {
+    forceParticipantIds: forceSharedParticipantIds,
+    forceEventIds: forceSharedEventIds
+  });
   const priorPendingConfig = pendingSyncConfig(LOCAL_RUNTIME_CONFIG);
   const priorPendingPayload = priorPendingConfig ? pendingSharedStateRaw(priorPendingConfig) : null;
   if (priorPendingConfig && priorPendingPayload) {
@@ -1207,11 +1237,10 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
     // otherwise a newer snapshot can queue an empty sibling before its ACK.
     cleanState = mergePendingEventIntent(priorPendingConfig, cleanState);
   }
+  const allowPersonalProgress = Boolean(priorPendingPayload &&
+    !requestedSyncSelection.eventIds.length && !requestedSyncSelection.deletedEventIds.length);
   const syncSelection = mergeSharedSyncSelections(
-    buildSharedEventSyncSelection(previousState, cleanState, {
-      forceParticipantIds: forceSharedParticipantIds,
-      forceEventIds: forceSharedEventIds
-    }),
+    requestedSyncSelection,
     priorPendingConfig ? pendingSharedStateSelection(priorPendingConfig) : null
   );
   const hasSharedEventMutation = Boolean(
@@ -1317,7 +1346,8 @@ async function saveSharedStateToCompletion(state, options, onDurableStart, mayNo
             (freshRuntimeConfig) => syncAndPersistCloudState(
               freshRuntimeConfig,
               sharedState,
-              syncSelection
+              syncSelection,
+              { allowPersonalProgress }
             )
           );
           // Re-read durable identity after I/O, before *any* local mutation,
@@ -1715,7 +1745,8 @@ function partialSharedSyncState(error) {
   // without making successful group writes pending again after restart.
   if (error?.sharedEventPersisted && error.persistedState) return error.persistedState;
   const partial = error?.partialSharedState;
-  return partial?.succeededEventIds?.length ? partial.state : null;
+  return partial?.succeededEventIds?.length ||
+    (error?.personalOnlyProgress && error?.personalWorkspacePersisted) ? partial?.state : null;
 }
 
 function adoptPartialSharedSyncState(error, {

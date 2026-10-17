@@ -9,8 +9,9 @@ const headers = { "access-control-allow-origin": "*",
   "access-control-allow-headers": "authorization, apikey, content-type, prefer, x-space-key",
   "access-control-allow-methods": "GET, POST, PATCH, OPTIONS" };
 
-for (const mode of ["slow", "rejected", "old-rejected"]) {
-test(`connected event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
+for (const mode of ["slow", "rejected", "old-rejected", "personal-old-rejected"]) {
+test(`${mode === "personal-old-rejected" ? "personal" : "connected"} event creation stays usable with ${mode} cloud publication`, async ({ page }, testInfo) => {
+  const personalCreation = mode === "personal-old-rejected";
   const version = new Date().toISOString();
   const profiles = [owner, peer].map((id, index) => ({ user_id: id,
     display_name: index ? "חבר לבדיקה" : "משתמש בדיקה", username: index ? "qa_peer" : "qa_owner",
@@ -20,7 +21,7 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     avatarPreset: "avatar-1", kind: "user", accountLinked: true, profileUpdatedAt: version
   })), events: [], groups: [], friendContacts: [], deletedEvents: [], deletedParticipants: [] };
   const oldEventId = "old-rejected-event", oldSpaceId = "old-rejected-space";
-  if (mode === "old-rejected") initial.events.push({
+  if (mode.endsWith("old-rejected")) initial.events.push({
     id: oldEventId, name: "קבוצה ישנה עם שינוי ממתין", eventType: "standard", currency: "ILS", createdAt: version,
     participantIds: [`account-${owner}`], adminIds: [`account-${owner}`], createdByParticipantId: `account-${owner}`,
     sharedSpaceId: oldSpaceId, sharedSpaceKey: "old-rejected-space-key-long-enough-123456", expenses: [], transfers: [],
@@ -31,7 +32,8 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     user_metadata: { full_name: profiles[0].display_name, username: "qa_owner", account_space_id: spaceId, account_space_key: spaceKey } };
   let personal = { id: spaceId, state: structuredClone(initial), updated_at: version };
   const canonical = new Map(); let creates = 0, notifications = 0;
-  if (mode === "old-rejected") canonical.set(oldSpaceId, { id: oldSpaceId,
+  if (personalCreation) personal.state.events[0].notes = [];
+  if (mode.endsWith("old-rejected")) canonical.set(oldSpaceId, { id: oldSpaceId,
     state: { ...structuredClone(initial), events: [{ ...structuredClone(initial.events[0]), notes: [] }] }, updated_at: version });
   let release; const gate = new Promise(resolve => { release = resolve; });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
@@ -93,7 +95,7 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     localStorage.setItem("settle-friends-cloud-space", spaceId);
     localStorage.setItem(`settle-friends-cloud-key:${spaceId}`, spaceKey);
     localStorage.setItem(`settle-friends-state:${spaceId}`, JSON.stringify(initial));
-    if (mode === "old-rejected") localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(initial));
+    if (mode.endsWith("old-rejected")) localStorage.setItem(`settle-friends-pending-sync:${spaceId}`, JSON.stringify(initial));
     localStorage.setItem(`settle-friends-current-participant:account:${user.id}`, `account-${user.id}`);
     localStorage.setItem(`settle-friends-local-profile:account:${user.id}`, JSON.stringify({ participantId: `account-${user.id}`, displayName: user.user_metadata.full_name,
       username: "qa_owner", avatarPreset: "avatar-1", authProvider: "google", authSubject: user.id, email: user.email }));
@@ -107,12 +109,36 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
     await page.locator('[data-action="new-event-name"]').fill("בדיקת יצירה עם חבר");
     await page.locator('[data-action="open-new-event-settlement"]').click();
     await page.locator('[data-action="open-new-event-participants"]').click();
-    await page.locator('[data-action="set-new-event-participant-view"][data-participant-view="friends"]').click();
-    await page.locator(`label[data-action="toggle-new-event-participant"][data-participant-id="account-${peer}"] .participant-pill-name`).click();
-    await expect(page.locator(`[data-action="new-event-participant"][data-participant-id="account-${peer}"]`)).toBeChecked();
-    await page.locator('[data-action="close-new-event-participant-view"]').click();
+    if (!personalCreation) {
+      await page.locator('[data-action="set-new-event-participant-view"][data-participant-view="friends"]').click();
+      await page.locator(`label[data-action="toggle-new-event-participant"][data-participant-id="account-${peer}"] .participant-pill-name`).click();
+      await expect(page.locator(`[data-action="new-event-participant"][data-participant-id="account-${peer}"]`)).toBeChecked();
+      await page.locator('[data-action="close-new-event-participant-view"]').click();
+    }
     const startedAt = performance.now();
     await page.locator('[data-action="create-event"]').click();
+    if (personalCreation) {
+      const eventScreen = page.locator('[data-screen-kind="event"][data-event-id]');
+      await expect(eventScreen).toBeVisible({ timeout: 3_000 });
+      const eventId = await eventScreen.getAttribute("data-event-id");
+      await expect.poll(() => personal.state.events.some(event => event.id === eventId)).toBe(true);
+      const committed = personal.state.events.find(event => event.id === eventId);
+      expect(committed.participantIds).toEqual([`account-${owner}`]);
+      expect(committed.sharedSpaceId).toBeFalsy();
+      expect(creates).toBe(0); expect(notifications).toBe(0);
+      expect(personal.state.events.find(event => event.id === oldEventId).notes).toEqual([]);
+      const retained = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
+      expect(retained.events.find(event => event.id === oldEventId).notes).toEqual(initial.events[0].notes);
+      expect(retained.__pendingSync.selection.eventIds).toEqual([oldEventId]);
+      expect(canonical.get(oldSpaceId).state.events[0].notes).toEqual([]);
+      await page.screenshot({ path: testInfo.outputPath("personal-created-with-old-permission-failure.png"), fullPage: true });
+      await page.locator('[data-nav-destination="home"]').click();
+      await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
+      await page.locator(`[data-action="open-event"][data-event-id="${eventId}"]`).first().click();
+      await expect(eventScreen).toBeVisible();
+      expect(errors).toEqual([]);
+      return;
+    }
     await expect.poll(() => creates).toBeGreaterThan(0);
     if (mode === "rejected") {
       await expect(page.locator('[data-event-creation-step="settlement"]')).toBeVisible();
@@ -131,7 +157,7 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
       expect(queuedEvent).toBeTruthy();
       expect(queuedEvent.sharedSpaceId).toBeTruthy(); expect(queuedEvent.sharedSpaceKey).toBeTruthy();
       expect(queuedEvent.participantIds).toContain(`account-${peer}`);
-      expect(notifications).toBe(0); expect(canonical.size).toBe(mode === "old-rejected" ? 1 : 0);
+      expect(notifications).toBe(0); expect(canonical.size).toBe(mode.endsWith("old-rejected") ? 1 : 0);
       await page.screenshot({ path: testInfo.outputPath("created-with-sync-pending.png"), fullPage: true });
       // Usable navigation while the actual canonical request is still held.
       await page.locator('[data-nav-destination="home"]').click();
@@ -139,9 +165,9 @@ test(`connected event creation stays usable with ${mode} cloud publication`, asy
       release();
       await expect.poll(() => personal.state.events.some(event => event.id === eventId)).toBe(true);
       await expect.poll(() => notifications).toBeGreaterThan(0);
-      expect(canonical.size).toBe(mode === "old-rejected" ? 2 : 1); expect(creates).toBe(1);
+      expect(canonical.size).toBe(mode.endsWith("old-rejected") ? 2 : 1); expect(creates).toBe(1);
       await expect(page.locator('[data-screen-kind="home"]')).toBeVisible();
-      if (mode === "old-rejected") {
+      if (mode.endsWith("old-rejected")) {
         const retained = await page.evaluate(spaceId => JSON.parse(localStorage.getItem(`settle-friends-pending-sync:${spaceId}`)), spaceId);
         expect(retained.events.find(event => event.id === oldEventId).notes).toEqual(initial.events[0].notes);
         expect(retained.__pendingSync.selection.eventIds).toEqual([oldEventId]);
