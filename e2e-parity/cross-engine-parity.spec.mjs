@@ -436,6 +436,21 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     const notesTab = page.locator('[data-action="open-event-notes"]:visible').first();
     if (scenario.label === 'landscape-667-32px') {
       await notesTab.scrollIntoViewIfNeeded();
+      // WebKit can center this tab partly behind the fixed bottom navigation.
+      // Use the same ordinary scroll a user would make; retain the full-tab,
+      // fixed-controls and real-hit assertions below without forcing a click.
+      const extraScroll=await notesTab.evaluate(element=>{
+        const bounds=element.getBoundingClientRect();
+        const navigationTop=document.querySelector('.product-app-nav')?.getBoundingClientRect().top??innerHeight;
+        return bounds.bottom>navigationTop+1?bounds.bottom-navigationTop+8:0;
+      });
+      if(extraScroll>0){
+        await page.mouse.move(scenario.viewport.width/2,scenario.viewport.height/2);
+        await page.mouse.wheel(0,extraScroll);
+      }
+      await testInfo.attach(`${name}-ordinary-notes-scroll`,{
+        body:JSON.stringify({extraScroll,input:'ordinary mouse wheel'}),contentType:'application/json'
+      });
       await expect.poll(() => notesTab.evaluate(element => {
         const bounds = element.getBoundingClientRect();
         const route = document.querySelector('.product-route-controls')?.getBoundingClientRect();
