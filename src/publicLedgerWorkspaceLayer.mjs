@@ -21930,6 +21930,121 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
 }
 
 
+
+  /* Approved amount entry: one quiet step caption and a single amount/currency group.
+     Scope the leaf fonts above the generic enlarged-input rules; otherwise the
+     normal38px numeric field shrinks to1rem when system text is enlarged. */
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header .eyebrow {
+    display: block !important;
+    margin: 0 0 4px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    color: var(--ledger-muted) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-size: .8125rem !important;
+    font-weight: 400 !important;
+    line-height: 1.4 !important;
+    white-space: normal !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+    gap: 16px !important;
+    padding-block-start: 24px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 16px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field .currency-input-badge {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"] {
+    min-width: 0 !important;
+    width: 100% !important;
+    min-height: max(72px, 3.25rem) !important;
+    font-size: 2.375rem !important;
+    line-height: 1.15 !important;
+    padding-block: 4px !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-total-field input[data-action="expense-total"]::placeholder {
+    font-size: inherit !important;
+    line-height: inherit !important;
+  }
+
+  html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+    scrollbar-gutter: stable both-edges !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field {
+    width: min(100%, 400px) !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 8px 12px !important;
+    margin: 0 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field > span {
+    font-size: .8125rem !important;
+    line-height: 1.5 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field .app-choice-trigger {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    min-height: 48px !important;
+    font-size: .875rem !important;
+    line-height: 1.4 !important;
+  }
+
+  html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-source-currency-field .app-choice-trigger-copy {
+    min-width: 0 !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  @media (max-width: 1366px) {
+    /* Percent follows the available scrollport;100vw includes a classic scrollbar. */
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step="amount"]) {
+      width: auto !important;
+      max-width: 100% !important;
+    }
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+    }
+  }
+
+
+  @media (orientation: landscape) and (max-height: 450px) and (max-width: 1024px) {
+    /* Preserve the existing short-landscape header rather than restoring its caption. */
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header .eyebrow {
+      display: none !important;
+    }
+    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-flow-body {
+      padding-block-start: 8px !important;
+    }
+  }
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

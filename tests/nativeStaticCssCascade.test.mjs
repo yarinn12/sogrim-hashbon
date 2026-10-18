@@ -320,3 +320,35 @@ test("native action dock anchors the total and sizes its button for a single lab
   assert.match(fullRule(large),/width: 100% !important/);
   assert.match(fullRule(large),/min-width: 0 !important/);
 });
+
+
+test("native amount entry retains scalable numeric and label glyphs with a viewport-bound panel", async () => {
+  const {extractNativeStaticCss,files}=await harness();
+  await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+  const css=files.get(join('fixture-assets','native-layers.css'));
+  const prefix='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"]';
+  const rule=selector=>{
+    const start=css.lastIndexOf(prefix+selector+' {');
+    assert.ok(start>=0,`Amount screen needs an extractable native rule for ${selector||'panel'}`);
+    return css.slice(start,css.indexOf('}',start));
+  };
+  assert.match(rule(' .expense-total-field input[data-action="expense-total"]'),/font-size: 2\.375rem !important/,
+    'generic enlarged-input rules must not reduce the numeric font below its normal38px');
+  for(const leaf of [' .expense-total-field > span',' .expense-source-currency-field > span']) {
+    assert.match(rule(leaf),/font-size: \.8125rem !important/,'fixed12.5px labels ignore system text enlargement');
+  }
+  assert.match(rule(' .expense-total-field .currency-input-badge'),/font-size: inherit !important/);
+  assert.match(rule(' .expense-total-field input[data-action="expense-total"]::placeholder'),/font-size: inherit !important/);
+  const captionStart=css.indexOf(prefix+' .expense-modal-step-header .eyebrow {');
+  assert.ok(captionStart>=0);
+  assert.match(css.slice(captionStart,css.indexOf('}',captionStart)),/background: transparent !important/);
+  assert.match(rule(' .expense-modal-step-header .eyebrow'),/display: none !important/,
+    'short-landscape rules must retain the existing compact header');
+  assert.match(rule(' .expense-source-currency-field'),/flex-wrap: wrap !important/);
+  assert.match(rule(''),/width: 100% !important/,'100vw shifts the panel outside a scrollbar-reduced viewport');
+  const backdrop='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step="amount"])';
+  const start=css.lastIndexOf(backdrop+' {');
+  assert.ok(start>=0);
+  assert.match(css.slice(start,css.indexOf('}',start)),/width: auto !important/,
+    'short landscape must also constrain the fixed backdrop, not only its panel');
+});

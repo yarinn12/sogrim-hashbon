@@ -1,3 +1,4 @@
+import measureExpenseAmount from "./helpers/expenseAmountPresentation.mjs";
 import measureEventActionDock from "./helpers/eventActionDock.mjs";
 import measureExpenseDisclosure from "./helpers/expenseDisclosure.mjs";
 import measureEventMain from "./helpers/eventMainPresentation.mjs";
@@ -781,5 +782,59 @@ test(LARGE_ACTION_DOCK_TEST, async ({page})=>{
       }
       expect(dock.labelLines,context).toBe(1);
     }
+  }
+});
+
+
+test("expense amount scales actual leaf fonts and retains a usable currency group", async ({page}) => {
+  for(const root of [16,20,32]) {
+    await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});
+    await openEvent(page,OPEN_EVENT);
+    await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
+    const dialog=page.locator('.expense-step-modal[data-expense-step="amount"]');
+    await expect(dialog).toBeVisible();
+    await page.evaluate(()=>document.fonts.ready);
+    for(const width of [320,393,411]) {
+      await page.setViewportSize({width,height:852});
+      const result=await page.evaluate(measureExpenseAmount);
+      const context=`${width}px/root${root}`;
+      expect(result.width,context).toBe(width);
+      expect(result.root,context).toBe(root);
+      expect(result.inputFont,context+': amount must enlarge, not reset to1rem').toBeCloseTo(root*2.375,1);
+      expect(result.placeholderFont,context+': empty-field digits must enlarge too').toBeCloseTo(root*2.375,1);
+      expect(result.labelFont,context+': amount label must enlarge').toBeCloseTo(root*.8125,1);
+      expect(result.currencyLabelFont,context+': currency label must enlarge').toBeCloseTo(root*.8125,1);
+      expect(result.currencyValueFont,context+': currency value must enlarge').toBeCloseTo(root*.875,1);
+      expect(result.captionBackground,context).toBe('rgba(0, 0, 0, 0)');
+      for(const key of ['labelGlyphsFit','currencyLabelGlyphsFit','currencyValueGlyphsFit','nextGlyphsFit',
+        'noHorizontalOverflow','modalFits','symmetricFieldInsets','amountThenCurrency','nextAboveNav','fieldAlignedWithCurrency','nextCenterHits']) {
+        expect(result[key],context+': '+key).toBe(true);
+      }
+      expect(result.currencyGap,context).toBeGreaterThanOrEqual(8);
+      expect(result.currencyGap,context).toBeLessThanOrEqual(20);
+      expect(result.next.height,context).toBeGreaterThanOrEqual(44);
+      expect(result.trigger.height,context).toBeGreaterThanOrEqual(44);
+      await dialog.getByLabel('מטבע ההוצאה',{exact:true}).scrollIntoViewIfNeeded();
+      expect((await page.evaluate(measureExpenseAmount)).currencyCenterHits,context+': currency reachable after scroll').toBe(true);
+    }
+    if(root===32) {
+      await page.setViewportSize({width:844,height:390});
+      await expect(dialog.locator('.eyebrow')).toBeHidden();
+      expect((await page.evaluate(measureExpenseAmount)).modalFits,'short landscape panel stays in viewport').toBe(true);
+      await assertTappable(page,dialog.getByRole('textbox',{name:'סכום כולל ₪',exact:true}),'short landscape amount');
+      await assertTappable(page,dialog.getByLabel('מטבע ההוצאה',{exact:true}),'short landscape currency');
+      await assertTappable(page,dialog.getByRole('button',{name:'המשך לשם ההוצאה',exact:true}),'short landscape next');
+      await page.setViewportSize({width:411,height:852});
+    }
+    await dialog.getByRole('button',{name:'המשך לשם ההוצאה',exact:true}).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('יש להזין סכום גדול מאפס.',{exact:true})).toBeVisible();
+    await dialog.getByRole('textbox',{name:'סכום כולל ₪',exact:true}).fill('123.45');
+    await dialog.getByRole('button',{name:'המשך לשם ההוצאה',exact:true}).click();
+    await expect(page.locator('.expense-step-modal[data-expense-step="name"]')).toBeVisible();
+    await page.getByRole('button',{name:'חזרה לשלב הקודם',exact:true}).click();
+    await expect(dialog.getByRole('textbox',{name:'סכום כולל ₪',exact:true})).toHaveValue('123.45');
+    await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
+    await expect(page.locator('.expense-row')).toHaveCount(1);
   }
 });
