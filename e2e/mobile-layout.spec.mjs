@@ -1795,7 +1795,7 @@ test("core mobile journey remains readable, reachable and correctly layered", as
   await expect(firstExpenseDisclosure).toHaveAttribute("aria-expanded", "true");
   await expect(firstExpenseParticipants).toHaveAttribute("open", "");
   await expect(firstExpenseParticipants.locator(".expense-participants-list-title"))
-    .toHaveText("רשימת משתתפים");
+    .toHaveText("מתחלקים בהוצאה");
   const currentExpenseParticipant = firstExpenseParticipants.locator(
     ".expense-participant-item.is-current"
   );

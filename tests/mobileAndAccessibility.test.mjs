@@ -124,7 +124,12 @@ test("expense row edit and delete actions keep comfortable mobile touch targets"
 });
 
 test("reduced motion is honoured in the active design layer", () => {
-  const reduced = ledger.slice(ledger.lastIndexOf("@media (prefers-reduced-motion: reduce)"));
+  // Locate the shared rule, not whichever scoped reduced-motion block is last.
+  const shared = ledger.lastIndexOf("html.ledger-workspace-v1 *,");
+  assert.ok(shared >= 0);
+  const media = ledger.lastIndexOf("@media (prefers-reduced-motion: reduce)", shared);
+  assert.ok(media >= 0);
+  const reduced = ledger.slice(media, ledger.indexOf("}", shared) + 1);
 
   assert.match(reduced, /animation-duration: 1ms !important;/);
   assert.match(reduced, /transition-duration: 1ms !important;/);

@@ -1,3 +1,4 @@
+import measureExpenseDisclosure from "./helpers/expenseDisclosure.mjs";
 import measureEventMain from "./helpers/eventMainPresentation.mjs";
 import { expect, test } from "@playwright/test";
 import { openTypographyHome } from "./helpers/typographyReadiness.mjs";
@@ -686,5 +687,59 @@ test("event balance and expense total stay explained, aligned and scalable", asy
     await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
     await page.locator('[data-action="back-to-event"]:visible').first().click();
     await expect(page.locator(".event-action-total")).toContainText("סה״כ הוצאות");
+  }
+});
+
+
+test("expense disclosure cue and command labels fit at normal and enlarged sizes", async ({ page }) => {
+  for(const enlarged of [false,true]) {
+    await openTypographyHome(page,{path:enlarged ? '/?dynamic-type-preview=32' : '/'});
+    await openEvent(page,OPEN_EVENT);
+    const row=page.locator(`.expense-row[data-expense-id="${EXPENSE}"]`);
+    const trigger=row.locator('.expense-row-main');
+    const menuTrigger=row.locator('.expense-row-actions-menu > summary');
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded','true');
+    await expect(row.locator('.expense-participants-list-title')).toHaveText('מתחלקים בהוצאה');
+    for(const width of [320,393,411]) {
+      await page.setViewportSize({width,height:852});
+      await page.evaluate(()=>document.fonts.ready);
+      await menuTrigger.click();
+      await expect(row.locator('.expense-row-actions-menu')).toHaveAttribute('open','');
+      const result=await page.evaluate(measureExpenseDisclosure);
+      const context=width+'px/'+result.rootFont;
+      expect(result.noHorizontalOverflow,context).toBe(true);
+      for(const item of result.rows) {
+        for(const field of ['titleFits','iconPresent','iconInsideMain'])expect(item[field],context+' '+field).toBe(true);
+        expect(item.titleIconGap,context).toBeGreaterThanOrEqual(5.9);
+        expect(item.caption).toBe('מתחלקים בהוצאה');
+        expect(Math.abs(item.dots.dx),context).toBeLessThanOrEqual(1);
+        expect(Math.abs(item.dots.dy),context).toBeLessThanOrEqual(1);
+        expect(item.dots.width,context).toBeGreaterThanOrEqual(43.99);
+        expect(item.dots.height,context).toBeGreaterThanOrEqual(43.99);
+      }
+      expect(result.menus).toHaveLength(1);
+      const menu=result.menus[0];
+      expect(menu.insideViewport,context).toBe(true);
+      expect(menu.aboveNavigation,context).toBe(true);
+      if(enlarged)expect(menu.width,context).toBeGreaterThan(166);
+      else expect(menu.width,context).toBeCloseTo(166,0);
+      for(const button of menu.buttons) {
+        expect(button.glyphsFit,context+' '+button.text).toBe(true);
+        expect(button.lines,context+' '+button.text).toBe(1);
+        expect(button.height,context).toBeGreaterThanOrEqual(43.99);
+        if(enlarged)expect(Number.parseFloat(button.font),context).toBeGreaterThanOrEqual(27);
+      }
+      await menuTrigger.press('Escape');
+      await expect(row.locator('.expense-row-actions-menu')).not.toHaveAttribute('open','');
+    }
+    const opened=await page.evaluate(measureExpenseDisclosure);
+    await trigger.click();
+    await expect(trigger).toHaveAttribute('aria-expanded','false');
+    await expect(row.locator('.expense-row-expand-icon')).not.toHaveCSS('transform',opened.rows[0].iconTransform);
+    const closed=await page.evaluate(measureExpenseDisclosure);
+    expect(closed.rows[0].expanded).toBe(false);
+    expect(closed.rows[0].iconTransform).not.toBe(opened.rows[0].iconTransform);
+    await expect(row.locator('.expense-participants-details')).not.toHaveAttribute('open','');
   }
 });

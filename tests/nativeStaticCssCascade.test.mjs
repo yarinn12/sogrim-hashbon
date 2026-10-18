@@ -268,3 +268,24 @@ test("native manual participant form retains scalable labeled input and full-wid
     for (const declaration of declarations) assert.ok(rule.includes(declaration), declaration);
   }
 });
+
+
+test("native expense disclosure keeps its state cue and text-scaled menu width", async () => {
+  const ledger = resolve("src/publicLedgerWorkspaceLayer.mjs");
+  const { extractNativeStaticCss, files } = await harness();
+  const paths = await extractNativeStaticCss([{ path: ledger }], "fixture-assets");
+  assert.ok(paths.has(ledger));
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix='html.ledger-workspace-v1.design-coherence-v1 body #app .screen[data-screen-kind="event"] ';
+  const rule=selector=>{
+    const start=css.indexOf(prefix+selector+' {');
+    assert.ok(start>=0, `Missing native expense rule: ${selector}`);
+    return css.slice(start,css.indexOf('}',start));
+  };
+  assert.match(rule('.expense-row-title-text'),/overflow-wrap: anywhere !important/);
+  assert.match(rule('.expense-row-expand-icon'),/transform: rotate\(-90deg\)/);
+  assert.match(rule('.expense-row-main[aria-expanded="true"] .expense-row-expand-icon'),/transform: rotate\(90deg\)/);
+  assert.match(rule('.expense-row-actions-menu[open] > div'),
+    /width: clamp\(166px, 10\.375rem, calc\(100vw - 32px\)\) !important/,
+    'a fixed166px menu forces all enlarged command labels onto two lines');
+});

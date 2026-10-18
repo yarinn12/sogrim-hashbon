@@ -1,3 +1,4 @@
+import { renderExpenseTitleView, renderExpenseParticipantsHeadingView } from "./ui/expenseDisclosure.mjs";
 import { renderEventActionDockView, renderEventPersonalBalanceView } from "./ui/eventFinancialCards.mjs";
 import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
 import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
@@ -9869,7 +9870,7 @@ function renderExpenseRow(event, expense) {
         aria-expanded="false"
         aria-controls="expense-participants-${escapeAttribute(expense.id)}"
       >
-        <strong>${escapeHtml(expense.name)}</strong>
+        ${renderExpenseTitleView({ name: expense.name })}
         <span class="expense-paid-by">
           <span class="expense-paid-by-label">${expense.payers.length === 1 ? "שילם:" : "שילמו:"}</span>
           <span class="expense-paid-by-list">
@@ -9910,7 +9911,7 @@ function renderExpenseRow(event, expense) {
         </summary>
         ${expense.notes ? `<p class="expense-saved-notes">${escapeHtml(expense.notes)}</p>` : ""}
         ${expense.attachmentImage ? `<img class="expense-saved-image" src="${escapeAttribute(expense.attachmentImage)}" alt="תמונה מצורפת להוצאה ${escapeAttribute(expense.name)}" />` : ""}
-        <p class="expense-participants-list-title" id="expense-participants-title-${escapeAttribute(expense.id)}">רשימת משתתפים</p>
+        ${renderExpenseParticipantsHeadingView({ expenseId: expense.id })}
         <div class="expense-participants-list" role="list" aria-labelledby="expense-participants-title-${escapeAttribute(expense.id)}"></div>
       </details>
     </article>

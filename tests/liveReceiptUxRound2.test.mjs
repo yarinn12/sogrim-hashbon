@@ -69,7 +69,9 @@ test("expense rows reveal every shared participant from the uncluttered row", as
   );
 
   assert.match(expenseRow, /class="expense-participants-details"/);
-  assert.match(expenseRow, /class="expense-participants-list-title"[^>]*>רשימת משתתפים<\/p>/);
+  const disclosure = await readFile("src/ui/expenseDisclosure.mjs", "utf8");
+  assert.match(expenseRow, /renderExpenseParticipantsHeadingView\(\{ expenseId: expense.id \}\)/);
+  assert.match(disclosure, /class="expense-participants-list-title"[^>]*>מתחלקים בהוצאה<\/p>/);
   assert.match(expenseRow, /participant && !isCurrentParticipant \? renderParticipantConnectionBadge\(participant\) : ""/);
   assert.match(expenseRow, /data-action="toggle-expense-participants"/);
   assert.match(expenseRow, /aria-expanded="false"/);
