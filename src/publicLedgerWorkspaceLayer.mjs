@@ -22027,7 +22027,8 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
       width: auto !important;
       max-width: 100% !important;
     }
-    html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] {
+    /* The tablet layer already owns its centered, bounded canvas. */
+    html.design-coherence-v1.ledger-workspace-v1:not(.responsive-tablet-shell) body #app .expense-step-modal[data-expense-step] {
       width: 100% !important;
       max-width: 100% !important;
       min-width: 0 !important;
@@ -22045,6 +22046,12 @@ html:is(.dynamic-type-large,.dynamic-type-extra-large,.dynamic-type-preview).des
     }
   }
 
+
+  /* The quiet caption is shorter than the old badge. Keep its title below
+     the fixed keyboard controls, including the font range's ascent. */
+  html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header {
+    padding-top: 36px !important;
+  }
 
   /* Every step must grow its actual caption/name glyphs, not just its input boxes. */
   html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] .field > span {

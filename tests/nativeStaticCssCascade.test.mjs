@@ -345,8 +345,8 @@ test("native amount entry retains scalable numeric and label glyphs with a viewp
   assert.match(rule(' .expense-modal-step-header .eyebrow'),/display: none !important/,
     'short-landscape rules must retain the existing compact header');
   assert.match(rule(' .expense-source-currency-field'),/flex-wrap: wrap !important/);
-  const panelStart=css.lastIndexOf('html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step] {');
-  assert.ok(panelStart>=0);
+  const panelStart=css.lastIndexOf('html.design-coherence-v1.ledger-workspace-v1:not(.responsive-tablet-shell) body #app .expense-step-modal[data-expense-step] {');
+  assert.ok(panelStart>=0,'the phone scrollport rule must preserve the existing bounded tablet canvas');
   assert.match(css.slice(panelStart,css.indexOf('}',panelStart)),/width: 100% !important/,'all steps must follow the scrollbar-reduced viewport');
   const backdrop='html.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-route-backdrop:has(> .expense-step-modal[data-expense-step])';
   const start=css.lastIndexOf(backdrop+' {');
@@ -370,4 +370,15 @@ test("native expense steps scale field captions and participant names beyond the
  assert.ok(narrow>=0);
  assert.match(css.slice(narrow,css.indexOf('}',narrow)),/grid-template-columns: minmax\(0, 1fr\) !important/,
    'the date control must not squeeze its enlarged caption into an unreadable narrow cell');
+});
+
+
+test("native amount keyboard header reserves space below its fixed controls after the quiet caption",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css'));
+ const selector='html.app-software-keyboard-open.design-coherence-v1.ledger-workspace-v1 body #app .expense-step-modal[data-expense-step="amount"] .expense-modal-step-header';
+ const start=css.lastIndexOf(selector+' {');
+ assert.ok(start>=0,'native amount header must reserve the full fixed-control band with its shorter caption');
+ assert.match(css.slice(start,css.indexOf('}',start)),/padding-top: 36px !important/);
 });
