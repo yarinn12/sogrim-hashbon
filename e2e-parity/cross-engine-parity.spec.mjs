@@ -1,5 +1,6 @@
 import { chromium, firefox, webkit, expect, test } from "@playwright/test";
 import { recordQaStateBoundary } from "./helpers/qaStateBoundaryDiagnostics.mjs";
+import { openRenderedHome } from "../e2e/helpers/typographyReadiness.mjs";
 
 const OWNER = "person-cross-engine-owner";
 const FRIEND = "person-cross-engine-friend";
@@ -387,10 +388,8 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
         };
       });
     }
-    const url = `${baseURL}/${scenario.font === 32 ? "?dynamic-type-preview=32" : ""}`;
     async function openHome({ diagnoseInitialAx = false } = {}) {
-      await page.goto(url);
-      await expect(page.locator('.screen[data-screen-kind="home"]')).toBeVisible();
+      await openRenderedHome(page,{path:scenario.font===32?'/?dynamic-type-preview=32':'/'});
       if (scenario.ax) {
         return page.evaluate(diagnose => {
           const root = document.documentElement;
@@ -480,13 +479,14 @@ async function journey(engine, name, request, baseURL, scenario, testInfo) {
     await page.locator('[data-action="new-event"]').first().click();
     await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
     await page.locator('[data-action="open-new-event-settlement"]').click();
-    const picker = page.locator(".new-event-inline-picker").filter({ hasText: "חלוקת החזרים" });
+    const picker = page.locator('.new-event-settlement-screen [data-picker-action="new-event-repayment-choice"]');
+    await expect(picker).toContainText("חלוקת ההחזרים");
     await picker.locator("summary").click();
     records.repayment = await capture(page, testInfo, `${name}-repayment`, {
       direct: '.new-event-inline-picker [data-action="new-event-repayment-choice"][data-choice-value="direct"] > span'
     }, cdp);
     await picker.locator('[data-action="new-event-repayment-choice"][data-choice-value="direct"]').click();
-    await expect(picker.locator("summary > span").first()).toHaveText("החזר לפי מי ששילם");
+    await expect(picker.locator("summary > span").first()).toHaveText("החזר למי ששילם");
     records.selected = await capture(page, testInfo, `${name}-selected`, {
       direct: '.new-event-inline-picker:has([data-choice-value="direct"]) summary > span'
     }, cdp);

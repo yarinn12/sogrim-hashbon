@@ -1009,8 +1009,14 @@ test("large text navigation fits its labels without reserving a tall empty block
     // spacing allowance while counting each row's visible icon/label content.
     const rows=[];
     for(const button of geometry.buttons) {
-      let row=rows.find(row=>Math.abs(row.top-button.top)<1);
-      if(!row){row={top:button.top,height:0};rows.push(row);}
+      const bottom=button.top+button.height;
+      // A selected/hovered button may lift by1px. Group actual overlapping
+      // vertical bands, rather than treating that lift as another layout row.
+      let row=rows.find(row=>Math.min(row.bottom,bottom)-Math.max(row.top,button.top)
+        >Math.min(row.bottom-row.top,button.height)/2);
+      if(!row){row={top:button.top,bottom,height:0};rows.push(row);}
+      row.top=Math.min(row.top,button.top);
+      row.bottom=Math.max(row.bottom,bottom);
       row.height=Math.max(row.height,button.contentHeight);
     }
     expect(rows.length,`${destination}: navigation uses one row or the approved two-row layout`).toBeGreaterThanOrEqual(1);
