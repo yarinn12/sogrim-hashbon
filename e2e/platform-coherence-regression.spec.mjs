@@ -712,12 +712,14 @@ test("event balance and expense total stay explained, aligned and scalable", asy
     await expect(page.locator('[data-event-view="summary"]')).toBeVisible();
     await page.locator('[data-action="back-to-event"]:visible').first().click();
     await expect(page.locator(".event-action-total")).toContainText("סה״כ הוצאות");
+    await expect(page.locator('.event-action-sync-retry')).toBeHidden();
     const totalBefore=await page.locator('.event-action-total').innerText();
     await page.locator('.event-action-dock [data-action="show-expense-form"]').click();
     await expect(page.locator('.expense-modal')).toBeVisible();
     await page.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
     await expect(page.locator('.expense-modal')).toHaveCount(0);
-    await expect(page.locator('.event-action-total')).toHaveText(totalBefore);
+    await expect(page.locator('.event-action-total')).toHaveText(totalBefore,{useInnerText:true});
+    await expect(page.locator('.event-action-sync-retry')).toBeHidden();
   }
 });
 
@@ -731,12 +733,15 @@ test("expense disclosure cue and command labels fit at normal and enlarged sizes
     const menuTrigger=row.locator('.expense-row-actions-menu > summary');
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded','true');
+    await expect(row.locator('.expense-row-expand-icon')).toHaveCSS('transform','matrix(0, 1, -1, 0, 0, 0)');
     await expect(row.locator('.expense-participants-list-title')).toHaveText('מתחלקים בהוצאה');
     for(const width of [320,393,411]) {
       await page.setViewportSize({width,height:852});
       await page.evaluate(()=>document.fonts.ready);
       await menuTrigger.click();
       await expect(row.locator('.expense-row-actions-menu')).toHaveAttribute('open','');
+      // Toggle queues viewport positioning on the next animation frame.
+      await expect(row.locator('.expense-row-actions-menu')).toHaveClass(/is-viewport-positioned/);
       const result=await page.evaluate(measureExpenseDisclosure);
       const context=width+'px/'+result.rootFont;
       expect(result.noHorizontalOverflow,context).toBe(true);
@@ -763,6 +768,7 @@ test("expense disclosure cue and command labels fit at normal and enlarged sizes
       }
       await menuTrigger.press('Escape');
       await expect(row.locator('.expense-row-actions-menu')).not.toHaveAttribute('open','');
+      await expect(row.locator('.expense-row-actions-menu')).not.toHaveClass(/is-viewport-positioned/);
     }
     const opened=await page.evaluate(measureExpenseDisclosure);
     await trigger.click();
@@ -795,8 +801,8 @@ test(LARGE_ACTION_DOCK_TEST, async ({page})=>{
 });
 
 
-test("expense amount scales actual leaf fonts and retains a usable currency group", async ({page}) => {
-  for(const root of [16,20,32]) {
+for(const root of [16,20,32]) {
+ test(`expense amount scales actual leaf fonts and retains a usable currency group (${root}px)`, async ({page}) => {
     await openTypographyHome(page,{path:root===16?'/':`/?dynamic-type-preview=${root}`});
     await openEvent(page,OPEN_EVENT);
     await page.getByRole('button',{name:'הוסף הוצאה',exact:true}).click();
@@ -805,6 +811,8 @@ test("expense amount scales actual leaf fonts and retains a usable currency grou
     await page.evaluate(()=>document.fonts.ready);
     for(const width of [320,393,411]) {
       await page.setViewportSize({width,height:852});
+      // Currency enhancement is scheduled after the dialog render on WebKit.
+      await expect(dialog.getByRole('button',{name:'מטבע ההוצאה',exact:true})).toBeVisible();
       const result=await page.evaluate(measureExpenseAmount);
       const context=`${width}px/root${root}`;
       expect(result.width,context).toBe(width);
@@ -823,7 +831,7 @@ test("expense amount scales actual leaf fonts and retains a usable currency grou
       expect(result.currencyGap,context).toBeLessThanOrEqual(20);
       expect(result.next.height,context).toBeGreaterThanOrEqual(44);
       expect(result.trigger.height,context).toBeGreaterThanOrEqual(44);
-      await dialog.getByLabel('מטבע ההוצאה',{exact:true}).scrollIntoViewIfNeeded();
+      await dialog.getByRole('button',{name:'מטבע ההוצאה',exact:true}).scrollIntoViewIfNeeded();
       expect((await page.evaluate(measureExpenseAmount)).currencyCenterHits,context+': currency reachable after scroll').toBe(true);
     }
     if(root===32) {
@@ -831,7 +839,7 @@ test("expense amount scales actual leaf fonts and retains a usable currency grou
       await expect(dialog.locator('.eyebrow')).toBeHidden();
       expect((await page.evaluate(measureExpenseAmount)).modalFits,'short landscape panel stays in viewport').toBe(true);
       await assertTappable(page,dialog.getByRole('textbox',{name:'סכום כולל ₪',exact:true}),'short landscape amount');
-      await assertTappable(page,dialog.getByLabel('מטבע ההוצאה',{exact:true}),'short landscape currency');
+      await assertTappable(page,dialog.getByRole('button',{name:'מטבע ההוצאה',exact:true}),'short landscape currency');
       await assertTappable(page,dialog.getByRole('button',{name:'המשך לשם ההוצאה',exact:true}),'short landscape next');
       await page.setViewportSize({width:411,height:852});
     }
@@ -845,8 +853,8 @@ test("expense amount scales actual leaf fonts and retains a usable currency grou
     await expect(dialog.getByRole('textbox',{name:'סכום כולל ₪',exact:true})).toHaveValue('123.45');
     await dialog.getByRole('button',{name:'חזרה לאירוע',exact:true}).click();
     await expect(page.locator('.expense-row')).toHaveCount(1);
-  }
-});
+ });
+}
 
 
 test("participant checkbox and avatar select the expense share without opening statistics", async ({page})=>{
@@ -862,7 +870,8 @@ test("participant checkbox and avatar select the expense share without opening s
   await expect(dialog).toHaveAttribute('data-expense-step','participants');
   const input=dialog.locator(`[data-action="expense-shared"][data-participant-id="${PEER}"]`);
   const row=dialog.locator(`.expense-participant-row:has([data-action="expense-shared"][data-participant-id="${PEER}"])`);
-  await input.uncheck();
+  // The native checkbox is visually covered by its label avatar; use the visible label.
+  await row.locator('.avatar').click();
   await expect(input).not.toBeChecked();
   await expect(dialog).toHaveAttribute('data-expense-step','participants');
   await expect(page.locator('[data-screen-kind="friend-profile"]')).toHaveCount(0);
@@ -886,7 +895,7 @@ test(READ_ONLY_EVENT_COPY_TEST,async({page})=>{
   await expect(dock).not.toContainText('האירוע סגור');
   await page.getByRole('button',{name:'פתיחת פתקים משותפים',exact:true}).click();
   await expect(page.locator('[data-screen-kind="event-notes"]').getByRole('button',{name:'קריאה בלבד',exact:true})).toBeDisabled();
-  await page.locator('[data-action="open-event-note"][data-note-id="read-only-note"]').click();
+  await page.locator('.event-note-open[data-note-id="read-only-note"]').click();
   await expect(page.locator('.event-note-modal')).toContainText('אין לך הרשאה לערוך פתק זה. אפשר לקרוא את התוכן.');
   await expect(page.locator('.event-note-modal')).not.toContainText('האירוע סגור');
   await expect(page.locator('.event-note-modal [data-action="save-event-note"]')).toHaveCount(0);

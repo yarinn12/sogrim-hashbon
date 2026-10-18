@@ -286,67 +286,50 @@ test("a newly joined old event appears first before a nonessential image loads",
   }
 });
 
-test("home status labels and counts fit their touch targets at narrow widths", async ({ page, request }, testInfo) => {
+// The user retired lifecycle chips. Keep the approved Events/Archive tabs usable.
+test("home events and archive labels fit touch targets and retain their selection", async ({ page, request }, testInfo) => {
   await request.put("/api/state", { data: populatedAccountState });
   await page.addInitScript(state => {
     localStorage.setItem("settle-friends-state", JSON.stringify(state));
   }, populatedAccountState);
-
   const dynamicType = Number(testInfo.project.metadata?.dynamicTypePreview || 0);
   for (const width of [320, 375, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await openHeldRenderedHome(page, { path: dynamicType ? `/?dynamic-type-preview=${dynamicType}` : "/" });
     await waitForHomePresentation(page);
-    const filters = page.locator('.event-lifecycle-filter [data-action="event-lifecycle-filter"]');
-    await expect(filters).toHaveCount(4);
-    const layout = await filters.evaluateAll(buttons => buttons.map(button => {
+    await expect(page.locator('.event-lifecycle-filter')).toHaveCount(0);
+    const tabs = page.locator('.event-primary-filter [data-action="event-status-filter"]');
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs).toHaveText(['אירועים', 'ארכיון']);
+    const layout = await tabs.evaluateAll(buttons => buttons.map(button => {
       const bounds = button.getBoundingClientRect();
-      const content = button.querySelector(".event-lifecycle-option-content");
-      const label = content.firstElementChild;
-      const range = document.createRange();
-      range.selectNodeContents(label);
-      const textRects = [...range.getClientRects()];
-      const count = content.querySelector(".font-num").getBoundingClientRect();
-      return {
-        label: label.textContent,
-        top: bounds.top,
-        bottom: bounds.bottom,
-        width: bounds.width,
-        height: bounds.height,
-        overflow: button.scrollWidth - button.clientWidth,
-        textFits: textRects.every(rect => rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1),
-        countFits: count.left >= bounds.left && count.right <= bounds.right && count.top >= bounds.top && count.bottom <= bounds.bottom,
-        countBottom: count.bottom,
-        columns: getComputedStyle(button.parentElement).gridTemplateColumns,
-        fontSize: getComputedStyle(label).fontSize
-      };
+      const label = button.querySelector('span');
+      const range = document.createRange(); range.selectNodeContents(label);
+      return { label: label.textContent, left:bounds.left, right:bounds.right,
+        top:bounds.top, bottom:bounds.bottom, width:bounds.width, height:bounds.height,
+        overflow:button.scrollWidth-button.clientWidth,
+        textFits:[...range.getClientRects()].every(rect => rect.left>=bounds.left-1
+          && rect.right<=bounds.right+1 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1) };
     }));
-    for (const item of layout) {
-      expect(item.overflow, `${width}px: ${JSON.stringify(item)}`).toBeLessThanOrEqual(1);
-      expect(item.textFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
-      expect(item.countFits, `${width}px: ${JSON.stringify(item)}`).toBe(true);
-      expect(item.width).toBeGreaterThanOrEqual(44);
-      expect(item.height).toBeGreaterThanOrEqual(44);
+    for(const item of layout) {
+      const context=width+'px: '+JSON.stringify(item);
+      expect(item.overflow,context).toBeLessThanOrEqual(1);
+      expect(item.textFits,context).toBe(true);
+      expect(item.width,context).toBeGreaterThanOrEqual(44);
+      expect(item.height,context).toBeGreaterThanOrEqual(44);
     }
-    const rows = [];
-    for (const item of layout) {
-      const row = rows.find(candidate => Math.abs(candidate.top - item.top) <= 1);
-      if (row) row.items.push(item);
-      else rows.push({ top: item.top, items: [item] });
-    }
-    rows.sort((left, right) => left.top - right.top);
-    for (const [index, row] of rows.entries()) {
-      const countBottoms = row.items.map(item => item.countBottom);
-      expect(Math.max(...countBottoms) - Math.min(...countBottoms), `${width}px row ${index + 1}: counts must align within their row`).toBeLessThanOrEqual(1);
-      if (index > 0) {
-        const previousBottom = Math.max(...rows[index - 1].items.map(item => item.bottom));
-        expect(row.top, `${width}px: lifecycle filter rows must not overlap`).toBeGreaterThanOrEqual(previousBottom - 1);
-      }
-    }
-    await filters.filter({ hasText: "מוסיפים הוצאות" }).click();
-    await expect(page.locator('.event-lifecycle-filter [data-filter="adding"]')).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator(".event-row")).toHaveCount(1);
-    await page.screenshot({ path: testInfo.outputPath(`home-status-labels-${width}.png`) });
+    const sorted=[...layout].sort((a,b)=>a.left-b.left);
+    expect(sorted[0].right,`${width}px: tabs must not overlap`).toBeLessThanOrEqual(sorted[1].left+1);
+    const archive=tabs.filter({hasText:'ארכיון'}), events=tabs.filter({hasText:'אירועים'});
+    await archive.click();
+    await expect(archive).toHaveAttribute('aria-pressed','true');
+    await expect(events).toHaveAttribute('aria-pressed','false');
+    await expect(page.locator('.event-row')).toHaveCount(0);
+    await events.click();
+    await expect(events).toHaveAttribute('aria-pressed','true');
+    await expect(archive).toHaveAttribute('aria-pressed','false');
+    await expect(page.locator('.event-row')).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath(`home-events-archive-${width}.png`) });
   }
 });
 
