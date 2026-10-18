@@ -1,3 +1,4 @@
+import { manualParticipantCopy, renderEventManualParticipantEditorView } from "../src/ui/eventManualParticipantEditor.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
@@ -15,7 +16,7 @@ function renderDraft(overrides = {}, busy = false) {
   const before = JSON.stringify(draft);
   let ownerChecks = 0;
   const context = vm.createContext({
-    newEventDraft: draft, createEventBusy: busy, renderEventParticipantRouteView,
+    newEventDraft: draft, createEventBusy: busy, renderEventParticipantRouteView, manualParticipantCopy, renderEventManualParticipantEditorView,
     state: { currentParticipantId: "owner", participants: [
       { id: "owner", displayName: "Owner", kind: "user" },
       { id: "guest", displayName: "Guest <name>", kind: "guest" }
@@ -127,4 +128,36 @@ test("manual name view omits the redundant side count while keeping selected ide
   assert.match(manual, /data-action="close-new-event-participant-view"/);
   assert.match(renderDraft(), /data-new-event-participant-count/,
     "The separate main participants overview retains its existing count");
+});
+
+
+test("manual participant view uses the approved one-line explanation and an explicit labeled add action", () => {
+  const html = renderDraft({ participantView: "manual", guestName: '<Draft>' });
+  assert.match(html, /הוספת משתתף לפי שם/);
+  const explanation = "מוסיפים אדם שלא משתמש באפליקציה, ומנהלים את ההוצאות בשמו.";
+  assert.equal(html.split(explanation).length - 1, 1, "Use exactly one explanation");
+  assert.match(html, /<label[^>]*for="manual-participant-name"[^>]*>שם המשתתף<\/label>/);
+  assert.match(html, /<input[^>]*id="manual-participant-name"[^>]*value="&lt;Draft&gt;"/);
+  assert.match(html, /data-action="new-event-add-guest">הוסף משתתף<\/button>/);
+  assert.doesNotMatch(html, /manual-participant-explanation|הוספת שם לא שולחת|תמיד אפשר לערוך אחר כך/);
+  assert.doesNotMatch(html, /data-new-event-participant-count/);
+});
+
+
+test("manual editor escapes a draft name without changing existing action and input semantics", () => {
+  const value = '\" autofocus onfocus=\"bad <img> & \'name';
+  const html = renderEventManualParticipantEditorView({ value });
+  assert.match(html, /value="&quot; autofocus onfocus=&quot;bad &lt;img&gt; &amp; &#039;name"/);
+  assert.doesNotMatch(html, /<img>|value="" autofocus/);
+  assert.match(html, /name="guestName"/);
+  assert.match(html, /enterkeyhint="done"/);
+  assert.match(html, /for="manual-participant-name"/);
+  assert.match(html, /id="manual-participant-name"/);
+  assert.match(renderEventManualParticipantEditorView(), /value=""/);
+});
+
+test("manual participant presentation is available in the offline creation cache", async () => {
+  const worker = await readFile("sw.js", "utf8");
+  const from = worker.indexOf("const CACHE_FILES = [");
+  assert.match(worker.slice(from, worker.indexOf("];", from)), /"\/src\/ui\/eventManualParticipantEditor\.mjs"/);
 });

@@ -1,3 +1,4 @@
+import { manualParticipantCopy, renderEventManualParticipantEditorView } from "./ui/eventManualParticipantEditor.mjs";
 import { renderEventParticipantRouteView } from "./ui/eventParticipantRoute.mjs";
 import { eventSettlementOptionsView } from "./ui/eventSettlementOptions.mjs";
 import { renderEventDetailsNameFieldView } from "./ui/eventDetailsNameField.mjs";
@@ -7161,18 +7162,7 @@ function renderNewEventParticipantEditor() {
   }
 
   if (newEventDraft.participantView === "manual") {
-    return `
-      <section class="new-event-participant-editor new-event-offline-add" aria-labelledby="new-event-manual-title">
-        <header>
-          <h2 id="new-event-manual-title">הוסף שם ידנית</h2>
-          <p>לאדם שלא יתחבר לאפליקציה.</p>
-        </header>
-        <div class="inline-actions">
-          <input class="guest-input" data-action="new-event-guest-name" name="guestName" autocomplete="off" enterkeyhint="done" aria-label="שם המשתתף" placeholder="שם מלא" value="${escapeAttribute(newEventDraft.guestName)}" />
-          <button class="secondary-button" type="button" data-action="new-event-add-guest">הוסף</button>
-        </div>
-      </section>
-    `;
+    return renderEventManualParticipantEditorView({ value: newEventDraft.guestName });
   }
 
   return "";
@@ -7180,10 +7170,10 @@ function renderNewEventParticipantEditor() {
 
 function renderNewEventParticipantSubview() {
   const isFriendsView = newEventDraft.participantView === "friends";
-  const title = isFriendsView ? "בחירת חברים" : "הוספת שם ידנית";
+  const title = isFriendsView ? "בחירת חברים" : manualParticipantCopy.title;
   const description = isFriendsView
     ? "סמן את החברים שמצטרפים לאירוע. הבחירה נשמרת מיד."
-    : "הוסף אדם שלא יתחבר לאפליקציה. תמיד אפשר לערוך אחר כך.";
+    : manualParticipantCopy.explanation;
 
   return `
     <section class="screen font-hebrew new-event-participants-screen new-event-participant-subscreen" data-screen-kind="new-event" data-event-creation-step="participants" data-new-event-participant-subview="${escapeAttribute(newEventDraft.participantView)}">

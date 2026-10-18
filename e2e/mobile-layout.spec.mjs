@@ -3052,3 +3052,55 @@ test("friends picker scales real name glyphs and retains selection at enlarged t
     await expect(ariel.locator('input')).toBeChecked();
   }
 });
+
+
+test("manual participant editor has one clear explanation and preserves additions with enlarged text", async ({ page, request }) => {
+  const manualState = structuredClone(seededState);
+  manualState.friendContacts = manualState.participants.slice(1).map(person => ({
+    id: `manual-contact-${person.id}`, participantId: person.id, active: true,
+    source: person.kind === "user" ? "account" : "offline", updatedAt: "2026-08-03T20:05:00.000Z"
+  }));
+  await request.put("/api/state", { data: manualState });
+  await settleServiceWorkerBeforeReload(page);
+  await page.addInitScript(state => localStorage.setItem("settle-friends-state", JSON.stringify(state)), manualState);
+  const name = 'משתתף בדיקה עם שם משפחה ארוך';
+  for (const rootSize of [16, 20, 32]) {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'פתיחת הגדרות נגישות', exact: true }).click();
+    await page.getByRole('radio', { name: rootSize === 20 ? 'גדול מאוד' : 'לפי המכשיר', exact: true }).check();
+    await page.getByRole('button', { name: 'סיום', exact: true }).click();
+    if (rootSize === 32) await page.goto('/?dynamic-type-preview=32');
+    await page.locator('[data-action="new-event"]').first().click();
+    await page.locator('[data-action="new-event-type"][data-event-type="standard"]').click();
+    await page.getByRole('button', { name: 'משתתפים', exact: true }).click();
+    await page.locator('[data-participant-view="manual"]').click();
+    const screen = page.locator('.new-event-participant-subscreen[data-new-event-participant-subview="manual"]');
+    await expect(screen.getByRole('heading', { name: 'הוספת משתתף לפי שם', exact: true })).toBeVisible();
+    await expect(screen.getByText('מוסיפים אדם שלא משתמש באפליקציה, ומנהלים את ההוצאות בשמו.', { exact: true })).toHaveCount(1);
+    await expect(screen.locator('.manual-participant-explanation,[data-new-event-participant-count]')).toHaveCount(0);
+    await screen.getByRole('textbox', { name: 'שם המשתתף', exact: true }).fill(name);
+    await screen.getByRole('button', { name: 'הוסף משתתף', exact: true }).click();
+    await expect(screen.locator('.new-event-selected-participant').filter({ hasText: name }).locator('input')).toBeChecked();
+    for (const width of [320, 393, 411]) {
+      await page.setViewportSize({ width, height: 852 });
+      await page.evaluate(() => document.fonts.ready);
+      await settleCoherenceMotion(page);
+      const geometry = await screen.evaluate(node => ({
+        client: document.documentElement.clientWidth, width: document.documentElement.scrollWidth,
+        text: [...node.querySelectorAll('.brand h1,.brand>.muted,.manual-name-label,.new-event-offline-add button,.new-event-selected-participant-copy strong,.participant-identity-label')].map(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(element);
+          return { text: element.textContent.trim(), visible: rect.width > 0 && rect.height > 0,
+            fits: [...range.getClientRects()].every(r => r.left >= rect.left - 1 && r.right <= rect.right + 1 && r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1) };
+        })
+      }));
+      expect(geometry.width).toBeLessThanOrEqual(geometry.client);
+      expect(geometry.text.length).toBeGreaterThan(5);
+      for (const text of geometry.text) expect(text.visible && text.fits, text.text).toBe(true);
+      await assertNewEventActionReachable(page, '[data-action="close-new-event-participant-view"]', `manual ${width}/${rootSize}`);
+    }
+    await screen.getByRole('button', { name: 'שמירה וחזרה', exact: true }).click();
+    await expect(page.locator('[data-new-event-participant-count]')).toBeVisible();
+    await page.locator('[data-participant-view="manual"]').click();
+    await expect(screen.locator('.new-event-selected-participant').filter({ hasText: name }).locator('input')).toBeChecked();
+  }
+});

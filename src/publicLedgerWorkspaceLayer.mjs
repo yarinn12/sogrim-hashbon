@@ -21501,6 +21501,75 @@ html.ledger-workspace-v1.circle-design-v1 body #app .participant-identity-label 
  text-transform:none !important;
 }
 
+
+/* Approved manual participant editor: one explanation, clear labeled action. */
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add {
+ display:grid !important;
+ gap:12px !important;
+ margin:0 !important;
+ padding:0 !important;
+ border:0 !important;
+ border-radius:0 !important;
+ background:transparent !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add .inline-actions {
+ display:grid !important;
+ grid-template-columns:minmax(0,1fr) !important;
+ gap:10px !important;
+ align-items:stretch !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .manual-name-label {
+ display:block !important;
+ font-size:.875rem !important;
+ line-height:1.5 !important;
+ color:var(--ledger-ink) !important;
+ font-weight:700 !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add input {
+ min-width:0 !important;
+ width:100% !important;
+ min-height:52px !important;
+ height:auto !important;
+ padding:12px 14px !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ color:var(--ledger-ink) !important;
+ box-shadow:none !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-offline-add [data-action="new-event-add-guest"] {
+ display:block !important;
+ min-height:48px !important;
+ width:100% !important;
+ height:auto !important;
+ padding:12px 16px !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ font-weight:650 !important;
+ border:1px solid var(--ledger-line) !important;
+ border-radius:12px !important;
+ background:var(--ledger-surface) !important;
+ color:var(--ledger-brand) !important;
+ box-shadow:none !important;
+ white-space:normal !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-participant-subview-footer {
+ margin-top:20px !important;
+ padding-top:20px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-participant-subview-footer button {
+ min-height:52px !important;
+ height:auto !important;
+ font-size:1rem !important;
+ line-height:1.5 !important;
+ white-space:normal !important;
+ padding:14px 16px !important;
+}
+html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] .new-event-selected-participants {margin-top:20px !important;}
+
 `;
 
 const RETIRED_ROOT_CLASSES = [

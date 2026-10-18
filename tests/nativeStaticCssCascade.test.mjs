@@ -250,3 +250,21 @@ test("native manual selected identities retain the shared row and visible captio
   assert.ok(row.includes('grid-template-areas:"avatar copy check" "avatar status check" !important;'),
     "Place status under the name so it keeps its own row when enlarged");
 });
+
+
+test("native manual participant form retains scalable labeled input and full-width add action", async () => {
+  const { extractNativeStaticCss, files } = await harness();
+  await extractNativeStaticCss([{ path: resolve("src/publicLedgerWorkspaceLayer.mjs") }], "fixture-assets");
+  const css = files.get(join("fixture-assets", "native-layers.css"));
+  const prefix = 'html.ledger-workspace-v1.circle-design-v1 body #app .new-event-participant-subscreen[data-new-event-participant-subview="manual"] ';
+  for (const [selector, declarations] of [
+    ['.manual-name-label', ['font-size:.875rem !important;', 'display:block !important;']],
+    ['.new-event-offline-add input', ['font-size:1rem !important;', 'min-height:52px !important;']],
+    ['.new-event-offline-add [data-action="new-event-add-guest"]', ['font-size:1rem !important;', 'min-height:48px !important;', 'width:100% !important;']]
+  ]) {
+    const from = css.lastIndexOf(prefix + selector + ' {');
+    assert.ok(from >= 0, `Manual form needs its scalable native rule: ${selector}`);
+    const rule = css.slice(from, css.indexOf('}', from));
+    for (const declaration of declarations) assert.ok(rule.includes(declaration), declaration);
+  }
+});

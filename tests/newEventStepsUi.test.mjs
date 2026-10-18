@@ -139,7 +139,9 @@ test("event details open settlement before participant management", async () => 
   assert.match(participantsStep, /function renderNewEventParticipants\(\)/);
   assert.match(participantsStep, /data-action="create-event"/);
   assert.match(participantsStep, /data-action="cancel-new-event-participants"/);
-  assert.match(participantsStep, /autocomplete="off"/);
+  assert.match(participantsStep, /renderEventManualParticipantEditorView\(\{ value: newEventDraft\.guestName \}\)/);
+  const manualEditor = await readFile("src/ui/eventManualParticipantEditor.mjs", "utf8");
+  assert.match(manualEditor, /autocomplete="off"/);
   assert.match(app, /function syncNewEventParticipantControls\(\)/);
   assert.match(app, /function newEventParticipantSelectionLabel\(participantIds\)/);
   assert.match(app, /return "רק אתה כרגע"/);
