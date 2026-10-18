@@ -7088,7 +7088,7 @@ function renderNewEventSelectedParticipant(participant) {
         value="${escapeAttribute(participant.id)}"
         checked
       />
-      ${renderAvatar(participant.id)}
+      ${renderAvatar(participant.id, null, { suppressParticipantAction: true })}
       <span class="new-event-selected-participant-copy">
         <strong>${escapeHtml(participant.displayName)}</strong>
         ${renderParticipantUsername(participant)}

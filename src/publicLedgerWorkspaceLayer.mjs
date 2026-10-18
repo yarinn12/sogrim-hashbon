@@ -18421,7 +18421,7 @@ const CSS = `
     html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1
       .screen[data-event-creation-step="participants"]
       .new-event-participant-footer {
-      bottom: calc(max(14px, env(safe-area-inset-bottom)) + 148px) !important;
+      bottom: calc(max(14px, env(safe-area-inset-bottom)) + var(--dynamic-type-bottom-nav-block, 148px)) !important;
     }
   }
 

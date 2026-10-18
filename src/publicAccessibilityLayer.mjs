@@ -178,7 +178,9 @@ function handleAccessibilityChange(event) {
   const control = event.target.closest(
     "[data-accessibility-text-size], [data-accessibility-contrast], [data-accessibility-motion]"
   );
-  if (!control) return;
+  // The root carries the same attribute as a state marker. Ordinary form
+  // changes must not treat that marker as a settings input and reset preferences.
+  if (!(control instanceof HTMLInputElement)) return;
 
   if (control.matches("[data-accessibility-text-size]")) {
     preferences = saveAccessibilityPreferences({

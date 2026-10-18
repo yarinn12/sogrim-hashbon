@@ -382,3 +382,15 @@ test("native amount keyboard header reserves space below its fixed controls afte
  assert.ok(start>=0,'native amount header must reserve the full fixed-control band with its shorter caption');
  assert.match(css.slice(start,css.indexOf('}',start)),/padding-top: 36px !important/);
 });
+
+
+test("native enlarged participant footer follows the measured bottom navigation height",async()=>{
+ const {extractNativeStaticCss,files}=await harness();
+ await extractNativeStaticCss([{path:resolve('src/publicLedgerWorkspaceLayer.mjs')}],'fixture-assets');
+ const css=files.get(join('fixture-assets','native-layers.css')).replace(/\r\n/g,'\n');
+ const selector='html:is(.dynamic-type-large, .dynamic-type-extra-large, .dynamic-type-preview).ledger-workspace-v1';
+ const start=css.indexOf(selector+'\n      .screen[data-event-creation-step="participants"]');
+ assert.ok(start>=0,'enlarged participant footer must be in extracted Native CSS');
+ assert.match(css.slice(start,css.indexOf('}',start)),/var\(--dynamic-type-bottom-nav-block, 148px\)/,
+  'a fixed148px offset loses its safe gap when the actual navigation grows to two rows');
+});

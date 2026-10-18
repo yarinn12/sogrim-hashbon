@@ -822,7 +822,7 @@ test("new-event participant actions remain above the persistent iPhone navigatio
   );
   assert.match(
     layer,
-    /dynamic-type-extra-large[\s\S]*?\.screen\[data-event-creation-step\] \{[\s\S]*?padding-bottom: calc\(232px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?\.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ 148px\) !important/
+    /dynamic-type-extra-large[\s\S]*?\.screen\[data-event-creation-step\] \{[\s\S]*?padding-bottom: calc\(232px \+ env\(safe-area-inset-bottom\)\) !important;[\s\S]*?\.new-event-participant-footer \{[\s\S]*?bottom: calc\(max\(14px, env\(safe-area-inset-bottom\)\) \+ var\(--dynamic-type-bottom-nav-block, 148px\)\) !important/
   );
 });
 

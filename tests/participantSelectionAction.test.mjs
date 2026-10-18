@@ -23,18 +23,18 @@ function renderer(connected=true) {
     renderParticipantUsername:()=> '',renderParticipantConnectionBadge:()=> '<small>זהות</small>',
     iconSvg:()=> '<svg aria-hidden="true"></svg>'
   });
-  for(const name of ['escapeHtml','escapeAttribute','participantStatisticsAvatarAttributes','renderAvatar','renderParticipantPill','renderExpenseParticipantRow']) {
+  for(const name of ['escapeHtml','escapeAttribute','participantStatisticsAvatarAttributes','renderAvatar','renderParticipantPill','renderExpenseParticipantRow','renderNewEventSelectedParticipant']) {
     vm.runInContext(extract(name),context);
   }
   return {context,peer,event:{id:'event-qa'}};
 }
 for(const connected of [true,false]) {
-  for(const name of ['renderParticipantPill','renderExpenseParticipantRow']) {
+  for(const name of ['renderParticipantPill','renderExpenseParticipantRow','renderNewEventSelectedParticipant']) {
     test(`${name} keeps ${connected?'connected':'offline'} avatar navigation out of its checkbox label`,()=>{
       const {context,peer,event}=renderer(connected);
       const html=name==='renderParticipantPill'
         ?context[name](peer,[peer.id],'new-event-participant',event,false)
-        :context[name](peer,[peer.id],event,false);
+        :name==='renderExpenseParticipantRow' ?context[name](peer,[peer.id],event,false):context[name](peer);
       assert.match(html,/type="checkbox"/);
       assert.match(html,/checked/);
       assert.match(html,/דנה &lt;בדיקה&gt;/);
